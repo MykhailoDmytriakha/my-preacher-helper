@@ -15,7 +15,7 @@ import { readField, writeField } from './fieldValues';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
-import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
+import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageRowFields } from './rowFieldAutosave';
@@ -188,7 +188,10 @@ export class DataSession {
     if (request.serviceOrderStepPlacement && equalValues(request.serviceOrderStepPlacement, this.state.serviceOrderStepPlacementRetry)) {
       delete this.state.serviceOrderStepPlacementRetry;
     }
-    if (request.outlinePointPlacement && equalValues(request.outlinePointPlacement, this.state.outlinePointPlacementRetry)) {
+    const outlineRetry = this.state.outlinePointPlacementRetry;
+    const templateMove = request.baseline.resource.collection === 'planTemplates' && request.outlinePointPlacement;
+    const capturedTemplateRetry = templateMove && outlineRetry && sameOutlinePointGesture(templateMove, outlineRetry);
+    if (request.outlinePointPlacement && (equalValues(request.outlinePointPlacement, outlineRetry) || capturedTemplateRetry)) {
       delete this.state.outlinePointPlacementRetry;
     }
     const groupRetry = this.state.groupFlowStepPlacementRetry;
@@ -208,7 +211,8 @@ export class DataSession {
       && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
       delete this.state.accountPreferenceRetry;
     }
-    const newRowMove = (request.groupFlowStepPlacement || request.councilTopicPlacement) && !this.state.pending[request.id];
+    const newRowMove = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove)
+      && (!this.state.pending[request.id] || capturedTemplateRetry);
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (newRowMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
       // The exact move took only the position. Save the additional typing in its own generation.
@@ -320,13 +324,15 @@ export class DataSession {
     const outlineMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.outlinePointPlacement
         && pending.outlinePointPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.outlinePointPlacement] : []);
-    const incoming = alignPendingOutlinePointPlacements(accepted.value, this.state.draft, outlineMoves);
+    const incoming = alignPendingOutlinePointPlacements(accepted.resource.collection, accepted.value, this.state.draft, outlineMoves);
     const groupMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.groupFlowStepPlacement
         && pending.groupFlowStepPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.groupFlowStepPlacement] : []);
     const councilMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.councilTopicPlacement
         && pending.councilTopicPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.councilTopicPlacement] : []);
+    const templateAncestor = accepted.resource.collection === 'planTemplates' && outlineMoves.length
+      ? alignPendingOutlinePointPlacements('planTemplates', acceptedAncestor, this.state.draft, outlineMoves) : acceptedAncestor;
     const rebased = groupMoves.length
       ? mergeDocumentFields(groupPlacementMergeFrame(acceptedAncestor, groupMoves), groupPlacementMergeFrame(this.state.draft, []),
         groupPlacementMergeFrame(incoming, groupMoves))
@@ -334,7 +340,7 @@ export class DataSession {
         this.state.draft, councilMoves.reduce(projectCouncilTopicOnDocument, incoming))
       : accepted.resource.collection === 'groups' ? mergeGroupFlowRebase(acceptedAncestor, this.state.draft, incoming)
         : rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
-          mergeDocumentFields(acceptedAncestor, this.state.draft, incoming));
+          mergeDocumentFields(templateAncestor, this.state.draft, incoming));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;

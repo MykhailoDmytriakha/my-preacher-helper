@@ -7,12 +7,14 @@ import { writeField } from './fieldValues';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
+import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { restoreSavedRowFieldDrafts } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { withoutUnsignedTemplateOrder } from './templateOutlineMerge';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { changedThoughtTagTarget } from './thoughtTagAction';
 
@@ -120,7 +122,7 @@ export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], b
     merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
 }
 
-type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement'>;
+type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement'>;
 
 function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
   base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
@@ -139,7 +141,8 @@ export function retainedAnchoredPlacementDraft(owner: string, editorId: string, 
 }
 
 function protectPlacementFields(record: EditorRecord, source: SessionCheckpoint): EditorRecord {
-  const field = record.checkpoint.confirmed.resource.collection === 'groups' ? 'groupFieldsGeneration' : 'councilFieldsGeneration';
+  const { collection } = record.checkpoint.confirmed.resource;
+  const field = collection === 'groups' ? 'groupFieldsGeneration' : collection === 'planTemplates' ? 'templateFieldsGeneration' : 'councilFieldsGeneration';
   record.retainedManualChoice![field] = source.confirmed.metadata?.generation ?? null;
   carryAnchoredDraftChronology(source, record.checkpoint);
   return record;
@@ -157,26 +160,31 @@ function savedPlacementFields(request: CommitRequest): SessionCheckpoint {
   return source;
 }
 
+function unsignedPlacementLists(collection: string, opening: unknown, proposed: unknown) {
+  if (collection === 'planTemplates') return withoutUnsignedTemplateOrder(opening, proposed);
+  const group = collection === 'groups';
+  const openingFlow = group ? groupPlacementSteps(opening) : undefined;
+  const before = group ? openingFlow : placementSteps(opening);
+  const after = group ? groupPlacementSteps(proposed) : placementSteps(proposed);
+  if (!before || !after) return undefined;
+  const rows = withoutUnsignedRowOrder(before, after);
+  if (!openingFlow) return { before, after: rows };
+  const slots = new Map(openingFlow.map(row => [row.id, row.order]));
+  const sameMembership = rows.length === before.length && rows.every((row, index) => row.id === before[index].id);
+  return { before, after: rows.map((row, index) => ({ ...row, order: sameMembership ? slots.get(row.id)! : index + 1 })) };
+}
+
 /** Retain edits bundled by an old client with a position we cannot safely replay. */
 function unsignedPlacementFields(owner: string, request: CommitRequest, stored: ResourceSnapshot, decidingEditorId?: string): EditorRecord[] {
   const { command, working } = request;
   if (!isUnsignedAnchoredPlacementRefusal(request) || command?.kind !== 'update' || !working.value) return [];
-  const group = command.resource.collection === 'groups';
-  const field = group ? 'flow' : 'topics';
-  const read = group ? groupPlacementSteps : placementSteps;
+  const { collection } = command.resource;
+  const field = collection === 'groups' ? 'flow' : collection === 'planTemplates' ? 'structure' : 'topics';
   const change = command.changes.find(item => item.path[0] === field);
-  const openingFlow = group ? groupPlacementSteps(change?.before.value) : undefined;
-  const before = group ? openingFlow : placementSteps(change?.before.value);
-  const after = read(change?.after.value);
-  if (!before || !after) return [];
-  const rows = withoutUnsignedRowOrder(before, after);
-  const slotById = openingFlow && new Map(openingFlow.map(row => [row.id, row.order]));
-  const sameMembership = rows.length === before.length && rows.every((row, index) => row.id === before[index].id);
-  const authoredRows = slotById ? rows.map((row, index) => ({ ...row,
-    order: sameMembership ? slotById.get(row.id)! : index + 1,
-  })) : rows;
-  let base: DocumentData = { ...working.value, [field]: before };
-  let draft: DocumentData = { ...base, [field]: authoredRows };
+  const lists = unsignedPlacementLists(collection, change?.before.value, change?.after.value);
+  if (!lists) return [];
+  let base: DocumentData = { ...working.value, [field]: lists.before };
+  let draft: DocumentData = { ...base, [field]: lists.after };
   for (const edit of command.changes) {
     if ([field, 'updatedAt', 'rev'].includes(edit.path[0])) continue;
     base = writeField(base, edit.path, edit.before);
@@ -198,8 +206,10 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
   const retained = new Set<string>();
   const retain = (id: string, value: DocumentData | null, base = draft,
     placement?: RetainedPlacement) => retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, placement);
-  const separatePlacementSaves = chosen.groupFlowStepPlacement || chosen.councilTopicPlacement || isUnsignedAnchoredPlacementRefusal(chosen)
-    || retired.some(request => request.retainedAfterChoice && (request.groupFlowStepPlacement || request.councilTopicPlacement));
+  const templateMove = (request: CommitRequest) => stored.resource.collection === 'planTemplates' ? request.outlinePointPlacement : undefined;
+  const isPlacement = (request: CommitRequest) => request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove(request);
+  const separatePlacementSaves = isPlacement(chosen) || isUnsignedAnchoredPlacementRefusal(chosen)
+    || retired.some(request => request.retainedAfterChoice && isPlacement(request));
   const later = orderCommitRequests([...retired]).flatMap(request => {
     if (!request.retainedAfterChoice || !request.predecessor) return [];
     const ancestor = byId.get(request.predecessor);
@@ -208,6 +218,12 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     const formOwned = formRequests?.has(request.id);
     const groupMove = formOwned ? undefined : request.groupFlowStepPlacement;
     const councilMove = formOwned ? undefined : request.councilTopicPlacement;
+    const outlineMove = formOwned ? undefined : templateMove(request);
+    if (outlineMove) {
+      const placed = projectResourceOutlinePoint(stored.resource.collection, basis, outlineMove);
+      projected.set(request.id, placed ?? basis);
+      return [retain(request.id, placed ?? request.value, basis, { outlinePointPlacement: outlineMove })];
+    }
     if (groupMove || councilMove) {
       const placed = groupMove ? projectGroupStepOnDocument(basis, groupMove) : projectCouncilTopicOnDocument(basis, councilMove!);
       projected.set(request.id, placed);
@@ -272,7 +288,23 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
     if (retry) checkpoint.councilTopicPlacementRetry = retry;
     return { ...record, checkpoint };
   }
-  const fieldsGeneration = retained.groupFieldsGeneration !== undefined ? retained.groupFieldsGeneration : retained.councilFieldsGeneration;
+  const outlineMove = retained.outlinePointPlacement;
+  if (outlineMove) {
+    const generation = confirmed.metadata?.generation ?? null;
+    const unavailable = () => Object.assign(new Error('The retained point position is unavailable'), { code: 'decision-changed' });
+    if (confirmed.resource.collection !== 'planTemplates' || confirmed.metadata?.deleted
+      || (outlineMove.generation !== null && outlineMove.generation !== generation)) throw unavailable();
+    const draft = projectResourceOutlinePoint(confirmed.resource.collection, confirmed.value, outlineMove);
+    if (!draft) throw unavailable();
+    const checkpoint = afterChoice(confirmed, draft, record.checkpoint.editGeneration);
+    // Even if the position already matches, its original gesture still needs a receipt.
+    const { predecessorOperationId: _retired, ...placement } = outlineMove.placement;
+    checkpoint.outlinePointPlacementRetry = { ...outlineMove, generation, placement };
+    checkpoint.dirty = true;
+    return { ...record, checkpoint };
+  }
+  const fieldsGeneration = retained.groupFieldsGeneration !== undefined ? retained.groupFieldsGeneration
+    : retained.councilFieldsGeneration !== undefined ? retained.councilFieldsGeneration : retained.templateFieldsGeneration;
   if (fieldsGeneration !== undefined && retained.base && record.checkpoint.draft) {
     const generation = confirmed.metadata?.generation ?? null;
     if (!confirmed.value || confirmed.metadata?.deleted || generation !== fieldsGeneration) {

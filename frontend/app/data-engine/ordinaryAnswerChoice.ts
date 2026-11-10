@@ -179,7 +179,8 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   const latest = scope.filter(request => source.pending[request.id]).at(-1);
   if (scope.length === 1 || !latest) return source;
   const path = new Set(lineage(new Map(scope.map(request => [request.id, request])), latest));
-  const separatePlacementTail = (first.groupFlowStepPlacement || first.councilTopicPlacement || isAnchoredPlacementRefusal(first))
+  const templateMove = first.baseline.resource.collection === 'planTemplates' && first.outlinePointPlacement;
+  const separatePlacementTail = (first.groupFlowStepPlacement || first.councilTopicPlacement || templateMove || isAnchoredPlacementRefusal(first))
     && anchoredPlacementChoiceTail(source, latest.id);
   if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separatePlacementTail)) {
     throw Object.assign(new Error('Save or resolve other document changes before choosing'), { code: 'other-changes-first' });

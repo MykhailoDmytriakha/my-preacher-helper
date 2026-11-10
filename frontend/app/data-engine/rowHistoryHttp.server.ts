@@ -17,6 +17,7 @@ import {
   listGroupStepPlacementHistory,
   listExegeticalPointHistory,
   listOutlinePointPlacementHistory,
+  listPlanTemplatePointPlacementHistory,
   listSermonGoalTypeHistory,
   listSermonPlanModeHistory,
   listSermonPreparationConfirmationHistory,
@@ -67,6 +68,8 @@ const histories = {
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;
 
+const templatePointHistory = { collection: 'planTemplates', list: listPlanTemplatePointPlacementHistory } as const;
+
 export type RowHistory = keyof typeof histories | 'seriesMembership';
 export type RowHistoryContext = { params: Promise<{ collection: string; id: string }> };
 
@@ -77,7 +80,8 @@ export async function rowHistoryResponse(request: Request, context: RowHistoryCo
   try {
     const { collection, id } = await context.params;
     const params = new URL(request.url).searchParams;
-    const selected = history === 'seriesMembership' ? null : histories[history];
+    const selected = history === 'seriesMembership' ? null
+      : history === 'outlinePointPlacement' && collection === templatePointHistory.collection ? templatePointHistory : histories[history];
     const generations = params.getAll('generation');
     if ((selected ? collection !== selected.collection : collection !== 'sermons' && collection !== 'groups')
       || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')

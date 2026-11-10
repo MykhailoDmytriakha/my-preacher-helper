@@ -1,6 +1,5 @@
-import { projectOutlinePoint } from '@/utils/outlineDnd';
+import { hasOutlinePointOrder, SECTION_KEYS } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
-import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 import { sameAnalysisFrame } from './analysisReshapeFields';
@@ -19,6 +18,8 @@ import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from '
 import { mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
 import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
+import { outlinePlacementField } from './outlinePlacementResource';
+import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -32,7 +33,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
-import type { Sermon } from '@/models/models';
+import type { SermonOutline } from '@/models/models';
 
 export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -65,7 +66,7 @@ export function orderActionProjections(requests: readonly CommitRequest[]): read
 function legacyPlacementField(collection: string) {
   if (collection === 'groups') return 'groupFlowPlacementLegacyRevision';
   if (collection === 'councils') return 'councilTopicPlacementLegacyRevision';
-  if (collection === 'sermons') return 'outlinePointPlacementLegacyRevision';
+  if (outlinePlacementField(collection)) return 'outlinePointPlacementLegacyRevision';
 }
 
 function legacyPlacementObservedRevision(record: CommitRequest, predecessor: CommitRequest, snapshot: ResourceSnapshot,
@@ -80,6 +81,22 @@ function legacyPlacementObservedRevision(record: CommitRequest, predecessor: Com
   if (head.revision === 1) return predecessor.baseline.value && !predecessor.baseline.metadata ? 1 : undefined;
   const earlier = predecessor[field];
   if (earlier === head.revision - 1 && predecessor.working.metadata?.generation === head.generation) return head.revision;
+}
+
+/** Advance only past this editor's exact receipt introducing one of the shown point IDs. */
+function templatePlacementBirthRevision(record: CommitRequest, predecessor: CommitRequest, snapshot: ResourceSnapshot): number | undefined {
+  const move = record.outlinePointPlacement, head = snapshot.metadata, prior = predecessor.baseline.metadata;
+  if (!move || snapshot.resource.collection !== 'planTemplates' || predecessor.outlinePointPlacement
+    || predecessor.editorId !== record.editorId || predecessor.owner !== record.owner || !head || !prior
+    || prior.generation !== move.generation || prior.revision !== move.placement.observedRevision
+    || head.generation !== prior.generation || head.revision !== prior.revision + 1
+    || head.operationId !== (predecessor.command?.operationId ?? predecessor.id)
+    || !hasOutlinePointOrder(predecessor.value?.structure, move.before) || !hasOutlinePointOrder(snapshot.value?.structure, move.before)) return undefined;
+  const opening = predecessor.baseline.value?.structure as unknown as SermonOutline | undefined;
+  if (!opening) return undefined;
+  const ids = new Set(SECTION_KEYS.flatMap(section => (opening[section] ?? []).map(row => row.id)));
+  const { pointId, destination } = move.placement;
+  return [pointId, destination.previous, destination.next].some(id => id !== null && !ids.has(id)) ? head.revision : undefined;
 }
 
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
@@ -126,10 +143,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       if (move.generation !== null && snapshot.metadata?.generation !== move.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
       }
-      const sermon = snapshot.value as unknown as Sermon;
-      const outline = sermon.outline && projectOutlinePoint(sermon.outline, move.placement.pointId, move.placement.destination);
+      const birthRevision = templatePlacementBirthRevision(record, predecessor, snapshot);
       return { ...record, initialized: true, working: snapshot, ...legacyLineage,
-        intended: outline ? replaceSermonOutline(sermon, outline) as unknown as DocumentData : snapshot.value };
+        ...(birthRevision && { outlinePointPlacementBirthRevision: birthRevision }),
+        intended: projectResourceOutlinePoint(snapshot.resource.collection, snapshot.value, move) ?? snapshot.value };
     }
     if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
       if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {

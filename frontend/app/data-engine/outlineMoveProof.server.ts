@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { commandFingerprint, equalValues, object } from './fieldValues';
+import { outlinePlacementField } from './outlinePlacementResource';
 import { proofRevision } from './rowFieldAction';
 import { thoughtOutlineDestinations } from './thoughtPlacementAction';
 
@@ -45,10 +46,11 @@ function readTracking(raw: unknown, destinations: Destinations, revision: number
 /** Record only accepted changes to node identities, in the same transaction as the outline. */
 export function metadataAfterOutlineMoves(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined) {
   const metadata = snapshot.metadata;
-  if (!metadata || !snapshot.value || snapshot.resource.collection !== 'sermons') return metadata;
-  const current = thoughtOutlineDestinations(snapshot.value.outline);
+  const field = outlinePlacementField(snapshot.resource.collection);
+  if (!metadata || !snapshot.value || !field) return metadata;
+  const current = thoughtOutlineDestinations(snapshot.value[field]);
   const head = fingerprint(current);
-  const previous = thoughtOutlineDestinations(raw?.outline);
+  const previous = thoughtOutlineDestinations(raw?.[field]);
   const old = raw?._dataEngine;
   const sameGeneration = object(old) && old.generation === metadata.generation
     && proofRevision(old.revision) && old.revision + 1 === metadata.revision;

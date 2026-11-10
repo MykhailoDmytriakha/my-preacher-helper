@@ -5,8 +5,10 @@ import { outlinePointGap, projectOutlinePoint, SECTION_KEYS } from '@/utils/outl
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 import { outlineMoveProof } from './outlineMoveProof.server';
+import { outlinePlacementField } from './outlinePlacementResource';
 import { isValidIdentifier, validOutlinePointGap } from './protocol';
 import { proofRevision } from './rowFieldAction';
+import { unsignedTemplatePlacementNeedsReview } from './templateOutlineMerge';
 import { thoughtOutlineDestinations } from './thoughtPlacementAction';
 
 import type { ActionTime } from './actionClock';
@@ -67,14 +69,14 @@ function readTracking(raw: unknown, outline: SermonOutline, revision: number): T
   return { head, floor: value.floor, moves };
 }
 
-export function planOutlinePointPlacement(command: Update, current: ResourceSnapshot, raw: unknown, serverMs?: number):
+export function planOutlinePointPlacement(command: Update, current: ResourceSnapshot, field: 'outline' | 'structure', raw: unknown, serverMs?: number):
   { outline: SermonOutline; write: OutlinePointPlacementWrite } | { conflict: ConflictDetail } {
   const move = command.outlinePointPlacement!;
-  const outline = storedOutline(current.value?.outline);
+  const outline = storedOutline(current.value?.[field]);
   const saved = outline && outlinePointGap(outline, move.pointId);
-  const field = (gap: OutlinePointGap | undefined): FieldValue => gap ? { exists: true, value: gap } : { exists: false };
-  const comparison = { conflict: { path: ['outline', 'id:' + move.pointId, 'position'],
-    base: field(move.opening), mine: field(move.destination), theirs: field(saved) } };
+  const gapField = (gap: OutlinePointGap | undefined): FieldValue => gap ? { exists: true, value: gap } : { exists: false };
+  const comparison = { conflict: { path: [field, 'id:' + move.pointId, 'position'],
+    base: gapField(move.opening), mine: gapField(move.destination), theirs: gapField(saved) } };
   const revision = current.metadata?.revision ?? 0;
   if (!outline || !saved || move.observedRevision > revision) return comparison;
   const state = readTracking(raw, outline, revision);
@@ -82,9 +84,10 @@ export function planOutlinePointPlacement(command: Update, current: ResourceSnap
   const follows = previous !== undefined && previous.operationId === move.predecessorOperationId;
   const continuityRevision = follows && previous ? Math.max(move.observedRevision, previous.revision) : move.observedRevision;
   if (continuityRevision < (state?.floor ?? revision)) return comparison;
-  if (continuityRevision < revision && object(raw) && raw.outlineMoveProof !== undefined) {
+  if (continuityRevision < revision && (field === 'structure' || object(raw) && raw.outlineMoveProof !== undefined)) {
     const continuity = outlineMoveProof(raw, thoughtOutlineDestinations(outline), revision);
-    if (!continuity({ outlinePointId: move.pointId, subPointId: null }, continuityRevision)) return comparison;
+    const ids = field === 'structure' ? [move.pointId, move.destination.previous, move.destination.next] : [move.pointId];
+    if (ids.some(id => id !== null && !continuity({ outlinePointId: id, subPointId: null }, continuityRevision))) return comparison;
   }
 
   const measured = boundedActionTime(move.time);
@@ -116,15 +119,25 @@ export function planOutlinePointPlacement(command: Update, current: ResourceSnap
   return { outline: projected, write: { ...(!keepPrevious && { proof }), ...(displaced && { displaced }) } };
 }
 
+export function legacyTemplatePlacementNeedsReview(command: DataCommand, current: ResourceSnapshot, raw: unknown): boolean {
+  if (command.resource.collection !== 'planTemplates' || command.kind !== 'update' || command.outlinePointPlacement
+    || !current.value || current.metadata?.deleted || command.generation !== (current.metadata?.generation ?? null)) return false;
+  const change = command.changes.find(item => item.path[0] === 'structure');
+  const tracking = object(raw) && object(raw.outlinePointPlacement) ? raw.outlinePointPlacement : undefined;
+  const guarded = tracking?.guarded === true || Array.isArray(tracking?.moves) && tracking.moves.length > 0;
+  return !!change && unsignedTemplatePlacementNeedsReview(change.before.value, change.after.value, current.value.structure, guarded);
+}
+
 /** Older clients can rearrange the outline without identifying which point moved. */
 export function metadataAfterOutlinePointPlacement(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined,
   write?: OutlinePointPlacementWrite) {
   const { metadata, resource, value } = snapshot;
-  if (!metadata || resource.collection !== 'sermons' || !value) return metadata;
-  const outline = storedOutline(value.outline);
+  const field = outlinePlacementField(resource.collection);
+  if (!metadata || !field || !value) return metadata;
+  const outline = storedOutline(value[field]);
   if (!outline) return metadata;
   const stored = raw?._dataEngine;
-  const before = storedOutline(raw?.outline);
+  const before = storedOutline(raw?.[field]);
   const sameGeneration = object(stored) && stored.generation === metadata.generation
     && proofRevision(stored.revision) && stored.revision + 1 === metadata.revision;
   const state = sameGeneration && before ? readTracking(stored, before, metadata.revision - 1) : undefined;
@@ -138,5 +151,8 @@ export function metadataAfterOutlinePointPlacement(snapshot: ResourceSnapshot, r
     && liveIds.has(proof.pointId) && proof.pointId !== write?.proof?.pointId);
   if (write?.proof) moves.push({ ...write.proof, revision: metadata.revision });
   if (moves.length > 64) floor = Math.max(floor, moves.shift()!.revision);
-  return { ...metadata, outlinePointPlacement: { floor, head: placementDigest(outline), moves } };
+  const prior = sameGeneration && object(stored.outlinePointPlacement) ? stored.outlinePointPlacement : undefined;
+  const guarded = resource.collection === 'planTemplates' && (write?.proof || prior?.guarded === true
+    || Array.isArray(prior?.moves) && prior.moves.length > 0);
+  return { ...metadata, outlinePointPlacement: { floor, head: placementDigest(outline), moves, ...(guarded && { guarded: true }) } };
 }

@@ -3,8 +3,10 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { outlinePointConflictComparison, outlinePointPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { outlinePointText } from '@/utils/outlineDnd';
 import { outlinePointGridClass } from '@/utils/structureBoardLayout';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -21,6 +23,7 @@ export interface TemplateOutlineEditorHandle {
 const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { templateId: string; disabled: boolean }>(
   function TemplateOutlineEditor({ templateId, disabled }, ref) {
     const { t } = useTranslation();
+    const actions = useDocumentActions();
     const document = useDataDocument({ collection: 'planTemplates', id: templateId },
       { slot: 'template-structure', autoSaveDelayMs: 400, readOnlyCopy: true });
     const latest = useRef(document);
@@ -41,19 +44,43 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
     const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity,
       enabled: !document.loading && document.status !== null,
       version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
-      list: async () => (await document.listRecoverable()).map(source => ({ id: source.id,
-        title: String(source.record.checkpoint.draft?.name ?? source.record.checkpoint.confirmed.value?.name ?? t('settings.planTemplates')),
-        discard: () => document.discardRecovery(source) })),
+      list: async () => (await document.listRecoverable()).map(source => {
+        const { checkpoint, retainedManualChoice } = source.record;
+        const name = String(checkpoint.draft?.name ?? checkpoint.confirmed.value?.name ?? t('settings.planTemplates'));
+        const outline = checkpoint.draft?.structure as unknown as SermonOutline | undefined;
+        const move = retainedManualChoice?.outlinePointPlacement?.placement;
+        const title = move && outline
+          ? [t('planEditor.pointPlacement.position'), outlinePointText(outline, move.pointId),
+            outlinePointPlacementWords(move.destination, outline, t)].filter(Boolean).join(' · ')
+          : retainedManualChoice?.templateFieldsGeneration !== undefined ? name + ' · ' + t('structure.content') : name;
+        return { id: source.id, title, discard: () => document.discardRecovery(source) };
+      }),
       recover: document.recover });
+    const checkpoint = document.state?.checkpoint;
+    const comparison = checkpoint && outlinePointConflictComparison(checkpoint, t);
+    const compared = comparison ? checkpoint : undefined;
+    const movePoint = (after: SermonOutline, pointId: string) => {
+      const before = document.data?.structure as unknown as SermonOutline | undefined;
+      if (!before) return;
+      const move = captureOutlinePointPlacement(before, after, pointId, document.confirmed?.metadata?.generation ?? null,
+        document.confirmed?.metadata?.revision ?? 0, actions.captureActionTime() ?? null);
+      if (!move) return;
+      void document.commit(current => {
+        const next = projectResourceOutlinePoint('planTemplates', current, move, true);
+        if (!next) throw Object.assign(new Error('The shown template outline changed'), { code: 'decision-changed' });
+        return next;
+      }, { kind: 'outline-point-placement', move }).catch(() => undefined);
+    };
     return <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
-        onRetry={document.retry} onKeepLocal={async () => { await document.keepLocal(); await document.save(); }}
-        onAcceptRemote={document.acceptRemote} recoveryChoices={recovery.choices}
+        comparison={comparison} onRetry={document.retry}
+        onKeepLocal={async () => { await document.keepLocal(compared); await document.save(); }}
+        onAcceptRemote={() => document.acceptRemote(compared)} recoveryChoices={recovery.choices}
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
         onDiscardRecovery={recovery.discard} />
       {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
-          isReadOnly={disabled || document.readOnly} className={`${outlinePointGridClass} gap-3`}
+          isReadOnly={disabled || document.readOnly} onPointMove={movePoint} className={`${outlinePointGridClass} gap-3`}
           onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
     </fieldset>;
   }

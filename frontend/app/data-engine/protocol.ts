@@ -12,11 +12,13 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
+import { outlinePlacementField } from './outlinePlacementResource';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { placementSteps } from './serviceOrderStepPlacement';
+import { mergeTemplateOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
 export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
@@ -189,7 +191,8 @@ export function validOutlinePointGap(value: unknown, pointId: string): value is 
 function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
   const move: unknown = command.outlinePointPlacement;
   const change = command.changes[0];
-  if (command.resource.collection !== 'sermons' || command.changes.length !== 1 || change.path[0] !== 'outline'
+  const field = outlinePlacementField(command.resource.collection);
+  if (!field || command.changes.length !== 1 || change.path[0] !== field
     || !change.before.exists || !change.after.exists || !object(move) || !isValidIdentifier(move.pointId)
     || !Number.isSafeInteger(move.observedRevision) || Number(move.observedRevision) < 0
     || (move.time !== null && !boundedActionTime(move.time))
@@ -541,6 +544,10 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  if (path.length === 1 && path[0] === 'structure') {
+    const template = mergeTemplateOutlineContent(base, mine, theirs, path, mergeFields);
+    if (template) return template;
+  }
   // Group block editors refresh this stamp for any edit. It must not veto independent authored fields.
   if (path.length === 3 && path[0] === 'templates' && path[1].startsWith('id:') && path[2] === 'updatedAt'
     && base.exists && mine.exists && theirs.exists) return { value: theirs, conflicts: [] };

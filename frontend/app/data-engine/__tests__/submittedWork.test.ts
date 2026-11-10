@@ -42,3 +42,20 @@ it('ignores acknowledged or cancelled work and rejects dependency cycles', () =>
   expect(() => submittedWorkCheckpoint('owner', resource, [request('a', 'b'), request('b', 'a'), request('tip', 'a')])).toThrow('cycle');
   expect(submittedWorkCheckpoint('owner', resource, [request('a', 'b'), request('b', 'a'), request('independent')])).toBeNull();
 });
+
+
+it('restores the exact placement of a pending template point after reopening', () => {
+  const template = { collection: 'planTemplates', id: 'template' };
+  const parent = request('first');
+  const child = request('move', parent.id);
+  const move: NonNullable<CommitRequest['outlinePointPlacement']> = {
+    generation: 'template-generation',
+    before: { introduction: [], main: [{ id: 'point' }], conclusion: [] },
+    after: { introduction: [{ id: 'point' }], main: [], conclusion: [] },
+    placement: { pointId: 'point', observedRevision: 2, time: { earliestMs: 12, latestMs: 17 },
+      opening: { section: 'main', previous: null, next: null }, destination: { section: 'introduction', previous: null, next: null } },
+  };
+  const bind = (record: CommitRequest) => ({ ...record, baseline: { ...record.baseline, resource: template } });
+  const restored = submittedWorkCheckpoint('owner', template, [bind(parent), { ...bind(child), outlinePointPlacement: move }]);
+  expect(restored?.pending.move.outlinePointPlacement).toEqual(move);
+});

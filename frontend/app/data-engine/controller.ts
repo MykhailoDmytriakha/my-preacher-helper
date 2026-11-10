@@ -47,7 +47,7 @@ import type { AutosaveFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
-import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture } from './types';
+import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
@@ -81,7 +81,8 @@ export interface EditorRecord extends VersionedRecovery {
   recoverySources?: RecoverySource[];
   /** Basis of the retained changes, separate from the last accepted server snapshot. */
   retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null;
-    councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null };
+    councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null;
+    outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null };
 }
 
 export interface CheckpointStore {
@@ -804,8 +805,8 @@ export class EditorController {
         const councilMove = positionRequest?.councilTopicPlacement;
         const positionMove = groupMove ?? councilMove;
         let retainedPlacementTail: EditorRecord | undefined;
-        const preservePlacementTail = (requestId: string, tail?: { base: DocumentData; value: DocumentData }) => {
-          if (tail && !session.retainAnchoredPlacementChoiceEdits(source!, tail.base, tail.value)) {
+        const preservePlacementTail = (requestId: string, tail?: { base: DocumentData; value: DocumentData }, separate = false) => {
+          if (tail && (separate || !session.retainAnchoredPlacementChoiceEdits(source!, tail.base, tail.value))) {
             retainedPlacementTail = retainedAnchoredPlacementDraft(record.owner, record.editorId, requestId, 'unqueued',
               source!, session.checkpoint().confirmed, tail.base, tail.value);
           }
@@ -849,7 +850,11 @@ export class EditorController {
         } else if (outlineRequest && outlineMove && outlineRequest.result?.kind === 'conflict' && outlineChoice) {
           const submitted = source.pending[outlineRequest.id]?.value;
           const rebased = outlineRequest.initialized ? outlineRequest.intended : outlineRequest.value;
-          if (!equalValues(submitted, decided.draft) && !equalValues(rebased, decided.draft)) {
+          const template = decided.confirmed.resource.collection === 'planTemplates';
+          const latest = template && (ordinary?.scope.filter(request => source!.pending[request.id]).at(-1)?.id ?? outlineRequest.id);
+          const tail = latest ? anchoredPlacementChoiceTail(source, latest) : undefined;
+          if (template) anchoredChoice = outlineRequest.id;
+          if (!tail && !equalValues(submitted, decided.draft) && !equalValues(rebased, decided.draft)) {
             throw Object.assign(new Error('Other changes need review'), { code: 'other-changes-first' });
           }
           session.acceptRemote();
@@ -861,6 +866,7 @@ export class EditorController {
             if (!retry) throw Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
             session.stageOutlinePointPlacementRetry(retry.move, retry.draft);
           }
+          preservePlacementTail(outlineRequest.id, tail, choice === 'local');
         } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
           const comparison = stepAnswer.serviceOrderPlacementComparison;
           const proposed = source.pending[stepRequest.id]?.value;
@@ -995,7 +1001,8 @@ export class EditorController {
     const laterTyping = current.editGeneration !== source.editGeneration;
     const session = DataSession.restore(projected.checkpoint);
     if (laterTyping && anchoredChoice && source.draft && current.draft) {
-      if (!session.retainAnchoredPlacementChoiceEdits(current, source.draft, current.draft)) {
+      const templateRetry = projected.checkpoint.confirmed.resource.collection === 'planTemplates' && projected.checkpoint.outlinePointPlacementRetry;
+      if (templateRetry || !session.retainAnchoredPlacementChoiceEdits(current, source.draft, current.draft)) {
         await this.retainTypingDuringPlacementChoice(anchoredChoice, source.draft, current, projected.checkpoint.confirmed);
       }
     } else if (laterTyping) {

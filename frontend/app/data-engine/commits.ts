@@ -26,6 +26,8 @@ import { writeField } from './fieldValues';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { seriesCommandParticipant } from './membershipIntent';
+import { outlinePlacementField } from './outlinePlacementResource';
+import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -107,6 +109,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   groupFlowPlacementLegacyRevision?: number;
   councilTopicPlacementLegacyRevision?: number;
   outlinePointPlacementLegacyRevision?: number;
+  outlinePointPlacementBirthRevision?: number;
   serviceOrderTitleAction?: DocumentFieldAction;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
   councilTopicQueue?: string;
@@ -427,13 +430,15 @@ function outlineMovePredecessor(records: readonly CommitRequest[], predecessor: 
   if (!predecessor) return undefined;
   const chain = new Map(records.map(record => [record.id, record]));
   const { owner, baseline } = predecessor;
+  const field = outlinePlacementField(baseline.resource.collection);
+  if (!field) return undefined;
   let shown = move.before;
   let record: CommitRequest | undefined = predecessor;
   while (record && chain.delete(record.id)) {
     if (record.owner !== owner || !resourceMatches(record.baseline.resource, baseline.resource)
       || record.baseline.metadata?.generation !== baseline.metadata?.generation
       || record.state === 'cancelled' || record.state === 'conflict' || record.state === 'refused'
-      || !hasOutlinePointOrder(record.value?.outline, shown)) return undefined;
+      || !hasOutlinePointOrder(record.value?.[field], shown)) return undefined;
     const previousMove = record.outlinePointPlacement;
     if (previousMove) {
       if (previousMove.generation !== move.generation || !hasOutlinePointOrder(previousMove.after, shown)) return undefined;
@@ -551,6 +556,8 @@ export class CommitQueue {
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
     const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
+    const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
+      : intent.outlinePointPlacementRetry;
     if (existing) {
       if (existing.retentionScope !== frozenOptions?.retentionScope
         || !equalValues(existing.seriesMembership ?? null, frozenOptions?.seriesMembership ?? null)
@@ -559,7 +566,10 @@ export class CommitQueue {
         && equalValues(groupStepWitness(intent.draft?.flow), existing.groupFlowStepPlacement.after);
       const sameCouncilPlacement = existing.councilTopicPlacement
         && equalValues(councilTopicWitness(intent.draft?.topics), existing.councilTopicPlacement.after);
-      if (intent.dirty && !equalValues(existing.value, intent.draft) && !sameGroupPlacement && !sameCouncilPlacement) {
+      const savedMove = existing.outlinePointPlacement;
+      const sameTemplatePlacement = intent.confirmed.resource.collection === 'planTemplates' && outlineMove && savedMove
+        && sameOutlinePointGesture(savedMove, outlineMove);
+      if (intent.dirty && !equalValues(existing.value, intent.draft) && !sameGroupPlacement && !sameCouncilPlacement && !sameTemplatePlacement) {
         throw new Error('Saved generation cannot change its captured intent');
       }
       const result = frozenOptions?.checkpoint ? await capture(existing) : { request: existing, retired: [] };
@@ -590,10 +600,9 @@ export class CommitQueue {
         || editorAction.move.generation !== (baseline.metadata?.generation ?? null))) {
       throw Object.assign(new Error('The service order shown when moving the step has changed'), { code: 'generation-mismatch' });
     }
-    const outlineMove = editorAction?.kind === 'outline-point-placement' ? editorAction.move : undefined;
-    if (outlineMove && (baseline.resource.collection !== 'sermons'
+    if (outlineMove && (!outlinePlacementField(baseline.resource.collection)
       || (outlineMove.generation !== null && outlineMove.generation !== baseline.metadata?.generation))) {
-      throw Object.assign(new Error('The sermon shown when moving the point has changed'), { code: 'generation-mismatch' });
+      throw Object.assign(new Error('The outline shown when moving the point has changed'), { code: 'generation-mismatch' });
     }
     const priorOutlineMove = outlineMove && outlineMovePredecessor(records, predecessor, outlineMove);
     const groupMove = editorAction?.kind === 'group-flow-step-placement' ? editorAction.move : undefined;
@@ -668,8 +677,11 @@ export class CommitQueue {
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
     const basis = predecessor?.value ?? baseline.value;
+    const templateMove = outlineMove && baseline.resource.collection === 'planTemplates';
     const value = groupMove ? projectGroupStepOnDocument(basis, groupMove)
-      : councilMove ? projectCouncilTopicOnDocument(basis, councilMove) : intent.draft;
+      : councilMove ? projectCouncilTopicOnDocument(basis, councilMove)
+        : templateMove ? projectResourceOutlinePoint('planTemplates', basis, outlineMove) : intent.draft;
+    if (templateMove && !value) throw Object.assign(new Error('The template point position is unavailable'), { code: 'decision-changed' });
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(councilTopicQueue && { councilTopicQueue }),
@@ -1179,16 +1191,18 @@ export class CommitQueue {
       return { ...record, command, submitted: record.intended, state: 'prepared' };
     }
     const outlineMove = record.sequence === 0 ? record.outlinePointPlacement : undefined;
-    if (outlineMove && record.working.value) {
+    const outlineField = outlinePlacementField(record.working.resource.collection);
+    if (outlineMove && outlineField && record.working.value) {
       const previous = outlineMove.placement.predecessorOperationId;
       const legacyRevision = outlineMove.generation === null && outlineMove.placement.observedRevision === 0
-        && hasOutlinePointOrder(record.working.value.outline, outlineMove.before) ? record.outlinePointPlacementLegacyRevision : undefined;
+        && hasOutlinePointOrder(record.working.value[outlineField], outlineMove.before) ? record.outlinePointPlacementLegacyRevision : undefined;
+      const provenRevision = record.outlinePointPlacementBirthRevision ?? legacyRevision;
       const command: DataCommand = {
         protocol: 1, kind: 'update', operationId, owner, resource: record.working.resource,
         generation: record.working.metadata?.generation ?? null, dependsOn: previous ? [previous] : [],
-        changes: [{ path: ['outline'], before: { exists: true, value: outlineMove.before },
+        changes: [{ path: [outlineField], before: { exists: true, value: outlineMove.before },
           after: { exists: true, value: outlineMove.after } }],
-        outlinePointPlacement: legacyRevision ? { ...outlineMove.placement, observedRevision: legacyRevision } : outlineMove.placement,
+        outlinePointPlacement: provenRevision ? { ...outlineMove.placement, observedRevision: provenRevision } : outlineMove.placement,
       };
       return { ...record, command, submitted: record.intended, state: 'prepared' };
     }

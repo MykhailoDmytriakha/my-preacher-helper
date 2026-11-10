@@ -1,5 +1,4 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
-import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
@@ -11,7 +10,8 @@ import { COUNCIL_TOPIC_PLACEMENT_REVIEW, legacyCouncilTopicPlacementNeedsReview,
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { GROUP_STEP_PLACEMENT_REVIEW, legacyGroupPlacementNeedsReview, planGroupStepPlacement } from './groupStepPlacement.server';
 import { childIdentityIssues } from './legacyChildIdentity';
-import { planOutlinePointPlacement, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
+import { outlinePlacementField, replaceResourceOutline, TEMPLATE_POINT_PLACEMENT_REVIEW } from './outlinePlacementResource';
+import { legacyTemplatePlacementNeedsReview, planOutlinePointPlacement, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
 import { advanceResourceSnapshot, applyCommand, diffFields, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
@@ -23,7 +23,7 @@ import { planShareCapability, type ShareCapabilityCommand } from './shareCapabil
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { StepPlacementWrite } from './stepPlacement.server';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
-import type { SeriesItem, Sermon } from '@/models/models';
+import type { SeriesItem } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
 export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
@@ -667,13 +667,14 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
-    if (command.kind === 'update' && command.outlinePointPlacement && this.primary.value && !this.primary.metadata?.deleted
+    const outlineField = outlinePlacementField(command.resource.collection);
+    if (outlineField && command.kind === 'update' && command.outlinePointPlacement && this.primary.value && !this.primary.metadata?.deleted
       && command.generation === (this.primary.metadata?.generation ?? null)) {
       const context = this.reader.serviceOrderPlacement;
-      const plan = planOutlinePointPlacement(command, this.primary, context?.rawMetadata, context?.serverMs);
+      const plan = planOutlinePointPlacement(command, this.primary, outlineField, context?.rawMetadata, context?.serverMs);
       if ('conflict' in plan) return this.conflict([plan.conflict]);
       const current = this.primary.value;
-      const next = replaceSermonOutline(current as unknown as Sermon, plan.outline) as unknown as DocumentData;
+      const next = replaceResourceOutline(command.resource.collection, current, plan.outline);
       const patch = Object.fromEntries(diffFields(current, next).map(change => [change.path[0], change.after.value])) as DocumentData;
       this.stage(this.primary, patch);
       if (!this.writes.has(key(this.primary.resource))) {
@@ -734,6 +735,9 @@ class RelationPlanner {
       }
       this.serviceOrderPlacement = plan.write;
       return;
+    }
+    if (legacyTemplatePlacementNeedsReview(command, this.primary, this.reader.serviceOrderPlacement?.rawMetadata)) {
+      return { kind: 'refused', operationId: command.operationId, code: TEMPLATE_POINT_PLACEMENT_REVIEW };
     }
     if (legacyCouncilTopicPlacementNeedsReview(command, this.primary, this.reader.serviceOrderPlacement?.rawMetadata)) {
       return { kind: 'refused', operationId: command.operationId, code: COUNCIL_TOPIC_PLACEMENT_REVIEW };

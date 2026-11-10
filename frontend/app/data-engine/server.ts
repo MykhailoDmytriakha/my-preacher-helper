@@ -625,7 +625,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     });
   }
   if (outlinePointPlacement?.displaced && primarySnapshot.metadata) {
-    const history = adminDb.collection('sermons').doc(primarySnapshot.resource.id).collection(OUTLINE_POINT_PLACEMENT_HISTORY);
+    const history = adminDb.collection(primarySnapshot.resource.collection).doc(primarySnapshot.resource.id).collection(OUTLINE_POINT_PLACEMENT_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
       ...outlinePointPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
@@ -1179,6 +1179,14 @@ export async function listOutlinePointPlacementHistory(owner: string, sermonId: 
     owner, { collection: 'sermons', id: sermonId }, OUTLINE_POINT_PLACEMENT_HISTORY, generation, cursor, 'sermon-gone',
   );
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listPlanTemplatePointPlacementHistory(owner: string, templateId: string, generation: string, cursor?: string):
+  Promise<Omit<OutlinePointPlacementHistoryPage, 'sermonId'> & { templateId: string }> {
+  const page = await listHistoryEntries<OutlinePointPlacementHistoryPage['entries'][number]>(
+    owner, { collection: 'planTemplates', id: templateId }, OUTLINE_POINT_PLACEMENT_HISTORY, generation, cursor, 'template-gone',
+  );
+  return { owner, templateId, generation, ...page };
 }
 
 export async function listSermonPlanModeHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonPlanModeHistoryPage> {

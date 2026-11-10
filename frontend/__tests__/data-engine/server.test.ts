@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
-import { outlinePointGap } from '@/utils/outlineDnd';
+import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
 
 import type { DataCommand, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
 import type { SermonOutline } from '@/models/models';
@@ -2813,6 +2813,144 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, rename('phone-name', phone, 80))).toMatchObject({
         kind: 'acknowledged', snapshot: { value: { name: phone, structure: next } },
       });
+    });
+  });
+
+  describe('plan template point placement chronology', () => {
+    const owner = 'owner-1';
+    const template = { collection: 'planTemplates', id: 'template-placement' };
+    const base = { protocol: 1 as const, owner, resource: template, dependsOn: [] };
+    const generation = 'template-placement-create';
+    const point = { id: 'point', text: 'Original words', subPoints: [{ id: 'child', text: 'Keep the child', position: 0 }] };
+    const other = { id: 'other', text: 'Independent point' };
+    const opening: SermonOutline = { introduction: [], main: [point, other], conclusion: [] };
+    const phone: SermonOutline = { introduction: [point], main: [other], conclusion: [] };
+    const desktop: SermonOutline = { introduction: [], main: [other], conclusion: [point] };
+    const seed = () => processCommand(owner, { ...base, operationId: generation, generation: null, kind: 'create',
+      value: { userId: owner, name: 'Template', structure: opening, createdAt: '2026-11-09', updatedAt: '2026-11-09' } });
+    const move = (operationId: string, before: SermonOutline, after: SermonOutline, observedRevision: number, offset: number | null) => ({
+      ...base, operationId, generation, kind: 'update', changes: [{ path: ['structure'],
+        before: { exists: true, value: outlinePointOrder(before) }, after: { exists: true, value: outlinePointOrder(after) } }],
+      outlinePointPlacement: { pointId: point.id, opening: outlinePointGap(before, point.id)!,
+        destination: outlinePointGap(after, point.id)!, observedRevision,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+
+    it.each([false, true])('keeps the later gesture, not the last delivery (phone later: %s)', async phoneLater => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('desktop-move', opening, desktop, 1, phoneLater ? 20 : 60)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: desktop } } });
+      const desktopFinal = phoneLater ? desktop : opening;
+      if (!phoneLater) expect(await processCommand(owner, move('desktop-return', desktop, opening, 2, 100)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: opening } } });
+      const updated = { ...other, text: 'Independently updated words' };
+      const updatedStructure = { ...desktopFinal, main: desktopFinal.main.map(row => row.id === other.id ? updated : row) };
+      expect(await processCommand(owner, { ...base, operationId: 'independent-text', generation, kind: 'update', changes: [{
+        path: ['structure'], before: { exists: true, value: desktopFinal }, after: { exists: true, value: updatedStructure },
+      }] })).toMatchObject({ kind: 'acknowledged' });
+      const expected = phoneLater ? { ...phone, main: [updated] } : updatedStructure;
+      const queued = move('delayed-phone', opening, phone, 1, phoneLater ? 100 : 20);
+      expect(await processCommand(owner, queued)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: expected } } });
+      expect((await readDocument(owner, template))?.value?.structure).toEqual(expected);
+      expect(await processCommand(owner, queued)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: expected } } });
+      const displaced = phoneLater ? desktop : phone;
+      expect(await listPlanTemplatePointPlacementHistory(owner, template.id, generation)).toMatchObject({ templateId: template.id,
+        entries: [{ pointId: point.id, earlier: outlinePointGap(displaced, point.id), kept: outlinePointGap(expected, point.id) }] });
+      await expect(listPlanTemplatePointPlacementHistory('other-owner', template.id, generation)).rejects.toMatchObject({ status: 403 });
+      await expect(listPlanTemplatePointPlacementHistory(owner, template.id, 'wrong-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it.each([false, true])('keeps point and child words across a separate move (move delivered first: %s)', async moveFirst => {
+      const edited = { ...point, text: 'Offline point words', subPoints: [{ ...point.subPoints[0], text: 'Offline child words' }] };
+      const edit = { ...base, generation, operationId: 'edit-words', kind: 'update', changes: [{ path: ['structure'],
+        before: { exists: true, value: opening }, after: { exists: true, value: { ...opening, main: [edited, other] } },
+      }] };
+      const placement = move('desktop-move', opening, desktop, 1, 60);
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      for (const command of moveFirst ? [placement, edit] : [edit, placement]) {
+        expect(await processCommand(owner, command)).toMatchObject({ kind: 'acknowledged' });
+      }
+      expect((await readDocument(owner, template))?.value?.structure).toEqual({ ...desktop, conclusion: [edited] });
+    });
+
+    it('preserves the server text and the removed point when an offline text edit needs its own comparison', async () => {
+      const edit = { ...base, generation, operationId: 'offline-edit', kind: 'update', changes: [{ path: ['structure'],
+        before: { exists: true, value: opening }, after: { exists: true, value: { ...opening, main: [{ ...point, text: 'Local text' }, other] } },
+      }] };
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('desktop-move', opening, desktop, 1, 60))).toMatchObject({ kind: 'acknowledged' });
+      const saved = { ...desktop, conclusion: [{ ...point, text: 'Different saved text' }] };
+      const replace = (operationId: string, before: SermonOutline, after: SermonOutline) => processCommand(owner, {
+        ...base, generation, operationId, kind: 'update', changes: [{ path: ['structure'],
+          before: { exists: true, value: before }, after: { exists: true, value: after },
+        }],
+      });
+      expect(await replace('remote-text', desktop, saved)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, edit)).toMatchObject({ kind: 'conflict', snapshot: { value: { structure: saved } } });
+      const removed = { ...saved, conclusion: [] };
+      expect(await replace('remote-delete', saved, removed)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...edit, operationId: 'after-delete' })).toMatchObject({
+        kind: 'conflict', snapshot: { value: { structure: removed } },
+      });
+      expect((await readDocument(owner, template))?.value?.structure).toEqual(removed);
+    });
+
+    it.each(['point', 'anchor'] as const)('refuses to move across a deleted and recreated %s', async replaced => {
+      const anchor = { id: 'anchor', text: 'Opening anchor' };
+      const first = { ...opening, introduction: [anchor] };
+      const destination = { ...phone, introduction: [anchor, point] };
+      const section = replaced === 'point' ? 'main' : 'introduction';
+      const id = replaced === 'point' ? point.id : anchor.id;
+      const without = { ...first, [section]: first[section].filter(row => row.id !== id) };
+      const replacement = { ...first, [section]: first[section].map(row => row.id === id ? { ...row, text: 'New lifetime' } : row) };
+      const replace = (operationId: string, before: SermonOutline, after: SermonOutline) => processCommand(owner, {
+        ...base, generation, operationId, kind: 'update', changes: [{ path: ['structure'],
+          before: { exists: true, value: before }, after: { exists: true, value: after },
+        }],
+      });
+      expect(await processCommand(owner, { ...base, operationId: generation, generation: null, kind: 'create',
+        value: { userId: owner, name: 'Template', structure: first, createdAt: '2026-11-09', updatedAt: '2026-11-09' } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      expect(await replace('remove-old-node', first, without)).toMatchObject({ kind: 'acknowledged' });
+      expect(await replace('add-new-node', without, replacement)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('old-move', first, destination, 1, 20))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['structure', 'id:' + point.id, 'position'] }],
+        snapshot: { value: { structure: replacement } },
+      });
+      expect((await readDocument(owner, template))?.value?.structure).toEqual(replacement);
+    });
+
+    it.each([
+      { removed: false, extended: false }, { removed: true, extended: false }, { removed: false, extended: true },
+    ])('refuses an unsigned reorder after tracking (removed $removed, extended $extended)', async ({ removed, extended }) => {
+      const first = extended ? { ...opening, extension: 'Keep this value' } : opening;
+      const later = extended ? { ...desktop, extension: 'Keep this value' } : desktop;
+      const proposed = extended ? { ...phone, extension: 'Keep this value' } : phone;
+      const old = { ...base, generation, operationId: 'unsigned-phone', kind: 'update', changes: [{ path: ['structure'],
+        before: { exists: true, value: first }, after: { exists: true, value: proposed },
+      }] };
+      expect(await processCommand(owner, { ...base, operationId: generation, generation: null, kind: 'create',
+        value: { userId: owner, name: 'Template', structure: first, createdAt: '2026-11-09', updatedAt: '2026-11-09' } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('desktop-move', first, later, 1, 60))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('desktop-return', later, first, 2, 100))).toMatchObject({ kind: 'acknowledged' });
+      const stored = removed ? { ...first, main: [other] } : first;
+      if (removed) expect(await processCommand(owner, { ...old, operationId: 'delete-point', changes: [{ path: ['structure'],
+        before: { exists: true, value: first }, after: { exists: true, value: stored },
+      }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, old)).toMatchObject({ kind: 'refused', code: 'template-point-placement-needs-review' });
+      expect((await readDocument(owner, template))?.value?.structure).toEqual(stored);
+    });
+
+    it('compares only the point position when its clock cannot order the moves', async () => {
+      await seed();
+      expect(await processCommand(owner, move('desktop-move', opening, desktop, 1, 20))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('unclocked-phone', opening, phone, 1, null))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['structure', 'id:' + point.id, 'position'],
+          mine: { value: { section: 'introduction' } }, theirs: { value: { section: 'conclusion' } } }],
+        snapshot: { value: { structure: desktop } },
+      });
+      expect((await readDocument(owner, template))?.value?.structure).toEqual(desktop);
     });
   });
 

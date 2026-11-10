@@ -1,6 +1,7 @@
 import { stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import { equalValues } from './fieldValues';
+import { TEMPLATE_POINT_PLACEMENT_REVIEW } from './outlinePlacementResource';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -67,11 +68,12 @@ export function isAnchoredPlacementRefusal(request: CommitRequest): boolean {
   const { command, result } = request;
   if (result?.kind !== 'refused' || command?.kind !== 'update') return false;
   return command.resource.collection === 'groups' && result.code === 'group-step-placement-needs-review'
-    || command.resource.collection === 'councils' && result.code === 'council-topic-placement-needs-review';
+    || command.resource.collection === 'councils' && result.code === 'council-topic-placement-needs-review'
+    || command.resource.collection === 'planTemplates' && result.code === TEMPLATE_POINT_PLACEMENT_REVIEW;
 }
 
 export function isUnsignedAnchoredPlacementRefusal(request: CommitRequest): boolean {
   const { command } = request;
   return isAnchoredPlacementRefusal(request) && command?.kind === 'update'
-    && !command.groupFlowStepPlacement && !command.councilTopicPlacement;
+    && !command.groupFlowStepPlacement && !command.councilTopicPlacement && !command.outlinePointPlacement;
 }

@@ -54,6 +54,7 @@ const KNOWN = new Map<string, string>([
   ['decision-required', 'dataSync.failure.decisionRequired'],
   ['group-step-placement-needs-review', 'dataSync.failure.decisionRequired'],
   ['council-topic-placement-needs-review', 'dataSync.failure.decisionRequired'],
+  ['template-point-placement-needs-review', 'dataSync.failure.decisionRequired'],
   ['unsent-form-first', 'dataSync.failure.unsentFormFirst'],
   ['not-on-device-yet', 'dataSync.failure.notOnDeviceYet'],
   ['pending-delivery-first', 'dataSync.failure.pendingDeliveryFirst'],
