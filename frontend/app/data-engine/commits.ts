@@ -37,7 +37,7 @@ import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCa
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
-import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_SCRIPTURE_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
+import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
@@ -634,7 +634,8 @@ export class CommitQueue {
             : intent.councilTopicPlacementRetry ? { kind: 'council-topic-placement', move: intent.councilTopicPlacementRetry } as const : undefined);
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title }
-        : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture } : undefined;
+        : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture }
+          : editorAction?.kind === 'service-order-step-scripture-review' ? { field: 'scriptureReview' as const, changes: editorAction.scriptures } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
@@ -1354,7 +1355,9 @@ export class CommitQueue {
       const stepTitles = record.serviceOrderStepTitleActions;
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
       const stepScripture = record.serviceOrderStepScriptureActions;
-      if (stepScripture && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_SCRIPTURE_TARGET, stepScripture.scriptureRefs)) {
+      const reviewed = stepScripture?.reviewed?.filter(action => matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_SCRIPTURE_LIST, action));
+      if (reviewed?.length) command.serviceOrderStepScriptureActions = { reviewed };
+      else if (stepScripture && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_SCRIPTURE_LIST, stepScripture.scriptureRefs)) {
         command.serviceOrderStepScriptureActions = stepScripture;
       }
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);

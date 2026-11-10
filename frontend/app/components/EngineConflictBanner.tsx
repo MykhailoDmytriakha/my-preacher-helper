@@ -11,7 +11,7 @@ import { outlinePointConflictComparison } from '@/components/plan-editor/outline
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
@@ -316,7 +316,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
         commentKindPlaceChanged: scope.operationIds.some(id => movedCommentKinds.has(id)),
         tagNameExists: scope.operationIds.some(id => existingTagNames.has(id)),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
-        mine: [...new Set(drafts.map(({ record: draft }) => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
+        mine: [...new Set(drafts.map(({ record: draft }) => changedText(previewReviewedListChoice(draft.checkpoint), draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
         ...scope });
     }

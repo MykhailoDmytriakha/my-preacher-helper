@@ -2,6 +2,7 @@ import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { sermonNoteConflictText } from '@/utils/sermonNoteText';
 
+import { isAuthoredListComparison, isAuthoredStringList } from './authoredStringList';
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_OUTCOME, councilOutcomeRow } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
@@ -134,7 +135,9 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
   const { id, field } = target;
   if (field === 'scriptureRefs') {
-    const mine = existingRowField(draft.steps, id, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
+    const conflict = conflicts[0];
+    const mine = isAuthoredListComparison(conflict.code) && isAuthoredStringList(conflict.mine.value)
+      ? conflict.mine.value : existingRowField(draft.steps, id, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
     const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
     if (!mine || !stored || equalValues(mine, stored)) return undefined;
     return { field, mine, stored };

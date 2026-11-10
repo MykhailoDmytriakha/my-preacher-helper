@@ -1,5 +1,6 @@
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
+import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { commentPlaceValue, matchesCommentPlaceScope, replaceCommentReference } from './commentPlaceAction';
 import { readCommentPlaceComparison } from './commentPlaceChoice';
@@ -497,7 +498,8 @@ export class DataSession {
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
-      const exactTags = keepExactLocalDocumentTags(this.state, statusChoice ?? chosen);
+      const exactLists = keepReviewedAuthoredLists(candidate.resource.collection, statusChoice ?? chosen, this.state.conflicts);
+      const exactTags = keepExactLocalDocumentTags(this.state, exactLists);
       const withRows = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
         this.state.draft, candidate.value, exactTags, this.state.conflicts);
       const planMode = readSermonPlanModeComparison(this.state);

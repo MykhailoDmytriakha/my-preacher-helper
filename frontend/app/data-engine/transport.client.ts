@@ -40,7 +40,7 @@ const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(),
     affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).max(99).optional(),
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
-  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), base: field, mine: field, theirs: field })),
+  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), code: z.string().optional(), base: field, mine: field, theirs: field })),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional() }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),

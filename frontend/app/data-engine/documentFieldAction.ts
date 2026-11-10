@@ -74,7 +74,7 @@ type TextDocumentFieldTarget = {
 export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
-const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
+export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
   proof: 'sermonRepeatedWords', causal: true, optional: true, accepts: isAuthoredStringList } as const;
 
 export type GroupStatusHistoryPage = {

@@ -92,11 +92,11 @@ export type SeenRowDetail<Value extends RowValue> = { generation: string; observ
 /** Preserve the exact displayed row and action even if its current value already matches the click. */
 export function captureSeenRowDetail<Field extends string, Value extends RowValue>(baseline: ResourceSnapshot,
   predecessor: CommitRequest | undefined, draft: DocumentData | null, capture: SeenRowDetail<Value> | undefined, records: readonly CommitRequest[],
-  field: Field, policy: RowDetailPolicy<Field, Value>, actionFor: (request: CommitRequest) => RowDetailObservation<Value> | undefined):
-  RowDetailObservation<Value> | undefined {
+  field: Field, policy: RowDetailPolicy<Field, Value>, actionFor: (request: CommitRequest) => RowDetailObservation<Value> | undefined,
+  acceptsRowId: (value: unknown) => value is string = boundedRowId): RowDetailObservation<Value> | undefined {
   if (!capture || baseline.resource.collection !== policy.collection || !baseline.metadata || baseline.metadata.deleted
     || capture.generation !== baseline.metadata.generation || !proofRevision(capture.observedRevision)
-    || capture.observedRevision > baseline.metadata.revision || !boundedRowId(capture.rowId)) return undefined;
+    || capture.observedRevision > baseline.metadata.revision || !acceptsRowId(capture.rowId)) return undefined;
   const { rowId, before, after, observedRevision } = capture;
   const target = policy.target(field);
   const time = capture.time === null ? null : boundedActionTime(capture.time);

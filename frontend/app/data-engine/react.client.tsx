@@ -14,6 +14,7 @@ import { useTranslation } from '@locales/useTranslation';
 import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
 import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
+import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
@@ -95,6 +96,9 @@ export const captureOutlinePointPlacement = captureOutlinePlacement;
 export const projectResourceOutlinePoint = projectOutlinePlacement;
 export function readOutlinePointPlacementComparison(checkpoint: SessionCheckpoint) { return outlinePointPlacementComparison(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
+export function previewReviewedListChoice(checkpoint: SessionCheckpoint) {
+  return keepReviewedAuthoredLists(checkpoint.confirmed.resource.collection, checkpoint.draft, checkpoint.conflicts);
+}
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }

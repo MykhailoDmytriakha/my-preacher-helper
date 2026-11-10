@@ -2872,6 +2872,150 @@ describe('transactional DataEngine server', () => {
     }
   });
 
+  describe.each(['sermons', 'serviceOrders'] as const)('delayed addition from an empty list in %s', collection => {
+    it.each([
+      { label: 'earlier addition of the replaced item', phoneAt: 12, replace: true, expected: 'saved', kind: 'acknowledged' },
+      { label: 'addition of the replaced item without an action clock', phoneAt: null, replace: true, expected: 'saved', kind: 'conflict' },
+      { label: 'later addition of the replaced item', phoneAt: 100, replace: true, expected: 'both', kind: 'acknowledged' },
+      { label: 'independent additions from the same empty opening', phoneAt: 12, replace: false, expected: 'both', kind: 'acknowledged' },
+      { label: 'an earlier addition after another item was added', phoneAt: 12, replace: true, extra: true, expected: 'saved', kind: 'acknowledged' },
+      { label: 'an unknown addition after another item was added', phoneAt: null, replace: true, extra: true, expected: 'saved', kind: 'conflict' },
+      { label: 'later re-addition before the removal of a different item', phoneAt: 100, replace: true, clear: true, expected: 'both', kind: 'acknowledged' },
+      { label: 'an unclocked reaffirmation after a timed removal', phoneAt: 100, replace: true, reaffirm: true, expected: 'saved', kind: 'conflict' },
+      { label: 'an explicit review from an old opening with a long row ID', phoneAt: null, replace: true, clear: true, longId: true, expected: 'saved', kind: 'conflict' },
+      { label: 'one known re-addition cannot bypass evicted evidence for another', phoneAt: 50, replace: true, overflow: true, expected: 'saved', kind: 'conflict' },
+      { label: 'a separate conflict exposes the safely projected independent addition', phoneAt: 12, replace: true, partial: true, expected: 'saved', kind: 'conflict' },
+    ])('retains the right words for $label', async ({ phoneAt, replace, extra, clear, reaffirm, longId, overflow, partial, expected, kind }) => {
+      const sermon = collection === 'sermons';
+      const resource = { collection, id: 'delayed-list-addition' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-10T00:00:00.000Z';
+      const rowId = longId ? 'r'.repeat(129) : 'reading';
+      const [added, replacement] = sermon ? ['mercy', 'peace'] : ['John 3:17', 'John 3:18'];
+      const path = sermon ? 'preparation' : 'steps';
+      const content = (items: string[]) => sermon
+        ? { textContext: { repeatedWords: items, contextNotes: 'Independent context' } }
+        : [{ id: rowId, title: 'Reading', body: 'Independent words', scriptureRefs: items }];
+      const seed = await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: base.owner, title: 'Delayed list addition', createdAt: now, updatedAt: now, [path]: content([]),
+          ...(sermon ? { verse: 'John 3:16', date: now, thoughts: [] } : { rank: 100 }) },
+      });
+      expect(seed.kind).toBe('acknowledged');
+      const update = (operationId: string, before: string[], after: string[], observedRevision: number, offset: number | null) => {
+        const action = { observedRevision, time: offset === null ? null
+          : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } };
+        return { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: [path], before: { exists: true, value: content(before) }, after: { exists: true, value: content(after) } }],
+          ...(sermon ? { sermonRepeatedWordsAction: action }
+            : { serviceOrderStepScriptureActions: { scriptureRefs: { ...action, rowId, rowCreatedAt: rowId, before, after } } }),
+        };
+      };
+      expect(await processCommand(base.owner, update('computer-first', [], [replace ? added : replacement], 1, 40)))
+        .toMatchObject({ kind: 'acknowledged' });
+      if (replace) {
+        expect(await processCommand(base.owner, update('computer-replaces', [added], [replacement], 2, 70)))
+          .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [path]: content([replacement]) } } });
+      }
+      if (reaffirm) {
+        expect(await processCommand(base.owner, update('computer-reaffirms', [added], [replacement], 2, null)))
+          .toMatchObject({ kind: 'acknowledged' });
+      }
+      const independent = sermon ? 'hope' : 'John 3:19';
+      const saved = clear || overflow ? [] : extra ? [replacement, independent] : [replacement];
+      if (overflow) {
+        const many = [replacement, ...Array.from({ length: 33 }, (_, index) => 'Other item ' + index)];
+        for (const request of [update('add-many', [replacement], many, 3, null),
+          update('remove-many', many, [replacement], 4, null), update('clear-replacement', [replacement], [], 5, 40)]) {
+          expect(await processCommand(base.owner, request)).toMatchObject({ kind: 'acknowledged' });
+        }
+      }
+      if (clear) {
+        expect(await processCommand(base.owner, update('computer-clears-replacement', [replacement], [], 3, 110)))
+          .toMatchObject({ kind: 'acknowledged' });
+      }
+      if (extra) {
+        expect(await processCommand(base.owner, update('computer-adds-other', [replacement], saved, 3, null)))
+          .toMatchObject({ kind: 'acknowledged' });
+      }
+      const proposed = overflow ? [added, replacement] : partial ? [added, independent] : [added];
+      const phone = update('delayed-phone', [], proposed, 1, phoneAt);
+      const titleChange = (after: string) => ({ path: ['title'], before: { exists: true, value: 'Delayed list addition' },
+        after: { exists: true, value: after } });
+      if (partial) {
+        const title = update('computer-title', [replacement], [replacement], 3, null);
+        expect(await processCommand(base.owner, { ...title, changes: [titleChange('Stored title')] })).toMatchObject({ kind: 'acknowledged' });
+      }
+      const delayed = partial ? { ...phone, changes: [...phone.changes, titleChange('Own title')] } : phone;
+      const reply = await processCommand(base.owner, delayed);
+      expect(reply.kind).toBe(kind);
+      expect(await readDocument(base.owner, resource)).toMatchObject({
+        value: { [path]: content(expected === 'both' ? [...saved, added] : saved) },
+      });
+      if (kind === 'conflict') expect(reply).toMatchObject({ conflicts: expect.arrayContaining([{
+        path: sermon ? ['preparation', 'textContext', 'repeatedWords'] : ['steps', 'id:' + rowId, 'scriptureRefs'],
+        code: partial ? 'authored-list-projection' : 'authored-list-review', base: { exists: true, value: [] },
+        mine: { exists: true, value: partial ? [replacement, independent] : proposed }, theirs: { exists: true, value: saved },
+      }]) });
+      expect(await processCommand(base.owner, delayed)).toEqual(reply);
+      if (longId) {
+        expect(await processCommand(base.owner, update('reviewed-choice', [], [added], 4, null)))
+          .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [path]: content([added]) } } });
+      }
+    });
+  });
+
+  it.each(['empty', 'nonempty', 'intervening update'] as const)('accepts an explicit comparison covering two replaced Scripture lists (%s)', async scenario => {
+    const nonempty = scenario !== 'empty';
+    const resource = { collection: 'serviceOrders', id: 'review-two-scripture-lists' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const opening = [{ id: 'reading', title: 'Reading', body: 'Read aloud', scriptureRefs: [] as string[] },
+      { id: 'closing', title: 'Closing', body: 'Pray together', scriptureRefs: [] as string[] }];
+    const added = opening.map((row, index) => ({ ...row, scriptureRefs: [index === 0 ? 'John 3:17' : 'Psalm 23:1'] }));
+    const stored = opening.map((row, index) => ({ ...row, body: row.body + ' slowly',
+      scriptureRefs: nonempty ? [index === 0 ? 'John 3:18' : 'Psalm 23:2'] : [] }));
+    const update = (operationId: string, before: typeof opening, after: typeof opening) => ({
+      ...base, kind: 'update', operationId, generation: 'seed', changes: [{ path: ['steps'],
+        before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: opening },
+    })).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, update('add', opening, added))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, update('replace', added, stored))).toMatchObject({ kind: 'acknowledged' });
+    if (nonempty) {
+      const other = stored.map(row => ({ ...row, scriptureRefs: ['Mark 1:1'] }));
+      expect(await processCommand(base.owner, update('other', stored, other))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, update('return', other, stored))).toMatchObject({ kind: 'acknowledged' });
+    }
+    const revision = nonempty ? 5 : 3;
+    expect(await processCommand(base.owner, update('delayed', opening, added))).toMatchObject({ kind: 'conflict',
+      snapshot: { metadata: { revision }, value: { steps: stored } },
+      conflicts: opening.map(row => ({ code: 'authored-list-review', path: ['steps', 'id:' + row.id, 'scriptureRefs'] })),
+    });
+    const chosen = stored.map((row, index) => ({ ...row, scriptureRefs: added[index].scriptureRefs }));
+    const reviewed = stored.map((row, index) => ({ rowId: row.id, rowCreatedAt: row.id, observedRevision: revision,
+      before: row.scriptureRefs, after: chosen[index].scriptureRefs, time: null }));
+    if (scenario === 'intervening update') {
+      const latest = [{ ...stored[0], scriptureRefs: ['Luke 4:1'] }, stored[1]];
+      expect(await processCommand(base.owner, { ...update('newer-reading', stored, latest), serviceOrderStepScriptureActions: {
+        scriptureRefs: { rowId: stored[0].id, rowCreatedAt: stored[0].id, before: stored[0].scriptureRefs, after: latest[0].scriptureRefs,
+          observedRevision: revision, time: null },
+      } })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, { ...update('stale-review', stored, chosen), serviceOrderStepScriptureActions: { reviewed } }))
+        .toMatchObject({ kind: 'conflict', snapshot: { value: { steps: latest } },
+          conflicts: latest.map(row => ({ code: 'authored-list-review', path: ['steps', 'id:' + row.id, 'scriptureRefs'],
+            theirs: { exists: true, value: row.scriptureRefs } })),
+        });
+      expect(await processCommand(base.owner, { ...update('fresh-review', latest, chosen), serviceOrderStepScriptureActions: {
+        reviewed: reviewed.map((action, index) => ({ ...action, before: latest[index].scriptureRefs, observedRevision: revision + 1 })),
+      } })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: chosen } } });
+      return;
+    }
+    expect(await processCommand(base.owner, { ...update('reviewed', stored, chosen), serviceOrderStepScriptureActions: { reviewed } }))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: chosen } } });
+  });
+
   it.each([
     { label: 'two replacements', stored: ['John 3:18'], incoming: ['John 3:17'], kind: 'conflict', expected: ['John 3:18'] },
     { label: 'a replacement and a clear', stored: ['John 3:18'], incoming: [], kind: 'conflict', expected: ['John 3:18'] },

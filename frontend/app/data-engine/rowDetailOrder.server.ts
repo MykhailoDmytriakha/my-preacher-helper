@@ -66,6 +66,13 @@ export function readRowDetailProof(raw: unknown, policy: { proofs: string }, fie
   return matchingProof(readProofs(raw, policy.proofs, field).values, rowId, born, value, scope, revision);
 }
 
+export function rowDetailPreviousValues(raw: unknown, policy: { proofs: string }, field: string,
+  rowId: string, born: string, value: RowValue, revision: number) {
+  const proof = readRowDetailProof(raw, policy, field, rowId, born, value, undefined, revision);
+  return proof?.priorFrames && ((earlier: RowValue) => proof.priorFrames!.includes(digest(born, earlier))
+    ? { revision: proof.revision, time: null } : undefined);
+}
+
 export function followsQueuedRowDetail(proof: Proof, predecessorOperationId: unknown, queueDigest: string | undefined): boolean {
   return Boolean(queueDigest && proof.queueDigest === queueDigest && proof.causal && proof.operationId === predecessorOperationId);
 }

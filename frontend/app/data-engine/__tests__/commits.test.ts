@@ -1215,6 +1215,56 @@ describe('Durable commit requests', () => {
     expect(s.server().value?.steps).toEqual([cleared]);
   });
 
+  it.each(['both present', 'step deleted after choice'] as const)('sends an exact Scripture choice for conflicting service steps (%s)', async scenario => {
+    const steps = [
+      { id: 'opening', title: 'Opening', body: 'Opening words', scriptureRefs: [] as string[] },
+      { id: 'closing', title: 'Closing', body: 'Closing words', scriptureRefs: [] as string[] },
+    ];
+    const opening: ResourceSnapshot = { ...initial(), resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps } };
+    const mine = [['John 3:17'], ['Psalm 23:1']];
+    const theirs = [['John 3:18'], ['Psalm 23:2']];
+    const stored = steps.map((row, index) => ({ ...row, body: 'Keep the saved ' + row.body, scriptureRefs: theirs[index] }));
+    const latest = { ...opening, value: { ...opening.value, steps: stored }, metadata: { ...opening.metadata!, revision: 3 } };
+    const conflicts = steps.map((row, index) => ({ path: ['steps', 'id:' + row.id, 'scriptureRefs'], code: 'authored-list-review',
+      base: { exists: true, value: [] }, mine: { exists: true, value: mine[index] }, theirs: { exists: true, value: theirs[index] } }));
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      await editor.commit(value => ({ ...value, steps: steps.map((row, index) => ({ ...row, scriptureRefs: mine[index] })) }));
+      s.replace(latest);
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+        kind: 'conflict', operationId: command.operationId, snapshot: latest, conflicts,
+      }));
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.conflicts).toEqual(conflicts);
+      const deleted = { ...latest, value: { ...latest.value, steps: [stored[0]] }, metadata: { ...latest.metadata, revision: 4 } };
+      if (scenario === 'step deleted after choice') {
+        jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+          s.replace(deleted);
+          return { kind: 'conflict', operationId: command.operationId, snapshot: deleted,
+            conflicts: [conflicts[0], { path: ['steps', 'id:closing'], base: { exists: true, value: stored[1] },
+              mine: { exists: true, value: { ...stored[1], scriptureRefs: mine[1] } }, theirs: { exists: false } }],
+          };
+        });
+      }
+      await editor.keepLocal(); await engine.retry(); await settle();
+      expect(s.transport.send).toHaveBeenCalledTimes(2);
+      expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        serviceOrderStepScriptureActions: { reviewed: steps.map((row, index) => ({ rowId: row.id, rowCreatedAt: row.id,
+          observedRevision: 3, before: theirs[index], after: mine[index], time: null })) },
+      }));
+      if (scenario === 'step deleted after choice') {
+        await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'service-order-step-gone' });
+        expect(s.transport.send).toHaveBeenCalledTimes(2);
+        expect(s.server().value?.steps).toEqual([stored[0]]);
+        return;
+      }
+      expect(s.server().value?.steps).toEqual(stored.map((row, index) => ({ ...row, scriptureRefs: mine[index] })));
+      expect(editor.getState().checkpoint.conflicts).toEqual([]);
+    } finally { engine.dispose(); }
+  });
+
   it('keeps an unseen dependent Save when reviewing a legacy step flag conflict', async () => {
     const step = { id: 'opening', title: 'Opening' };
     const opening: ResourceSnapshot = {

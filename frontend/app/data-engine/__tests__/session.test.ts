@@ -5,7 +5,7 @@ import { keepUncontestedSermonFields } from '../sermonFieldChoice';
 import { DataSession } from '../session';
 import type { CommitRequest } from '../commits';
 import type { PreachStatusAction } from '../preachStatusAction';
-import type { ResourceSnapshot } from '../types';
+import type { DocumentData, ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
@@ -133,6 +133,45 @@ describe('DataSession', () => {
     expect(editor.checkpoint()).toMatchObject({ confirmed: candidate, dirty: true,
       draft: { templates: [{ ...storedBlock, status: 'draft' }, storedOther] },
     });
+  });
+
+  it.each(['sermons', 'serviceOrders'] as const)('keeps the exact list shown in an authored addition comparison for %s', collection => {
+    const sermon = collection === 'sermons';
+    const path = sermon ? ['preparation', 'textContext', 'repeatedWords'] : ['steps', 'id:reading', 'scriptureRefs'];
+    const content = (items: string[], note: string): DocumentData => sermon
+      ? { userId: 'owner', preparation: { textContext: { repeatedWords: items, contextNotes: note } } }
+      : { userId: 'owner', steps: [{ id: 'reading', title: 'Reading', scriptureRefs: items, body: note }] };
+    const base: ResourceSnapshot = { ...snap(), resource: { collection, id: 'one' }, value: content([], 'Opening words') };
+    const mine = content(['A'], 'Opening words');
+    const stored: ResourceSnapshot = { ...base, metadata: { ...base.metadata!, revision: 3 }, value: content(['B'], 'Server words') };
+    const result = { kind: 'conflict' as const, operationId: 'first', snapshot: stored, conflicts: [{
+      path, code: 'authored-list-review', base: { exists: true, value: [] },
+      mine: { exists: true, value: ['A'] }, theirs: { exists: true, value: ['B'] },
+    }] };
+    const request: CommitRequest = {
+      id: 'first', owner: 'owner', editorId: 'form', editGeneration: 1, baseline: base, value: mine,
+      predecessor: null, revision: 1, initialized: false, working: base, intended: mine, command: null, submitted: null,
+      sequence: 0, state: 'conflict', result, unfinalized: [],
+    };
+    const session = new DataSession(base);
+    session.edit(mine);
+    session.applyCommit(request);
+    const checkpoint = session.checkpoint();
+    if (sermon) {
+      const record = { owner: 'owner', editorId: 'form', prepared: null, unfinalized: [], checkpoint };
+      const decision = { request, stored, value: mine, selection: [path] };
+      expect(projectExactManualChoice(record, { ...decision, choice: 'local' }, [request])[0].checkpoint.draft)
+        .toEqual(content(['A'], 'Server words'));
+      const amended = { ...decision, value: content(['C'], 'Opening words') };
+      expect(projectExactManualChoice(record, { ...amended, choice: 'local' }, [request])[0].checkpoint.draft)
+        .toEqual(content(['C'], 'Server words'));
+      expect(projectExactManualChoice(record, { ...decision, choice: 'remote' }, [request])[0].checkpoint.draft)
+        .toEqual(content(['B'], 'Server words'));
+    } else {
+      session.release(request.id);
+      session.keepLocal();
+      expect(session.checkpoint().draft).toEqual(content(['A'], 'Server words'));
+    }
   });
 
   it.each(['kept', 'deleted', 'replaced', 'deleted with notes', 'replaced with notes'] as const)('keeps status intent only for the same date through local and recovered choices when the row is %s', scenario => {

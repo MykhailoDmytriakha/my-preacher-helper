@@ -1,3 +1,7 @@
+export const AUTHORED_LIST_REVIEW = 'authored-list-review';
+export const AUTHORED_LIST_PROJECTION = 'authored-list-projection';
+export const isAuthoredListComparison = (code: unknown) => code === AUTHORED_LIST_REVIEW || code === AUTHORED_LIST_PROJECTION;
+
 export function isAuthoredStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => typeof item === 'string');
 }

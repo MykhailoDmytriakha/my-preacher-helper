@@ -37,7 +37,7 @@ import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRow
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
-import { keepUncontestedServiceStepScripture, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepScriptureChoice';
+import { keepUncontestedServiceStepScripture, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepScriptureChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
@@ -823,6 +823,8 @@ export class EditorController {
           && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
         const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
+        const scriptureRows = scriptureRow ? [scriptureRow]
+          : !selection && !correction ? reviewedServiceStepScriptureRows(decided) : [];
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
@@ -937,9 +939,10 @@ export class EditorController {
           if (stored && rowRequests.some(request => {
             const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title
               ?? request.serviceOrderStepScriptureActions?.scriptureRefs;
-            return step && !hasServiceOrderStep(stored.steps, step.rowId);
+            return (step && !hasServiceOrderStep(stored.steps, step.rowId))
+              || request.serviceOrderStepScriptureActions?.reviewed?.some(({ rowId }) => !hasServiceOrderStep(stored.steps, rowId));
           })) throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
-          if (scriptureRow && (!stored || !hasServiceOrderStep(stored.steps, scriptureRow))) {
+          if (scriptureRows.some(row => !stored || !hasServiceOrderStep(stored.steps, row))) {
             throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
           }
           if (stored && rowRequests.some(request => {
@@ -1031,10 +1034,12 @@ export class EditorController {
             session.applyCommit(later); replacements.push(later);
           }
         }
-        if (choice === 'local' && scriptureRow) {
-          const scripture = serviceStepScriptureChoice(session.checkpoint(), scriptureRow, choiceTime ?? null);
-          const replacement = scripture && this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {
-            action: { kind: 'service-order-step-scripture', scripture },
+        if (choice === 'local' && scriptureRows.length) {
+          const checkpoint = session.checkpoint();
+          const scriptures = scriptureRows.flatMap(row => serviceStepScriptureChoice(checkpoint, row, choiceTime ?? null) ?? []);
+          const replacement = scriptures.length && this.options.commits!.choiceReplacement(record.editorId, checkpoint, {
+            action: scriptureRow ? { kind: 'service-order-step-scripture', scripture: scriptures[0] }
+              : { kind: 'service-order-step-scripture-review', scriptures },
           });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }

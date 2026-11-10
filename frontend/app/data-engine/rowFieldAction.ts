@@ -108,7 +108,7 @@ export function isCapturedRowConflict<Value extends RowValue>(conflict: Conflict
 
 /** A missing optional row value can display the same value as its explicit default. */
 export function alignOptionalRowField<Value extends RowValue>(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
-  target: RowFieldTarget<Value>, rowId: string | undefined): DataCommand {
+  target: RowFieldTarget<Value>, rowId: string | undefined): Extract<DataCommand, { kind: 'update' }> {
   const rows = current.value?.[target.field];
   const leaf = target.leaf;
   const missing = target.missing;

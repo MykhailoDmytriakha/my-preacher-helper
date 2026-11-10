@@ -9,7 +9,7 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
 import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, replaceOrderedDocumentField } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, replaceOrderedDocumentField, SERMON_REPEATED_WORDS } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -114,6 +114,25 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
   if (time === undefined || (time && (!Number.isFinite(serverMs) || time.earliestMs > serverMs + 5))) return undefined;
   return { before, after, observedRevision: action.observedRevision, time,
     ...(target.causal && typeof action.predecessorOperationId === 'string' && { predecessorOperationId: action.predecessorOperationId }) };
+}
+
+export function repeatedWordsObservation(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange,
+  revision: number, serverMs: number) {
+  return readAction(command, change, revision, serverMs, SERMON_REPEATED_WORDS);
+}
+
+export function previousRepeatedWordRemovals(raw: unknown, current: ResourceSnapshot) {
+  const proof = previousField(raw, current, SERMON_REPEATED_WORDS);
+  if (!proof) return;
+  const earlier = pastFieldOpenings(raw, SERMON_REPEATED_WORDS);
+  return (word: string) => {
+    if (proof.listOpening?.removed === wordDigest(word)) {
+      return { revision: proof.revision, time: proof.time, operationId: proof.operationId };
+    }
+    if (earlier?.includes(fieldDigest({ exists: true, value: [word] }, SERMON_REPEATED_WORDS))) {
+      return { revision: proof.revision, time: null };
+    }
+  };
 }
 
 function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, action: DocumentFieldObservation<FieldValue>,
@@ -268,9 +287,11 @@ function alignCouncilLifecycle(order: DocumentFieldOrder, current: ResourceSnaps
   return { ...command, changes: equalValues(before, after) ? changes : [...changes, companion] };
 }
 
-export function orderDocumentFields(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
+export function orderDocumentFields(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number,
+  repeatedWordsResolved = false) {
   const fields = documentFieldTargets(command.resource.collection).map(target => {
-    const planned = orderDocumentField(command, current, raw, serverMs, target);
+    const planned = repeatedWordsResolved && target.action === 'sermonRepeatedWordsAction'
+      ? { command } : orderDocumentField(command, current, raw, serverMs, target);
     const change = target.action === 'sermonRepeatedWordsAction' && planned.stamp && command.kind === 'update'
       ? documentFieldChange(command.changes, target) : undefined;
     const basis = change && listOpeningFor(change, target);

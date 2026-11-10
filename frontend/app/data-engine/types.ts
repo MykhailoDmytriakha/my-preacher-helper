@@ -84,6 +84,7 @@ export type EditorCommitAction =
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
   | { kind: 'service-order-step-scripture'; scripture: ServiceOrderStepScriptureCapture }
+  | { kind: 'service-order-step-scripture-review'; scriptures: readonly ServiceOrderStepScriptureCapture[] }
   | { kind: 'council-lifecycle'; time: ActionTime | null }
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }

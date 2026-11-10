@@ -1,6 +1,8 @@
+import { keepReviewedAuthoredLists } from './authoredListChoice';
+import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
 import { exactManualWords } from './manualChoice';
 import { sameManualSelection } from './manualScope';
-import { mergeDocumentFields } from './protocol';
+import { equalValues, mergeDocumentFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
@@ -32,12 +34,16 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       const observed = parent.remoteCandidate ?? parent.confirmed;
       if (canReplaceSnapshot(stored, observed)) stored = observed;
       if (!stored.value || stored.metadata?.deleted) return undefined;
-      const mine = exact ? exactManualWords(form, exact) : form.value;
       const conflicts = request.result.conflicts;
+      const authored = exact ? exactManualWords(form, exact) : form.value;
+      const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
+        conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
       const changed = form.record.selection.some(path => !sameManualSelection(request.baseline.value, request.value, path)
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));
-      if (changed || exactVerse) {
+      const exactList = conflicts.some(({ code, path }) => isAuthoredListComparison(code)
+        && form.record.selection.some(selected => equalValues(selected, path)) && !sameManualSelection(mine, stored.value, path));
+      if (changed || exactVerse || exactList) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,

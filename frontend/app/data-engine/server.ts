@@ -12,6 +12,8 @@ import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
+import { metadataAfterAuthoredListRemovals, orderAuthoredListAdditions } from './authoredListOrder.server';
+import { isAuthoredListComparison } from './authoredStringList';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
@@ -229,8 +231,8 @@ type StoredReceipt = Omit<CommandReceipt, 'result'> & {
   result: CommandResult | CompactAcknowledgement | IndexedTagConflict | ConflictManifest;
 };
 const isSplitExactConflict = (result: object): result is SplitExactConflict => 'exactReceiptParts' in result;
-const comparesRepeatedWords = (conflicts: readonly ConflictDetail[]) =>
-  conflicts.some(({ path }) => equalValues(path, repeatedWordsPath));
+const comparesAuthoredList = (conflicts: readonly ConflictDetail[]) =>
+  conflicts.some(({ path, code }) => isAuthoredListComparison(code) || equalValues(path, repeatedWordsPath));
 const compact = (result: StoredReceipt['result']): result is CompactAcknowledgement => 'receiptVersion' in result;
 const unavailableReceiptSnapshot = () => new DataEngineServerError('receipt-snapshot-unavailable', 503);
 
@@ -298,7 +300,7 @@ function prepareReceipt(owner: string, command: DataCommand, commandHash: string
       result: { kind: 'conflict', operationId: command.operationId, tagReceiptParts: parts.length, tagReceiptDigest: tagReceiptDigest(stored.resultJson) },
     }) };
   }
-  if (result.kind === 'conflict' && comparesRepeatedWords(result.conflicts)) {
+  if (result.kind === 'conflict' && comparesAuthoredList(result.conflicts)) {
     const parts = splitConflictJson(ordinary.resultJson, MAX_EXACT_RECEIPT_PARTS);
     if (parts) return { result, parts: { collection: '_conflictParts', values: parts }, stored: serializeReceipt({ ...identity,
       result: { kind: 'conflict', operationId: command.operationId, exactReceiptParts: parts.length,
@@ -329,7 +331,7 @@ async function readReceiptParts(transaction: Transaction, receipt: DocumentRefer
       manifest.exactReceiptParts, manifest.exactReceiptDigest) as ExactConflict | undefined;
     if (object(result) && result.kind === 'conflict' && result.operationId === command.operationId
       && equalValues(result.snapshot?.resource, command.resource)
-      && Array.isArray(result.conflicts) && comparesRepeatedWords(result.conflicts)) return result;
+      && Array.isArray(result.conflicts) && comparesAuthoredList(result.conflicts)) return result;
   }
   throw new DataEngineServerError(INVALID_RECEIPT, 409);
 }
@@ -477,7 +479,8 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
         return contains(parent, item) || (id !== undefined && isThoughtPlacementPart(item.path, id));
       })) continue;
       for (const child of uncertain) if (contains(item, child)) conflicts.delete(JSON.stringify(child.path));
-      conflicts.set(JSON.stringify(item.path), item);
+      const path = JSON.stringify(item.path);
+      if (!isAuthoredListComparison(conflicts.get(path)?.code)) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
@@ -563,12 +566,13 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
   effects: ResourceSnapshot[];
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
+  listOrder?: ReturnType<typeof orderAuthoredListAdditions>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
   meetingOrder?: ReturnType<typeof orderGroupMeetingFields>;
   groupFlowOrder?: ReturnType<typeof orderGroupFlowFields>;
@@ -641,10 +645,25 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const groupStepMetadata = metadataAfterGroupStepPlacement({ ...snapshot, metadata: serviceStepMetadata }, raw, primary ? groupFlowStepPlacement : undefined);
     const councilMetadata = metadataAfterCouncilTopicPlacement({ ...snapshot, metadata: groupStepMetadata }, raw, primary ? councilTopicPlacement : undefined);
     const finalMetadata = metadataAfterSeriesItemPlacement({ ...snapshot, metadata: councilMetadata }, raw, primary ? seriesItemPlacement : undefined);
+    const listMetadata = metadataAfterAuthoredListRemovals({ ...snapshot, metadata: finalMetadata }, raw, primary ? listOrder : undefined, edit => {
+      const time = edit.observation?.time;
+      if (!time) return false;
+      const stamp = edit.rowId === undefined
+        ? fieldOrder?.fields.find(entry => entry.target.action === 'sermonRepeatedWordsAction')?.order.stamp
+        : serviceStepScriptureOrder?.fields.get('scriptureRefs')?.find(entry => entry.stamp?.rowId === edit.rowId)?.stamp?.time;
+      return equalValues(stamp, time);
+    });
     const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
-      _dataEngine: { ...finalMetadata, ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
+      _dataEngine: { ...listMetadata, ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
+  }
+  for (const [index, addition] of (listOrder?.discarded ?? []).entries()) {
+    const collection = command.resource.collection === 'serviceOrders' ? SERVICE_ORDER_STEP_SCRIPTURE_POLICY.history : DOCUMENT_METADATA_HISTORY;
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(collection);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, JSON.stringify([command.operationId, 'addition', index]))), {
+      generation: primarySnapshot.metadata!.generation, acceptedAt: new Date().toISOString(), discardedAddition: addition,
+    });
   }
   if (serviceOrderPlacement?.displaced && primarySnapshot.metadata) {
     const history = adminDb.collection('serviceOrders').doc(primarySnapshot.resource.id).collection(SERVICE_ORDER_PLACEMENT_HISTORY);
@@ -862,6 +881,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     let cachedSeriesHead: Promise<DocumentData | undefined> | undefined;
     const readSeriesHead = () => cachedSeriesHead ??= transaction.get(adminDb.collection(HEADS_COLLECTION).doc(collectionHeadId(owner, 'series')))
       .then(head => head.exists ? head.data() as DocumentData : undefined);
+    let listOrder: ReturnType<typeof orderAuthoredListAdditions> | undefined;
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let meetingOrder: ReturnType<typeof orderGroupMeetingFields> | undefined;
     let groupFlowOrder: ReturnType<typeof orderGroupFlowFields> | undefined;
@@ -897,7 +917,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       }
       const current = snapshotFromRaw(command.resource, raw);
       const serverMs = stored.readTime?.toMillis();
-      dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
+      listOrder = orderAuthoredListAdditions(command, current, raw?._dataEngine, serverMs);
+      dateOrder = orderDatedRow(listOrder.command, current, raw?._dataEngine, serverMs);
       meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
       groupFlowOrder = orderGroupFlowFields(meetingOrder.command, current, raw?._dataEngine, serverMs);
       preachingOrder = orderRowDetails(groupFlowOrder.duration.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
@@ -905,7 +926,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       statusOrder = orderRowDetails(statusCommand, current, raw?._dataEngine, serverMs, PREACH_STATUS_POLICY);
       serviceFlagOrder = orderRowDetails(statusOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_FLAG_POLICY);
       serviceStepTitleOrder = orderRowDetails(serviceFlagOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_TITLE_POLICY);
-      serviceStepScriptureOrder = orderServiceStepScripture(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs);
+      serviceStepScriptureOrder = orderServiceStepScripture(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved);
       councilTopicTitleOrder = orderRowDetails(serviceStepScriptureOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
       councilAssemblyOrder = orderRowDetails(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
       councilTopicKindOrder = orderRowDetails(councilAssemblyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_KIND_POLICY);
@@ -917,7 +938,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       documentTagOrder = orderDocumentTags(thoughtTagOrder.command, command, current, raw?._dataEngine, serverMs);
       sourceNoteOrder = orderSourceNoteLinks(documentTagOrder.command, current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, sourceNoteOrder.command, current, raw?._dataEngine, serverMs);
-      fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
+      fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved.has(''));
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
@@ -945,7 +966,9 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         },
         list: relationListFor(owner, transaction, rawDocuments),
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain]);
+      const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
+      const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
+      const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices] : uncertain);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -974,7 +997,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     result = receipt.result;
     if (result.kind === 'acknowledged') deletedTag = detachedTagName ?? null;
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'

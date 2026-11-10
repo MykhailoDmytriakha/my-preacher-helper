@@ -9,8 +9,9 @@ import type { ConflictDetail, DataCommand } from './types';
 type Update = Extract<DataCommand, { kind: 'update' }>;
 
 export function readRowObservation<Value extends RowValue>(command: Update, raw: unknown, target: RowFieldTarget<Value>,
-  serverMs: number, options?: { allowUnclocked?: boolean; allowUnchanged?: (after: Value) => boolean }): RowFieldObservation<Value> | undefined {
-  if (!object(raw) || !boundedRowId(raw.rowId) || !target.accepts(raw.before) || !target.accepts(raw.after)
+  serverMs: number, options?: { allowUnclocked?: boolean; allowUnchanged?: (after: Value) => boolean;
+    acceptsRowId?: (value: unknown) => value is string }): RowFieldObservation<Value> | undefined {
+  if (!object(raw) || !(options?.acceptsRowId ?? boundedRowId)(raw.rowId) || !target.accepts(raw.before) || !target.accepts(raw.after)
     || (equalValues(raw.before, raw.after) && !options?.allowUnchanged?.(raw.after)) || !proofRevision(raw.observedRevision)) return undefined;
   const time = raw.time === null && options?.allowUnclocked ? null : boundedActionTime(raw.time);
   if (time === undefined || (time && (!Number.isFinite(serverMs) || time.earliestMs > serverMs + 5))) return undefined;

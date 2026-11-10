@@ -107,6 +107,15 @@ describe('HTTP engine transport', () => {
     jest.mocked(requestOwnerJson).mockResolvedValue({ status: 409, value: result });
     expect(await createHttpEngineTransport().send(command)).toEqual(result);
   });
+  it('retains the explicit field comparison code through the HTTP response', async () => {
+    const result = { kind: 'conflict', operationId: 'op', snapshot, conflicts: [{
+      path: ['text'], code: 'authored-list-review', base: { exists: true, value: [] },
+      mine: { exists: true, value: ['A'] }, theirs: { exists: true, value: ['B'] },
+    }] };
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 409, value: result });
+    expect(await createHttpEngineTransport().send(command)).toEqual(result);
+  });
+
   it('retains an exact series membership comparison through the HTTP refusal', async () => {
     const resource = { collection: 'series', id: 'alpha' };
     const ref = { type: 'sermon' as const, refId: 's1' };

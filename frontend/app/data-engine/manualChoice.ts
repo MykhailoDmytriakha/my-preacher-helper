@@ -1,6 +1,8 @@
 import { matchesSermonNoteOpening, sermonNoteChanged, withSermonNoteText } from '@/utils/sermonNoteText';
 
 import { isUnsignedAnchoredPlacementRefusal, withoutUnsignedRowOrder } from './anchoredRowPlacement';
+import { keepReviewedAuthoredLists } from './authoredListChoice';
+import { isAuthoredListComparison } from './authoredStringList';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { autosaveFieldTargets } from './documentFieldAction';
@@ -55,7 +57,9 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
     const pending = checkpoint.pending[id];
     if (pending && request.value && ['conflict', 'refused'].includes(request.state)) {
       const recovered = record.recoverySources?.some(source => source.id === request.editorId);
-      if (recovered || (record.scopeId === request.editorId && hasLaterScope(request, requests))) return request;
+      const markedList = request.result?.kind === 'conflict' && request.result.conflicts.some(({ code, path }) =>
+        isAuthoredListComparison(code) && record.selection.some(selected => equalValues(selected, path)));
+      if (recovered || (record.scopeId === request.editorId && (markedList || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
   }
@@ -106,7 +110,9 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     const explicit = request.result?.kind === 'conflict'
       ? localThoughtPlacementChoices(request.result.conflicts, basis.value, reviewed, stored.value) : undefined;
     const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value, explicit);
-    draft = projectManualSelection(stored.value!, dateEdits ?? rebased ?? stored.value!, decision.selection);
+    const chosen = keepReviewedAuthoredLists(stored.resource.collection, dateEdits ?? rebased ?? stored.value!,
+      request.result?.kind === 'conflict' ? request.result.conflicts : [], decision.value);
+    draft = projectManualSelection(stored.value!, chosen!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
     const retained = keepUncontestedSermonFields(basis, reviewed, stored, request.result.conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);

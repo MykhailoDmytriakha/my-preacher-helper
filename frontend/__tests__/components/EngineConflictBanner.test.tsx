@@ -89,6 +89,38 @@ it.each([['#54A0FF', '#54A0FF'], ['', 'settings.tagColorHistory.notSet']])(
   }
 });
 
+it('shows the projected Scripture list in a choice that also changes the service title', async () => {
+  process.env[ON_ENGINE] = 'serviceOrders';
+  actions = null;
+  const order = { collection: 'serviceOrders', id: 'service-list-projection' };
+  const step = { id: 'opening', title: 'Opening', body: 'Original words', scriptureRefs: [] as string[] };
+  const value = { userId: 'owner', title: 'Opening service title', rank: 100, steps: [step] };
+  const h = documentEngineHarness({ resource: order, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const storedRef = 'John 3:18', suppressedRef = 'John 3:17', addedRef = 'Psalm 23:1';
+  const remoteStep = { ...step, body: 'Keep the stored words', scriptureRefs: [storedRef] };
+  const field = (value: string | string[]) => ({ exists: true, value });
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ title: 'Stored service title', steps: [remoteStep] });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+      conflicts: [{ path: ['title'], base: field(value.title), mine: field('My service title'), theirs: field('Stored service title') },
+        { path: ['steps', 'id:opening', 'scriptureRefs'], code: 'authored-list-projection', base: field([]),
+          mine: field([storedRef, addedRef]), theirs: field([storedRef]) }],
+    }));
+    await act(async () => {
+      await actions!.commit(order, current => ({ ...current!, title: 'My service title', steps: [{ ...step, scriptureRefs: [suppressedRef, addedRef] }] }));
+      await settleEngine();
+    });
+    const shown = await screen.findByText(/My service title/, { selector: 'p' });
+    expect(shown).toHaveTextContent(storedRef + ', ' + addedRef);
+    expect(shown).not.toHaveTextContent(suppressedRef);
+    fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    await waitFor(() => expect(h.server.value).toMatchObject({ title: 'My service title', steps: [{ ...remoteStep, scriptureRefs: [storedRef, addedRef] }] }));
+  } finally { delete process.env[ON_ENGINE]; }
+});
+
 it('explains a duplicate tag refused after local capture with its original name and colour', async () => {
   actions = null;
   const tag = { collection: 'tags', id: 'new-tag' };

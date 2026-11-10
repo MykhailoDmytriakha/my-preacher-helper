@@ -18,11 +18,15 @@ export type ServiceOrderStepCapture =
   | { field: 'flagged'; change: ServiceOrderFlagCapture }
   | { field: 'title'; change: ServiceOrderStepTitleCapture }
   | { field: 'scriptureRefs'; change: ServiceOrderStepScriptureCapture }
+  | { field: 'scriptureReview'; changes: readonly ServiceOrderStepScriptureCapture[] }
   | { field: 'placement'; change: ServiceOrderStepPlacementCapture };
 type FlagAction = RowDetailObservation<boolean>;
 export type ServiceOrderFlagActions = { flagged: FlagAction };
 export type ServiceOrderStepTitleActions = { title: RowDetailObservation<string> };
-export type ServiceOrderStepScriptureActions = { scriptureRefs: RowDetailObservation<string[]> };
+export type ServiceOrderStepScriptureActions = {
+  scriptureRefs?: RowDetailObservation<string[]>;
+  reviewed?: RowDetailObservation<string[]>[];
+};
 export type ServiceOrderStepHistoryPage<Field extends string, Value extends string | boolean> = {
   owner: string; orderId: string; generation: string; nextCursor: string | null;
   entries: Array<{ id: string; acceptedAt: string; fields: RowDetailHistoryEntry<Field, Value>[] }>;
@@ -49,9 +53,8 @@ export const SERVICE_ORDER_STEP_SCRIPTURE_LIST: RowFieldTarget<string[]> = {
 };
 export const SERVICE_ORDER_STEP_SCRIPTURE_TARGET = { ...SERVICE_ORDER_STEP_SCRIPTURE_LIST, accepts: isSingleServiceStepScripture };
 
-const STEP_ID: RowFieldTarget<string> = {
-  field: 'steps', leaf: 'id', accepts: (value): value is string => typeof value === 'string' && value.length > 0,
-};
+export const acceptsServiceOrderStepId = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+const STEP_ID: RowFieldTarget<string> = { field: 'steps', leaf: 'id', accepts: acceptsServiceOrderStepId };
 
 export function hasServiceOrderStep(rows: unknown, id: string): boolean {
   return existingRowField(rows, id, STEP_ID) === id;
@@ -94,10 +97,19 @@ export function captureServiceOrderStep(baseline: ResourceSnapshot, predecessor:
       request => request.serviceOrderStepTitleActions?.title);
     if (title) return { serviceOrderStepTitleActions: { title } };
   }
-  if (capture?.field === 'scriptureRefs') {
-    const scriptureRefs = captureSeenRowDetail(baseline, predecessor, draft, capture.change, records, 'scriptureRefs',
-      SERVICE_ORDER_STEP_SCRIPTURE_POLICY, request => request.serviceOrderStepScriptureActions?.scriptureRefs);
-    if (scriptureRefs) return { serviceOrderStepScriptureActions: { scriptureRefs } };
+  if (capture?.field === 'scriptureRefs' || capture?.field === 'scriptureReview') {
+    const captureScripture = (change: ServiceOrderStepScriptureCapture) =>
+      captureSeenRowDetail(baseline, predecessor, draft, change, records, 'scriptureRefs',
+        { ...SERVICE_ORDER_STEP_SCRIPTURE_POLICY, target: () => SERVICE_ORDER_STEP_SCRIPTURE_LIST },
+        request => request.serviceOrderStepScriptureActions?.reviewed?.find(action => action.rowId === change.rowId)
+          ?? request.serviceOrderStepScriptureActions?.scriptureRefs, acceptsServiceOrderStepId);
+    if (capture.field === 'scriptureRefs') {
+      const scriptureRefs = captureScripture(capture.change);
+      if (scriptureRefs) return { serviceOrderStepScriptureActions: { scriptureRefs } };
+    } else {
+      const reviewed = capture.changes.flatMap(change => captureScripture(change) ?? []);
+      if (reviewed.length) return { serviceOrderStepScriptureActions: { reviewed } };
+    }
   }
 }
 
