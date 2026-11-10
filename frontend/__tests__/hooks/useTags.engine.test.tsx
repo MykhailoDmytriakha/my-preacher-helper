@@ -16,12 +16,13 @@ jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) =>
 const row = (id: string, value: Record<string, unknown> | null) => ({ resource: { collection: 'tags', id }, value });
 const actions = { ready: true, openSourceNoteLinks: jest.fn(), saveSourceNoteLinks: jest.fn(), captureActionTime: jest.fn(), findStudyAnalysisCreation: jest.fn(), releaseStudyAnalysisCreation: jest.fn(), transferStudyAnalysisCreation: jest.fn(), reshapeStudyAnalysis: jest.fn(), submit: jest.fn(), create: jest.fn().mockResolvedValue(undefined), remove: jest.fn().mockResolvedValue(undefined), commit: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(0) };
 
-function render() {
+function render(extra: (ReturnType<typeof row> & { creating?: boolean; needsAttention?: boolean })[] = []) {
   jest.mocked(useDocumentActions).mockReturnValue(actions);
   jest.mocked(useDataCollection).mockReturnValue({ state: { snapshots: [], documents: [
     row('t1', { userId: 'u', name: 'Hope', color: '#111', required: false }),
     row('intro', { userId: 'u', name: 'intro', color: '#222', required: false }),
     row('gone', null),
+    ...extra,
   ], complete: true, freshness: 'server', checking: false, version: 1, error: null }, loading: false, error: null, refresh: jest.fn() } as never);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -37,6 +38,15 @@ describe('custom tags on the engine', () => {
     expect(useDataCollection).toHaveBeenCalledWith('tags');
   });
 
+  it('keeps a refused new tag out of the catalogue and shows an ordinary queued new tag', () => {
+    const attempted = { userId: 'u', name: 'Hope', color: '#999', required: false };
+    const { result } = render([
+      { ...row('refused', attempted), creating: true, needsAttention: true },
+      { ...row('queued', { ...attempted, name: 'Mercy' }), creating: true, needsAttention: false },
+    ]);
+    expect(result.current.customTags.map(tag => tag.id)).toEqual(['t1', 'queued']);
+  });
+
   it('creates, recolors and removes through engine actions', async () => {
     const { result } = render();
     await act(async () => { await awaitWriteOperation(result.current.addCustomTag({ id: 'new', userId: 'u', name: 'Faith', color: '#333', required: false }), jest.fn()); });
@@ -47,7 +57,7 @@ describe('custom tags on the engine', () => {
     expect(recolor({ userId: 'u', name: 'Saved tag name', color: '#111', required: false })).toEqual(
       expect.objectContaining({ name: 'Saved tag name', color: '#444', required: false }),
     );
-    await act(async () => { await awaitWriteOperation(result.current.removeCustomTag('Hope'), jest.fn()); });
+    await act(async () => { await awaitWriteOperation(result.current.removeCustomTag('t1'), jest.fn()); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'tags', id: 't1' });
   });
 
@@ -59,7 +69,7 @@ describe('custom tags on the engine', () => {
     (kind === 'recolor' ? actions.commit : actions.remove).mockReturnValueOnce(capture);
     const operation = kind === 'recolor'
       ? result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false })
-      : result.current.removeCustomTag('Hope');
+      : result.current.removeCustomTag('t1');
     let accepted = false;
     const waiting = awaitWriteOperation(operation, jest.fn()).then(() => { accepted = true; });
     try {

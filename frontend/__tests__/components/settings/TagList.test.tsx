@@ -135,7 +135,7 @@ describe('TagList', () => {
     expect(mockOnEditColor).not.toHaveBeenCalled();
   });
 
-  it('calls onRemoveTag with correct tag name when delete button is clicked (editable)', async () => {
+  it('calls onRemoveTag with the selected tag ID when delete button is clicked (editable)', async () => {
     renderList({ editable: true });
     const deleteButtons = screen.getAllByRole('button', { name: /Delete/i }); // Using mock translation
     expect(deleteButtons.length).toBe(mockTags.length);
@@ -143,7 +143,7 @@ describe('TagList', () => {
     await userEvent.click(deleteButtons[2]); // Click delete for the third tag ('Main Point')
 
     expect(mockOnRemoveTag).toHaveBeenCalledTimes(1);
-    expect(mockOnRemoveTag).toHaveBeenCalledWith(mockTags[2].name);
+    expect(mockOnRemoveTag).toHaveBeenCalledWith(mockTags[2].id);
   });
 
   it('does not call onRemoveTag when delete button does not exist (not editable)', () => {

@@ -110,6 +110,32 @@ describe('tag settings local capture', () => {
     expect(actions.remove).toHaveBeenCalledTimes(2);
   });
 
+  it('explains a duplicate already visible and leaves the input available', async () => {
+    render(<TagsSection user={user} />);
+    const form = screen.getByTestId('add-tag-form-element');
+    const input = within(form).getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Hope' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'settings.addTag' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('settings.tagNameExists'));
+    expect(input).toHaveValue('Hope');
+    expect(actions.create).not.toHaveBeenCalled();
+  });
+
+  it('deletes the clicked record when two stored tags share a name', async () => {
+    const [first] = makeRows();
+    const second = { ...first, resource: { ...first.resource, id: 'hope-blue' }, value: { ...first.value, color: '#336699' } };
+    jest.mocked(useDataCollection).mockReturnValue({
+      state: { snapshots: [], documents: [first, second], complete: true, freshness: 'server', checking: false, version: 1, error: null },
+      loading: false, error: null, refresh: jest.fn(),
+    } as never);
+    render(<TagsSection user={user} />);
+
+    const buttons = await screen.findAllByRole('button', { name: 'settings.deleteTag Hope' });
+    fireEvent.click(buttons[1]);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'common.delete' }));
+    await waitFor(() => expect(actions.remove).toHaveBeenCalledWith({ collection: 'tags', id: 'hope-blue' }));
+  });
+
   it('does not let an earlier owner completion close or unlock a later owner color picker', async () => {
     const first = deferred(), second = deferred();
     actions.commit.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);

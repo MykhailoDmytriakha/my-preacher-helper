@@ -2,11 +2,14 @@ import { randomUUID } from 'node:crypto';
 
 import { NextResponse } from 'next/server';
 
+import { TAG_NAME_EXISTS } from '@/utils/tagName';
+
 import { isClosedToLegacyWriters, isCollectionServed } from './activation';
 import { assertLegacyWritable, DATA_ENGINE_REQUIRED, isDataEngineRequired, LEGACY_REFUSAL_STATUS, listOwnedDocuments, mutateLegacyResource, updateLegacyResource, upsertLegacySettings } from './legacyBoundary.server';
 import { diffFields, personFields } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
+import type { TagCleanupGuard } from './server';
 import type { DocumentData, ResourceRef } from './types';
 
 /**
@@ -111,7 +114,7 @@ export function assertServerWritable(raw: Record<string, unknown> | undefined, c
 
 /** Applies `mutate` to the current document through the engine and returns the accepted value. */
 export async function editOwnedDocument(owner: string, resource: ResourceRef,
-  mutate: (current: DocumentData) => DocumentData): Promise<DocumentData> {
+  mutate: (current: DocumentData) => DocumentData, tagCleanup?: TagCleanupGuard): Promise<DocumentData> {
   // Loaded on use, like the legacy bridge: a route that never meets an engine document keeps
   // its light module graph.
   const { processCommand, readDocument } = await import('./server');
@@ -124,7 +127,7 @@ export async function editOwnedDocument(owner: string, resource: ResourceRef,
     const result = await processCommand(owner, {
       protocol: 1, operationId: randomUUID(), owner, resource,
       generation: current.metadata?.generation ?? null, dependsOn: [], kind: 'update', changes,
-    });
+    }, tagCleanup);
     if (result.kind === 'acknowledged') return result.snapshot.value ?? next;
     if (result.kind === 'deleted') throw new ServerEditError('not-found', 404);
     if (result.kind === 'refused') throw new ServerEditError(result.code, 409);
@@ -144,8 +147,9 @@ export async function writeOwnedDocument(options: {
   resource: ResourceRef;
   legacy: () => Promise<void>;
   engine: (current: DocumentData) => DocumentData;
+  tagCleanup?: TagCleanupGuard;
 }): Promise<DocumentData | null> {
-  const { owner, resource, legacy, engine } = options;
+  const { owner, resource, legacy, engine, tagCleanup } = options;
   if (!isClosedToLegacyWriters(resource.collection)) {
     try {
       await legacy();
@@ -154,7 +158,7 @@ export async function writeOwnedDocument(options: {
       if (!isDataEngineRequired(error) || !isCollectionServed(resource.collection)) throw error;
     }
   }
-  return editOwnedDocument(owner, resource, engine);
+  return editOwnedDocument(owner, resource, engine, tagCleanup);
 }
 
 /**
@@ -205,15 +209,11 @@ const withoutTag = (thoughts: DocumentData[], name: string): DocumentData[] => t
   ? { ...thought, tags: thought.tags.filter(tag => tag !== name) } : thought);
 
 /**
- * A DELETED TAG LEAVES EVERY THOUGHT, ONE SERMON AT A TIME.
+ * Remove an absent tag name from thoughts, one sermon at a time.
  *
- * Removing a name is idempotent, so the cascade needs no single transaction: it lists the
- * owner's sermons once and rewrites only those that carry the tag, each on its own road — a
- * legacy sermon by a legacy transaction that recomputes from the document as read, an engine
- * sermon by an ordinary update command. The engine used to fold this into the tag's own
- * relation transaction, bounded at 100 documents, and so refused to delete a tag for anyone
- * with a hundred sermons; production never had that ceiling. A sermon that refuses is logged
- * and skipped, never allowed to strand the others. Pass the owner's sermons when already read.
+ * Each write checks that the name is still absent inside its own
+ * transaction. A recreated name stops the remaining cleanup. The per-sermon
+ * transaction keeps the cascade independent of the number of affected sermons.
  */
 export async function removeTagFromSermons(owner: string, name: string,
   sermons?: { id: string; data: DocumentData }[]): Promise<{ changed: number; failed: number }> {
@@ -222,14 +222,19 @@ export async function removeTagFromSermons(owner: string, name: string,
     if (!carriesTag(data.thoughts, name)) continue;
     // One sermon that refuses must not strand the rest: each is its own write.
     try {
+      const resource = { collection: 'sermons', id };
       await writeOwnedDocument({
-        owner, resource: { collection: 'sermons', id },
-        legacy: () => mutateLegacyResource({ collection: 'sermons', id }, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
-          ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts'),
+        owner, resource, tagCleanup: { absentTagName: name },
+        legacy: () => mutateLegacyResource(resource, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
+          ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts', async transaction => {
+            const { tagNameStillAbsent } = await import('./server');
+            if (!await tagNameStillAbsent(transaction, owner, name)) throw new ServerEditError(TAG_NAME_EXISTS, 409);
+          }),
         engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutTag(current.thoughts as DocumentData[], name) } : current,
       });
       changed += 1;
     } catch (error) {
+      if (error instanceof ServerEditError && error.code === TAG_NAME_EXISTS) break;
       failed += 1;
       console.error(`A deleted tag could not leave sermon ${id}`, error);
     }

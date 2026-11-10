@@ -10,9 +10,11 @@ import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import { sayFailure } from '@/utils/actionFailureMessage';
+import { failureCode } from '@/utils/failureCode';
 import { listReadState } from '@/utils/listReadState';
 import { awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
 import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
+import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import ColorPickerModal from '@components/ColorPickerModal';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -89,7 +91,8 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     const reportFailure = (error: unknown) => {
       console.error('Error adding tag:', error);
       const key = (error as { message?: string } | null)?.message === 'Reserved tag name'
-        ? 'errors.reservedTagName' : TAG_SAVE_ERROR;
+        ? 'errors.reservedTagName'
+        : failureCode(error) === TAG_NAME_EXISTS ? 'settings.tagNameExists' : TAG_SAVE_ERROR;
       toast.error(t(key));
     };
     const submission = addCustomTag(newTagObj);
@@ -97,9 +100,9 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     return submission;
   };
 
-  const handleRemoveTag = (tagName: string) => {
+  const handleRemoveTag = (tagId: string) => {
     const owner = user?.uid;
-    const tag = tags.customTags.find(candidate => candidate.name === tagName);
+    const tag = tags.customTags.find(candidate => candidate.id === tagId);
     if (!owner || !tag || pendingActionRef.current?.owner === owner) return;
     setDeleteSelection({ owner, tag });
   };
@@ -117,7 +120,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       toast.error(t(TAG_SAVE_ERROR));
     };
     try {
-      await awaitWriteOperation(removeCustomTag(latest.name), reportFailure);
+      await awaitWriteOperation(removeCustomTag(latest.id), reportFailure);
       if (ownerRef.current === action.owner) {
         setDeleteSelection(current => current === selection ? null : current);
       }

@@ -1706,12 +1706,13 @@
     "deleteTag": "Delete tag",
     "deleteTagConfirmation": {
       "title": "Delete tag “{{name}}”?",
-      "description": "This tag will be removed from all thoughts. Their text and other tags will stay."
+      "description": "Deleting the last card with this name removes the tag from thoughts. Their text and other tags stay."
     },
     "loading": "Loading...",
     "noCustomTags": "You don't have any custom tags yet",
     "noRequiredTags": "No required tags",
     "tagName": "Tag Name",
+    "tagNameExists": "A tag with this name already exists.",
     "tagColor": "Tag Color",
     "tagColorHistory": {
       "heading": "Color history",

@@ -41,6 +41,10 @@ Explicit Keep Local chooses the whole original local passage and its marks, then
 
 The reader waits for complete durable local capture, blocks duplicate Apply within its owner/book/Bible scope, and gives neutral prepared feedback. `AnalysisReshapeRecovery`, mounted once in the private workspace, uses `subscribeSavedWork` and the existing action delivery presentation after navigation; it adds no database polling. A single document cannot resolve one participant. `requiresWholeActionResolution` derives that boundary through the canonical cancellation scope for generic recovery, retaining Open/Copy while removing an impossible participant-level choice. A later ordinary request after a completed atomic action remains independently decidable. The `decision-required` refusal uses a translated instruction to decide the earlier change; it does not promise a two-version choice for a whole action.
 
+## Cleanup keyed by a name
+
+Some relations store a name rather than a document ID. A custom tag card is deleted by ID, while a thought's label uses the exact name. Cleanup begins only when the last live card for that owner and name is removed. Guard each affected sermon write with a fresh name check in the same transaction. Read the owner's tag head there as well, so a tag creation can invalidate the proof even if the name query returned no rows. Share the exact-name lookup with tag admission. For values at the Firestore index limit, compare the full stored name through the existing owner-scoped pagination. Both canonical and legacy sermon writes use the same guard.
+
 ## Legacy paths (unconverted collections only)
 
 The old `useSeriesMembership` / `seriesMembership.client.ts` writer is compatibility code, not a template for a new multi-document action. Do not chain its calls or independent document saves to imitate atomic Save.

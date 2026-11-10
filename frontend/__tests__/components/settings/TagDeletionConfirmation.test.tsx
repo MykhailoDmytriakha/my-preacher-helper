@@ -41,7 +41,7 @@ function expectLabelQuestion(i18n: Awaited<ReturnType<typeof language>>) {
   expect(dialog).toHaveAccessibleDescription(i18n.t('settings.deleteTagConfirmation.description'));
   expect(dialog).not.toHaveTextContent(i18n.t('common.deleteItem.description'));
   expect(dialog.querySelector('peace')).toBeNull();
-  if (i18n.language === 'en') expect(dialog).toHaveTextContent('This tag will be removed from all thoughts. Their text and other tags will stay.');
+  if (i18n.language === 'en') expect(dialog).toHaveTextContent('Deleting the last card with this name removes the tag from thoughts. Their text and other tags stay.');
   return dialog;
 }
 beforeEach(() => {

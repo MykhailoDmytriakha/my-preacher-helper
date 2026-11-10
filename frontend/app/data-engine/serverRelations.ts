@@ -3,6 +3,7 @@ import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
+import { TAG_NAME_EXISTS } from '@/utils/tagName';
 
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { validCouncilCarry } from './councilCarryContent';
@@ -27,7 +28,7 @@ import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, Re
 import type { SeriesItem } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
-export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
+export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type' | 'name'; operator: '==' | 'array-contains'; value: string }
 type SeriesMembershipReader = {
   serverMs: number;
   catalogVersion(): Promise<number>;
@@ -42,7 +43,16 @@ export interface RelationReader {
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; seriesItemPlacement?: StepPlacementWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite; councilTopicPlacement?: StepPlacementWrite }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; seriesItemPlacement?: StepPlacementWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite; councilTopicPlacement?: StepPlacementWrite; detachedTagName?: string }
+
+/** Firestore truncates indexed strings at 1,500 bytes. Use the full stored names for comparison. */
+export async function tagNameIsTaken(list: RelationReader['list'], name: string, exceptId?: string): Promise<boolean> {
+  const filter: RelationFilter | undefined = Buffer.byteLength(name) < 1500
+    ? { field: 'name', operator: '==', value: name } : undefined;
+  const matches = await list('tags', 1, filter, snapshot =>
+    snapshot.resource.id !== exceptId && snapshot.value?.name === name && !snapshot.metadata?.deleted);
+  return matches.length > 0;
+}
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -124,6 +134,7 @@ class RelationPlanner {
   private seriesItemPlacement?: StepPlacementWrite[];
   private councilTopicPlacement?: StepPlacementWrite;
   private outlinePointPlacement?: OutlinePointPlacementWrite;
+  private detachedTagName?: string;
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
     this.cached.set(key(primary.resource), primary);
@@ -660,10 +671,11 @@ class RelationPlanner {
   private async detachTag(): Promise<void> {
     const tag = this.primary.value!;
     if (tag.required === true || (typeof tag.name === 'string' && isStructureTag(tag.name))) fail('required-tag');
-    if (typeof tag.name !== 'string' || !tag.name) fail(INVALID_DOCUMENT);
-    // The thoughts that carry the name are cleaned after this commit, one sermon at a time
-    // (server.ts → removeTagFromSermons): folding every sermon into this transaction refused
-    // the deletion outright for anyone with a hundred sermons.
+    const name = tag.name;
+    if (typeof name !== 'string' || !name) return fail(INVALID_DOCUMENT);
+    // Thoughts store the name, so a surviving card still represents their tag.
+    // The last card's cleanup runs after commit, one sermon at a time.
+    if (!await tagNameIsTaken(this.reader.list, name, this.primary.resource.id)) this.detachedTagName = name;
   }
 
   private async checkSermonSources(command: Exclude<DataCommand, { kind: 'relation' | 'delete' }>, accepted: DocumentData): Promise<void> {
@@ -780,6 +792,12 @@ class RelationPlanner {
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
     const result = applyCommand(effective, this.primary);
     if (result.kind !== 'acknowledged') return result;
+    if (command.resource.collection === 'tags') {
+      const name = result.snapshot.value?.name;
+      if (typeof name === 'string' && this.primary.value?.name !== name && await tagNameIsTaken(this.reader.list, name, this.primary.resource.id)) {
+        fail(TAG_NAME_EXISTS);
+      }
+    }
     this.writes.set(key(this.primary.resource), result.snapshot);
     if (command.kind === 'delete') await this.cascadeDelete();
     else await this.deriveAccepted(command);
@@ -816,7 +834,8 @@ class RelationPlanner {
       ...(this.councilTopicPlacement && { councilTopicPlacement: this.councilTopicPlacement }),
       ...(this.outlinePointPlacement && { outlinePointPlacement: this.outlinePointPlacement }),
       ...(this.seriesItemPlacement && { seriesItemPlacement: this.seriesItemPlacement }),
-      ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
+      ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}),
+      ...(this.detachedTagName && { detachedTagName: this.detachedTagName }) };
   }
 }
 

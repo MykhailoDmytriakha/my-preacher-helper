@@ -89,6 +89,28 @@ it.each([['#54A0FF', '#54A0FF'], ['', 'settings.tagColorHistory.notSet']])(
   }
 });
 
+it('explains a duplicate tag refused after local capture with its original name and colour', async () => {
+  actions = null;
+  const tag = { collection: 'tags', id: 'new-tag' };
+  const h = documentEngineHarness({ resource: tag, value: null, metadata: null });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+    kind: 'refused', operationId: command.operationId, code: 'tag-name-exists',
+  }));
+
+  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+  await waitFor(() => expect(actions?.ready).toBe(true));
+  await act(async () => {
+    await actions!.create(tag, { userId: 'owner', name: 'Hope', color: '#FF6B6B', required: false });
+    await settleEngine();
+  });
+
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('settings.tagNameExists');
+  expect(alert).toHaveTextContent('Hope');
+  expect(alert).toHaveTextContent('#FF6B6B');
+});
+
 it('shows both names when a single template rename needs a decision', async () => {
   process.env[ON_ENGINE] = 'planTemplates';
   actions = null;

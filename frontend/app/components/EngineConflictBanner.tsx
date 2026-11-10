@@ -28,6 +28,7 @@ import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
+import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
@@ -50,7 +51,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  */
 interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
-  refused?: boolean; commentKindPlaceChanged?: boolean }
+  refused?: boolean; commentKindPlaceChanged?: boolean; tagNameExists?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -276,6 +277,8 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
   for (const { record, answer } of records) if (answer === 'refused') Object.keys(record.checkpoint.pending).forEach(id => refused.add(id));
   const movedCommentKinds = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === 'comment-kind-place-changed'
     ? [entry.command.operationId] : []));
+  const existingTagNames = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === TAG_NAME_EXISTS
+    ? [entry.command.operationId] : []));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
   // A screen is listed for an answered saved request, including a local policy refusal.
   // A conflict in an unsent screen draft has no submitted request to settle here.
@@ -300,6 +303,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       documents.push({ resource, kind: kindOf(drafts.map(draft => draft.record), refused), screen, screenValue: sameScreen ? screenValue : null,
         refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
         commentKindPlaceChanged: scope.operationIds.some(id => movedCommentKinds.has(id)),
+        tagNameExists: scope.operationIds.some(id => existingTagNames.has(id)),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
@@ -537,7 +541,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
 
   const heading: Record<Exclude<Kind, 'conflict'>, [string, string | null]> = {
     refused: [t(REFUSED_TITLE), entry.commentKindPlaceChanged ? t('comment.kindPlaceChanged') : null],
-    refusedCreate: [t(REFUSED_TITLE), null],
+    refusedCreate: [t(REFUSED_TITLE), entry.tagNameExists ? t('settings.tagNameExists') : null],
     deletedThere: [t('freshness.deletedElsewhereTitle'), t('freshness.deletedElsewhereBody')],
     deletedHere: [t('dataSync.deleteConflictTitle'), t('dataSync.deleteConflictBody')],
     refusedDelete: [t('dataSync.deleteRefusedTitle'), t('dataSync.deleteRefusedBody')],

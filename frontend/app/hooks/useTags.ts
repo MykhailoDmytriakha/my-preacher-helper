@@ -11,6 +11,7 @@ import {
   type WriteOperation,
 } from '@/utils/recoverableWrite';
 import { isStructureTag } from '@/utils/structureTags';
+import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { TagColorCapture, TagColorSeen } from '@/data-engine/documentFieldAction';
@@ -36,6 +37,8 @@ export function useTags(userId: string | null | undefined) {
   const documentActions = useDocumentActions();
 
   const customTags = useMemo<Tag[]>(() => (engineTags.state?.documents ?? []).filter(isLiveCollectionDocument).flatMap(row => {
+    // The global recovery banner owns refused creations and retains their draft.
+    if (row.creating && row.needsAttention) return [];
     const value = row.value as Partial<Tag> | null;
     if (!value || value.required !== false || typeof value.name !== 'string' || isStructureTag(value.name)
       || isStructureTag(row.resource.id)) return [];
@@ -68,14 +71,17 @@ export function useTags(userId: string | null | undefined) {
       const id = tag.id || newClientId();
       // The form's own messages explain these two refusals next to the field.
       if (isStructureTag(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Reserved tag name')));
-      if (byName(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Tag with same name and userId already exists')));
+      if (byName(tag.name)) {
+        const duplicate = Object.assign(new Error('A tag with this name already exists'), { code: TAG_NAME_EXISTS });
+        return queuedMutation(`tag:add:${id}`, Promise.reject(duplicate));
+      }
       return documentActions.create({ collection: 'tags', id },
         { userId, name: tag.name, color: tag.color, required: false, createdAt: new Date().toISOString() });
     },
-    removeCustomTag: (tagName: string): WriteOperation => {
-      const existing = byName(tagName);
+    removeCustomTag: (tagId: string): WriteOperation => {
+      const existing = customTags.find(tag => tag.id === tagId);
       if (!existing) return skippedWrite();
-      // The engine removes the tag from every sermon's thoughts in the same operation.
+      // The server removes thought labels when the last card with this name is deleted.
       return documentActions.remove({ collection: 'tags', id: existing.id });
     },
     updateTag: (tag: Tag, capture?: TagColorCapture): WriteOperation => {

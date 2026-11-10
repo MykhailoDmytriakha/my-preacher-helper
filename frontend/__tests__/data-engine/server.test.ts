@@ -65,6 +65,7 @@ const update = (operationId = 'update-1', generation: string | null = 'create-1'
 const receiptPath = (owner: string, operationId: string) => `_dataEngineReceipts/${createHash('sha256').update(JSON.stringify([owner, operationId])).digest('hex')}`;
 const receipts = () => [...documents.entries()].filter(([key]) => key.startsWith('_dataEngineReceipts/'));
 const transactionReads: string[] = [];
+const transactionReadBatches: string[][] = [];
 const transactionWrites: string[] = [];
 // Document operation model, not a cloud billing report: include empty-query minimums.
 let documentReadUnits = 0;
@@ -73,6 +74,7 @@ beforeEach(() => {
   jest.mocked(isCollectionServed).mockReturnValue(true);
   documents.clear();
   transactionReads.length = 0;
+  transactionReadBatches.length = 0;
   transactionWrites.length = 0;
   documentReadUnits = 0;
   failCommit = false;
@@ -81,10 +83,12 @@ beforeEach(() => {
   (adminDb.runTransaction as jest.Mock).mockImplementation((callback: (tx: unknown) => Promise<unknown>) => {
     const run = transactionTail.then(async () => {
       const writes = new Map<string, Raw>();
+      const reads: string[] = [];
+      transactionReadBatches.push(reads);
       const result = await callback({
         get: async (reference: { path?: string; get: () => Promise<unknown> }) => {
           if (writes.size) throw new Error('Firestore requires all reads before writes');
-          if (reference.path) { transactionReads.push(reference.path); documentReadUnits += 1; return snapshot(reference.path); }
+          if (reference.path) { reads.push(reference.path); transactionReads.push(reference.path); documentReadUnits += 1; return snapshot(reference.path); }
           const result = await reference.get() as { docs: unknown[] };
           documentReadUnits += Math.max(1, result.docs.length);
           return result;
@@ -107,6 +111,110 @@ beforeEach(() => {
     });
     transactionTail = run.catch(() => undefined);
     return run;
+  });
+});
+
+describe('custom tag name ownership', () => {
+  const owner = 'owner-1';
+  const tag = (name: string, color = '#001122', userId = owner) => ({ userId, name, color, required: false });
+  const resourceFor = (id: string) => ({ collection: 'tags', id });
+  const add = (id: string, name: string, userId = owner): DataCommand => ({
+    protocol: 1, kind: 'create', owner: userId, resource: resourceFor(id), operationId: 'create-' + id,
+    generation: null, dependsOn: [], value: tag(name, '#445566', userId),
+  });
+  const remove = (id: string, baseline: ReturnType<typeof tag>): DataCommand => ({
+    protocol: 1, kind: 'delete', owner, resource: resourceFor(id), operationId: 'remove-' + id,
+    generation: null, dependsOn: [], baseline,
+  });
+
+  it('refuses a new ID for an already stored name, including a retry of the same queued action', async () => {
+    const stored = tag('Prayer');
+    documents.set('tags/existing-tag', stored);
+    const duplicate = add('late-device-tag', 'Prayer');
+
+    expect(await processCommand(owner, duplicate)).toMatchObject({ kind: 'refused', code: 'tag-name-exists' });
+    expect(await processCommand(owner, duplicate)).toMatchObject({ kind: 'refused', code: 'tag-name-exists' });
+    expect(documents.get('tags/existing-tag')).toEqual(stored);
+    expect(documents.has('tags/late-device-tag')).toBe(false);
+    expect(await processCommand(owner, add('new-tag', 'Mercy'))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand('another-owner', add('another-tag', 'Prayer', 'another-owner')))
+      .toMatchObject({ kind: 'acknowledged' });
+  });
+
+  it('compares full names when Firestore cannot index the complete UTF-8 value', async () => {
+    const longPrefix = 'я'.repeat(751);
+    documents.set('tags/legacy-long', tag(longPrefix + 'a'));
+    const tagQueries: ReturnType<typeof queryFor>[] = [];
+    jest.mocked(adminDb.collection).mockImplementation(collection => {
+      const query = queryFor(collection);
+      if (collection === 'tags') tagQueries.push(query);
+      return query as never;
+    });
+
+    expect(await processCommand(owner, add('duplicate-long', longPrefix + 'a'))).toMatchObject({ code: 'tag-name-exists' });
+    expect(await processCommand(owner, add('different-long', longPrefix + 'b'))).toMatchObject({ kind: 'acknowledged' });
+    expect(tagQueries.flatMap(query => query.where.mock.calls).some(([field]) => field === 'name')).toBe(false);
+  });
+
+  it('keeps the label when the name is recreated after delete commits and before cleanup writes', async () => {
+    const blue = tag('Prayer');
+    const thought = { id: 'saved-thought', text: 'Keep the words', date: '2026-11-10', tags: ['Prayer'] };
+    documents.set('tags/blue', blue);
+    const sermon = create();
+    if (sermon.kind !== 'create') throw new Error('Expected a create command');
+    await processCommand(owner, { ...sermon, value: { ...sermon.value, thoughts: [thought] } });
+    let listStarted!: () => void, resumeList!: () => void;
+    const listing = new Promise<void>(resolve => { listStarted = resolve; });
+    const held = new Promise<void>(resolve => { resumeList = resolve; });
+    let holdOnce = true;
+    jest.mocked(adminDb.collection).mockImplementation(collection => {
+      const query = queryFor(collection);
+      const get = query.get;
+      query.get = async () => {
+        if (collection === 'sermons' && holdOnce) {
+          holdOnce = false;
+          listStarted();
+          await held;
+        }
+        return get();
+      };
+      return query as never;
+    });
+
+    const deleting = processCommand(owner, remove('blue', blue));
+    try {
+      await listing;
+      expect(documents.get('tags/blue')?._dataEngine).toMatchObject({ deleted: true });
+      expect(await processCommand(owner, add('replacement', 'Prayer'))).toMatchObject({ kind: 'acknowledged' });
+    } finally {
+      resumeList();
+      await deleting;
+    }
+    expect(documents.get('sermons/sermon-1')?.thoughts).toEqual([thought]);
+    expect(documents.get('tags/replacement')).toMatchObject({ name: 'Prayer', color: '#445566' });
+    const tagsHead = `${HEADS_COLLECTION}/${collectionHeadId(owner, 'tags')}`;
+    expect(transactionReadBatches.some(reads => reads.includes('sermons/sermon-1') && reads.includes(tagsHead))).toBe(true);
+  });
+
+  it('keeps sermon thoughts tagged until the last owned card with the exact name is removed', async () => {
+    const blue = tag('Prayer'), green = tag('Prayer', '#226655');
+    const thought = { id: 'saved-thought', text: 'Keep the written words', date: '2026-11-10', tags: ['Prayer', 'Keep'] };
+    documents.set('tags/blue', blue);
+    documents.set('tags/green', green);
+    documents.set('tags/foreign', tag('Prayer', '#ffffff', 'another-owner'));
+    const sermon = create();
+    if (sermon.kind !== 'create') throw new Error('Expected a create command');
+    expect(await processCommand(owner, { ...sermon, value: { ...sermon.value, thoughts: [thought] } }))
+      .toMatchObject({ kind: 'acknowledged' });
+
+    expect(await processCommand(owner, remove('blue', blue))).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('tags/blue')?._dataEngine).toMatchObject({ deleted: true });
+    expect(documents.get('tags/green')).toEqual(green);
+    expect(documents.get('sermons/sermon-1')?.thoughts).toEqual([thought]);
+
+    expect(await processCommand(owner, remove('green', green))).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/sermon-1')?.thoughts).toEqual([{ ...thought, tags: ['Keep'] }]);
+    expect(documents.get('tags/foreign')?.name).toBe('Prayer');
   });
 });
 

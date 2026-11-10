@@ -41,7 +41,7 @@ jest.mock('@components/settings/TagList', () => (props: any) => (
       <div key={tag.id}>
         <span>{tag.name}</span>
         <button onClick={() => props.onEditColor(tag)}>Edit {tag.name}</button>
-        <button onClick={() => props.onRemoveTag(tag.name)}>Remove {tag.name}</button>
+        <button onClick={() => props.onRemoveTag(tag.id)}>Remove {tag.name}</button>
       </div>
     ))}
   </div>
@@ -195,7 +195,7 @@ describe('TagsSection', () => {
     // Check that the service was called within the component's handler
     await waitFor(() => {
       expect(mockRemoveCustomTag).toHaveBeenCalledTimes(1);
-      expect(mockRemoveCustomTag).toHaveBeenCalledWith('Prayer');
+      expect(mockRemoveCustomTag).toHaveBeenCalledWith('cust-1');
     });
 
     // A queued tag removal never announces server-side completion.
@@ -218,7 +218,7 @@ describe('TagsSection', () => {
     const confirm = await screen.findByRole('dialog');
     await userEvent.click(confirm.querySelectorAll('button')[0]);
     await waitFor(() => expect(mockRemoveCustomTag).toHaveBeenCalledTimes(1));
-    expect(mockRemoveCustomTag).toHaveBeenCalledWith('Prayer');
+    expect(mockRemoveCustomTag).toHaveBeenCalledWith('cust-1');
   });
 
   it('opens ColorPickerModal when editable TagList calls onEditColor', async () => {

@@ -154,14 +154,17 @@ export async function upsertLegacySettings(owner: string, mutate: (current: Docu
  * document refuses here (runLegacyTransaction), which is how a caller learns to take the engine road.
  */
 export async function mutateLegacyResource(resource: { collection: string; id: string },
-  mutate: (raw: DocumentData | undefined) => DocumentData | null, aggregate?: string): Promise<void> {
+  mutate: (raw: DocumentData | undefined) => DocumentData | null, aggregate?: string, beforeWrite?: (transaction: Transaction) => Promise<void>): Promise<void> {
   const [{ adminDb }, { FieldValue }] = await Promise.all([import('@/config/firebaseAdminConfig'), import('firebase-admin/firestore')]);
   const reference = adminDb.collection(resource.collection).doc(resource.id);
   await runLegacyTransaction(async transaction => {
     const snapshot = await transaction.get(reference);
     const patch = mutate(snapshot.exists ? snapshot.data() : undefined);
     // Every legacy writer of an aggregate advances its counter, or the counter lies.
-    if (patch) transaction.update(reference, aggregate ? { ...patch, [`rev.${aggregate}`]: FieldValue.increment(1) } : patch);
+    if (patch) {
+      await beforeWrite?.(transaction);
+      transaction.update(reference, aggregate ? { ...patch, [`rev.${aggregate}`]: FieldValue.increment(1) } : patch);
+    }
   });
 }
 
