@@ -366,4 +366,18 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Погребение')).toBeInTheDocument();
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
   });
+
+  it('names a situation of the word for the occasion by its name, under the section', () => {
+    mockUsePathname.mockReturnValue('/care/word/afraid');
+    mockUseSearchParams.mockReturnValue({ get: jest.fn().mockReturnValue(null) });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByRole('link', { name: 'A word for the case' })).toHaveAttribute('href', '/care/word');
+    expect(screen.getByText('careWord.topics.afraid')).toBeInTheDocument();
+    expect(screen.queryByText('afraid')).not.toBeInTheDocument();
+  });
 });

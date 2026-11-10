@@ -41,7 +41,7 @@ const CARDS = Object.keys(SECTIONS_BY_CARD) as (keyof typeof SECTIONS_BY_CARD)[]
 const SECTIONS = CARDS.flatMap((card) => SECTIONS_BY_CARD[card]);
 
 /** The sections that are built. Everything else must be inert and marked "soon". */
-const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders', council: '/care/council' };
+const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders', council: '/care/council', word: '/care/word' };
 
 describe('Pastor plane', () => {
   beforeEach(() => {

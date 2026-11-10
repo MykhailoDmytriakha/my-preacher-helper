@@ -10,8 +10,8 @@ import Switch from '@/components/ui/Switch';
 import { useClipboard } from '@/hooks/useClipboard';
 import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLES } from '@/utils/bibles';
-import { verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferenceNumbers, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
+import { placePreview, placeVerses } from '@/utils/placeText';
 import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
 import { verseCopyText, type CopyNames } from '@/utils/verseCopy';
 import { useTranslation } from '@locales/useTranslation';
@@ -26,6 +26,7 @@ import { passageAway, type PassageBox } from './verseSheetGeometry';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
+import type { BookText } from '@/utils/bibleText';
 
 /** How many verses of a passage the window shows before it says "…". */
 const PASSAGE_VERSES_SHOWN = 8;
@@ -50,14 +51,12 @@ type CrossReferenceSheetProps = {
   linkLayerClassName?: string;
 };
 
-/** The canonical range supplies both preview and whole-passage copy, including chapter crossings. */
-function passageVerses(text: BookText | undefined, reference: CrossReference, bible: BibleId) {
-  if (!text) return [];
-  return versesHeldIn({ ...reference, bible }, bible).flatMap(place => {
-    const raw = text.chapters[place.chapter - 1]?.[place.verse - 1];
-    return raw === undefined ? [] : [{ chapter: place.chapter, verse: place.verse, words: verseWords(raw) }];
-  });
-}
+/**
+ * The canonical range supplies both preview and whole-passage copy, including chapter crossings:
+ * a link is numbered by the Bible read, so it is read in that same Bible (`placeVerses`).
+ */
+const passageVerses = (text: BookText | undefined, reference: CrossReference, bible: BibleId) =>
+  placeVerses(text, { ...reference, bible }, bible);
 
 /** A link copies all its verses; the display's eight-verse preview does not limit it. */
 function passageCopy(text: BookText | undefined, reference: CrossReference, bible: BibleId, names: CopyNames): string | null {
@@ -65,12 +64,8 @@ function passageCopy(text: BookText | undefined, reference: CrossReference, bibl
   return verses.length ? verseCopyText(verses, 'quote', names, chapter => text?.chapters[chapter - 1]?.length) : null;
 }
 
-function passageText(text: BookText | undefined, reference: CrossReference, bible: BibleId): string | null {
-  const verses = passageVerses(text, reference, bible);
-  if (!verses.length) return null;
-  const words = verses.slice(0, PASSAGE_VERSES_SHOWN).map(verse => verse.words).join(' ');
-  return verses.length > PASSAGE_VERSES_SHOWN ? `${words} …` : words;
-}
+const passageText = (text: BookText | undefined, reference: CrossReference, bible: BibleId): string | null =>
+  placePreview(text, { ...reference, bible }, bible, PASSAGE_VERSES_SHOWN);
 
 /** Where the lit rows sit in the pane's scrolling text, in px from its top; null — nothing is lit. */
 function litBox(pane: HTMLElement): PassageBox | null {

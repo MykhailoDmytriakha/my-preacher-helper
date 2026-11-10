@@ -19,6 +19,8 @@ const ROUTES = {
   council: /^\/care\/council\/[^\/]+$/,
   councilConduct: /^\/care\/council\/[^\/]+\/conduct$/,
   order: /^\/care\/orders\/[^\/]+$/,
+  words: /^\/care\/word$/,
+  word: /^\/care\/word\/[^\/]+$/,
   groupConduct: /^\/groups\/[^\/]+\/conduct$/,
   prayer: /^\/prayers\/[^\/]+$/,
   sermon: /^\/sermons\/[^\/]+$/,
