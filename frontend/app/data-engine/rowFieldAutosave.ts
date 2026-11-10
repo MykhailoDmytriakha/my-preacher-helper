@@ -142,7 +142,7 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
       || (equalValues(before, after) && beforeKinds.get(rowId) === afterKinds.get(rowId))) return [];
     return [[rowId, { generation, reviewed: true, action: { rowId, rowCreatedAt, before, after, time: null, observedRevision } }]] as const;
   });
-  if (stamps.length) checkpoint.councilOutcomeDrafts = Object.fromEntries(stamps);
+  if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
 }
 
 function uncaptured(checkpoint: SessionCheckpoint, target: Target) {
@@ -224,6 +224,15 @@ export function acknowledgeRowFields(checkpoint: SessionCheckpoint, captured: Au
       !captured[target.action]?.some(sent => sameCapture(action, sent)));
     if (remaining.length) checkpoint[target.draft] = Object.fromEntries(remaining);
     else delete checkpoint[target.draft];
+  }
+}
+
+export function restoreSavedRowFieldDrafts(request: CommitRequest, checkpoint: SessionCheckpoint): void {
+  const generation = checkpoint.confirmed.metadata?.generation;
+  if (!generation) return;
+  for (const { draft, action } of targetsFor(checkpoint.confirmed.resource.collection)) {
+    const saved = request[action];
+    if (saved?.length) checkpoint[draft] = Object.fromEntries(saved.map(item => [item.rowId, { generation, action: item }]));
   }
 }
 

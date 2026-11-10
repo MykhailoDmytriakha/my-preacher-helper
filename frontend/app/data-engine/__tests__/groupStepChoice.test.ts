@@ -1,8 +1,11 @@
 import { documentEngineHarness, settleEngine } from '../../../test-utils/documentEngineHarness';
 import { initializeCommit } from '../atomicCommits';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
+import { editorIdentity } from '../editorIdentity';
 import { captureGroupStepPlacement } from '../groupStepPlacement';
 import { projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
+import { ordinaryAnswerChoice, ordinaryStoredChoice } from '../ordinaryAnswerChoice';
+import { diffFields } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { planDataCommand } from '../serverRelations';
 import { DataSession } from '../session';
@@ -235,5 +238,121 @@ it.each([
     await engine.retry();
     await settleEngine();
     expect(h.server.value).toMatchObject({ flow: flow(order, 50), description });
+  } finally { browser.dispose(); }
+});
+
+it('keeps the refused unsigned group Save’s duration and title without restoring slot numbers', () => {
+  const first = request('legacy', { ...value('bacd', 25), title: 'My group' });
+  const stored = snapshot('acbd', 12, 3);
+  const refused: CommitRequest = { ...first, editorId: editorIdentity('tab', resource, 'detail', 'one'),
+    initialized: true, state: 'refused', submitted: first.value,
+    command: { protocol: 1, kind: 'update', owner: first.owner, operationId: first.id,
+      resource, generation: metadata.generation, dependsOn: [], changes: diffFields(first.baseline.value!, first.value!) },
+    result: { kind: 'refused', operationId: first.id, code: 'group-step-placement-needs-review' },
+  };
+  const choice = ordinaryAnswerChoice(refused, [refused]);
+  expect(choice).not.toBeNull();
+  const [copy] = ordinaryStoredChoice('owner', [choice!], [{ ...refused, state: 'cancelled', revision: 1 }], stored).editorRecords;
+  expect(copy).toBeDefined();
+  const current = snapshot('adcb', 12, 4);
+  expect(recoverManualChoiceCopy(copy, current).checkpoint).toMatchObject({
+    confirmed: current, draft: { ...value('adcb', 25), title: 'My group' }, conflicts: [],
+  });
+});
+
+
+it.each([
+  { source: 'editor', overlap: false }, { source: 'notice', overlap: false }, { source: 'notice', overlap: true },
+])('keeps words from an unsigned group Save using the saved order ($source, overlap: $overlap)', async ({ source, overlap }) => {
+  const opening = snapshot('abcd', 12, 1);
+  const initial = { ...opening, value: { ...opening.value!, title: 'Group', status: 'active',
+    createdAt: '2026-11-09T00:00:00.000Z', updatedAt: '2026-11-09T00:00:00.000Z',
+    templates: [...'abcd'].map(id => ({ id: 'template-' + id, type: 'custom', status: 'filled', title: id,
+      createdAt: '2026-11-09T00:00:00.000Z', updatedAt: '2026-11-09T00:00:00.000Z' })),
+  } };
+  const h = documentEngineHarness(initial, { apply: async (command, stored) => (await planDataCommand(command, stored,
+    { get: async () => stored, list: async () => [stored],
+      serviceOrderPlacement: { rawMetadata: { groupFlowStepPlacement: { guardLegacy: true } }, serverMs: undefined } })).result });
+  const browser = h.createBrowser();
+  const engine = browser.engine;
+  engine.setOnline(false);
+  engine.setOwner('owner');
+  const editor = await engine.openEditor(resource, browser.editorId(resource));
+  try {
+    const submitted = { ...initial.value, title: 'Title sent with the old order', flow: flow('bacd') };
+    const description = 'Typed after pressing Save';
+    await editor.edit(submitted);
+    await editor.save();
+    await editor.edit({ ...submitted, description });
+    h.silentRemote({ flow: flow('acbd', 40), ...(overlap && { description: 'Description saved elsewhere' }) });
+    engine.setOnline(true);
+    await engine.retry();
+    await settleEngine();
+    expect(editor.getState().result).toMatchObject({ kind: 'refused', code: 'group-step-placement-needs-review' });
+    if (source === 'editor') {
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint).toMatchObject({
+        draft: { title: 'Group', flow: flow('acbd', 40), description }, dirty: true, conflicts: [],
+      });
+    } else {
+      expect(await engine.takeStoredVersion(resource)).toBe(1);
+      expect(editor.getState().checkpoint).toMatchObject({
+        draft: { flow: flow('acbd', 40), description },
+        conflicts: overlap ? [{ path: ['description'] }] : [],
+      });
+      if (overlap) await expect(editor.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+    }
+    const retained = await h.checkpoints.listManualChoiceCopies!('owner', resource);
+    expect(retained).toHaveLength(1);
+    const copy = retained[0].record;
+    expect(copy.checkpoint).toMatchObject({ confirmed: h.server, draft: { title: submitted.title, flow: flow('abcd') } });
+    expect(recoverManualChoiceCopy(copy).checkpoint).toMatchObject({
+      draft: { title: submitted.title, flow: flow('acbd', 40) }, dirty: true, conflicts: [],
+    });
+    expect(h.server.value).toMatchObject({ title: 'Group', flow: flow('acbd', 40) });
+  } finally { browser.dispose(); }
+});
+
+
+it('merges distinct unsigned group removals without treating derived slot numbers as edits', () => {
+  const first = request('legacy', value('bad'));
+  const stored = snapshot('bcd', 12, 3);
+  const refused: CommitRequest = { ...first, editorId: editorIdentity('tab', resource, 'detail', 'one'),
+    initialized: true, state: 'refused', submitted: first.value,
+    command: { protocol: 1, kind: 'update', owner: first.owner, operationId: first.id,
+      resource, generation: metadata.generation, dependsOn: [], changes: diffFields(first.baseline.value!, first.value!) },
+    result: { kind: 'refused', operationId: first.id, code: 'group-step-placement-needs-review' },
+  };
+  const choice = ordinaryAnswerChoice(refused, [refused]);
+  expect(choice).not.toBeNull();
+  const [copy] = ordinaryStoredChoice('owner', [choice!], [{ ...refused, state: 'cancelled', revision: 1 }], stored).editorRecords;
+  expect(recoverManualChoiceCopy(copy).checkpoint).toMatchObject({ confirmed: stored, draft: value('bd'), conflicts: [] });
+});
+
+it('settles a refused placement before its dependent Save even when editor keys sort in reverse', async () => {
+  const stored = snapshot('acbd', 40, 3);
+  const h = documentEngineHarness(stored);
+  const browser = h.createBrowser();
+  const root: CommitRequest = { ...request('first', value('bacd')), editorId: editorIdentity('tab', resource, 'detail', 'z'),
+    state: 'refused', result: { kind: 'refused', operationId: 'first', code: 'group-step-placement-needs-review' } };
+  const child: CommitRequest = { ...request('second', { ...value('bacd'), description: 'Already captured' }, root.id),
+    editorId: editorIdentity('tab', resource, 'detail', 'a'), state: 'queued', retainedAfterChoice: undefined };
+  await h.commits.create(root);
+  await h.commits.create(child);
+  const store = { ...h.commits, list: async (owner: string) => (await h.commits.list(owner)).sort((a, b) => a.editorId.localeCompare(b.editorId)) };
+  const queue = new CommitQueue({ store, runtime: h.runtime, operationId: () => 'unused', readConfirmed: async () => stored });
+  queue.setOwner('owner');
+  const session = new DataSession(root.baseline);
+  for (const saved of [root, child]) {
+    session.edit(saved.value);
+    session.registerCommit(saved.id, session.checkpoint().editGeneration, saved.value);
+  }
+  try {
+    expect((await store.list('owner')).map(item => item.id)).toEqual([child.id, root.id]);
+    const delivered: string[] = [];
+    queue.subscribe(({ request: retired }) => { delivered.push(retired.id); session.applyCommit(retired); });
+    await queue.cancelWithCheckpoint('', [root.id], () => [], { roots: [root], placementChoice: new Map([[root.id, stored]]) });
+    expect(delivered).toEqual([root.id, child.id]);
+    expect(session.checkpoint()).toMatchObject({ confirmed: stored, draft: stored.value, dirty: false, conflicts: [] });
   } finally { browser.dispose(); }
 });

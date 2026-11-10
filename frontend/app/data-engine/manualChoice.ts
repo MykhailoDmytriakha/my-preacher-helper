@@ -1,11 +1,17 @@
+import { isUnsignedAnchoredPlacementRefusal, withoutUnsignedRowOrder } from './anchoredRowPlacement';
 import { orderCommitRequests } from './commits';
+import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
+import { autosaveFieldTargets } from './documentFieldAction';
 import { manualChoiceRecoveryIdentity } from './editorIdentity';
-import { captureGroupStepPlacement, carryGroupDraftChronology, mergeGroupEditsAfterPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
+import { writeField } from './fieldValues';
+import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { restoreSavedRowFieldDrafts } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { changedThoughtTagTarget } from './thoughtTagAction';
@@ -14,7 +20,7 @@ import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, GroupFlowStepPlacementCapture, ResourceSnapshot } from './types';
+import type { DocumentData, ResourceSnapshot } from './types';
 
 type ManualStage = ReturnType<ManualScope['getState']>;
 const unanswered = (request: CommitRequest) => !['acknowledged', 'cancelled'].includes(request.state);
@@ -114,22 +120,71 @@ export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], b
     merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
 }
 
-export function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
+type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement'>;
+
+function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
   base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
-  groupStepPlacement?: GroupFlowStepPlacementCapture): EditorRecord {
+  placement?: RetainedPlacement): EditorRecord {
   return {
     owner, editorId: manualChoiceRecoveryIdentity(chosenId, draftId), prepared: null, unfinalized: [],
-    retainedManualChoice: { base, ...(decidingEditorId && { decidingEditorId }), ...(groupStepPlacement && { groupStepPlacement }) },
+    retainedManualChoice: { base, ...(decidingEditorId && { decidingEditorId }), ...placement },
     checkpoint: { ...afterChoice(stored, value, 1), dirty: true },
   };
 }
 
-export function retainedGroupPlacementDraft(owner: string, editorId: string, requestId: string, phase: 'unqueued' | 'during-choice',
+export function retainedAnchoredPlacementDraft(owner: string, editorId: string, requestId: string, phase: 'unqueued' | 'during-choice',
   source: SessionCheckpoint, accepted: ResourceSnapshot, base: DocumentData, draft: DocumentData): EditorRecord {
   const record = retainedChoiceDraft(owner, requestId, JSON.stringify([phase, editorId]), accepted, base, draft, editorId);
-  record.retainedManualChoice!.groupFieldsGeneration = source.confirmed.metadata?.generation ?? null;
-  carryGroupDraftChronology(source, record.checkpoint);
+  return protectPlacementFields(record, source);
+}
+
+function protectPlacementFields(record: EditorRecord, source: SessionCheckpoint): EditorRecord {
+  const field = record.checkpoint.confirmed.resource.collection === 'groups' ? 'groupFieldsGeneration' : 'councilFieldsGeneration';
+  record.retainedManualChoice![field] = source.confirmed.metadata?.generation ?? null;
+  carryAnchoredDraftChronology(source, record.checkpoint);
   return record;
+}
+
+function savedPlacementFields(request: CommitRequest): SessionCheckpoint {
+  const source = afterChoice(request.baseline, request.value, request.editGeneration);
+  const generation = request.baseline.metadata?.generation;
+  if (!generation) return source;
+  for (const { action, draft } of autosaveFieldTargets(request.baseline.resource.collection)) {
+    const saved = request[action];
+    if (saved) source[draft] = { generation, action: saved };
+  }
+  restoreSavedRowFieldDrafts(request, source);
+  return source;
+}
+
+/** Retain edits bundled by an old client with a position we cannot safely replay. */
+function unsignedPlacementFields(owner: string, request: CommitRequest, stored: ResourceSnapshot, decidingEditorId?: string): EditorRecord[] {
+  const { command, working } = request;
+  if (!isUnsignedAnchoredPlacementRefusal(request) || command?.kind !== 'update' || !working.value) return [];
+  const group = command.resource.collection === 'groups';
+  const field = group ? 'flow' : 'topics';
+  const read = group ? groupPlacementSteps : placementSteps;
+  const change = command.changes.find(item => item.path[0] === field);
+  const openingFlow = group ? groupPlacementSteps(change?.before.value) : undefined;
+  const before = group ? openingFlow : placementSteps(change?.before.value);
+  const after = read(change?.after.value);
+  if (!before || !after) return [];
+  const rows = withoutUnsignedRowOrder(before, after);
+  const slotById = openingFlow && new Map(openingFlow.map(row => [row.id, row.order]));
+  const sameMembership = rows.length === before.length && rows.every((row, index) => row.id === before[index].id);
+  const authoredRows = slotById ? rows.map((row, index) => ({ ...row,
+    order: sameMembership ? slotById.get(row.id)! : index + 1,
+  })) : rows;
+  let base: DocumentData = { ...working.value, [field]: before };
+  let draft: DocumentData = { ...base, [field]: authoredRows };
+  for (const edit of command.changes) {
+    if ([field, 'updatedAt', 'rev'].includes(edit.path[0])) continue;
+    base = writeField(base, edit.path, edit.before);
+    draft = writeField(draft, edit.path, edit.after);
+  }
+  if (equalValues(base, draft)) return [];
+  const copy = retainedChoiceDraft(owner, request.id, 'unsigned-placement-fields', stored, base, draft, decidingEditorId);
+  return [protectPlacementFields(copy, { ...savedPlacementFields(request), confirmed: working })];
 }
 
 /** A choice retires blocked request identities while retaining each later branch's own delta. */
@@ -142,27 +197,31 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
   const editors = new Map<string, string>();
   const retained = new Set<string>();
   const retain = (id: string, value: DocumentData | null, base = draft,
-    groupStepPlacement?: GroupFlowStepPlacementCapture) =>
-    retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, groupStepPlacement);
-  const separateGroupSaves = stored.resource.collection === 'groups'
-    && retired.some(request => request.retainedAfterChoice && request.groupFlowStepPlacement);
+    placement?: RetainedPlacement) => retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, placement);
+  const separatePlacementSaves = chosen.groupFlowStepPlacement || chosen.councilTopicPlacement || isUnsignedAnchoredPlacementRefusal(chosen)
+    || retired.some(request => request.retainedAfterChoice && (request.groupFlowStepPlacement || request.councilTopicPlacement));
   const later = orderCommitRequests([...retired]).flatMap(request => {
     if (!request.retainedAfterChoice || !request.predecessor) return [];
     const ancestor = byId.get(request.predecessor);
     if (!ancestor || !projected.has(ancestor.id)) throw new Error('The later Save lost its reviewed ancestor');
     const basis = projected.get(ancestor.id)!;
     const formOwned = formRequests?.has(request.id);
-    const move = !formOwned && request.groupFlowStepPlacement;
-    if (move) {
-      const placed = projectGroupStepOnDocument(basis, move);
+    const groupMove = formOwned ? undefined : request.groupFlowStepPlacement;
+    const councilMove = formOwned ? undefined : request.councilTopicPlacement;
+    if (groupMove || councilMove) {
+      const placed = groupMove ? projectGroupStepOnDocument(basis, groupMove) : projectCouncilTopicOnDocument(basis, councilMove!);
       projected.set(request.id, placed);
-      // Each exact move remains its own authored action even if a removed anchor
-      // prevents projection. The original copy stays readable and cannot be replayed as an array.
-      return [retain(request.id, placed === basis ? request.value : placed, basis, move)];
+      // Keep exact moves separate. A missing anchor leaves a readable draft, never a list replacement.
+      return [retain(request.id, placed === basis ? request.value : placed, basis,
+        groupMove ? { groupStepPlacement: groupMove } : { councilTopicPlacement: councilMove })];
     }
     const laterDraft = formOwned ? basis : replaySavedChoiceDelta(stored.resource, ancestor.value, request.value, basis);
     projected.set(request.id, laterDraft);
-    if (separateGroupSaves && !formOwned) return equalValues(laterDraft, basis) ? [] : [retain(request.id, laterDraft, basis)];
+    if (separatePlacementSaves && !formOwned) {
+      if (equalValues(laterDraft, basis)) return [];
+      return request.value && ancestor.value ? [protectPlacementFields(retain(request.id, request.value, ancestor.value), savedPlacementFields(request))]
+        : [retain(request.id, laterDraft, basis)];
+    }
     const editor = formOwned ? editors.get(ancestor.id) : request.id;
     if (editor) editors.set(request.id, editor);
     if (!editor || predecessors.has(request.id) || retained.has(editor) || equalValues(draft, laterDraft)) return [];
@@ -175,7 +234,7 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     const value = replaySavedChoiceDelta(stored.resource, privateStage.base, privateStage.value, basis);
     later.push(retain(JSON.stringify(['stage', privateStage.scopeId, privateStage.generation]), value));
   }
-  return later;
+  return [...unsignedPlacementFields(owner, chosen, stored, decidingEditorId), ...later];
 }
 
 /** Apply the later draft's actual delta only on explicit recovery, over the latest accepted copy. */
@@ -199,18 +258,36 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
     if (retry) checkpoint.groupFlowStepPlacementRetry = retry;
     return { ...record, checkpoint };
   }
-  if (retained.groupFieldsGeneration !== undefined && retained.base && record.checkpoint.draft) {
+  const councilMove = retained.councilTopicPlacement;
+  if (councilMove) {
+    const unavailable = () => Object.assign(new Error('The retained section position is unavailable'), { code: 'decision-changed' });
     const generation = confirmed.metadata?.generation ?? null;
-    if (!confirmed.value || confirmed.metadata?.deleted || generation !== retained.groupFieldsGeneration) {
-      throw Object.assign(new Error('The retained group is no longer available'), { code: 'decision-changed' });
+    if (confirmed.resource.collection !== 'councils' || confirmed.value?.status === 'held'
+      || (councilMove.generation !== null && generation !== councilMove.generation)) throw unavailable();
+    const draft = projectCouncilTopicOnDocument(confirmed.value, councilMove);
+    if (!draft || draft === confirmed.value) throw unavailable();
+    const checkpoint = afterChoice(confirmed, draft, record.checkpoint.editGeneration);
+    const retry = captureCouncilTopicPlacement(confirmed.value?.topics, draft.topics, councilMove.placement.stepId, generation,
+      councilMove.placement.observedRevision, councilMove.placement.time);
+    if (retry) checkpoint.councilTopicPlacementRetry = retry;
+    return { ...record, checkpoint };
+  }
+  const fieldsGeneration = retained.groupFieldsGeneration !== undefined ? retained.groupFieldsGeneration : retained.councilFieldsGeneration;
+  if (fieldsGeneration !== undefined && retained.base && record.checkpoint.draft) {
+    const generation = confirmed.metadata?.generation ?? null;
+    if (!confirmed.value || confirmed.metadata?.deleted || generation !== fieldsGeneration) {
+      throw Object.assign(new Error('The retained record is no longer available'), { code: 'decision-changed' });
+    }
+    if (confirmed.resource.collection === 'councils' && confirmed.value.status === 'held') {
+      throw Object.assign(new Error('Reopen the council before recovering these edits'), { code: 'reopen-council-to-recover' });
     }
     const checkpoint = afterChoice(confirmed, confirmed.value, record.checkpoint.editGeneration);
-    const merged = mergeGroupEditsAfterPlacement(record.checkpoint, retained.base, record.checkpoint.draft, checkpoint);
+    const merged = mergeEditsAfterAnchoredPlacement(record.checkpoint, retained.base, record.checkpoint.draft, checkpoint);
     checkpoint.draft = merged.value.exists ? merged.value.value as DocumentData : null;
     checkpoint.dirty = !equalValues(checkpoint.draft, confirmed.value);
     checkpoint.conflicts = merged.conflicts;
     if (merged.conflicts.length) checkpoint.remoteCandidate = confirmed;
-    carryGroupDraftChronology(record.checkpoint, checkpoint);
+    carryAnchoredDraftChronology(record.checkpoint, checkpoint);
     return { ...record, checkpoint };
   }
   const draft = replaySavedChoiceDelta(confirmed.resource, retained.base, record.checkpoint.draft, confirmed.value);

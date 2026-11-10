@@ -1,3 +1,4 @@
+import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { cancellationScope } from './atomicCommits';
 import { orderCommitRequests } from './commits';
 import { isDocumentEditor, readManualScopeIdentity } from './editorIdentity';
@@ -161,7 +162,7 @@ export function assertOrdinaryAnswerScope(choice: OrdinaryAnswerChoice, retired:
 }
 
 /** A pure placement may answer before the next autosave captured independently typed fields. */
-export function groupPlacementChoiceTail(source: SessionCheckpoint, requestId: string) {
+export function anchoredPlacementChoiceTail(source: SessionCheckpoint, requestId: string) {
   const captured = source.pending[requestId];
   const value = source.draft;
   if (!captured?.value || !value || captured.generation >= source.editGeneration || equalValues(captured.value, value)) return undefined;
@@ -178,8 +179,9 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   const latest = scope.filter(request => source.pending[request.id]).at(-1);
   if (scope.length === 1 || !latest) return source;
   const path = new Set(lineage(new Map(scope.map(request => [request.id, request])), latest));
-  const separateGroupTail = first.groupFlowStepPlacement && groupPlacementChoiceTail(source, latest.id);
-  if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separateGroupTail)) {
+  const separatePlacementTail = (first.groupFlowStepPlacement || first.councilTopicPlacement || isAnchoredPlacementRefusal(first))
+    && anchoredPlacementChoiceTail(source, latest.id);
+  if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separatePlacementTail)) {
     throw Object.assign(new Error('Save or resolve other document changes before choosing'), { code: 'other-changes-first' });
   }
   if (latest.id === first.id) return source;

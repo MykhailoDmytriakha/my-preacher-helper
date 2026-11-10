@@ -167,6 +167,7 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
     if (command.serviceOrderStepPlacement !== undefined && !validServiceOrderStepPlacement(command)) fail('Invalid service step placement');
     if (command.groupFlowStepPlacement !== undefined && !validGroupStepPlacement(command)) fail('Invalid group step placement');
+    if (command.councilTopicPlacement !== undefined && !validCouncilTopicPlacement(command)) fail('Invalid council topic placement');
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
@@ -259,11 +260,22 @@ function validServiceOrderStepPlacement(command: Extract<DataCommand, { kind: 'u
 }
 
 function validGroupStepPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
-  const move: unknown = command.groupFlowStepPlacement;
+  return command.resource.collection === 'groups' && isValidIdentifier(command.groupFlowStepPlacement?.queueId)
+    && validAnchoredRowPlacement(command, command.groupFlowStepPlacement, 'flow', row =>
+      Object.keys(row).length === 2 && isValidIdentifier(row.templateId));
+}
+
+function validCouncilTopicPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
+  return command.resource.collection === 'councils' && isValidIdentifier(command.councilTopicQueue)
+    && validAnchoredRowPlacement(command, command.councilTopicPlacement, 'topics', row => Object.keys(row).length === 1);
+}
+
+function validAnchoredRowPlacement(command: Extract<DataCommand, { kind: 'update' }>, move: unknown,
+  field: string, isWitness: (row: DocumentData) => boolean): boolean {
   const [change] = command.changes;
-  if (command.resource.collection !== 'groups' || command.changes.length !== 1 || change.path[0] !== 'flow'
+  if (command.changes.length !== 1 || change.path[0] !== field
     || !change.before.exists || !change.after.exists || !object(move)
-    || !isValidIdentifier(move.stepId) || !isValidIdentifier(move.queueId)
+    || !isValidIdentifier(move.stepId)
     || typeof move.observedRevision !== 'number' || !Number.isSafeInteger(move.observedRevision) || move.observedRevision < 0
     || (move.time !== null && !boundedActionTime(move.time))
     || (move.predecessorOperationId !== undefined && (!isValidIdentifier(move.predecessorOperationId)
@@ -271,15 +283,14 @@ function validGroupStepPlacement(command: Extract<DataCommand, { kind: 'update' 
     || !validServiceOrderStepGap(move.opening, move.stepId) || !validServiceOrderStepGap(move.destination, move.stepId)
     || equalValues(move.opening, move.destination)) return false;
   const compact = (value: unknown) => {
-    const steps = placementSteps(value);
-    return steps?.every(step => Object.keys(step).length === 2 && isValidIdentifier(step.id)
-      && isValidIdentifier(step.templateId)) ? steps : undefined;
+    const rows = placementSteps(value);
+    return rows?.every(row => isValidIdentifier(row.id) && isWitness(row)) ? rows : undefined;
   };
   const before = compact(change.before.value), after = compact(change.after.value);
   return Boolean(before && after && equalValues(move.opening, stepGap(before, move.stepId))
     && equalValues(move.destination, stepGap(after, move.stepId))
-    && equalValues(before.find(step => step.id === move.stepId), after.find(step => step.id === move.stepId))
-    && equalValues(before.filter(step => step.id !== move.stepId), after.filter(step => step.id !== move.stepId)));
+    && equalValues(before.find(row => row.id === move.stepId), after.find(row => row.id === move.stepId))
+    && equalValues(before.filter(row => row.id !== move.stepId), after.filter(row => row.id !== move.stepId)));
 }
 
 function validPlanTextEvidence(evidence: unknown): boolean {

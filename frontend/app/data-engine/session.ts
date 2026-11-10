@@ -2,6 +2,7 @@ import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './a
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
+import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
@@ -10,8 +11,8 @@ import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
-import { writeField } from './fieldValues';
-import { carryGroupDraftChronology, groupPlacementMergeFrame, mergeGroupEditsAfterPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
+import { readField, writeField } from './fieldValues';
+import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
@@ -29,7 +30,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
-import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, ConflictDetail, CouncilTopicPlacementCapture, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -44,8 +45,9 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
   outlinePointPlacementRetry?: OutlinePointPlacementCapture;
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
+  councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -122,7 +124,7 @@ export class DataSession {
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement' | 'groupFlowStepPlacement'>): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement' | 'groupFlowStepPlacement' | 'councilTopicPlacement'>): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
@@ -132,6 +134,7 @@ export class DataSession {
     registerRowFields(pending, autosaveActions, this.state.confirmed.resource.collection);
     if (autosaveActions?.outlinePointPlacement) pending.outlinePointPlacement = copy(autosaveActions.outlinePointPlacement);
     if (autosaveActions?.groupFlowStepPlacement) pending.groupFlowStepPlacement = copy(autosaveActions.groupFlowStepPlacement);
+    if (autosaveActions?.councilTopicPlacement) pending.councilTopicPlacement = copy(autosaveActions.councilTopicPlacement);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
@@ -168,12 +171,13 @@ export class DataSession {
       // The whole action already rebased its dependent Saves. Their separately authored words
       // stay in the draft when their obsolete request identity is released.
       if (request.cancelledByAction && held && !isRetiredActionDependent(request)) this.rollbackAction(request);
+      if (held && request.placementChoiceStored) this.observe(request.placementChoiceStored, { source: 'server' });
       const latest = Boolean(held) && Object.values(this.state.pending).every(other => other.generation <= held.generation);
       this.release(request.id);
       if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {
         // Nothing of this editor's is in flight any more, so a conflict it held answers nothing: decided
         // work settles fully; work swept along by a choice about another draft stays an ordinary draft.
-        if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held.value);
+        if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held.value, Boolean(request.placementChoiceStored));
         else this.state.conflicts = [];
       }
       return true;
@@ -193,14 +197,20 @@ export class DataSession {
       && equalValues(groupRetry.placement.time, request.groupFlowStepPlacement.placement.time)) {
       delete this.state.groupFlowStepPlacementRetry;
     }
+    const councilRetry = this.state.councilTopicPlacementRetry;
+    if (councilRetry && request.councilTopicPlacement && equalValues(councilRetry.before, request.councilTopicPlacement.before)
+      && equalValues(councilRetry.after, request.councilTopicPlacement.after)
+      && equalValues(councilRetry.placement.time, request.councilTopicPlacement.placement.time)) {
+      delete this.state.councilTopicPlacementRetry;
+    }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
       && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
       delete this.state.accountPreferenceRetry;
     }
-    const newGroupMove = request.groupFlowStepPlacement && !this.state.pending[request.id];
+    const newRowMove = (request.groupFlowStepPlacement || request.councilTopicPlacement) && !this.state.pending[request.id];
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
-    if (newGroupMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
+    if (newRowMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
       // The exact move took only the position. Save the additional typing in its own generation.
       this.state.editGeneration += 1;
     }
@@ -314,9 +324,14 @@ export class DataSession {
     const groupMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.groupFlowStepPlacement
         && pending.groupFlowStepPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.groupFlowStepPlacement] : []);
+    const councilMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
+      .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.councilTopicPlacement
+        && pending.councilTopicPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.councilTopicPlacement] : []);
     const rebased = groupMoves.length
       ? mergeDocumentFields(groupPlacementMergeFrame(acceptedAncestor, groupMoves), groupPlacementMergeFrame(this.state.draft, []),
         groupPlacementMergeFrame(incoming, groupMoves))
+      : councilMoves.length ? mergeDocumentFields(councilMoves.reduce(projectCouncilTopicOnDocument, acceptedAncestor),
+        this.state.draft, councilMoves.reduce(projectCouncilTopicOnDocument, incoming))
       : accepted.resource.collection === 'groups' ? mergeGroupFlowRebase(acceptedAncestor, this.state.draft, incoming)
         : rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
           mergeDocumentFields(acceptedAncestor, this.state.draft, incoming));
@@ -359,11 +374,12 @@ export class DataSession {
    * belonged to the decided request. The same rule runs for mounted editors and for recovery's
    * projection of closed ones, so one cannot settle while the other keeps waiting.
    */
-  private settleDecided(decided: DocumentData | null): void {
+  private settleDecided(decided: DocumentData | null, placementChoice = false): void {
+    const source = placementChoice ? this.checkpoint() : undefined;
     if (this.state.remoteCandidate) this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.remoteCandidate = null;
     // Retire only the submitted value the person decided about; later unsent sibling words stay.
-    this.dropRefused(decided);
+    this.dropRefused(decided, source);
   }
 
   /**
@@ -371,13 +387,23 @@ export class DataSession {
    * change goes and the stored copy comes back. `atChoice` is the draft when the person chose; a field
    * typed since then stays (three-way merge), because a later keystroke is not part of that choice.
    */
-  dropRefused(atChoice: DocumentData | null): void {
+  dropRefused(atChoice: DocumentData | null, placementSource?: SessionCheckpoint): void {
     this.clearAutosaveFieldDrafts();
-    const merged = mergeDocumentFields(atChoice, this.state.draft, this.state.confirmed.value);
+    const confirmed = this.state.confirmed;
+    const authored = placementSource?.draft;
+    const merged = authored && atChoice ? mergeEditsAfterAnchoredPlacement(placementSource, atChoice, authored, { ...this.state, draft: confirmed.value })
+      : mergeDocumentFields(atChoice, this.state.draft, confirmed.value);
     this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
     // A choice about an earlier request cannot silently decide later positional work.
-    this.state.conflicts = hasDifferentAnalysisPositionBasis(atChoice, this.state.draft, this.state.confirmed.value) ? copy(merged.conflicts) : [];
+    this.state.conflicts = placementSource || hasDifferentAnalysisPositionBasis(atChoice, this.state.draft, confirmed.value) ? copy(merged.conflicts) : [];
+    if (placementSource && authored && atChoice && this.state.dirty && !this.state.conflicts.length
+      && (placementSource.confirmed.metadata?.generation !== confirmed.metadata?.generation
+        || confirmed.resource.collection === 'councils' && confirmed.value?.status === 'held')) {
+      this.state.conflicts = [{ path: [], base: readField(atChoice, []), mine: readField(authored, []),
+        theirs: confirmed.value ? readField(confirmed.value, []) : { exists: false } }];
+    }
+    if (placementSource) carryAnchoredDraftChronology(placementSource, this.state);
     if (this.state.conflicts.length) this.state.remoteCandidate = copy(this.state.confirmed);
     this.retainCouncilTopicReview(merged.conflicts);
     this.state.editGeneration += 1;
@@ -414,7 +440,7 @@ export class DataSession {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
     const candidate = this.state.remoteCandidate;
-    const groupFields = candidate?.resource.collection === 'groups' ? this.checkpoint() : undefined;
+    const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
@@ -446,7 +472,7 @@ export class DataSession {
         ? withCouncilLifecycle(resolved, lifecycle) : resolved);
     }
     this.clearAutosaveFieldDrafts();
-    if (groupFields) carryGroupDraftChronology(groupFields, this.state, this.state.conflicts);
+    if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
     if (candidate) stageReviewedCouncilTopics(this.state, this.state.conflicts);
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
@@ -474,13 +500,14 @@ export class DataSession {
     this.state.dirty = true;
   }
 
-  retainGroupPlacementChoiceEdits(source: SessionCheckpoint, base: DocumentData, draft: DocumentData): boolean {
+  retainAnchoredPlacementChoiceEdits(source: SessionCheckpoint, base: DocumentData, draft: DocumentData): boolean {
     const accepted = this.state.confirmed;
-    if (source.confirmed.metadata?.generation !== accepted.metadata?.generation) return false;
-    const merged = mergeGroupEditsAfterPlacement(source, base, draft, this.state);
+    if (source.confirmed.metadata?.generation !== accepted.metadata?.generation
+      || accepted.resource.collection === 'councils' && accepted.value?.status === 'held') return false;
+    const merged = mergeEditsAfterAnchoredPlacement(source, base, draft, this.state);
     if (merged.conflicts.length || !merged.value.exists) return false;
     this.edit(merged.value.value as DocumentData);
-    carryGroupDraftChronology(source, this.state);
+    carryAnchoredDraftChronology(source, this.state);
     this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     return true;
   }
@@ -488,6 +515,12 @@ export class DataSession {
   stageGroupStepPlacementRetry(move: GroupFlowStepPlacementCapture, draft: DocumentData): void {
     this.edit(draft);
     this.state.groupFlowStepPlacementRetry = copy(move);
+    this.state.dirty = true;
+  }
+
+  stageCouncilTopicPlacementRetry(move: CouncilTopicPlacementCapture, draft: DocumentData): void {
+    this.edit(draft);
+    this.state.councilTopicPlacementRetry = copy(move);
     this.state.dirty = true;
   }
 
@@ -502,6 +535,7 @@ export class DataSession {
     delete this.state.serviceOrderPlacementRetry;
     delete this.state.outlinePointPlacementRetry;
     delete this.state.groupFlowStepPlacementRetry;
+    delete this.state.councilTopicPlacementRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];

@@ -1,3 +1,4 @@
+import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
 import { readCouncilTopicConflict } from '@/data-engine/react.client';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
@@ -7,6 +8,8 @@ import type { SessionCheckpoint } from '@/data-engine/session';
 import type { CouncilTopic } from '@/models/models';
 
 export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined, t: (key: string) => string, topics?: readonly CouncilTopic[]): TextComparison | undefined {
+  const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
+  if (placement) return placement;
   const comparison = checkpoint && readCouncilTopicConflict(checkpoint);
   if (!comparison) return undefined;
   const { field, mine, stored, identity } = comparison;

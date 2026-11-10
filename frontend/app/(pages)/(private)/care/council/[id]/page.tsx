@@ -57,7 +57,7 @@ import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
-import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, topicState } from '@/utils/council';
+import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, topicState } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 import { formatDate, formatDateForLocale, formatDateOnly, formatDateTimeForLocale } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
@@ -162,6 +162,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
+    moveTopic: (topicId: string, toIndex: number) => { void document.moveTopic(topicId, toIndex).catch(report); },
     recordTopicOutcome: (topicId: string, outcome: TopicOutcome, trackChanges: boolean) => {
       void document.recordTopicOutcome(topicId, outcome, trackChanges).catch(report);
     },
@@ -202,6 +203,7 @@ interface CouncilDetailSource {
   readFailed: boolean;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  moveTopic: (topicId: string, toIndex: number) => void;
   recordTopicOutcome: (id: string, outcome: TopicOutcome, trackChanges: boolean) => void;
   restoreTopicOutcome: (topic: CouncilTopic, outcome: CouncilOutcome) => Promise<void>;
   renameTopic: (id: string, title: string) => Promise<void>;
@@ -218,7 +220,7 @@ interface CouncilDetailSource {
 function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
   const { t, language } = useTranslation();
   const router = useRouter();
-  const { council, councils, loading, readFailed, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
+  const { council, councils, loading, readFailed, refresh, updateCouncil, moveTopic, deleteCouncil, carryTopicToNext, readOnly = false } = source;
 
   const { finish: finishCouncil, finishing } = useCouncilFinishAction(t, source.finishCouncil);
 
@@ -325,11 +327,6 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   };
 
   const progressStarted = hasProgress(council);
-
-  const moveTopic = (topicId: string, toIndex: number) => {
-    const fromIndex = council.topics.findIndex((topic) => topic.id === topicId);
-    patch((current) => reorderTopics(current, fromIndex, toIndex));
-  };
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

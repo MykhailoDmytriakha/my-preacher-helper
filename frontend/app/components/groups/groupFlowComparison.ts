@@ -1,4 +1,4 @@
-import { serviceOrderPlacementWords } from '@/components/care/serviceOrderPlacementWords';
+import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
 import { readGroupFlowFieldConflict, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
@@ -22,15 +22,8 @@ export function groupFlowFieldText(t: Translate, field: keyof typeof fields, val
 
 export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined, t: Translate): TextComparison | undefined {
   const answers = useOpenDocumentAnswerScopes();
-  const placement = checkpoint?.serviceOrderPlacementComparison;
-  if (placement?.step && checkpoint?.confirmed.resource.collection === 'groups') {
-    const label = t('serviceOrders.stepPosition');
-    return { identity: JSON.stringify([checkpoint.remoteCandidate?.metadata?.revision, placement]),
-      title: placement.step.title ? label + ' · ' + placement.step.title : label,
-      mine: serviceOrderPlacementWords(placement.mine, t),
-      stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t) : t('serviceOrders.placementHistory.positionUnavailable'),
-      valueKind: 'field', scopedChoice: true, keepMineDisabled: !placement.available };
-  }
+  const placement = checkpoint?.confirmed.resource.collection === 'groups' && anchoredStepComparison(checkpoint, 'serviceOrders.stepPosition', t);
+  if (placement) return placement;
   const comparison = checkpoint && readGroupFlowFieldConflict(checkpoint);
   if (!checkpoint || !comparison) return undefined;
   const { resource, value } = checkpoint.confirmed;

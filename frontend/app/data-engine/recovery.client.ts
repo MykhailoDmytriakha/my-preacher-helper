@@ -25,6 +25,8 @@ const groupPlacementCapture = z.object({
       earliestMs: z.number().finite(), latestMs: z.number().finite(),
     }).nullable(), predecessorOperationId: id.optional(), queueId: id.optional() }),
 });
+const councilWitness = z.array(z.object({ id }));
+const councilPlacementCapture = groupPlacementCapture.extend({ before: councilWitness, after: councilWitness });
 const actionTime = z.object({ earliestMs: z.number().finite(), latestMs: z.number().finite() })
   .refine(time => time.earliestMs <= time.latestMs).nullable();
 const observedRevision = z.number().int().safe().nonnegative();
@@ -33,12 +35,23 @@ const groupRowValue = z.union([z.string(), z.number().finite(), z.null()]);
 const groupRowDrafts = z.record(id, z.object({ generation: id, action: z.object({
   rowId: id, rowCreatedAt: z.string().min(1), before: groupRowValue, after: groupRowValue, observedRevision, time: actionTime,
 }) }));
+const optionalCouncilField = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
+  z.object({ exists: z.literal(true), value: z.string() })]);
+const councilDateDraft = z.object({ generation: id, action: z.object({
+  before: optionalCouncilField, after: optionalCouncilField, observedRevision, time: actionTime,
+}) });
+const councilOutcome = z.object({ discussed: z.boolean(), acceptedOptionId: z.string().nullable(), decision: z.string().nullable(),
+  resolution: z.enum(['postponed', 'dropped']).nullable() });
+const councilOutcomeDrafts = z.record(id, z.object({ generation: id, reviewed: z.literal(true).optional(), action: z.object({
+  rowId: id, rowCreatedAt: z.string().min(1), before: councilOutcome, after: councilOutcome, observedRevision, time: actionTime,
+}) }));
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
   recoveryVersion: z.string().min(1).optional(),
   retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
-    groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional() }).optional(),
+    groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
+    councilTopicPlacement: councilPlacementCapture.optional(), councilFieldsGeneration: id.nullable().optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
@@ -46,10 +59,14 @@ const recordSchema = z.object({
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(z.object({ path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema })).default([]),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
+    councilTopicPlacementRetry: councilPlacementCapture.optional(),
+    councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: councilDateDraft.optional(),
+    councilLifecycleDraft: councilDateDraft.optional(), councilTopicTitleDrafts: groupRowDrafts.optional(),
+    councilOutcomeDrafts: councilOutcomeDrafts.optional(),
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(),
     groupBlockTitleDrafts: groupRowDrafts.optional(), groupBlockStatusDrafts: groupRowDrafts.optional(),
     groupStepTitleDrafts: groupRowDrafts.optional(), groupStepDurationDrafts: groupRowDrafts.optional(),
-    pending: z.record(id, z.object({ groupFlowStepPlacement: groupPlacementCapture.optional(), generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
+    pending: z.record(id, z.object({ groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(), generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
   }),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -76,6 +93,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
     || record.checkpoint.groupTitleDraft || record.checkpoint.groupStatusDraft || record.checkpoint.groupBlockTitleDrafts
     || record.checkpoint.groupBlockStatusDrafts || record.checkpoint.groupStepTitleDrafts || record.checkpoint.groupStepDurationDrafts
     || Object.values(record.checkpoint.pending).some(intent => intent.groupFlowStepPlacement))) throw new Error('Group placement checkpoint identity mismatch');
+  if (ref.collection !== 'councils' && (record.retainedManualChoice?.councilTopicPlacement
+    || record.retainedManualChoice?.councilFieldsGeneration !== undefined || record.checkpoint.councilTopicPlacementRetry
+    || record.checkpoint.councilTitleDraft || record.checkpoint.councilDateDraft || record.checkpoint.councilLifecycleDraft
+    || record.checkpoint.councilTopicTitleDrafts || record.checkpoint.councilOutcomeDrafts
+    || Object.values(record.checkpoint.pending).some(intent => intent.councilTopicPlacement))) throw new Error('Council placement checkpoint identity mismatch');
   const document = (data: unknown) => snapshotSchema.parse({ resource: ref, value: data, metadata: null }).value;
   const policy = getResourcePolicy(ref.collection);
   const ownedDocument = (data: unknown, createIntent = false) => {

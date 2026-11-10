@@ -18,6 +18,7 @@ import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
+import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
@@ -468,8 +469,10 @@ export function useDocumentActions() {
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope, exactField = false): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
-      const comparedPlacement = resource.collection === 'sermons' && scope?.records.some(record => record.owner === owner
-        && record.checkpoint.confirmed.resource.id === resource.id && outlinePointPlacementComparison(record.checkpoint));
+      const comparedPlacement = scope?.records.some(({ owner: recordOwner, checkpoint }) => recordOwner === owner
+        && checkpoint.confirmed.resource.id === resource.id && checkpoint.confirmed.resource.collection === resource.collection
+        && (resource.collection === 'sermons' ? outlinePointPlacementComparison(checkpoint)
+          : ['groups', 'councils'].includes(resource.collection) && checkpoint.serviceOrderPlacementComparison));
       const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement)
         ? actionClock.capture(owner) ?? null : undefined;
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
@@ -767,6 +770,8 @@ export function useDataMembership() {
 }
 
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
+export function captureCouncilTopicPlacement(...args: Parameters<typeof captureCouncilPlacement>) { return captureCouncilPlacement(...args); }
+export function projectCapturedCouncilTopic(...args: Parameters<typeof projectCouncilPlacement>) { return projectCouncilPlacement(...args); }
 export function captureGroupStepPlacement(...args: Parameters<typeof captureGroupPlacement>) { return captureGroupPlacement(...args); }
 export function projectCapturedGroupStep(...args: Parameters<typeof projectGroupPlacement>) { return projectGroupPlacement(...args); }
 
@@ -1115,14 +1120,15 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'group-flow-step-placement' }>) => {
-      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement';
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
+      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement' || action?.kind === 'council-topic-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
       const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
       const capture = typeof action === 'object' ? (action.kind === 'thought-placement' || action.kind === 'exegetical-point' ? { ...action, time: time ?? null, shown }
         : action.kind === 'sermon-preparation-check' || action.kind === 'account-preference' ? { ...action, time: time ?? null }
-          : action.kind === 'group-flow-step-placement' ? { ...action, move: { ...action.move, placement: { ...action.move.placement, time: time ?? null } } } : action)
+          : action.kind === 'group-flow-step-placement' ? { ...action, move: { ...action.move, placement: { ...action.move.placement, time: time ?? null } } }
+            : action.kind === 'council-topic-placement' ? { ...action, move: { ...action.move, placement: { ...action.move.placement, time: time ?? null } } } : action)
         : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
           : time ? { kind: 'bible-mark-stroke', time } as const
             : !action && collection === 'users' && owner ? { kind: 'account-preference', time: actionClock.capture(owner) ?? null } as const : undefined;
@@ -1145,7 +1151,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
     keepLocal: (compared?: SessionCheckpoint) => {
       const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared)
-        || (compared.confirmed.resource.collection === 'groups' && compared.serviceOrderPlacementComparison))
+        || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time));
     },

@@ -1,10 +1,11 @@
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
+import { anchoredPlacementPredecessor, captureAnchoredRowPlacement } from './anchoredRowPlacement';
 import { autosaveAcknowledgementAncestor, carryAutosaveFieldDrafts } from './documentFieldAction';
 import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { carryRowFieldDrafts, rowFieldAckAncestor } from './rowFieldAutosave';
-import { placementSteps, retainedStepOrderChanged } from './serviceOrderStepPlacement';
+import { placementSteps } from './serviceOrderStepPlacement';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -30,11 +31,7 @@ export function projectGroupStep(rows: GroupStep[], id: string, destination: Ser
 
 export function captureGroupStepPlacement(before: unknown, after: unknown, stepId: string, generation: string | null,
   observedRevision: number, time: GroupFlowStepPlacementCapture['placement']['time']): GroupFlowStepPlacementCapture | undefined {
-  const shown = groupStepWitness(before), moved = groupStepWitness(after);
-  const opening = shown && stepGap(shown, stepId);
-  const destination = moved && stepGap(moved, stepId);
-  if (!shown || !moved || !opening || !destination || equalValues(opening, destination)) return undefined;
-  return { generation, before: shown, after: moved, placement: { stepId, opening, destination, observedRevision, time } };
+  return captureAnchoredRowPlacement(groupStepWitness(before), groupStepWitness(after), stepId, generation, observedRevision, time);
 }
 
 export function projectCapturedGroupStep(value: unknown, move: GroupFlowStepPlacementCapture): GroupStep[] | undefined {
@@ -71,7 +68,8 @@ export function restoreGroupPlacementOrder(value: DocumentData | null): Document
 /** Slot numbers are derived from order; they are not edits to neighboring rows. */
 export function mergeGroupFlowRebase(base: DocumentData | null, draft: DocumentData | null, stored: DocumentData | null) {
   const before = groupPlacementSteps(base?.flow), mine = groupPlacementSteps(draft?.flow), saved = groupPlacementSteps(stored?.flow);
-  if (!before || !mine || !saved || (!retainedStepOrderChanged(before, mine) && !retainedStepOrderChanged(before, saved))) {
+  const opening = before?.map(row => row.id);
+  if (!before || !mine || !saved || (equalValues(opening, mine.map(row => row.id)) && equalValues(opening, saved.map(row => row.id)))) {
     return mergeDocumentFields(base, draft, stored);
   }
   const result = mergeDocumentFields(groupPlacementMergeFrame(base, []), groupPlacementMergeFrame(draft, []), groupPlacementMergeFrame(stored, []));
@@ -80,13 +78,14 @@ export function mergeGroupFlowRebase(base: DocumentData | null, draft: DocumentD
   return { ...result, value: { exists: true, value } };
 }
 
-export function mergeGroupEditsAfterPlacement(source: SessionCheckpoint, base: DocumentData, draft: DocumentData,
+export function mergeEditsAfterAnchoredPlacement(source: SessionCheckpoint, base: DocumentData, draft: DocumentData,
   target: SessionCheckpoint) {
   const ancestor = autosaveAcknowledgementAncestor(base, target.confirmed, source);
-  return mergeGroupFlowRebase(rowFieldAckAncestor(ancestor, target.confirmed, source), draft, target.draft);
+  const merge = target.confirmed.resource.collection === 'groups' ? mergeGroupFlowRebase : mergeDocumentFields;
+  return merge(rowFieldAckAncestor(ancestor, target.confirmed, source), draft, target.draft);
 }
 
-export function carryGroupDraftChronology(source: SessionCheckpoint, target: SessionCheckpoint,
+export function carryAnchoredDraftChronology(source: SessionCheckpoint, target: SessionCheckpoint,
   reviewed: readonly ConflictDetail[] = []): void {
   const keep = (path: readonly string[]) => !reviewed.some(conflict =>
     conflict.path.slice(0, path.length).every((part, index) => part === path[index]));
@@ -108,22 +107,6 @@ export function retryGroupStepPlacement(snapshot: ResourceSnapshot, move: GroupF
 /** Rewind only requests from the same local save chain and the exact order visible at the gesture. */
 export function groupStepPlacementPredecessor(records: readonly CommitRequest[], predecessor: CommitRequest | undefined,
   move: GroupFlowStepPlacementCapture): CommitRequest | undefined {
-  if (!predecessor) return undefined;
-  const chain = new Map(records.map(record => [record.id, record]));
-  let shown = move.before;
-  let record: CommitRequest | undefined = predecessor;
-  while (record && chain.delete(record.id)) {
-    if (record.owner !== predecessor.owner || record.baseline.resource.collection !== 'groups'
-      || record.baseline.resource.id !== predecessor.baseline.resource.id
-      || (record.baseline.metadata?.generation ?? null) !== move.generation
-      || ['cancelled', 'conflict', 'refused'].includes(record.state)
-      || !equalValues(groupStepWitness(record.value?.flow), shown)) return undefined;
-    const previous = record.groupFlowStepPlacement;
-    if (previous) {
-      if (!equalValues(previous.after, shown)) return undefined;
-      if (previous.placement.stepId === move.placement.stepId) return record;
-      shown = previous.before;
-    }
-    record = record.predecessor ? chain.get(record.predecessor) : undefined;
-  }
+  return anchoredPlacementPredecessor(records, predecessor, move, 'groups', record => groupStepWitness(record.value?.flow),
+    record => record.groupFlowStepPlacement);
 }

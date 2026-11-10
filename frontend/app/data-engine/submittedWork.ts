@@ -38,6 +38,7 @@ export function submittedWorkCheckpoint(owner: string, resource: ResourceRef, re
       const operationId = request.atomic?.id ?? request.command?.operationId;
       return [request.id, { generation: index + 1, value: request.value,
         ...(request.groupFlowStepPlacement && { groupFlowStepPlacement: request.groupFlowStepPlacement }),
+        ...(request.councilTopicPlacement && { councilTopicPlacement: request.councilTopicPlacement }),
         ...(operationId && operationId !== request.id ? { operations: [operationId] } : {}),
       }];
     })),

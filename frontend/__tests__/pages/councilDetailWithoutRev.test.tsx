@@ -8,7 +8,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import React from 'react';
 
 import CouncilDetailPage from '@/(pages)/(private)/care/council/[id]/page';
+import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { applyCommand } from '@/data-engine/protocol';
+import { planDataCommand } from '@/data-engine/serverRelations';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import type { CouncilTopic } from '@/models/models';
 
@@ -44,7 +47,9 @@ async function renderCouncilWithTopics(topics: CouncilTopic[]) {
   const harness = documentEngineHarness({
     ...revless,
     value: { ...revless.value, topics: asJson(topics) },
-  });
+  }, { apply: async (command, stored) => command.kind === 'update' && command.councilTopicPlacement
+    ? (await planDataCommand(command, stored, { get: async () => stored, list: async () => [stored] })).result
+    : applyCommand(command, stored) });
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   render(<DataEngineProvider><CouncilDetailPage /></DataEngineProvider>);
   await screen.findByTestId('council-topic-topic-1');
@@ -79,6 +84,54 @@ it('delivers a new title for a council written before it had a version counter',
   await waitFor(() => expect(harness.server.value?.title).toBe('Renamed old council'));
   expect(harness.server.value?.rev).toBe(1);
   view.unmount();
+});
+
+it.each([
+  { direction: 'up', row: 'Second section', id: 'topic-2', opening: { previous: 'topic-1', next: 'topic-3' },
+    destination: { previous: null, next: 'topic-1' }, order: ['topic-2', 'topic-1', 'topic-3'] },
+  { direction: 'down', row: 'Second section', id: 'topic-2', opening: { previous: 'topic-1', next: 'topic-3' },
+    destination: { previous: 'topic-3', next: null }, order: ['topic-1', 'topic-3', 'topic-2'] },
+])('keeps the exact council section and its visible neighbors when moving $direction offline', async ({ direction, row, id, opening, destination, order }) => {
+  const topics = [topic, { ...topic, id: 'topic-2', title: 'Second section' }, { ...topic, id: 'topic-3', title: 'Third section' }];
+  const harness = await renderCouncilWithTopics(topics);
+  act(() => harness.engine.setOnline(false));
+  fireEvent.click(screen.getByTestId('council-reorder'));
+  const section = screen.getByText(row, { exact: true }).closest('li')!;
+  const label = direction === 'up' ? 'council.detail.moveUp' : 'council.detail.moveDown';
+  fireEvent.click(within(section).getByRole('button', { name: label }));
+  await deliverCouncilChanges(harness);
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  act(() => harness.engine.setOnline(true));
+  await deliverCouncilChanges(harness);
+  await waitFor(() => expect(harness.server.value?.topics).toMatchObject(order.map(id => ({ id }))));
+  expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+    councilTopicPlacement: expect.objectContaining({ stepId: id, opening, destination, observedRevision: 1 }),
+  }));
+});
+
+it('records the time of the explicit position choice, rather than resending an older gesture', async () => {
+  const topics = [topic, { ...topic, id: 'topic-2', title: 'Second section' }, { ...topic, id: 'topic-3', title: 'Third section' }];
+  const gesture = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_014 };
+  const decision = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_084 };
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(gesture);
+  try {
+    const harness = await renderCouncilWithTopics(topics);
+    act(() => harness.engine.setOnline(false));
+    fireEvent.click(screen.getByTestId('council-reorder'));
+    const section = screen.getByText('Second section', { exact: true }).closest('li')!;
+    fireEvent.click(within(section).getByRole('button', { name: 'council.detail.moveUp' }));
+    await deliverCouncilChanges(harness);
+    harness.silentRemote({ topics: asJson([topics[0], topics[2], topics[1]]) });
+    act(() => harness.engine.setOnline(true));
+    await deliverCouncilChanges(harness);
+    const keep = await screen.findByRole('button', { name: 'dataSync.useLocalVersion' });
+    clock.mockReturnValue(decision);
+    fireEvent.click(keep);
+    await deliverCouncilChanges(harness);
+    await waitFor(() => expect(harness.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      councilTopicPlacement: expect.objectContaining({ stepId: 'topic-2', observedRevision: 2, time: decision }),
+    })));
+  } finally { clock.mockRestore(); }
 });
 
 describe('council nested deletion guards', () => {

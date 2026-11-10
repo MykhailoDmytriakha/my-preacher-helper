@@ -4239,6 +4239,120 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('council section placement chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'councils', id: 'section-placement' };
+    const generation = 'section-placement-seed';
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const at = '2026-11-09T00:00:00.000Z';
+    const initial = ['a', 'b', 'c', 'd'];
+    const up = ['b', 'a', 'c', 'd'];
+    const down = ['a', 'c', 'b', 'd'];
+    const topic = (id: string) => ({ id, title: 'Section ' + id, kind: 'decision', summary: 'Words for ' + id, questions: [], options: [] });
+    const topics = (ids: string[]) => ids.map(topic);
+    const witness = (ids: string[]) => ids.map(id => ({ id }));
+    const clock = (ms: number) => ({ earliestMs: 1_800_000_000_000 + ms, latestMs: 1_800_000_000_004 + ms });
+    const gap = (ids: string[]) => {
+      const index = ids.indexOf('b');
+      return { previous: ids[index - 1] ?? null, next: ids[index + 1] ?? null };
+    };
+    const stored = () => documents.get('councils/section-placement');
+
+    async function seed() {
+      expect(await processCommand(owner, { ...base, kind: 'create', operationId: generation, generation: null,
+        value: { userId: owner, title: 'Council', status: 'preparing', topics: topics(initial), createdAt: at, updatedAt: at },
+      })).toMatchObject({ kind: 'acknowledged' });
+    }
+
+    function move(operationId: string, before: string[], after: string[], observedRevision: number,
+      time: ReturnType<typeof clock> | null, councilTopicQueue = operationId, predecessorOperationId?: string) {
+      return { ...base, kind: 'update', operationId, generation, councilTopicQueue,
+        dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+        changes: [{ path: ['topics'], before: { exists: true, value: witness(before) }, after: { exists: true, value: witness(after) } }],
+        councilTopicPlacement: { stepId: 'b', observedRevision, time, opening: gap(before), destination: gap(after),
+          ...(predecessorOperationId && { predecessorOperationId }) },
+      };
+    }
+
+    async function replaceTopics(operationId: string, before: ReturnType<typeof topics>, after: ReturnType<typeof topics>) {
+      return processCommand(owner, { ...base, kind: 'update', operationId, generation,
+        changes: [{ path: ['topics'], before: { exists: true, value: before }, after: { exists: true, value: after } }] });
+    }
+
+    it('keeps the late return, stores the displaced spot once, and refuses an old unsigned permutation', async () => {
+      await seed();
+      expect(await processCommand(owner, move('desktop-down', initial, down, 1, clock(40)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('desktop-back', down, initial, 2, clock(70)))).toMatchObject({ kind: 'acknowledged' });
+      const stale = move('phone-old', initial, up, 1, clock(15));
+      const result = await processCommand(owner, stale);
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: topics(initial) } } });
+      expect(await processCommand(owner, stale)).toEqual(result);
+      const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/section-placement/_topicPlacementHistory/'));
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ stepId: 'b', earlier: { previous: null, next: { id: 'a' } },
+        kept: { previous: { id: 'a' }, next: { id: 'c' } } });
+      expect(await replaceTopics('unsigned', topics(initial), topics(up))).toMatchObject({
+        kind: 'refused', code: 'council-topic-placement-needs-review',
+      });
+      expect(stored()?.topics).toEqual(topics(initial));
+    });
+
+    it('moves only the later section and keeps independently saved words', async () => {
+      await seed();
+      await processCommand(owner, move('desktop-down', initial, down, 1, clock(25)));
+      const edited = { ...topic('b'), summary: 'Words saved independently' };
+      expect(await replaceTopics('summary', topics(down), topics(down).map(row => row.id === 'b' ? edited : row)))
+        .toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone-late', initial, up, 1, clock(80)))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { topics: topics(up).map(row => row.id === 'b' ? edited : row) } },
+      });
+    });
+
+    it('shows only the exact section when the action times cannot be ordered', async () => {
+      await seed();
+      await processCommand(owner, move('desktop-down', initial, down, 1, clock(25)));
+      expect(await processCommand(owner, move('unknown', initial, up, 1, null))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['topics', 'id:b', 'position'] }],
+        serviceOrderPlacementComparison: { step: { id: 'b', title: 'Section b' }, available: true },
+      });
+      expect(stored()?.topics).toEqual(topics(down));
+    });
+
+    it('cannot use a destination topic that was removed and recreated', async () => {
+      await seed();
+      const withoutA = initial.filter(id => id !== 'a');
+      expect(await replaceTopics('remove-a', topics(initial), topics(withoutA))).toMatchObject({ kind: 'acknowledged' });
+      expect(await replaceTopics('new-a', topics(withoutA), topics(initial))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('old-move', initial, up, 1, clock(40)))).toMatchObject({
+        kind: 'conflict', serviceOrderPlacementComparison: { step: { id: 'b' }, available: false },
+      });
+      expect(stored()?.topics).toEqual(topics(initial));
+    });
+
+    it('keeps a held agenda unchanged when a signed or pre-upgrade reorder arrives late', async () => {
+      await seed();
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'hold', generation,
+        changes: [{ path: ['status'], before: { exists: true, value: 'preparing' }, after: { exists: true, value: 'held' } },
+          { path: ['heldAt'], before: { exists: false }, after: { exists: true, value: at } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('signed-offline', initial, up, 1, clock(20)))).toMatchObject({
+        kind: 'refused', code: 'council-topic-placement-needs-review',
+      });
+      expect(await replaceTopics('unsigned-offline', topics(initial), topics(up))).toMatchObject({
+        kind: 'refused', code: 'council-topic-placement-needs-review',
+      });
+      expect(stored()).toMatchObject({ status: 'held', topics: topics(initial) });
+    });
+
+    it('needs the exact same queue for a continuation without clocks', async () => {
+      await seed();
+      await processCommand(owner, move('previous', initial, down, 1, null, 'actual-queue'));
+      expect(await processCommand(owner, move('different', down, initial, 1, null, 'other-queue', 'previous'))).toMatchObject({ kind: 'conflict' });
+      expect(await processCommand(owner, move('same', down, initial, 1, null, 'actual-queue', 'previous'))).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()?.topics).toEqual(topics(initial));
+    });
+  });
+
   describe('group meeting step placement chronology', () => {
     const owner = 'owner-1';
     const resource = { collection: 'groups', id: 'group-step-placement' };

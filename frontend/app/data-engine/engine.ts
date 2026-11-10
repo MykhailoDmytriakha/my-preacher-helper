@@ -5,6 +5,7 @@ import { analysisCreationScope } from './analysisCreation';
 import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnalysisCreation } from './analysisCreationCapture';
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
+import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
 import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
@@ -1279,14 +1280,22 @@ export class DataEngine {
         if (result && (result.kind === 'conflict' || result.kind === 'deleted')
           && sameResource(result.snapshot.resource, resource) && canReplaceSnapshot(chosen, result.snapshot)) chosen = result.snapshot;
       }
+      const placementRefusals = reviewed.filter(choice => isAnchoredPlacementRefusal(choice.first));
+      if (placementRefusals.length) {
+        const target = await this.readWriteTarget(resource);
+        this.assertCurrent(owner, generation);
+        if (!target) throw Object.assign(new Error('Read the saved order before choosing'), { code: 'fresh-read-required' });
+        if (canReplaceSnapshot(chosen, target)) chosen = target;
+      }
       if (chosen) await this.publishStoredChoice(owner, generation, chosen);
       const ids = answered.map(request => request.id);
       if (reviewed.length) {
         const retained = new Set(reviewed.flatMap(choice => choice.scope.slice(1).map(request => request.id)));
-        const known = reviewed.some(choice => choice.scope.length > 1)
+        const known = placementRefusals.length ? chosen : reviewed.some(choice => choice.scope.length > 1)
           ? await this.knownSnapshot(owner, generation, resource) : undefined;
+        const placementChoice = chosen && new Map(placementRefusals.map(({ first }) => [first.id, chosen!]));
         await this.commits.cancelWithCheckpoint('', ids, retired => ordinaryStoredChoice(owner, reviewed, retired, known),
-          { roots: answered, retained });
+          { roots: answered, retained, placementChoice });
       } else await this.commits.cancel('', ids);
       this.assertCurrent(owner, generation);
       await Promise.all([...this.editors.values()].filter(entry => entry.controller
@@ -1899,6 +1908,10 @@ export class DataEngine {
           || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
           throw Object.assign(new Error('The shown group changed'), { code: 'decision-changed' });
         }
+        if (action?.kind === 'council-topic-placement' && (frozen.collection !== 'councils'
+          || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
+          throw Object.assign(new Error('The shown council changed'), { code: 'decision-changed' });
+        }
         const next = updater(checkpoint.draft);
         let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
         if (action?.kind === 'service-order-placement'
@@ -2012,7 +2025,8 @@ export class DataEngine {
         // The exact move owns only the position. Queue this opening draft first
         // so any unsaved words or independent fields keep their own durable Save.
         // CaptureContinuations retries earlier attempts before the exact Save.
-        const move = captured?.kind === 'outline-point-placement' || captured?.kind === 'group-flow-step-placement' ? captured : undefined;
+        const move = captured?.kind === 'outline-point-placement' || captured?.kind === 'group-flow-step-placement'
+          || captured?.kind === 'council-topic-placement' ? captured : undefined;
         if (move) void controller.save(checkpoint).catch(() => undefined);
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
         const stagedMove = move && controller.getState().checkpoint;
@@ -2299,7 +2313,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry) {
+        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }

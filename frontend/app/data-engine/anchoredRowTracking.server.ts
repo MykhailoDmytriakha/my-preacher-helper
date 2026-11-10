@@ -72,11 +72,11 @@ export function trackAnchoredRows<Row extends PlacementStep>({ collection, field
    * An older tab cannot distinguish a fresh permutation from a delayed move after
    * a proven return. Keep its request recoverable, without applying that position.
    */
-  function legacyNeedsReview(command: DataCommand, current: ResourceSnapshot, raw: unknown): boolean {
+  function legacyNeedsReview(command: DataCommand, current: ResourceSnapshot, raw: unknown, frozen = false): boolean {
     if (command.kind !== 'update' || command.resource.collection !== collection
       || command.generation !== (current.metadata?.generation ?? null)) return false;
     const state = object(raw) && raw[proofKey];
-    if (!object(state) || !(state.guardLegacy === true || (Array.isArray(state.moves) && state.moves.length > 0))) return false;
+    if (!frozen && (!object(state) || !(state.guardLegacy === true || (Array.isArray(state.moves) && state.moves.length > 0)))) return false;
     const change = command.changes.find(item => item.path[0] === field);
     const before = read(change?.before.value), after = read(change?.after.value);
     const stored = read(current.value?.[field]);

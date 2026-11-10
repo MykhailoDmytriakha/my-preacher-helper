@@ -3,9 +3,9 @@
 import { useCallback, useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { councilTopicReviewCode, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureCouncilTopicPlacement, councilTopicReviewCode, projectCapturedCouncilTopic, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
-import { applyOutcome, holdCouncil, reopenCouncil, setTopicKind, type TopicOutcome } from '@/utils/council';
+import { applyOutcome, holdCouncil, reopenCouncil, reorderTopics, setTopicKind, type TopicOutcome } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
@@ -64,6 +64,21 @@ export function useCouncilDataDocument(councilId: string) {
     if (field) await document.update(change, { action: field === 'title' ? 'council-title' : 'council-date' });
     else await document.update(change);
   }, [council, document, apply]);
+
+  const moveTopic = (topicId: string, toIndex: number) => {
+    const opening = document.state?.checkpoint;
+    if (!council || council.status === 'held' || !opening?.draft) return Promise.resolve();
+    const fromIndex = council.topics.findIndex(topic => topic.id === topicId);
+    const moved = reorderTopics(council, fromIndex, toIndex);
+    const move = captureCouncilTopicPlacement(council.topics, moved.topics, topicId,
+      opening.confirmed.metadata?.generation ?? null, opening.confirmed.metadata?.revision ?? 0, null);
+    if (!move) return Promise.resolve();
+    return document.commit(current => {
+      const next = current?.status !== 'held' && projectCapturedCouncilTopic(current, move);
+      if (!next) throw Object.assign(new Error('The shown council sections changed'), { code: 'decision-changed' });
+      return next;
+    }, { kind: 'council-topic-placement', move });
+  };
 
   const recordTopicOutcome = useCallback(async (topicId: string, outcome: TopicOutcome, trackChanges: boolean, expectedKind?: 'decision' | 'info') => {
     const at = new Date().toISOString();
@@ -216,6 +231,7 @@ export function useCouncilDataDocument(councilId: string) {
     acceptRemote: document.acceptRemote,
     keepLocal: document.keepLocal,
     updateCouncil,
+    moveTopic,
     recordTopicOutcome,
     restoreTopicOutcome,
     renameTopic,

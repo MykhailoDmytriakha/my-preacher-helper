@@ -8,6 +8,7 @@ import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { COUNCIL_ASSEMBLY } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
+import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
@@ -61,17 +62,23 @@ export function orderActionProjections(requests: readonly CommitRequest[]): read
 
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */
 /** Carry the legacy marker across consecutive acknowledgements from this editor. */
-function legacyPlacementObservedRevision(record: CommitRequest, predecessor: CommitRequest, snapshot: ResourceSnapshot): number | undefined {
+function legacyPlacementField(collection: string) {
+  if (collection === 'groups') return 'groupFlowPlacementLegacyRevision';
+  if (collection === 'councils') return 'councilTopicPlacementLegacyRevision';
+  if (collection === 'sermons') return 'outlinePointPlacementLegacyRevision';
+}
+
+function legacyPlacementObservedRevision(record: CommitRequest, predecessor: CommitRequest, snapshot: ResourceSnapshot,
+  field: NonNullable<ReturnType<typeof legacyPlacementField>>): number | undefined {
   const head = snapshot.metadata, answer = predecessor.result;
   const effect = answer?.kind === 'acknowledged' ? answer.committed ?? answer.snapshot.metadata : null;
-  const { collection } = record.baseline.resource;
-  if ((collection !== 'sermons' && collection !== 'groups') || !record.baseline.value || record.baseline.metadata !== null
+  if (!record.baseline.value || record.baseline.metadata !== null
     || predecessor.editorId !== record.editorId || predecessor.owner !== record.owner
     || !equalValues(predecessor.baseline.resource, record.baseline.resource)
     || !head || effect?.generation !== head.generation || effect.revision !== head.revision
     || effect.operationId !== (predecessor.command?.operationId ?? predecessor.id)) return undefined;
   if (head.revision === 1) return predecessor.baseline.value && !predecessor.baseline.metadata ? 1 : undefined;
-  const earlier = collection === 'groups' ? predecessor.groupFlowPlacementLegacyRevision : predecessor.outlinePointPlacementLegacyRevision;
+  const earlier = predecessor[field];
   if (earlier === head.revision - 1 && predecessor.working.metadata?.generation === head.generation) return head.revision;
 }
 
@@ -80,10 +87,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
   if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return null;
   if (predecessor && predecessor.result?.kind === 'acknowledged') {
     const snapshot = predecessor.result.snapshot;
-    const legacyRevision = legacyPlacementObservedRevision(record, predecessor, snapshot);
-    const group = record.baseline.resource.collection === 'groups';
-    const legacyLineage = !legacyRevision ? {} : group
-      ? { groupFlowPlacementLegacyRevision: legacyRevision } : { outlinePointPlacementLegacyRevision: legacyRevision };
+    const field = legacyPlacementField(record.baseline.resource.collection);
+    const legacyRevision = field && legacyPlacementObservedRevision(record, predecessor, snapshot, field);
+    const legacyLineage = field && legacyRevision ? { [field]: legacyRevision } : {};
     if (record.serviceOrderPlacement && snapshot.value) {
       if ((snapshot.metadata?.generation ?? null) !== record.serviceOrderPlacement.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
@@ -100,6 +106,13 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       const projected = steps && projectServiceOrderStep(steps, move.placement.stepId, move.placement.destination);
       return { ...record, initialized: true, working: snapshot,
         intended: projected ? { ...snapshot.value, steps: projected } : snapshot.value };
+    }
+    if (record.councilTopicPlacement && snapshot.value) {
+      const move = record.councilTopicPlacement;
+      if (move.generation !== null && snapshot.metadata?.generation !== move.generation) {
+        return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
+      }
+      return { ...record, initialized: true, working: snapshot, ...legacyLineage, intended: projectCouncilTopicOnDocument(snapshot.value, move) };
     }
     if (record.groupFlowStepPlacement && snapshot.value) {
       const move = record.groupFlowStepPlacement;
@@ -160,7 +173,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         generation: record.baseline.metadata?.generation ?? null, dependsOn: [],
         thoughtPlacementActions: record.thoughtPlacementActions,
       }, ancestor, authored, snapshot) : undefined;
-    const ordinary = outline ?? (group && sameGeneration ? mergeGroupFlowRebase(ancestor, authored, snapshot.value)
+    const ordinary = outline ?? (record.baseline.resource.collection === 'groups' && sameGeneration ? mergeGroupFlowRebase(ancestor, authored, snapshot.value)
       : rebaseOptionalPrayerTags(record.baseline.resource.collection, ancestor, authored, snapshot.value,
         mergeDocumentFields(ancestor, authored, snapshot.value)));
     const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>

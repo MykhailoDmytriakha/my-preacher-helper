@@ -7,6 +7,7 @@ import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { validCouncilCarry } from './councilCarryContent';
+import { COUNCIL_TOPIC_PLACEMENT_REVIEW, legacyCouncilTopicPlacementNeedsReview, planCouncilTopicPlacement } from './councilTopicPlacement.server';
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { GROUP_STEP_PLACEMENT_REVIEW, legacyGroupPlacementNeedsReview, planGroupStepPlacement } from './groupStepPlacement.server';
 import { childIdentityIssues } from './legacyChildIdentity';
@@ -39,7 +40,7 @@ export interface RelationReader {
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite; councilTopicPlacement?: StepPlacementWrite }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -118,6 +119,7 @@ class RelationPlanner {
   private serviceOrderPlacement?: ServiceOrderPlacementWrite;
   private serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
   private groupFlowStepPlacement?: StepPlacementWrite;
+  private councilTopicPlacement?: StepPlacementWrite;
   private outlinePointPlacement?: OutlinePointPlacementWrite;
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
@@ -680,6 +682,19 @@ class RelationPlanner {
       this.outlinePointPlacement = plan.write;
       return;
     }
+    if (command.kind === 'update' && command.councilTopicPlacement && this.primary.value && !this.primary.metadata?.deleted
+      && command.generation === (this.primary.metadata?.generation ?? null)) {
+      if (this.primary.value.status === 'held') return { kind: 'refused', operationId: command.operationId, code: COUNCIL_TOPIC_PLACEMENT_REVIEW };
+      const context = this.reader.serviceOrderPlacement;
+      const plan = planCouncilTopicPlacement(command, this.primary, context?.rawMetadata, context?.serverMs);
+      if ('conflict' in plan) return { ...this.conflict([plan.conflict]), serviceOrderPlacementComparison: plan.comparison };
+      this.stage(this.primary, { topics: plan.steps });
+      if (!this.writes.has(key(this.primary.resource))) {
+        this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.primary.value, command.operationId, []));
+      }
+      this.councilTopicPlacement = plan.write;
+      return;
+    }
     if (command.kind === 'update' && command.groupFlowStepPlacement && this.primary.value && !this.primary.metadata?.deleted
       && command.generation === (this.primary.metadata?.generation ?? null)) {
       const context = this.reader.serviceOrderPlacement;
@@ -719,6 +734,9 @@ class RelationPlanner {
       }
       this.serviceOrderPlacement = plan.write;
       return;
+    }
+    if (legacyCouncilTopicPlacementNeedsReview(command, this.primary, this.reader.serviceOrderPlacement?.rawMetadata)) {
+      return { kind: 'refused', operationId: command.operationId, code: COUNCIL_TOPIC_PLACEMENT_REVIEW };
     }
     if (legacyGroupPlacementNeedsReview(command, this.primary, this.reader.serviceOrderPlacement?.rawMetadata)) {
       return { kind: 'refused', operationId: command.operationId, code: GROUP_STEP_PLACEMENT_REVIEW };
@@ -761,6 +779,7 @@ class RelationPlanner {
       writes: [...this.writes.values()], ...(this.serviceOrderPlacement && { serviceOrderPlacement: this.serviceOrderPlacement }),
       ...(this.serviceOrderStepPlacement && { serviceOrderStepPlacement: this.serviceOrderStepPlacement }),
       ...(this.groupFlowStepPlacement && { groupFlowStepPlacement: this.groupFlowStepPlacement }),
+      ...(this.councilTopicPlacement && { councilTopicPlacement: this.councilTopicPlacement }),
       ...(this.outlinePointPlacement && { outlinePointPlacement: this.outlinePointPlacement }),
       ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
