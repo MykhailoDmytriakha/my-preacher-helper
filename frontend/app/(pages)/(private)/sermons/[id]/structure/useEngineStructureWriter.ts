@@ -5,11 +5,12 @@ import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict'
 import { useDataDocument, useDocumentActions, type DocumentUpdateOptions } from '@/data-engine/react.client';
 import { isOutlineCollisionError, OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
+import { serializeContent } from '@/utils/contentFingerprint';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
-import { readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
+import { readOutlineNoteText, readOutlineTitleText, withOutlineNoteText, withOutlineTitleText } from '@/utils/sermonNoteText';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
@@ -21,7 +22,7 @@ import type { ActionTime } from '@/data-engine/actionClock';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
 import type { DocumentData, OutlinePointPlacementCapture } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
-import type { OutlineNoteOpening } from '@/utils/sermonNoteText';
+import type { OutlineNoteOpening, OutlineTitleOpening } from '@/utils/sermonNoteText';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
@@ -111,6 +112,26 @@ function mergeOpenOutlineNote(opening: OutlineNoteOpening, proposed: SermonOutli
   return withOutlineNoteText(stored, target, mine.text ?? undefined) ?? stored;
 }
 
+function mergeOpenOutlineTitle(opening: OutlineTitleOpening, proposed: SermonOutline, stored: SermonOutline | null,
+  base: SermonOutline | null, previousTitle: string | undefined, explicitChoice = false) {
+  const { target, text } = opening;
+  const mine = readOutlineTitleText(proposed, target);
+  const live = readOutlineTitleText(stored, target);
+  const titleOnly = base && mine !== undefined && withOutlineTitleText(base, target, mine);
+  const hasOtherEdits = explicitChoice && (!titleOnly || serializeContent(titleOnly) !== serializeContent(proposed));
+  // Taking the saved title retires this text decision. It never reapplies an old title.
+  if (explicitChoice && mine === text) return hasOtherEdits ? undefined : stored;
+  const local = stored && mine !== undefined ? withOutlineTitleText(stored, target, mine) : undefined;
+  if (!stored || !local || live === undefined) {
+    throw new OutlineCollisionError([target.id], stored, 0, { outline: base }, { reviewWhole: true });
+  }
+  if (live !== text && live !== mine && live !== previousTitle) {
+    const ancestor = hasOtherEdits ? base : withOutlineTitleText(stored, target, text) ?? base;
+    throw new OutlineCollisionError([target.id], stored, 0, { outline: ancestor }, { local: hasOtherEdits ? proposed : local });
+  }
+  return hasOtherEdits ? undefined : local;
+}
+
 export function createEngineStructureWriter(document: StructureDocument, owner: string | null,
   onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }, rowIds?: string[]) =>
@@ -187,8 +208,31 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
         return await editEngineSermon(document, owner, current => {
           const apply = (base: SermonOutline | null) => {
             const live = current.outline ?? null;
+            const selectedTitle = inputSequence?.titleChoice;
+            if (selectedTitle) {
+              // The selection can remain backed up while this same editor accepts its next input.
+              const previousTitle = readOutlineTitleText(base, selectedTitle.target);
+              const accepted = mergeOpenOutlineTitle(selectedTitle, outline, live, base, previousTitle, true);
+              if (accepted !== undefined && !inputSequence?.noteOpening) {
+                const next = accepted ? replaceSermonOutline(current, accepted) : current;
+                return { next, result: next.outline ?? null };
+              }
+            }
             if (inputSequence?.noteOpening) {
-              const next = replaceSermonOutline(current, mergeOpenOutlineNote(inputSequence.noteOpening, outline, live, base));
+              const accepted = mergeOpenOutlineNote(inputSequence.noteOpening, outline, live, base);
+              if (!selectedTitle) {
+                const next = replaceSermonOutline(current, accepted);
+                return { next, result: next.outline ?? null };
+              }
+            }
+            const title = inputSequence?.titleOpening;
+            if (title) {
+              const shown = baseOutline ?? null;
+              // Only this exact unchanged view can inherit the preceding input accepted by this column.
+              const previousTitle = base !== shown && readOutlineTitleText(shown, title.target) === title.text
+                ? readOutlineTitleText(base, title.target) : undefined;
+              const accepted = mergeOpenOutlineTitle(title, outline, live, base, previousTitle);
+              const next = accepted ? replaceSermonOutline(current, accepted) : current;
               return { next, result: next.outline ?? null };
             }
             const merged = mergeOutline(base, outline, live, onCollision === 'preferMine');
@@ -202,7 +246,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
         // Modal editors already own their durable comparison. Older automatic callers used
         // preferMine to suppress it; retain every refused input before their UI callbacks settle.
         if (onCollision === 'preferMine' && isOutlineCollisionError(error)) {
-          onOutlineConflict?.(outline, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
+          onOutlineConflict?.(error.comparison?.local ?? outline, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
         }
         throw error;
       }

@@ -26,7 +26,7 @@ interface SubPointListProps {
   outlinePointId: string;
   isPointLocked: boolean;
   onAdd: (outlinePointId: string, text: string) => void;
-  onEdit: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => void;
   onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
@@ -151,7 +151,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const handleEditSave = () => {
     const textToSave = changedCapitalizedTitle(editText, openingTitle.current);
-    if (editingId && textToSave) onEdit(outlinePointId, editingId, textToSave);
+    if (editingId && textToSave) onEdit(outlinePointId, editingId, textToSave, openingTitle.current);
     setEditingId(null);
     setEditText("");
   };

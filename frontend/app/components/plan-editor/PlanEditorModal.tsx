@@ -21,7 +21,7 @@ import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
-import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineNoteChoice } from '@/utils/outlineChoice';
+import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineTextChoice } from '@/utils/outlineChoice';
 import { outlinePointGap, projectOutlinePoint } from '@/utils/outlineDnd';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
@@ -214,12 +214,12 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     : null;
   const needsWholeChoice = Boolean(collision && storedCollision && (storedCollision.payload.reviewWhole
     || !Object.prototype.hasOwnProperty.call(storedCollision.payload, 'baseOutline')));
-  const noteChoice = collision && !needsWholeChoice
-    ? readOutlineNoteChoice(storedCollision?.payload.baseOutline, outline, collision.serverOutline) : undefined;
+  const textChoice = collision && !needsWholeChoice
+    ? readOutlineTextChoice(storedCollision?.payload.baseOutline, outline, collision.serverOutline) : undefined;
   const setCollision = useCallback((next:{serverOutline:SermonOutline | null} | null, refused?:SermonOutline,
-    base:SermonOutline | null=baseOutlineRef.current) => {
+    base:SermonOutline | null=baseOutlineRef.current, reviewWhole=false) => {
     if (!next) clearConflict();
-    else askConflict(refused ?? outlineRef.current,base,next.serverOutline);
+    else askConflict(refused ?? outlineRef.current,base,next.serverOutline,reviewWhole);
   },[askConflict,clearConflict]);
   const persistRef = useRef<((next:SermonOutline,options?:{force?:boolean}) => void) | null>(null);
 
@@ -290,6 +290,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         outline: next,
         base: baseOutlineRef.current,
         noteOpening: options?.noteOpening,
+        titleChoice: pending?.payload.titleChoice,
         ...(options?.pointMove && placementVersion.current && { pointMove: { ...options.pointMove, version: placementVersion.current } }),
         begin: () => {
           const waiting = getConflict();
@@ -314,13 +315,13 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 const baseline = err.baseline;
                 const note = options?.noteOpening;
                 const edited = note && readOutlineNoteText(refused, note.target);
-                const projected = note && edited && err.serverOutline
-                  ? withOutlineNoteText(err.serverOutline, note.target, edited.text ?? undefined) : undefined;
+                const projected = err.comparison?.local ?? (note && edited && err.serverOutline
+                  ? withOutlineNoteText(err.serverOutline, note.target, edited.text ?? undefined) : undefined);
                 if (projected && currentSession) {
                   outlineRef.current = projected;
                   setOutline(projected);
                 }
-                setCollision({ serverOutline: err.serverOutline }, projected ?? refused, baseline ? baseline.outline : baseAtRequest);
+                setCollision({ serverOutline: err.serverOutline }, projected ?? refused, baseline ? baseline.outline : baseAtRequest, err.comparison?.reviewWhole);
                 return;
               }
               if (!currentSession) return;
@@ -616,8 +617,9 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               {needsWholeChoice ? t('planEditor.wholeStructureDescription')
                 : t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
             </p>
-            {noteChoice && <FieldComparison comparison={{ valueKind: 'field', title: t('planEditor.note.label'),
-              mine: noteChoice.mine ?? t('dataSync.emptyField'), stored: noteChoice.stored ?? t('dataSync.emptyField') }} />}
+            {textChoice && <FieldComparison comparison={{ valueKind: 'field',
+              title: t(textChoice.kind === 'title' ? 'legacyRecovery.field.title' : 'planEditor.note.label'),
+              mine: textChoice.mine ?? t('dataSync.emptyField'), stored: textChoice.stored ?? t('dataSync.emptyField') }} />}
             <SavedDraftCopyPicker
               options={conflictChoices.copies.map(copy => ({ key: copy.key,
                 label: [...copy.value.payload.outline.introduction, ...copy.value.payload.outline.main, ...copy.value.payload.outline.conclusion]
@@ -633,7 +635,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   if (needsWholeChoice && !wholeReviewOpen) return;
                   let chosen: SermonOutline;
                   try {
-                    chosen = needsWholeChoice ? outline : noteChoice?.acceptLocal()
+                    chosen = needsWholeChoice ? outline : textChoice?.acceptLocal()
                       ?? chooseOutlineLocalChanges(baseOutlineRef.current, outline, collision.serverOutline);
                   } catch (error) {
                     if (!(error instanceof OutlineChoiceReviewRequiredError)) throw error;
@@ -644,7 +646,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   // The choice covers only this shown snapshot. A later unknown edit is
                   // still checked by the ordinary writer; its backup remains until capture.
                   baseOutlineRef.current = collision.serverOutline;
-                  selectConflict(chosen,collision.serverOutline);
+                  selectConflict(chosen,collision.serverOutline,textChoice?.kind === 'title' ? textChoice.opening : undefined);
                   setOutline(chosen);
                   outlineRef.current=chosen;
                   persist(chosen, { force: true });
@@ -652,7 +654,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 disabled={needsWholeChoice && !wholeReviewOpen}
                 className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
-                {t(needsWholeChoice ? 'planEditor.useWholeLocalStructure' : noteChoice ? 'dataSync.useLocalVersion' : 'freshness.conflictKeepMine')}
+                {t(needsWholeChoice ? 'planEditor.useWholeLocalStructure' : textChoice?.kind === 'note' ? 'dataSync.useLocalVersion' : 'freshness.conflictKeepMine')}
               </button>
               {needsWholeChoice && (
                 <button type="button" onClick={() => setWholeReviewOpen(true)}
@@ -664,10 +666,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 type="button"
                 onClick={() => {
                   const theirs = fromSermon(collision.serverOutline);
-                  if (noteChoice) {
-                    const chosen = noteChoice.acceptStored();
+                  if (textChoice) {
+                    const chosen = textChoice.acceptStored();
                     baseOutlineRef.current = theirs;
-                    selectConflict(chosen, theirs);
+                    selectConflict(chosen, theirs, textChoice.kind === 'title' ? textChoice.opening : undefined);
                     setOutline(chosen);
                     outlineRef.current = chosen;
                     persist(chosen, { force: true });
@@ -681,7 +683,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 }}
                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
               >
-                {t(noteChoice ? 'dataSync.useStoredVersion' : 'freshness.conflictTakeTheirs')}
+                {t(textChoice?.kind === 'note' ? 'dataSync.useStoredVersion' : 'freshness.conflictTakeTheirs')}
               </button>
             </div>
           </div>

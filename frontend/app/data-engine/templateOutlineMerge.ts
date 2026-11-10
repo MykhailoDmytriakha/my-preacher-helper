@@ -1,5 +1,5 @@
 import { SECTION_KEYS } from '@/utils/outlineDnd';
-import { sermonNoteConflictTarget } from '@/utils/sermonNoteText';
+import { outlineTitleConflictTarget, sermonNoteConflictTarget } from '@/utils/sermonNoteText';
 
 import { withoutUnsignedRowOrder } from './anchoredRowPlacement';
 import { equalValues, object, readField } from './fieldValues';
@@ -108,11 +108,11 @@ function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, hom
 const outlineLayout = (outline: TemplateOutline) => SECTION_KEYS.map(section => outline[section].map(row => [
   row.id, children(row).map(child => [child.id, child.position]),
 ]));
-const reminders = (outline: TemplateOutline) => SECTION_KEYS.flatMap(section => outline[section].flatMap(row =>
-  [row.note, ...children(row).map(child => child.note)]));
+const rowWords = (outline: TemplateOutline) => SECTION_KEYS.flatMap(section => outline[section].flatMap(row =>
+  [row.text, row.note, ...children(row).flatMap(child => [child.text, child.note])]));
 
-function reminderContentEdit(before: TemplateOutline, after: TemplateOutline): boolean {
-  return equalValues(outlineLayout(before), outlineLayout(after)) && !equalValues(reminders(before), reminders(after));
+function outlineTextEdit(before: TemplateOutline, after: TemplateOutline): boolean {
+  return equalValues(outlineLayout(before), outlineLayout(after)) && !equalValues(rowWords(before), rowWords(after));
 }
 
 /** Edits without a new placement follow point identities into their saved sections. */
@@ -120,9 +120,9 @@ export function mergeOutlineContent(base: FieldValue, mine: FieldValue, theirs: 
   const before = templateOutline(base.value), local = templateOutline(mine.value), stored = templateOutline(theirs.value);
   if (!before || !local || !stored) return null;
   const openingTopology = topology(before);
-  // A sermon note Save may bundle other authored fields. Only the branch
+  // A sermon text edit may bundle other authored fields. Only the branch
   // whose whole placement is unchanged can carry those fields across a move.
-  const contentOnly = path[0] === 'outline' ? reminderContentEdit : keepsPointHomes;
+  const contentOnly = path[0] === 'outline' ? outlineTextEdit : keepsPointHomes;
   const storedPlaces = contentOnly(before, local) && !equalValues(openingTopology, topology(stored));
   const localPlaces = !storedPlaces && contentOnly(before, stored) && !equalValues(openingTopology, topology(local));
   if (!storedPlaces && !localPlaces) return null;
@@ -164,10 +164,11 @@ export function mergeOutlineContent(base: FieldValue, mine: FieldValue, theirs: 
   return templateOutline(value) ? { value: { exists: true, value }, conflicts } : review;
 }
 
-/** Independent section merges can put the same point in two homes. A reminder
- * comparison cannot authorize selecting either placement. */
-export function hasAmbiguousReminderMerge(merged: MergeResult): boolean {
-  return merged.conflicts.length === 1 && sermonNoteConflictTarget(merged.conflicts[0].path) !== undefined
+/** A text comparison cannot authorize choosing between competing point locations. */
+export function hasAmbiguousOutlineTextMerge(merged: MergeResult): boolean {
+  if (merged.conflicts.length !== 1) return false;
+  const { path } = merged.conflicts[0];
+  return Boolean(sermonNoteConflictTarget(path) || outlineTitleConflictTarget(path))
     && childIdentityIssues(outlineIdentityRows(merged.value.value)).length > 0;
 }
 
@@ -179,14 +180,14 @@ export function usesSavedTemplateLayout(opening: unknown, proposed: unknown, cur
   return equalValues(outlineLayout(before), outlineLayout(local)) && equalValues(outlineLayout(saved), outlineLayout(candidate));
 }
 
-/** Keep the exact positions chosen by an outline merge when answering a reminder question. */
-export function usesMergedSermonReminderLayout(opening: unknown, proposed: unknown, current: unknown, merged: unknown): boolean {
+/** Keep the exact positions chosen by an outline merge when answering an outline text question. */
+export function usesMergedSermonTextLayout(opening: unknown, proposed: unknown, current: unknown, merged: unknown): boolean {
   const before = templateOutline(opening), local = templateOutline(proposed);
   const saved = templateOutline(current), candidate = templateOutline(merged);
   if (!before || !local || !saved || !candidate) return false;
   const selected = outlineLayout(candidate);
-  return (reminderContentEdit(before, local) && equalValues(outlineLayout(saved), selected))
-    || (reminderContentEdit(before, saved) && equalValues(outlineLayout(local), selected));
+  return (outlineTextEdit(before, local) && equalValues(outlineLayout(saved), selected))
+    || (outlineTextEdit(before, saved) && equalValues(outlineLayout(local), selected));
 }
 
 function positions(outline: TemplateOutline, retained: ReadonlySet<string>) {

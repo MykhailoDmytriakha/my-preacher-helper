@@ -80,7 +80,7 @@ it('keeps normalized inline save, blank rejection, cancel, delete and collapse l
   expect(editor).toHaveFocus();
   fireEvent.change(editor, { target: { value: '  revised title  ' } });
   fireEvent.keyDown(editor, { key: 'Enter' });
-  expect(onSaveEdit).toHaveBeenCalledWith('point', 'Revised title');
+  expect(onSaveEdit).toHaveBeenCalledWith('point', 'Revised title', 'Point');
   fireEvent.click(screen.getByRole('heading', { name: 'Point' }));
   fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } });
   fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
@@ -129,7 +129,7 @@ it('preserves an explicit capitalization correction to a legacy title', () => {
   fireEvent.change(editor, { target: { value: 'Lowercase title' } });
   fireEvent.keyDown(editor, { key: 'Enter' });
   expect(onSaveEdit).toHaveBeenCalledTimes(1);
-  expect(onSaveEdit).toHaveBeenCalledWith('point', 'Lowercase title');
+  expect(onSaveEdit).toHaveBeenCalledWith('point', 'Lowercase title', 'lowercase title');
 });
 
 it('preserves focus actions, all-thought lock semantics, note ownership and AI gating', () => {

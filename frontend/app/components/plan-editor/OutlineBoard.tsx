@@ -26,7 +26,7 @@ import {
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
 import { findPointSection } from '@/utils/outlineDnd';
-import { sermonNoteChanged, withOutlineNoteText, type OutlineNoteOpening, type OutlineNoteTarget } from '@/utils/sermonNoteText';
+import { sermonNoteChanged, withOutlineNoteText, type OutlineNoteOpening, type OutlineNoteTarget, type OutlineTitleOpening } from '@/utils/sermonNoteText';
 import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -106,6 +106,7 @@ interface OutlineBoardProps {
   value: SermonOutline;
   onChange: (next: SermonOutline) => void;
   onNoteChange?: (next: SermonOutline, opening: OutlineNoteOpening) => void | Promise<void>;
+  captureTitleEdit?: (opening: OutlineTitleOpening) => (title: string) => Promise<void>;
   onPointMove?: (next: SermonOutline, pointId: string) => void;
   isReadOnly?: boolean;
   /** Optional: count of thoughts attached to a sub-point, for the delete warning. */
@@ -149,6 +150,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onChange,
   onPointMove,
   onNoteChange,
+  captureTitleEdit,
   isReadOnly = false,
   getSubPointThoughtCount,
   getPointThoughtCount,
@@ -229,6 +231,18 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const [editingSubPointId, setEditingSubPointId] = useState<string | null>(null);
   const [editingSubPointText, setEditingSubPointText] = useState('');
   const openingSubPointTitle = useRef('');
+  const titleEdits = useRef<Partial<Record<'point' | 'subpoint', (title: string) => Promise<void>>>>({});
+  const titleDrafts = useRef({ point: editingText, subpoint: editingSubPointText });
+  titleDrafts.current = { point: editingText, subpoint: editingSubPointText };
+  const submitCapturedTitle = (kind: 'point' | 'subpoint', title: string, close: () => void) => {
+    const capture = titleEdits.current[kind];
+    if (!capture) return false;
+    const draft = titleDrafts.current[kind];
+    void capture(title).then(() => {
+      if (titleEdits.current[kind] === capture && titleDrafts.current[kind] === draft) close();
+    }, () => { /* The document reports a failed capture. Keep the input open. */ });
+    return true;
+  };
   const [pendingSubPointDelete, setPendingSubPointDelete] = useState<{
     outlinePointId: string;
     subPointId: string;
@@ -254,6 +268,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(point.text);
     openingPointTitle.current = title;
+    titleEdits.current.point = captureTitleEdit?.({ target: { kind: 'point', id: point.id }, text: point.text });
     setEditingPointId(point.id);
     setEditingText(title);
     setAddingToSection(null);
@@ -267,6 +282,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       setEditingText('');
       return;
     }
+    if (submitCapturedTitle('point', text, () => {
+      setEditingPointId(null);
+      setEditingText('');
+    })) return;
     const next = SECTIONS.reduce((acc, s) => {
       acc[s.key] = points[s.key].map((p) => (p.id === editingPointId ? { ...p, text } : p));
       return acc;
@@ -361,6 +380,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(sp.text);
     openingSubPointTitle.current = title;
+    titleEdits.current.subpoint = captureTitleEdit?.({ target: { kind: 'subpoint', id: sp.id }, text: sp.text });
     setEditingSubPointId(sp.id);
     setEditingSubPointText(title);
     setAddingSubPointTo(null);
@@ -371,6 +391,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (isReadOnly) return;
     const value2 = changedCapitalizedTitle(editingSubPointText, openingSubPointTitle.current);
     if (value2) {
+      if (submitCapturedTitle('subpoint', value2, () => {
+        setEditingSubPointId(null);
+        setEditingSubPointText('');
+      })) return;
       editSubPoint(outlinePointId, subPointId, value2);
     }
     setEditingSubPointId(null);

@@ -16,6 +16,7 @@ import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfter
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
+import { readOutlineTitleComparison, templateTitleEdit } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageRowFields } from './rowFieldAutosave';
@@ -33,6 +34,7 @@ import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CommandResult, ConflictDetail, CouncilTopicPlacementCapture, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
+import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -124,6 +126,16 @@ export class DataSession {
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+  }
+
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): void {
+    const { draft, stored, conflicts, conflictingTitle } = templateTitleEdit(this.state, shown, opening, title);
+    this.edit(draft);
+    this.state.conflicts = conflicts;
+    if (conflictingTitle) {
+      this.state.remoteCandidate = copy(stored);
+      this.state.dirty = true;
+    }
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
@@ -450,6 +462,10 @@ export class DataSession {
   keepLocal(preachStatuses?: readonly PreachStatusAction[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
+    const title = readOutlineTitleComparison(this.state);
+    if (title && title.stored === undefined) {
+      throw Object.assign(new Error('The compared point was removed'), { code: 'decision-changed' });
+    }
     const candidate = this.state.remoteCandidate;
     const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {

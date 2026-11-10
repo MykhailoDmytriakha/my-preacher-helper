@@ -44,9 +44,9 @@ const engineWriter = () => {
  * The real engine writer over a sermon draft. Like the engine, it lays a hand-over on the draft at
  * once and answers only later, when told — after the change is kept on the device.
  */
-const engineDocument = (outline: SermonOutline) => {
+const engineDocument = (outline: SermonOutline, retain?: Parameters<typeof createEngineStructureWriter>[2]) => {
   const state = { current: { userId: "owner-1", title: "Grace", thoughts: [], outline } as unknown as DocumentData };
-  const real = createEngineStructureWriter({ update: async (updater) => { state.current = updater(state.current)!; } }, "owner-1");
+  const real = createEngineStructureWriter({ update: async (updater) => { state.current = updater(state.current)!; } }, "owner-1", retain);
   const answers: (() => void)[] = [];
   const writer: StructureWriter = {
     ...real,
@@ -103,6 +103,81 @@ describe("the structure board column on the data engine", () => {
 
     expect(outlineOf(state).main.map((point) => point.text)).toEqual(["First point", "Second point, kept"]);
     expect(result.current.localSermonPoints.map((point) => point.text)).toEqual(["First point", "Second point, kept"]);
+  });
+
+  it("retains both titles for review when a focused edit started before the saved title arrived", async () => {
+    const starting = { introduction: [], main: points, conclusion: [] };
+    const retain = jest.fn();
+    const { state, writer, answerAll } = engineDocument(starting, retain);
+    const { result, rerender } = renderHook(({ initialSermonPoints }) => useColumnOutlineState({
+      id: "main", sermonId: "sermon-1", initialSermonPoints, t,
+    }), {
+      initialProps: { initialSermonPoints: points },
+      wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>,
+    });
+
+    act(() => result.current.handleStartEdit(points[0]));
+    act(() => result.current.setEditingText("Words typed before the refresh"));
+    const saved = { ...starting, main: [{ ...points[0], text: "Title saved elsewhere", note: "Keep the other edit" }, points[1]] };
+    state.current = { ...state.current, outline: saved as unknown as DocumentData };
+    rerender({ initialSermonPoints: saved.main });
+    expect(result.current.editingText).toBe("Words typed before the refresh");
+    await act(async () => {
+      result.current.handleSaveEdit();
+      await answerAll();
+    });
+
+    expect(outlineOf(state)).toEqual(saved);
+    expect(retain).toHaveBeenCalledWith(
+      expect.objectContaining({ main: expect.arrayContaining([expect.objectContaining({ text: "Words typed before the refresh" })]) }),
+      expect.objectContaining({ main: expect.arrayContaining([expect.objectContaining({ text: "First point" })]) }),
+      saved
+    );
+  });
+
+  it("does not include a refused title in an unrelated point added afterward", async () => {
+    const starting = { introduction: [], main: points, conclusion: [] };
+    const retain = jest.fn();
+    const { state, writer, answerAll } = engineDocument(starting, retain);
+    const { result, rerender } = renderHook(({ initialSermonPoints }) => useColumnOutlineState({
+      id: "main", sermonId: "sermon-1", initialSermonPoints, t,
+    }), {
+      initialProps: { initialSermonPoints: points },
+      wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>,
+    });
+
+    act(() => result.current.handleStartEdit(points[0]));
+    act(() => result.current.setEditingText("Refused title"));
+    const saved = { ...starting, main: [{ ...points[0], text: "Saved title" }, points[1]] };
+    state.current = { ...state.current, outline: saved as unknown as DocumentData };
+    rerender({ initialSermonPoints: saved.main });
+    await act(async () => {
+      result.current.handleSaveEdit();
+      await answerAll();
+    });
+    expect(retain).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.setNewPointText("Independent new point"));
+    await act(async () => {
+      result.current.handleAddPoint();
+      await answerAll();
+    });
+
+    expect(outlineOf(state).main.map(point => point.text)).toEqual(["Saved title", "Second point", "Independent new point"]);
+  });
+
+  it("preserves another title submitted before this column receives its first capture result", async () => {
+    const retain = jest.fn();
+    const { state, writer, answerAll } = engineDocument({ introduction: [], main: points, conclusion: [] }, retain);
+    const { result } = renderHook(() => useColumnOutlineState({ id: "main", sermonId: "sermon-1", initialSermonPoints: points, t }),
+      { wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider> });
+
+    act(() => result.current.handleSaveEditDirect("point-1", "First real change", "First point"));
+    act(() => result.current.handleSaveEditDirect("point-1", "Second real change", "First point"));
+    await act(async () => { await answerAll(); });
+
+    expect(outlineOf(state).main[0].text).toBe("Second real change");
+    expect(retain).not.toHaveBeenCalled();
   });
 
   it("says so when an edit handed over fails, even after the board was left", async () => {

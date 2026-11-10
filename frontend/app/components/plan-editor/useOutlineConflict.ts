@@ -7,6 +7,7 @@ import { validOutlineConflict } from '@/utils/refusedDraftPayloads';
 
 import type { PersistedConflict, PersistedConflictWriteOptions } from '@/hooks/usePersistedConflict';
 import type { SermonOutline } from '@/models/models';
+import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 export interface OutlineConflictPayload {
   outline: SermonOutline;
@@ -14,6 +15,7 @@ export interface OutlineConflictPayload {
   /** Absence marks a legacy copy whose changed fields cannot be inferred. Null is a known absence. */
   baseOutline?: SermonOutline | null;
   resolution?: 'local';
+  titleChoice?: OutlineTitleOpening;
   reviewWhole?: boolean;
 }
 export type OutlineConflictRecord = PersistedConflict<OutlineConflictPayload>;
@@ -33,8 +35,8 @@ export function useOutlineConflict(owner: string, id: string) {
     const previous=get();
     setRecord(next,id,previous ?? undefined,options);
   },[id,setRecord,get]);
-  const ask=useCallback((outline:SermonOutline,base:SermonOutline | null,serverOutline:SermonOutline | null) => {
-    const next={payload:{outline,baseOutline:base,serverOutline},actualRevision:0};
+  const ask=useCallback((outline:SermonOutline,base:SermonOutline | null,serverOutline:SermonOutline | null,reviewWhole=false) => {
+    const next={payload:{outline,baseOutline:base,serverOutline,...(reviewWhole && {reviewWhole})},actualRevision:0};
     setRecord(next,id);
   },[id,setRecord]);
   const retain=useCallback((outline:SermonOutline,base:SermonOutline | null,serverOutline:SermonOutline | null) => {
@@ -47,8 +49,8 @@ export function useOutlineConflict(owner: string, id: string) {
     const previous=get();
     if (previous) put({...previous,payload:{...previous.payload,outline}});
   },[get,put]);
-  const select=useCallback((outline:SermonOutline,serverOutline:SermonOutline | null) => {
-    put({payload:{outline,baseOutline:serverOutline,serverOutline,resolution:'local'},actualRevision:0});
+  const select=useCallback((outline:SermonOutline,serverOutline:SermonOutline | null,titleChoice?:OutlineTitleOpening) => {
+    put({payload:{outline,baseOutline:serverOutline,serverOutline,resolution:'local',...(titleChoice && {titleChoice})},actualRevision:0});
   },[put]);
   const clear=useCallback(() => put(null,{preserveSelection:(holds.current.get(identity)??0)>0}),[put,identity]);
   const retire=useCallback((captured:OutlineConflictRecord | null) => {

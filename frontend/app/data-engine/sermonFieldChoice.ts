@@ -1,10 +1,11 @@
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
-import { sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
+import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
+import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { mergeDocumentFields } from './protocol';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
@@ -16,7 +17,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
-    || sermonNoteConflictTarget(path) !== undefined
+    || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -107,6 +108,9 @@ function rebaseStoredThoughtPlacement(base: DocumentData, draft: DocumentData, s
 export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]): DocumentData | undefined {
   if (basis.resource.collection !== 'sermons' || !conflicts.length) return undefined;
+  if (conflicts.length === 1 && outlineTitleConflictTarget(conflicts[0].path)) {
+    return keepUncontestedOutlineTitle(basis, draft, stored, conflicts);
+  }
   const lockIds = conflicts.flatMap(({ path }) => thoughtLockConflictId(path) ?? []);
   const locksOnly = lockIds.length === conflicts.length;
   const placementsOnly = conflicts.every(({ path }) => thoughtPlacementConflictId(path));

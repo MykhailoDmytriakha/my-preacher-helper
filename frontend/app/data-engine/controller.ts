@@ -27,6 +27,7 @@ import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
+import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
@@ -52,7 +53,7 @@ import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
-import type { SermonNoteOpening } from '@/utils/sermonNoteText';
+import type { OutlineTitleOpening, SermonNoteOpening } from '@/utils/sermonNoteText';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
 const placementUnavailable = () => Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
@@ -285,6 +286,15 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): Promise<void> {
+    this.assertCurrent();
+    // Close captures the current session while an earlier disk write can still be pending.
+    this.session.editTemplateTitle(shown, opening, title);
+    this.durable = false;
+    this.emit();
+    return this.enqueue(() => this.persist());
+  }
+
   save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
     action?: EditorCommitAction): Promise<void> {
     this.assertCurrent();
@@ -419,7 +429,13 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.pendingCaptures.retire(captures);
+      const retained = !selection && keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts);
       this.session.acceptRemote(atChoice);
+      if (retained) {
+        const accepted = this.session.checkpoint();
+        const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
+        if (merged.value.exists) this.session.edit(merged.value.value as DocumentData);
+      }
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
       await this.persist();
@@ -961,6 +977,7 @@ export class EditorController {
               writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined;
           if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
           const retained = !selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+            ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)

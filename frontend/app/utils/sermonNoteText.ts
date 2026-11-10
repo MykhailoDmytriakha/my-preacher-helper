@@ -8,6 +8,7 @@ const object = (value: unknown): value is DocumentData => value !== null && type
 export type OutlineNoteTarget = { kind: 'point' | 'subpoint'; id: string };
 export type SermonNoteTarget = { kind: 'scratch'; id: string; createdAt: string } | OutlineNoteTarget;
 export type OutlineNoteOpening = { target: OutlineNoteTarget; text: string | undefined };
+export type OutlineTitleOpening = { target: OutlineNoteTarget; text: string };
 export type SaveSermonNoteText = (text: string | undefined) => void | Promise<void>;
 export type CaptureOutlineNote = (target: OutlineNoteTarget, text: string | undefined) => SaveSermonNoteText;
 
@@ -20,11 +21,11 @@ export type SermonNoteOpening = {
   text: string | null;
 };
 
-type NoteField = { path: string[]; text: string | null };
-type NoteRow = { row: DocumentData; index: number; path: string[] };
+type RowText = { path: string[]; text: string | null };
+type TextRow = { row: DocumentData; index: number; path: string[] };
 
-function noteRow(sermon: DocumentData, target: SermonNoteTarget): NoteRow | undefined {
-  const matches: NoteRow[] = [];
+function textRow(sermon: DocumentData, target: SermonNoteTarget): TextRow | undefined {
+  const matches: TextRow[] = [];
   const add = (rows: Json | undefined, path: string[]) => {
     if (Array.isArray(rows)) rows.forEach((row, index) => {
       if (object(row) && row.id === target.id) matches.push({ row, index, path });
@@ -45,19 +46,22 @@ function noteRow(sermon: DocumentData, target: SermonNoteTarget): NoteRow | unde
   return matches.length === 1 && (target.kind !== 'scratch' || match.row.createdAt === target.createdAt) ? match : undefined;
 }
 
-export function readSermonNoteText(sermon: DocumentData | null, target: SermonNoteTarget): NoteField | undefined {
-  const row = sermon && noteRow(sermon, target);
+function readSermonRowText(sermon: DocumentData | null, target: SermonNoteTarget, leaf: 'text' | 'note'): RowText | undefined {
+  const row = sermon && textRow(sermon, target);
   if (!row) return undefined;
-  const leaf = target.kind === 'scratch' ? 'text' : 'note';
   const text = row.row[leaf];
-  if (text === undefined && target.kind !== 'scratch') return { path: [...row.path, String(row.index), leaf], text: null };
+  if (text === undefined && leaf === 'note') return { path: [...row.path, String(row.index), leaf], text: null };
   return typeof text === 'string' ? { path: [...row.path, String(row.index), leaf], text } : undefined;
 }
 
-/** Replace only the exact note in the current row tree. The original section is never replayed. */
-export function withSermonNoteText(sermon: DocumentData | null, target: SermonNoteTarget, text: string | null): DocumentData | undefined {
-  const field = readSermonNoteText(sermon, target);
-  if (!sermon || !field || (target.kind === 'scratch' && text === null)) return undefined;
+export function readSermonNoteText(sermon: DocumentData | null, target: SermonNoteTarget): RowText | undefined {
+  return readSermonRowText(sermon, target, target.kind === 'scratch' ? 'text' : 'note');
+}
+
+/** Replace only the exact text field in the current row tree. */
+function withSermonRowText(sermon: DocumentData | null, target: SermonNoteTarget, leaf: 'text' | 'note', text: string | null): DocumentData | undefined {
+  const field = readSermonRowText(sermon, target, leaf);
+  if (!sermon || !field || (leaf === 'text' && text === null)) return undefined;
   if (field.text === text) return sermon;
   const write = (value: Json, [key, ...rest]: string[]): Json => {
     if (Array.isArray(value)) return value.map((row, index) => index === Number(key) ? write(row, rest) : row);
@@ -70,6 +74,31 @@ export function withSermonNoteText(sermon: DocumentData | null, target: SermonNo
   return write(sermon, field.path) as DocumentData;
 }
 
+export function withSermonNoteText(sermon: DocumentData | null, target: SermonNoteTarget, text: string | null): DocumentData | undefined {
+  return withSermonRowText(sermon, target, target.kind === 'scratch' ? 'text' : 'note', text);
+}
+
+export function readOutlineTitleText(outline: SermonOutline | null, target: OutlineNoteTarget): string | undefined {
+  if (!outline) return undefined;
+  return readSermonRowText({ outline: outline as unknown as Json }, target, 'text')?.text ?? undefined;
+}
+
+export function outlineTitleField(outline: SermonOutline | null, target: OutlineNoteTarget, root: 'outline' | 'structure') {
+  if (!outline) return undefined;
+  const row = textRow({ outline: outline as unknown as Json }, target);
+  if (!row || typeof row.row.text !== 'string') return undefined;
+  const section = row.path[1] as keyof SermonOutline;
+  const id = 'id:' + target.id;
+  const path = row.path.length === 2 ? [root, section, id, 'text']
+    : [root, section, 'id:' + outline[section][Number(row.path[2])].id, 'subPoints', id, 'text'];
+  return { path, text: row.row.text };
+}
+
+export function withOutlineTitleText(outline: SermonOutline, target: OutlineNoteTarget, title: string): SermonOutline | undefined {
+  const value = withSermonRowText({ outline: outline as unknown as Json }, target, 'text', title);
+  return value?.outline as unknown as SermonOutline | undefined;
+}
+
 export function readOutlineNoteText(outline: SermonOutline | null, target: OutlineNoteTarget) {
   return outline ? readSermonNoteText({ outline: outline as unknown as Json }, target) : undefined;
 }
@@ -79,18 +108,28 @@ export function withOutlineNoteText(outline: SermonOutline, target: OutlineNoteT
   return value?.outline as unknown as SermonOutline | undefined;
 }
 
-export function sermonNoteConflictTarget(path: readonly string[]): { kind: 'scratch'; id: string } | OutlineNoteTarget | undefined {
+const conflictRowId = (segment?: string) => segment?.startsWith('id:') ? segment.slice(3) : undefined;
+
+function outlineTextConflictTarget(path: readonly string[], field: 'note' | 'text'): OutlineNoteTarget | undefined {
   const [root, section, point, children, subpoint, leaf] = path;
-  const rowId = (segment?: string) => segment?.startsWith('id:') ? segment.slice(3) : undefined;
-  if (root === 'scratch' && path.length === 3 && point === 'text') {
-    const id = rowId(section);
+  const parentId = conflictRowId(point);
+  if ((root !== 'outline' && (field !== 'text' || root !== 'structure')) || !SECTION_KEYS.some(key => key === section) || !parentId) return undefined;
+  if (path.length === 4 && children === field) return { kind: 'point', id: parentId };
+  const id = conflictRowId(subpoint);
+  if (path.length === 6 && children === 'subPoints' && leaf === field && id) return { kind: 'subpoint', id };
+}
+
+export function outlineTitleConflictTarget(path: readonly string[]) {
+  return outlineTextConflictTarget(path, 'text');
+}
+
+export function sermonNoteConflictTarget(path: readonly string[]): { kind: 'scratch'; id: string } | OutlineNoteTarget | undefined {
+  const [root, row, field] = path;
+  if (root === 'scratch' && path.length === 3 && field === 'text') {
+    const id = conflictRowId(row);
     return id ? { kind: 'scratch', id } : undefined;
   }
-  const parentId = rowId(point);
-  if (root !== 'outline' || !SECTION_KEYS.some(key => key === section) || !parentId) return undefined;
-  if (path.length === 4 && children === 'note') return { kind: 'point', id: parentId };
-  const id = rowId(subpoint);
-  if (path.length === 6 && children === 'subPoints' && leaf === 'note' && id) return { kind: 'subpoint', id };
+  return outlineTextConflictTarget(path, 'note');
 }
 
 /** Return a scoped choice only for the same live note on both sides. */

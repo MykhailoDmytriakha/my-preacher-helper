@@ -1,4 +1,4 @@
-import { chooseOutlineLocalChanges, readOutlineNoteChoice } from '@/utils/outlineChoice';
+import { chooseOutlineLocalChanges, readOutlineTextChoice } from '@/utils/outlineChoice';
 
 import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
@@ -92,7 +92,7 @@ it('chooses the stored reminder without discarding a separate plan edit made whi
   const before = plan([first, second]);
   const mine = plan([{ ...first, note: 'Reminder from this device' }, { ...second, text: 'New second point' }]);
   const stored = plan([{ ...first, note: 'Reminder from the other device' }, second]);
-  const choice = readOutlineNoteChoice(before, mine, stored);
+  const choice = readOutlineTextChoice(before, mine, stored);
   expect(choice).toMatchObject({ mine: 'Reminder from this device', stored: 'Reminder from the other device' });
   expect(choice?.acceptStored().main).toEqual([stored.main[0], mine.main[1]]);
 });
@@ -103,9 +103,24 @@ it('keeps exact saved positions when resolving a reminder inside the plan editor
   const before = plan([point('holder', 'Holder', [sibling, opening])]);
   const mine = plan([point('holder', 'Holder', [sibling, { ...opening, note: 'Local note' }])]);
   const stored = plan([point('holder', 'Stored title', [sibling, { ...opening, note: 'Stored note' }])]);
-  const choice = readOutlineNoteChoice(before, mine, stored);
+  const choice = readOutlineTextChoice(before, mine, stored);
   expect(choice?.acceptStored()).toEqual(stored);
   expect(choice?.acceptLocal()).toEqual(plan([{ ...stored.main[0], subPoints: mine.main[0].subPoints }]));
+});
+
+it.each(['point', 'subpoint'])('shows both %s titles before applying either choice', target => {
+  const nested = sub('child', 'Child opening', 8);
+  const parent = { ...point('parent', 'Point opening', [nested]), note: 'Opening reminder' };
+  const before = plan([parent]);
+  const rename = (text: string) => target === 'point' ? { ...parent, text }
+    : { ...parent, subPoints: [{ ...nested, text }] };
+  const mine = plan([rename('My earlier title')]);
+  const stored = plan([{ ...rename('Saved title'), note: 'Independent saved reminder' }]);
+  const choice = readOutlineTextChoice(before, mine, stored);
+
+  expect(choice).toMatchObject({ mine: 'My earlier title', stored: 'Saved title' });
+  expect(choice?.acceptStored()).toEqual(stored);
+  expect(choice?.acceptLocal()).toEqual(plan([{ ...rename('My earlier title'), note: 'Independent saved reminder' }]));
 });
 
 it('leaves competing moves to the structure comparison even with only one reported note conflict', () => {
@@ -115,5 +130,5 @@ it('leaves competing moves to the structure comparison even with only one report
   const mine = { ...plan([{ ...reminder, note: 'Local reminder' }]), introduction: [moved] };
   const stored = plan([{ ...reminder, note: 'Stored reminder' }], [moved]);
 
-  expect(readOutlineNoteChoice(before, mine, stored)).toBeUndefined();
+  expect(readOutlineTextChoice(before, mine, stored)).toBeUndefined();
 });

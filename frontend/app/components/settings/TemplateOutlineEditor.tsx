@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { outlinePointConflictComparison, outlinePointPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
+import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { outlinePointText } from '@/utils/outlineDnd';
@@ -57,7 +58,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
       }),
       recover: document.recover });
     const checkpoint = document.state?.checkpoint;
-    const comparison = checkpoint && outlinePointConflictComparison(checkpoint, t);
+    const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t) ?? outlineTitleComparison(checkpoint, t));
     const compared = comparison ? checkpoint : undefined;
     const movePoint = (after: SermonOutline, pointId: string) => {
       const before = document.data?.structure as unknown as SermonOutline | undefined;
@@ -80,7 +81,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         onDiscardRecovery={recovery.discard} />
       {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
-          isReadOnly={disabled || document.readOnly} onPointMove={movePoint} className={`${outlinePointGridClass} gap-3`}
+          isReadOnly={disabled || document.readOnly} onPointMove={movePoint} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
           onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
     </fieldset>;
   }

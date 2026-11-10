@@ -170,7 +170,7 @@ describe('SubPointList', () => {
     fireEvent.change(input, { target: { value: 'Paul' } });
     fireEvent.click(screen.getByLabelText('common.save'));
 
-    expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Paul');
+    expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Paul', 'Saul');
   });
 
   it('renders and edits sub-point reminder notes when enabled', () => {
@@ -269,7 +269,7 @@ describe('SubPointList', () => {
 
     fireEvent.click(screen.getByLabelText('common.save'));
 
-    expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Бодрствуйте');
+    expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Бодрствуйте', 'Saul');
   });
 
   it('keeps the drag handle mounted while editing a reorderable sub-point', () => {

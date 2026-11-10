@@ -28,6 +28,7 @@ import { describeActionDelivery, describeMembershipDelivery, type MembershipDeli
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, sourceNoteAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -59,6 +60,7 @@ import type { EditorCommitAction } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
+import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -124,6 +126,7 @@ export interface ManagedEditor {
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
@@ -2195,6 +2198,7 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown, autosaveStamp) => { active(); return controller.edit(value, shown, autosaveStamp); },
+        editTemplateTitle: (shown, opening, title) => { active(); return controller.editTemplateTitle(shown, opening, title); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
@@ -2359,7 +2363,7 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
         const resolved = controller.getState().checkpoint;
-        if ((preference || resolved.sourceNoteLinkRetry || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((preference || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();

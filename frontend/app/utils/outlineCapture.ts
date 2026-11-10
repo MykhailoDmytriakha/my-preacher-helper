@@ -1,10 +1,12 @@
 import type { OutlinePointMove, StructureWriter } from '@/components/sermon/structureWriter';
 import type { SermonOutline } from '@/models/models';
-import type { OutlineNoteOpening } from '@/utils/sermonNoteText';
+import type { OutlineNoteOpening, OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 /** Per-screen input ancestry, not a stored draft or evidence of durable capture. */
 export interface OutlineInputSequence {
   noteOpening?: OutlineNoteOpening;
+  titleOpening?: OutlineTitleOpening;
+  titleChoice?: OutlineTitleOpening;
   apply<T>(base: SermonOutline | null, input: SermonOutline, edit: (base: SermonOutline | null) => T): T;
 }
 
@@ -17,6 +19,8 @@ interface OutlineInput {
   base: SermonOutline | null;
   pointMove?: OutlinePointMove;
   noteOpening?: OutlineNoteOpening;
+  titleOpening?: OutlineTitleOpening;
+  titleChoice?: OutlineTitleOpening;
   begin: () => OutlineHandlers;
 }
 
@@ -52,8 +56,9 @@ export class OutlineCapture {
     const handlers = input.begin();
     const viewAtRequest = this.viewGeneration;
     let writing: Promise<SermonOutline | null>;
-    const note = input.noteOpening;
-    const sequence = note ? { ...this.sequence, noteOpening: note } : this.sequence;
+    const sequence = input.noteOpening || input.titleOpening || input.titleChoice
+      ? { ...this.sequence, noteOpening: input.noteOpening, titleOpening: input.titleOpening, titleChoice: input.titleChoice }
+      : this.sequence;
     try {
       writing = this.writer.updateSermonOutline(this.id, input.outline, input.base, this.collision, sequence,
         ...(input.pointMove ? [input.pointMove] as const : []));

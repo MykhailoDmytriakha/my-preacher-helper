@@ -20,7 +20,7 @@ import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionCon
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
-import { hasAmbiguousReminderMerge, mergeOutlineContent } from './templateOutlineMerge';
+import { hasAmbiguousOutlineTextMerge, mergeOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
 export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
@@ -569,7 +569,7 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
     // Independently added map fields share an empty ancestor; deletion and keyed identity stay whole.
     const merged = mergeObjects(base.exists ? base.value as DocumentData : {}, mine.value, theirs.value, path);
-    if (path.length === 1 && path[0] === 'outline' && hasAmbiguousReminderMerge(merged)) {
+    if (path.length === 1 && path[0] === 'outline' && hasAmbiguousOutlineTextMerge(merged)) {
       return { value: mine, conflicts: [{ path, base, mine, theirs }] };
     }
     return merged;

@@ -52,7 +52,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
     confirmed: session.checkpoint().confirmed,
     remote: null, state, status: { phase } as SyncStatus,
     loading: false, error, edit: jest.fn(), update, save, commit, ...actions,
-    captureSermonNoteText: jest.fn(),
+    captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
     captureSermonPlanMode: jest.fn(),
   }));
   let sequence = 0;

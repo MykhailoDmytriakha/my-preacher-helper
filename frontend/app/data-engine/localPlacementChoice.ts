@@ -5,7 +5,7 @@ import { normalizeStructureTag } from '@/utils/structureTags';
 import { findThoughtSectionInStructure, resolveSectionFromOutline, resolveSectionFromTags, SECTION_ORDER } from '@/utils/thoughtOrdering';
 
 import { equalValues, object } from './fieldValues';
-import { usesMergedSermonReminderLayout, usesSavedTemplateLayout } from './templateOutlineMerge';
+import { usesMergedSermonTextLayout, usesSavedTemplateLayout } from './templateOutlineMerge';
 
 import type { DocumentData, FieldValue, Json } from './types';
 import type { OutlinePoint, Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
@@ -79,7 +79,7 @@ function chooseSermonOutline(base: DocumentData, mine: DocumentData, theirs: Doc
   };
   if (equalValues(base.outline, mine.outline) && coversThoughts(remote)) return remote;
   const candidate = outlineOf(merged);
-  if (usesMergedSermonReminderLayout(base.outline, mine.outline, theirs.outline, merged.outline) && coversThoughts(candidate)) return candidate;
+  if (usesMergedSermonTextLayout(base.outline, mine.outline, theirs.outline, merged.outline) && coversThoughts(candidate)) return candidate;
   return chooseOutlineChanges(outlineOf(base), local, remote, merge, { requiredIds, retainLocalPaths: true });
 }
 

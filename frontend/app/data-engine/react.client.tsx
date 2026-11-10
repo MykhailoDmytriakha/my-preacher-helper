@@ -8,7 +8,7 @@ import { failureWords, logFailureOnce, readOnlyError, refusalWords, sayFailure, 
 import { newClientId } from '@/utils/clientId';
 import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
 import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
-import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSermonNoteText, type SermonNoteOpening, type SermonNoteTarget } from '@/utils/sermonNoteText';
+import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSermonNoteText, type OutlineTitleOpening, type SermonNoteOpening, type SermonNoteTarget } from '@/utils/sermonNoteText';
 import { useTranslation } from '@locales/useTranslation';
 
 import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
@@ -34,6 +34,7 @@ import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQ
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
+import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { mergeFields } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -95,6 +96,7 @@ export const readingPreferenceFields = readingFields;
 export const writeAccountPreference = writePreference;
 export function readAccountPreferenceComparison(checkpoint: SessionCheckpoint) { return accountPreferenceComparison(checkpoint); }
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) { return sermonPlanModeComparison(checkpoint); }
+export function readOutlineTitleComparison(checkpoint: SessionCheckpoint) { return outlineTitleComparison(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
@@ -1148,6 +1150,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       }).then(() => { if (refused) throw refused.error; }, error => {
         // A question already established for the departed owner must still reach its backup.
         throw refused ? refused.error : error;
+      });
+    },
+    captureTemplateTitle: (opening: OutlineTitleOpening) => {
+      const shown = current?.state.checkpoint;
+      return (title: string) => run(editor => {
+        if (!shown) throw new Error(EDITOR_CHANGED);
+        return editor.editTemplateTitle(shown, opening, title);
       });
     },
     captureSermonNoteText: (target: SermonNoteTarget, text: string | undefined) => {

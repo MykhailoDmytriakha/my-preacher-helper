@@ -57,10 +57,10 @@ export const OutlinePointCard: React.FC<{
   onEditPoint?: (point: SermonPoint) => void;
   onDeletePoint?: (pointId: string) => void;
   // For inline edit in normal mode
-  onSaveEdit?: (pointId: string, newText: string) => void;
+  onSaveEdit?: (pointId: string, newText: string, openingText: string) => void;
   // Sub-point operations
   onAddSubPoint?: (outlinePointId: string, text: string) => void;
-  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => void;
   onSetPointNote?: (pointId: string, note?: string) => void;
   onSetSubPointNote?: (pointId: string, subPointId: string, note?: string) => void;
   onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
@@ -171,7 +171,7 @@ export const OutlinePointCard: React.FC<{
 
   const handleLocalSave = () => {
     const textToSave = changedCapitalizedTitle(localEditText, openingTitle.current);
-    if (textToSave) onSaveEdit?.(point.id, textToSave);
+    if (textToSave) onSaveEdit?.(point.id, textToSave, openingTitle.current);
     handleLocalCancel();
   };
 

@@ -84,6 +84,36 @@ describe('keep mine after a question about one point', () => {
     expect(server.main.map(point => point.text)).toEqual(['Grace, on the laptop', 'Mercy, on the phone']);
   });
 
+  it('does not restore a point deleted after both titles were shown for comparison', async () => {
+    renderEditor(<PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} onOutlineUpdate={jest.fn()} />);
+    fireEvent.click(screen.getByText('edit'));
+    await act(async () => { await jest.advanceTimersByTimeAsync(120); });
+    expect(screen.getByText('Grace, on the laptop')).toBeVisible();
+    expect(screen.getByText('Grace, on the phone')).toBeVisible();
+
+    server = { ...server, main: server.main.filter(point => point.id !== 'p1') };
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await act(async () => { await jest.advanceTimersByTimeAsync(120); });
+
+    expect(server.main.map(point => point.text)).toEqual(['Mercy, on the phone']);
+    expect(screen.getByText('freshness.conflictTitle')).toBeVisible();
+  });
+
+  it('does not restore a deleted row when resuming an already chosen title', async () => {
+    const compared = server;
+    const local = plan('Grace, on the laptop', 'Mercy, on the phone');
+    saveDraft(draftKey('u1','s1','conflict:outlineConflict'), {
+      payload: {outline:local,baseOutline:compared,serverOutline:compared,resolution:'local',
+        titleChoice:{target:{kind:'point',id:'p1'},text:'Grace, on the phone'}}, actualRevision:0,
+    });
+    server = { ...server, main: server.main.filter(point => point.id !== 'p1') };
+    renderEditor(<PlanEditorModal isOpen sermon={{...sermon,outline:server}} onClose={() => undefined} />);
+    await act(async () => { await jest.advanceTimersByTimeAsync(120); });
+
+    expect(server.main.map(point => point.text)).toEqual(['Mercy, on the phone']);
+    expect(screen.getByRole('button',{name:'planEditor.useWholeLocalStructure'})).toBeDisabled();
+  });
+
   it('does the same after the editor was closed during the question and opened again', async () => {
     const view = renderEditor(<PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} onOutlineUpdate={jest.fn()} />);
     fireEvent.click(screen.getByText('edit'));

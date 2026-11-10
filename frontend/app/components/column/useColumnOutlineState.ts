@@ -17,6 +17,7 @@ import { mapColumnIdToSectionType } from "./utils";
 
 import type { SectionType, Translate } from "./types";
 import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
+import type { OutlineTitleOpening } from "@/utils/sermonNoteText";
 
 const SAVE_OUTLINE_ERROR_KEY = "errors.saveOutlineError";
 
@@ -126,14 +127,14 @@ export function useColumnOutlineState({
    * No read first: only this column's section is known here, so the other two go in as the same empty
    * placeholder on both sides of the merge — unchanged — and the document keeps what it holds.
    */
-  const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
+  const triggerSaveOutline = (updatedPoints: SermonPoint[], titleOpening?: OutlineTitleOpening) => {
     if (!sermonId) return;
     if (!sectionType) {
       console.error("Cannot save outline: Invalid section ID", id);
       return;
     }
     const intended = sectionOutline(field, updatedPoints);
-    captureOwner.capture.schedule({ outline: intended, base: baseOutlineRef.current, begin: () => ({
+    captureOwner.capture.schedule({ outline: intended, base: baseOutlineRef.current, titleOpening, begin: () => ({
       stored: (saved, sameView) => {
         if (!captureOwner.active || !sameView) return;
         const committedPoints = saved[field];
@@ -191,10 +192,9 @@ export function useColumnOutlineState({
   };
 
   const handleStartEdit = (point: SermonPoint) => {
-    const title = capitalizeFirstLetter(point.text);
-    openingTitle.current = title;
+    openingTitle.current = point.text;
     setEditingPointId(point.id);
-    setEditingText(title);
+    setEditingText(capitalizeFirstLetter(point.text));
     setAddingNewPoint(false);
   };
 
@@ -204,22 +204,17 @@ export function useColumnOutlineState({
   };
 
   const handleSaveEdit = () => {
-    const textToSave = changedCapitalizedTitle(editingText, openingTitle.current);
+    const textToSave = changedCapitalizedTitle(editingText, capitalizeFirstLetter(openingTitle.current));
     if (!editingPointId || !textToSave) {
       handleCancelEdit();
       return;
     }
 
-    const updatedPoints = localSermonPoints.map((point) =>
-      point.id === editingPointId ? { ...point, text: textToSave } : point
-    );
-
-    setLocalSermonPoints(updatedPoints);
+    handleSaveEditDirect(editingPointId, textToSave, openingTitle.current);
     handleCancelEdit();
-    triggerSaveOutline(updatedPoints);
   };
 
-  const handleSaveEditDirect = (pointId: string, newText: string) => {
+  const handleSaveEditDirect = (pointId: string, newText: string, openingText?: string) => {
     const textToSave = normalizeCapitalizedTitle(newText);
     if (!textToSave) return;
 
@@ -227,8 +222,10 @@ export function useColumnOutlineState({
       point.id === pointId ? { ...point, text: textToSave } : point
     );
 
-    setLocalSermonPoints(updatedPoints);
-    triggerSaveOutline(updatedPoints);
+    if (openingText === undefined) setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
+      target: { kind: 'point', id: pointId }, text: openingText,
+    });
   };
 
   const handleSetPointNote = (pointId: string, note?: string) => {
@@ -378,7 +375,7 @@ export function useColumnOutlineState({
     triggerSaveOutline(updatedPoints);
   };
 
-  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
+  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText?: string) => {
     const textToSave = normalizeCapitalizedTitle(newText);
     if (!textToSave) return;
 
@@ -392,8 +389,10 @@ export function useColumnOutlineState({
       };
     });
 
-    setLocalSermonPoints(updatedPoints);
-    triggerSaveOutline(updatedPoints);
+    if (openingText === undefined) setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
+      target: { kind: 'subpoint', id: subPointId }, text: openingText,
+    });
   };
 
   const handleSetSubPointNote = (outlinePointId: string, subPointId: string, note?: string) => {

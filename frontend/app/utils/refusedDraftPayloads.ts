@@ -74,6 +74,11 @@ export function validOutlineConflict(value: unknown, _documentId: string): boole
   if (!validOptionalOutline(payload, 'baseOutline')) return false;
   if (payload.resolution !== undefined && payload.resolution !== 'local') return false;
   if (payload.reviewWhole !== undefined && typeof payload.reviewWhole !== 'boolean') return false;
+  const choice = payload.titleChoice;
+  if (choice !== undefined && (payload.resolution !== 'local' || !isPlainObject(choice)
+    || typeof choice.text !== 'string' || !isPlainObject(choice.target)
+    || (choice.target.kind !== 'point' && choice.target.kind !== 'subpoint')
+    || typeof choice.target.id !== 'string' || !choice.target.id.length)) return false;
   return true;
 }
 

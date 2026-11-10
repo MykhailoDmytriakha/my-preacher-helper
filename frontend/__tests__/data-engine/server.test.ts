@@ -6706,6 +6706,21 @@ describe('an inline reminder queued across a sermon outline move', () => {
     expect(await processCommand(owner, placementFirst ? edit : move)).toEqual(result);
   });
 
+  it.each([true, false])('keeps the exact queued title with its moved row (placement delivered first: %s)', async placementFirst => {
+    const title = 'Independent new title';
+    const before = outline([reminder, parent]);
+    const moved = nested(openingNote);
+    const edited = outline([{ ...reminder, text: title }, parent]);
+    const [move, edit] = [save('move-titled-point', before, moved), save('change-point-title', before, edited)];
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, placementFirst ? move : edit)).toMatchObject({ kind: 'acknowledged' });
+    const result = await processCommand(owner, placementFirst ? edit : move);
+
+    const expected = outline([], [{ ...moved.conclusion[0], subPoints: [sibling, { ...reminder, text: title, position: 8 }] }]);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: expected } } });
+    expect((await readDocument(owner, resource))?.value?.outline).toEqual(expected);
+  });
+
   it('asks about the two words at the relocated note when both sides edit them', async () => {
     const before = outline([reminder, parent]);
     expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
