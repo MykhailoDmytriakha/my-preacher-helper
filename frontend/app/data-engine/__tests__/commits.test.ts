@@ -387,6 +387,30 @@ describe('Durable commit requests', () => {
     expect(s.server().value).toMatchObject({ title: baseline.value?.title, verse: 'John 3:16' });
   });
 
+  it.each(['questionWord', 'pluralKey'] as const)('keeps the exact queued thesis %s across an unrelated sentence Save', async field => {
+    const thesis = { questionWord: 'why', pluralKey: 'reasons', transitionSentence: 'Opening sentence' };
+    const opening = { ...initial(), value: { ...initial().value, preparation: { thesis } } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const value = (word: string, sentence: string) => ({ ...opening.value, preparation: { thesis: { ...thesis, [field]: word, transitionSentence: sentence } } });
+    editor.edit(value('First word', thesis.transitionSentence));
+    const first = (await queue.save('thesis-word', editor.checkpoint(), { documentMetadataTime: null }))!;
+    editor.edit(value('First word', 'Independent sentence'));
+    const sentence = (await queue.save('thesis-sentence', editor.checkpoint(), { predecessorId: first.id }))!;
+    expect(sentence.sermonThesisFieldActions).toBeUndefined();
+    editor.edit(value('', 'Independent sentence'));
+    const last = (await queue.save('thesis-word', editor.checkpoint(), { predecessorId: sentence.id, documentMetadataTime: null }))!;
+    expect(last.sermonThesisFieldActions).toEqual({
+      [field]: { before: { exists: true, value: 'First word' }, after: { exists: true, value: '' },
+        observedRevision: 1, time: null, predecessorOperationId: first.id },
+    });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: last.id,
+      sermonThesisFieldActions: { [field]: { observedRevision: 1, time: null, predecessorOperationId: first.id } } }));
+    expect(s.server().value).toMatchObject(value('', 'Independent sentence'));
+  });
+
   it('submits a chained date Save with its original date ancestor after the predecessor ACK contains a different date', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

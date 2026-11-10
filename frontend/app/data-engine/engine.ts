@@ -104,7 +104,8 @@ export interface ManagedManualForm {
   save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave, onCaptured?: () => void): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
-  resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
+  resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison;
+    updater?: (current: DocumentData) => DocumentData; metadataTime?: ActionTime | null }): Promise<void>;
   listRecoverable(): Promise<StoredManualScope[]>;
   recover(sourceScopeId: string): Promise<void>;
   discardRecovery(source: StoredManualScope): Promise<void>;
@@ -2564,7 +2565,7 @@ export class DataEngine {
     const exactRequest = (stage: ReturnType<ManualScope['getState']> | undefined, checkpoint: SessionCheckpoint) =>
       exactManualRequest(stage, checkpoint, this.commitRecords);
     const finishExactChoice = async (choice: 'local' | 'remote', scope: ManualScope, request: CommitRequest,
-      updating: Promise<void> | undefined, assertComparison: () => void) => {
+      updating: Promise<void> | undefined, assertComparison: () => void, action?: EditorCommitAction) => {
         await updating; active(); assertComparison();
         const controller = parent.controller!;
         const shown = scope.getState();
@@ -2583,7 +2584,7 @@ export class DataEngine {
         });
         active();
         if (choice === 'local' || controller.getState().checkpoint.dirty) {
-          await controller.save(undefined, selection); active();
+          await controller.save(undefined, selection, undefined, undefined, action); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
         const latest = scope.getState();
@@ -2597,7 +2598,7 @@ export class DataEngine {
     // Admission and capture stay above; this continuation owns the queued parent decision.
     const finishChoice = async (choice: 'local' | 'remote', scope: ManualScope | null,
       staged: ReturnType<ManualScope['getState']> | undefined, updating: Promise<void> | undefined,
-      assertComparison: () => void, checked: boolean) => {
+      assertComparison: () => void, checked: boolean, action?: EditorCommitAction) => {
         const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
         parent.controller!.assertManualResolution(selection);
         // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
@@ -2610,7 +2611,7 @@ export class DataEngine {
           if (amendment && scope) await scope.cancel();
         } else {
           await parent.controller!.keepLocal(selection, amendment, expectedParent); active();
-          await parent.controller!.save(undefined, selection); active();
+          await parent.controller!.save(undefined, selection, undefined, undefined, action); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();
           this.prepareCommitsInBackground(); this.backgroundDrain();
@@ -2703,8 +2704,10 @@ export class DataEngine {
           if (parent.controller!.getState().checkpoint.draft) await start();
           return;
         }
-        if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison);
-        else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected));
+        const time = options?.metadataTime;
+        const action = choice === 'local' && time !== undefined ? { kind: 'document-metadata', time } as const : undefined;
+        if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison, action);
+        else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected), action);
       }),
       listRecoverable: async () => {
         active();

@@ -48,7 +48,7 @@ import type { CaptureTransferProof, CaptureTransferResult } from './captureTrans
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { CouncilFieldActions } from './councilFieldAction';
-import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation, SermonPlanModeObservation } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation, SermonPlanModeObservation, SermonThesisObservations } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -133,6 +133,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonVerseAction?: DocumentFieldObservation;
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
+  sermonThesisFieldActions?: SermonThesisObservations;
   sermonPlanModeAction?: SermonPlanModeObservation;
   accountPreferenceActions?: AccountPreferenceObservations;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
@@ -260,6 +261,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonVerseAction ?? null, incoming.sermonVerseAction ?? null)
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
     || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
+    || !equalValues(current.sermonThesisFieldActions ?? null, incoming.sermonThesisFieldActions ?? null)
     || !equalValues(current.sermonPlanModeAction ?? null, incoming.sermonPlanModeAction ?? null)
     || !equalValues(current.serviceOrderPlacement ?? null, incoming.serviceOrderPlacement ?? null)
     || !equalValues(current.serviceOrderStepPlacement ?? null, incoming.serviceOrderStepPlacement ?? null)
@@ -392,7 +394,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -713,7 +715,8 @@ export class CommitQueue {
       editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
     const preparationChecks = editorAction?.kind === 'sermon-preparation-check'
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
-    const metadataTime = editorAction?.kind === 'account-preference' ? editorAction.time : frozenOptions?.documentMetadataTime;
+    const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
+      ? editorAction.time : frozenOptions?.documentMetadataTime;
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);

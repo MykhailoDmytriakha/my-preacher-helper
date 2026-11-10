@@ -70,7 +70,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -82,6 +82,24 @@ const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 's
 
 const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
   action: 'sermonGoalTypeAction', proof: 'sermonGoalType', causal: true, optional: true, accepts: isSermonGoalType } as const;
+
+export type SermonThesisField = 'questionWord' | 'pluralKey';
+export type SermonThesisObservations = Partial<Record<SermonThesisField, DocumentFieldObservation<FieldValue>>>;
+
+type SermonThesisTarget = {
+  field: SermonThesisField;
+  path: readonly ['preparation', 'thesis', SermonThesisField];
+  action: 'sermonThesisFieldActions';
+  proof: `thesis-${SermonThesisField}`;
+  accepts: (value: unknown) => value is string;
+  causal: true;
+  optional: true;
+};
+
+const SERMON_THESIS_TARGETS: readonly SermonThesisTarget[] = (['questionWord', 'pluralKey'] as const).map(field => ({
+  field, path: ['preparation', 'thesis', field], action: 'sermonThesisFieldActions', proof: `thesis-${field}`,
+  accepts: (value): value is string => typeof value === 'string', causal: true, optional: true,
+}));
 
 export const isSermonPlanMode = (value: unknown): value is SermonPlanMode => value === 'manual' || value === 'ai' || value === 'note';
 export const SERMON_PLAN_MODE = { field: 'planMode', path: ['planMode'],
@@ -157,7 +175,7 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'series') return SERIES_FIELD_TARGETS;
   if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
   if (collection === 'councils') return COUNCIL_FIELDS;
-  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE, SERMON_PLAN_MODE, ...PREPARATION_CONFIRMATION_TARGETS];
+  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE, SERMON_PLAN_MODE, ...SERMON_THESIS_TARGETS, ...PREPARATION_CONFIRMATION_TARGETS];
   return [];
 }
 
@@ -171,6 +189,7 @@ export function capturedDocumentField(record: CommitRequest, target: DocumentFie
   if (target.action === 'accountPreferenceActions') return record.accountPreferenceActions?.[target.field];
   if (target.action === 'seriesFieldActions') return record.seriesFieldActions?.[target.field];
   if (target.action === 'sermonPreparationCheckActions') return record.sermonPreparationCheckActions?.[target.field];
+  if (target.action === 'sermonThesisFieldActions') return record.sermonThesisFieldActions?.[target.field];
   return record[target.action];
 }
 
@@ -433,7 +452,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -564,7 +583,7 @@ function captureSermonField(baseline: ResourceSnapshot, predecessor: CommitReque
 }
 
 function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined, draft: DocumentData | null,
-  target: typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | AccountPreferenceTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
+  target: typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | AccountPreferenceTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
   if (!draft) return undefined;
   const original = (predecessor ? predecessor.value : baseline.value) ?? {};
   const before = readField(original, documentFieldPath(target));
@@ -614,10 +633,15 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, time, records);
   const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, time, records);
   const goalType = captureStoredMetadataField(baseline, predecessor, draft, SERMON_GOAL_TYPE, time, records);
+  const thesis = SERMON_THESIS_TARGETS.flatMap(target => {
+    const action = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
+    return action?.after.exists ? [[target.field, action] as const] : [];
+  });
   const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
   return { ...(title && { sermonTitleAction: title }), ...(verse && { sermonVerseAction: verse }),
-    ...(church && { sermonChurchAction: church }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }), ...(fill && { sermonChurchFill: fill }) };
+    ...(church && { sermonChurchAction: church }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
+    ...(thesis.length && { sermonThesisFieldActions: Object.fromEntries(thesis) }), ...(fill && { sermonChurchFill: fill }) };
 }
 
 export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field']; time: ActionTime | null }
@@ -770,8 +794,8 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.action === 'sermonPreparationCheckActions') {
-    return { ...command, sermonPreparationCheckActions: { ...command.sermonPreparationCheckActions, [target.field]: stamp } };
+  if (target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions') {
+    return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };
   }
   if (target.action === 'sermonPlanModeAction') {
     return { ...command, sermonPlanModeAction: { ...stamp, ...(action.initialize && { initialize: true }) } };

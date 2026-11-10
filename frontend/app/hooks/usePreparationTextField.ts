@@ -33,8 +33,10 @@ const textValue: PreparationValue<string> = {
 };
 
 export function usePreparationTextField(resource: ResourceRef | null, path: readonly string[], captionKey?: string,
-  valid?: (value: string) => boolean): PreparationTextBinding {
-  return usePreparationField(resource, path, captionKey, valid ? { ...textValue, valid } : textValue);
+  options?: { valid?: (value: string) => boolean; captureMetadataTime?: true }): PreparationTextBinding {
+  const valid = options?.valid;
+  return usePreparationField(resource, path, captionKey, valid ? { ...textValue, valid } : textValue,
+    options?.captureMetadataTime ? { captureMetadataTime: true } : undefined);
 }
 
 /** The manual scope owns the raw stage and ancestry; normalization happens only at an explicit choice. */
@@ -65,7 +67,10 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
   const selected = codec.read(value);
   const canSave = !codec.valid || codec.valid(selected);
   const decision = manualFormDecision(form, comparison);
-  if (decision) decision.keepLocal = () => form.keepLocal(current => withValue(current, path, codec.save(codec.read(valueAt(current, path)))));
+  if (decision) decision.keepLocal = () => form.keepLocal(
+    current => withValue(current, path, codec.save(codec.read(valueAt(current, path)))),
+    options && form.captureDocumentMetadataAction(),
+  );
   if (decision?.status && !canSave) decision.status = { ...decision.status, canKeepLocal: false };
   const edit = (updater: (current: T) => T) => form.update(current => {
     const next = updater(codec.read(valueAt(current, path)));

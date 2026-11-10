@@ -40,6 +40,22 @@ const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.f
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
+const MAX_THESIS_OPENINGS = 16;
+
+function pastThesisOpenings(raw: unknown, target: DocumentFieldTarget): string[] | null | undefined {
+  const proof = object(raw) ? raw[target.proof] : undefined;
+  const openings = object(proof) ? proof.pastOpenings : undefined;
+  if (openings === null || (Array.isArray(openings) && openings.every(value => typeof value === 'string'))) return openings;
+}
+
+function nextThesisOpenings(raw: unknown, target: DocumentFieldTarget, opening: FieldValue, changed: boolean) {
+  const past = pastThesisOpenings(raw, target);
+  if (!changed || past === null) return past;
+  const digest = fieldDigest(opening, target);
+  if (past?.includes(digest)) return past;
+  return (past?.length ?? 0) < MAX_THESIS_OPENINGS ? [...past ?? [], digest] : null;
+}
+
 function previousField(raw: unknown, current: ResourceSnapshot, target: DocumentFieldTarget): FieldProof | undefined {
   const proof = object(raw) ? raw[target.proof] : undefined;
   if (!object(proof)) return undefined;
@@ -56,7 +72,8 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
   const action: unknown = target.action === 'accountPreferenceActions' ? command.accountPreferenceActions?.[target.field]
     : target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field]
-    : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field] : command[target.action];
+    : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field]
+    : target.action === 'sermonThesisFieldActions' ? command.sermonThesisFieldActions?.[target.field] : command[target.action];
   const { before, after } = change;
   if (!object(action) || ('path' in target && !after.exists && target.action !== 'accountPreferenceActions') || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
     || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
@@ -120,6 +137,13 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     const uncertain = commentPlaceReview(command, current, raw, stored, previous, Boolean(action));
     if (uncertain) return { command, uncertain: [uncertain] };
     if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
+  }
+  if (!action && target.action === 'sermonThesisFieldActions' && equalValues(stored, change.before)) {
+    const past = pastThesisOpenings(raw, target);
+    // An old queued packet cannot tell a returned word from an untouched opening.
+    if (past === null || past?.includes(fieldDigest(stored, target))) {
+      return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
+    }
   }
   if (!action) return target.action === 'sermonPlanModeAction' && equalValues(stored, change.after)
     ? { command, previous } : { command, stamp: null };
@@ -226,22 +250,26 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const previous = scopeChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
     const rawValue = target.action === 'commentPlaceAction' ? documentFieldValue((raw ?? {}) as DocumentData, target)
       : readField((raw ?? {}) as DocumentData, documentFieldPath(target));
-    const changed = target.causal && (scopeChanged || !equalValues(rawValue, value));
+    const changed = target.causal === true && (scopeChanged || !equalValues(rawValue, value));
     // The first unrelated write to an older sermon, including a secondary effect,
     // observes the same field at the original revision.
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)
       && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
       ? rawMetadata.revision : metadata.revision;
+    const sameWordWon = target.action === 'sermonThesisFieldActions' && order?.stamp != null;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
       value, revision, time: order?.stamp ?? null,
-      ...((changed || ((target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && order?.stamp !== undefined)) && metadata.operationId
+      ...((changed || sameWordWon || ((target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && order?.stamp !== undefined)) && metadata.operationId
         && { operationId: metadata.operationId }),
       ...(order?.initialized && { initialized: true as const }),
     };
     const match = usesDigest(target) ? { digest: fieldDigest(proof.value, target) } : { [target.field]: proof.value.value };
+    const pastOpenings = target.action === 'sermonThesisFieldActions' && rawValue && object(rawMetadata)
+      && rawMetadata.generation === metadata.generation ? nextThesisOpenings(rawMetadata, target, rawValue, changed) : undefined;
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
-      ...(proof.initialized && { initialized: true as const }) }]] as const;
+      ...(proof.initialized && { initialized: true as const }),
+      ...(pastOpenings !== undefined && { pastOpenings }) }]] as const;
   });
   const commentPlaceFrames = nextCommentPlaceFrames(snapshot, raw as DocumentData | undefined);
   return { ...metadata, ...Object.fromEntries(proofs), ...(commentPlaceFrames !== undefined && { commentPlaceFrames }) };

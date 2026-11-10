@@ -4145,6 +4145,105 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('sermon thesis short field chronology', () => {
+    const opening = { questionWord: 'why', pluralKey: 'reasons', transitionSentence: 'The original transition words' };
+    const thesis = (field: 'questionWord' | 'pluralKey', words: string, transition = opening.transitionSentence) =>
+      ({ ...opening, [field]: words, transitionSentence: transition });
+    const stamp = (offset: number | null, revision = 1) => ({
+      observedRevision: revision,
+      time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+    });
+    const save = (operationId: string, field: 'questionWord' | 'pluralKey', after: typeof opening, offset: number | null,
+      before = opening, revision = 1) => ({
+      ...update(operationId, 'thesis-short-seed'),
+      changes: [{ path: ['preparation'], before: { exists: true, value: { thesis: before } }, after: { exists: true, value: { thesis: after } } }],
+      sermonThesisFieldActions: { [field]: stamp(offset, revision) },
+    });
+    async function seed() {
+      const command = create('thesis-short-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: { thesis: opening } } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      return command.owner;
+    }
+
+    it.each([
+      { field: 'questionWord', desktop: 'when', phone: 'how', at: 20, order: 'earlier' },
+      { field: 'questionWord', desktop: 'when', phone: 'how', at: 80, order: 'later' },
+      { field: 'pluralKey', desktop: 'steps', phone: 'promises', at: 20, order: 'earlier' },
+      { field: 'pluralKey', desktop: 'steps', phone: 'promises', at: 80, order: 'later' },
+    ] as const)('keeps the later $field action when the delayed save was $order', async ({ field, desktop, phone, at }) => {
+      const owner = await seed();
+      const transition = 'Independently written transition';
+      expect(await processCommand(owner, save('desktop', field, thesis(field, desktop, transition), 40)))
+        .toMatchObject({ kind: 'acknowledged' });
+      const delayed = save('phone', field, thesis(field, phone), at);
+      const expected = { kind: 'acknowledged', snapshot: { value: { preparation: { thesis: thesis(field, at > 40 ? phone : desktop, transition) } } } };
+      const result = await processCommand(owner, delayed);
+      expect(result).toMatchObject(expected);
+      expect(await processCommand(owner, delayed)).toEqual(result);
+    });
+
+    it('keeps a later return to the original question even when an earlier clear is delivered last', async () => {
+      const owner = await seed();
+      const field = 'questionWord';
+      const first = thesis(field, 'when');
+      expect(await processCommand(owner, save('desktop-first', field, first, 30))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('desktop-back', field, opening, 80, first, 2))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('offline-clear', field, thesis(field, ''), 50)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: { thesis: opening } } } });
+    });
+
+    it('orders two actions from a record that has no thesis yet', async () => {
+      const command = create('thesis-short-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, command)).toMatchObject({ kind: 'acknowledged' });
+      const field = 'questionWord';
+      const createWord = (id: string, value: string, offset: number) => {
+        const next = save(id, field, { ...opening, [field]: value }, offset);
+        return { ...next, changes: [{ path: ['preparation'], before: { exists: false },
+          after: { exists: true, value: { thesis: { [field]: value } } } }] };
+      };
+      expect(await processCommand(command.owner, createWord('desktop', 'when', 40))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, createWord('phone', 'how', 80))).toMatchObject({ kind: 'acknowledged',
+        snapshot: { value: { preparation: { thesis: { questionWord: 'how' } } } } });
+    });
+
+    it('keeps an older unsigned thesis packet from erasing a returned word', async () => {
+      const owner = await seed();
+      const field = 'questionWord';
+      const first = thesis(field, 'when');
+      expect(await processCommand(owner, save('desktop-first', field, first, 30))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('desktop-back', field, opening, 80, first, 2))).toMatchObject({ kind: 'acknowledged' });
+      const clear = save('old-offline-clear', field, thesis(field, ''), null);
+      expect(await processCommand(owner, { ...update(clear.operationId, 'thesis-short-seed'), changes: clear.changes }))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }], snapshot: { value: { preparation: { thesis: opening } } } });
+    });
+
+    it('recognizes the exact thesis predecessor after a proven later save chose the same value', async () => {
+      const owner = await seed();
+      const field = 'pluralKey';
+      const both = thesis(field, 'steps');
+      expect(await processCommand(owner, save('desktop', field, both, 40))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('phone-first', field, both, 60))).toMatchObject({ kind: 'acknowledged' });
+      const sentence = 'A sentence saved after the same-word choice';
+      const withSentence = thesis(field, 'steps', sentence);
+      const middle = save('sentence', field, withSentence, null, both, 3);
+      expect(await processCommand(owner, { ...update(middle.operationId, 'thesis-short-seed'), changes: middle.changes }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const last = save('phone-next', field, thesis(field, 'promises'), null, both);
+      expect(await processCommand(owner, { ...last, dependsOn: ['phone-first', 'sentence'],
+        sermonThesisFieldActions: { [field]: { ...stamp(null), predecessorOperationId: 'phone-first' } } }))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: { thesis: thesis(field, 'promises', sentence) } } } });
+    });
+
+    it('asks only about the selected word when its action order is unknown', async () => {
+      const owner = await seed();
+      const field = 'pluralKey';
+      expect(await processCommand(owner, save('desktop', field, thesis(field, 'steps'), 40))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('phone', field, thesis(field, 'promises'), null)))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }] });
+    });
+  });
+
   describe('exegetical plan point removal and title chronology', () => {
     const point = { id: 'point', title: 'Original point' };
     const edited = { ...point, title: 'Revised point' };

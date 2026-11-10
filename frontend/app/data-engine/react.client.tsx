@@ -1525,7 +1525,9 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       return run(form => time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));
     },
     cancel: () => run(form => form.cancel()),
-    keepLocal: (updater?: (current: DocumentData) => DocumentData) => run(form => form.resolve('local', { expectedComparison: target?.state?.comparison, updater })),
+    keepLocal: (updater?: (current: DocumentData) => DocumentData, action?: ManualDocumentMetadataSave) =>
+      run(form => form.resolve('local', { expectedComparison: target?.state?.comparison, updater,
+        ...(action && { metadataTime: action.documentMetadata.time }) })),
     acceptRemote: () => run(form => form.resolve('remote', { expectedComparison: target?.state?.comparison })),
     discardStageAndAcceptRemote: () => run(form => form.resolve('remote', { discardStage: true, expectedComparison: target?.state?.comparison })),
     retry: () => run(form => form.retry()),

@@ -691,7 +691,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       : readField(primarySnapshot.value, documentFieldPath(target));
     if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
     if (target.field === 'color' || target.action === 'commentPlaceAction' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
-      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'accountPreferenceActions') {
+      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'accountPreferenceActions') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
