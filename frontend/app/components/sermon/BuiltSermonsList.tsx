@@ -4,10 +4,12 @@ import { BookOpenIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { type ReactNode } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { NEUTRAL_CAPTION, NOTE_TO_SERMON_COLORS, SOURCE_NOTE_COLORS } from '@/utils/themeColors';
 
 import type { Sermon } from '@/models/models';
+import type { ListReadState } from '@/utils/listReadState';
 
 /**
  * WHAT TELLS TWO SERMONS FROM THE SAME NOTE APART.
@@ -31,10 +33,11 @@ const sermonMetaLine = (sermon: Sermon): string =>
  * to two lines; verse and date step down to a quieter second line. A screen that leaves its own way (the Bible reader
  * keeps the way back) passes `onOpen`; otherwise a row is a link.
  */
-export function BuiltSermonsList({ title, sermons, empty, openLabel, onOpen, testId, children }: {
+export function BuiltSermonsList({ title, sermons, empty, readState, openLabel, onOpen, testId, children }: {
   title: string;
   sermons: Sermon[];
   empty: string;
+  readState: ListReadState;
   openLabel: (title: string) => string;
   onOpen?: (href: string) => void;
   testId: string;
@@ -46,7 +49,7 @@ export function BuiltSermonsList({ title, sermons, empty, openLabel, onOpen, tes
       <div className={`flex items-center gap-2 ${SOURCE_NOTE_COLORS.reverseHeading}`}>
         <BookOpenIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
         <span className="text-sm font-medium">{title}</span>
-        {sermons.length > 0 && (
+        {readState === 'ready' && sermons.length > 0 && (
           <span
             data-testid="built-sermons-count"
             aria-hidden="true"
@@ -57,6 +60,7 @@ export function BuiltSermonsList({ title, sermons, empty, openLabel, onOpen, tes
         )}
       </div>
 
+      <ListReadFeedback state={readState} />
       {sermons.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
           {sermons.map((sermon) => {
@@ -87,7 +91,7 @@ export function BuiltSermonsList({ title, sermons, empty, openLabel, onOpen, tes
             );
           })}
         </ul>
-      ) : (
+      ) : readState === 'ready' && (
         <p className={`px-0.5 text-xs leading-4 ${NEUTRAL_CAPTION}`} data-testid="built-sermons-empty">
           {empty}
         </p>

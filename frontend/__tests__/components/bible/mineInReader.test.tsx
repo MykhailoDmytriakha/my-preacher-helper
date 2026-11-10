@@ -148,6 +148,18 @@ describe('the person\'s own material on the Bible text', () => {
     expect(screen.getByTestId('mine-1:16-sermon')).toHaveAccessibleName('bible.mine.badgeLabel');
   });
 
+  it('keeps known Bible badges without counting the unfinished note list as a total', () => {
+    mockComplete = false;
+    mockRows = { studyNotes: [note('one', 'Руфь 1:16'), note('two', 'Руфь 1:16')] };
+    const { result, rerender } = renderHook(() => useBookUsage('Ruth', 'rst', 'ru', true));
+    expect(result.current.ribbon?.at.get('1:16')?.[0]).toMatchObject({ kind: 'note', label: '1:16', ariaLabel: 'bible.mine.badgeLabel' });
+    expect(result.current.ribbon?.at.get('1:16')?.[0]?.count).toBeUndefined();
+
+    mockComplete = true;
+    rerender();
+    expect(result.current.ribbon?.at.get('1:16')?.[0]?.count).toBe(2);
+  });
+
   it('opens from a badge the list of what holds the verse, and a row goes to it once the window has closed', async () => {
     mockRows = { sermons: [sermon('whither', 'Руфь 1:16-17', 'Куда ты пойдёшь')], studyNotes: [note('book-plan', '', 'План', [{ bible: 'rst', book: 'Ruth', chapter: 1 }])] };
     renderRuth();

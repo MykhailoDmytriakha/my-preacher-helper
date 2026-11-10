@@ -9,6 +9,7 @@ import { BuiltSermonsList } from '@/components/sermon/BuiltSermonsList';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { useEngineSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { documentScreenHref } from '@/utils/documentScreenHref';
+import { listReadState, type ListReadState } from '@/utils/listReadState';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -44,7 +45,7 @@ type AnalysisSermonsProps = {
  */
 function useAnalysisSermons({ noteId, place, verse }: Omit<AnalysisSermonsProps, 'onOpen'>) {
   const { t } = useTranslation();
-  const sermons = useEngineSermonsBuiltOnNote(noteId);
+  const source = useEngineSermonsBuiltOnNote(noteId);
   const [creating, setCreating] = useState(false);
   const dialog = creating ? (
     <EngineCreateSermonModal
@@ -61,13 +62,13 @@ function useAnalysisSermons({ noteId, place, verse }: Omit<AnalysisSermonsProps,
       onQueued={() => setCreating(false)}
     />
   ) : null;
-  return { sermons, create: () => setCreating(true), dialog };
+  return { sermons: source.sermons, readState: listReadState(source), create: () => setCreating(true), dialog };
 }
 
 const titleOf = (sermon: Sermon, untitled: string) => sermon.title?.trim() || untitled;
 
-function AnalysisSermonList({ sermons, onOpen, onCreate, createLabel, testId, children }: {
-  sermons: Sermon[]; onOpen: AnalysisSermonsProps['onOpen']; onCreate: () => void;
+function AnalysisSermonList({ sermons, readState, onOpen, onCreate, createLabel, testId, children }: {
+  sermons: Sermon[]; readState: ListReadState; onOpen: AnalysisSermonsProps['onOpen']; onCreate: () => void;
   createLabel?: string; testId: string; children?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -78,6 +79,7 @@ function AnalysisSermonList({ sermons, onOpen, onCreate, createLabel, testId, ch
       title={t('analysis.sermon.title')}
       sermons={sermons.map((sermon) => ({ ...sermon, title: titleOf(sermon, untitled) }))}
       empty={t('analysis.sermon.empty')}
+      readState={readState}
       openLabel={(title) => t('analysis.sermon.open', { title })}
       onOpen={onOpen}
     >
@@ -148,10 +150,10 @@ export function AnalysisSermons(props: AnalysisSermonsProps) {
 export function AnalysisSermonsMenu(props: AnalysisSermonsProps) {
   const { t } = useTranslation();
   const { place, onOpen } = props;
-  const { sermons, create, dialog } = useAnalysisSermons(props);
+  const { sermons, readState, create, dialog } = useAnalysisSermons(props);
   const { badge } = USAGE_KIND_LOOK.sermon;
   const newLabel = t('analysis.sermon.newAria', { place });
-  const label = t('analysis.sermon.openList', { count: sermons.length });
+  const label = readState === 'ready' ? t('analysis.sermon.openList', { count: sermons.length }) : t('analysis.sermon.title');
   return (
     <div className="inline-flex shrink-0" data-testid="analysis-sermons">
       {sermons.length === 0 ? (
@@ -163,7 +165,7 @@ export function AnalysisSermonsMenu(props: AnalysisSermonsProps) {
         <Popover>
           <PopoverButton aria-label={label} data-testid="analysis-sermons-trigger"
             className={`${CAPSULE} ${badge.capsule} px-2 max-sm:h-11`}>
-            <span className="inline-flex items-center gap-1 min-[360px]:hidden" aria-hidden="true"><SermonCircle />{sermons.length}</span>
+            <span className="inline-flex items-center gap-1 min-[360px]:hidden" aria-hidden="true"><SermonCircle />{readState === 'ready' && sermons.length}</span>
             <span className="hidden whitespace-nowrap min-[360px]:inline">{label}</span>
           </PopoverButton>
           <PopoverPanel focus className="absolute right-2 top-full z-20 mt-1 max-h-[min(24rem,calc(100dvh-8rem))] w-[min(20rem,calc(100vw-1rem))] overflow-auto overscroll-contain rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-900">
@@ -171,6 +173,7 @@ export function AnalysisSermonsMenu(props: AnalysisSermonsProps) {
               <AnalysisSermonList
                 testId="analysis-sermons-list"
                 sermons={sermons}
+                readState={readState}
                 onOpen={(href) => { close(); onOpen(href); }}
                 onCreate={() => { close(); create(); }}
                 createLabel={t('analysis.sermon.another', { place })}
@@ -190,9 +193,9 @@ export function AnalysisSermonsMenu(props: AnalysisSermonsProps) {
  * its sermons (`BuiltSermonsList`), and the door to a new one under it.
  */
 export function AnalysisSermonsPanel(props: AnalysisSermonsProps) {
-  const { sermons, create, dialog } = useAnalysisSermons(props);
+  const { sermons, readState, create, dialog } = useAnalysisSermons(props);
   return (
-    <AnalysisSermonList testId="analysis-sermons-panel" sermons={sermons} onOpen={props.onOpen} onCreate={create}>
+    <AnalysisSermonList testId="analysis-sermons-panel" sermons={sermons} readState={readState} onOpen={props.onOpen} onCreate={create}>
       {dialog}
     </AnalysisSermonList>
   );

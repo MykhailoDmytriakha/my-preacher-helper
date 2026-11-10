@@ -94,5 +94,6 @@ describe('SeriesItemCard', () => {
     );
 
     expect(screen.getByText('Unknown item')).toBeInTheDocument();
+    expect(screen.queryByText('formatted:')).toBeNull();
   });
 });

@@ -19,14 +19,14 @@ describe('the sermons built on a note, from the engine', () => {
       row('theirs', { userId: 'someone', title: 'Theirs', date: '2026-10-31', sourceNoteIds: ['a1'] }),
     ] } } as unknown as ReturnType<typeof useDataCollection>);
     const { result } = renderHook(() => useEngineSermonsBuiltOnNote('a1'));
-    expect(result.current.map((sermon) => sermon.id)).toEqual(['new', 'old']);
+    expect(result.current.sermons.map((sermon) => sermon.id)).toEqual(['new', 'old']);
     expect(useDataCollection).toHaveBeenCalledWith('sermons');
   });
 
   it('watches nothing without a note', () => {
     jest.mocked(useDataCollection).mockReturnValue({ state: null } as unknown as ReturnType<typeof useDataCollection>);
     const { result } = renderHook(() => useEngineSermonsBuiltOnNote(null));
-    expect(result.current).toEqual([]);
+    expect(result.current.sermons).toEqual([]);
     expect(useDataCollection).toHaveBeenLastCalledWith(null);
   });
 

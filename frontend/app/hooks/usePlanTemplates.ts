@@ -41,6 +41,8 @@ export function usePlanTemplates(userId: string | null | undefined) {
     observeName,
     captureActionTime: documentActions.captureActionTime,
     loading: Boolean(userId) && engineTemplates.loading,
+    complete: engineTemplates.state?.complete === true,
+    checking: engineTemplates.state?.checking === true,
     error: engineTemplates.error ? new Error(engineTemplates.error) : null,
     refresh: engineTemplates.refresh,
     createTemplate: (payload: CreatePlanTemplatePayload): Promise<void> =>

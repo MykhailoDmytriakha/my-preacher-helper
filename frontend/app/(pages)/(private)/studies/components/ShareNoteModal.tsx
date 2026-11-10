@@ -18,18 +18,16 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { formatDateForLocale } from '@/utils/dateFormatter';
-import { listReadState, type ListReadState } from '@/utils/listReadState';
+import { listReadState, type ListReadSource, type ListReadState } from '@/utils/listReadState';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
 
-interface ShareNoteModalProps {
+interface ShareNoteModalProps extends ListReadSource {
   isOpen: boolean;
   note: StudyNote | null;
   shareLink?: StudyNoteShareLink;
-  loading?: boolean;
-  error?: unknown;
   onClose: () => void;
   onCreate: (noteId: string) => WriteOperation;
   onDelete: (linkId: string) => WriteOperation;
@@ -52,14 +50,16 @@ export default function ShareNoteModal({
   isOpen,
   note,
   shareLink,
-  loading = false,
+  loading,
   error,
+  complete,
+  checking,
   onClose,
   onCreate,
   onDelete,
 }: ShareNoteModalProps) {
   const { t, language: interfaceLanguage } = useTranslation();
-  const readState = listReadState({ loading, error });
+  const readState = listReadState({ loading, error, complete, checking });
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
   const [isWorking, setIsWorking] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -251,7 +251,7 @@ export default function ShareNoteModal({
             )}
           </>
         ) : (
-          <ShareLinkCreation loading={loading} working={isWorking} state={readState} onCreate={handleCreate} />
+          <ShareLinkCreation working={isWorking} state={readState} onCreate={handleCreate} />
         )}
       </div>
     </div>
@@ -281,14 +281,15 @@ function ShareLinkAccess({ available, state }: { available: boolean; state: List
 }
 
 /** Creating a second capability must wait until the first capability's existence is known. */
-function ShareLinkCreation({ loading, working, state, onCreate }: {
-  loading: boolean; working: boolean; state: ListReadState; onCreate: () => Promise<void>;
+function ShareLinkCreation({ working, state, onCreate }: {
+  working: boolean; state: ListReadState; onCreate: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   return <div className="flex flex-col gap-3.5">
     <p className="text-[15px] leading-6 text-gray-700 dark:text-gray-300">
-      {loading ? t('studiesWorkspace.shareLinks.loadingLink') : state === 'ready' ? t('studiesWorkspace.shareLinks.inviteText') : null}
+      {state === 'loading' ? t('studiesWorkspace.shareLinks.loadingLink') : state === 'ready' ? t('studiesWorkspace.shareLinks.inviteText') : null}
     </p>
+    {state === 'incomplete' && <ListReadFeedback state={state} showIncomplete />}
     <button type="button" onClick={onCreate} disabled={working || state !== 'ready'} className={PRIMARY_BUTTON_CLASS}>
       <LinkIcon className="h-[18px] w-[18px]" />
       {working ? t('studiesWorkspace.shareLinks.creating') : t('studiesWorkspace.shareLinks.createButton')}

@@ -44,10 +44,12 @@ import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
 import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { listReadState } from '@/utils/listReadState';
 import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -98,6 +100,8 @@ export default function ServiceOrdersPage() {
   const {
     orders,
     loading,
+    complete,
+    checking,
     isOnline,
     canSeed,
     seeding,
@@ -109,6 +113,8 @@ export default function ServiceOrdersPage() {
     error,
     refresh,
   } = useServiceOrders();
+  const readState = listReadState({ loading, error, complete, checking });
+  const reading = readState === 'loading';
 
   const [creating, setCreating] = useState(false);
   const [failure, setFailure] = useState<FailureWords | null>(null);
@@ -143,13 +149,13 @@ export default function ServiceOrdersPage() {
   const [slowRead, setSlowRead] = useState(false);
 
   useEffect(() => {
-    if (!loading) {
+    if (!reading) {
       setSlowRead(false);
       return;
     }
     const timer = setTimeout(() => setSlowRead(true), 10000);
     return () => clearTimeout(timer);
-  }, [loading]);
+  }, [reading]);
 
   const askAgain = () => {
     setSlowRead(false);
@@ -270,7 +276,7 @@ export default function ServiceOrdersPage() {
         titleClassName="text-emerald-700 dark:text-emerald-300"
         icon={<ScrollText className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
         description={reordering ? t('serviceOrders.reorderHint') : t('serviceOrders.subtitle')}
-        actions={!isEmpty && (
+        actions={(!isEmpty || readState === 'incomplete') && (
           reordering ? (
             <button
               type="button"
@@ -281,14 +287,14 @@ export default function ServiceOrdersPage() {
             </button>
           ) : (
             <>
-              <button
+              {!isEmpty && <button
                 type="button"
                 onClick={() => setReordering(true)}
                 className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <ArrowUpDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 {t('serviceOrders.reorder')}
-              </button>
+              </button>}
               {/* The one action of this page, and it looks like it — filled, like the
                   journal's "add a prayer". */}
               <button
@@ -311,11 +317,12 @@ export default function ServiceOrdersPage() {
         )}
       />
 
-      {isEmpty && loading ? (
+      {!isEmpty && <ListReadFeedback state={readState} />}
+      {isEmpty && reading ? (
         <BeingRead slow={slowRead} onRetry={askAgain} />
-      ) : isEmpty && error ? (
-        <CouldNotBeRead onRetry={askAgain} />
-      ) : isEmpty && !loading ? (
+      ) : isEmpty && readState !== 'ready' ? (
+        <CouldNotBeRead onRetry={askAgain} incomplete={readState === 'incomplete'} />
+      ) : isEmpty ? (
         <FirstOpening
           onSeed={seed}
           onCustom={addCustom}
@@ -503,12 +510,12 @@ function BeingRead({ slow, onRetry }: { slow: boolean; onRetry: () => void }) {
  * may already have is how a rite gets seeded twice, and "у тебя пока пусто" about a failed read
  * is simply untrue.
  */
-function CouldNotBeRead({ onRetry }: { onRetry: () => void }) {
+function CouldNotBeRead({ onRetry, incomplete }: { onRetry: () => void; incomplete: boolean }) {
   const { t } = useTranslation();
   return (
     <section className="mt-16 flex flex-col items-center px-6 text-center" data-testid="service-orders-unread">
       <p className="max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-        {t('serviceOrders.listUnread')}
+        {t(incomplete ? 'dataSync.collectionIncomplete' : 'serviceOrders.listUnread')}
       </p>
       <button
         type="button"

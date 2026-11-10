@@ -6,6 +6,7 @@ import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERVICE_ORDER_META_AGGREGATE, SERVICE_ORDER_STEPS_AGGREGATE, hydrateServiceOrder } from '@/services/serviceOrders.client';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { listReadState } from '@/utils/listReadState';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { rankBetween, rankForAppend, RANK_STEP, sortByRank } from '@/utils/serviceOrderRank';
 import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
@@ -370,15 +371,20 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     } };
   };
 
-  return {
-    orders,
-    orderPresence: collection.presence,
+  const read = {
     loading: Boolean(userId) && enabled && collection.loading,
     error: collection.error ? new Error(collection.error) : null,
+    complete: collection.state?.complete === true,
+    checking: collection.state?.checking === true,
+  };
+  return {
+    ...read,
+    orders,
+    orderPresence: collection.presence,
     isOnline,
     recheck,
     refresh,
-    canSeed: missingCatalogKeys.length > 0,
+    canSeed: listReadState(read) === 'ready' && missingCatalogKeys.length > 0,
     seeding,
     seedStandardSet,
     createCustomOrder,

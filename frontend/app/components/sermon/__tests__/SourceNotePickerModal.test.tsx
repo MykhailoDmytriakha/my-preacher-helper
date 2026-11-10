@@ -69,6 +69,21 @@ it('narrows the list as you type, matching tags as well as titles', () => {
   expect(screen.queryByText('Job and the mediator')).not.toBeInTheDocument();
 });
 
+it('does not report no matches while the source note is on a later page', () => {
+  const first = aNote('n1', 'First page');
+  const match = aNote('n2', 'Later match');
+  const props = { selectedNoteIds: [], onSave: jest.fn(), onClose: jest.fn() };
+  mockDirectory.mockReturnValue({ notes: [first], loading: false, complete: false, checking: true, isMissing: () => false });
+  const { rerender } = render(<SourceNotePickerModal {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Later match' } });
+  expect(screen.queryByText('sermon.sourceNotes.picker.noMatches')).toBeNull();
+  expect(screen.getByRole('status')).toHaveTextContent('common.loading');
+
+  mockDirectory.mockReturnValue({ notes: [first, match], loading: false, complete: true, isMissing: () => false });
+  rerender(<SourceNotePickerModal {...props} />);
+  expect(screen.getByText('Later match')).toBeInTheDocument();
+});
+
 it('saves exactly what is left ticked, then closes', async () => {
   const onSave = jest.fn().mockResolvedValue({ outcome: 'saved' });
   const onClose = jest.fn();

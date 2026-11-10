@@ -241,6 +241,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -280,6 +282,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -325,6 +329,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -353,6 +359,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -383,6 +391,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -411,6 +421,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -452,6 +464,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -487,6 +501,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -510,6 +526,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });
@@ -535,6 +553,8 @@ describe('CalendarPage', () => {
     mockUseSeries.mockReturnValue({
       series: [],
       loading: false,
+      complete: true,
+      checking: false,
       error: null,
       refreshSeries: jest.fn(),
     });

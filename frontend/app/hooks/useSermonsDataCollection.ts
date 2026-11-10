@@ -14,5 +14,5 @@ export function useSermonsDataCollection(enabled = true) {
     .filter(isLiveCollectionDocument)
     .map(snapshot => hydrateSermon({ ...snapshot.value, id: snapshot.resource.id } as unknown as Sermon))), [collection.state]);
   return { sermons, loading: collection.loading, error: collection.error, refresh: collection.refresh,
-    state: collection.state, complete: collection.state?.complete ?? false };
+    state: collection.state, complete: collection.state?.complete ?? false, checking: collection.state?.checking ?? false };
 }

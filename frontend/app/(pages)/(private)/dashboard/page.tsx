@@ -426,6 +426,12 @@ function MetricCard({ metric }: { metric: Metric }) {
   const { t } = useTranslation();
   const Icon = metric.icon;
   const tone = toneClasses[metric.tone];
+  const readMessage = {
+    ready: metric.helper,
+    loading: t('common.loading'),
+    incomplete: t('dataSync.collectionIncomplete'),
+    failed: t('dataSync.backgroundFailure'),
+  }[metric.readState];
 
   return (
     <Link
@@ -438,7 +444,7 @@ function MetricCard({ metric }: { metric: Metric }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-gray-600 dark:text-gray-400">{metric.label}</p>
         <p className="text-2xl font-bold tabular-nums text-gray-950 dark:text-white">{metric.readState === 'ready' ? metric.value : '—'}</p>
-        <p className="truncate text-xs text-gray-500 dark:text-gray-400">{metric.readState === 'ready' ? metric.helper : t(metric.readState === 'failed' ? 'dataSync.backgroundFailure' : 'common.loading')}</p>
+        <p className="truncate text-xs text-gray-500 dark:text-gray-400">{readMessage}</p>
       </div>
       <ChevronRight className="h-5 w-5 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
     </Link>

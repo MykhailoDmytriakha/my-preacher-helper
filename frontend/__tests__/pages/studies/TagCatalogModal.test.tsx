@@ -24,6 +24,7 @@ describe('TagCatalogModal', () => {
     isOpen: true,
     onClose: jest.fn(),
     availableTags: ['Grace', 'Faith', 'Mercy'],
+    readState: 'ready' as const,
     selectedTags: ['Faith'],
     onToggleTag: jest.fn(),
   };
@@ -42,6 +43,15 @@ describe('TagCatalogModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mercy/i }));
     expect(defaultProps.onToggleTag).toHaveBeenCalledWith('Mercy');
     expect(screen.getByText('studiesWorkspace.tagCatalog.selected:')).toBeInTheDocument();
+  });
+
+  it('keeps the current selection and waits before reporting no matching tags', () => {
+    const { rerender } = render(<TagCatalogModal {...defaultProps} readState="loading" />);
+    fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.tagCatalog.searchPlaceholder'), { target: { value: 'later' } });
+    expect(screen.queryByText('studiesWorkspace.tagCatalog.noResults')).toBeNull();
+    expect(screen.getByText('common.loading')).toBeInTheDocument();
+    rerender(<TagCatalogModal {...defaultProps} availableTags={['Later tag']} readState="ready" />);
+    expect(screen.getByRole('button', { name: /Later tag/i })).toBeInTheDocument();
   });
 
   it('shows no results and resets body scroll on close', () => {

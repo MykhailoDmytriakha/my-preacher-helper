@@ -266,6 +266,14 @@ describe('whether a rite is gone — said only by the server', () => {
     expect(store.size).toBe(0);
   });
 
+  it('does not offer to fill missing standard orders from an incomplete list', () => {
+    const partial = renderWithRefresh({ complete: false, freshness: 'server', snapshots: [], documents: [] });
+    expect(partial.result.current.canSeed).toBe(false);
+
+    const complete = renderWithRefresh({ complete: true, freshness: 'cache', snapshots: [], documents: [] });
+    expect(complete.result.current.canSeed).toBe(true);
+  });
+
   it('does not seed when the server response is incomplete', async () => {
     online = true;
     const { result } = renderWithRefresh({ complete: false, freshness: 'server', snapshots: [], documents: [] });

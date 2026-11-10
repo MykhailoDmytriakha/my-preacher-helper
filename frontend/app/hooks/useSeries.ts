@@ -9,6 +9,8 @@ export function useSeries(userId?: string | null) {
   return {
     series: engine.series,
     loading: engine.loading,
+    complete: engine.complete,
+    checking: engine.checking,
     error: engine.error ? new Error(engine.error) : null,
     refreshSeries: async () => { await engine.refreshSeries(); },
   };

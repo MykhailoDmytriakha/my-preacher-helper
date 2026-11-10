@@ -14,6 +14,7 @@ import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetail
 import { EngineCreateGroupModal } from '@/components/groups/EngineCreateGroupModal';
 import { EngineDeleteGroupModal } from '@/components/groups/EngineDeleteGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
@@ -23,6 +24,7 @@ import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { newClientId } from '@/utils/clientId';
+import { listReadState, type ListReadSource } from '@/utils/listReadState';
 import { EMERALD_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -64,14 +66,15 @@ function EngineGroupsPage() {
   </>;
 }
 function GroupsView({ source, onCreate, onDelete, feedback }: {
-  source: { groups: Group[]; loading: boolean; error: unknown; refreshGroups: () => unknown; complete?: boolean };
+  source: ListReadSource & { groups: Group[]; loading: boolean; refreshGroups: () => unknown };
   onCreate: () => void; onDelete: (group: Group) => void; feedback?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const groupsUserId = user?.uid ?? null;
   const { groups, loading, error, refreshGroups } = source;
-  const canDescribeGroups = !loading && !error;
+  const readState = listReadState(source);
+  const canDescribeGroups = readState === 'ready';
   const { series } = useSeries(groupsUserId);
 
   useEffect(() => {
@@ -88,6 +91,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
   return (
     <section className="space-y-6">
       {feedback}
+      {!loading && readState === 'loading' && <ListReadFeedback state={readState} />}
       {Boolean(error) && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
         {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load groups' })}
         <div className="mt-3"><TechnicalDetailsButton /></div>
@@ -204,7 +208,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
             />
           ))}
         </div>
-      ) : groups.length === 0 && !error && source.complete !== false ? (
+      ) : groups.length === 0 && canDescribeGroups ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white/50 p-8 text-center dark:border-gray-700 dark:bg-gray-900/40">
           <p className="text-gray-600 dark:text-gray-300">
             {t('workspaces.groups.empty', { defaultValue: 'No groups yet. Create your first group.' })}

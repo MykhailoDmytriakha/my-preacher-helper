@@ -93,6 +93,7 @@ export function useStudyNoteShareLinks() {
 
   return {
     uid, shareLinks, loading: isAuthLoading || links.loading,
+    complete: links.state?.complete === true, checking: links.state?.checking === true,
     error: links.error ? new Error(links.error) : null,
     refetch: links.refresh,
     createShareLink: (noteId: string) => submit('create', noteId),

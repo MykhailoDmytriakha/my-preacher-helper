@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
@@ -18,6 +19,7 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
+import { listReadState, type ListReadSource } from '@/utils/listReadState';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -89,15 +91,13 @@ function EngineCouncilListPage() {
     {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
       onFailed={error => { setPending(null); toast.error(refusalMessage(error, t, 'council.save.refused')); }} />}
     <DataCollectionStatus state={engine.state} />
-    <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />
+    <CouncilListContent source={{ ...engine, createCouncil }} />
   </>;
 }
 
 /** What this screen needs from a reader, named here so it does not depend on either one's internals. */
-interface CouncilListSource {
+interface CouncilListSource extends ListReadSource {
   councils: Council[];
-  loading: boolean;
-  error: unknown;
   refresh: () => unknown;
   createCouncil: (input: { title: string; date?: string }) => Council | undefined;
 }
@@ -105,13 +105,15 @@ interface CouncilListSource {
 function CouncilListContent({ source }: { source: CouncilListSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { councils, loading, error, refresh, createCouncil } = source;
+  const { councils, refresh, createCouncil } = source;
+  const readState = listReadState(source);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
 
   const { preparing, past } = splitForList(councils);
   const isEmpty = councils.length === 0;
+  const canDescribe = readState === 'ready';
 
   const openCreate = () => {
     /*
@@ -147,7 +149,7 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
         titleClassName={tone.title}
         icon={<ChatBubbleLeftRightIcon className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
         description={t('council.subtitle')}
-        actions={!isEmpty && !creating && (
+        actions={(!isEmpty || !canDescribe) && !creating && (
           <button type="button" onClick={openCreate} className={buttonPrimary} data-testid="council-new">
             <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             {t('council.newCouncil')}
@@ -188,9 +190,10 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
         </form>
       )}
 
-      {loading && isEmpty ? (
+      {!isEmpty && <ListReadFeedback state={readState} />}
+      {readState === 'loading' && isEmpty ? (
         <div className="mt-8 h-24 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
-      ) : isEmpty && error ? (
+      ) : isEmpty && readState === 'failed' ? (
         /*
          * A LIST THAT COULD NOT BE READ IS NOT AN EMPTY LIST. Before the rules for this
          * collection were live, the read was refused and the page said "no councils yet" —
@@ -205,7 +208,7 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
             {t('council.retry')}
           </button>
         </section>
-      ) : isEmpty ? (
+      ) : isEmpty && canDescribe ? (
         <section className="mt-10 flex flex-col items-start gap-3">
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{t('council.emptyTitle')}</h2>
           <p className="max-w-md text-sm text-gray-600 dark:text-gray-400">{t('council.emptyHint')}</p>
@@ -216,10 +219,10 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
             </button>
           )}
         </section>
-      ) : (
+      ) : !isEmpty && (
         <>
-          <Group title={t('council.preparing')} empty={t('council.noPreparing')} councils={preparing} />
-          <Group title={t('council.past')} empty={t('council.noPast')} councils={past} />
+          <Group title={t('council.preparing')} empty={canDescribe ? t('council.noPreparing') : undefined} councils={preparing} />
+          <Group title={t('council.past')} empty={canDescribe ? t('council.noPast') : undefined} councils={past} />
         </>
       )}
 
@@ -227,7 +230,8 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
   );
 }
 
-function Group({ title, empty, councils }: { title: string; empty: string; councils: Council[] }) {
+function Group({ title, empty, councils }: { title: string; empty?: string; councils: Council[] }) {
+  if (councils.length === 0 && !empty) return null;
   return (
     <section className="mt-8">
       <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">{title}</h2>

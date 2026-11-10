@@ -58,7 +58,8 @@ export default function SeriesItemCard({
 
   const isSermon = item.type === 'sermon';
   const sermonIsPreached = sermon ? getEffectiveIsPreached(sermon) : false;
-  const title = isSermon ? sermon?.title : group?.title;
+  const details = isSermon ? sermon : group;
+  const title = details?.title;
   const href = isSermon ? `/sermons/${item.refId}` : `/groups/${item.refId}`;
   const subtitle = isSermon ? sermon?.verse : group?.description;
   const preview = isSermon && sermon ? sermonPreview(sermon) : '';
@@ -123,21 +124,23 @@ export default function SeriesItemCard({
           </div>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <Chip tone="neutral" size="sm">
-            {isSermon ? formatDate(sermon?.date || '') : formatDate(group?.updatedAt || '')}
-          </Chip>
-          {isSermon && (
-            <Chip tone="blue" size="sm">
-              {sermon?.thoughts?.length || 0} {t('dashboard.thoughts', { count: sermon?.thoughts?.length || 0 })}
+        {details && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <Chip tone="neutral" size="sm">
+              {isSermon ? formatDate(sermon?.date || '') : formatDate(group?.updatedAt || '')}
             </Chip>
-          )}
-          {!isSermon && (
-            <Chip tone="violet" size="sm">
-              {(group?.flow || []).length} {t('workspaces.groups.itemsLabel.flowSteps', { count: (group?.flow || []).length, defaultValue: 'flow steps' })}
-            </Chip>
-          )}
-        </div>
+            {isSermon && sermon && (
+              <Chip tone="blue" size="sm">
+                {sermon.thoughts?.length ?? 0} {t('dashboard.thoughts', { count: sermon.thoughts?.length ?? 0 })}
+              </Chip>
+            )}
+            {!isSermon && group && (
+              <Chip tone="violet" size="sm">
+                {group.flow?.length ?? 0} {t('workspaces.groups.itemsLabel.flowSteps', { count: group.flow?.length ?? 0, defaultValue: 'flow steps' })}
+              </Chip>
+            )}
+          </div>
+        )}
       </div>
 
       {onRemove && (

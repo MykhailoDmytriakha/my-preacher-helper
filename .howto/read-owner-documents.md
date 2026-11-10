@@ -13,7 +13,7 @@ For an engine-owned collection, read through `useDataDocument` or `useDataCollec
 
 ## Present a failed list without inventing an empty account
 
-Keep the collection's `loading` and `error` alongside its rows. `utils/listReadState.ts` resolves failed/loading/ready for one source or all contributors; `components/ListReadFeedback.tsx` renders the existing translated data-read message. This presentation helper neither reads nor retries data. Use the facade's retry policy and preserve its actual rows and ordinary actions.
+Keep the collection's `loading`, `error`, `complete` and `checking` alongside its rows. `utils/listReadState.ts` resolves failed/loading/incomplete/ready for one source or all contributors. `components/ListReadFeedback.tsx` renders the translated read message. Use its optional idle-incomplete message where the screen has no collection status to explain the gap. This presentation helper neither reads nor retries data. Use the facade's retry policy and preserve its actual rows and ordinary actions.
 
 Only ready sources certify total counts, empty invitations and filtered no-match claims. A derived aggregate needs every contributing source; unrelated healthy sections remain useful. Membership metadata can itself prove a zero-member count without reading an unrelated collection. Existing member counts from a loaded series stay known while preached/meeting totals need their related documents.
 
@@ -22,7 +22,7 @@ engine's `complete` flag before showing per-kind counts or an empty filtered cal
 can make a collection stop reporting cold loading before its final page arrives. `checking` explains
 an active incomplete read. A partial offline copy can still show rows without claiming a total.
 
-Pass both note and link read states into share-link views. Keep known link copy/revoke actions. Hold creation while existence cannot be established, and show an unknown title if its note is unavailable; do not rename it Untitled or claim that access is off. An actually loaded empty title still uses the normal Untitled label.
+Pass both note and link read states into share-link views. Keep known link copy/revoke actions. Allow creation for a known selected note once the links list confirms its absence, even if unrelated notes are still being read. Show an unknown title if its note is unavailable; do not rename it Untitled or claim that access is off. An actually loaded empty title still uses the normal Untitled label.
 
 Verify true-empty successful reads, retained local rows with a real refusal, cold failure and successful recovery. A fresh cached legacy query is still successful until it actually refetches: `useServerFirstQuery` becomes stale after30seconds and does not refetch merely because time passed while mounted. Require the actual refused request before claiming that a link-read failure was tested. Run these checks on the emulator described in `.howto/run-a-demo-on-the-emulator.md`.
 

@@ -5,6 +5,8 @@ interface UseDashboardSermonsResult {
   sermons: Sermon[];
   loading: boolean;
   error: Error | string | null;
+  complete: boolean;
+  checking: boolean;
   state?: ReturnType<typeof useSermonsDataCollection>['state'];
   refresh: () => Promise<void>;
 }

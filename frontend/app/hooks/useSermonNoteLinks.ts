@@ -15,6 +15,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { SourceNoteLinkOpening } from '@/data-engine/sourceNoteLinkCapture';
 import type { Sermon, StudyNote } from '@/models/models';
+import type { ListReadSource } from '@/utils/listReadState';
 
 /**
  * BOTH DIRECTIONS OF "THIS SERMON WAS BUILT ON THAT NOTE", FROM ONE STORED FACT.
@@ -32,7 +33,7 @@ import type { Sermon, StudyNote } from '@/models/models';
  */
 
 /** The person's submitted and saved notes, projected by the shared engine. */
-export interface StudyNoteDirectory {
+export interface StudyNoteDirectory extends ListReadSource {
   notes: StudyNote[];
   loading: boolean;
   /** Only canonical absence may label a linked note missing; an unknown local list cannot. */
@@ -41,9 +42,9 @@ export interface StudyNoteDirectory {
 
 export function useStudyNoteDirectory(options: { enabled?: boolean } = {}): StudyNoteDirectory {
   const { enabled = true } = options;
-  const { notes, loading, notePresence } = useStudyNotesEngine(enabled);
+  const { notes, loading, error, complete, checking, notePresence } = useStudyNotesEngine(enabled);
   const isMissing = useCallback((id: string) => enabled && notePresence(id).kind === 'absent', [enabled, notePresence]);
-  return { notes, loading: enabled && loading, isMissing };
+  return { notes, loading: enabled && loading, error, complete, checking, isMissing };
 }
 
 export interface SourceNotesResult {
@@ -87,10 +88,12 @@ export function sermonNamesNote(sermon: Pick<Sermon, 'sourceNoteIds'>, noteId: s
 }
 
 /** Reverse links read the same submitted and persisted collection as the sermon screens. */
-export function useSermonsBuiltOnNote(noteId: string | undefined): {
+interface SermonsBuiltOnNoteRead extends ListReadSource {
   sermons: Sermon[];
   loading: boolean;
-} {
+}
+
+export function useSermonsBuiltOnNote(noteId: string | undefined): SermonsBuiltOnNoteRead {
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useSermonsDataCollection(Boolean(uid && noteId));
   const sermons = useMemo(() => {
@@ -98,14 +101,17 @@ export function useSermonsBuiltOnNote(noteId: string | undefined): {
     return collection.sermons.filter((sermon) => sermonNamesNote(sermon, noteId));
   }, [collection.sermons, noteId]);
 
-  return { sermons, loading: isAuthLoading || collection.loading };
+  const { complete, checking, error } = collection;
+  return { sermons, loading: isAuthLoading || collection.loading, complete, checking, error };
 }
 
 /** The analysis uses the same projected, sorted sermon list as the other note screens. */
-export function useEngineSermonsBuiltOnNote(noteId: string | null | undefined): Sermon[] {
+export function useEngineSermonsBuiltOnNote(noteId: string | null | undefined): SermonsBuiltOnNoteRead {
   const { uid } = useResolvedUid();
-  const { sermons } = useSermonsBuiltOnNote(noteId ?? undefined);
-  return useMemo(() => sermons.filter(sermon => sermon.userId === uid), [sermons, uid]);
+  const source = useSermonsBuiltOnNote(noteId ?? undefined);
+  const { sermons } = source;
+  const ownedSermons = useMemo(() => sermons.filter(sermon => sermon.userId === uid), [sermons, uid]);
+  return { ...source, sermons: ownedSermons };
 }
 
 /**

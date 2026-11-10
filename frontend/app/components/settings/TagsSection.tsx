@@ -4,11 +4,13 @@ import { User } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import { sayFailure } from '@/utils/actionFailureMessage';
+import { listReadState } from '@/utils/listReadState';
 import { awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
 import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
 import ColorPickerModal from '@components/ColorPickerModal';
@@ -36,7 +38,9 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const [deleteSelection, setDeleteSelection] = useState<TagSelection | null>(null);
   const [pendingAction, setPendingAction] = useState<TagAction | null>(null);
   const pendingActionRef = useRef<TagAction | null>(null);
-  const { tags, addCustomTag, removeCustomTag, updateTag, observeColor, captureActionTime } = useTags(user?.uid);
+  const source = useTags(user?.uid);
+  const { tags, addCustomTag, removeCustomTag, updateTag, observeColor, captureActionTime } = source;
+  const customTagsRead = listReadState(source);
   const ownerRef = useRef(user?.uid);
   ownerRef.current = user?.uid;
   const customTagsRef = useRef(tags.customTags);
@@ -202,13 +206,14 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
           <AddTagForm onAddTag={handleAddTag} />
 
           {/* Custom Tags List */}
-          <TagList 
+          <ListReadFeedback state={customTagsRead} />
+          {(tags.customTags.length > 0 || customTagsRead === 'ready') && <TagList
             tags={tags.customTags}
             editable={true}
             onEditColor={openColorPicker}
             renderDetails={renderColorHistory}
             onRemoveTag={handleRemoveTag}
-          />
+          />}
         </div>
       </div>
       

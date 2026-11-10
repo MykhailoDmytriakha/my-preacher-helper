@@ -15,5 +15,5 @@ export function useGroupsDataCollection(enabled = true) {
     .map(snapshot => hydrateGroup({ ...snapshot.value, id: snapshot.resource.id } as unknown as Group))
     .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')), [collection.state]);
   return { groups, loading: collection.loading, error: collection.error, refreshGroups: collection.refresh,
-    state: collection.state, complete: collection.state?.complete ?? false, freshness: collection.state?.freshness ?? 'unknown' };
+    state: collection.state, complete: collection.state?.complete ?? false, checking: collection.state?.checking ?? false, freshness: collection.state?.freshness ?? 'unknown' };
 }

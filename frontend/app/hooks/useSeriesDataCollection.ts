@@ -15,5 +15,5 @@ export function useSeriesDataCollection(enabled = true, owner?: string | null) {
     .filter(snapshot => owner === undefined || snapshot.value.userId === owner)
     .map(snapshot => hydrateSeries({ ...snapshot.value, id: snapshot.resource.id } as unknown as Series))), [collection.state, owner]);
   return { series, loading: collection.loading, error: collection.error, refreshSeries: collection.refresh,
-    state: collection.state, complete: collection.state?.complete ?? false, freshness: collection.state?.freshness ?? 'unknown' };
+    state: collection.state, complete: collection.state?.complete ?? false, checking: collection.state?.checking ?? false, freshness: collection.state?.freshness ?? 'unknown' };
 }

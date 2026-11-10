@@ -26,7 +26,7 @@ jest.mock('@/data-engine/react.client', () => ({
 }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }) }));
 jest.mock('@/components/bible/verseCopy/VerseCopyBar', () => ({ VerseCopyBar: () => null }));
-jest.mock('@/hooks/useSermonNoteLinks', () => ({ useEngineSermonsBuiltOnNote: () => [] }));
+jest.mock('@/hooks/useSermonNoteLinks', () => ({ useEngineSermonsBuiltOnNote: () => ({ sermons: [], loading: false }) }));
 
 const rstText: BookText = {
   id: 'Ephesians',

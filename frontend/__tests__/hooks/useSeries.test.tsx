@@ -14,7 +14,7 @@ describe('useSeries (read-only engine hook)', () => {
   const refreshSeries = jest.fn(async () => undefined);
   const series = [{ id: 's1', title: 'One' }];
   const withCollection = (patch: Record<string, unknown> = {}) =>
-    mockCollection.mockReturnValue({ series, loading: false, error: null, refreshSeries, ...patch } as never);
+    mockCollection.mockReturnValue({ series, loading: false, complete: true, checking: false, error: null, refreshSeries, ...patch } as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -45,10 +45,12 @@ describe('useSeries (read-only engine hook)', () => {
     expect(mockCollection).toHaveBeenCalledWith(true, null);
   });
 
-  it('exposes only the read surface', () => {
+  it('exposes only the read surface, including a continued page read', () => {
+    withCollection({ complete: false, checking: true });
     const { result } = renderHook(() => useSeries('u'));
 
-    expect(Object.keys(result.current).sort()).toEqual(['error', 'loading', 'refreshSeries', 'series']);
+    expect(Object.keys(result.current).sort()).toEqual(['checking', 'complete', 'error', 'loading', 'refreshSeries', 'series']);
+    expect(result.current).toMatchObject({ loading: false, complete: false, checking: true });
   });
 
   it('maps the collection error to an Error', () => {

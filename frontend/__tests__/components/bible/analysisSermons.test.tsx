@@ -22,7 +22,7 @@ jest.mock('@/components/sermon/EngineCreateSermonModal', () => ({
 
 // The passage as the reader's «Копировать» gives it (passageCopyText): the new sermon's verse (the owner, 31.10).
 const COPIED = 'Еф 1:3–4: "Благословен Бог и Отец Господа нашего Иисуса Христа, благословивший нас… так как Он избрал нас в Нем…"';
-const sermons = (list: Array<Partial<Sermon>>) => jest.mocked(useEngineSermonsBuiltOnNote).mockReturnValue(list as Sermon[]);
+const sermons = (list: Array<Partial<Sermon>>) => jest.mocked(useEngineSermonsBuiltOnNote).mockReturnValue({ sermons: list as Sermon[], loading: false });
 
 describe('the analysis header sermon menu', () => {
   beforeEach(() => jest.clearAllMocks());

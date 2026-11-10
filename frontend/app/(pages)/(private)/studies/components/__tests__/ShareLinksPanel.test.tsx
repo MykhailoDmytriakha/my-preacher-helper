@@ -81,6 +81,36 @@ describe('ShareLinksPanel', () => {
     expect(screen.getByText('common.loading')).toBeInTheDocument();
   });
 
+  it('waits for an empty first page before claiming there are no links', () => {
+    const props = { notes: [createTestNote()], shareLinks: [], onCreate: jest.fn(), onDelete: jest.fn() };
+    const { rerender } = render(<ShareLinksPanel {...props} complete={false} checking />);
+    expect(screen.queryByText('studiesWorkspace.shareLinks.empty')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('common.loading');
+    rerender(<ShareLinksPanel {...props} complete />);
+    expect(screen.getByText('studiesWorkspace.shareLinks.empty')).toBeInTheDocument();
+  });
+
+  it('keeps known link actions and waits for its note title from a later page', () => {
+    const props = { shareLinks: [createShareLink()], onCreate: jest.fn(), onDelete: jest.fn() };
+    const { rerender } = render(<ShareLinksPanel {...props} notes={[]} notesComplete={false} notesChecking />);
+    expect(screen.getByText('common.unknown')).toBeInTheDocument();
+    expect(screen.queryByText('studiesWorkspace.untitled')).toBeNull();
+    expect(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.copyLink' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.deleteLink' })).toBeEnabled();
+    rerender(<ShareLinksPanel {...props} notes={[createTestNote()]} notesComplete />);
+    expect(screen.getByText('Shared note title')).toBeInTheDocument();
+  });
+
+  it('can share an already loaded note while unrelated notes are still loading', async () => {
+    const onCreate = jest.fn(() => persistedWrite(Promise.resolve()));
+    const user = userEvent.setup();
+    render(<ShareLinksPanel notes={[createTestNote()]} shareLinks={[]} complete
+      notesComplete={false} notesChecking onCreate={onCreate} onDelete={jest.fn()} />);
+    await user.selectOptions(screen.getByRole('combobox'), 'note-1');
+    await user.click(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.createButton' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('note-1'));
+  });
+
   it('creates a share link for the selected note and clears selection', async () => {
     const user = userEvent.setup();
     const onCreate = jest.fn(() => persistedWrite(Promise.resolve()));

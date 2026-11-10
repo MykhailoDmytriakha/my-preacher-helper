@@ -136,6 +136,19 @@ describe('TagsSection', () => {
     expect(screen.getByTestId('add-tag-form')).toBeInTheDocument();
   });
 
+  it('keeps the standard tag section but waits to describe an empty custom tag list', () => {
+    const tags = { requiredTags: mockRequiredTags, customTags: [] };
+    (useTags as jest.Mock).mockReturnValue({ tags, complete: false, checking: true });
+    const view = renderSection();
+    expect(screen.getByTestId('tag-list-required')).toBeInTheDocument();
+    expect(screen.queryByTestId('tag-list-editable')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('common.loading');
+
+    (useTags as jest.Mock).mockReturnValue({ tags, complete: true });
+    view.rerender(<TagsSection user={mockUser} />);
+    expect(screen.getByTestId('tag-list-editable')).toBeInTheDocument();
+  });
+
   it('calls addCustomTag and refetches tags when AddTagForm calls onAddTag', async () => {
     renderSection();
 

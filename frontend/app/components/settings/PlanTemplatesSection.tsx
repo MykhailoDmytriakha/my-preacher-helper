@@ -5,6 +5,7 @@ import { User } from 'firebase/auth';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { listOutlineTitleDraftIds, OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
@@ -17,6 +18,7 @@ import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
+import { listReadState } from '@/utils/listReadState';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { validTemplateConflict } from '@/utils/refusedDraftPayloads';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
@@ -41,8 +43,9 @@ const countPoints = (outline?: SermonOutline): number =>
 
 const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, requestedTemplateId }) => {
   const { t } = useTranslation();
-  const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh, observeName, captureActionTime } =
-    usePlanTemplates(user?.uid);
+  const source = usePlanTemplates(user?.uid);
+  const { templates, createTemplate, updateTemplate, deleteTemplate, refresh, observeName, captureActionTime } = source;
+  const readState = listReadState(source);
 
 
   /**
@@ -412,8 +415,10 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
         </button>
       </div>
 
-      {loading && <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>}
-      {!loading && !templates.length && <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('planTemplates.empty')}</p>}
+      {readState === 'loading' ? (
+        <p role="status" className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
+      ) : <ListReadFeedback state={readState} />}
+      {readState === 'ready' && !templates.length && <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('planTemplates.empty')}</p>}
       <ul className="space-y-2 empty:hidden">
           {rowIds.map(id => {
             const tpl = templatesById.get(id);

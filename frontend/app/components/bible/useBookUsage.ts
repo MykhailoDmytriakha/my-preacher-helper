@@ -6,6 +6,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { listReadState } from '@/utils/listReadState';
 import { samePassage } from '@/utils/scriptureReferenceNumbering';
 import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type BookUsageEntry, type ScriptureUsageKind } from '@/utils/scriptureUsage';
 import { verseCount } from '@/utils/versification';
@@ -33,6 +34,11 @@ export type MineStretch = { kind: ScriptureUsageKind; passage: Passage };
 
 
 type CollectionState = ReturnType<typeof useDataCollection>['state'];
+
+function canCountUsage(source: ReturnType<typeof useDataCollection>): boolean {
+  const { state, loading, error } = source;
+  return listReadState({ loading, error, complete: state?.complete === true }) === 'ready';
+}
 
 /** The person's own documents of a list: the ones being deleted on this device are already gone for them. */
 function owned<T>(state: CollectionState, uid: string | undefined): T[] {
@@ -131,6 +137,10 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   const sermons = useDataCollection(watched('sermons'));
   const groups = useDataCollection(watched('groups'));
   const orders = useDataCollection(watched('serviceOrders'));
+  const canCountNotes = canCountUsage(notes);
+  const canCountSermons = canCountUsage(sermons);
+  const canCountGroups = canCountUsage(groups);
+  const canCountOrders = canCountUsage(orders);
   // Read after the text's own render, in React's next pass, not inside it. A timer did the same and, set under a
   // test's fake clock, kept the next tests' books from showing.
   const armed = useDeferredValue(ready);
@@ -209,16 +219,23 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
       // By a chapter's heading the badge speaks of that chapter: "2:1–23", whatever range the document names.
       else for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) gather(onChapters, chapter, entry, { chapter, toChapter: chapter });
     });
-    const toBadges = (badges: Map<string, Gathered>): MineBadge[] => [...badges.values()].map((badge) => ({
-      kind: badge.kind,
-      ...(badge.kind === 'analysis' ? { opens: { kind: badge.kind, passage: badge.passage } } : {}),
-      label: badgeLabel(badge.passage, bible, bookId),
-      count: badge.titles.size,
-      // The number on the corner is only seen: a screen reader hears it here (Codex review, round 3).
-      ariaLabel: t(badge.titles.size > 1 ? 'bible.mine.badgeLabelMany' : 'bible.mine.badgeLabel', {
-        kind: t(USAGE_KIND_LOOK[badge.kind].wordKey), place: passageLabel(abbrev, badge.passage), titles: [...badge.titles.values()].join(' · '), count: badge.titles.size,
-      }),
-    }));
+    const countReady: Record<ScriptureUsageKind, boolean> = {
+      note: canCountNotes, comment: canCountNotes, analysis: canCountNotes,
+      sermon: canCountSermons, group: canCountGroups, order: canCountOrders,
+    };
+    const toBadges = (badges: Map<string, Gathered>): MineBadge[] => [...badges.values()].map((badge) => {
+      const count = countReady[badge.kind] ? badge.titles.size : undefined;
+      // A screen reader hears the count when the visual badge displays it.
+      return {
+        kind: badge.kind,
+        ...(badge.kind === 'analysis' ? { opens: { kind: badge.kind, passage: badge.passage } } : {}),
+        label: badgeLabel(badge.passage, bible, bookId),
+        count,
+        ariaLabel: t(count && count > 1 ? 'bible.mine.badgeLabelMany' : 'bible.mine.badgeLabel', {
+          kind: t(USAGE_KIND_LOOK[badge.kind].wordKey), place: passageLabel(abbrev, badge.passage), titles: [...badge.titles.values()].join(' · '), count,
+        }),
+      };
+    });
     const analysed = analysedVerses(entries, bible, bookId);
     return {
       at: new Map([...onVerses].map(([at, badges]) => [String(at), toBadges(badges)])),
@@ -233,7 +250,8 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
         onEdit: onEditComment,
       } } : {}),
     };
-  }, [shown, entries, bookId, bible, locale, onOpen, t, commentsShown, onEditComment, commentLaid]);
+  }, [shown, entries, bookId, bible, locale, onOpen, t, commentsShown, onEditComment, commentLaid,
+    canCountNotes, canCountSermons, canCountGroups, canCountOrders]);
 
   /** The marks on the minimap's right edge: one place each (a passage's first verse, a whole chapter's label), its kinds in the order of the badges. */
   const mapMarks = useMemo<readonly MinimapMark<ScriptureUsageKind>[] | undefined>(() => {

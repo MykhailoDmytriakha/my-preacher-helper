@@ -53,10 +53,13 @@ const CHECKBOX_CLASSES = "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ri
 export default function SermonsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { sermons, loading, error, state: sermonState } = useDashboardSermons();
-  const readState = listReadState({ loading, error });
+  const sermonSource = useDashboardSermons();
+  const { sermons, loading, state: sermonState } = sermonSource;
+  const readState = listReadState(sermonSource);
 
-  const { series: allSeries } = useSeries(user?.uid || null);
+  const seriesSource = useSeries(user?.uid || null);
+  const { series: allSeries } = seriesSource;
+  const seriesRead = listReadState(seriesSource);
 
   const [activeTab, setActiveTab] = useQueryState<'active' | 'preached' | 'all'>('tab', {
     defaultValue: 'active',
@@ -143,6 +146,8 @@ export default function SermonsPage() {
     },
     t
   );
+  const resultsRead = seriesFilter === 'all' ? readState : listReadState(sermonSource, seriesSource);
+  const canClassifyStandalone = seriesFilter !== 'standalone' || seriesRead === 'ready';
   const searchSermonsLabel = t('dashboard.searchSermons');
 
   return (
@@ -161,7 +166,7 @@ export default function SermonsPage() {
       </div>
 
       <DataCollectionStatus state={sermonState} />
-      <ListReadFeedback state={readState} />
+      <ListReadFeedback state={resultsRead} showIncomplete={readState === 'ready' && seriesFilter !== 'all'} />
       {/* Stats Section */}
       <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
         <div className="px-4 sm:px-0">
@@ -497,10 +502,10 @@ export default function SermonsPage() {
 
       {/* Content Area */}
       <DashboardContent
-        canDescribe={readState === 'ready'}
+        canDescribe={resultsRead === 'ready'}
         loading={loading}
         sermons={sermons}
-        processedSermons={processedSermons}
+        processedSermons={canClassifyStandalone ? processedSermons : []}
         searchSnippetsById={searchSnippetsById}
         allSeries={allSeries}
         searchQuery={searchQuery}

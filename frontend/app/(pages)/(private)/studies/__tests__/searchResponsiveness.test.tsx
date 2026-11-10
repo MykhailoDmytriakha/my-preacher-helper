@@ -115,6 +115,8 @@ const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareL
   uid: 'mock-user',
   shareLinks: [],
   loading: false,
+  complete: true,
+  checking: false,
   error: null,
   refetch: jest.fn(),
   createShareLink: jest.fn(),
@@ -142,7 +144,7 @@ describe('StudiesPage search responsiveness', () => {
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseTags.mockReturnValue({
       tags: { requiredTags: [], customTags: [] }, requiredTags: [], customTags: [], allTags: [],
-      loading: false, error: null, refreshTags: jest.fn(), addCustomTag: jest.fn(), removeCustomTag: jest.fn(), updateTag: jest.fn(), observeColor: jest.fn(), captureActionTime: jest.fn(),
+      loading: false, complete: true, checking: false, error: null, refreshTags: jest.fn(), addCustomTag: jest.fn(), removeCustomTag: jest.fn(), updateTag: jest.fn(), observeColor: jest.fn(), captureActionTime: jest.fn(),
     });
   });
 

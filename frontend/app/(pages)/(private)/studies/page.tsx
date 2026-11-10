@@ -22,6 +22,7 @@ import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
 import { CommentIcon } from '@/components/Icons';
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import Select from '@/components/ui/Select';
 import { useSearchInputQuery } from '@/hooks/useSearchInputQuery';
 import { useSlidingRow } from '@/hooks/useSlidingRow';
@@ -34,6 +35,7 @@ import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
+import { listReadState } from '@/utils/listReadState';
 import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 import { STUDIES_ACTION } from '@/utils/themeColors';
@@ -54,18 +56,16 @@ const ADD_BUTTON_WORD: Partial<Record<StudyNoteTab, string>> = { comments: 'newC
 export default function StudiesPage() {
   const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
-  const {
-    uid,
-    notes,
-    confirmedCreationIds,
-    loading: notesLoading,
-    error: notesError,
-  } = useStudyNotes();
-  const canDescribeNotes = !notesLoading && !notesError;
+  const noteSource = useStudyNotes();
+  const { uid, notes, confirmedCreationIds, loading: notesLoading, error: notesError } = noteSource;
+  const notesRead = listReadState(noteSource);
+  const canDescribeNotes = notesRead === 'ready';
   const {
     shareLinks,
     loading: shareLinksLoading,
     error: shareLinksError,
+    complete: shareLinksComplete,
+    checking: shareLinksChecking,
     createShareLink,
     deleteShareLink,
   } = useStudyNoteShareLinks();
@@ -349,7 +349,7 @@ export default function StudiesPage() {
           </div>
         </div>
 
-        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={!notesLoading && !notesError} />
+        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={canDescribeNotes} />
 
         {/* Stats bar */}
         {canDescribeNotes && <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
@@ -532,6 +532,7 @@ export default function StudiesPage() {
       </div>
 
       {/* Notes list */}
+      {!notesLoading && notesRead === 'loading' && <ListReadFeedback state={notesRead} />}
       {notesError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
           {t(isKnownOffline() ? 'studiesWorkspace.loadOffline' : 'studiesWorkspace.loadError')}
@@ -627,6 +628,8 @@ export default function StudiesPage() {
         note={shareNote}
         shareLink={shareNote ? shareLinksByNoteId.get(shareNote.id) : undefined}
         loading={shareLinksLoading}
+        complete={shareLinksComplete}
+        checking={shareLinksChecking}
         error={shareLinksError}
         onClose={() => setShareNote(null)}
         onCreate={createShareLink}

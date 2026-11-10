@@ -4,11 +4,13 @@ import { MagnifyingGlassIcon, RectangleStackIcon, XMarkIcon } from '@heroicons/r
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { formatDateOnly } from '@/utils/dateFormatter';
+import { listReadState } from '@/utils/listReadState';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { matchesStudyNoteQuery, studyNoteOwnName } from '@/utils/studyNoteUtils';
@@ -60,7 +62,9 @@ export default function SourceNotePickerModal({
   returnFocusTo,
 }: SourceNotePickerModalProps) {
   const { t, language: interfaceLanguage } = useTranslation();
-  const { notes, loading, isMissing } = useStudyNoteDirectory();
+  const directory = useStudyNoteDirectory();
+  const { notes, loading, isMissing } = directory;
+  const readState = listReadState(directory);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedNoteIds));
   /** A deliberate return still owns this note's final selection. */
@@ -209,17 +213,18 @@ export default function SourceNotePickerModal({
           </div>
 
           <div className="-mx-1 flex-1 overflow-y-auto px-1">
-            {loading && notes.length === 0 ? (
+            {(!loading || readState === 'failed') && <ListReadFeedback state={readState} />}
+            {loading && readState === 'loading' && notes.length === 0 && missingIds.length === 0 ? (
               <ul className="space-y-2" aria-hidden="true">
                 {[0, 1, 2].map((row) => (
                   <li key={row} className="h-16 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />
                 ))}
               </ul>
-            ) : notes.length === 0 && missingIds.length === 0 ? (
+            ) : readState === 'ready' && notes.length === 0 && missingIds.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t('sermon.sourceNotes.picker.empty')}
               </p>
-            ) : visibleNotes.length === 0 && missingIds.length === 0 ? (
+            ) : readState === 'ready' && visibleNotes.length === 0 && missingIds.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t('sermon.sourceNotes.picker.noMatches')}
               </p>

@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useOutlineConflictForEditor } from '@/components/plan-editor/OutlineConflictScope';
 import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
@@ -19,6 +20,7 @@ import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { listReadState } from '@/utils/listReadState';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineTextChoice } from '@/utils/outlineChoice';
@@ -151,7 +153,9 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const { t } = useTranslation();
   // The page's public engine writer owns local capture and durable delivery.
   const writer = useStructureWriter();
-  const { templates, createTemplate } = usePlanTemplates(sermon.userId);
+  const templateSource = usePlanTemplates(sermon.userId);
+  const { templates, createTemplate } = templateSource;
+  const templatesRead = listReadState(templateSource);
 
   const [outline, setOutline] = useState<SermonOutline>(emptyOutline);
   const [undoStack, setUndoStack] = useState<OutlineHistoryEntry[]>([]);
@@ -542,20 +546,20 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                     <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-gray-500">
                       {t('planEditor.applyTemplate')}
                     </p>
-                    {templates.length === 0 ? (
+                    <ListReadFeedback state={templatesRead} className="px-3" showIncomplete />
+                    {templatesRead === 'ready' && templates.length === 0 && (
                       <p className="px-3 py-2 text-sm text-slate-400 dark:text-gray-500">{t('planEditor.noTemplates')}</p>
-                    ) : (
-                      templates.map((tpl) => (
-                        <button
-                          key={tpl.id}
-                          onClick={() => requestApplyTemplate(tpl.structure)}
-                          className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-gray-700 text-sm text-slate-700 dark:text-gray-200 flex items-center justify-between gap-2"
-                        >
-                          <span className="truncate">{tpl.name}</span>
-                          <span className="text-[11px] text-slate-400 flex-shrink-0">{countPoints(tpl.structure)}</span>
-                        </button>
-                      ))
                     )}
+                    {templates.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        onClick={() => requestApplyTemplate(tpl.structure)}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-gray-700 text-sm text-slate-700 dark:text-gray-200 flex items-center justify-between gap-2"
+                      >
+                        <span className="truncate">{tpl.name}</span>
+                        <span className="text-[11px] text-slate-400 flex-shrink-0">{countPoints(tpl.structure)}</span>
+                      </button>
+                    ))}
                     <div className="my-1 border-t border-slate-100 dark:border-gray-700" />
                     <button
                       onClick={() => {

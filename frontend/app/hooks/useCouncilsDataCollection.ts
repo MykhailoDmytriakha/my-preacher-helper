@@ -48,6 +48,7 @@ export function useCouncilsDataCollection() {
     error: collection.error,
     /** False means the cache is partial: an empty list is then unknown, not "no councils". */
     complete: state?.complete ?? false,
+    checking: state?.checking ?? false,
     freshness: state?.freshness ?? 'unknown',
     refresh: collection.refresh,
   };

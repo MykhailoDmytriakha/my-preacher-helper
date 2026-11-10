@@ -59,7 +59,9 @@ export function useTags(userId: string | null | undefined) {
   const byName = (name: string) => customTags.find(tag => tag.name === name);
   return {
     tags, requiredTags: NO_TAGS, customTags, allTags: customTags,
-    loading: Boolean(userId) && engineTags.loading, error: engineTags.error ? new Error(engineTags.error) : null,
+    loading: Boolean(userId) && engineTags.loading,
+    complete: engineTags.state?.complete === true,
+    checking: engineTags.state?.checking === true, error: engineTags.error ? new Error(engineTags.error) : null,
     refreshTags: engineTags.refresh, observeColor, captureActionTime: documentActions.captureActionTime,
     addCustomTag: (tag: Tag): WriteOperation => {
       if (!userId) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));

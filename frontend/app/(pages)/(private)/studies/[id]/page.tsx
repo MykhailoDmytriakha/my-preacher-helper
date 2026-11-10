@@ -50,6 +50,7 @@ import { referenceFromTyped } from '@/utils/bibleLink';
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
+import { listReadState } from '@/utils/listReadState';
 import { sectionDisplayLabel, findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -726,12 +727,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading, complete: notesComplete, checking: notesChecking, error: notesError } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
 
-    const { tags: tagData } = useTags(uid);
+    const tagSource = useTags(uid);
+    const { tags: tagData } = tagSource;
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
     // Local state for the editor
@@ -1655,6 +1657,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 isOpen={showTagCatalog}
                 onClose={() => setShowTagCatalog(false)}
                 availableTags={availableTags}
+                readState={listReadState(tagSource, { loading: notesLoading, complete: notesComplete, checking: notesChecking, error: notesError })}
                 selectedTags={tags}
                 onToggleTag={toggleTag}
             />

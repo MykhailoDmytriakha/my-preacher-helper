@@ -21,5 +21,5 @@ export interface CouncilsRead {
 export function useCouncilsRead(): CouncilsRead {
   const engine = useCouncilsDataCollection();
   return { councils: engine.councils, loading: engine.loading, complete: engine.complete,
-    checking: engine.state?.checking === true, error: engine.error, refresh: engine.refresh };
+    checking: engine.checking, error: engine.error, refresh: engine.refresh };
 }

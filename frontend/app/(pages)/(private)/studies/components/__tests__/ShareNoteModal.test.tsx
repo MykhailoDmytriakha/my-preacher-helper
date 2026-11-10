@@ -82,6 +82,18 @@ describe('ShareNoteModal', () => {
     expect(screen.getByText('studiesWorkspace.shareLinks.loadingLink')).toBeInTheDocument();
   });
 
+  it('does not report closed access before a continued read delivers an existing link', () => {
+    const props = { isOpen: true, note: createTestNote(), onClose: jest.fn(), onCreate: jest.fn(), onDelete: jest.fn() };
+    const { rerender } = render(<ShareNoteModal {...props} complete={false} checking />);
+    expect(screen.queryByText('studiesWorkspace.shareLinks.accessOff')).toBeNull();
+    expect(screen.getByRole('button', { name: CREATE })).toBeDisabled();
+    expect(screen.getByText('studiesWorkspace.shareLinks.loadingLink')).toBeInTheDocument();
+
+    rerender(<ShareNoteModal {...props} complete={false} checking shareLink={createShareLink()} />);
+    expect(screen.getByRole('button', { name: COPY })).toBeEnabled();
+    expect(screen.getByRole('button', { name: DELETE })).toBeEnabled();
+  });
+
   it('creates a share link when the create button is clicked', async () => {
     const user = userEvent.setup();
     const onCreate = jest.fn(() => persistedWrite(Promise.resolve()));

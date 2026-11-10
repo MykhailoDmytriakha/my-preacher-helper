@@ -64,6 +64,19 @@ describe('SermonsBuiltOnNote — the door from a note to a sermon', () => {
     expect(screen.getByTestId('create-sermon-from-note')).toBeInTheDocument();
   });
 
+  it('keeps known linked sermons without treating the first page as a total', () => {
+    const first = aSermon('s1', 'First linked sermon');
+    mockUseSermonsBuiltOnNote.mockReturnValue({ sermons: [first], loading: false, complete: false, checking: true });
+    const { rerender } = render(<SermonsBuiltOnNote noteId="n1" />);
+    expect(screen.getByText('First linked sermon')).toBeInTheDocument();
+    expect(screen.getByTestId('create-sermon-from-note')).toBeEnabled();
+    expect(screen.queryByTestId('built-sermons-count')).toBeNull();
+
+    mockUseSermonsBuiltOnNote.mockReturnValue({ sermons: [first, aSermon('s2', 'Second linked sermon')], loading: false, complete: true });
+    rerender(<SermonsBuiltOnNote noteId="n1" />);
+    expect(screen.getByTestId('built-sermons-count')).toHaveTextContent('2');
+  });
+
   it('lists the sermons, hides the empty line, and keeps the door under the list', () => {
     mockUseSermonsBuiltOnNote.mockReturnValue({ sermons: [aSermon('s1', 'One'), aSermon('s2', 'Two')], loading: false });
     render(<SermonsBuiltOnNote noteId="n1" noteTitle="Иавис" noteContent="Иавис воззвал к Богу." />);

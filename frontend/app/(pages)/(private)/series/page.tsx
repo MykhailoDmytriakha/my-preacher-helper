@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
 import SeriesCard from '@/components/series/SeriesCard';
 import { SeriesGridSkeleton } from '@/components/skeletons/SeriesCardSkeleton';
@@ -24,6 +25,7 @@ import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client'
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
+import { listReadState, type ListReadSource } from '@/utils/listReadState';
 import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
@@ -62,12 +64,13 @@ function EngineSeriesPage() {
   </>;
 }
 function SeriesView({ source, onCreate, feedback }: {
-  source: { series: Series[]; loading: boolean; error: unknown; refreshSeries: () => unknown };
+  source: ListReadSource & { series: Series[]; loading: boolean; refreshSeries: () => unknown };
   onCreate: () => void; feedback?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { series, loading, error, refreshSeries } = source;
-  const canDescribeSeries = !loading && !error;
+  const readState = listReadState(source);
+  const canDescribeSeries = readState === 'ready';
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -114,6 +117,7 @@ function SeriesView({ source, onCreate, feedback }: {
   return (
     <div className="space-y-6">
       {feedback}
+      {!loading && readState === 'loading' && <ListReadFeedback state={readState} />}
       {Boolean(error) && <p role="alert" className="text-rose-700 dark:text-rose-300">{t('dataSync.readFailed')}</p>}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-2 max-w-3xl">

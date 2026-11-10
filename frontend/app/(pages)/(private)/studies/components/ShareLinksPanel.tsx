@@ -10,7 +10,7 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { formatDay } from '@/utils/appLocale';
-import { listReadState } from '@/utils/listReadState';
+import { listReadState, type ListReadSource } from '@/utils/listReadState';
 import { markdownPreviewText } from '@/utils/markdownUtils';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
@@ -18,13 +18,13 @@ import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { NEUTRAL_CAPTION, STUDIES_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-interface ShareLinksPanelProps {
+interface ShareLinksPanelProps extends ListReadSource {
   notes: StudyNote[];
   shareLinks: StudyNoteShareLink[];
-  loading?: boolean;
-  error?: unknown;
   notesLoading?: boolean;
   notesError?: unknown;
+  notesComplete?: boolean;
+  notesChecking?: boolean;
   onCreate: (noteId: string) => WriteOperation;
   onDelete: (linkId: string) => WriteOperation;
 }
@@ -44,10 +44,14 @@ const COMMENT_WORDS_SHOWN = 40;
 export default function ShareLinksPanel({
   notes,
   shareLinks,
-  loading = false,
+  loading,
   error,
-  notesLoading = false,
+  complete,
+  checking,
+  notesLoading,
   notesError,
+  notesComplete,
+  notesChecking,
   onCreate,
   onDelete,
 }: ShareLinksPanelProps) {
@@ -63,9 +67,11 @@ export default function ShareLinksPanel({
     return `${name} — ${words.length > COMMENT_WORDS_SHOWN ? `${words.slice(0, COMMENT_WORDS_SHOWN).trimEnd()}…` : words}`;
   };
 
-  const linksRead = listReadState({ loading, error });
-  const notesRead = listReadState({ loading: notesLoading, error: notesError });
-  const panelRead = listReadState({ loading, error }, { loading: notesLoading, error: notesError });
+  const linkSource = { loading, error, complete, checking };
+  const noteSource = { loading: notesLoading, error: notesError, complete: notesComplete, checking: notesChecking };
+  const linksRead = listReadState(linkSource);
+  const notesRead = listReadState(noteSource);
+  const panelRead = listReadState(linkSource, noteSource);
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -79,13 +85,14 @@ export default function ShareLinksPanel({
     () => notes.filter((note) => !shareLinksByNoteId.has(note.id)),
     [notes, shareLinksByNoteId]
   );
+  const canCreate = linksRead === 'ready' && availableNotes.some(note => note.id === selectedNoteId);
   const sortedLinks = useMemo(
     () => [...shareLinks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [shareLinks]
   );
 
   const handleCreate = useCallback(async () => {
-    if (!selectedNoteId || isCreating || panelRead !== 'ready') return;
+    if (!canCreate || isCreating) return;
     try {
       setIsCreating(true);
       setWriteError(null);
@@ -102,7 +109,7 @@ export default function ShareLinksPanel({
     } finally {
       setIsCreating(false);
     }
-  }, [selectedNoteId, isCreating, onCreate, panelRead]);
+  }, [canCreate, selectedNoteId, isCreating, onCreate]);
 
   const handleDelete = useCallback(async (linkId: string) => {
     if (deletingId) return;
@@ -150,10 +157,11 @@ export default function ShareLinksPanel({
             value={selectedNoteId}
             onChange={(event) => setSelectedNoteId(event.target.value)}
             wrapperClassName="w-full sm:w-[240px]"
+            disabled={linksRead !== 'ready'}
             aria-label={t('studiesWorkspace.shareLinks.selectPlaceholder')}
           >
             <option value="">{t('studiesWorkspace.shareLinks.selectPlaceholder')}</option>
-            {availableNotes.map((note) => (
+            {linksRead === 'ready' && availableNotes.map((note) => (
               <option key={note.id} value={note.id}>
                 {nameOf(note)}
               </option>
@@ -162,7 +170,7 @@ export default function ShareLinksPanel({
           <button
             type="button"
             onClick={handleCreate}
-            disabled={!selectedNoteId || isCreating || panelRead !== 'ready'}
+            disabled={!canCreate || isCreating}
             className={ACTION_BUTTON_CLASS}
           >
             <PlusIcon className="h-4 w-4" />
@@ -178,7 +186,7 @@ export default function ShareLinksPanel({
       )}
 
       <div className="mt-4 space-y-3">
-        <ListReadFeedback state={panelRead} />
+        <ListReadFeedback state={panelRead} showIncomplete />
 
         {linksRead === 'ready' && shareLinks.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">

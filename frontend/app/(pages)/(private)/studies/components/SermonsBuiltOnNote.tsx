@@ -5,6 +5,7 @@ import React, { useRef, useState } from 'react';
 
 import { BuiltSermonsList } from '@/components/sermon/BuiltSermonsList';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
+import { listReadState } from '@/utils/listReadState';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -51,7 +52,7 @@ const SermonsBuiltOnNote: React.FC<SermonsBuiltOnNoteProps> = ({
   noteBusy = false,
 }) => {
   const { t } = useTranslation();
-  const { sermons } = useSermonsBuiltOnNote(noteId);
+  const source = useSermonsBuiltOnNote(noteId);
   const [creating, setCreating] = useState(false);
   const openerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -61,7 +62,8 @@ const SermonsBuiltOnNote: React.FC<SermonsBuiltOnNoteProps> = ({
     <BuiltSermonsList
       testId="sermons-built-on-note"
       title={t('studiesWorkspace.builtSermons.title')}
-      sermons={sermons}
+      sermons={source.sermons}
+      readState={listReadState(source)}
       empty={t('studiesWorkspace.builtSermons.empty')}
       openLabel={(title) => t('studiesWorkspace.builtSermons.openSermon', { title })}
     >

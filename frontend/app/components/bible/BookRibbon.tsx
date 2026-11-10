@@ -108,7 +108,7 @@ export type RibbonSigns = {
  * opens the list of what is there. A badge is outside the verse's words, like the links' chip.
  */
 /** `opens` — an analysis's badge opens a list of its own, named by its passage (`MinePlace.stretch`). */
-export type MineBadge = { kind: ScriptureUsageKind; label: string; count: number; ariaLabel: string; opens?: MineStretch };
+export type MineBadge = { kind: ScriptureUsageKind; label: string; count?: number; ariaLabel: string; opens?: MineStretch };
 /** A verse of an analysed passage: whether the bar beside the passage starts (`top`) or ends (`bottom`) at it. */
 export type AnalysedVerse = { top: boolean; bottom: boolean };
 export type RibbonMine = {

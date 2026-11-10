@@ -17,7 +17,7 @@ jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, op
 jest.mock('@locales/i18n', () => ({ i18n: { t: (key: string, fallback?: string) => fallback ?? key, language: 'en' } }));
 
 beforeEach(() => {
-  const ready = { loading: false, error: null };
+  const ready = { loading: false, error: null, complete: true, checking: false };
   mockReads = {
     sermons: { ...ready, sermons: [], refresh: jest.fn() },
     series: { ...ready, series: [] },
@@ -32,6 +32,38 @@ it('keeps healthy empty summaries and ordinary navigation', () => {
   render(<DashboardPage />);
   expect(within(screen.getByRole('region', { name: 'dashboardHome.metrics.label' })).getAllByText('0')).toHaveLength(6);
   expect(screen.getByText('dashboardHome.sections.sermons.empty')).toBeInTheDocument();
+});
+
+it('keeps a note from page one visible without reporting it as the total', () => {
+  const note = { id: 'first', userId: 'owner', title: 'First page note', content: 'Known words',
+    tags: [], scriptureRefs: [], isDraft: true, createdAt: '2026-11-01', updatedAt: '2026-11-01' };
+  mockReads.notes = { ...mockReads.notes, notes: [note], complete: false, checking: true };
+
+  const { rerender } = render(<DashboardPage />);
+
+  expect(screen.getByText('First page note')).toBeInTheDocument();
+  const metric = screen.getByText('dashboardHome.metrics.studyNotes.label').closest('a')!;
+  expect(within(metric).getByText('—')).toBeInTheDocument();
+  expect(within(metric).getByText('common.loading')).toBeInTheDocument();
+  const groups = screen.getByText('dashboardHome.metrics.activeGroups.label').closest('a')!;
+  expect(within(groups).getByText('0')).toBeInTheDocument();
+
+  mockReads.notes = { ...mockReads.notes, notes: [note, { ...note, id: 'second', title: 'Second page note' }],
+    complete: true, checking: false };
+  rerender(<DashboardPage />);
+  expect(screen.getByText('Second page note')).toBeInTheDocument();
+  expect(within(metric).getByText('2')).toBeInTheDocument();
+});
+
+it('does not show an empty section or a permanent loader from an incomplete cached list', () => {
+  mockReads.groups = { ...mockReads.groups, complete: false, checking: false };
+
+  render(<DashboardPage />);
+
+  const metric = screen.getByText('dashboardHome.metrics.activeGroups.label').closest('a')!;
+  expect(within(metric).getByText('—')).toBeInTheDocument();
+  expect(within(metric).queryByText('common.loading')).not.toBeInTheDocument();
+  expect(screen.queryByText('dashboardHome.sections.groups.empty')).not.toBeInTheDocument();
 });
 
 it('does not turn six failed reads into six zero metrics and empty panels', () => {

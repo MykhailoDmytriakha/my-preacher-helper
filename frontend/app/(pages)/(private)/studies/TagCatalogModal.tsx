@@ -3,12 +3,15 @@
 import { XMarkIcon, MagnifyingGlassIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { NEUTRAL_CAPTION, STUDIES_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
+
+import type { ListReadState } from '@/utils/listReadState';
 
 interface TagCatalogModalProps {
   /** Whether the modal is open */
@@ -17,6 +20,7 @@ interface TagCatalogModalProps {
   onClose: () => void;
   /** All available tags to show in catalog */
   availableTags: string[];
+  readState: ListReadState;
   /** Currently selected tags */
   selectedTags: string[];
   /** Callback when a tag is toggled (added/removed) */
@@ -32,6 +36,7 @@ export default function TagCatalogModal({
   isOpen,
   onClose,
   availableTags,
+  readState,
   selectedTags,
   onToggleTag,
 }: TagCatalogModalProps) {
@@ -132,7 +137,8 @@ export default function TagCatalogModal({
 
         {/* Tags grid */}
         <div className="px-5 py-4 max-h-[50vh] overflow-y-auto">
-          {filteredTags.length === 0 ? (
+          <ListReadFeedback state={readState} showIncomplete />
+          {filteredTags.length === 0 && readState === 'ready' ? (
             <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               {searchQuery
                 ? t('studiesWorkspace.tagCatalog.noResults')

@@ -123,6 +123,8 @@ export default function PrayerPage() {
     prayerRequests,
     loading,
     error,
+    complete,
+    checking,
     createPrayer,
     updatePrayer,
     observeTitle,
@@ -142,7 +144,7 @@ export default function PrayerPage() {
     takeTheirsOnStatusConflict,
     discardDialog,
   } = usePrayerRequests(user?.uid ?? null, conflictDocId);
-  const readState = listReadState({ loading, error });
+  const readState = listReadState({ loading, error, complete, checking });
 
   const [filterStatus, setFilterStatus] = useQueryState<PrayerFilterStatus>('filter', {
     defaultValue: 'active',
