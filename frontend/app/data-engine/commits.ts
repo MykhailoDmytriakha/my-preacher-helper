@@ -8,6 +8,7 @@ import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActio
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
 import { captureCommentKind, matchesCommentKindRequest, type CommentKindObservation } from './commentKindAction';
+import { captureCommentPlace, matchesCommentPlaceDestination, matchesCommentPlaceRequest, matchesCommentPlaceScope, type CommentPlaceObservation } from './commentPlaceAction';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
 import { captureCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, matchingCouncilAssembly, type CouncilAssemblyActions } from './councilAssemblyAction';
@@ -123,6 +124,9 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
   studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
   commentKindAction?: CommentKindObservation;
+  commentPlaceAction?: CommentPlaceObservation;
+  /** Exact opening words from a saved text edit carried beyond a place choice. */
+  commentTextOpening?: FieldValue;
   planTemplateNameAction?: DocumentFieldObservation;
   tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
@@ -167,6 +171,7 @@ export interface ManualChoiceRecovery {
 export type ChoiceCheckpoint = EditorRecord | EditorRecord[] | {
   editorRecords: EditorRecord[];
   manualRecoveries: ManualChoiceRecovery[];
+  replacements?: readonly CommitRequest[];
 };
 
 export interface CommitStore {
@@ -243,6 +248,8 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.councilTopicKindActions ?? null, incoming.councilTopicKindActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.commentKindAction ?? null, incoming.commentKindAction ?? null)
+    || !equalValues(current.commentPlaceAction ?? null, incoming.commentPlaceAction ?? null)
+    || !equalValues(current.commentTextOpening ?? null, incoming.commentTextOpening ?? null)
     || !equalValues(current.studyNoteTypeAction ?? null, incoming.studyNoteTypeAction ?? null)
     || !equalValues(current.studyNoteTitleAction ?? null, incoming.studyNoteTitleAction ?? null)
     || !equalValues(current.planTemplateNameAction ?? null, incoming.planTemplateNameAction ?? null)
@@ -385,7 +392,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -563,9 +570,9 @@ export class CommitQueue {
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
     const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
-    const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
-      : intent.outlinePointPlacementRetry;
     if (existing) {
+      const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
+        : intent.outlinePointPlacementRetry;
       if (existing.retentionScope !== frozenOptions?.retentionScope
         || !equalValues(existing.seriesMembership ?? null, frozenOptions?.seriesMembership ?? null)
         || !equalValues(existing.transferredFrom ?? null, frozenOptions?.transfer?.proof ?? null)) throw new Error('Saved capture retention cannot change');
@@ -584,6 +591,28 @@ export class CommitQueue {
       result.retired.forEach(publish);
       return clone(result.request);
     }
+    const record = this.buildRequest(owner, editorId, intent, records, predecessor, frozenOptions);
+    if (!record) return null;
+    const result = await capture(record);
+    check();
+    result.retired.forEach(publish);
+    publish(result.request);
+    return clone(result.request);
+  }
+
+  /** Build from the exact chosen copy after retiring its answered predecessors. */
+  choiceReplacement(editorId: string, intent: SessionCheckpoint,
+    options: { action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue } = {}): CommitRequest | null {
+    if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
+    const { action, predecessor, commentTextOpening } = options;
+    const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, action && { action });
+    return replacement && { ...replacement, ...(commentTextOpening && { commentTextOpening }) };
+  }
+
+  private buildRequest(owner: string, editorId: string, intent: SessionCheckpoint, records: readonly CommitRequest[],
+    predecessor: CommitRequest | undefined, frozenOptions?: CommitSaveOptions): CommitRequest | null {
+    const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
+      : intent.outlinePointPlacementRetry;
     const accountRetry = intent.accountPreferenceRetry;
     const editorAction = frozenOptions?.action ?? (intent.sourceNoteLinkRetry
       ? { kind: 'sermon-source-note-links', selection: intent.sourceNoteLinkRetry } as const
@@ -600,7 +629,7 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -665,6 +694,11 @@ export class CommitQueue {
     const kindRequestId = kindCapture?.seen.requestId;
     const commentKind = kindCapture && captureCommentKind(baseline, intent.draft, kindCapture, Boolean(kindRequestId
       && matchesCommentKindRequest(records.find(record => record.id === kindRequestId), owner, baseline.resource, kindCapture.seen)));
+    const placeCapture = editorAction?.kind === 'comment-place' ? editorAction.commentPlace : undefined;
+    const placeRequestId = placeCapture?.seen.requestId;
+    const commentPlace = placeCapture && captureCommentPlace(baseline, intent.draft, placeCapture, Boolean(placeRequestId
+      && matchesCommentPlaceRequest(records.find(record => record.id === placeRequestId), owner, baseline.resource, placeCapture.seen)));
+    if (placeCapture && !commentPlace) throw Object.assign(new Error('The comment move opening changed'), { code: 'comment-place-basis-changed' });
     const tagMembership = editorAction && 'tagMembership' in editorAction ? editorAction.tagMembership : undefined;
     const tagMembershipActions = captureDocumentTags(baseline, predecessor, intent.draft, tagMembership, records);
     const templateCapture = editorAction?.kind === 'plan-template-name' ? editorAction.name : undefined;
@@ -696,7 +730,7 @@ export class CommitQueue {
       : councilMove ? projectCouncilTopicOnDocument(basis, councilMove)
         : templateMove ? projectResourceOutlinePoint('planTemplates', basis, outlineMove) : intent.draft;
     if (templateMove && !value) throw Object.assign(new Error('The template point position is unavailable'), { code: 'decision-changed' });
-    const record: CommitRequest = {
+    return {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(councilTopicQueue && { councilTopicQueue }),
       ...(mark && { bibleMarkStroke: mark }),
@@ -721,6 +755,7 @@ export class CommitQueue {
       ...(noteType && { studyNoteTypeAction: noteType }),
       ...(planMode && { sermonPlanModeAction: planMode }),
       ...(commentKind && { commentKindAction: commentKind }),
+      ...(commentPlace && { commentPlaceAction: commentPlace }),
       ...(templateName && { planTemplateNameAction: templateName }),
       ...(tagColor && { tagColorAction: tagColor }),
       ...prayerStatus,
@@ -745,11 +780,6 @@ export class CommitQueue {
       revision: 0, initialized: false, working: baseline, intended: clone(value),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
-    const result = await capture(record);
-    check();
-    result.retired.forEach(publish);
-    publish(result.request);
-    return clone(result.request);
   }
 
   private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest> {
@@ -1224,8 +1254,17 @@ export class CommitQueue {
     }
     const markRebase = pendingBibleMarkRebase(record);
     const fields = record.sequence === 0 ? documentFieldTargets(record.working.resource.collection) : [];
+    const commentPlace = record.sequence === 0 ? record.commentPlaceAction : undefined;
+    if (commentPlace && (record.working.metadata?.generation !== record.baseline.metadata?.generation
+      || !matchesCommentPlaceScope(record.working.value, commentPlace.before, commentPlace.paragraph)
+      || !matchesCommentPlaceDestination(record.intended, commentPlace.after, commentPlace.paragraph, commentPlace.compound))) {
+      return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+    }
     const meeting = pendingMeetingDateRebase(record);
     let source = record.working;
+    if (record.sequence === 0 && record.commentTextOpening && source.value) {
+      source = { ...source, value: writeField(source.value, ['content'], record.commentTextOpening) };
+    }
     for (const target of fields) {
       const action = capturedDocumentField(record, target);
       if (action) source = documentFieldCommandAncestor(source, action, target);
@@ -1336,6 +1375,9 @@ export class CommitQueue {
       command.councilTopicQueue = record.councilTopicQueue;
     }
     const stamped = fields.reduce((current, target) => withDocumentFieldAction(current, target, capturedDocumentField(record, target)), command);
+    if (commentPlace && (stamped.kind !== 'update' || !stamped.commentPlaceAction)) {
+      return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+    }
     const timed = record.sequence === 0 ? withBibleMarkStroke(stamped, record.bibleMarkStroke) : command;
     return { ...record, command: timed, submitted: prepared.submittedValue, state: 'prepared' };
   }

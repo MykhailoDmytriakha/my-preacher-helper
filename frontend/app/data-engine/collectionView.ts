@@ -1,4 +1,5 @@
 import { submittedCommentKind, type CommentKindSeen } from './commentKindAction';
+import { submittedCommentPlace, type CommentPlaceSeen } from './commentPlaceAction';
 import { submittedDocumentTitle, submittedPrayerStatus, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
@@ -28,6 +29,7 @@ export interface CollectionDocumentView {
   submittedServiceOrderStepPlacements?: { requestId: string; move: ServiceOrderStepPlacementCapture }[];
   submittedNoteType?: StudyNoteTypeSeen;
   submittedCommentKind?: CommentKindSeen;
+  submittedCommentPlace?: CommentPlaceSeen;
   submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
   submittedPrayerTagBasis?: DocumentTagOpening;
@@ -83,6 +85,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       ? unsettled.flatMap(request => request.serviceOrderStepPlacement ? [{ requestId: request.id, move: request.serviceOrderStepPlacement }] : [])
       : [];
     const commentKind = !needsAttention && collection === 'studyNotes' && submittedCommentKind(checkpoint, unsettled);
+    const commentPlace = !needsAttention && collection === 'studyNotes' && submittedCommentPlace(checkpoint, unsettled);
     const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
@@ -96,6 +99,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       ...(submittedServiceOrderStepPlacements.length > 0 && { submittedServiceOrderStepPlacements }),
       ...(submittedNoteType && { submittedNoteType }),
       ...(commentKind && { submittedCommentKind: commentKind }),
+      ...(commentPlace && { submittedCommentPlace: commentPlace }),
       ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
       ...(prayerTagBasis && { submittedPrayerTagBasis: prayerTagBasis }),

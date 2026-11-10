@@ -5,6 +5,7 @@ import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, type OrdinaryStudyNoteTyp
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField, type AccountPreferenceTarget } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { isSermonChurch } from './churchFieldValue';
+import { commentPlaceValue, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
@@ -69,7 +70,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -131,6 +132,8 @@ const STUDY_NOTE_TYPE = { field: 'type', action: 'studyNoteTypeAction', proof: '
   accepts: isOrdinaryStudyNoteType, causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
 const COMMENT_KIND = { field: 'paragraph', action: 'commentKindAction', proof: 'commentKind',
   accepts: (value: unknown): value is boolean => typeof value === 'boolean', causal: true, optional: true } as const;
+const COMMENT_PLACE = { field: 'scriptureRefs', action: 'commentPlaceAction', proof: 'commentPlace',
+  accepts: object, causal: true } as const;
 const STUDY_NOTE_TITLE = { field: 'title', action: 'studyNoteTitleAction', proof: 'studyNoteTitle',
   accepts: (value): value is string => typeof value === 'string', causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
 const PLAN_TEMPLATE_NAME = { field: 'name', action: 'planTemplateNameAction', proof: 'planTemplateName',
@@ -147,7 +150,7 @@ const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'users') return ACCOUNT_PREFERENCE_TARGETS;
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
-  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE, COMMENT_KIND];
+  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE, COMMENT_KIND, COMMENT_PLACE];
   if (collection === 'planTemplates') return [PLAN_TEMPLATE_NAME];
   if (collection === 'tags') return [TAG_COLOR];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
@@ -210,7 +213,18 @@ export function documentFieldPath(target: DocumentFieldTarget): readonly string[
   return 'path' in target ? target.path : [target.field];
 }
 
+export function documentFieldValue(value: DocumentData | null, target: DocumentFieldTarget): FieldValue | undefined {
+  if (target.action === 'commentPlaceAction') return commentPlaceValue(value);
+  return target.field === 'heldAt' ? councilLifecycleValue(value) : value ? readField(value, documentFieldPath(target)) : undefined;
+}
+
+function withCommentPlace(value: DocumentData, selected: FieldValue): DocumentData {
+  const rows = replaceCommentReference(value.scriptureRefs, selected);
+  return rows === undefined || rows === value.scriptureRefs ? value : { ...value, scriptureRefs: rows };
+}
+
 export function documentFieldChange(changes: readonly FieldChange[], target: DocumentFieldTarget): FieldChange | undefined {
+  if (target.action === 'commentPlaceAction') return placeOfCommentChange(changes);
   const path = documentFieldPath(target);
   const root = changes.find(change => change.path.length === 1 && change.path[0] === path[0]);
   if (!root || path.length === 1) return root;
@@ -221,7 +235,9 @@ export function documentFieldChange(changes: readonly FieldChange[], target: Doc
 
 export function replaceOrderedDocumentField(changes: FieldChange[], target: DocumentFieldTarget, before: FieldValue, after: FieldValue): FieldChange[] {
   const path = documentFieldPath(target);
-  const update = (root: FieldValue, leaf: FieldValue): FieldValue => path.length === 1 ? leaf
+  const update = (root: FieldValue, leaf: FieldValue): FieldValue => target.action === 'commentPlaceAction'
+    ? { ...root, value: replaceCommentReference(root.value, leaf) }
+    : path.length === 1 ? leaf
     : !root.exists && !leaf.exists ? root
       : { exists: true, value: writeField(object(root.value) ? root.value : {}, path.slice(1), leaf) };
   return changes.map(change => change.path.length === 1 && change.path[0] === path[0] ? {
@@ -717,16 +733,17 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   if (!before || !accepted.value || accepted.metadata?.generation !== record.baseline.metadata?.generation) return before;
   return documentFieldTargets(record.baseline.resource.collection).reduce((value, target) => {
     if (!capturedDocumentField(record, target)) return value;
-    const stored = target.field === 'heldAt' ? councilLifecycleValue(accepted.value) : readField(accepted.value!, documentFieldPath(target));
+    const stored = documentFieldValue(accepted.value, target);
     if (!stored || !acceptsDocumentField(stored, target)) return value;
-    const rebased = 'path' in target ? writeField(value, target.path, stored) : withDocumentFieldValue(value, target.field, stored);
+    const rebased = target.action === 'commentPlaceAction' ? withCommentPlace(value, stored)
+      : 'path' in target ? writeField(value, target.path, stored) : withDocumentFieldValue(value, target.field, stored);
     if (target.action !== 'seriesFieldActions' || target.field !== 'title' || record.value?.title !== record.value?.theme) return rebased;
     const mirror = readField(accepted.value!, ['theme']);
     return equalValues(mirror, stored) ? withDocumentFieldValue(rebased, 'theme', mirror) : rebased;
   }, before);
 }
 
-type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue; initialize?: true };
+type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue; paragraph?: FieldValue; compound?: true; reviewed?: true; initialize?: true };
 
 function observedValue(value: string | FieldValue): FieldValue {
   return typeof value === 'string' ? { exists: true, value } : value;
@@ -735,7 +752,8 @@ function observedValue(value: string | FieldValue): FieldValue {
 export function documentFieldCommandAncestor(working: ResourceSnapshot, action: StoredObservation, target: DocumentFieldTarget): ResourceSnapshot {
   if (!working.value || working.metadata?.deleted) return working;
   const selected = observedValue(action.before);
-  const value = 'path' in target ? writeField(working.value, target.path, selected) : withDocumentFieldValue(working.value, target.field, selected);
+  const value = target.action === 'commentPlaceAction' ? withCommentPlace(working.value, selected)
+    : 'path' in target ? writeField(working.value, target.path, selected) : withDocumentFieldValue(working.value, target.field, selected);
   return { ...working, value: target.field === 'title' && action.openingTheme !== undefined ? { ...value, theme: action.openingTheme } : value };
 }
 
@@ -760,6 +778,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.action === 'commentKindAction') {
     return action.reference ? { ...command, commentKindAction: { ...stamp, reference: action.reference } } : command;
+  }
+  if (target.action === 'commentPlaceAction') {
+    return action.paragraph ? { ...command, commentPlaceAction: { ...stamp, paragraph: action.paragraph, ...(action.compound && { compound: true }), ...(action.reviewed && { reviewed: true }) } } : command;
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if ('path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };

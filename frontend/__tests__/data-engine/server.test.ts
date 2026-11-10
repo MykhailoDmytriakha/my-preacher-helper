@@ -2131,6 +2131,7 @@ describe('transactional DataEngine server', () => {
     ] })).kind).toBe('acknowledged');
     if (moved) expect((await processCommand(base.owner, { ...base, kind: 'update', generation: 'seed', operationId: 'relocate',
       changes: [{ path: ['scriptureRefs'], before: { exists: true, value: refs }, after: { exists: true, value: relocated } }],
+      commentPlaceAction: { observedRevision: 3, paragraph: ordinary, time: null },
     })).kind).toBe('acknowledged');
     const selection = edit('phone', opening, paragraph, phoneAt, 1);
     const phone = phoneMoves ? { ...selection, changes: [...selection.changes,
@@ -2145,6 +2146,74 @@ describe('transactional DataEngine server', () => {
     const history = await listCommentKindHistory(base.owner, resource.id, 'seed');
     expect(history.entries).toEqual(result.kind === 'acknowledged'
       ? [expect.objectContaining({ paragraph: !winner, winnerParagraph: winner })] : []);
+  });
+
+  it.each([
+    { label: 'an earlier offline move', phoneAt: 15, winner: 18 },
+    { label: 'a later offline move', phoneAt: 90, winner: 17 },
+    { label: 'an earlier offline move after a return to the original verse', phoneAt: 15, winner: 16, returned: true },
+    { label: 'an offline move with no clock proof', phoneAt: null, winner: 18 },
+    { label: 'a legacy offline move after a return', phoneAt: null, winner: 16, returned: true, legacy: true },
+    { label: 'a legacy move after the returned comment became a paragraph', phoneAt: null, winner: 16, returned: true, legacy: true, flipped: true },
+    { label: 'a legacy move and tail edit after a return', phoneAt: null, winner: 16, returned: true, legacy: true, tail: true },
+    { label: 'an exact choice after the displayed place has since been left and restored', phoneAt: 90, winner: 16, returned: true, reviewed: true },
+    { label: 'a combined move and kind change after the opening place was left and restored', phoneAt: 90, winner: 16, returned: true, compound: true },
+    { label: 'an earlier move after a newer action chose the same destination', phoneAt: 60, winner: 18, sameDestination: true },
+  ])('orders only the comment place for $label', async ({ phoneAt, winner, returned, legacy, flipped, tail, reviewed, compound, sameDestination }) => {
+    const resource = { collection: 'studyNotes', id: 'comment-place-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const reference = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const secondReference = { id: 'extra', bible: 'kjv', book: 'John', chapter: 5, fromVerse: 3 };
+    const storedExtra = { ...secondReference, fromVerse: 4 };
+    const refs = (verse: number) => [{ ...reference, fromVerse: verse }, secondReference];
+    const field = <Value,>(value: Value) => ({ exists: true as const, value });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed',
+      value: { userId: base.owner, title: '', content: 'Original words', type: 'comment', paragraph: false,
+        scriptureRefs: refs(16), tags: [], isDraft: false, createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+
+    const move = (operationId: string, before: number, after: number, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', generation: 'seed', operationId,
+      changes: [{ path: ['scriptureRefs'], before: field(refs(before)), after: field(refs(after)) }],
+      commentPlaceAction: { observedRevision, paragraph: field(false),
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } },
+    });
+    expect((await processCommand(base.owner, move('computer', 16, 18, 40, 1))).kind).toBe('acknowledged');
+    if (returned) expect((await processCommand(base.owner, move('return', 18, 16, 60, 2))).kind).toBe('acknowledged');
+    if (sameDestination) expect((await processCommand(base.owner, move('same-destination', 16, 18, 90, 1))).kind).toBe('acknowledged');
+
+    const current = returned ? 16 : 18;
+    expect((await processCommand(base.owner, { ...base, kind: 'update', generation: 'seed', operationId: 'independent-edit',
+      changes: [
+        { path: ['content'], before: field('Original words'), after: field('Independent words') },
+        { path: ['scriptureRefs'], before: field(refs(current)), after: field([refs(current)[0], storedExtra]) },
+      ],
+    })).kind).toBe('acknowledged');
+
+    if (flipped) expect((await processCommand(base.owner, { ...base, kind: 'update', generation: 'seed', operationId: 'kind',
+      changes: [{ path: ['paragraph'], before: field(false), after: field(true) }],
+    })).kind).toBe('acknowledged');
+
+    const delayed = move('phone', 16, 17, phoneAt, 1);
+    const input = legacy ? { ...delayed, commentPlaceAction: undefined } : reviewed || compound
+      ? { ...delayed, commentPlaceAction: { ...delayed.commentPlaceAction, ...(reviewed && { reviewed: true }), ...(compound && { compound: true }) } }
+      : delayed;
+    if (legacy) delete input.commentPlaceAction;
+    if (tail) input.changes = [{ path: ['scriptureRefs'], before: field(refs(16)), after: field([refs(17)[0], { ...secondReference, fromVerse: 6 }]) }];
+    if (compound) {
+      const mixed = { ...input, changes: [...input.changes, { path: ['paragraph'], before: field(false), after: field(true) }] };
+      expect(await processCommand(base.owner, mixed)).toMatchObject({ kind: 'conflict' });
+      expect((await readDocument(base.owner, resource)).value).toMatchObject({ paragraph: false, scriptureRefs: [{ ...reference, fromVerse: 16 }, storedExtra] });
+      return;
+    }
+    const reply = await processCommand(base.owner, input);
+    expect((await readDocument(base.owner, resource)).value).toMatchObject({
+      content: 'Independent words', type: 'comment', paragraph: Boolean(flipped),
+      scriptureRefs: [{ ...reference, fromVerse: winner }, storedExtra],
+    });
+    expect(reply.kind).toBe(phoneAt === null || reviewed ? 'conflict' : 'acknowledged');
+    expect(await processCommand(base.owner, input)).toEqual(reply);
   });
 
   it.each([

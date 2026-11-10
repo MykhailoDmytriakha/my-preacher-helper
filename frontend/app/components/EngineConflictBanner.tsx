@@ -11,7 +11,7 @@ import { outlinePointConflictComparison } from '@/components/plan-editor/outline
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
@@ -51,7 +51,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  */
 interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
-  refused?: boolean; commentKindPlaceChanged?: boolean; tagNameExists?: boolean }
+  refused?: boolean; commentKindPlaceChanged?: boolean; tagNameExists?: boolean; retainedCommentText?: RecoveryCheckpoint }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -83,7 +83,7 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
-function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
+function fieldComparison(entry: Waiting, t: (key: string) => string, locale: ReturnType<typeof resolveAppLocale>): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
   const placement = entry.records[0].checkpoint.serviceOrderPlacementComparison;
   if (['serviceOrders', 'groups', 'councils'].includes(entry.resource.collection) && placement) {
@@ -99,6 +99,13 @@ function fieldComparison(entry: Waiting, t: (key: string) => string): TextCompar
     return outlinePointConflictComparison(checkpoint, t) ?? planModeComparison(checkpoint, t);
   }
   if (entry.resource.collection === 'studyNotes') {
+    const place = readCommentPlaceComparison(entry.records[0].checkpoint);
+    if (place) {
+      const label = (reference: DocumentData) => formatScriptureReference(reference as Item & ScriptureRefShape, { locale, style: 'long' });
+      return { identity: place.identity, title: t('comment.changePlace'), valueKind: 'field', mine: label(place.mine), stored: label(place.stored) };
+    }
+    const words = readCommentTextComparison(entry.records[0].checkpoint);
+    if (words) return { ...words, title: fieldLabel(t, 'content'), valueKind: 'field' };
     const kind = readCommentKindComparison(entry.records[0].checkpoint);
     if (kind) {
       const name = (value: boolean | undefined) => t(value === undefined ? 'comment.automaticKind' : value ? 'comment.kind.paragraph' : 'comment.kind.comment');
@@ -292,8 +299,8 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const resource = record.checkpoint.confirmed.resource;
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
       const waiting = decided.filter(candidate => isOneShotRecord(candidate.record) !== screen && sameResource(candidate.record.checkpoint.confirmed.resource, resource));
-      const exactSourceNote = !screen && sourceNoteChoiceRecord(waiting);
-      const drafts = exactSourceNote ? [exactSourceNote] : waiting;
+      const exactAnswer = !screen && (sourceNoteChoiceRecord(waiting) || commentPlaceChoiceRecord(waiting));
+      const drafts = exactAnswer ? [exactAnswer] : waiting;
       const { checkpoint } = drafts[0].record;
       const scope = captureRecoveryChoice(drafts.map(draft => draft.record));
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
@@ -309,6 +316,14 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
         ...scope });
     }
+  }
+  for (const source of records) {
+    const { record } = source;
+    const { checkpoint } = record;
+    const text = checkpoint.draft?.content;
+    if (!record.retainedManualChoice?.commentText || typeof text !== 'string' || !text.trim()) continue;
+    documents.push({ ...captureRecoveryChoice([record]), resource: checkpoint.confirmed.resource, kind: 'conflict', screen: false,
+      mine: [text], theirs: '', retainedCommentText: source });
   }
   return documents;
 }
@@ -497,6 +512,27 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   // A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained).
   const outdated = <OutdatedTabNotice refused={Boolean(entry.refused) || REFUSAL_KINDS.has(entry.kind)} className="mb-3" />;
   const notice = (body: ReactNode) => <><SyncNotice>{outdated}{body}</SyncNotice>{discardDialog}{confirmDialog}</>;
+  if (entry.retainedCommentText) {
+    const source = entry.retainedCommentText;
+    const href = documentScreenHref(entry.resource);
+    const discard = () => askBeforeDiscard(true, async () => {
+      if (!browser || !sameWaitingChoice(entryRef.current, entry)) return;
+      setBusy(true);
+      try { await browser.engine.discardRecovery(source); }
+      catch (error) { toast.error(refusalMessage(error, t, 'common.saveError')); }
+      finally { setBusy(false); await refresh(); }
+    });
+    return notice(<div role="status" className={NOTICE_BOX}>
+      <p className={NOTICE_TITLE}>{t('unsavedDraft.title')}</p>
+      <p className={NOTICE_BODY}>{t('unsavedDraft.description')}</p>
+      <pre className={NOTICE_TEXT}>{mine}</pre>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={busy} className={PRIMARY_BUTTON} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
+        {href && <Link href={href} className={SECONDARY_BUTTON}>{t('bible.preview.openNote')}</Link>}
+        <button type="button" disabled={busy} className={SECONDARY_BUTTON} onClick={() => { void discard(); }}>{t('unsavedDraft.discard')}</button>
+      </div>
+    </div>);
+  }
   if (entry.retainedDraftsOnly) {
     return notice(mine && <div role="status" className={NOTICE_BOX}>
         <p className={NOTICE_TITLE}>{t('dataSync.retainedCouncilDrafts')}</p>
@@ -513,7 +549,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
       : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />);
   }
   if (entry.kind === 'conflict') {
-    const comparison = fieldComparison(entry, t);
+    const comparison = fieldComparison(entry, t, resolveAppLocale(interfaceLanguage));
     const checkpoint = entry.records[0].checkpoint;
     const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
     const sourceNotes = entry.records.length === 1 ? readSourceNoteLinkComparison(checkpoint) : undefined;
@@ -530,7 +566,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
           keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes)); }}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint))); }}
           onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField); }}
           busy={busy}
           className="mb-3"

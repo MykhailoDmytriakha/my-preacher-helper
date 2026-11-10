@@ -18,6 +18,8 @@ import { createBrowserDataEngine, type BrowserDataEngine } from './browser.clien
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
+import { firstCommentReference as readCommentReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
+import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison } from './commentPlaceChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
@@ -81,6 +83,11 @@ export function analysisCreationScope(id: string): string { return initialAnalys
 
 /** Exact conflict values for presentation, without exposing row matching or mutation. */
 export function readCommentKindComparison(checkpoint: SessionCheckpoint) { return commentKindComparison(checkpoint); }
+export function readCommentPlaceComparison(checkpoint: SessionCheckpoint) { return commentPlaceComparison(checkpoint); }
+export function readCommentTextComparison(checkpoint: SessionCheckpoint) { return commentTextComparison(checkpoint); }
+export function firstCommentReference(...args: Parameters<typeof readCommentReference>) { return readCommentReference(...args); }
+export function matchesCommentPlaceScope(...args: Parameters<typeof matchesPlaceScope>) { return matchesPlaceScope(...args); }
+export function replaceCommentReference(...args: Parameters<typeof replacePlaceReference>) { return replacePlaceReference(...args); }
 export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
@@ -134,6 +141,12 @@ export function councilRefusalHeldOpen(records: readonly EditorRecord[], answers
 export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
 
 /** Multiple projections of a single answered source-note Save share its exact question. */
+export function commentPlaceChoiceRecord(records: readonly RecoveryCheckpoint[]): RecoveryCheckpoint | undefined {
+  const editorId = records[0]?.commentPlaceChoiceEditorId;
+  return editorId && records.every(record => record.commentPlaceChoiceEditorId === editorId)
+    ? records.find(({ record }) => record.editorId === editorId && commentPlaceComparison(record.checkpoint)) : undefined;
+}
+
 export function sourceNoteChoiceRecord(records: readonly RecoveryCheckpoint[]): RecoveryCheckpoint | undefined {
   const editorId = records[0]?.sourceNoteChoiceEditorId;
   return editorId && records.every(record => record.sourceNoteChoiceEditorId === editorId)
@@ -509,8 +522,9 @@ export function useDocumentActions() {
       const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes)
         ? actionClock.capture(owner) ?? null : undefined;
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
-      const sourceNoteAnswer = comparedSourceNotes && sourceNoteChoiceRecord(waiting);
-      if (sourceNoteAnswer) waiting = [sourceNoteAnswer];
+      const sharedAnswer = (comparedSourceNotes && sourceNoteChoiceRecord(waiting))
+        || (resource.collection === 'studyNotes' && exactField && commentPlaceChoiceRecord(waiting));
+      if (sharedAnswer) waiting = [sharedAnswer];
       const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
         && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
       if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
@@ -533,19 +547,28 @@ export function useDocumentActions() {
       for (const { record } of waiting) {
         const editor = await openFor(resource, record.editorId);
         try {
+          const place = commentPlaceChoiceOpening(record.checkpoint);
+          const held = Object.keys(record.checkpoint.pending);
+          const capturedByChoice = place && held.length > 0 && !isDirectLegacyDocumentIntent(held, record.prepared?.operationId);
           if (choice === 'mine') {
             const seen = commentKindChoiceOpening(record.checkpoint);
             if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
-            const time = seen ? actionClock.capture(owner) ?? null : null;
-            await editor.keepLocal(scope ? shown(record) : undefined, undefined, placementTime);
+            const time = seen || place ? actionClock.capture(owner) ?? null : null;
+            await editor.keepLocal(scope ? shown(record) : undefined, undefined, place ? time : placementTime);
             if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
-            else if (!comparedSourceNotes) await editor.save();
+            else if (place && !capturedByChoice) {
+              await editor.commit(value => value, { kind: 'comment-place', commentPlace: { time, seen: place, reviewed: true } });
+            } else if (!capturedByChoice && !comparedSourceNotes) {
+              const { checkpoint } = editor.getState();
+              if (checkpoint.dirty && !Object.keys(checkpoint.pending).length) await editor.save();
+            }
             continue;
           }
           await editor.acceptRemote(scope ? shown(record) : undefined);
-          if (comparedSourceNotes) continue;
+          if (comparedSourceNotes || capturedByChoice) continue;
           const { checkpoint } = editor.getState();
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
+          if (Object.keys(checkpoint.pending).length) continue;
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }

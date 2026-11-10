@@ -285,7 +285,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   paragraphChoice?: ParagraphChoice;
 }) {
   const { t, language } = useTranslation();
-  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, captureActionTime } = useStudyNotesEngine(true);
+  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, observeCommentPlace, captureActionTime } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const found = target.kind === 'edit' ? notes.find((note) => note.id === target.id) : undefined;
@@ -296,6 +296,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const opened = useRef<StudyNote | undefined>(found);
   const [openingKind] = useState(() => found && observeCommentKind?.(found));
   const kindBasis = useRef(openingKind);
+  const [openingMove] = useState(() => found && observeCommentPlace?.(found));
+  const placeBasis = useRef(openingMove);
   // Where this window's edits began: the version it opened with, or the other device's once that was taken.
   const mine = useRef<StudyNote | undefined>(found);
   const [text, setText] = useState<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
@@ -307,6 +309,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     if (text !== null || !found) return;
     opened.current = found;
     kindBasis.current = observeCommentKind?.(found);
+    placeBasis.current = observeCommentPlace?.(found);
     mine.current = found;
     setText(found.content);
     setTitle(found.title ?? '');
@@ -418,26 +421,34 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       rev: { ...(opened.current.rev ?? {}), [NOTE_AGGREGATE]: found.revision },
     };
     kindBasis.current = observeCommentKind?.(opened.current);
+    placeBasis.current = observeCommentPlace?.(opened.current);
   };
 
   // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
   // out where the window offers the choice — a new one's always, a written one's only when switched here.
   const asWritten = kind.asWritten(isNote, standing?.scriptureRefs?.[0], standing?.paragraph);
-  const save = (event?: React.FormEvent) => {
+  const save = (event?: React.FormEvent, reviewedPlace = false) => {
     event?.preventDefault();
     if (empty || saving || !placed || !named) return;
-    const actionTime = target.kind === 'edit' && kind.pending !== undefined ? captureActionTime?.() ?? null : null;
+    const actionTime = target.kind === 'edit' && (kind.pending !== undefined || where.moved) ? captureActionTime?.() ?? null : null;
     const note = opened.current;
     const visible = live.current;
     // Keep mine adopts a new guard immediately. The rendered title can still belong to the earlier opening.
     const current = (visible?.rev?.[NOTE_AGGREGATE] ?? 0) > (note?.rev?.[NOTE_AGGREGATE] ?? 0) ? visible : note;
-    const writing = kind.asWritten(isNote, current?.scriptureRefs?.[0], current?.paragraph);
+    if (where.moved && current && current.type !== 'comment') {
+      toast.error(t('comment.noteElsewhere'));
+      return;
+    }
+    const currentReference = current?.scriptureRefs?.[0];
+    const writing = kind.asWritten(isNote, currentReference, current?.paragraph);
     const placing = target.kind === 'new' ? keptPlace : where.moved;
-    // The paragraphs' rule is a paragraph's: one saved as a note leaves the reader's paragraphs (Codex review r3).
+    // A retry uses the adopted kind, even before the switch can render it.
     const checked = placing ?? writing.madeParagraphAt;
-    const chosenKind = kind.pending ?? (paragraphChoice ? kind.asParagraph : undefined);
     let refused: FailureWords | null | undefined;
     if (checked && !isNote) {
+      const chosenKind = kind.pending ?? current?.paragraph
+        ?? (currentReference && paragraphChoice?.inferFromReference?.(currentReference))
+        ?? (paragraphChoice ? kind.asParagraph : undefined);
       if (placeRefusal) refused = placeRefusal(checked, chosenKind);
       else if (chosenKind === true) {
         const locale = resolveAppLocale(language);
@@ -473,10 +484,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     setSaving(true);
     const { id } = target;
     const switchedKind = typeof updates.paragraph === 'boolean';
-    const seen = switchedKind ? kindBasis.current : undefined;
+    const movedFrom = where.moved ? placeBasis.current : undefined;
+    const seen = switchedKind && !movedFrom ? kindBasis.current : undefined;
+    const compound = switchedKind || typeof updates.type === 'string';
     updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null,
       expectedBaseline: switchedKind ? { ...baseline, scriptureRefs: note?.scriptureRefs } : baseline,
       ...(seen && { commentKindCapture: { seen, time: actionTime } }),
+      ...(movedFrom && { commentPlaceCapture: { seen: movedFrom, time: actionTime, ...(compound && { compound: true }), ...(reviewedPlace && { reviewed: true }) } }),
     }).acceptance.then(() => saved(id), failed);
   };
   const saved = (id: string) => {
@@ -499,8 +513,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
 
   const keepMine = () => {
     if (!conflict) return;
-    adopt(asItStands(conflict, live.current));
-    save();
+    const current = asItStands(conflict, live.current);
+    if (where.moved && current.type !== 'comment') {
+      toast.error(t('comment.noteElsewhere'));
+      return;
+    }
+    adopt(current);
+    save(undefined, true);
   };
   const takeTheirs = () => {
     if (!conflict) return;

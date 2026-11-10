@@ -607,6 +607,27 @@ describe('CommentDialog', () => {
     expect(localStorage.getItem(source)).not.toBeNull();
   });
 
+  it.each(['paragraph', 'note'])('does not move an adopted %s using the old comment checks', async (role) => {
+    const destination = { ...reference, fromVerse: 34 };
+    mockEngine.notes = [{ ...stored, paragraph: false }];
+    mockEngine.updateNote.mockImplementationOnce(() => ({
+      acceptance: Promise.reject(new StaleWriteError('note', 4, 6, {
+        type: role === 'note' ? 'note' : 'comment', paragraph: role === 'paragraph', scriptureRefs: [reference],
+      })), persistence: Promise.resolve(), result: Promise.resolve({}),
+    }) as never);
+    const check = jest.fn((_place: ScriptureReference, paragraph?: boolean) => paragraph
+      ? { key: 'comment.pick.unavailable' } : null);
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Isa 40:31" onClose={jest.fn()}
+      paragraphChoice={{ initial: false }} onChooseVerses={(_here, move) => move(destination)} placeRefusal={check} />);
+    await userEvent.click(screen.getByTestId('comment-choose-verses'));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' }));
+    expect(mockEngine.updateNote).toHaveBeenCalledTimes(1);
+    if (role === 'paragraph') expect(check).toHaveBeenLastCalledWith(destination, true);
+    else expect(check).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('comment-moved')).toBeVisible();
+  });
+
   it('checks the newly accepted place before keeping a restored paragraph after conflict in Studies', async () => {
     const source = draftKey('owner', 'c1', 'comment', 'reader-writer');
     mockEngine.notes = [

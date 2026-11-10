@@ -14,6 +14,7 @@ import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
+import { writeField } from './fieldValues';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
@@ -168,7 +169,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
     const markAncestor = rebaseBibleMarkAncestor(predecessor.value, snapshot, record.baseline, record.bibleMarkStroke);
-    const ancestor = markAncestor ?? pendingDocumentFieldAncestor(record, predecessor.value, snapshot);
+    const projectedAncestor = markAncestor ?? pendingDocumentFieldAncestor(record, predecessor.value, snapshot);
+    const ancestor = record.commentTextOpening && projectedAncestor
+      ? writeField(projectedAncestor, ['content'], record.commentTextOpening) : projectedAncestor;
     const sameGeneration = snapshot.metadata?.generation === record.baseline.metadata?.generation;
     const preachingChoices = sameGeneration ? preachDateRebaseChoices(snapshot, ancestor, record.preachDateFieldActions) : [];
     const replacement = GROUP_MEETING_FIELDS.flatMap(field => {

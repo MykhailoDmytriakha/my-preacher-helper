@@ -9,6 +9,7 @@ import { isModelPreferenceField } from '@/utils/userModelPreference';
 import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { matchesCommentKindPlace } from './commentKindAction';
+import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
@@ -175,6 +176,8 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
     if (command.sourceNoteLinkAction !== undefined && (command.resource.collection !== 'sermons'
       || !validSourceNoteLinkAction(command.sourceNoteLinkAction, sourceNoteLinkChange(command.changes), isValidIdentifier))) fail('Invalid source note selection');
+    if (command.commentPlaceAction !== undefined && (command.resource.collection !== 'studyNotes'
+      || !validCommentPlaceStamp(command.commentPlaceAction, command.changes))) fail('Invalid comment move');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
@@ -917,6 +920,10 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
     value = clone(current.value);
     if (command.kind === 'update' && command.resource.collection === 'studyNotes' && command.commentKindAction
       && !matchesCommentKindPlace(current.value, command.commentKindAction.reference)) return refused('comment-kind-place-changed');
+    if (command.kind === 'update' && command.commentPlaceAction) {
+      const place = placeOfCommentChange(command.changes);
+      if (!place || !matchesCommentPlaceScope(current.value, place.before, command.commentPlaceAction.paragraph)) return refused('decision-changed');
+    }
     if (command.kind === 'update' && command.resource.collection === 'studyNotes'
       && lacksAnalysisFrameProof(value, command.changes)) {
       // Older persisted commands lack the original passage. Keep their raw intent for

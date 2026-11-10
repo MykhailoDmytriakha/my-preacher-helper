@@ -112,13 +112,30 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
             const projection = project?.(clone(result)) ?? [];
             const checkpoints = 'editorRecords' in projection ? projection.editorRecords
               : Array.isArray(projection) ? projection : [projection];
+            const captured: CommitRequest[] = [];
             const finish = () => {
-              if (checkpoints.length) writeChoiceCheckpoints(store, read, previous.owner, checkpoints, () => done(result), collect);
-              else collect(store, read, saved.owner, () => done(result));
+              const complete = () => done([...result, ...captured]);
+              if (checkpoints.length) writeChoiceCheckpoints(store, read, previous.owner, checkpoints, complete, collect);
+              else collect(store, read, saved.owner, complete);
             };
-            if ('manualRecoveries' in projection && projection.manualRecoveries.length) {
-              writeManualChoiceRecoveries(store, read, previous.owner, projection.manualRecoveries, before, result, finish);
-            } else finish();
+            const writeRecoveries = () => {
+              if ('manualRecoveries' in projection && projection.manualRecoveries.length) {
+                writeManualChoiceRecoveries(store, read, previous.owner, projection.manualRecoveries, before, result, finish);
+              } else finish();
+            };
+            const replacements = 'replacements' in projection ? projection.replacements ?? [] : [];
+            assertCommitIdentities(replacements);
+            const captureNext = (index: number) => {
+              const replacement = replacements[index];
+              if (!replacement) { writeRecoveries(); return; }
+              if (replacement.owner !== previous.owner) throw new Error('Choice replacement owner differs from changed commits');
+              createRecord(store, read, replacement, request => {
+                if (request.id !== replacement.id) throw changed();
+                captured.push(request);
+                captureNext(index + 1);
+              });
+            };
+            captureNext(0);
           }
         });
       });

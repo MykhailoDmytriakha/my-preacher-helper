@@ -1,5 +1,6 @@
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { cancellationScope } from './atomicCommits';
+import { commentPlaceTextTail } from './commentPlaceChoice';
 import { orderCommitRequests } from './commits';
 import { isDocumentEditor, isResourceActionEditor, readManualScopeIdentity } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -28,11 +29,12 @@ export interface OrdinaryAnswerChoice {
   branched: boolean;
 }
 
-function ordinaryUpdate(request: CommitRequest): boolean {
+function ordinaryUpdate(request: CommitRequest, commentPlaceContinuation = false): boolean {
   const { baseline, value, command } = request;
   return !request.atomic && !request.retentionScope && baseline.value !== null && value !== null
     && (!command || command.kind === 'update') && (isDocumentEditor(request.editorId, baseline.resource)
-      || Boolean((request.sourceNoteLink || legacySourceNoteChange(command)) && isResourceActionEditor(request.editorId, baseline.resource)));
+      || Boolean((request.sourceNoteLink || legacySourceNoteChange(command) || request.commentPlaceAction || request.commentTextOpening
+        || (commentPlaceContinuation && baseline.resource.collection === 'studyNotes')) && isResourceActionEditor(request.editorId, baseline.resource)));
 }
 
 function ordinaryBasis(request: CommitRequest): ResourceSnapshot {
@@ -75,7 +77,7 @@ function candidateOrdinaryAnswer(first: CommitRequest, requests: readonly Commit
   for (const request of scope.slice(1)) {
     if (!request.predecessor || !proved.has(request.predecessor) || request.state !== 'queued'
       || request.initialized || request.command || !equalValues(request.baseline.resource, first.baseline.resource)) return null;
-    if (!ordinaryUpdate(request)) {
+    if (!ordinaryUpdate(request, Boolean(first.commentPlaceAction))) {
       const identity = readManualScopeIdentity(request.editorId);
       if (!identity || !isDocumentEditor(identity.parentEditorId, first.baseline.resource)
         || !request.baseline.value || !request.value || request.atomic || request.retentionScope
@@ -97,12 +99,17 @@ export function ordinaryAnswerChoice(first: CommitRequest, requests: readonly Co
 }
 
 /** Only records whose entire pending work is in this proved chain can share its question. */
-export function sourceNoteAnswerScopes(requests: readonly CommitRequest[]) {
+export function singleFieldAnswerScopes(requests: readonly CommitRequest[]) {
   return requests.flatMap(first => {
-    if ((!first.sourceNoteLink && !legacySourceNoteChange(first.command)) || first.result?.kind !== 'conflict'
-      || !first.result.conflicts.length || first.result.conflicts.some(({ path }) => path[0] !== SOURCE_NOTE_FIELD || path.length !== 2)) return [];
+    if (first.result?.kind !== 'conflict' || !first.result.conflicts.length) return [];
+    const kind = first.commentPlaceAction && first.result.conflicts.length === 1
+      && first.result.conflicts[0].path[0] === 'scriptureRefs' && first.result.conflicts[0].path[1]?.startsWith('id:') ? 'comment-place'
+      : (first.sourceNoteLink || legacySourceNoteChange(first.command))
+        && first.result.conflicts.every(({ path }) => path[0] === SOURCE_NOTE_FIELD && path.length === 2) ? 'source-notes' : undefined;
+    if (!kind) return [];
     const choice = ordinaryAnswerChoice(first, requests);
-    return choice ? [{ editorId: first.editorId, requests: new Set(choice.scope.map(request => request.id)) }] : [];
+    return choice && (kind !== 'comment-place' || commentPlaceTextTail(choice))
+      ? [{ kind, editorId: first.editorId, requests: new Set(choice.scope.map(request => request.id)) }] : [];
   });
 }
 

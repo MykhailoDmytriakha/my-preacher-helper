@@ -3,6 +3,7 @@ import type { AccountPreferenceField, AccountPreferenceStamps } from './accountP
 import type { ActionTime } from './actionClock';
 import type { MarkRange } from './bibleMarkStroke';
 import type { CommentKindCapture, CommentKindStamp } from './commentKindAction';
+import type { CommentPlaceCapture, CommentPlaceStamp } from './commentPlaceAction';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
@@ -88,6 +89,7 @@ export type EditorCommitAction =
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'comment-kind'; commentKind: CommentKindCapture }
+  | { kind: 'comment-place'; commentPlace: CommentPlaceCapture }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'sermon-source-note-links'; selection: SourceNoteLinkCapture }
   | { kind: 'sermon-note-text'; opening: SermonNoteOpening }
@@ -224,6 +226,7 @@ export type DataCommand = CommandBase & (
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteTypeAction?: DocumentFieldStamp;
       commentKindAction?: CommentKindStamp;
+      commentPlaceAction?: CommentPlaceStamp;
       planTemplateNameAction?: DocumentFieldStamp;
       tagColorAction?: DocumentFieldStamp;
       prayerStatusAction?: DocumentFieldObservation;

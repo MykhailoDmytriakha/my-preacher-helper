@@ -31,6 +31,9 @@ const councilPlacementCapture = groupPlacementCapture.extend({ before: councilWi
 const actionTime = z.object({ earliestMs: z.number().finite(), latestMs: z.number().finite() })
   .refine(time => time.earliestMs <= time.latestMs).nullable();
 const observedRevision = z.number().int().safe().nonnegative();
+const commentPlaceObservation = z.object({ before: fieldSchema, after: fieldSchema, paragraph: fieldSchema,
+  observedRevision: observedRevision.positive(), time: actionTime, predecessorOperationId: id.optional(),
+  compound: z.literal(true).optional(), reviewed: z.literal(true).optional() });
 const outlineSection = z.enum(['introduction', 'main', 'conclusion']);
 const outlineGap = groupPlacementGap.extend({ section: outlineSection });
 const outlineWitness = z.object({ introduction: councilWitness, main: councilWitness, conclusion: councilWitness });
@@ -75,7 +78,7 @@ const recordSchema = z.object({
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
     councilTopicPlacement: councilPlacementCapture.optional(), councilFieldsGeneration: id.nullable().optional(),
     outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional(),
-    sourceNoteLinks: sourceNoteLinkCapture.optional(), sermonNoteText: sermonNoteOpening.optional() }).optional(),
+    sourceNoteLinks: sourceNoteLinkCapture.optional(), sermonNoteText: sermonNoteOpening.optional(), commentText: z.literal(true).optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
@@ -92,7 +95,7 @@ const recordSchema = z.object({
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(),
     groupBlockTitleDrafts: groupRowDrafts.optional(), groupBlockStatusDrafts: groupRowDrafts.optional(),
     groupStepTitleDrafts: groupRowDrafts.optional(), groupStepDurationDrafts: groupRowDrafts.optional(),
-    pending: z.record(id, z.object({ outlinePointPlacement: outlinePlacement.optional(), groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(), generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
+    pending: z.record(id, z.object({ commentPlaceAction: commentPlaceObservation.optional(), outlinePointPlacement: outlinePlacement.optional(), groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(), generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
   }),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -114,6 +117,7 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const ref = record.checkpoint.confirmed.resource;
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
     || (record.checkpoint.remoteCandidate && !sameResource(ref, record.checkpoint.remoteCandidate.resource))) throw new Error('Checkpoint identity mismatch');
+  if (record.retainedManualChoice?.commentText && ref.collection !== 'studyNotes') throw new Error('Comment text checkpoint identity mismatch');
   const note = record.retainedManualChoice?.sermonNoteText;
   if (note && (ref.collection !== 'sermons' || note.sermonId !== ref.id)) throw new Error('Sermon note checkpoint identity mismatch');
   const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];
@@ -150,7 +154,12 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
     || !Object.prototype.hasOwnProperty.call(record.checkpoint.pending, prepared.operationId))) throw new Error('Prepared checkpoint identity mismatch');
   const conflicts: ConflictDetail[] = record.checkpoint.conflicts.map(conflict => ({ ...conflict, base: field(conflict.base), mine: field(conflict.mine), theirs: field(conflict.theirs) }));
   const createIntent = record.checkpoint.confirmed.value === null && record.checkpoint.confirmed.metadata === null;
-  const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => [operationId, { ...intent, value: ownedDocument(intent.value, createIntent) }]));
+  const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => {
+    const { commentPlaceAction: place, ...held } = intent;
+    if (place && ref.collection !== 'studyNotes') throw new Error('Comment place checkpoint identity mismatch');
+    return [operationId, { ...held, value: ownedDocument(intent.value, createIntent),
+      ...(place && { commentPlaceAction: { ...place, before: field(place.before), after: field(place.after), paragraph: field(place.paragraph) } }) }];
+  }));
   const retainedManualChoice = record.retainedManualChoice && {
     ...record.retainedManualChoice, base: ownedDocument(record.retainedManualChoice.base),
   };

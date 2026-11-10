@@ -1,6 +1,8 @@
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
+import { commentPlaceValue, matchesCommentPlaceScope, replaceCommentReference } from './commentPlaceAction';
+import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
@@ -28,6 +30,7 @@ import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
+import type { CommentPlaceObservation } from './commentPlaceAction';
 import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
@@ -52,7 +55,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -139,7 +142,7 @@ export class DataSession {
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement' | 'groupFlowStepPlacement' | 'councilTopicPlacement'>): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement' | 'groupFlowStepPlacement' | 'councilTopicPlacement' | 'commentPlaceAction'>): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
@@ -149,6 +152,7 @@ export class DataSession {
     registerRowFields(pending, autosaveActions, this.state.confirmed.resource.collection);
     if (autosaveActions?.outlinePointPlacement) pending.outlinePointPlacement = copy(autosaveActions.outlinePointPlacement);
     if (autosaveActions?.groupFlowStepPlacement) pending.groupFlowStepPlacement = copy(autosaveActions.groupFlowStepPlacement);
+    if (autosaveActions?.commentPlaceAction) pending.commentPlaceAction = copy(autosaveActions.commentPlaceAction);
     if (autosaveActions?.councilTopicPlacement) pending.councilTopicPlacement = copy(autosaveActions.councilTopicPlacement);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
@@ -348,8 +352,16 @@ export class DataSession {
     const councilMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.councilTopicPlacement
         && pending.councilTopicPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.councilTopicPlacement] : []);
+    const pendingPlace = accepted.metadata?.generation === this.state.confirmed.metadata?.generation
+      && Object.values(this.state.pending).findLast(pending => pending.generation > horizon
+        && pending.commentPlaceAction && equalValues(pending.commentPlaceAction.after, commentPlaceValue(this.state.draft)))?.commentPlaceAction;
+    // A later queued move still owns its exact place if the earlier ACK picked a different place.
+    const nextPlaceRefs = pendingPlace && acceptedAncestor && matchesCommentPlaceScope(incoming, pendingPlace.after, pendingPlace.paragraph)
+      ? replaceCommentReference(acceptedAncestor.scriptureRefs, commentPlaceValue(incoming)) : undefined;
+    const placeAncestor = nextPlaceRefs === undefined || !acceptedAncestor ? acceptedAncestor
+      : { ...acceptedAncestor, scriptureRefs: nextPlaceRefs };
     const templateAncestor = accepted.resource.collection === 'planTemplates' && outlineMoves.length
-      ? alignPendingOutlinePointPlacements('planTemplates', acceptedAncestor, this.state.draft, outlineMoves) : acceptedAncestor;
+      ? alignPendingOutlinePointPlacements('planTemplates', acceptedAncestor, this.state.draft, outlineMoves) : placeAncestor;
     const rebased = groupMoves.length
       ? mergeDocumentFields(groupPlacementMergeFrame(acceptedAncestor, groupMoves), groupPlacementMergeFrame(this.state.draft, []),
         groupPlacementMergeFrame(incoming, groupMoves))
@@ -489,7 +501,11 @@ export class DataSession {
       const withRows = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
         this.state.draft, candidate.value, exactTags, this.state.conflicts);
       const planMode = readSermonPlanModeComparison(this.state);
-      const resolved = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine) : withRows;
+      const commentPlace = readCommentPlaceComparison(this.state);
+      const chosenRefs = commentPlace && withRows
+        ? replaceCommentReference(withRows.scriptureRefs, { exists: true, value: commentPlace.mine }) : undefined;
+      const resolved = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine)
+        : withRows && chosenRefs !== undefined ? { ...withRows, scriptureRefs: chosenRefs } : withRows;
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;

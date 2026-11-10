@@ -126,7 +126,7 @@ export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], b
 }
 
 type RetainedAction = Pick<NonNullable<EditorRecord['retainedManualChoice']>,
-  'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement' | 'sourceNoteLinks' | 'sermonNoteText'>;
+  'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement' | 'sourceNoteLinks' | 'sermonNoteText' | 'commentText'>;
 
 function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
   base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
@@ -255,7 +255,9 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     if (editor) editors.set(request.id, editor);
     if (!editor || predecessors.has(request.id) || retained.has(editor) || equalValues(draft, laterDraft)) return [];
     retained.add(editor);
-    return [retain(editor, laterDraft)];
+    const commentText = (chosen.commentPlaceAction || chosen.commentTextOpening) && typeof laterDraft?.content === 'string'
+      && !equalValues(draft?.content, laterDraft.content);
+    return [retain(editor, laterDraft, draft, commentText ? { commentText: true } : undefined)];
   });
   if (privateStage) {
     const basis = projected.get(privateStage.predecessorId);

@@ -5,8 +5,10 @@ import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { matchesCommentKindPlace } from './commentKindAction';
-import { councilLifecycleValue, councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, replaceOrderedDocumentField } from './documentFieldAction';
+import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
+import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
+import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, replaceOrderedDocumentField } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -34,7 +36,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
@@ -42,7 +44,7 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
   const proof = object(raw) ? raw[target.proof] : undefined;
   if (!object(proof)) return undefined;
   if (!current.value) return undefined;
-  const value = target.field === 'heldAt' ? councilLifecycleValue(current.value) : readField(current.value, documentFieldPath(target));
+  const value = documentFieldValue(current.value, target);
   if (!value || !acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
@@ -57,7 +59,7 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
     : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field] : command[target.action];
   const { before, after } = change;
   if (!object(action) || ('path' in target && !after.exists && target.action !== 'accountPreferenceActions') || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
-    || (target.action !== 'sermonPlanModeAction' && equalValues(before, after))
+    || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
     || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
@@ -104,12 +106,21 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'commentKindAction' && (!command.commentKindAction
     || !matchesCommentKindPlace(current.value, command.commentKindAction.reference))) return { command };
   if (target.action === 'tagColorAction' && current.value?.required !== false) return { command };
-  const change = documentFieldChange(command.changes, target);
+  const change = target.action === 'commentPlaceAction' && !command.commentPlaceAction
+    ? placeOfCommentChange(command.changes, true) : documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
-  const stored = target.field === 'heldAt' ? councilLifecycleValue(current.value) : current.value && readField(current.value, documentFieldPath(target));
+  const stored = documentFieldValue(current.value, target);
   if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
+  if (target.action === 'commentPlaceAction' && command.commentPlaceAction
+    && !matchesCommentPlaceScope(current.value, change.before, command.commentPlaceAction.paragraph)) return { command };
+  if (target.action === 'commentPlaceAction' && !command.commentPlaceAction && equalValues(change.before, change.after)) return { command };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   const previous = previousField(raw, current, target);
+  if (target.action === 'commentPlaceAction') {
+    const uncertain = commentPlaceReview(command, current, raw, stored, previous, Boolean(action));
+    if (uncertain) return { command, uncertain: [uncertain] };
+    if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
+  }
   if (!action) return target.action === 'sermonPlanModeAction' && equalValues(stored, change.after)
     ? { command, previous } : { command, stamp: null };
   if (target.action === 'sermonPlanModeAction') {
@@ -139,7 +150,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     return order;
   }
   if (equalValues(action.after, stored)) {
-    return target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after)
+    return (target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && equalValues(action.before, action.after)
       ? { command, stamp: action.time } : { command, previous };
   }
   return { command, stamp: previous || action.observedRevision === current.metadata.revision ? action.time : null };
@@ -202,15 +213,20 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
   if (!metadata) return metadata;
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
     if (!snapshot.value || (target.action === 'commentKindAction' && snapshot.value.type !== 'comment')) return [];
-    const value = target.field === 'heldAt' ? councilLifecycleValue(snapshot.value) : readField(snapshot.value, documentFieldPath(target));
+    const value = documentFieldValue(snapshot.value, target);
     if (!value || !acceptsDocumentField(value, target)) return [];
     const referenceChanged = target.action === 'commentKindAction' && raw?.type === 'comment'
       && !matchesCommentKindPlace(raw as DocumentData, readField(snapshot.value, ['scriptureRefs']));
-    // Moving a comment ends the passage-specific ordering proof.
-    const order = referenceChanged ? undefined : fields?.fields.find(item => item.target === target)?.order;
+    const placeScopeChanged = target.action === 'commentPlaceAction'
+      && !matchesCommentPlaceScope((raw ?? {}) as DocumentData, value, readField(snapshot.value, ['paragraph']));
+    // Changing the role or kind ends a place proof. Moving ends the kind's passage proof.
+    const scopeChanged = referenceChanged || placeScopeChanged;
+    const order = scopeChanged ? undefined : fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
-    const previous = referenceChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
-    const changed = target.causal && (referenceChanged || !equalValues(readField((raw ?? {}) as DocumentData, documentFieldPath(target)), value));
+    const previous = scopeChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
+    const rawValue = target.action === 'commentPlaceAction' ? documentFieldValue((raw ?? {}) as DocumentData, target)
+      : readField((raw ?? {}) as DocumentData, documentFieldPath(target));
+    const changed = target.causal && (scopeChanged || !equalValues(rawValue, value));
     // The first unrelated write to an older sermon, including a secondary effect,
     // observes the same field at the original revision.
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)
@@ -218,7 +234,7 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
       ? rawMetadata.revision : metadata.revision;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
       value, revision, time: order?.stamp ?? null,
-      ...((changed || (target.action === 'sermonPlanModeAction' && order?.stamp !== undefined)) && metadata.operationId
+      ...((changed || ((target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && order?.stamp !== undefined)) && metadata.operationId
         && { operationId: metadata.operationId }),
       ...(order?.initialized && { initialized: true as const }),
     };
@@ -227,5 +243,6 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
       ...(proof.initialized && { initialized: true as const }) }]] as const;
   });
-  return { ...metadata, ...Object.fromEntries(proofs) };
+  const commentPlaceFrames = nextCommentPlaceFrames(snapshot, raw as DocumentData | undefined);
+  return { ...metadata, ...Object.fromEntries(proofs), ...(commentPlaceFrames !== undefined && { commentPlaceFrames }) };
 }

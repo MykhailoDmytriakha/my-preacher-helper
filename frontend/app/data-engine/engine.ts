@@ -9,6 +9,7 @@ import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
 import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
+import { captureCommentPlace, matchesCommentPlaceRequest } from './commentPlaceAction';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
@@ -27,7 +28,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
-import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, sourceNoteAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
@@ -1147,7 +1148,7 @@ export class DataEngine {
     if (!records.some(({ record }) => !this.editors.has(record.editorId))) return [];
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
-    const sourceNoteAnswers = sourceNoteAnswerScopes(requests);
+    const fieldAnswers = singleFieldAnswerScopes(requests);
     return records.filter(({ record }) => !this.editors.has(record.editorId))
       .map(({ id, record }) => {
         const reconciled = reconcileRecoveryRecord(record, requests);
@@ -1155,11 +1156,11 @@ export class DataEngine {
         const answer = Object.values(reconciled.checkpoint.pending).some(intent => intent.borrowedManualScope)
           ? null : savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource, pendingIds, requests, this.pending);
         const actionResolutionRequired = requiresWholeActionResolution(owner, record.editorId, pendingIds, requests);
-        const sourceNoteChoiceEditorId = pendingIds.length && sourceNoteAnswers.find(candidate =>
-          pendingIds.every(id => candidate.requests.has(id)))?.editorId;
+        const fieldAnswer = pendingIds.length ? fieldAnswers.find(candidate => pendingIds.every(id => candidate.requests.has(id))) : undefined;
         return { id, record: reconciled, ...(!record.recoveryVersion && !equalValues(record, reconciled) ? { discardRecord: copy(record) } : {}),
           ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}),
-          ...(sourceNoteChoiceEditorId && { sourceNoteChoiceEditorId }) };
+          ...(fieldAnswer?.kind === 'source-notes' && { sourceNoteChoiceEditorId: fieldAnswer.editorId }),
+          ...(fieldAnswer?.kind === 'comment-place' && { commentPlaceChoiceEditorId: fieldAnswer.editorId }) };
       })
       .filter(({ record }) => isRecoverableCheckpoint(record) && !isPassiveManualContinuation(record));
   }
@@ -2068,6 +2069,13 @@ export class DataEngine {
             captured = undefined;
           }
         }
+        if (action?.kind === 'comment-place') {
+          const { seen } = action.commentPlace;
+          const known = Boolean(seen.requestId && matchesCommentPlaceRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          if (!captureCommentPlace(checkpoint.confirmed, next, action.commentPlace, known)) {
+            throw Object.assign(new Error('The comment move opening changed'), { code: 'comment-place-basis-changed' });
+          }
+        }
         if (action?.kind === 'prayer-status') {
           if (next === checkpoint.draft) captured = undefined;
           else if (action.status.opening && !matchesPrayerStatusOpening(checkpoint.confirmed, action.status.opening)) {
@@ -2366,7 +2374,6 @@ export class DataEngine {
         if ((preference || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
-          this.prepareCommitsInBackground(); this.backgroundDrain();
         }
       } else {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
@@ -2374,9 +2381,9 @@ export class DataEngine {
         const resolved = controller.getState().checkpoint;
         if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
-          this.prepareCommitsInBackground(); this.backgroundDrain();
         }
       }
+      this.prepareCommitsInBackground(); this.backgroundDrain();
     } catch (error) { failure = error; }
     const repairFields = async () => {
       this.assertCurrent(owner, generation);

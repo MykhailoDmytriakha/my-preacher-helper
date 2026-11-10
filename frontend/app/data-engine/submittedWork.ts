@@ -40,6 +40,7 @@ export function submittedWorkCheckpoint(owner: string, resource: ResourceRef, re
         ...(request.outlinePointPlacement && { outlinePointPlacement: request.outlinePointPlacement }),
         ...(request.groupFlowStepPlacement && { groupFlowStepPlacement: request.groupFlowStepPlacement }),
         ...(request.councilTopicPlacement && { councilTopicPlacement: request.councilTopicPlacement }),
+        ...(request.commentPlaceAction && { commentPlaceAction: request.commentPlaceAction }),
         ...(operationId && operationId !== request.id ? { operations: [operationId] } : {}),
       }];
     })),

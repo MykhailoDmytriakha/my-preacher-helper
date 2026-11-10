@@ -1902,6 +1902,81 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each([
+    { choice: 'local', competingWords: false, expectedVerse: 17 },
+    { choice: 'remote', competingWords: false, expectedVerse: 18 },
+    { choice: 'local', competingWords: true, expectedVerse: 17 },
+    { choice: 'remote', competingWords: true, expectedVerse: 18 },
+    { choice: 'local', competingWords: false, expectedVerse: 19, newerReview: 'place' },
+    { choice: 'local', competingWords: true, expectedVerse: 19, newerReview: 'place', netReturn: true },
+    { choice: 'local', competingWords: false, expectedVerse: 18, newerReview: 'kind' },
+  ] satisfies Array<{ choice: 'local' | 'remote'; competingWords: boolean; expectedVerse: number; newerReview?: 'place' | 'kind'; netReturn?: true }>)('restores a durable $choice comment place choice and preserves its later words (overlap: $competingWords, newer: $newerReview, return: $netReturn)', async ({ choice, competingWords, expectedVerse, newerReview, netReturn }) => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const opening: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', title: '', content: 'Opening words', paragraph: false, scriptureRefs: [place], tags: [] } };
+    const s = setup({ nativeChoice: true, opening });
+    const phoneWords = netReturn ? 'Opening words' : 'Phone words';
+    const engine = s.makeEngine();
+    const editorId = editorIdentity('phone', opening.resource, ACTION_SLOT, 'opening');
+    const editor = await engine.openEditor(opening.resource, editorId);
+    try {
+      await editor.commit(value => ({ ...value, scriptureRefs: [{ ...place, fromVerse: 17 }] }), { kind: 'comment-place', commentPlace: {
+        seen: { generation: 'g', revision: 1, reference: { exists: true, value: place }, paragraph: { exists: true, value: false } }, time: null,
+      } });
+      await editor.commit(value => ({ ...value, content: 'Phone words' }));
+      if (netReturn) await editor.commit(value => ({ ...value, content: 'Opening words' }));
+      s.replace({ ...opening, value: { ...opening.value, scriptureRefs: [{ ...place, fromVerse: 18 }],
+        content: competingWords ? 'Computer words' : 'Opening words' }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.conflicts.map(({ path }) => path)).toEqual([['scriptureRefs', 'id:place']]);
+      engine.setOnline(false);
+      if (choice === 'local') await editor.keepLocal();
+      else await editor.acceptRemote();
+      const saved = await s.checkpoints.read('owner', editorId);
+      expect(saved?.checkpoint).toMatchObject({ draft: { scriptureRefs: [{ ...place, fromVerse: choice === 'local' ? 17 : 18 }], content: phoneWords }, conflicts: [] });
+      expect(Object.keys(saved!.checkpoint.pending)).toHaveLength(choice === 'local' ? 2 : 1);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      editor.close({ flush: false });
+    } finally { engine.dispose(); }
+
+    if (newerReview) s.replace({ ...opening, value: { ...opening.value, content: 'Computer words',
+      scriptureRefs: [{ ...place, fromVerse: expectedVerse }], paragraph: newerReview === 'kind' }, metadata: { ...opening.metadata!, revision: 3 } });
+    const restarted = s.makeEngine();
+    try {
+      restarted.setOnline(true); await restarted.retry(); await settle();
+      if (newerReview) {
+        const copies = await restarted.listRecoverable(opening.resource);
+        expect(copies).toHaveLength(1);
+        const original = copies[0].record;
+        if (newerReview === 'kind') {
+          expect(copies[0].answer).toBe('refused');
+          await restarted.takeStoredVersion(opening.resource, Object.keys(original.checkpoint.pending));
+          const retained = (await restarted.listRecoverable(opening.resource)).find(copy => copy.record.retainedManualChoice?.commentText);
+          expect(retained?.record.checkpoint.draft?.content).toBe(phoneWords);
+          expect(s.server().value).toMatchObject({ paragraph: true, content: 'Computer words', scriptureRefs: [{ ...place, fromVerse: expectedVerse }] });
+          return;
+        }
+        expect(original.checkpoint.conflicts.map(({ path }) => path)).toEqual([['scriptureRefs', 'id:place']]);
+        const nextChoice = await restarted.openEditor(opening.resource, original.editorId);
+        await nextChoice.acceptRemote(original);
+        nextChoice.close({ flush: false });
+        await restarted.retry(); await settle();
+      }
+      expect(s.server().value).toMatchObject({ scriptureRefs: [{ ...place, fromVerse: expectedVerse }],
+        content: competingWords || newerReview ? 'Computer words' : phoneWords });
+      const waiting = await restarted.listRecoverable(opening.resource);
+      if (!competingWords && !newerReview) { expect(waiting).toEqual([]); return; }
+      expect(waiting).toHaveLength(1);
+      const record = waiting[0].record;
+      expect(record.checkpoint.conflicts).toEqual([{ path: ['content'], base: { exists: true, value: netReturn ? 'Phone words' : 'Opening words' },
+        mine: { exists: true, value: phoneWords }, theirs: { exists: true, value: 'Computer words' } }]);
+      const textEditor = await restarted.openEditor(opening.resource, record.editorId);
+      await textEditor.keepLocal(record);
+      await restarted.retry(); await settle();
+      expect(s.server().value).toMatchObject({ scriptureRefs: [{ ...place, fromVerse: expectedVerse }], content: phoneWords });
+    } finally { restarted.dispose(); }
+  });
+
   it.each(['local', 'remote'] as const)('persists the %s choice before reporting a journal cleanup failure', async choice => {
     const s = setup({ nativeChoice: true }), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
     try {

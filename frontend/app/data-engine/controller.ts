@@ -7,6 +7,7 @@ import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } f
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { keepUncontestedCommentFields } from './commentKindChoice';
+import { commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, keepUncontestedCommentPlace, readCommentPlaceComparison } from './commentPlaceChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { councilTopicKindRow } from './councilTopicKindAction';
@@ -88,7 +89,7 @@ export interface EditorRecord extends VersionedRecovery {
   retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null;
     councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null;
     outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null; sourceNoteLinks?: SourceNoteLinkCapture;
-    sermonNoteText?: SermonNoteOpening };
+    sermonNoteText?: SermonNoteOpening; commentText?: true };
 }
 
 export interface CheckpointStore {
@@ -105,6 +106,7 @@ export interface RecoveryCheckpoint {
   /** Derived by engine discovery; never stored in the checkpoint. */
   answer?: DocumentAnswer;
   sourceNoteChoiceEditorId?: string;
+  commentPlaceChoiceEditorId?: string;
   /** The held requests can only be resolved through their complete atomic action. */
   actionResolutionRequired?: boolean;
 }
@@ -429,7 +431,8 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.pendingCaptures.retire(captures);
-      const retained = !selection && keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts);
+      const retained = !selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+        ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts));
       this.session.acceptRemote(atChoice);
       if (retained) {
         const accepted = this.session.checkpoint();
@@ -769,6 +772,8 @@ export class EditorController {
     const sourceNoteComparison = readSourceNoteLinkComparison(shown.checkpoint);
     const sourceNoteTail = !selection && !correction && sourceNoteComparison && ordinary
       ? sourceNoteChoiceTail(ordinary, shown.checkpoint.remoteCandidate) : undefined;
+    const placeComparison = readCommentPlaceComparison(shown.checkpoint);
+    const placeTail = !selection && !correction && placeComparison && ordinary ? commentPlaceTextTail(ordinary) : undefined;
     const positionRefused = ordinary && isAnchoredPlacementRefusal(ordinary.first);
     let savedOrder: ResourceSnapshot | null | undefined;
     if (positionRefused) {
@@ -812,6 +817,9 @@ export class EditorController {
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const placeOpening = !selection && !correction ? commentPlaceChoiceOpening(decided) : undefined;
+        const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
+          && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
@@ -981,7 +989,8 @@ export class EditorController {
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
+            ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+            ?? keepUncontestedCommentPlace(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();
@@ -992,6 +1001,29 @@ export class EditorController {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
           }
         }
+        const replacements: CommitRequest[] = [];
+        if (placeOpening || textChoice) {
+          const accepted = session.checkpoint();
+          const text = placeOpening ? commentPlaceTextChange(decided, placeTail?.content) : undefined;
+          if (text && accepted.draft && accepted.confirmed.value) {
+            session.edit(writeField(accepted.draft, text.path, readField(accepted.confirmed.value, text.path)));
+          }
+          const place = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {
+            ...(choice === 'local' && placeOpening && { action: { kind: 'comment-place',
+              commentPlace: { seen: placeOpening, time: choiceTime ?? null, reviewed: true } } }),
+          });
+          if (place) { session.applyCommit(place); replacements.push(place); }
+          const placed = session.checkpoint().draft;
+          if (text && placed && !equalValues(readField(placed, text.path), text.after)) {
+            // A rejected place can be reviewed again without deciding about the text.
+            session.edit(writeField(placed, text.path, text.after));
+            const later = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {
+              predecessor: place ?? undefined, commentTextOpening: text.before,
+            });
+            if (!later) throw new Error('The later comment text could not be captured');
+            session.applyCommit(later); replacements.push(later);
+          }
+        }
         const sourceNoteRequest = ordinary?.first ?? retired.find(request => decided.pending[request.id]
           && (request.sourceNoteLink || legacySourceNoteChange(request.command)));
         const originalSourceLinks = sourceNoteRequest?.sourceNoteLink;
@@ -1000,12 +1032,13 @@ export class EditorController {
           originalSourceLinks ? undefined : legacySourceNoteChange(sourceNoteRequest?.command));
         if (sourceNoteRetry) session.stageSourceNoteLinkRetry(sourceNoteRetry);
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
-        if (!ordinary) return retainedPlacementTail ? { editorRecords: [projected, retainedPlacementTail], manualRecoveries: [] } : projected;
+        if (!ordinary) return replacements.length ? { editorRecords: [projected], manualRecoveries: [], replacements }
+          : retainedPlacementTail ? { editorRecords: [projected, retainedPlacementTail], manualRecoveries: [] } : projected;
         const { confirmed, draft } = projected.checkpoint;
         const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined);
-        return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedPlacementTail ? [retainedPlacementTail] : []] };
-      }, ordinary ? { roots: [ordinary.first], ...(sourceNoteTail && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }) }
+        return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedPlacementTail ? [retainedPlacementTail] : []], replacements };
+      }, ordinary ? { roots: [ordinary.first], ...((sourceNoteTail || placeTail) && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }) }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
     await this.applyChoiceProjection(source, projected, captures, anchoredChoice);

@@ -21,7 +21,7 @@ import { COUNCIL_TOPIC_PLACEMENT_HISTORY, metadataAfterCouncilTopicPlacement } f
 import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { documentFieldPath, isSermonPlanMode } from './documentFieldAction';
+import { documentFieldPath, documentFieldValue, isSermonPlanMode } from './documentFieldAction';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
@@ -686,8 +686,11 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   const metadataHistory = [];
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
-    if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, documentFieldPath(target)), displaced.winnerValue)) continue;
-    if (target.field === 'color' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+    if (!displaced || !primarySnapshot.value) continue;
+    const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
+      : readField(primarySnapshot.value, documentFieldPath(target));
+    if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
+    if (target.field === 'color' || target.action === 'commentPlaceAction' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
       || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'accountPreferenceActions') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
