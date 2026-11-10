@@ -1,6 +1,6 @@
 'use client';
 
-import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
+import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_NOTE_CHOICE_ROW } from './checkpointStorage.client';
 import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
@@ -23,10 +23,16 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
     });
   };
   const list = (owner: string, resource: ResourceRef | undefined, range: IDBKeyRange) => transaction<RecoveryCheckpoint[]>('readonly', (store, read, done) => {
-    read(store.getAll(range), (values: EditorRecord[]) => {
-      const records = values.map(record => [recoveryCheckpointId(owner, record.editorId), record] as const);
-      done(selectRecoverableCheckpoints(records, owner, resource));
-    });
+    const records: EditorRecord[] = [];
+    let remaining = 2;
+    for (const keys of [range, engineOwnerRange(SERMON_NOTE_CHOICE_ROW, owner)]) {
+      read(store.getAll(keys), (values: EditorRecord[]) => {
+        records.push(...values);
+        if (--remaining === 0) done(selectRecoverableCheckpoints(
+          records.map(record => [recoveryCheckpointId(owner, record.editorId), record] as const), owner, resource,
+        ));
+      });
+    }
   });
   return {
     listRecoverable: (owner, resource) => list(owner, resource, engineOwnerRange('checkpoint', owner)),

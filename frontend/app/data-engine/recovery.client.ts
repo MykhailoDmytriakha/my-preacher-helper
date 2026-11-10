@@ -60,6 +60,13 @@ const sourceNoteLinkCapture = z.object({
     changes: z.array(z.object({ noteId: id, linked: z.boolean(), queueId: id.optional(), predecessorOperationId: id.optional(),
       prior: z.object({ before: z.boolean(), observedRevision: observedRevision.nullable(), time: actionTime }).optional() })).min(1) }),
 });
+const sermonNoteOpening = z.object({
+  sermonId: id, generation: id.nullable(), legacyBirth: z.string().min(1).optional(), pending: z.array(id), text: z.string().nullable(),
+  target: z.union([
+    z.object({ kind: z.literal('scratch'), id, createdAt: z.string().min(1) }),
+    z.object({ kind: z.enum(['point', 'subpoint']), id }),
+  ]),
+});
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
@@ -67,7 +74,8 @@ const recordSchema = z.object({
   retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
     councilTopicPlacement: councilPlacementCapture.optional(), councilFieldsGeneration: id.nullable().optional(),
-    outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional(), sourceNoteLinks: sourceNoteLinkCapture.optional() }).optional(),
+    outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional(),
+    sourceNoteLinks: sourceNoteLinkCapture.optional(), sermonNoteText: sermonNoteOpening.optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
@@ -106,6 +114,8 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const ref = record.checkpoint.confirmed.resource;
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
     || (record.checkpoint.remoteCandidate && !sameResource(ref, record.checkpoint.remoteCandidate.resource))) throw new Error('Checkpoint identity mismatch');
+  const note = record.retainedManualChoice?.sermonNoteText;
+  if (note && (ref.collection !== 'sermons' || note.sermonId !== ref.id)) throw new Error('Sermon note checkpoint identity mismatch');
   const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];
   if (sourceLinks.some(links => links && (ref.collection !== 'sermons' || links.opening.sermonId !== ref.id
     || links.action.observedRevision !== links.opening.revision))) throw new Error('Source note checkpoint identity mismatch');

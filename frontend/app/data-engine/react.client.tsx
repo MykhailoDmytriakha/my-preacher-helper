@@ -8,6 +8,7 @@ import { failureWords, logFailureOnce, readOnlyError, refusalWords, sayFailure, 
 import { newClientId } from '@/utils/clientId';
 import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
 import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
+import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSermonNoteText, type SermonNoteOpening, type SermonNoteTarget } from '@/utils/sermonNoteText';
 import { useTranslation } from '@locales/useTranslation';
 
 import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
@@ -1148,6 +1149,27 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         // A question already established for the departed owner must still reach its backup.
         throw refused ? refused.error : error;
       });
+    },
+    captureSermonNoteText: (target: SermonNoteTarget, text: string | undefined) => {
+      const checkpoint = current?.state.checkpoint;
+      const birth = checkpoint?.confirmed.value?.createdAt;
+      const captured: SermonNoteOpening | undefined = checkpoint && owner && isCurrent()
+        && checkpoint.confirmed.resource.collection === 'sermons'
+        && readSermonNoteText(checkpoint.draft, target)?.text === (text ?? null)
+        ? { sermonId: checkpoint.confirmed.resource.id, generation: checkpoint.confirmed.metadata?.generation ?? null,
+          ...(checkpoint.confirmed.metadata === null && typeof birth === 'string' && birth.length && { legacyBirth: birth }),
+          pending: Object.keys(checkpoint.pending), target, text: text ?? null } : undefined;
+      return (next: string | undefined) => {
+        cancelScheduledSave();
+        return run(editor => {
+          if (!captured || !matchesSermonNoteOpening(editor.getState().checkpoint.confirmed, captured)) throw sermonNoteChanged();
+          return editor.commit(value => {
+            const edited = withSermonNoteText(value, captured.target, next ?? null);
+            if (!edited) throw sermonNoteChanged();
+            return edited;
+          }, { kind: 'sermon-note-text', opening: captured });
+        });
+      };
     },
     captureSermonPlanMode: () => {
       if (!current || !owner || !isCurrent()) throw new Error(EDITOR_CHANGED);

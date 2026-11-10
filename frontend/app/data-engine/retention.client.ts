@@ -5,9 +5,22 @@ import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } fr
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 
-export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request', 'analysis-reshape-request', 'ordered-delete-request'] as const;
-export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic' | 'deleteAfter'>,
-  kind: string = request.deleteAfter !== undefined ? 'ordered-delete-request' : request.atomic?.kind === 'analysis-reshape' ? 'analysis-reshape-request' : request.atomic?.kind === 'council-carry' ? 'council-carry-request' : request.atomic?.kind === 'create-member' ? 'creation-request' : request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
+export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request',
+  'analysis-reshape-request', 'ordered-delete-request', 'sermon-note-text-request'] as const;
+
+type CommitRow = Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic' | 'deleteAfter' | 'sermonNoteText'>;
+function commitRowKind(request: CommitRow): typeof COMMIT_ROW_KINDS[number] {
+  if (request.sermonNoteText) return 'sermon-note-text-request';
+  if (request.deleteAfter !== undefined) return 'ordered-delete-request';
+  switch (request.atomic?.kind) {
+    case 'analysis-reshape': return 'analysis-reshape-request';
+    case 'council-carry': return 'council-carry-request';
+    case 'create-member': return 'creation-request';
+    default: return request.atomic ? 'atomic-request' : 'request';
+  }
+}
+export const commitRowKey = (request: CommitRow, kind: string = commitRowKind(request)): IDBValidKey =>
+  [kind, request.owner, request.editorId, request.editGeneration];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
 /** Separate from editor projection: even older checkpoint writers must retain uncached ACKs. */

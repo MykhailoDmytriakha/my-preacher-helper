@@ -13,6 +13,7 @@ import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePo
 import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
+import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
@@ -20,15 +21,17 @@ import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
-import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoice';
+import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineNoteChoice } from '@/utils/outlineChoice';
 import { outlinePointGap, projectOutlinePoint } from '@/utils/outlineDnd';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
+import { readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
 import { EMERALD_ACTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
+import type { OutlineNoteOpening } from '@/utils/sermonNoteText';
 
 const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclusion: [] });
 type OutlineSectionKey = keyof SermonOutline;
@@ -211,6 +214,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     : null;
   const needsWholeChoice = Boolean(collision && storedCollision && (storedCollision.payload.reviewWhole
     || !Object.prototype.hasOwnProperty.call(storedCollision.payload, 'baseOutline')));
+  const noteChoice = collision && !needsWholeChoice
+    ? readOutlineNoteChoice(storedCollision?.payload.baseOutline, outline, collision.serverOutline) : undefined;
   const setCollision = useCallback((next:{serverOutline:SermonOutline | null} | null, refused?:SermonOutline,
     base:SermonOutline | null=baseOutlineRef.current) => {
     if (!next) clearConflict();
@@ -271,7 +276,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const generationRef = useRef(0);
 
   const persist = useCallback(
-    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline } }) => {
+    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline }; noteOpening?: OutlineNoteOpening }) => {
       if (isReadOnly || !sermon.id || !conflictReady) return;
       const pending = getConflict();
       if (pending && pending.payload.resolution !== 'local' && !options?.force) {
@@ -284,6 +289,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
       return saveQueue.schedule({
         outline: next,
         base: baseOutlineRef.current,
+        noteOpening: options?.noteOpening,
         ...(options?.pointMove && placementVersion.current && { pointMove: { ...options.pointMove, version: placementVersion.current } }),
         begin: () => {
           const waiting = getConflict();
@@ -306,7 +312,15 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               if (!currentSession && waiting?.payload.resolution === 'local') return;
               if (isOutlineCollisionError(err)) {
                 const baseline = err.baseline;
-                setCollision({ serverOutline: err.serverOutline }, refused, baseline ? baseline.outline : baseAtRequest);
+                const note = options?.noteOpening;
+                const edited = note && readOutlineNoteText(refused, note.target);
+                const projected = note && edited && err.serverOutline
+                  ? withOutlineNoteText(err.serverOutline, note.target, edited.text ?? undefined) : undefined;
+                if (projected && currentSession) {
+                  outlineRef.current = projected;
+                  setOutline(projected);
+                }
+                setCollision({ serverOutline: err.serverOutline }, projected ?? refused, baseline ? baseline.outline : baseAtRequest);
                 return;
               }
               if (!currentSession) return;
@@ -327,12 +341,12 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   // values (not functional updaters) so no side-effects run inside a setState
   // updater — safe under StrictMode's double-invoke.
   const handleChange = useCallback(
-    (next: SermonOutline, movedPointId?: string) => {
+    (next: SermonOutline, movedPointId?: string, noteOpening?: OutlineNoteOpening) => {
       setUndoStack((s) => capPush(s, { outline, pointId: movedPointId }));
       setRedoStack([]);
       generationRef.current += 1;
       setOutline(next);
-      return persist(next, movedPointId ? { pointMove: { pointId: movedPointId, before: outline } } : undefined);
+      return persist(next, { noteOpening, ...(movedPointId && { pointMove: { pointId: movedPointId, before: outline } }) });
     },
     [outline, persist]
   );
@@ -602,6 +616,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               {needsWholeChoice ? t('planEditor.wholeStructureDescription')
                 : t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
             </p>
+            {noteChoice && <FieldComparison comparison={{ valueKind: 'field', title: t('planEditor.note.label'),
+              mine: noteChoice.mine ?? t('dataSync.emptyField'), stored: noteChoice.stored ?? t('dataSync.emptyField') }} />}
             <SavedDraftCopyPicker
               options={conflictChoices.copies.map(copy => ({ key: copy.key,
                 label: [...copy.value.payload.outline.introduction, ...copy.value.payload.outline.main, ...copy.value.payload.outline.conclusion]
@@ -636,7 +652,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 disabled={needsWholeChoice && !wholeReviewOpen}
                 className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
-                {t(needsWholeChoice ? 'planEditor.useWholeLocalStructure' : 'freshness.conflictKeepMine')}
+                {t(needsWholeChoice ? 'planEditor.useWholeLocalStructure' : noteChoice ? 'dataSync.useLocalVersion' : 'freshness.conflictKeepMine')}
               </button>
               {needsWholeChoice && (
                 <button type="button" onClick={() => setWholeReviewOpen(true)}
@@ -648,6 +664,22 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 type="button"
                 onClick={() => {
                   const theirs = fromSermon(collision.serverOutline);
+                  if (noteChoice) {
+                    let chosen: SermonOutline;
+                    try { chosen = noteChoice.acceptStored(); }
+                    catch (error) {
+                      if (!(error instanceof OutlineChoiceReviewRequiredError)) throw error;
+                      requireWholeReview();
+                      setWholeReviewOpen(false);
+                      return;
+                    }
+                    baseOutlineRef.current = theirs;
+                    selectConflict(chosen, theirs);
+                    setOutline(chosen);
+                    outlineRef.current = chosen;
+                    persist(chosen, { force: true });
+                    return;
+                  }
                   baseOutlineRef.current = theirs;
                   setCollision(null);
                   generationRef.current += 1;
@@ -656,7 +688,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 }}
                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
               >
-                {t('freshness.conflictTakeTheirs')}
+                {t(noteChoice ? 'dataSync.useStoredVersion' : 'freshness.conflictTakeTheirs')}
               </button>
             </div>
           </div>
@@ -691,6 +723,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             value={outline}
             onChange={handleChange}
             onPointMove={handleChange}
+            onNoteChange={(next, opening) => handleChange(next, undefined, opening)?.then(() => undefined, error => {
+              // The modal's durable outline comparison now owns this proposal.
+              if (!isOutlineCollisionError(error)) throw error;
+            })}
             isReadOnly={isReadOnly || !conflictReady}
             showNotes
             getSubPointThoughtCount={getSubPointThoughtCount}

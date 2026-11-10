@@ -79,6 +79,9 @@ export function useScratchDataDocument(sermonId: string | null) {
     addRecordedScratchNote,
     restoreScratchNote,
     updateScratchNote,
+    captureScratchText: (note: ScratchNote) => document.captureSermonNoteText(
+      { kind: 'scratch', id: note.id, createdAt: note.createdAt }, note.text,
+    ),
     deleteScratchNote: (noteId: string) => mutateNotes(notes => notes.filter(note => note.id !== noteId)),
     moveScratchNote: (noteId: string, neighbourIds: string[], index: number) => mutateNotes(notes => moveNoteTo(notes, noteId, neighbourIds, index)),
     setScratchNoteSection: (noteId: string, section: ScratchNote['section'] | null) => updateScratchNote(noteId, { section }),

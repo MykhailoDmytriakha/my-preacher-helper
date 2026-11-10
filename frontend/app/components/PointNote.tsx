@@ -9,11 +9,15 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { useConfirm, type ConfirmKey } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { SaveSermonNoteText } from '@/utils/sermonNoteText';
+
 interface PointNoteProps {
   /** Current note text (undefined/empty = no note). */
   note?: string;
   /** Persist a new value; `undefined` clears the note. */
   onChange: (note: string | undefined) => void;
+  /** Bind saving to what the person saw when they opened the field. */
+  captureSave?: () => SaveSermonNoteText;
   isReadOnly?: boolean;
   /** Left indent so the note lines up under the point / sub-point text. */
   indentClass?: string;
@@ -61,6 +65,7 @@ interface PointNoteProps {
 const PointNote: React.FC<PointNoteProps> = ({
   note,
   onChange,
+  captureSave,
   isReadOnly = false,
   indentClass = '',
   addRevealClass = 'opacity-100',
@@ -94,6 +99,9 @@ const PointNote: React.FC<PointNoteProps> = ({
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   const openingText = useRef<string | undefined>(undefined);
+  const openedSave = useRef<SaveSermonNoteText | undefined>(undefined);
+  const awaitingCapture = useRef(false);
+  const [capturing, setCapturing] = useState(false);
   // Distinguishes a real blur-save from an Escape-cancel (Escape also blurs the field).
   const blurSaveRef = useRef(true);
 
@@ -112,19 +120,30 @@ const PointNote: React.FC<PointNoteProps> = ({
     if (isReadOnly) return;
     blurSaveRef.current = true;
     openingText.current = note?.trim() || undefined;
+    openedSave.current = captureSave?.();
     setText(note ?? '');
     setEditing(true);
   };
 
   const commit = () => {
+    if (awaitingCapture.current) return;
     const next = text.trim() || undefined;
     // The saved note can refresh while this field still displays the opening text.
-    if (next !== openingText.current && next !== note) onChange(next);
-    setEditing(false);
+    const capture = next !== openingText.current && next !== note ? (openedSave.current ?? onChange)(next) : undefined;
+    if (!capture) {
+      setEditing(false);
+      return;
+    }
+    awaitingCapture.current = true;
+    setCapturing(true);
+    void capture.then(() => setEditing(false), () => undefined).finally(() => {
+      awaitingCapture.current = false;
+      setCapturing(false);
+    });
   };
 
   const clearAfterAsking = async () => {
-    const ticket = { text: note ?? '' };
+    const ticket = { text: note ?? '', save: captureSave?.() };
     askedRef.current = ticket;
     const confirmed = await confirm({
       title: labels?.deleteConfirm ?? { key: 'planEditor.note.deleteConfirm' },
@@ -139,10 +158,11 @@ const PointNote: React.FC<PointNoteProps> = ({
       return;
     }
     if (latest.isReadOnly || latest.note !== ticket.text) return;
-    latest.onChange(undefined);
+    await Promise.resolve((ticket.save ?? latest.onChange)(undefined)).catch(() => undefined);
   };
 
   const cancel = () => {
+    if (awaitingCapture.current) return;
     blurSaveRef.current = false; // the imminent blur must NOT save
     setEditing(false);
   };
@@ -160,6 +180,7 @@ const PointNote: React.FC<PointNoteProps> = ({
       <div className={`${indentClass} mt-1`}>
         <TextareaAutosize
           value={text}
+          readOnly={capturing || isReadOnly}
           onChange={(e) => setText(e.target.value)}
           onBlur={commitFromBlur}
           onKeyDown={(e) => {

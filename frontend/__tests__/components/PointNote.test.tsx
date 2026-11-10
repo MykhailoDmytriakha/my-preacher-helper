@@ -74,6 +74,25 @@ describe('PointNote editing', () => {
     expect(onChange).toHaveBeenCalledWith('Words typed here');
   });
 
+  it('keeps typed words open after a local capture is rejected and retries without submitting twice', async () => {
+    let reject!: (error: Error) => void;
+    const save = jest.fn().mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }))
+      .mockResolvedValueOnce(undefined);
+    render(<PointNote note="Opening note" onChange={jest.fn()} captureSave={() => save} />);
+    fireEvent.click(screen.getByText('Opening note'));
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: 'Kept private words' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.blur(field);
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => { reject(new Error('Local storage refused the capture')); });
+    expect(field).toHaveValue('Kept private words');
+    expect(field).not.toHaveAttribute('readonly');
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(field).not.toBeInTheDocument());
+    expect(save.mock.calls).toEqual([['Kept private words'], ['Kept private words']]);
+  });
+
   it('still clears a note when the user removes its text', () => {
     const onChange = jest.fn();
     render(<PointNote note="Original note" onChange={onChange} />);

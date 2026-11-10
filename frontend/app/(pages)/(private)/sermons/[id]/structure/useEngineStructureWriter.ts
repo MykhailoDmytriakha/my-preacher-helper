@@ -9,6 +9,7 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
+import { readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
@@ -20,11 +21,12 @@ import type { ActionTime } from '@/data-engine/actionClock';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
 import type { DocumentData, OutlinePointPlacementCapture } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
+import type { OutlineNoteOpening } from '@/utils/sermonNoteText';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 type DocumentUpdater = Parameters<SermonDocument['update']>[0];
-type StructureDocument = Pick<SermonDocument, 'update'> & {
+type StructureDocument = Pick<SermonDocument, 'update'> & Partial<Pick<SermonDocument, 'captureSermonNoteText'>> & {
   outlinePlacementVersion?: (shown?: SermonOutline) => OutlinePlacementVersion | undefined;
   commitOutlineMove?: (updater: DocumentUpdater, move: OutlinePointPlacementCapture) => Promise<void>;
   captureActionTime?: () => ActionTime | undefined;
@@ -96,10 +98,24 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
   }, options).then(() => result as T);
 }
 
+function mergeOpenOutlineNote(opening: OutlineNoteOpening, proposed: SermonOutline, stored: SermonOutline | null, base: SermonOutline | null) {
+  const { target, text } = opening;
+  const mine = readOutlineNoteText(proposed, target);
+  const live = readOutlineNoteText(stored, target);
+  if (!stored || !mine || !live) {
+    throw new OutlineCollisionError([target.id], stored, 0, { outline: base });
+  }
+  if (live.text !== (text ?? null) && live.text !== mine.text) {
+    throw new OutlineCollisionError([target.id], stored, 0, { outline: withOutlineNoteText(stored, target, text) ?? base });
+  }
+  return withOutlineNoteText(stored, target, mine.text ?? undefined) ?? stored;
+}
+
 export function createEngineStructureWriter(document: StructureDocument, owner: string | null,
   onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }, rowIds?: string[]) =>
     editEngineSermon(document, owner, apply, rowIds?.length ? { action: { kind: 'thought-placement', rowIds } } : undefined);
+  const { captureSermonNoteText } = document;
   return {
     updateStructure: (_sermonId, structure, baseStructure, options) => {
       const apply = (current: Sermon) => {
@@ -144,6 +160,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
     createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
     outlinePlacementVersion: document.outlinePlacementVersion,
+    captureNoteEdit: captureSermonNoteText,
     updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence, pointMove) => {
       if (pointMove && document.commitOutlineMove) {
         const { pointId, before } = pointMove;
@@ -169,7 +186,12 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
       try {
         return await editEngineSermon(document, owner, current => {
           const apply = (base: SermonOutline | null) => {
-            const merged = mergeOutline(base, outline, current.outline ?? null, onCollision === 'preferMine');
+            const live = current.outline ?? null;
+            if (inputSequence?.noteOpening) {
+              const next = replaceSermonOutline(current, mergeOpenOutlineNote(inputSequence.noteOpening, outline, live, base));
+              return { next, result: next.outline ?? null };
+            }
+            const merged = mergeOutline(base, outline, live, onCollision === 'preferMine');
             if (merged.collisions.length) throw new OutlineCollisionError(merged.collisions, current.outline ?? null, 0, { outline: base });
             const next = replaceSermonOutline(current, merged.outline as SermonOutline);
             return { next, result: next.outline ?? null };
@@ -205,6 +227,7 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
     update: (fn, options) => opening.document.update(fn, options),
     commit: (fn, action) => opening.document.commit(fn, action),
     captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
+    captureSermonNoteText: (target, text) => opening.document.captureSermonNoteText(target, text),
     outlinePlacementVersion: shown => {
       const snapshot = opening.document.confirmed;
       if (shown && !hasOutlinePointOrder(snapshot?.value?.outline, outlinePointOrder(shown))) return undefined;

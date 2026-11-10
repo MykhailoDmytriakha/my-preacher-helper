@@ -222,6 +222,7 @@
   },
   "dataSync": {
     "readerNotices": "Save notices",
+    "emptyField": "No text",
     "versionComparison": "Compare field versions",
     "fieldVersionChanged": "This field has another version saved from your other device. Compare the versions above and choose which to keep.",
     "useStoredVersion": "Use saved version",

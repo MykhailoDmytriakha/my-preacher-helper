@@ -63,6 +63,7 @@ interface ScratchPanelProps {
   addRecordedScratchNote: (text: string, recordingId: string) => Promise<ScratchNote | null>;
   restoreScratchNote: (note: ScratchNote) => Promise<ScratchNote | null>;
   updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
+  captureScratchText?: (note: ScratchNote) => (text: string) => Promise<void>;
   deleteScratchNote: (noteId: string) => void;
   /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
   moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
@@ -123,6 +124,7 @@ export default function ScratchPanel({
   addRecordedScratchNote,
   restoreScratchNote,
   updateScratchNote,
+  captureScratchText,
   deleteScratchNote,
   moveScratchNote,
   isScratchWritePending,
@@ -377,11 +379,12 @@ export default function ScratchPanel({
   }, []);
 
   const handleEditNote = useCallback(
-    (noteId: string, text: string) => {
+    (noteId: string, text: string, save?: (text: string) => Promise<void>) => {
       if (scratchMutationLockedRef.current) return;
       markScratchChanged();
-      updateScratchNote(noteId, { text });
       clearComposition();
+      if (save) return save(text);
+      updateScratchNote(noteId, { text });
     },
     [clearComposition, markScratchChanged, updateScratchNote]
   );
@@ -891,6 +894,10 @@ export default function ScratchPanel({
         isReadOnly={isNoteEditingLocked}
         dragHandleProps={onEditPlan || isBoardLocked ? undefined : dragHandleProps}
         onEdit={handleEditNote}
+        captureEdit={captureScratchText && (note => {
+          const save = captureScratchText(note);
+          return text => handleEditNote(note.id, text, save);
+        })}
         onDelete={requestDeleteNote}
         onUnplace={!isBoardLocked && placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
         placeTargets={onEditPlan || isBoardLocked ? undefined : placeTargets}

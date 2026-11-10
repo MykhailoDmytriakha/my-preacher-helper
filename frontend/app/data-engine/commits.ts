@@ -1,5 +1,6 @@
 import { newClientId } from '@/utils/clientId';
 import { hasOutlinePointOrder } from '@/utils/outlineDnd';
+import { matchesSermonNoteOpening, withSermonNoteText, type SermonNoteOpening } from '@/utils/sermonNoteText';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 
@@ -135,6 +136,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   thoughtTagActions?: ThoughtTagAction[];
   tagMembershipActions?: TagMembershipAction[];
   sourceNoteLink?: SourceNoteLinkCapture;
+  sermonNoteText?: SermonNoteOpening;
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
@@ -261,6 +263,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
+    || !equalValues(current.sermonNoteText ?? null, incoming.sermonNoteText ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
@@ -729,6 +732,7 @@ export class CommitQueue {
       ...(thoughtTagActions && { thoughtTagActions }),
       ...(tagMembershipActions && { tagMembershipActions }),
       ...(sourceNoteLink && { sourceNoteLink }),
+      ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -1247,6 +1251,12 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    const noteOpening = record.sequence === 0 ? record.sermonNoteText : undefined;
+    if (noteOpening) {
+      const original = matchesSermonNoteOpening(source, noteOpening) && withSermonNoteText(source.value, noteOpening.target, noteOpening.text);
+      if (!original) return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+      source = { ...source, value: original };
+    }
     const sourceNoteLink = record.sequence === 0 ? record.sourceNoteLink : undefined;
     let intended = record.intended;
     if (sourceNoteLink) {

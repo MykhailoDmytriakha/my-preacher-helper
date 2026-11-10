@@ -107,6 +107,47 @@ describe('immediate outline capture through the current engine draft', () => {
     expect(screen.view.failures).toEqual([]);
   });
 
+  it('keeps the open reminder ancestry after another action adopts a newer outline', async () => {
+    const before = outline('First', 'Second');
+    before.main[0].note = 'Opening reminder';
+    const live = outline('First', 'Second');
+    live.main[0].note = 'Reminder saved from another device';
+    const state = fixture(live);
+    const screen = editor(state, before);
+    const renamed = outline('First', 'New second title');
+    renamed.main[0].note = before.main[0].note;
+    screen.input(renamed);
+    await screen.capture.flush();
+    expect(screen.view.shown.main[0].note).toBe(live.main[0].note);
+
+    const draft = { ...screen.view.shown, main: [
+      { ...screen.view.shown.main[0], note: 'Words from the open field' }, screen.view.shown.main[1],
+    ] };
+    const refused = jest.fn();
+    await expect(screen.capture.schedule({
+      outline: draft, base: screen.view.base,
+      noteOpening: { target: { kind: 'point', id: 'one' }, text: before.main[0].note },
+      begin: () => ({ stored: jest.fn(), failed: refused }),
+    })).rejects.toMatchObject({ serverOutline: state.stored() });
+    expect(state.stored().main).toEqual([{ ...live.main[0] }, renamed.main[1]]);
+    expect(refused).toHaveBeenCalledWith(expect.any(Error), draft, screen.view.base);
+  });
+
+  it('edits the same reminder after another device nests its point', async () => {
+    const opened = outline('First', 'Second');
+    opened.main[0].note = 'Opening reminder';
+    const moved: SermonOutline = { ...opened, main: [{ ...opened.main[1],
+      subPoints: [{ ...opened.main[0], position: 1 }] }] };
+    const state = fixture(moved);
+    const capture = new OutlineCapture(state.writer, 'sermon');
+    await expect(capture.schedule({
+      outline: { ...opened, main: [{ ...opened.main[0], note: 'Edited reminder' }, opened.main[1]] },
+      base: opened, noteOpening: { target: { kind: 'point', id: 'one' }, text: 'Opening reminder' },
+      begin: () => ({ stored: jest.fn(), failed: jest.fn() }),
+    })).resolves.toMatchObject({ main: [{ id: 'two', subPoints: [{ id: 'one', note: 'Edited reminder' }] }] });
+    expect(state.stored().main).toHaveLength(1);
+  });
+
   it('does not replace newer successful words with a late failure from an older local persistence', async () => {
     let reject!: (error: Error) => void;
     let first = true;

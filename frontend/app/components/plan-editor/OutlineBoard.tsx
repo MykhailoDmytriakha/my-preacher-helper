@@ -26,6 +26,7 @@ import {
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
 import { findPointSection } from '@/utils/outlineDnd';
+import { sermonNoteChanged, withOutlineNoteText, type OutlineNoteOpening, type OutlineNoteTarget } from '@/utils/sermonNoteText';
 import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -104,6 +105,7 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
 interface OutlineBoardProps {
   value: SermonOutline;
   onChange: (next: SermonOutline) => void;
+  onNoteChange?: (next: SermonOutline, opening: OutlineNoteOpening) => void | Promise<void>;
   onPointMove?: (next: SermonOutline, pointId: string) => void;
   isReadOnly?: boolean;
   /** Optional: count of thoughts attached to a sub-point, for the delete warning. */
@@ -146,6 +148,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   value,
   onChange,
   onPointMove,
+  onNoteChange,
   isReadOnly = false,
   getSubPointThoughtCount,
   getPointThoughtCount,
@@ -167,6 +170,12 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   // (BUG-20261006-library-screen-reader-words-english): this board's targets carry no list position.
   const outlineRef = useRef(value);
   outlineRef.current = value;
+  const noteChangeRef = useRef(onNoteChange);
+  noteChangeRef.current = onNoteChange;
+  const captureNoteSave = (target: OutlineNoteTarget, text: string | undefined) => () => (next: string | undefined) => {
+    const outline = withOutlineNoteText(outlineRef.current, target, next);
+    return outline && noteChangeRef.current ? noteChangeRef.current(outline, { target, text }) : Promise.reject(sermonNoteChanged());
+  };
   const placeOf = useCallback((over: Over, active: Active) => {
     const place = describeDropPlace(String(over.id), outlineRef.current, parseDragId(String(active.id)) ?? undefined);
     if (!place) return undefined;
@@ -504,6 +513,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       'ml-6', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100')
   ) : (
     <PointNote note={point.note} onChange={note => mutatePoint(point.id, current => ({ ...current, note }))}
+      captureSave={onNoteChange && captureNoteSave({ kind: 'point', id: point.id }, point.note)}
       isReadOnly={isReadOnly} indentClass="ml-6" addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
       tone={scratch ? 'neutral' : 'note'} labels={scratch?.noteLabels} />
   );
@@ -657,6 +667,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                 subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, note: value } : sub) })),
                               'ml-5', 'opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100') : <PointNote
                               note={sp.note}
+                              captureSave={onNoteChange && captureNoteSave({ kind: 'subpoint', id: sp.id }, sp.note)}
                               onChange={(n) =>
                                 mutatePoint(point.id, (p) => ({
                                   ...p,

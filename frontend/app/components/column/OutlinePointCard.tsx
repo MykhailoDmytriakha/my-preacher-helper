@@ -10,6 +10,7 @@ import { FlatRecorderButton } from '@/components/FlatRecorderButton';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { LockToggleButton } from '@/components/LockToggleButton';
 import PointNote from '@/components/PointNote';
+import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
 import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getOutlinePointAiSortState } from '@/utils/aiSorting';
@@ -107,6 +108,7 @@ export const OutlinePointCard: React.FC<{
     data: { container: containerId, outlinePointId: point.id }
   });
 
+  const { captureNoteEdit } = useStructureWriter();
   const recordingOwner = useRecordingOwner(JSON.stringify([sermonId, containerId, point.id]));
   const hasItems = pointItems.length > 0;
   const isPointLocked = hasItems && pointItems.every((item) => item.isLocked);
@@ -476,6 +478,7 @@ export const OutlinePointCard: React.FC<{
                 <PointNote
                   note={point.note}
                   onChange={(note) => onSetPointNote?.(point.id, note)}
+                  captureSave={captureNoteEdit && (() => captureNoteEdit({ kind: 'point', id: point.id }, point.note))}
                   isReadOnly={isPointLocked}
                   indentClass="ml-6"
                   addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"

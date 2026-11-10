@@ -24,16 +24,18 @@ export function editorSlot(editorId: string): string | null {
 }
 
 const MANUAL_CHOICE_RECOVERY = 'manual-choice-recovery';
+const SERMON_NOTE_CHOICE_RECOVERY = 'sermon-note-choice-recovery';
+export const SERMON_NOTE_CHOICE_RECOVERY_PREFIX = JSON.stringify([SERMON_NOTE_CHOICE_RECOVERY]).slice(0, -1) + ',';
 export const MANUAL_CHOICE_RECOVERY_PREFIX = JSON.stringify([MANUAL_CHOICE_RECOVERY]).slice(0, -1) + ',';
 
-export function manualChoiceRecoveryIdentity(chosenId: string, laterId: string): string {
-  return JSON.stringify([MANUAL_CHOICE_RECOVERY, chosenId, laterId]);
+export function manualChoiceRecoveryIdentity(chosenId: string, laterId: string, kind?: 'sermon-note'): string {
+  return JSON.stringify([kind === 'sermon-note' ? SERMON_NOTE_CHOICE_RECOVERY : MANUAL_CHOICE_RECOVERY, chosenId, laterId]);
 }
 
 export function isManualChoiceRecoveryIdentity(editorId: string): boolean {
   try {
     const parts: unknown = JSON.parse(editorId);
-    return Array.isArray(parts) && parts.length === 3 && parts[0] === MANUAL_CHOICE_RECOVERY
+    return Array.isArray(parts) && parts.length === 3 && (parts[0] === MANUAL_CHOICE_RECOVERY || parts[0] === SERMON_NOTE_CHOICE_RECOVERY)
       && parts.slice(1).every(part => typeof part === 'string' && part.length > 0);
   } catch {
     return false;

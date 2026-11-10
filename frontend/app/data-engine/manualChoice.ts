@@ -1,3 +1,5 @@
+import { matchesSermonNoteOpening, sermonNoteChanged, withSermonNoteText } from '@/utils/sermonNoteText';
+
 import { isUnsignedAnchoredPlacementRefusal, withoutUnsignedRowOrder } from './anchoredRowPlacement';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
@@ -123,14 +125,15 @@ export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], b
     merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
 }
 
-type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement' | 'sourceNoteLinks'>;
+type RetainedAction = Pick<NonNullable<EditorRecord['retainedManualChoice']>,
+  'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement' | 'sourceNoteLinks' | 'sermonNoteText'>;
 
 function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
   base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
-  placement?: RetainedPlacement): EditorRecord {
+  action?: RetainedAction): EditorRecord {
   return {
-    owner, editorId: manualChoiceRecoveryIdentity(chosenId, draftId), prepared: null, unfinalized: [],
-    retainedManualChoice: { base, ...(decidingEditorId && { decidingEditorId }), ...placement },
+    owner, editorId: manualChoiceRecoveryIdentity(chosenId, draftId, action?.sermonNoteText && 'sermon-note'), prepared: null, unfinalized: [],
+    retainedManualChoice: { base, ...(decidingEditorId && { decidingEditorId }), ...action },
     checkpoint: { ...afterChoice(stored, value, 1), dirty: true },
   };
 }
@@ -206,7 +209,7 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
   const editors = new Map<string, string>();
   const retained = new Set<string>();
   const retain = (id: string, value: DocumentData | null, base = draft,
-    placement?: RetainedPlacement) => retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, placement);
+    action?: RetainedAction) => retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, action);
   const templateMove = (request: CommitRequest) => stored.resource.collection === 'planTemplates' ? request.outlinePointPlacement : undefined;
   const isPlacement = (request: CommitRequest) => request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove(request);
   const separatePlacementSaves = isPlacement(chosen) || isUnsignedAnchoredPlacementRefusal(chosen)
@@ -240,6 +243,9 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     }
     const laterDraft = formOwned ? basis : replaySavedChoiceDelta(stored.resource, ancestor.value, request.value, basis);
     projected.set(request.id, laterDraft);
+    if (!formOwned && request.sermonNoteText && !equalValues(laterDraft, basis)) {
+      return [retain(request.id, laterDraft, basis, { sermonNoteText: request.sermonNoteText })];
+    }
     if (separatePlacementSaves && !formOwned) {
       if (equalValues(laterDraft, basis)) return [];
       return request.value && ancestor.value ? [protectPlacementFields(retain(request.id, request.value, ancestor.value), savedPlacementFields(request))]
@@ -340,5 +346,16 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
     return { ...record, checkpoint };
   }
   const draft = replaySavedChoiceDelta(confirmed.resource, retained.base, record.checkpoint.draft, confirmed.value);
-  return { ...record, checkpoint: afterChoice(confirmed, draft, record.checkpoint.editGeneration) };
+  const note = retained.sermonNoteText;
+  const checkpoint = afterChoice(confirmed, draft, record.checkpoint.editGeneration);
+  if (note) {
+    const opening = matchesSermonNoteOpening(confirmed, note) && withSermonNoteText(confirmed.value, note.target, note.text);
+    if (!opening) throw sermonNoteChanged();
+    const merged = mergeDocumentFields(opening, draft, confirmed.value);
+    checkpoint.draft = merged.value.exists ? merged.value.value as DocumentData : null;
+    checkpoint.dirty = !equalValues(checkpoint.draft, confirmed.value);
+    checkpoint.conflicts = merged.conflicts;
+    if (merged.conflicts.length) checkpoint.remoteCandidate = confirmed;
+  }
+  return { ...record, checkpoint };
 }

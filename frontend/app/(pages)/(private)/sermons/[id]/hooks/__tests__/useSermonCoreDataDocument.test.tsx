@@ -21,6 +21,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
     data: value, confirmed: session.checkpoint().confirmed, remote: null,
     state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
+    captureSermonNoteText: jest.fn(),
     captureSermonPlanMode: jest.fn(),
     update: jest.fn(async (updater: (current: DocumentData | null) => DocumentData | null) => {
       session.edit(updater(session.checkpoint().draft));

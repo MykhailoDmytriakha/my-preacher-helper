@@ -1,4 +1,6 @@
+import { projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
 import { manualComparison } from '../manualComparison';
+import { validateRecoveryRecord } from '../recovery.client';
 import { keepUncontestedSermonFields, readSermonPlanModeComparison } from '../sermonFieldChoice';
 
 import type { CommitRequest } from '../commits';
@@ -91,4 +93,31 @@ it('compares the two plan modes while retaining words independently of the mode 
   expect(readSermonPlanModeComparison(checkpoint)).toMatchObject({ mine, stored: theirs });
   expect(keepUncontestedSermonFields(basis, draft, stored, conflicts)?.planText)
     .toEqual({ opening: 'My edited intro', end: 'Saved conclusion' });
+});
+
+it('keeps the second scratch note opening when the first queued note gets a separate choice', () => {
+  const resource = { collection: 'sermons', id: 's1' };
+  const snapshot = (revision: number, first: string, second: string): ResourceSnapshot => ({
+    resource, metadata: { protocol: 1, generation: 'g1', revision, deleted: false },
+    value: { userId: 'owner', scratch: [{ id: 'one', createdAt: 't1', text: first }, { id: 'two', createdAt: 't2', text: second }] },
+  });
+  const baseline = snapshot(1, 'A at opening', 'B at opening');
+  const firstDraft = snapshot(1, 'A on phone', 'B at opening').value;
+  const secondDraft = snapshot(1, 'A on phone', 'B on phone').value;
+  const stored = snapshot(2, 'A on computer', 'B on computer');
+  const first: CommitRequest = { id: 'first', owner: 'owner', editorId: 'scratch', editGeneration: 1,
+    predecessor: null, baseline, working: baseline, value: firstDraft, intended: firstDraft,
+    initialized: true, command: null, submitted: firstDraft, revision: 1, sequence: 0, state: 'cancelled', result: null, unfinalized: [] };
+  const second: CommitRequest = { ...first, id: 'second', predecessor: first.id, editGeneration: 2,
+    initialized: false, value: secondDraft, intended: secondDraft, submitted: null, retainedAfterChoice: true,
+    sermonNoteText: { sermonId: resource.id, generation: 'g1', pending: [], target: { kind: 'scratch', id: 'two', createdAt: 't2' }, text: 'B at opening' } };
+  const [copy] = projectSavedChoiceDependents('owner', first, stored, stored.value, [first, second]);
+  const reopened = validateRecoveryRecord(copy, copy.owner, copy.editorId, resource);
+  const recovered = recoverManualChoiceCopy(reopened, stored);
+  expect(recovered.checkpoint).toMatchObject({
+    draft: snapshot(2, 'A on computer', 'B on phone').value,
+    remoteCandidate: stored,
+    conflicts: [{ path: ['scratch', 'id:two', 'text'], base: { value: 'B at opening' },
+      mine: { value: 'B on phone' }, theirs: { value: 'B on computer' } }],
+  });
 });

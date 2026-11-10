@@ -1,12 +1,13 @@
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { manualChoiceRecoveryIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { forkCheckpoint, recoveryCheckpointId } from '../recovery.client';
 import { collectCommitRows, commitProjectionKey, createCommitCollectionWindow } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
-import { createEngineStorageTransaction, validateCommitReferences } from '../storage.client';
+import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from '../storage.client';
 import { installStorageHarness } from './storageHarness';
 
 import type { CommitRequest } from '../commits';
@@ -26,6 +27,33 @@ const record = (request: CommitRequest, completed = false): EditorRecord => {
 const acknowledge = (request: CommitRequest): CommitRequest => ({ ...request, state: 'acknowledged', result: { kind: 'acknowledged', operationId: request.id, snapshot: { ...snapshot, value: request.value } } });
 let storage: ReturnType<typeof installStorageHarness>;
 beforeEach(() => { jest.clearAllMocks(); storage = installStorageHarness(); });
+
+it('keeps a newer note capture and its retained comparison outside the old bundle ranges', async () => {
+  const commits = createIndexedDbCommitStore();
+  const checkpoints = createIndexedDbCheckpoints();
+  const baseline: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' },
+    metadata: { protocol: 1, revision: 1, generation: 'generation', deleted: false },
+    value: { userId: 'owner', scratch: [{ id: 'a', createdAt: 'birth', text: 'Seen words' }] } };
+  const original = { sermonId: 'sermon', generation: 'generation', pending: [],
+    target: { kind: 'scratch' as const, id: 'a', createdAt: 'birth' }, text: 'Seen words' };
+  const later = { userId: 'owner', scratch: [{ id: 'a', createdAt: 'birth', text: 'Edited words' }] };
+  const pending = await commits.create({ ...request('inline-save'), baseline, working: baseline, value: later,
+    intended: later, sermonNoteText: original });
+  const recovery = { owner: 'owner', editorId: manualChoiceRecoveryIdentity('previous', pending.id, 'sermon-note'),
+    checkpoint: { ...new DataSession(baseline).checkpoint(), draft: later, dirty: true }, prepared: null, unfinalized: [],
+    retainedManualChoice: { base: baseline.value, sermonNoteText: original } };
+  await checkpoints.create(recovery);
+  const transaction = createEngineStorageTransaction();
+  const oldRange = (kind: string) => transaction<unknown[]>('readonly', (store, read, done) => {
+    read(store.getAll(engineOwnerRange(kind, 'owner')), done);
+  });
+
+  await expect(oldRange('request')).resolves.toEqual([]);
+  await expect(oldRange('checkpoint')).resolves.toEqual([]);
+  await expect(commits.list('owner')).resolves.toEqual([pending]);
+  await expect(checkpoints.read('owner', recovery.editorId)).resolves.toMatchObject(recovery);
+  await expect(checkpoints.listManualChoiceCopies!('owner', baseline.resource)).resolves.toMatchObject([{ record: recovery }]);
+});
 
 it('finds a held backup by its reference without reading unrelated queued Saves', async () => {
   const commits = createIndexedDbCommitStore();

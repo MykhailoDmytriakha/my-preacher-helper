@@ -1,4 +1,5 @@
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
+import { sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
@@ -15,6 +16,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
+    || sermonNoteConflictTarget(path) !== undefined
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -136,7 +138,12 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
     const path = conflicts[0].path;
     if (path[0] === 'preachDates' && !readSermonConflictField(stored.value, path.slice(0, 2)).exists) throw changed();
     const pointId = exegeticalPointConflictId(path);
-    if (pointId) {
+    if (sermonNoteConflictTarget(path)) {
+      const note = sermonNoteConflictText(path, draft, stored.value);
+      if (!note) return undefined;
+      if (note.mine !== conflicts[0].mine.value || note.stored !== conflicts[0].theirs.value) throw changed();
+      corrected = withSermonNoteText(draft, note.target, note.stored ?? null);
+    } else if (pointId) {
       const before = exegeticalPlan(basis.value.preparation), local = exegeticalPlan(draft.preparation), remote = exegeticalPlan(stored.value.preparation);
       if (!before || !local || !remote) throw changed();
       const choice = readExegeticalPointChoice(before, local, remote, pointId);

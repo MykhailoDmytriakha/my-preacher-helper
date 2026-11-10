@@ -28,6 +28,7 @@ import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrde
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { OutlinePointGap, OutlinePointOrder } from '@/utils/outlineDnd';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
+import type { SermonNoteOpening } from '@/utils/sermonNoteText';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -89,6 +90,7 @@ export type EditorCommitAction =
   | { kind: 'comment-kind'; commentKind: CommentKindCapture }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'sermon-source-note-links'; selection: SourceNoteLinkCapture }
+  | { kind: 'sermon-note-text'; opening: SermonNoteOpening }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };

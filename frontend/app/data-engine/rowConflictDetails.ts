@@ -1,5 +1,6 @@
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
+import { sermonNoteConflictText } from '@/utils/sermonNoteText';
 
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_OUTCOME, councilOutcomeRow } from './councilOutcomeAction';
@@ -172,6 +173,12 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
   }
   if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];
+  const note = sermonNoteConflictText(path, draft, remoteCandidate.value);
+  if (note && checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation
+    && note.mine === conflicts[0].mine.value && note.stored === conflicts[0].theirs.value) {
+    return { kind: 'note-text' as const, scratch: note.target.kind === 'scratch', mine: note.mine, stored: note.stored,
+      identity: JSON.stringify([path, note, remoteCandidate.metadata, checkpoint.editGeneration]) };
+  }
   const mine = readSermonConflictField(draft, path);
   const stored = readSermonConflictField(remoteCandidate.value, path);
   const identity = JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);

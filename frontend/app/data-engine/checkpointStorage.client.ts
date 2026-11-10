@@ -1,5 +1,6 @@
 'use client';
 
+import { SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './protocol';
 import { isRecoverableCheckpoint, recoveryCheckpointEditorId, validateRecoveryRecord } from './recovery.client';
 import { recoveryOrigins } from './recoverySource';
@@ -10,7 +11,10 @@ import { validateCommitReferences, type StorageRead } from './storage.client';
 import type { CommitRequest } from './commits';
 import type { EditorRecord, SettledCheckpoint } from './controller';
 
-export const checkpointKey = (owner: string, editorId: string): IDBValidKey => ['checkpoint', owner, editorId];
+// A version that cannot restore a reminder's opening must not offer to apply its retained draft.
+export const SERMON_NOTE_CHOICE_ROW = 'sermon-note-choice-checkpoint';
+export const checkpointKey = (owner: string, editorId: string): IDBValidKey =>
+  [editorId.startsWith(SERMON_NOTE_CHOICE_RECOVERY_PREFIX) ? SERMON_NOTE_CHOICE_ROW : 'checkpoint', owner, editorId];
 
 /** Reuse the same validation and retention rules inside an existing native transaction. */
 export function writeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record: EditorRecord,

@@ -15,6 +15,10 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   const comparison = readSermonConflict(checkpoint);
   if (!comparison) return undefined;
   const { identity, kind } = comparison;
+  if (kind === 'note-text') {
+    return { identity, valueKind: 'field', title: t(comparison.scratch ? 'scratch.card.label' : 'planEditor.note.label'),
+      mine: comparison.mine ?? t('dataSync.emptyField'), stored: comparison.stored ?? t('dataSync.emptyField'), scopedChoice: true };
+  }
   if (kind === 'verse') {
     return { identity, title: t('addSermon.verseLabel'), mine: comparison.mine, stored: comparison.stored, scopedChoice: true };
   }

@@ -1,4 +1,4 @@
-import { chooseOutlineLocalChanges } from '@/utils/outlineChoice';
+import { chooseOutlineLocalChanges, readOutlineNoteChoice } from '@/utils/outlineChoice';
 
 import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
@@ -84,4 +84,15 @@ describe('an explicit local outline choice keeps only the scope of local changes
     const mine = plan([point('a','A')]);
     expect(chooseOutlineLocalChanges(null,mine,null)).toEqual(mine);
   });
+});
+
+it('chooses the stored reminder without discarding a separate plan edit made while the question was open', () => {
+  const first = { ...point('a', 'First'), note: 'Original reminder' };
+  const second = point('b', 'Second');
+  const before = plan([first, second]);
+  const mine = plan([{ ...first, note: 'Reminder from this device' }, { ...second, text: 'New second point' }]);
+  const stored = plan([{ ...first, note: 'Reminder from the other device' }, second]);
+  const choice = readOutlineNoteChoice(before, mine, stored);
+  expect(choice).toMatchObject({ mine: 'Reminder from this device', stored: 'Reminder from the other device' });
+  expect(choice?.acceptStored().main).toEqual([stored.main[0], mine.main[1]]);
 });

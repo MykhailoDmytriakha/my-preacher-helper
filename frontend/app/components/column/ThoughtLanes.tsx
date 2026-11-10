@@ -7,6 +7,7 @@ import React from 'react';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from '@/components/PointNote';
+import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
@@ -122,6 +123,7 @@ const SubPointDropTarget: React.FC<{
   isReadOnly?: boolean;
   onEditNote?: (note?: string) => void;
 }> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder, showNotes = false, isReadOnly = false, onEditNote }) => {
+  const { captureNoteEdit } = useStructureWriter();
   const { setNodeRef, isOver } = useDroppable({
     id: `sub-point-${subPoint.id}`,
     data: {
@@ -178,6 +180,7 @@ const SubPointDropTarget: React.FC<{
           <PointNote
             note={subPoint.note}
             onChange={(note) => onEditNote?.(note)}
+            captureSave={captureNoteEdit && (() => captureNoteEdit({ kind: 'subpoint', id: subPoint.id }, subPoint.note))}
             isReadOnly={isReadOnly}
             addRevealClass="opacity-100"
           />

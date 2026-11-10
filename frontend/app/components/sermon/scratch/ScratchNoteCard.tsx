@@ -25,6 +25,7 @@ interface ScratchNoteCardProps {
   isOverlay?: boolean;
   dragHandleProps?: DragHandleProps | null;
   onEdit: (noteId: string, text: string) => void;
+  captureEdit?: (note: ScratchNote) => (text: string) => void | Promise<void>;
   onDelete: (noteId: string) => void;
   onUnplace?: (noteId: string) => void;
   /** Where the note can be filed without dragging; the entry it is in now is left out. */
@@ -62,6 +63,7 @@ export default function ScratchNoteCard({
   isOverlay = false,
   dragHandleProps,
   onEdit,
+  captureEdit,
   onDelete,
   onUnplace,
   placeTargets,
@@ -255,6 +257,10 @@ export default function ScratchNoteCard({
             <PointNote
               note={note.text}
               onChange={handleNoteChange}
+              captureSave={captureEdit && (() => {
+                const save = captureEdit(note);
+                return text => text ? save(text) : onDelete(note.id);
+              })}
               isReadOnly={isReadOnly}
               addRevealClass="opacity-100"
               hideClearButton

@@ -52,6 +52,7 @@ import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
+import type { SermonNoteOpening } from '@/utils/sermonNoteText';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
 const placementUnavailable = () => Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
@@ -85,7 +86,8 @@ export interface EditorRecord extends VersionedRecovery {
   /** Basis of the retained changes, separate from the last accepted server snapshot. */
   retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null;
     councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null;
-    outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null; sourceNoteLinks?: SourceNoteLinkCapture };
+    outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null; sourceNoteLinks?: SourceNoteLinkCapture;
+    sermonNoteText?: SermonNoteOpening };
 }
 
 export interface CheckpointStore {

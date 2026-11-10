@@ -73,7 +73,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}
       addRecordedScratchNote={scratch.addRecordedScratchNote}
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}
-      updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
+      captureScratchText={scratch.captureScratchText} updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
       isScratchWritePending={scratch.isWritePending} canEditQueuedNotes={canEditQueuedNotes} scratchRevision={scratch.scratchRevision}
       onEditPlan={() => setProposalOpen(true)}
       isReadOnly={isReadOnly || deleted || !owner} />}
