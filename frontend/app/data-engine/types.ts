@@ -176,7 +176,7 @@ export type BibleMarkStrokeStamp = {
 };
 
 export type DataCommand = CommandBase & (
-  | { kind: 'create'; value: DocumentData; bibleMarkStroke?: BibleMarkStrokeStamp }
+  | { kind: 'create'; value: DocumentData; bibleMarkStroke?: BibleMarkStrokeStamp; councilTopicQueue?: string }
   | { kind: 'relation'; relation: 'service-order-seed'; value: DocumentData }
   | { kind: 'update'; changes: FieldChange[];
       preachDateAction?: DatedRowActionEvidence;
@@ -190,6 +190,7 @@ export type DataCommand = CommandBase & (
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
       councilAssemblyActions?: CouncilAssemblyActions;
       councilTopicKindActions?: CouncilTopicKindActions;
+      councilTopicQueue?: string;
       councilOutcomeActions?: CouncilOutcomeWire[];
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;

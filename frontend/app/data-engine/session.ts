@@ -16,7 +16,7 @@ import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageRowFields } from './rowFieldAutosave';
+import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -423,6 +423,7 @@ export class DataSession {
         ? withCouncilLifecycle(resolved, lifecycle) : resolved);
     }
     this.clearAutosaveFieldDrafts();
+    if (candidate) stageReviewedCouncilTopics(this.state, this.state.conflicts);
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
     this.state.editGeneration += 1;

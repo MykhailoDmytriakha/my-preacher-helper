@@ -13,7 +13,7 @@ import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesAc
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
-import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
+import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
 import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind, type CouncilTopicKindHistoryPage } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
@@ -537,7 +537,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   councilTopicTitleOrder?: RowDetailOrder<'title', string>;
   councilAssemblyOrder?: RowDetailOrder<'forAssembly', boolean>;
   councilTopicKindOrder?: RowDetailOrder<'kind', CouncilTopicKind>;
-  councilOutcomeOrder?: RowDetailOrder<'outcome', CouncilOutcome>;
+  councilOutcomeOrder?: ReturnType<typeof orderCouncilOutcome>;
   thoughtLockOrder?: RowDetailOrder<'isLocked', boolean>;
   thoughtPlacementOrder?: ReturnType<typeof orderThoughtPlacement>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
@@ -573,7 +573,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const topicTitle = metadataAfterRowDetails({ ...snapshot, metadata: stepTitle }, raw, COUNCIL_TOPIC_TITLE_POLICY, primary ? councilTopicTitleOrder : undefined);
     const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicTitle }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
     const topicKind = metadataAfterRowDetails({ ...snapshot, metadata: assembly }, raw, COUNCIL_TOPIC_KIND_POLICY, primary ? councilTopicKindOrder : undefined);
-    const topicOutcome = metadataAfterRowDetails({ ...snapshot, metadata: topicKind }, raw, COUNCIL_OUTCOME_POLICY, primary ? councilOutcomeOrder : undefined);
+    const topicOutcome = metadataAfterRowDetails({ ...snapshot, metadata: topicKind }, raw, COUNCIL_OUTCOME_POLICY, primary ? councilOutcomeOrder : undefined,
+      undefined, primary ? councilOutcomeOrder?.queueDigest : undefined);
     const thoughtLock = metadataAfterRowDetails({ ...snapshot, metadata: topicOutcome }, raw, THOUGHT_LOCK_POLICY, primary ? thoughtLockOrder : undefined);
     const thoughtPlacement = metadataAfterRowDetails({ ...snapshot, metadata: thoughtLock }, raw, THOUGHT_PLACEMENT_POLICY, primary ? thoughtPlacementOrder : undefined, primary ? thoughtPlacementOrder?.repairs : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
@@ -738,7 +739,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let councilTopicTitleOrder: RowDetailOrder<'title', string> | undefined;
     let councilAssemblyOrder: RowDetailOrder<'forAssembly', boolean> | undefined;
     let councilTopicKindOrder: RowDetailOrder<'kind', CouncilTopicKind> | undefined;
-    let councilOutcomeOrder: RowDetailOrder<'outcome', CouncilOutcome> | undefined;
+    let councilOutcomeOrder: ReturnType<typeof orderCouncilOutcome> | undefined;
     let thoughtLockOrder: RowDetailOrder<'isLocked', boolean> | undefined;
     let thoughtPlacementOrder: ReturnType<typeof orderThoughtPlacement> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
@@ -766,7 +767,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       councilTopicTitleOrder = orderRowDetails(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
       councilAssemblyOrder = orderRowDetails(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
       councilTopicKindOrder = orderRowDetails(councilAssemblyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_KIND_POLICY);
-      councilOutcomeOrder = orderCouncilOutcome(councilTopicKindOrder.command, current, raw?._dataEngine, serverMs);
+      councilOutcomeOrder = orderCouncilOutcome(councilTopicKindOrder.command, current, raw?._dataEngine, serverMs, command);
       const aligned = alignServiceOrderFlagRepresentation(alignCouncilAssembly(alignCouncilTopicKind(councilOutcomeOrder.command, current), current), current);
       thoughtLockOrder = orderRowDetails(aligned, current, raw?._dataEngine, serverMs, THOUGHT_LOCK_POLICY);
       thoughtPlacementOrder = orderThoughtPlacement(alignThoughtLockRepresentation(thoughtLockOrder.command, current), current, raw?._dataEngine, serverMs);

@@ -1,5 +1,6 @@
 import { boundedActionTime } from './actionClock';
-import { COUNCIL_OUTCOME_POLICY } from './councilOutcomeAction';
+import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_POLICY, councilOutcomeRow } from './councilOutcomeAction';
+import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { equalValues } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
@@ -19,7 +20,7 @@ import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from
 
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
-type Draft = { generation: string; action: Action };
+type Draft = { generation: string; action: Action; reviewed?: true };
 type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts';
 type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions';
 export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement';
@@ -86,9 +87,21 @@ function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | nul
   if (!equalValues(before, after) || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
 }
 
+function carryReviewedCouncilDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, target: Target): Draft[] {
+  const revision = checkpoint.confirmed.metadata?.revision;
+  return validDrafts(checkpoint, checkpoint.draft, target).flatMap(draft => {
+    const action = draft.action;
+    if (!draft.reviewed || action.observedRevision !== revision || isCaptured(checkpoint, action, target)) return [];
+    const after = fieldAt(value, action.rowId, target);
+    return after !== undefined && !equalValues(after, action.after) && birthAt(value, action.rowId, target) === action.rowCreatedAt
+      ? [{ ...draft, action: { ...action, after } }] : [];
+  });
+}
+
 function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
   stamp: RowFieldStamp | undefined, target: Target): Draft[] {
   const staged = validDrafts(checkpoint, value, target);
+  if (target.action === 'councilOutcomeActions') staged.push(...carryReviewedCouncilDrafts(checkpoint, value, target));
   const metadata = checkpoint.confirmed.metadata;
   if (!metadata || metadata.deleted || stamp?.field !== target.stamp) return staged;
   const time = stamp.time === null ? null : boundedActionTime(stamp.time);
@@ -110,6 +123,26 @@ export function stageRowFields(checkpoint: SessionCheckpoint, value: DocumentDat
     if (staged.length) checkpoint[target.draft] = Object.fromEntries(staged.map(draft => [draft.action.rowId, draft]));
     else delete checkpoint[target.draft];
   }
+}
+
+/** A deliberate version choice sees the saved topic frame, including a kind-only change. */
+export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[]): void {
+  const { confirmed, draft } = checkpoint;
+  if (confirmed.resource.collection !== 'councils' || !confirmed.metadata || !confirmed.value || !draft) return;
+  const { generation, revision: observedRevision } = confirmed.metadata;
+  const rows = new Set(conflicts.flatMap(({ path }) => councilOutcomeRow(path) ?? councilTopicKindRow(path) ?? []));
+  if (!rows.size) return;
+  const opening = existingRowFields(confirmed.value.topics, COUNCIL_OUTCOME), proposed = existingRowFields(draft.topics, COUNCIL_OUTCOME);
+  const beforeKinds = existingRowFields(confirmed.value.topics, COUNCIL_TOPIC_KIND), afterKinds = existingRowFields(draft.topics, COUNCIL_TOPIC_KIND);
+  const birth = COUNCIL_OUTCOME_POLICY.birth;
+  const beforeBirths = existingRowFields(confirmed.value.topics, birth), afterBirths = existingRowFields(draft.topics, birth);
+  const stamps = [...rows].flatMap(rowId => {
+    const before = opening.get(rowId), after = proposed.get(rowId), rowCreatedAt = beforeBirths.get(rowId);
+    if (!before || !after || !rowCreatedAt || rowCreatedAt !== afterBirths.get(rowId)
+      || (equalValues(before, after) && beforeKinds.get(rowId) === afterKinds.get(rowId))) return [];
+    return [[rowId, { generation, reviewed: true, action: { rowId, rowCreatedAt, before, after, time: null, observedRevision } }]] as const;
+  });
+  if (stamps.length) checkpoint.councilOutcomeDrafts = Object.fromEntries(stamps);
 }
 
 function uncaptured(checkpoint: SessionCheckpoint, target: Target) {
@@ -147,14 +180,21 @@ export function captureRowFields(checkpoint: SessionCheckpoint, baseline: Resour
   for (const target of targetsFor(baseline.resource.collection)) {
     const actions = [...uncaptured(checkpoint, target), ...manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementIds)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
       .map(action => {
-        const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, target.policy, request => {
+        const outcome = target.action === 'councilOutcomeActions';
+        const policy: RowDetailPolicy<string, Value> = outcome
+          ? { ...target.policy, scopes: rows => COUNCIL_OUTCOME_POLICY.scopes?.(rows, 'outcome') }
+          : target.policy;
+        const scope = policy.scopes?.(opening?.[policy.birth.field], target.field)?.get(action.rowId);
+        const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, policy, request => {
           const captured = request[target.action]?.find(item => item.rowId === action.rowId);
           if (captured) return captured;
           const parent = request.predecessor ? byId.get(request.predecessor)?.value : request.baseline.value;
-          if (birthAt(parent, action.rowId, target) === undefined && equalValues(fieldAt(request.value, action.rowId, target), action.before)) {
+          const created = birthAt(parent, action.rowId, target) === undefined;
+          const changedType = outcome && request.councilTopicKindActions?.kind.rowId === action.rowId;
+          if ((created || changedType) && equalValues(fieldAt(request.value, action.rowId, target), action.before)) {
             return { rowId: action.rowId, rowCreatedAt: action.rowCreatedAt, after: action.before };
           }
-        }, target.field, action.rowId, action.rowCreatedAt, action.before, undefined);
+        }, target.field, action.rowId, action.rowCreatedAt, action.before, scope);
         return { ...action, ...(predecessorOperationId && { predecessorOperationId }) };
       });
     if (actions.length) result[target.action] = actions;

@@ -1627,7 +1627,7 @@ describe('transactional DataEngine server', () => {
       value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [recorded] },
     })).kind).toBe('acknowledged');
     const edit = (operationId: string, before: typeof open, after: typeof open) => ({
-      ...base, kind: 'update', operationId, generation: 'seed',
+      ...base, kind: 'update', operationId, generation: 'seed', councilTopicQueue: 'same-local-queue-000',
       changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
     });
     expect((await processCommand(base.owner, edit('clear', recorded, open))).kind).toBe('acknowledged');
@@ -1953,7 +1953,7 @@ describe('transactional DataEngine server', () => {
       value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [topic, neighbor] },
     })).kind).toBe('acknowledged');
     const edit = (operationId: string, before: typeof topic[], after: typeof topic[], stamp?: { predecessorOperationId?: string }) =>
-      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed', councilTopicQueue: 'same-local-queue-000',
         changes: [{ path: ['topics'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
         ...(stamp && { councilOutcomeActions: [{ rowId: topic.id, rowCreatedAt: topic.id, observedRevision: 1, time: null, ...stamp }] }),
       });
@@ -1975,6 +1975,67 @@ describe('transactional DataEngine server', () => {
     } else {
       expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: follows ? [words, neighbor] : [selected, other] } } });
     }
+  });
+
+  it.each([
+    { scenario: 'missing legacy outcome history', missing: true, mode: 'outcome', queue: 'phone-queue-00000', kind: 'conflict' },
+    { scenario: 'changing type and outcome together', missing: true, mode: 'combined', queue: 'phone-queue-00000', kind: 'conflict' },
+    { scenario: 'an old client sees a value that has not returned', missing: false, mode: 'legacy-fresh', queue: undefined, kind: 'acknowledged' },
+    { scenario: 'an old outcome command without an observed revision', missing: false, mode: 'legacy-outcome', queue: undefined, kind: 'conflict' },
+    { scenario: 'an old result command after the original kind returned', missing: false, mode: 'legacy-outcome-round-trip', queue: undefined, kind: 'conflict' },
+    { scenario: 'an old kind command after the original kind returned', missing: false, mode: 'legacy-kind-round-trip', queue: undefined, kind: 'conflict' },
+    { scenario: 'an old kind command without an observed revision', missing: false, mode: 'legacy-type', queue: undefined, kind: 'conflict' },
+    { scenario: 'a pure type change after a different outcome was cleared', missing: false, mode: 'type', queue: 'phone-queue-00000', kind: 'conflict' },
+    { scenario: 'a copied ID from another queue', missing: false, mode: 'spoof', queue: 'phone-queue-00000', kind: 'conflict' },
+    { scenario: 'the actual preceding action of the queue', missing: false, mode: 'spoof', queue: 'desktop-queue-000', kind: 'acknowledged' },
+    { scenario: 'a freshly observed legacy outcome', missing: true, mode: 'fresh', queue: 'phone-queue-00000', kind: 'acknowledged' },
+    { scenario: 'reviewing a kind change whose outcome remains empty', missing: true, mode: 'reviewed-type', queue: 'phone-queue-00000', kind: 'acknowledged' },
+  ])('checks council outcome revision and provenance: $scenario', async ({ missing, mode, queue, kind }) => {
+    const resource = { collection: 'councils', id: 'council-outcome-legacy-basis' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-09T00:00:00.000Z';
+    const opening = { id: 'section', title: 'Decision', kind: 'decision', questions: [],
+      options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] };
+    const chosen = { ...opening, discussed: true, acceptedOptionId: 'a' };
+    const neighbor = { ...opening, id: 'neighbor', title: 'Keep the other topic' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [opening, neighbor] },
+    })).kind).toBe('acknowledged');
+    const save = (operationId: string, before: typeof opening, after: typeof opening, observedRevision: number,
+      councilTopicQueue: string | undefined, usePredecessor = false, includeOutcome = true, includeKind = false) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed', ...(councilTopicQueue && { councilTopicQueue }),
+        changes: [{ path: ['topics'], before: { exists: true, value: [before, neighbor] }, after: { exists: true, value: [after, neighbor] } }],
+        ...(includeOutcome && { councilOutcomeActions: [{ rowId: opening.id, rowCreatedAt: opening.id, observedRevision,
+          ...(usePredecessor && { predecessorOperationId: 'clear' }) }] }),
+        ...(includeKind && { councilTopicKindActions: { kind: { rowId: opening.id, rowCreatedAt: opening.id,
+          before: before.kind, after: after.kind, observedRevision, time: null } } }),
+      });
+    const legacyFresh = mode === 'legacy-fresh';
+    const current = legacyFresh ? { ...opening, discussed: true, decision: 'An outcome never used before' } : opening;
+    if (mode.endsWith('-round-trip')) {
+      const info = { ...opening, kind: 'info' };
+      expect((await save('switch-info', opening, info, 1, 'desktop-queue-000', false, false, true)).kind).toBe('acknowledged');
+      expect((await save('switch-back', info, opening, 2, 'desktop-queue-000', false, false, true)).kind).toBe('acknowledged');
+    } else {
+      expect((await save('choose-a', opening, chosen, 1, 'desktop-queue-000')).kind).toBe('acknowledged');
+      expect((await save('clear', chosen, current, 2, 'desktop-queue-000')).kind).toBe('acknowledged');
+    }
+    if (missing) {
+      const raw = documents.get('councils/' + resource.id)!;
+      const metadata = raw._dataEngine as Raw;
+      delete metadata.councilOutcomeProofs;
+    }
+    const typeChanged = mode === 'combined' || mode.endsWith('type') || mode === 'legacy-kind-round-trip';
+    const wanted = typeChanged ? { ...opening, kind: 'info', ...(mode === 'combined' && { discussed: true }) }
+      : { ...opening, discussed: true, acceptedOptionId: 'b' };
+    const modern = !mode.startsWith('legacy-');
+    const reviewed = mode === 'fresh' || mode === 'reviewed-type';
+    const result = await save('late', current, wanted, reviewed ? 3 : 1, queue, mode === 'spoof',
+      modern && mode !== 'type', modern && typeChanged && mode !== 'reviewed-type');
+    expect(result).toMatchObject({ kind, snapshot: { value: { topics: [kind === 'acknowledged' ? wanted : current, neighbor] } } });
+    if (kind === 'conflict') expect(result).toMatchObject({
+      conflicts: [{ path: ['topics', 'id:section', typeChanged ? 'kind' : 'outcome'] }],
+    });
   });
 
   it.each(['decision', 'info'])('keeps incompatible %s outcomes distinct when order is unknown', async kind => {
@@ -2032,9 +2093,11 @@ describe('transactional DataEngine server', () => {
     }
     if (recorded) {
       expect((await processCommand(base.owner, edit('explicit-clear', decided, opening))).kind).toBe('acknowledged');
-      expect(await processCommand(base.owner, edit('new-type', opening, info))).toMatchObject({
-        kind: 'acknowledged', snapshot: { value: { topics: [info] } },
-      });
+      const current = await readDocument(base.owner, resource);
+      expect(await processCommand(base.owner, { ...edit('new-type', opening, info), councilTopicKindActions: {
+        kind: { rowId: opening.id, rowCreatedAt: opening.id, before: 'decision', after: 'info',
+          observedRevision: current.metadata!.revision, time: null },
+      } })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: [info] } } });
     }
   });
 

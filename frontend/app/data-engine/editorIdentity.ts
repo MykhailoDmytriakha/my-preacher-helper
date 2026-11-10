@@ -94,6 +94,12 @@ export function isDocumentEditor(editorId: string, resource: ResourceRef): boole
   return tabForEditor(openingEditorId(editorId), resource) !== null;
 }
 
+/** An editor and its manual forms or explicit recovery retain the same original opening. */
+export function sharesEditorOpening(first: string, second: string): boolean {
+  const root = (id: string) => openingEditorId(readManualScopeIdentity(id)?.parentEditorId ?? id);
+  return root(first) === root(second);
+}
+
 /** A cross-tab continuation needs two ordinary, fully resource-bound editor identities. */
 export function areDifferentTabEditors(sourceId: string, recipientId: string, resource: ResourceRef): boolean {
   const source = tabForEditor(sourceId, resource), recipient = tabForEditor(recipientId, resource);

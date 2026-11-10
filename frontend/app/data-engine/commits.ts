@@ -1,3 +1,4 @@
+import { newClientId } from '@/utils/clientId';
 import { hasOutlinePointOrder } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
@@ -16,7 +17,7 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
 import { prepareAtomicSeriesCommand, prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
-import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
+import { areDifferentTabManualParents, readManualScopeIdentity, sharesEditorOpening } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
@@ -99,6 +100,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   outlinePointPlacementLegacyRevision?: number;
   serviceOrderTitleAction?: DocumentFieldAction;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
+  councilTopicQueue?: string;
   councilAssemblyActions?: CouncilAssemblyActions;
   councilTopicKindActions?: CouncilTopicKindActions;
   serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
@@ -629,6 +631,10 @@ export class CommitQueue {
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
+      ...(baseline.resource.collection === 'councils' && {
+        councilTopicQueue: (predecessor && predecessor.baseline.metadata?.generation === baseline.metadata?.generation
+          && sharesEditorOpening(predecessor.editorId, editorId) && predecessor.councilTopicQueue) || newClientId(),
+      }),
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
       ...(editorAction?.kind === 'service-order-placement' && { serviceOrderPlacement: editorAction.move }),
@@ -1191,6 +1197,10 @@ export class CommitQueue {
       if (topicKind) command.councilTopicKindActions = topicKind;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
+    }
+    if (record.councilTopicQueue && command.resource.collection === 'councils' && (command.kind === 'create'
+      || (command.kind === 'update' && command.changes.some(change => change.path.length === 1 && change.path[0] === 'topics')))) {
+      command.councilTopicQueue = record.councilTopicQueue;
     }
     const stamped = fields.reduce((current, target) => withDocumentFieldAction(current, target, capturedDocumentField(record, target)), command);
     const timed = record.sequence === 0 ? withBibleMarkStroke(stamped, record.bibleMarkStroke) : command;

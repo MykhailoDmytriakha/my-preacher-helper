@@ -246,6 +246,75 @@ describe('Durable commit requests', () => {
     expect(s.server().value?.topics).toEqual([{ ...topic, decision: other }]);
   });
 
+  it('carries a council outcome queue binding through restart without sharing it with a separate editor', async () => {
+    const at = '2026-11-09T00:00:00.000Z';
+    const topic = { id: 'topic', title: 'Outcome', kind: 'decision', questions: [], options: [] };
+    const baseline: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Council', status: 'held', heldAt: at, createdAt: at, updatedAt: at, topics: [topic] },
+    };
+    const s = setup({ opening: baseline });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(baseline);
+    const firstTopic = { ...topic, discussed: true, decision: 'First outcome' };
+    editor.edit({ ...baseline.value!, topics: [firstTopic] });
+    const first = (await queue.save('outcome-form', editor.checkpoint(), { documentMetadataTime: null }))!;
+    const lastTopic = { ...firstTopic, decision: 'Second outcome' };
+    editor.edit({ ...baseline.value!, topics: [lastTopic] });
+    const restarted = s.makeQueue().queue;
+    const next = (await restarted.save('outcome-form', editor.checkpoint(), { predecessorId: first.id, documentMetadataTime: null }))!;
+    await restarted.drain(true);
+    const independent = new DataSession(s.server());
+    independent.edit({ ...s.server().value!, topics: [{ ...lastTopic, decision: 'Independent outcome' }] });
+    const third = (await restarted.save('separate-form', independent.checkpoint(), { predecessorId: next.id, documentMetadataTime: null }))!;
+    await restarted.drain(true);
+    const sends = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+    expect(first.councilTopicQueue).toEqual(expect.any(String));
+    expect(next.councilTopicQueue).toBe(first.councilTopicQueue);
+    expect(third.councilTopicQueue).not.toBe(first.councilTopicQueue);
+    expect(sends).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operationId: first.id, councilTopicQueue: first.councilTopicQueue }),
+      expect.objectContaining({ operationId: next.id, councilTopicQueue: first.councilTopicQueue,
+        councilOutcomeActions: [expect.objectContaining({ predecessorOperationId: first.id })] }),
+      expect.objectContaining({ operationId: third.id, councilTopicQueue: third.councilTopicQueue }),
+    ]));
+  });
+
+  it.each(['outcome', 'kind', 'later words'] as const)('sends the reviewed revision when keeping a council topic %s', async scenario => {
+    const field = scenario === 'kind' ? 'kind' : 'outcome';
+    const at = '2026-11-09T00:00:00.000Z';
+    const topic = { id: 'topic', title: 'Outcome', kind: 'decision', questions: [], options: [] };
+    const baseline: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', createdAt: at, updatedAt: at, topics: [topic] },
+    };
+    const current = { ...baseline, metadata: { ...baseline.metadata!, revision: 3 }, value: { ...baseline.value!, title: 'New neighboring title' } };
+    const mine = field === 'outcome' ? { ...topic, discussed: true, decision: 'Reviewed words' } : { ...topic, kind: 'info' };
+    const editor = new DataSession(baseline);
+    editor.edit({ ...baseline.value!, topics: [mine] });
+    const checkpoint = editor.checkpoint();
+    checkpoint.remoteCandidate = current;
+    checkpoint.conflicts = [{ path: ['topics', 'id:topic', field],
+      base: { exists: true, value: field === 'outcome' ? {} : 'decision' },
+      mine: { exists: true, value: field === 'outcome' ? { discussed: true, decision: 'Reviewed words' } : 'info' },
+      theirs: { exists: true, value: field === 'outcome' ? {} : 'decision' },
+    }];
+    const reviewed = DataSession.restore(checkpoint);
+    reviewed.keepLocal();
+    const saved = scenario === 'later words' ? { ...mine, decision: 'More words typed during the choice' } : mine;
+    if (saved !== mine) reviewed.edit({ ...current.value, topics: [saved] });
+    const s = setup({ opening: current });
+    const { queue } = s.makeQueue();
+    await queue.save('outcome-form', reviewed.checkpoint());
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      councilOutcomeActions: [expect.objectContaining({ rowId: topic.id, rowCreatedAt: topic.id, observedRevision: 3, time: null })],
+    }));
+    expect(s.server().value).toMatchObject({ title: 'New neighboring title', topics: [saved] });
+  });
+
   it('retains the date action through an offline queue restart and only attaches it to an exact existing date change', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

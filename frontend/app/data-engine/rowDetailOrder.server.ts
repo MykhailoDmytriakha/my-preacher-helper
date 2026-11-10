@@ -15,9 +15,10 @@ const MAX_PROOFS = 32;
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
 type RepairSource = { digest: string; revision: number };
-type Proof = RepairSource & { rowId: string; time: ActionTime | null; operationId: string; causal?: true; repairs?: RepairSource[] };
+type Proof = RepairSource & { rowId: string; time: ActionTime | null; operationId: string; causal?: true; repairs?: RepairSource[]; valueRevision?: number; queueDigest?: string; priorFrames?: string[] };
 type RowRepair<Value extends RowValue> = { before: Value; after: Value };
 const MAX_REPAIR_SOURCES = 4;
+const MAX_PRIOR_FRAMES = 8;
 const proofDigest = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]{43}$/.test(value);
 type FieldPlan<Field extends string, Value extends RowValue> = {
   command: Update;
@@ -46,13 +47,45 @@ function readProofs(raw: unknown, key: string, field: string) {
     const repairs = Array.isArray(item.repairs) ? item.repairs.slice(0, MAX_REPAIR_SOURCES).flatMap(repair =>
       object(repair) && proofDigest(repair.digest) && proofRevision(repair.revision) ? [{ digest: repair.digest, revision: repair.revision }] : []) : [];
     return time !== undefined ? [{ rowId: item.rowId, digest: item.digest, revision: item.revision, time, operationId: item.operationId,
-      ...(item.causal === true && { causal: true as const }), ...(repairs.length && { repairs }) }] : [];
+      ...(item.causal === true && { causal: true as const }), ...(repairs.length && { repairs }),
+      ...(proofRevision(item.valueRevision) && item.valueRevision <= item.revision && { valueRevision: item.valueRevision }),
+      ...(proofDigest(item.queueDigest) && { queueDigest: item.queueDigest }),
+      ...(Array.isArray(item.priorFrames) && item.priorFrames.length <= MAX_PRIOR_FRAMES && item.priorFrames.every(proofDigest)
+        && { priorFrames: item.priorFrames }) }] : [];
   });
   return { values, floor };
 }
 
+function matchingProof(values: Proof[], rowId: string, born: string, value: RowValue, scope: RowValue | undefined, revision: number) {
+  const key = digest(born, value, scope);
+  return values.find(proof => proof.rowId === rowId && proof.revision <= revision && proof.digest === key);
+}
+
+export function readRowDetailProof(raw: unknown, policy: { proofs: string }, field: string,
+  rowId: string, born: string, value: RowValue, scope: RowValue | undefined, revision: number) {
+  return matchingProof(readProofs(raw, policy.proofs, field).values, rowId, born, value, scope, revision);
+}
+
+export function followsQueuedRowDetail(proof: Proof, predecessorOperationId: unknown, queueDigest: string | undefined): boolean {
+  return Boolean(queueDigest && proof.queueDigest === queueDigest && proof.causal && proof.operationId === predecessorOperationId);
+}
+
+/** An old request showing a never-repeated frame must have opened during that frame. */
+export function continuousRowDetailFrame(proof: Proof | undefined): boolean {
+  const previous = proof?.priorFrames;
+  return Boolean(proof && previous && !previous.includes(proof.digest));
+}
+
+function nextPriorFrames(prior: Proof | undefined, hasOpening: boolean, changed: boolean): string[] | undefined {
+  if (!hasOpening) return [];
+  const frames = prior?.priorFrames;
+  if (!prior || !frames || !changed || frames.includes(prior.digest)) return frames;
+  // Once the complete history is unknown, an old request cannot prove when it saw this frame.
+  return frames.length < MAX_PRIOR_FRAMES ? [...frames, prior.digest] : undefined;
+}
+
 function orderField<Field extends string, Value extends RowValue>(command: Update, current: ResourceSnapshot, raw: unknown, serverMs: number,
-  field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown): FieldPlan<Field, Value> {
+  field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown, queueDigest?: string): FieldPlan<Field, Value> {
   const target = policy.target(field);
   const evidence = readRowObservation(command, submitted, target, serverMs, {
     allowUnclocked: policy.allowUnclocked,
@@ -82,8 +115,7 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
   const { values, floor } = readProofs(raw, policy.proofs, field);
-  const key = digest(action.rowCreatedAt, value, scope);
-  const previous = values.find(proof => proof.rowId === action.rowId && proof.revision <= revision && proof.digest === key);
+  const previous = matchingProof(values, action.rowId, action.rowCreatedAt, value, scope, revision);
   const unobserved = previous && previous.revision > action.observedRevision;
   const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
   const matchesOpening = equalValues(value, action.before);
@@ -91,7 +123,9 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
     && previous.operationId === submitted.predecessorOperationId;
   if (policy.requireObserved) {
     // The row revision still detects a competing write that returned to the opening value.
-    return proofEvicted || !matchesOpening || (unobserved && !followsPredecessor)
+    const unknown = !previous && action.observedRevision < revision;
+    const continues = previous && followsQueuedRowDetail(previous, submitted.predecessorOperationId, queueDigest);
+    return unknown || !matchesOpening || (unobserved && !continues)
       ? { command, uncertain: rowDetailConflict(action, target, value) } : { command };
   }
 
@@ -163,7 +197,7 @@ function submissions<Field extends string, Value extends RowValue>(command: Upda
 }
 
 export function orderRowDetails<Field extends string, Value extends RowValue>(command: DataCommand, current: ResourceSnapshot,
-  raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>) {
+  raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>, queueDigest?: string) {
   const fields = new Map<Field, FieldPlan<Field, Value>[]>();
   if (command.resource.collection === policy.collection && command.kind === 'update' && current.metadata && !current.metadata.deleted
     && command.generation === current.metadata.generation) {
@@ -171,7 +205,7 @@ export function orderRowDetails<Field extends string, Value extends RowValue>(co
     for (const field of policy.fields) {
       const plans: FieldPlan<Field, Value>[] = [];
       for (const submitted of submissions(ordered, field, policy)) {
-        const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy, submitted);
+        const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy, submitted, queueDigest);
         plans.push(plan);
         ordered = plan.command;
       }
@@ -187,7 +221,7 @@ export type RowDetailOrder<Field extends string, Value extends RowValue> = Retur
 
 export function metadataAfterRowDetails<Field extends string, Value extends RowValue>(snapshot: ResourceSnapshot,
   raw: Record<string, unknown> | undefined, policy: RowDetailPolicy<Field, Value>, order?: ReturnType<typeof orderRowDetails<Field, Value>>,
-  repairs?: ReadonlyMap<string, RowRepair<Value>>) {
+  repairs?: ReadonlyMap<string, RowRepair<Value>>, queueDigest?: string) {
   const metadata = snapshot.metadata;
   if (!metadata || !snapshot.value || snapshot.resource.collection !== policy.collection) return metadata;
   const rows = snapshot.value[policy.birth.field], oldRows = raw?.[policy.birth.field];
@@ -220,11 +254,20 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
           ...(prior?.causal && { causal: true }), repairs,
         }];
       }
-      const enteredScope = policy.causalScopeEntry && scope !== undefined && previousScopes?.get(rowId) === undefined;
-      // A same-value acknowledgement with uncertain order does not prove who set the value.
-      return time || changed || !equalValues(previousScopes?.get(rowId), scope) || unordered.has(rowId)
-        ? [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
-          ...(policy.allowUnclocked && (changed || enteredScope) && { causal: true as const }) }] : [];
+      const oldScope = previousScopes?.get(rowId);
+      const scopeChanged = !equalValues(oldScope, scope);
+      const enteredScope = policy.causalScopeEntry && scope !== undefined && oldScope === undefined;
+      if (!time && !changed && !scopeChanged && !unordered.has(rowId)) return [];
+      const oldValue = previousBirths.get(rowId) === born ? previous.get(rowId) : undefined;
+      const prior = policy.requireObserved && oldValue !== undefined
+        ? matchingProof(stored.values, rowId, born, oldValue, oldScope, metadata.revision - 1) : undefined;
+      // A type change can make a new scoped proof without advancing the outcome itself.
+      const valueRevision = policy.requireObserved ? (changed ? metadata.revision : prior?.valueRevision ?? prior?.revision ?? metadata.revision) : undefined;
+      const priorFrames = policy.requireObserved ? nextPriorFrames(prior, oldValue !== undefined, changed || scopeChanged) : undefined;
+      const bound = policy.requireObserved && queueDigest && (changed || scopeChanged);
+      return [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
+        ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),
+        ...(policy.allowUnclocked && (changed || enteredScope || bound) && { causal: true as const }) }];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {
