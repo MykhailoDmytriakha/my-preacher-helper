@@ -9,6 +9,7 @@ import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFiel
 import { validCouncilCarry } from './councilCarryContent';
 import { COUNCIL_TOPIC_PLACEMENT_REVIEW, legacyCouncilTopicPlacementNeedsReview, planCouncilTopicPlacement } from './councilTopicPlacement.server';
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
+import { verifyGroupCopySource } from './groupFlowTopology.server';
 import { GROUP_STEP_PLACEMENT_REVIEW, legacyGroupPlacementNeedsReview, planGroupStepPlacement } from './groupStepPlacement.server';
 import { childIdentityIssues } from './legacyChildIdentity';
 import { outlinePlacementField, replaceResourceOutline, TEMPLATE_POINT_PLACEMENT_REVIEW } from './outlinePlacementResource';
@@ -790,7 +791,9 @@ class RelationPlanner {
     if (command.kind === 'create' && command.resource.collection === 'serviceOrders') await this.uniqueServiceOrder(command.value);
     const effective = command.kind === 'create' && command.resource.collection === 'series'
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
-    const result = applyCommand(effective, this.primary);
+    const verifyCopy = effective.kind === 'update' && effective.groupFlowCopySources
+      ? verifyGroupCopySource(this.reader.serviceOrderPlacement?.rawMetadata, this.primary.metadata?.generation) : undefined;
+    const result = applyCommand(effective, this.primary, verifyCopy);
     if (result.kind !== 'acknowledged') return result;
     if (command.resource.collection === 'tags') {
       const name = result.snapshot.value?.name;

@@ -99,7 +99,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const fitEditorToWindow = useWindowFittedPanel(editorTop, '--flow-editor-max-h');
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
-    templates, setTemplates, flow, setFlow, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
+    templates, setTemplates, flow, setFlow, updateFlowPlan, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled, meetingHistory, meetingFieldHistory, titleHistory, statusHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
@@ -180,9 +180,11 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
 
   const handleAddBlock = (type: GroupBlockTemplateType) => {
     const nextTemplate = createTemplate(type, { title: t(`groupFlow.types.${type}`, { defaultValue: type }) });
-    setTemplates((prev) => [...prev, nextTemplate]);
-    const nextFlowItem = createFlowItem(nextTemplate.id, flow.length + 1);
-    setFlow((prev) => normalizeFlow([...prev, nextFlowItem]));
+    const nextFlowItem = createFlowItem(nextTemplate.id, 1);
+    updateFlowPlan((plan) => ({
+      templates: [...plan.templates, nextTemplate],
+      flow: normalizeFlow([...plan.flow, { ...nextFlowItem, order: plan.flow.length + 1 }]),
+    }));
     setSelectedFlowItemId(nextFlowItem.id);
   };
 
@@ -223,18 +225,19 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     if (!accepted) return;
 
     const latestGroup = groupRef.current;
-    const latestItem = flowRef.current.find((flowItem) => flowItem.id === captured.flowItemId);
-    const latestTemplate = templatesRef.current.find((candidate) => candidate.id === captured.templateId);
     if (ownerRef.current !== captured.ownerId || !latestGroup || latestGroup.id !== captured.groupId ||
-        latestGroup.userId !== captured.ownerId || !latestItem ||
-        JSON.stringify(latestItem) !== captured.flowItemSnapshot ||
-        (latestTemplate ? JSON.stringify(latestTemplate) : null) !== captured.templateSnapshot) return;
+        latestGroup.userId !== captured.ownerId) return;
 
-    setFlow((prev) => removeFlowItem(prev, captured.flowItemId));
-    const otherRefs = flowRef.current.filter((flowItem) => flowItem.id !== captured.flowItemId && flowItem.templateId === captured.templateId);
-    if (otherRefs.length === 0) {
-      setTemplates((prev) => prev.filter((template) => template.id !== captured.templateId));
-    }
+    updateFlowPlan((plan) => {
+      const latestItem = plan.flow.find((row) => row.id === captured.flowItemId);
+      const latestTemplate = plan.templates.find((row) => row.id === captured.templateId);
+      if (!latestItem || JSON.stringify(latestItem) !== captured.flowItemSnapshot ||
+          (latestTemplate ? JSON.stringify(latestTemplate) : null) !== captured.templateSnapshot) return plan;
+      const flow = removeFlowItem(plan.flow, captured.flowItemId);
+      const templates = flow.some((row) => row.templateId === captured.templateId)
+        ? plan.templates : plan.templates.filter((row) => row.id !== captured.templateId);
+      return { flow, templates };
+    });
     setSelectedFlowItemId((selectedId) => selectedId === captured.flowItemId ? null : selectedId);
   };
 
@@ -532,7 +535,13 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                           onStatusCycle={() => cycleStatus(template)}
                           onMoveUp={() => { void moveStep(flowItem.id, prev => moveFlowItem(prev, flowItem.id, 'up')).catch(() => undefined); }}
                           onMoveDown={() => { void moveStep(flowItem.id, prev => moveFlowItem(prev, flowItem.id, 'down')).catch(() => undefined); }}
-                          onDuplicate={() => { setFlow((prev) => duplicateFlowItem(prev, flowItem.id)); }}
+                          onDuplicate={() => updateFlowPlan((plan) => {
+                            const shown = plan.flow.find((row) => row.id === flowItem.id && row.templateId === flowItem.templateId);
+                            if (!shown || !plan.templates.some((row) => row.id === shown.templateId)) {
+                              throw Object.assign(new Error('The shown meeting step changed'), { code: 'decision-changed' });
+                            }
+                            return { templates: plan.templates, flow: duplicateFlowItem(plan.flow, shown.id) };
+                          })}
                           onDelete={() => removeFlowBlock(flowItem.id)}
                         />
                       );

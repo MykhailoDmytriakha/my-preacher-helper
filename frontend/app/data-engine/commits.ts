@@ -25,6 +25,7 @@ import { areDifferentTabManualParents, readManualScopeIdentity, sharesEditorOpen
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
+import { matchingGroupFlowCopySources, matchingGroupFlowRetirements } from './groupFlowTopology';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
@@ -150,6 +151,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sourceNoteLink?: SourceNoteLinkCapture;
   sermonNoteText?: SermonNoteOpening;
   exegeticalQueueBasis?: ExegeticalQueueBasis;
+  rebasedGroupCopySources?: DocumentData[];
+  rebasedGroupRetirements?: DocumentData[];
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
   groupTitleAction?: DocumentFieldAction;
@@ -1352,6 +1355,19 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
+    if (command.kind === 'update' && record.sequence === 0 && record.rebasedGroupCopySources) {
+      const live = command.groupFlowCopySources ?? [];
+      const liveIds = new Set(live.map(source => source.id));
+      const fallback = matchingGroupFlowCopySources(command.changes, record.rebasedGroupCopySources)
+        .filter(source => !liveIds.has(source.id));
+      if (fallback.length) command.groupFlowCopySources = [...live, ...fallback];
+    }
+    if (command.kind === 'update' && record.sequence === 0 && record.rebasedGroupRetirements) {
+      const sources = matchingGroupFlowRetirements(command.changes, record.rebasedGroupRetirements);
+      const capturedIds = new Set(sources.map(source => source.id));
+      const other = command.groupFlowRetirements?.filter(source => !capturedIds.has(String(source.id))) ?? [];
+      if (sources.length) command.groupFlowRetirements = [...sources, ...other];
+    }
     const dateTarget = datedRowTarget(command.resource.collection);
     const action = dateTarget && record[dateTarget.evidence];
     if (dateTarget && action && command.kind === 'update' && record.sequence === 0

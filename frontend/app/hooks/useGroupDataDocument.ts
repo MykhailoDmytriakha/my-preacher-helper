@@ -18,22 +18,25 @@ export function useGroupDataDocument(groupId: string) {
   const group = useMemo(() => document.data
     ? hydrateGroup({ ...document.data, id: groupId } as unknown as Group) : null, [document.data, groupId]);
   usePublishShellTitle('groups', groupId, group);
+  const changeGroup = useCallback((mutate: (current: Group) => Group) => (current: DocumentData | null) => {
+    if (!current) throw new Error('The group is not available for editing');
+    const before = hydrateGroup({ ...current, id: groupId } as unknown as Group);
+    const next = mutate(before);
+    if (next === before) return current;
+    // Routing and ownership cannot be changed by a field editor. Membership belongs to series.
+    if (next.id !== groupId || next.userId !== before.userId || next.createdAt !== before.createdAt
+      || next.seriesId !== before.seriesId || next.seriesPosition !== before.seriesPosition) {
+      throw new Error('Group identity and membership are not editable fields');
+    }
+    const { id: _id, ...value } = next;
+    return deepCleanUndefined({ ...value, flow: normalizeStoredGroupFlow(value.flow),
+      updatedAt: new Date().toISOString() }) as unknown as DocumentData;
+  }, [groupId]);
   const update = useCallback(async (mutate: (current: Group) => Group, options?: DocumentUpdateOptions) => {
-    const change = (current: DocumentData | null) => {
-      if (!current) throw new Error('The group is not available for editing');
-      const before = hydrateGroup({ ...current, id: groupId } as unknown as Group);
-      const next = mutate(before);
-      // Routing and ownership cannot be changed by a field editor. Membership belongs to series.
-      if (next.id !== groupId || next.userId !== before.userId || next.createdAt !== before.createdAt
-        || next.seriesId !== before.seriesId || next.seriesPosition !== before.seriesPosition) {
-        throw new Error('Group identity and membership are not editable fields');
-      }
-      const { id: _id, ...value } = next;
-      return deepCleanUndefined({ ...value, flow: normalizeStoredGroupFlow(value.flow),
-        updatedAt: new Date().toISOString() }) as unknown as DocumentData;
-    };
+    const change = changeGroup(mutate);
     await (options ? document.update(change, options) : document.update(change));
-  }, [document, groupId]);
+  }, [document, changeGroup]);
+  const saveFlowPlan = (mutate: (current: Group) => Group) => document.commit(changeGroup(mutate));
   const moveStep = (stepId: string, transform: (shown: Group['flow']) => Group['flow']) => {
     const opening = document.state?.checkpoint;
     if (!group || !opening?.draft) return Promise.resolve();
@@ -73,7 +76,7 @@ export function useGroupDataDocument(groupId: string) {
     enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
     list: listRecoverable, recover: document.recover });
-  return { group, document, update, moveStep, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
+  return { group, document, update, saveFlowPlan, moveStep, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
     deleteGroupDetail: document.remove, loading: document.loading, error: document.error, errorWords: document.errorWords, status: document.status,
     recovery, refresh: document.retry, acceptRemote: document.acceptRemote, keepLocal: document.keepLocal };
 }

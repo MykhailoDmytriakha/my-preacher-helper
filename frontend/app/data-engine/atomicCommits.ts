@@ -15,6 +15,7 @@ import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
 import { writeField } from './fieldValues';
+import { groupFlowCopySources, groupFlowRetirementSources } from './groupFlowTopology';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
@@ -197,7 +198,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         thoughtPlacementActions: record.thoughtPlacementActions,
       }, ancestor, authored, snapshot) : undefined;
     const sourceNotes = sourceNoteQueueRebase(snapshot, record.sourceNoteLink);
-    const ordinary = outline ?? (record.baseline.resource.collection === 'groups' && sameGeneration ? mergeGroupFlowRebase(ancestor, authored, snapshot.value)
+    const group = record.baseline.resource.collection === 'groups' && sameGeneration;
+    const groupCopies = group && ancestor && authored ? groupFlowCopySources(ancestor, authored) : [];
+    const groupRetirements = group && ancestor && authored ? groupFlowRetirementSources(ancestor, authored) : [];
+    const ordinary = outline ?? (group ? mergeGroupFlowRebase(ancestor, authored, snapshot.value, groupCopies)
       : rebaseOptionalPrayerTags(record.baseline.resource.collection, ancestor, authored, snapshot.value,
         mergeDocumentFields(sourceNotes ? sourceNotes.align(ancestor) : ancestor, sourceNotes ? sourceNotes.align(authored) : authored, snapshot.value)));
     const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>
@@ -242,6 +246,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     return { ...record, initialized: true, working: snapshot, ...legacyLineage,
       intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
+      ...(groupCopies.length && { rebasedGroupCopySources: groupCopies }),
+      ...(groupRetirements.length && { rebasedGroupRetirements: groupRetirements }),
       ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }
   return { ...record, initialized: true };

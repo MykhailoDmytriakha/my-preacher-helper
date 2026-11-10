@@ -14,6 +14,7 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
+import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { relationMirrorFields } from './relationMirrors';
@@ -175,6 +176,20 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
     if (command.serviceOrderStepPlacement !== undefined && !validServiceOrderStepPlacement(command)) fail('Invalid service step placement');
     if (command.groupFlowStepPlacement !== undefined && !validGroupStepPlacement(command)) fail('Invalid group step placement');
+    if (command.groupFlowCopySources !== undefined) {
+      const sources = command.groupFlowCopySources;
+      const matching = matchingGroupFlowCopySources(command.changes, sources);
+      if (command.resource.collection !== 'groups' || command.groupFlowStepPlacement || !matching.length
+        || matching.length !== sources.length || !matching.every(source => isValidIdentifier(source.id) && typeof source.createdAt === 'string')) {
+        fail('Invalid group copy sources');
+      }
+    }
+    if (command.groupFlowRetirements !== undefined) {
+      const sources = command.groupFlowRetirements;
+      const matching = matchingGroupFlowRetirements(command.changes, sources);
+      if (command.resource.collection !== 'groups' || command.groupFlowStepPlacement || !matching.length
+        || matching.length !== sources.length || !matching.every(source => isValidIdentifier(source.id))) fail('Invalid group template retirement');
+    }
     if (command.councilTopicPlacement !== undefined && !validCouncilTopicPlacement(command)) fail('Invalid council topic placement');
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
     if (command.sourceNoteLinkAction !== undefined && (command.resource.collection !== 'sermons'
@@ -827,7 +842,8 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
 }
 
 /** Mutates only the cloned candidate; a conflict prevents the entire candidate from committing. */
-function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData, previous: DocumentData): ConflictDetail[] {
+function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData, previous: DocumentData,
+  verifyGroupCopy?: (source: DocumentData) => boolean): ConflictDetail[] {
   if (command.kind === 'delete') {
     // A relation may have updated a reverse index after this person's saved DELETE.
     // Compare authored content; the cascade still resolves the actual owning relationships.
@@ -847,12 +863,25 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     for (const field of ANALYSIS_RESHAPE_FRAME) putField(value, [field], readField(merged.value.value as DocumentData, [field]));
     conflicts.push(...merged.conflicts);
   }
+  const groupChanges = command.resource.collection === 'groups'
+    ? command.changes.filter(change => groupPlanFields.some(field => change.path[0] === field)) : [];
+  if (groupChanges.length) {
+    const opening = groupPlan(previous), mine = groupPlan(previous);
+    for (const change of groupChanges) {
+      const key = change.path[0] as typeof groupPlanFields[number];
+      opening[key] = change.before;
+      mine[key] = change.after;
+    }
+    const merged = mergeGroupPlan(opening, mine, groupPlan(previous), mergeFields, command.groupFlowCopySources, verifyGroupCopy, command.groupFlowRetirements);
+    for (const field of groupPlanFields) putField(value, [field], merged[field]);
+    conflicts.push(...merged.conflicts);
+  }
   const sermon = command.resource.collection === 'sermons';
   const planText = sermon && command.changes.find(change => change.path[0] === 'planText');
   const datesChanged = sermon && command.changes.find(change => change.path[0] === 'preachDates');
   const preachedFlag = datesChanged ? command.changes.find(change => change.path[0] === 'isPreached') : undefined;
   for (const change of command.changes) {
-    if (frameChanges.includes(change) || change === planText || change === preachedFlag) continue;
+    if (frameChanges.includes(change) || groupChanges.includes(change) || change === planText || change === preachedFlag) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
     const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
@@ -896,6 +925,8 @@ function applyPlanTextUpdate(command: Extract<DataCommand, { kind: 'update' }>, 
 function commandFields(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null): string[] {
   if (command.kind !== 'update') return Object.keys(value);
   const fields = command.changes.map(change => change.path[0]);
+  if ((command.groupFlowCopySources?.length || command.groupFlowRetirements?.length) && !fields.includes('templates')
+    && !equalValues(previous?.templates, value.templates)) fields.push('templates');
   if (command.observedPlanTextRemoval && !equalValues(previous?.planText, value.planText)
     && !fields.includes('planText')) fields.push('planText');
   return fields;
@@ -911,7 +942,8 @@ export function confirmedExistingDeletion(command: DataCommand, result: CommandR
   return { kind: 'acknowledged', operationId: result.operationId, snapshot: result.snapshot };
 }
 
-export function applyCommand(command: DataCommand, current: ResourceSnapshot): CommandResult {
+export function applyCommand(command: DataCommand, current: ResourceSnapshot,
+  verifyGroupCopy?: (source: DocumentData) => boolean): CommandResult {
   validateCommand(command);
   const refused = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
   if (command.kind === 'relation') return refused('relation-requires-transaction');
@@ -942,7 +974,7 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
       // an explicit decision; never infer an ancestor from delivery time or word count.
       return refused('decision-required');
     }
-    const conflicts = applyExistingFields(command, value, current.value);
+    const conflicts = applyExistingFields(command, value, current.value, verifyGroupCopy);
     const topics = command.kind === 'update' && command.resource.collection === 'councils'
       ? command.changes.find(change => change.path[0] === 'topics') : undefined;
     if (topics) {

@@ -247,6 +247,10 @@ export type DataCommand = CommandBase & (
       serviceOrderPlacement?: ServiceOrderPlacement;
       serviceOrderStepPlacement?: ServiceOrderStepPlacement;
       groupFlowStepPlacement?: GroupFlowStepPlacement;
+      /** Shown content for newly copied steps, usable only with matching group retirement proof. */
+      groupFlowCopySources?: DocumentData[];
+      /** Exact templates to retire only if no merged steps still use them. */
+      groupFlowRetirements?: DocumentData[];
       councilTopicPlacement?: ServiceOrderStepPlacement;
       outlinePointPlacement?: OutlinePointPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;

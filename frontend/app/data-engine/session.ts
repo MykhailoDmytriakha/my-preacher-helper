@@ -15,6 +15,7 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
+import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
@@ -317,6 +318,11 @@ export class DataSession {
         && canReplaceSnapshot(this.state.remoteCandidate ?? undefined, result.snapshot)) {
         this.state.remoteCandidate = copy(result.snapshot);
         this.state.conflicts = copy(result.conflicts);
+        if (result.snapshot.resource.collection === 'groups') {
+          // Older prepared commands can have a rebased draft without the shown template.
+          // Only this exact answered request may supply those words for the local choice.
+          this.state.draft = copy(keepGroupFlowCopyContent(this.state.draft, submitted.value, result.conflicts, false));
+        }
         if (result.serviceOrderPlacementComparison) this.state.serviceOrderPlacementComparison = copy(result.serviceOrderPlacementComparison);
         else delete this.state.serviceOrderPlacementComparison;
       }
@@ -494,8 +500,10 @@ export class DataSession {
       const outline = outlineTitleChoiceFrames(this.state.confirmed, this.state.draft, candidate, this.state.conflicts);
       const basis = marks?.baseline ?? outline.basis;
       const draft = marks?.value ?? outline.draft;
-      const merged = point?.rebased ?? rebaseOptionalPrayerTags(candidate.resource.collection, basis, draft, candidate.value,
-        mergeDocumentFields(basis, draft, candidate.value));
+      const recoveringCopy = candidate.resource.collection === 'groups'
+        && this.state.conflicts.some(conflict => conflict.code === GROUP_FLOW_COPY_CONTENT_MISSING);
+      const merged = point?.rebased ?? (recoveringCopy ? mergeGroupFlowRebase(basis, draft, candidate.value)
+        : rebaseOptionalPrayerTags(candidate.resource.collection, basis, draft, candidate.value, mergeDocumentFields(basis, draft, candidate.value)));
       rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
       if (merged.conflicts.some(({ path }) => outline.removed.some(removed =>
         path.slice(0, Math.min(path.length, removed.length)).every((part, index) => part === removed[index])))) {
@@ -514,8 +522,9 @@ export class DataSession {
       const commentPlace = readCommentPlaceComparison(this.state);
       const chosenRefs = commentPlace && withRows
         ? replaceCommentReference(withRows.scriptureRefs, { exists: true, value: commentPlace.mine }) : undefined;
-      const resolved = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine)
+      const explicit = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine)
         : withRows && chosenRefs !== undefined ? { ...withRows, scriptureRefs: chosenRefs } : withRows;
+      const resolved = recoveringCopy ? keepGroupFlowCopyContent(explicit, draft, this.state.conflicts) : explicit;
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;

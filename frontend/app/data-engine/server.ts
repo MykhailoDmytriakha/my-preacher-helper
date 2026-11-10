@@ -33,6 +33,7 @@ import { EXEGETICAL_POINT_HISTORY, metadataAfterExegeticalPoints, orderExegetica
 import { equalValues, object, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
+import { metadataAfterGroupFlowTopology } from './groupFlowTopology.server';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { alignGroupStepDurationRepresentation, GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
@@ -699,7 +700,11 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     });
     const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
-    const bounded = snapshot.resource.collection === 'sermons' ? boundHomileticMetadata(value, listMetadata) : listMetadata;
+    const groupPlanBefore = snapshot.resource.collection === 'groups' && primary && command.kind === 'update'
+      && Array.isArray(raw?.flow) && Array.isArray(raw?.templates) ? { flow: toJson(raw.flow), templates: toJson(raw.templates) } : null;
+    const bounded = snapshot.resource.collection === 'sermons' ? boundHomileticMetadata(value, listMetadata)
+      : snapshot.resource.collection === 'groups' ? metadataAfterGroupFlowTopology(listMetadata, raw?._dataEngine, groupPlanBefore, snapshot.value)
+      : listMetadata;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
       _dataEngine: { ...boundOutlineTitleMetadata(value, bounded), ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }

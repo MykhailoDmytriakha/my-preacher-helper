@@ -6,6 +6,7 @@ import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFiel
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds } from './documentReferences';
+import { captureGroupFlowCommandProofs } from './groupFlowTopology';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
@@ -154,7 +155,8 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
     && writable.some(change => ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field));
   const guarded = positional ? [...writable.filter(change => !ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field)),
     ...ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(confirmed.value, [field]), after: readField(draft, [field]) }))] : writable;
-  return { command: { ...base, kind: 'update', changes: guarded }, submittedValue: copy(draft) };
+  const topology = collection === 'groups' ? copy(captureGroupFlowCommandProofs(confirmed.value, draft, changes)) : {};
+  return { command: { ...base, kind: 'update', changes: guarded, ...topology }, submittedValue: copy(draft) };
 }
 
 /** One command per ACK boundary. Authored baselines stay pinned; first marks use a logical empty book. */

@@ -90,7 +90,13 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
     renameBlock, renameStep, setBlockStatus, setStepDuration, flowTitleScope: historyScope,
-    flow: group?.flow ?? [], setFlow: field('flow'), moveStep: data.moveStep, meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),
+    flow: group?.flow ?? [], setFlow: field('flow'),
+    updateFlowPlan: mutate => {
+      void data.saveFlowPlan(current => {
+        const plan = mutate(current);
+        return plan === current ? current : { ...current, ...plan };
+      }).catch(() => undefined);
+    }, moveStep: data.moveStep, meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
     meetingFieldsEnabled: meeting.enabled, meetingHistory,

@@ -8,7 +8,7 @@ import { installStorageHarness } from './storageHarness';
 import { ACTION_SLOT, editorIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
-import { applyCommand } from '../protocol';
+import { equalValues, applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { missingAutosaveRowFieldTarget } from '../rowFieldAutosave';
@@ -98,6 +98,84 @@ async function captureSermonChains(s: ReturnType<typeof setup>, queue: CommitQue
 describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it.each([false, true])('carries a queued meeting-plan copy through its predecessor (newer source in the ACK: %s)', async newer => {
+    const resource = { collection: 'groups', id: 'meeting-plan' };
+    const template = { id: 'source', type: 'custom', title: 'Source', content: 'Shown words', status: 'filled',
+      createdAt: 'created', updatedAt: 'updated' };
+    const row = { id: 'original', templateId: template.id, order: 1 };
+    const opening: ResourceSnapshot = { resource, metadata: initial().metadata,
+      value: { userId: 'owner', description: 'Before', flow: [row], templates: [template] } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const notes = { ...opening.value, description: 'Phone notes' };
+    editor.edit(notes);
+    await queue.save('group-editor', editor.checkpoint());
+    editor.edit({ ...notes, flow: [row, { ...row, id: 'copy', order: 2 }] });
+    await queue.save('group-editor', editor.checkpoint());
+
+    const latest = newer ? { ...template, content: 'Words in the confirmed predecessor' } : template;
+    s.replace({ ...opening, value: { ...opening.value, flow: newer ? [row] : [], templates: newer ? [latest] : [] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-update' } });
+    const verified = jest.fn((source: unknown) => equalValues(source, latest));
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const result = applyCommand(command, s.server(), verified);
+      if (result.kind === 'acknowledged') {
+        s.replace(result.snapshot);
+        if (newer && command.kind === 'update' && command.changes.every(change => change.path[0] === 'description')) {
+          // Its receipt still carries the last live source, but the next delivery sees it retired.
+          s.replace({ ...result.snapshot, value: { ...result.snapshot.value, flow: [], templates: [] },
+            metadata: { ...result.snapshot.metadata!, revision: result.snapshot.metadata!.revision + 1, operationId: 'desktop-removal' } });
+        }
+      }
+      return result;
+    });
+    await queue.drain(true);
+
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(s.transport.send).mock.calls[1][0]).toMatchObject({ groupFlowCopySources: [latest] });
+    expect(verified).toHaveBeenCalledWith(latest);
+    expect(s.server().value).toMatchObject({ description: 'Phone notes', templates: [latest],
+      flow: [{ ...row, id: 'copy' }] });
+  });
+
+  it('keeps a queued meeting-plan deletion conditional until it reaches the server', async () => {
+    const resource = { collection: 'groups', id: 'meeting-plan' };
+    const template = { id: 'source', type: 'custom', title: 'Source', content: 'Shown words', status: 'filled',
+      createdAt: 'created', updatedAt: 'updated' };
+    const row = { id: 'original', templateId: template.id, order: 1 };
+    const copy = { ...row, id: 'copy', order: 2 };
+    const opening: ResourceSnapshot = { resource, metadata: initial().metadata,
+      value: { userId: 'owner', description: 'Before', flow: [row], templates: [template] } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const notes = { ...opening.value, description: 'Phone notes' };
+    editor.edit(notes);
+    await queue.save('group-editor', editor.checkpoint());
+    editor.edit({ ...notes, flow: [], templates: [] });
+    await queue.save('group-editor', editor.checkpoint());
+
+    s.replace({ ...opening, value: { ...opening.value, flow: [row, copy] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-copy' } });
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const result = applyCommand(command, s.server());
+      if (result.kind === 'acknowledged') {
+        s.replace(result.snapshot);
+        if (command.kind === 'update' && command.changes.every(change => change.path[0] === 'description')) {
+          s.replace({ ...result.snapshot, value: { ...result.snapshot.value, flow: [row] },
+            metadata: { ...result.snapshot.metadata!, revision: result.snapshot.metadata!.revision + 1, operationId: 'desktop-removal' } });
+        }
+      }
+      return result;
+    });
+    await queue.drain(true);
+
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(s.transport.send).mock.calls[1][0]).toMatchObject({ groupFlowRetirements: [template] });
+    expect(s.server().value).toMatchObject({ description: 'Phone notes', flow: [], templates: [] });
+  });
 
   it('holds a service move until the observed destination anchor has acknowledged its own move', async () => {
     const opening: ResourceSnapshot = { ...initial(), resource: { collection: 'serviceOrders', id: 'first' },

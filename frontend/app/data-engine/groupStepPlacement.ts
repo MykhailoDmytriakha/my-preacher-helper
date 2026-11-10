@@ -2,8 +2,9 @@ import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacem
 
 import { anchoredPlacementPredecessor, captureAnchoredRowPlacement } from './anchoredRowPlacement';
 import { autosaveAcknowledgementAncestor, carryAutosaveFieldDrafts } from './documentFieldAction';
-import { equalValues } from './fieldValues';
-import { mergeDocumentFields } from './protocol';
+import { equalValues, writeField } from './fieldValues';
+import { groupFlowCopySources, groupPlacementSteps, groupPlan, groupPlanFields, mergeGroupPlan } from './groupFlowTopology';
+import { mergeDocumentFields, mergeFields } from './protocol';
 import { carryRowFieldDrafts, rowFieldAckAncestor } from './rowFieldAutosave';
 import { placementSteps } from './serviceOrderStepPlacement';
 
@@ -11,14 +12,9 @@ import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, GroupFlowStepPlacementCapture, ResourceSnapshot, ServiceOrderStepGap } from './types';
 
-type GroupStep = DocumentData & { id: string; templateId: string; order: number };
+export { groupPlacementSteps } from './groupFlowTopology';
 
-export function groupPlacementSteps(value: unknown): GroupStep[] | undefined {
-  const steps = placementSteps(value);
-  if (!steps?.every((step): step is GroupStep => typeof step.templateId === 'string' && step.templateId.length > 0
-    && typeof step.order === 'number' && Number.isFinite(step.order))) return undefined;
-  return [...steps].sort((first, second) => first.order - second.order);
-}
+type GroupStep = NonNullable<ReturnType<typeof groupPlacementSteps>>[number];
 
 export function groupStepWitness(value: unknown) {
   return groupPlacementSteps(value)?.map(({ id, templateId }) => ({ id, templateId }));
@@ -65,17 +61,23 @@ export function restoreGroupPlacementOrder(value: DocumentData | null): Document
   return value && rows ? { ...value, flow: rows.map((row, index) => ({ ...row, order: index + 1 })) } : value;
 }
 
-/** Slot numbers are derived from order; they are not edits to neighboring rows. */
-export function mergeGroupFlowRebase(base: DocumentData | null, draft: DocumentData | null, stored: DocumentData | null) {
-  const before = groupPlacementSteps(base?.flow), mine = groupPlacementSteps(draft?.flow), saved = groupPlacementSteps(stored?.flow);
-  const opening = before?.map(row => row.id);
-  if (!before || !mine || !saved || (equalValues(opening, mine.map(row => row.id)) && equalValues(opening, saved.map(row => row.id)))) {
-    return mergeDocumentFields(base, draft, stored);
-  }
-  const result = mergeDocumentFields(groupPlacementMergeFrame(base, []), groupPlacementMergeFrame(draft, []), groupPlacementMergeFrame(stored, []));
+export function mergeGroupFlowRebase(base: DocumentData | null, draft: DocumentData | null, stored: DocumentData | null,
+  pendingCopySources?: readonly DocumentData[]) {
+  if (!base || !draft || !stored) return mergeDocumentFields(base, draft, stored);
+  const sources = pendingCopySources ?? groupFlowCopySources(base, draft);
+  // A captured request can carry these sources forward. For an uncaptured draft keep
+  // the visible words alongside its conflict, so the explicit decision still has both sides.
+  const merged = mergeGroupPlan(groupPlan(base), groupPlan(draft), groupPlan(stored), mergeFields,
+    sources, pendingCopySources ? () => true : undefined);
+  const templates = placementSteps(merged.templates.value);
+  const retained = templates && sources.filter(source => !templates.some(template => template.id === source.id)
+    && merged.conflicts.some(conflict => equalValues(conflict.path, ['templates', `id:${source.id}`])));
+  if (retained?.length) merged.templates = { exists: true, value: [...templates!, ...retained] };
+  const withoutPlan = ({ flow: _flow, templates: _templates, ...rest }: DocumentData) => rest;
+  const result = mergeDocumentFields(withoutPlan(base), withoutPlan(draft), withoutPlan(stored));
   if (!result.value.exists) return result;
-  const value = restoreGroupPlacementOrder(result.value.value as DocumentData);
-  return { ...result, value: { exists: true, value } };
+  const value = groupPlanFields.reduce((value, name) => writeField(value, [name], merged[name]), result.value.value as DocumentData);
+  return { value: { exists: true, value }, conflicts: [...result.conflicts, ...merged.conflicts] };
 }
 
 export function mergeEditsAfterAnchoredPlacement(source: SessionCheckpoint, base: DocumentData, draft: DocumentData,

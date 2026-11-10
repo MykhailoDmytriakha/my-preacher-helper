@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
+import { prepareDomainCommand } from '@/data-engine/domainPolicy';
 import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listOutlineTitleHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
@@ -115,6 +116,96 @@ beforeEach(() => {
     return run;
   });
 });
+
+describe('meeting-plan copies delivered after source removal', () => {
+  const ref = { collection: 'groups', id: 'meeting-plan' };
+  const owner = 'owner-1';
+  const block = (id: string) => ({
+    id, type: 'custom', title: id, content: `Words in ${id}`, status: 'filled', createdAt: 'created', updatedAt: 'updated',
+  });
+  const rows = (ids: string[]) => ids.map((id, index) => ({
+    id, templateId: id === 'copy' ? 'source' : id, order: index + 1,
+  }));
+
+  it.each([true, false])('restores the shown shared text when the source was removed first (source first in list: %s)', async sourceFirst => {
+    const source = block('source'), neighbor = block('neighbor');
+    const value = { userId: owner, title: 'Meeting', status: 'draft', createdAt: 'created', updatedAt: 'updated',
+      description: 'Keep notes', templates: [source, neighbor], flow: rows(sourceFirst ? ['source', 'neighbor'] : ['neighbor', 'source']) };
+    const generation = 'meeting-create';
+    const created = await processCommand(owner, { protocol: 1, owner, operationId: generation, resource: ref, generation: null,
+      dependsOn: [], kind: 'create', value });
+    if (created.kind !== 'acknowledged') throw new Error(JSON.stringify(created));
+    const opening = created.snapshot;
+    const duplicate = prepareDomainCommand(owner, 'duplicate-step', opening, {
+      ...opening.value, flow: rows(sourceFirst ? ['source', 'copy', 'neighbor'] : ['neighbor', 'source', 'copy']),
+    }).command;
+    const deletion = prepareDomainCommand(owner, 'delete-source', opening, {
+      ...opening.value, flow: rows(['neighbor']), templates: [neighbor],
+    }).command;
+
+    expect(await processCommand(owner, deletion)).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { templates: [neighbor], flow: rows(['neighbor']) } } });
+    // An unrelated save after deletion must not erase the proof of which template was removed.
+    const deleted = await readDocument(owner, ref);
+    const unrelated = prepareDomainCommand(owner, 'update-description', deleted, { ...deleted.value, description: 'New notes' }).command;
+    expect((await processCommand(owner, unrelated)).kind).toBe('acknowledged');
+    const accepted = await processCommand(owner, duplicate);
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: {
+      description: 'New notes', flow: rows(sourceFirst ? ['copy', 'neighbor'] : ['neighbor', 'copy']),
+      templates: expect.arrayContaining([source, neighbor]),
+    } } });
+    expect(await processCommand(owner, duplicate)).toMatchObject({ kind: 'acknowledged', snapshot: {
+      metadata: { revision: 4 }, value: { flow: rows(sourceFirst ? ['copy', 'neighbor'] : ['neighbor', 'copy']) },
+    } });
+  });
+
+  it('retires a shared template only after both independently removed copies are gone', async () => {
+    const source = block('source');
+    const value = { userId: owner, title: 'Meeting', status: 'draft', createdAt: 'created', updatedAt: 'updated',
+      templates: [source, block('unplaced')], flow: rows(['source', 'copy']) };
+    const created = await processCommand(owner, { protocol: 1, owner, operationId: 'meeting-create', resource: ref, generation: null,
+      dependsOn: [], kind: 'create', value });
+    if (created.kind !== 'acknowledged') throw new Error(JSON.stringify(created));
+    const opening = created.snapshot;
+    const remove = (id: string, survivor: string) => prepareDomainCommand(owner, id, opening, {
+      ...opening.value, flow: rows([survivor]),
+    }).command;
+    expect(await processCommand(owner, remove('remove-original', 'copy'))).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { templates: value.templates, flow: rows(['copy']) } } });
+    expect(await processCommand(owner, remove('remove-copy', 'source'))).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { templates: [block('unplaced')], flow: [] } } });
+  });
+
+  it.each([true, false])('preserves changed shared text or asks before restoring an older snapshot (template still live: %s)', async live => {
+    const source = block('source');
+    const value = { userId: owner, title: 'Meeting', status: 'draft', createdAt: 'created', updatedAt: 'updated',
+      templates: [source], flow: rows(['source']) };
+    const created = await processCommand(owner, { protocol: 1, owner, operationId: 'meeting-create', resource: ref, generation: null,
+      dependsOn: [], kind: 'create', value });
+    if (created.kind !== 'acknowledged') throw new Error(JSON.stringify(created));
+    const opening = created.snapshot;
+    const duplicate = prepareDomainCommand(owner, 'duplicate-step', opening, { ...opening.value, flow: rows(['source', 'copy']) }).command;
+    const latest = { ...source, content: 'New words' };
+    const edited = await processCommand(owner, prepareDomainCommand(owner, 'edit-words', opening,
+      { ...opening.value, templates: [latest] }).command);
+    if (edited.kind !== 'acknowledged') throw new Error(JSON.stringify(edited));
+    const deletion = prepareDomainCommand(owner, 'delete-source', edited.snapshot, { ...edited.snapshot.value, flow: [], templates: [] }).command;
+    if (!live) expect((await processCommand(owner, deletion)).kind).toBe('acknowledged');
+    const result = await processCommand(owner, duplicate);
+    if (live) {
+      expect(result.kind).toBe('acknowledged');
+      expect(await processCommand(owner, deletion)).toMatchObject({ kind: 'acknowledged',
+        snapshot: { value: { flow: rows(['copy']), templates: [latest] } } });
+    } else {
+      expect(result).toMatchObject({ kind: 'conflict', conflicts: [{
+        path: ['templates', 'id:source'], mine: { exists: true, value: source }, theirs: { exists: false },
+      }] });
+      expect((await readDocument(owner, ref)).value).toMatchObject({ flow: [], templates: [] });
+    }
+  });
+
+});
+
 
 describe('custom tag name ownership', () => {
   const owner = 'owner-1';
