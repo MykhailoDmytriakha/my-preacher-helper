@@ -1,9 +1,10 @@
 import { boundedActionTime, type ActionTime } from './actionClock';
 import { prepareDomainCommand } from './domainPolicy';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
-import { captureSeriesMembership, projectMembershipAction, type MembershipAction, type MembershipRef } from './membershipIntent';
+import { captureSeriesMembership, membershipItems, projectMembershipAction, type MembershipAction, type MembershipRef } from './membershipIntent';
 import { equalValues, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
+import { replaySeriesReorder } from './seriesReorder';
 
 import type { AtomicCapture } from './commits';
 import type { ManualSavedIntent } from './manualScope';
@@ -18,6 +19,7 @@ export interface MembershipPin {
   /** Explicit saved provenance, including a creation not yet acknowledged. */
   predecessor: ManualSavedIntent | null;
   predecessorRemovals?: MembershipRef[];
+  predecessorReorderQueueId?: string;
 }
 export interface MembershipScopeRecord {
   kind: 'membership'; version: 1; owner: string; scopeId: string; revision: number;
@@ -45,6 +47,10 @@ const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const ancestor = (pin: MembershipPin): DocumentData => (pin.predecessor?.value ?? pin.baseline.value)!;
 const OWNER_CHANGED = 'Membership action owner changed';
 
+function capturesMembershipTime(action: MembershipAction | null): boolean {
+  return action?.kind === 'assign' || action?.kind === 'remove' || (action?.kind === 'reorder' && action.reorder !== undefined);
+}
+
 export function validateMembershipScope(record: MembershipScopeRecord): void {
   if (record?.kind !== 'membership' || record.version !== 1 || !isValidIdentifier(record.owner) || !record.scopeId
     || !Number.isSafeInteger(record.revision) || record.revision < 0 || !Number.isSafeInteger(record.generation) || record.generation < 0
@@ -54,7 +60,7 @@ export function validateMembershipScope(record: MembershipScopeRecord): void {
     || (record.seriesCatalogVersion !== undefined && (record.creation || !Number.isSafeInteger(record.seriesCatalogVersion) || record.seriesCatalogVersion < 0))
     || (record.seriesMembershipTime !== undefined && ((record.seriesMembershipTime !== null && !boundedActionTime(record.seriesMembershipTime))
       || !['saving', 'submitted'].includes(record.phase) || record.creation
-      || (record.action?.kind !== 'assign' && record.action?.kind !== 'remove')))
+      || !capturesMembershipTime(record.action)))
     || (record.phase !== 'submitted' && record.requestIds.length > 0)) throw new Error('Invalid membership scope');
   for (const pin of record.pins) validatePin(pin, record.owner);
   validateCreation(record);
@@ -81,6 +87,9 @@ function validatePin(pin: MembershipPin, owner: string): void {
   if (!baseline || baseline.resource.collection !== 'series' || !isValidIdentifier(baseline.resource.id) || baseline.metadata?.deleted
     || (!baseline.value && (!predecessor || baseline.metadata))) throw new Error('Membership requires a live series or its saved creation');
   if (baseline.value) validateDocument(baseline.value, owner);
+  if (pin.predecessorReorderQueueId !== undefined && (!predecessor || !isValidIdentifier(pin.predecessorReorderQueueId))) {
+    throw new Error('Invalid membership predecessor reorder queue');
+  }
   if (pin.predecessorRemovals && (!predecessor || !Array.isArray(pin.predecessorRemovals)
     || pin.predecessorRemovals.some(ref => (ref.type !== 'sermon' && ref.type !== 'group') || !isValidIdentifier(ref.refId)))) {
     throw new Error('Invalid membership predecessor removals');
@@ -142,8 +151,19 @@ export class MembershipScope {
     return this.update(selection ? { kind: 'assign', targetId: selection.id, refs: [member] } : { kind: 'remove', refs: [member] });
   }
   subscribe(listener: () => void): () => void { this.assertCurrent(); this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
-  update(action: MembershipAction | null): Promise<void> {
+  update(action: MembershipAction | null, movedItemId?: string): Promise<void> {
     this.assertEditing();
+    if (action?.kind === 'reorder' && movedItemId !== undefined) {
+      const shown = projectMembershipAction(this.values(), this.record.action).get(action.seriesId);
+      const step = { itemId: movedItemId, index: action.itemIds.indexOf(movedItemId) };
+      if (!shown || step.index < 0 || !equalValues(replaySeriesReorder(membershipItems(shown).map(item => item.id), [step]), action.itemIds)) {
+        throw Object.assign(new Error('The series order shown when moving the item changed'), { code: 'decision-changed' });
+      }
+      const prior = this.record.action;
+      // An old recovered draft does not prove who moved its previously reordered rows.
+      const openingTrace = prior?.kind === 'reorder' && prior.seriesId === action.seriesId ? prior.reorder : [];
+      action = { ...action, ...(openingTrace && { reorder: [...openingTrace, step] }) };
+    }
     const next = { ...this.record, action: clone(action), ...(this.record.creation ? { creation: { ...this.record.creation } } : {}) };
     // Explicit selection (including "No series") resolves a preset; typing never does.
     if (next.creation) delete next.creation.requestedSeriesId;
@@ -186,7 +206,7 @@ export class MembershipScope {
     // Only a local copy that matched its last durable editing row can use that row as proof.
     if (this.record.phase === 'editing') {
       this.saveFromRevision = this.durable ? this.revision : null;
-      if (time !== undefined && !this.record.creation && (this.record.action?.kind === 'assign' || this.record.action?.kind === 'remove')) {
+      if ((time !== undefined || this.record.action?.kind === 'reorder') && !this.record.creation && capturesMembershipTime(this.record.action)) {
         this.record.seriesMembershipTime = boundedActionTime(time) ?? null;
       }
     }
@@ -221,12 +241,15 @@ export class MembershipScope {
   }
   private values() { return new Map(this.record.pins.map(pin => [pin.baseline.resource.id, ancestor(pin)])); }
   private captures(): AtomicCapture[] {
-    const next = projectMembershipAction(this.values(), this.record.action);
+    const action = this.record.action;
+    const reorder = action?.kind === 'reorder' && action.reorder ? action : undefined;
+    const next = projectMembershipAction(this.values(), action);
     const changed = this.record.pins.some(pin => !equalValues(ancestor(pin), next.get(pin.baseline.resource.id)));
-    if (!changed && !this.record.creation) return [];
+    if (!changed && !this.record.creation && !reorder) return [];
     const membership = this.record.pins.flatMap(pin => {
       const id = pin.baseline.resource.id, draft = next.get(id)!;
       const opening = ancestor(pin), time = this.record.seriesMembershipTime;
+      const orderTrace = reorder?.seriesId === id ? reorder.reorder : undefined;
       // Even an already-satisfied target must participate: deleting it remotely
       // cannot allow the action to remove the last surviving source membership.
       const assignment = this.record.action?.kind === 'assign' ? this.record.action : undefined;
@@ -235,9 +258,12 @@ export class MembershipScope {
       // queued receipt still belongs to the following assignment's ancestry.
       const clearWitness = time !== undefined && assignment && pin.predecessorRemovals?.some(removed =>
         assignment.refs.some(ref => ref.type === removed.type && ref.refId === removed.refId));
-      if (!target && !clearWitness && equalValues(opening, draft)) return [];
+      if (!target && !clearWitness && !orderTrace && equalValues(opening, draft)) return [];
       return [{ editorId: JSON.stringify([this.record.scopeId, 'membership', id]), predecessorId: pin.predecessor?.id ?? null, retentionScope: this.record.scopeId,
-        ...(time !== undefined ? { seriesMembership: captureSeriesMembership(opening, draft, time, pin.baseline.metadata?.revision ?? 0, this.record.seriesCatalogVersion) } : {}),
+        ...(time !== undefined ? { seriesMembership: {
+          ...captureSeriesMembership(opening, draft, time, pin.baseline.metadata?.revision ?? 0, this.record.seriesCatalogVersion),
+          ...(orderTrace && { reorder: orderTrace, reorderQueueId: pin.predecessorReorderQueueId ?? this.record.scopeId }),
+        } } : {}),
         captured: { confirmed: clone(pin.baseline), draft: clone(draft), dirty: true, editGeneration: this.record.generation,
           conflicts: [], remoteCandidate: null, pending: {} } }];
     });

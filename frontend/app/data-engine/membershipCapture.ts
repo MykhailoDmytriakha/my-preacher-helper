@@ -34,6 +34,7 @@ export function captureMembershipPins(owner: string, state: CollectionState, req
       throw new Error('Membership display does not have one saved predecessor');
     }
     return [{ baseline: tip.baseline, predecessor: { id: tip.id, owner, resource: tip.baseline.resource, value: tip.value, predecessorId: tip.predecessor },
-      ...(tip.seriesMembership?.removed.length && { predecessorRemovals: tip.seriesMembership.removed }) }];
+      ...(tip.seriesMembership?.removed.length && { predecessorRemovals: tip.seriesMembership.removed }),
+      ...(tip.seriesMembership?.reorderQueueId && { predecessorReorderQueueId: tip.seriesMembership.reorderQueueId }) }];
   });
 }

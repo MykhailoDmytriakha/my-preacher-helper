@@ -63,6 +63,7 @@ import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { PreachStatusIntent } from './preachStatusAction';
 import type { RowFieldActionKind } from './rowFieldAutosave';
 import type { SeriesHistorySelection, SeriesMembershipComparison } from './seriesMembershipHistory';
+import type { SeriesReorderComparison } from './seriesReorder';
 import type { EditorCommitAction } from './types';
 import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -723,6 +724,22 @@ export function useDataMembership() {
       }
     };
   }, [browser, owner, identity, refresh]);
+  const review = (open: (engine: ReturnType<typeof active>, scopeId: string) => Promise<MembershipScope>) => run(async () => {
+    const engine = active(), previous = required();
+    reviewing.current = previous;
+    try {
+      const scope = await open(engine, previous.getState().record.scopeId);
+      if (latest.current !== identity) {
+        engine.releaseMembership(scope.getState().record.scopeId);
+        throw new Error(EDITOR_CHANGED);
+      }
+      current.current?.stop();
+      current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) };
+      refresh();
+    } finally {
+      if (reviewing.current === previous) reviewing.current = null;
+    }
+  });
   const state = stored?.identity === identity ? stored.state : null;
   const errorWords = failure?.identity === identity ? failure.words : null;
   return {
@@ -740,27 +757,17 @@ export function useDataMembership() {
       if (!creation) throw new Error('Open a creation stage first');
       await scope.updateCreation(updater(creation.value));
     }),
-    update: (action: MembershipAction | null) => run(() => required().update(action)),
+    update: (action: MembershipAction | null, movedItemId?: string) => run(() => required().update(action, movedItemId)),
     restoreAssignment: (member: MembershipRef, selection: SeriesHistorySelection | null) => run(() => required().restoreAssignment(member, selection)),
     keepAssignment: (compared: readonly SeriesMembershipComparison[]) => run(async () => {
       await active().keepMembership(required().getState().record.scopeId, compared);
       dismiss();
     }),
-    reviewAssignment: (compared: readonly SeriesMembershipComparison[]) => run(async () => {
-      const engine = active(), previous = required();
-      reviewing.current = previous;
-      try {
-        const scope = await engine.reviewMembership(previous.getState().record.scopeId, compared);
-        if (latest.current !== identity) {
-          engine.releaseMembership(scope.getState().record.scopeId);
-          throw new Error(EDITOR_CHANGED);
-        }
-        current.current?.stop();
-        current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) };
-        refresh();
-      } finally {
-        if (reviewing.current === previous) reviewing.current = null;
-      }
+    reviewAssignment: (compared: readonly SeriesMembershipComparison[]) => review((engine, scopeId) => engine.reviewMembership(scopeId, compared)),
+    reviewReorder: (compared: SeriesReorderComparison) => review((engine, scopeId) => engine.reviewSeriesReorder(scopeId, compared)),
+    keepReorder: (compared: SeriesReorderComparison) => run(async () => {
+      await active().keepSeriesReorder(required().getState().record.scopeId, compared);
+      dismiss();
     }),
     save: () => run(() => required().save((owner && actionClock.capture(owner)) || null)), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
     retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),

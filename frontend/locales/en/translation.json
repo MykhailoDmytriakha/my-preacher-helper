@@ -3785,6 +3785,13 @@
       "groupsAdded_one": "Group added to series",
       "groupsAdded_other": "{{count}} groups added to series",
       "membershipAssignment": "Assign items to a series",
+      "reorderRecovery": {
+        "heading": "Compare the two orders",
+        "review": "Review my order",
+        "unavailable": "A saved item or its place has changed. Keep the saved order, then move the items you still want to change.",
+        "changed": "The series changed while you were comparing. Your draft is still here. To move these items again, keep the saved order and reopen Reorder items.",
+        "dependent": "A later pending change uses this order. Review that change first."
+      },
       "membershipHistory": {
         "comparisonHeading": "Choose which assignment to keep",
         "proposed": "Your pending choice: {{value}}",

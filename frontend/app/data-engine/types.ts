@@ -168,6 +168,14 @@ export type ServiceOrderPlacementHistoryPage = {
   nextCursor: string | null;
 };
 
+export type SeriesItemPlacementHistoryPage = {
+  owner: string;
+  seriesId: string;
+  generation: string;
+  entries: { id: string; acceptedAt: string; changes: Omit<ServiceOrderPlacementHistoryPage['entries'][number], 'id' | 'acceptedAt'>[] }[];
+  nextCursor: string | null;
+};
+
 export type GroupFlowStepPlacementHistoryPage = Omit<ServiceOrderPlacementHistoryPage, 'orderId'> & { groupId: string };
 export type CouncilTopicPlacementHistoryPage = Omit<ServiceOrderPlacementHistoryPage, 'orderId'> & { councilId: string };
 

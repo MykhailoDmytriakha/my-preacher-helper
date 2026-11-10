@@ -25,13 +25,14 @@ import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerSco
 import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualFieldInput, type ManualPath, type ManualSavedIntent, type ManualSaveOptions, type ManualDocumentMetadataSave } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
-import { showsSeriesMembershipComparison } from './membershipIntent';
+import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields } from './sermonFieldChoice';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
@@ -674,31 +675,73 @@ export class DataEngine {
     await this.discardMembership(scopeId, true);
   }
 
-  /** Keep the refused action until a reviewed replacement is a durable unsent draft. */
-  async reviewMembership(scopeId: string, compared: readonly SeriesMembershipComparison[]): Promise<MembershipScope> {
+  async keepSeriesReorder(scopeId: string, compared: SeriesReorderComparison): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const delivery = await this.membershipDelivery(scopeId);
+    this.assertCurrent(owner, generation);
+    if (!delivery.canChooseReorder || !equalValues(delivery.reorderComparison, compared)) {
+      throw Object.assign(new Error('The series order shown has changed'), { code: 'membership-stage-changed' });
+    }
+    await this.discardMembership(scopeId, true);
+  }
+
+  reviewMembership(scopeId: string, compared: readonly SeriesMembershipComparison[]): Promise<MembershipScope> {
+    return this.reviewSeriesAction(scopeId, { kind: 'assignment', compared });
+  }
+
+  reviewSeriesReorder(scopeId: string, compared: SeriesReorderComparison): Promise<MembershipScope> {
+    return this.reviewSeriesAction(scopeId, { kind: 'reorder', compared });
+  }
+
+  /** Keep the failed action until a reviewed replacement is a durable unsent draft. */
+  private async reviewSeriesAction(scopeId: string, review: { kind: 'assignment'; compared: readonly SeriesMembershipComparison[] }
+    | { kind: 'reorder'; compared: SeriesReorderComparison }): Promise<MembershipScope> {
     const owner = this.requireOwner(), generation = this.generation;
     const record = await this.options.membershipScopes?.read(owner, scopeId); this.assertCurrent(owner, generation);
-    const changed = () => Object.assign(new Error('The assignment shown has changed'), { code: 'membership-stage-changed' });
-    if (!record || record.creation || record.phase !== 'submitted' || !compared.length
-      || (record.action?.kind !== 'assign' && record.action?.kind !== 'remove')) throw changed();
+    const changed = () => Object.assign(new Error('The series choice shown has changed'), { code: 'membership-stage-changed' });
+    if (!record || record.creation || record.phase !== 'submitted' || !record.action) throw changed();
     const state = await this.collectionReader().refresh('series');
     const [requests, journal] = await Promise.all([this.commits.list(), this.options.runtime.list()]);
     this.assertCurrent(owner, generation);
     const delivery = describeMembershipDelivery(record, requests, journal);
-    if (!state.complete || state.freshness !== 'server' || !delivery.canChooseExact || !equalValues(delivery.comparisons, compared)) throw changed();
+    if (!state.complete || state.freshness !== 'server') throw changed();
+    if (review.kind === 'reorder' ? !delivery.canChooseReorder || !equalValues(delivery.reorderComparison, review.compared)
+      : !delivery.canChooseExact || !review.compared.length || !equalValues(delivery.comparisons, review.compared)) throw changed();
+
+    if (review.kind === 'reorder') {
+      const shown = review.compared;
+      const latest = state.snapshots.find(snapshot => snapshot.resource.id === shown.seriesId);
+      // A member removed and added again can have the same ID and position.
+      if (!latest?.value || (latest.metadata?.revision ?? 0) !== shown.revision
+        || (latest.metadata?.generation ?? null) !== shown.generation || !equalValues(membershipItems(latest.value), shown.stored)) {
+        throw Object.assign(new Error('The saved series order changed during comparison'), { code: 'series-reorder-comparison-changed' });
+      }
+    }
 
     const scope = await this.openMembershipScope(owner, generation, state, requests.filter(request => !record.requestIds.includes(request.id)));
     let staged = false;
     try {
       const opening = scope.getState().values;
-      if (!showsSeriesMembershipComparison(opening, compared)) throw changed();
-      if (record.action.kind === 'assign') {
-        const targetId = record.action.targetId;
-        const captured = record.pins.find(pin => pin.baseline.resource.id === targetId);
-        const target = opening.find(row => row.id === targetId);
-        if (!captured || !target || target.generation !== (captured.baseline.metadata?.generation ?? null)) throw changed();
+      let action = record.action;
+      if (review.kind === 'reorder') {
+        const { seriesId, generation: shownGeneration, proposed } = review.compared;
+        if (action.kind !== 'reorder' || action.seriesId !== seriesId) throw changed();
+        const target = opening.find(row => row.id === seriesId && row.generation === shownGeneration);
+        const shownOrder = target && membershipItems(target.value);
+        const reviewed = shownOrder && equalValues(shownOrder, review.compared.stored)
+          && reviewedSeriesReorder(shownOrder, proposed, action.reorder);
+        if (!reviewed || !reviewed.trace.length) throw changed();
+        action = { ...action, itemIds: reviewed.rows.map(row => row.id), reorder: reviewed.trace };
+      } else {
+        if (action.kind === 'reorder' || !showsSeriesMembershipComparison(opening, review.compared)) throw changed();
+        if (action.kind === 'assign') {
+          const targetId = action.targetId;
+          const captured = record.pins.find(pin => pin.baseline.resource.id === targetId);
+          const target = opening.find(row => row.id === targetId);
+          if (!captured || !target || target.generation !== (captured.baseline.metadata?.generation ?? null)) throw changed();
+        }
       }
-      await scope.update(record.action); staged = true;
+      await scope.update(action); staged = true;
       this.assertCurrent(owner, generation);
       await this.discardMembership(scopeId, true);
       this.assertCurrent(owner, generation);

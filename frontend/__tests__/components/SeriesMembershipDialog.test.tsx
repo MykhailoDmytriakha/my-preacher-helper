@@ -78,6 +78,96 @@ it('pins reorder before the gesture and preserves a remote insertion', async () 
   expect(harness.read(start.resource).value!.items).toEqual([{ ...extra, position: 1 }, { ...member, position: 2 }, inserted]);
   expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
 });
+it.each(['keep', 'review', 'stale'])('shows both saved orders and resolves only the chosen reorder (%s)', async scenario => {
+  const review = scenario !== 'keep';
+  const words = ['Opening', 'Middle', 'Closing', 'New item'];
+  const items = words.map((title, index) => ({ id: 'sermon-' + index, type: 'sermon', refId: 's' + index, position: index + 1, title }));
+  mockSermons.mockReturnValue(items.map(({ title, refId }) => ({ id: refId, title })));
+  const start = series('a');
+  const value = (order: number[]) => ({ ...start.value!, items: order.map((index, position) => ({ ...items[index], position: position + 1 })),
+    sermonIds: order.map(index => items[index].refId) });
+  start.value = value([0, 1, 2]);
+  const remote = { ...start, metadata: { ...start.metadata!, revision: 2 }, value: value([1, 0, 2, 3]) };
+  const harness = membershipEngineHarness([start, ...items.map(({ refId, title }) => ({
+    resource: { collection: 'sermons', id: refId }, metadata: null, value: { userId: 'owner', title },
+  }))]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({
+    kind: 'conflict', operationId: command.operationId, snapshot: remote,
+    conflicts: [{ path: ['items'], base: { exists: true, value: start.value!.items }, mine: { exists: true, value: value([0, 2, 1]).items },
+      theirs: { exists: true, value: remote.value.items } }],
+  }));
+  const onClose = jest.fn();
+  function Workspace({ recoveryId }: { recoveryId?: string }) {
+    return <DataEngineProvider><SeriesMembershipDialog key={recoveryId ?? 'new'}
+      seriesId="a" mode={recoveryId ? 'recover' : 'reorder'} recoveryId={recoveryId} onClose={onClose} /></DataEngineProvider>;
+  }
+  const view = render(<Workspace />);
+  fireEvent.click(await screen.findByRole('button', { name: 'common.moveDown: Middle' }));
+  const save = screen.getByRole('button', { name: 'common.save' });
+  await waitFor(() => expect(save).toBeEnabled());
+  harness.replace(remote);
+  fireEvent.click(save);
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(1));
+  const previous = (await harness.engine.listMembershipRecovery()).find(record => record.phase === 'submitted')!;
+  expect(previous).toBeDefined();
+  view.rerender(<Workspace recoveryId={previous.scopeId} />);
+  const comparison = await screen.findByRole('region', { name: 'workspaces.series.reorderRecovery.heading' });
+  const titles = (label: string) => within(within(comparison).getByRole('list', { name: label })).getAllByRole('listitem').map(row => row.textContent);
+  expect(titles('dataSync.yourVersion')).toEqual(['Opening', 'Closing', 'Middle']);
+  expect(titles('dataSync.storedVersion')).toEqual(['Middle', 'Opening', 'Closing', 'New item']);
+  const button = within(comparison).getByRole('button', { name: review ? 'workspaces.series.reorderRecovery.review' : 'dataSync.useStoredVersion' });
+  if (scenario === 'stale') {
+    // Closing is removed and re-added in the same place while this comparison is open.
+    harness.replace({ ...remote, metadata: { ...remote.metadata, revision: 3 }, value: value([1, 0, 3]) });
+    harness.replace({ ...remote, metadata: { ...remote.metadata, revision: 4 } });
+    fireEvent.click(button);
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('button', { name: 'dataSync.retry' })).not.toBeInTheDocument();
+    expect(await harness.scopes.completion('owner', previous.scopeId)).toBeNull();
+    expect(await harness.engine.listMembershipRecovery()).toEqual([expect.objectContaining({ scopeId: previous.scopeId, phase: 'submitted' })]);
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    expect(harness.read(start.resource).value?.sermonIds).toEqual(['s1', 's0', 's2', 's3']);
+    view.unmount();
+    return;
+  }
+  if (review) {
+    const runReview = harness.engine.reviewSeriesReorder.bind(harness.engine);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const waiting = jest.spyOn(harness.engine, 'reviewSeriesReorder').mockImplementationOnce(async (...args) => {
+      await gate;
+      return runReview(...args);
+    });
+    fireEvent.click(button);
+    try {
+      expect(waiting).toHaveBeenCalledTimes(1);
+      const close = screen.getByRole('button', { name: 'common.close' });
+      expect(close).toBeDisabled();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally { release(); }
+  } else fireEvent.click(button);
+  await waitFor(async () => expect(await harness.scopes.completion('owner', previous.scopeId)).toBe('cancelled'));
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  if (review) {
+    const next = screen.getByRole('button', { name: 'common.save' });
+    await waitFor(() => expect(next).toBeEnabled());
+    expect(await harness.engine.listMembershipRecovery()).toEqual([expect.objectContaining({
+      phase: 'editing', action: { kind: 'reorder', seriesId: 'a', itemIds: ['sermon-0', 'sermon-2', 'sermon-1', 'sermon-3'],
+        reorder: [{ itemId: 'sermon-1', index: 2 }] },
+    })]);
+    fireEvent.click(next);
+    await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(2));
+    expect(harness.read(start.resource).value?.sermonIds).toEqual(['s0', 's2', 's1', 's3']);
+  } else {
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+    expect(harness.read(start.resource).value?.sermonIds).toEqual(['s1', 's0', 's2', 's3']);
+  }
+  view.unmount();
+});
+
 it('retries a locally failed cancellation without restoring or sending the discarded selection', async () => {
   const { harness, view } = setup();
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Meeting' }));

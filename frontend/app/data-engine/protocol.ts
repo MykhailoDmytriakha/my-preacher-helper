@@ -15,6 +15,7 @@ import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
+import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -318,6 +319,9 @@ function validateSeriesMemberCreation(command: Extract<DataCommand, { relation: 
   validateCreate({ ...command, kind: 'create' }, getResourcePolicy(command.resource.collection));
   validateRelation({ ...command, relation: 'series-membership', resource: command.edit.resource,
     generation: command.edit.generation, edits: [command.edit] });
+  if ('membership' in command.edit && object(command.edit.membership) && command.edit.membership.reorder !== undefined) {
+    fail('Member creation cannot reorder the series');
+  }
   const type = command.resource.collection === 'sermons' ? 'sermon' : 'group';
   const matches = (item: DocumentData) => item.type === type && item.refId === command.resource.id;
   const orderedContent = (items: DocumentData[]) => [...items].sort((left, right) => Number(left.position) - Number(right.position))
@@ -407,7 +411,9 @@ function validSeriesMembershipCapture(value: unknown): boolean {
     || (value.observedRevision as number) < 0
     || (value.observedCatalogVersion !== undefined && (!Number.isSafeInteger(value.observedCatalogVersion) || (value.observedCatalogVersion as number) < 0))
     || (value.predecessorOperationId !== undefined && !isValidIdentifier(value.predecessorOperationId))
-    || !Array.isArray(value.added) || !Array.isArray(value.removed)) return false;
+    || !Array.isArray(value.added) || !Array.isArray(value.removed)
+    || (value.reorder === undefined ? value.reorderQueueId !== undefined : !isValidIdentifier(value.reorderQueueId)
+      || value.added.length || value.removed.length || !isSeriesReorderTrace(value.reorder, isValidIdentifier))) return false;
   const seen = new Set<string>();
   for (const ref of [...value.added, ...value.removed]) {
     if (!object(ref) || (ref.type !== 'sermon' && ref.type !== 'group') || !isValidIdentifier(ref.refId)) return false;
@@ -464,6 +470,7 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
     seen.add(edit.resource.id);
   }
   const firstMembership = command.edits[0].membership;
+  if (command.edits.length !== 1 && command.edits.some(edit => edit.membership?.reorder)) fail('A reorder belongs to one series');
   if (command.edits.some(({ membership }) => Boolean(membership) !== Boolean(firstMembership)
     || !equalValues(membership?.time, firstMembership?.time)
     || membership?.observedCatalogVersion !== firstMembership?.observedCatalogVersion)) fail('Series participants must share a Save and opening catalog');

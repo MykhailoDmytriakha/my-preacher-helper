@@ -1,9 +1,13 @@
 import { cancellationScope, canCancelSavedIntent } from './atomicCommits';
+import { equalValues } from './fieldValues';
+import { membershipItems } from './membershipIntent';
+import { reviewedSeriesReorder } from './seriesReorder';
 import { shownDeliveryState } from './unanswered';
 
 import type { CommitRequest } from './commits';
 import type { MembershipScopeRecord } from './membershipScope';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
+import type { SeriesReorderComparison } from './seriesReorder';
 import type { JournalEntry } from './types';
 
 export interface MembershipDelivery {
@@ -12,13 +16,32 @@ export interface MembershipDelivery {
   code: string | null;
   comparisons?: SeriesMembershipComparison[];
   canChooseExact?: boolean;
+  reorderComparison?: SeriesReorderComparison;
+  canChooseReorder?: boolean;
+  canReviewReorder?: boolean;
 }
 
 /** Delivery is confirmed only when every durable participant has its own proof. */
 export function describeMembershipDelivery(record: MembershipScopeRecord, requests: readonly CommitRequest[], journal: readonly JournalEntry[]): MembershipDelivery {
   if (record.phase === 'submitted' && record.requestIds.some(id => !requests.some(request => request.id === id
     && request.owner === record.owner && request.retentionScope === record.scopeId))) return { phase: 'unavailable', canDiscard: false, code: null };
-  return describeActionDelivery(record.owner, record.requestIds, requests, journal, record.phase);
+  const delivery = describeActionDelivery(record.owner, record.requestIds, requests, journal, record.phase);
+  const action = record.action;
+  if (action?.kind !== 'reorder' || delivery.phase !== 'conflict' || record.requestIds.length !== 1) return delivery;
+  const request = requests.find(row => row.id === record.requestIds[0] && row.owner === record.owner && row.retentionScope === record.scopeId);
+  const result = request?.result;
+  if (request?.state !== 'conflict' || result?.kind !== 'conflict' || !request.value
+    || request.baseline.resource.collection !== 'series' || request.baseline.resource.id !== action.seriesId
+    || result.snapshot.resource.collection !== 'series' || result.snapshot.resource.id !== action.seriesId
+    || result.snapshot.value?.userId !== record.owner || result.snapshot.metadata?.deleted) return delivery;
+  const proposed = membershipItems(request.value);
+  if (!equalValues(proposed.map(row => row.id), action.itemIds)) return delivery;
+  const reorderComparison: SeriesReorderComparison = { seriesId: action.seriesId, generation: result.snapshot.metadata?.generation ?? null,
+    revision: result.snapshot.metadata?.revision ?? 0, proposed, stored: membershipItems(result.snapshot.value) };
+  const chain = cancellationScope(requests.filter(row => row.owner === record.owner), '', record.requestIds);
+  const canChooseReorder = delivery.canDiscard && chain.every(row => record.requestIds.includes(row.id));
+  const canReviewReorder = canChooseReorder && Boolean(reviewedSeriesReorder(reorderComparison.stored, proposed, action.reorder)?.trace.length);
+  return { ...delivery, reorderComparison, canChooseReorder, canReviewReorder };
 }
 
 /** One delivery calculation for staged membership and one-shot atomic actions. */

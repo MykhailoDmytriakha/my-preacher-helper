@@ -156,8 +156,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       const opening: DocumentData = {};
       if (items !== undefined) opening.items = items;
       if (sermonIds !== undefined) opening.sermonIds = sermonIds;
-      const operationId = predecessor.result.committed?.operationId ?? snapshot.metadata?.operationId;
-      return { ...record, initialized: true, working: snapshot, intended: projectCapturedMembership(snapshot.value, record.value, record.seriesMembership),
+      const operationId = record.seriesMembership.reorder
+        ? predecessor.command?.operationId ?? predecessor.id
+        : predecessor.result.committed?.operationId ?? snapshot.metadata?.operationId;
+      return { ...record, initialized: true, working: snapshot, intended: projectCapturedMembership(snapshot.value, record.value, record.seriesMembership, opening),
         seriesMembershipOpening: opening,
         ...(operationId && { seriesMembershipPredecessor: operationId }) };
     }

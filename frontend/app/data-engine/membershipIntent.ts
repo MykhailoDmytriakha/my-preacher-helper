@@ -1,11 +1,13 @@
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems, removeSeriesItemByRef, reorderSeriesItemsById, upsertSeriesItem } from '@/utils/seriesItems';
 
 import { equalValues, isValidIdentifier } from './protocol';
+import { isSeriesReorderTrace, projectSeriesReorder, replaySeriesReorder } from './seriesReorder';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { SeriesCommandParticipant } from './domainPolicy';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
+import type { SeriesReorderStep } from './seriesReorder';
 import type { DocumentData, Json } from './types';
 import type { SeriesItem } from '@/models/models';
 
@@ -16,6 +18,8 @@ export type SeriesMembershipCapture = {
   observedCatalogVersion?: number;
   added: MembershipRef[];
   removed: MembershipRef[];
+  reorder?: SeriesReorderStep[];
+  reorderQueueId?: string;
 };
 
 const memberKey = ({ type, refId }: MembershipRef) => `${type}:${refId}`;
@@ -30,13 +34,24 @@ export function captureSeriesMembership(before: DocumentData, after: DocumentDat
     added: different(intended, opening), removed: different(opening, intended) };
 }
 
-const membershipItems = (value: DocumentData) => normalizeSeriesItems(
+export const membershipItems = (value: DocumentData) => normalizeSeriesItems(
   value.items as unknown as SeriesItem[] | undefined, value.sermonIds as string[] | undefined,
 );
 
 /** A predecessor acknowledgement can have already satisfied, or displaced, this action. */
-export function projectCapturedMembership(current: DocumentData, authored: DocumentData, capture: SeriesMembershipCapture): DocumentData {
+export function projectCapturedMembership(current: DocumentData, authored: DocumentData, capture: SeriesMembershipCapture, opening: DocumentData): DocumentData {
   const before = membershipItems(current);
+  if (capture.reorder) {
+    const original = membershipItems(opening);
+    const order = replaySeriesReorder(original.map(item => item.id), capture.reorder);
+    if (!order) return current;
+    const proposed = membershipItems(authored);
+    if (!equalValues(order, proposed.map(item => item.id))) return current;
+    const projected = projectSeriesReorder(before, proposed, new Set(capture.reorder.map(step => step.itemId)));
+    if (!projected) return current;
+    const positioned = projected.rows.map((item, index) => ({ ...item, position: index + 1 }));
+    return { ...current, items: positioned as unknown as Json[], sermonIds: deriveSermonIdsFromItems(positioned), seriesKind: inferSeriesKind(positioned) };
+  }
   const removed = new Set(capture.removed.map(memberKey));
   const added = new Set(capture.added.map(memberKey));
   const next = before.filter(member => !removed.has(memberKey(member)));
@@ -72,7 +87,7 @@ export function showsSeriesMembershipComparison(values: readonly { id: string; g
 export type MembershipAction =
   | { kind: 'assign'; targetId: string; refs: MembershipRef[]; position?: number }
   | { kind: 'remove'; refs: MembershipRef[] }
-  | { kind: 'reorder'; seriesId: string; itemIds: string[] };
+  | { kind: 'reorder'; seriesId: string; itemIds: string[]; reorder?: SeriesReorderStep[] };
 
 /** Domain intent only. Opening copies belong to the engine; callers never supply ancestors. */
 export function projectMembershipAction(values: ReadonlyMap<string, DocumentData>, action: MembershipAction | null): Map<string, DocumentData> {
@@ -87,6 +102,9 @@ export function projectMembershipAction(values: ReadonlyMap<string, DocumentData
       if (id !== action.seriesId) return [id, value];
       if (action.itemIds.length !== before.length || new Set(action.itemIds).size !== before.length
         || action.itemIds.some(itemId => !before.some(item => item.id === itemId))) throw new Error('Reorder must name the opening membership exactly');
+      if (action.reorder && !equalValues(replaySeriesReorder(before.map(item => item.id), action.reorder), action.itemIds)) {
+        throw new Error('The reorder does not match its opening list');
+      }
       after = reorderSeriesItemsById(before, action.itemIds);
     } else {
       for (const ref of action.refs) {
@@ -103,7 +121,8 @@ export function projectMembershipAction(values: ReadonlyMap<string, DocumentData
 
 function validateAction(action: MembershipAction): void {
   if (action.kind === 'reorder') {
-    if (!isValidIdentifier(action.seriesId) || !Array.isArray(action.itemIds) || action.itemIds.some(id => !isValidIdentifier(id))) throw new Error('Invalid membership reorder');
+    if (!isValidIdentifier(action.seriesId) || !Array.isArray(action.itemIds) || action.itemIds.some(id => !isValidIdentifier(id))
+      || (action.reorder !== undefined && !isSeriesReorderTrace(action.reorder, isValidIdentifier))) throw new Error('Invalid membership reorder');
     return;
   }
   if (!['assign', 'remove'].includes(action.kind) || !Array.isArray(action.refs) || !action.refs.length

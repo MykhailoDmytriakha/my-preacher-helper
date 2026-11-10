@@ -19,6 +19,7 @@ import { useTranslation } from '@locales/useTranslation';
 import { SeriesMembershipHistory } from './SeriesMembershipHistory';
 
 import type { SeriesMembershipComparison } from '@/data-engine/seriesMembershipHistory';
+import type { SeriesReorderComparison } from '@/data-engine/seriesReorder';
 import type { Series, SeriesItem } from '@/models/models';
 
 type Member = Pick<SeriesItem, 'type' | 'refId'>;
@@ -34,6 +35,7 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   const { t } = useTranslation();
   const action = useDataMembership(), attempted = useRef<object | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resolvingOrder, setResolvingOrder] = useState(false);
   const [reviewedMember, setReviewedMember] = useState<Member | null>(null);
   const targetMember = mode === 'target' ? member : reviewedMember;
   const open = async () => {
@@ -73,7 +75,7 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   };
   const title = t(dialogTitle(targetMember ? 'target' : mode, kind));
   // A press beside the window, the ✕ and Escape cancel as «Отмена» does: a closed window keeps no draft behind (the owner, 2026-10-31).
-  return <FormDialog title={title} eyebrow={series?.title} onClose={() => { void cancel().catch(onClose); }} showCloseButton
+  return <FormDialog title={title} eyebrow={series?.title} closeDisabled={resolvingOrder} onClose={() => { void cancel().catch(onClose); }} showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={editing ? (
       <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('common.cancel')}
@@ -81,6 +83,8 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
     ) : undefined}>
     <div className="space-y-4">
       <DataMembershipStatus action={{ ...action, retry }} onDiscarded={onClose} onReview={review} onKeep={action.keepAssignment} />
+      {action.delivery?.reorderComparison && <ReorderComparison comparison={action.delivery.reorderComparison} action={action} onClose={onClose}
+        busy={resolvingOrder} setBusy={setResolvingOrder} />}
       {showSelection && targetMember && <TargetChoices action={action} member={targetMember} disabled={saving || !editing} />}
       {showSelection && !targetMember && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving || !editing}>
         {mode !== 'group' && <SermonChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
@@ -89,7 +93,7 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
       {editing && mode === 'sermon' && onCreateSermon && <button type="button" className="rounded-lg border px-3 py-2"
         disabled={saving} onClick={() => { action.dismiss(); onCreateSermon(); }}>{t('addSermon.createNewSermon')}</button>}
       {showSelection && series && kind === 'reorder' && <ReorderChoices items={series.items ?? []} disabled={saving || !editing}
-        onChange={itemIds => action.update({ kind: 'reorder', seriesId: targetId, itemIds })} />}
+        onChange={(itemIds, movedItemId) => action.update({ kind: 'reorder', seriesId: targetId, itemIds }, movedItemId)} />}
       {kind === 'remove' && <p>{t('workspaces.series.actions.membershipRemoveHint')}</p>}
     </div>
   </FormDialog>;
@@ -134,22 +138,66 @@ function MemberChoices({ type, rows, loading, error, current, selected, onChange
   </div>;
 }
 
-function ReorderChoices({ items, disabled, onChange }: { items: SeriesItem[]; disabled: boolean; onChange: (ids: string[]) => Promise<void> }) {
+function useSeriesItemTitle() {
   const { t } = useTranslation(), { user } = useAuth();
-  const sermons = useDashboardSermons(), groups = useGroupsRead(user?.uid ?? null);
+  const { sermons } = useDashboardSermons(), { groups } = useGroupsRead(user?.uid ?? null);
+  const sermonTitles = new Map(sermons.map(row => [row.id, row.title]));
+  const groupTitles = new Map(groups.map(row => [row.id, row.title]));
+  return (item: SeriesItem) => (item.type === 'sermon' ? sermonTitles : groupTitles).get(item.refId) || t(UNKNOWN_LABEL);
+}
+
+function ReorderComparison({ comparison, action, onClose, busy, setBusy }: {
+  comparison: SeriesReorderComparison; action: ReturnType<typeof useDataMembership>; onClose: () => void;
+  busy: boolean; setBusy: (busy: boolean) => void;
+}) {
+  const { t } = useTranslation(), title = useSeriesItemTitle();
+  const expired = action.errorWords && 'key' in action.errorWords && action.errorWords.key === 'workspaces.series.reorderRecovery.changed';
+  const canReview = action.delivery?.canReviewReorder && !expired;
+  const run = async (operation: () => Promise<void>) => {
+    setBusy(true);
+    try { await operation(); } catch { /* The owning hook presents the error. */ }
+    finally { setBusy(false); }
+  };
+  const heading = t('workspaces.series.reorderRecovery.heading');
+  return <section aria-label={heading} className="space-y-3 text-sm">
+    <h3 className="font-medium">{heading}</h3>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {([['dataSync.yourVersion', comparison.proposed], ['dataSync.storedVersion', comparison.stored]] as const).map(([key, rows]) =>
+        <div key={key} className="min-w-0 rounded-lg border p-3">
+          <p className="font-medium">{t(key)}</p>
+          <ol aria-label={t(key)} className="list-decimal space-y-1 break-words ps-5">
+            {rows.map(item => <li key={item.id}>{title(item)}</li>)}
+          </ol>
+        </div>)}
+    </div>
+    {!action.delivery?.canChooseReorder && <p>{t('workspaces.series.reorderRecovery.dependent')}</p>}
+    {action.delivery?.canChooseReorder && <>
+      {!canReview && !expired && <p>{t('workspaces.series.reorderRecovery.unavailable')}</p>}
+      <div className="flex flex-wrap gap-2">
+        {canReview && <button type="button" disabled={busy} className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+          onClick={() => { void run(() => action.reviewReorder(comparison)); }}>{t('workspaces.series.reorderRecovery.review')}</button>}
+        <button type="button" disabled={busy} className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+          onClick={() => { void run(async () => { await action.keepReorder(comparison); onClose(); }); }}>{t('dataSync.useStoredVersion')}</button>
+      </div>
+    </>}
+  </section>;
+}
+
+function ReorderChoices({ items, disabled, onChange }: { items: SeriesItem[]; disabled: boolean; onChange: (ids: string[], movedItemId: string) => Promise<void> }) {
+  const title = useSeriesItemTitle();
   // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
   const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const move = (from: number, to: number) => {
     if (disabled || from < 0 || to < 0 || to >= items.length || from === to) return;
-    void onChange(arrayMove(items, from, to).map(item => item.id)).catch(() => undefined);
+    void onChange(arrayMove(items, from, to).map(item => item.id), items[from].id).catch(() => undefined);
   };
   return <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
     if (over) move(items.findIndex(item => item.id === active.id), items.findIndex(item => item.id === over.id));
   }}><SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
     <div className="space-y-2">{items.map((item, index) => <ReorderRow key={item.id} id={item.id} index={index}
-      title={(item.type === 'sermon' ? sermons.sermons : groups.groups).find(row => row.id === item.refId)?.title || t(UNKNOWN_LABEL)}
+      title={title(item)}
       count={items.length} disabled={disabled} move={direction => move(index, index + direction)} />)}</div>
   </SortableContext></DndContext>;
 }

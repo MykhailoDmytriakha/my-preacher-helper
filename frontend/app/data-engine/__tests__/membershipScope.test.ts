@@ -69,6 +69,50 @@ describe('membership intent projection', () => {
     expect(projectMembershipAction(values, null).get('a')).toBe(values.get('a'));
     expect(projectMembershipAction(values, { kind: 'remove', refs: [ref] }).get('a')).toBe(values.get('a'));
   });
+  it('restores staged reorder gestures and freezes their Save time in the existing queue', async () => {
+    const t = fixture();
+    const ids = ['a', 'b', 'c', 'd'];
+    const before = snapshot('series');
+    before.value!.items = ids.map((id, index) => ({ id, refId: id, type: 'sermon', position: index + 1 }));
+    before.value!.sermonIds = ids;
+    const opened = t.begin('reorder-scope', [{ baseline: before, predecessor: null }]);
+    await opened.settled();
+    await opened.update({ kind: 'reorder', seriesId: 'series', itemIds: ['a', 'c', 'b', 'd'] }, 'b');
+    const restored = MembershipScope.restore((await t.scopes.read('owner', 'reorder-scope'))!, t.port);
+    await restored.update({ kind: 'reorder', seriesId: 'series', itemIds: ['d', 'a', 'c', 'b'] }, 'd');
+    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
+    expect(await restored.save(time)).toHaveLength(1);
+    const [saved] = await t.commits.list('owner');
+    expect(saved.seriesMembership).toEqual({ added: [], removed: [], observedRevision: 1, time, reorderQueueId: 'reorder-scope',
+      reorder: [{ itemId: 'b', index: 2 }, { itemId: 'd', index: 0 }] });
+    expect(saved.value?.sermonIds).toEqual(['d', 'a', 'c', 'b']);
+    expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('captures a deliberate return to the opening order when the user presses Save', async () => {
+    const t = fixture();
+    const before = snapshot('series');
+    before.value!.sermonIds = ['a', 'b', 'c'];
+    const scope = t.begin('saved-return', [{ baseline: before, predecessor: null }]);
+    await scope.settled();
+    await scope.update({ kind: 'reorder', seriesId: 'series', itemIds: ['sermon-a', 'sermon-c', 'sermon-b'] }, 'sermon-b');
+    await scope.update({ kind: 'reorder', seriesId: 'series', itemIds: ['sermon-a', 'sermon-b', 'sermon-c'] }, 'sermon-b');
+    expect(await scope.save(null)).toHaveLength(1);
+    const [saved] = await t.commits.list('owner');
+    expect(saved.seriesMembership).toMatchObject({ time: null, reorder: [{ itemId: 'sermon-b', index: 2 }, { itemId: 'sermon-b', index: 1 }] });
+  });
+
+  it('does not relabel a different permutation as a single reorder gesture', async () => {
+    const t = fixture();
+    const before = snapshot('series');
+    before.value!.sermonIds = ['a', 'b', 'c'];
+    const scope = t.begin('wrong-reorder', [{ baseline: before, predecessor: null }]);
+    await scope.settled();
+    expect(() => scope.update({ kind: 'reorder', seriesId: 'series', itemIds: ['sermon-c', 'sermon-a', 'sermon-b'] }, 'sermon-b'))
+      .toThrow('The series order shown when moving the item changed');
+    expect(scope.getState().record.action).toBeNull();
+  });
+
   it('refuses targets not captured at opening and malformed or ambiguous selections', () => {
     const values = new Map([['a', snapshot('a', true).value!]]);
     for (const action of [move, { ...move, targetId: 'a', position: -1 }, { ...move, targetId: 'a', refs: [ref, ref] },

@@ -5,6 +5,7 @@ import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
 import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
+import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
 import { DataSession } from '@/data-engine/session';
 import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
 
@@ -170,6 +171,165 @@ describe('relation scope with unrelated owner documents', () => {
     expect(await processCommand(owner, attach())).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
     expect(documents.get('series/z-target')?.items).toEqual([]);
     expect(documents.get('series/z-assigned')?.items).toEqual([member('g', 'group')]);
+  });
+
+  describe('saved series item reorder chronology', () => {
+    const series = { collection: 'series', id: 'reorder-series' };
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    const rows = (order: readonly string[]) => order.map((id, index) => ({ ...member(id), position: index + 1 }));
+    const clock = (offset: number) => ({ earliestMs: 1_799_999_980_000 + offset, latestMs: 1_799_999_980_005 + offset });
+    const stored = () => documents.get('series/' + series.id)?.sermonIds;
+    function command(id: string, revision: number, before: string[], steps: SeriesReorderStep[], time: ReturnType<typeof clock> | null,
+      signed = true): Extract<DataCommand, { relation: 'series-membership' }> {
+      const after = replaySeriesReorder(before.map(refId => 'item-' + refId), steps)!.map(itemId => itemId.slice(5));
+      return { protocol: 1, kind: 'relation', relation: 'series-membership', owner, operationId: id, resource: series,
+        generation: 'opening-series', dependsOn: [], edits: [{ resource: series, generation: 'opening-series',
+          beforeItems: rows(before), afterItems: rows(after),
+          ...(signed && { membership: { added: [], removed: [], observedRevision: revision, time, reorder: steps, reorderQueueId: id } }),
+        }] };
+    }
+    const move = (item: string, index: number) => ({ itemId: 'item-' + item, index });
+    const apply = (packet: ReturnType<typeof command>) => processCommand(owner, packet);
+    beforeEach(async () => {
+      for (const id of ids) documents.set('sermons/' + id, { userId: owner, title: 'Words for ' + id });
+      const result = await processCommand(owner, { protocol: 1, kind: 'create', owner, operationId: 'opening-series',
+        resource: series, generation: null, dependsOn: [], value: { userId: owner, title: 'Series',
+          theme: 'Series', bookOrTopic: '', status: 'draft', createdAt: '2026-11-09', updatedAt: '2026-11-09', items: rows(ids), sermonIds: ids } });
+      expect(result).toMatchObject({ kind: 'acknowledged' });
+    });
+
+    it('does not let an older reorder undo the later return to the same position', async () => {
+      const early = command('offline-down', 1, ids, [move('b', 2)], clock(0));
+      const up = ['b', 'a', 'c', 'd', 'e'];
+      expect(await apply(command('up', 1, ids, [move('b', 0)], clock(1000)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(command('return', 2, up, [move('b', 1)], clock(2000)))).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(ids);
+      expect(await apply(early)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(ids);
+      const history = [...documents.entries()].filter(([path]) => path.startsWith('series/' + series.id + '/_seriesItemPlacementHistory/'));
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ owner, generation: 'opening-series', changes: [{ stepId: 'item-b',
+        actionTime: clock(0), winnerActionTime: clock(2000) }] });
+    });
+
+    it('applies the later move arriving from an older opening and leaves untouched words alone', async () => {
+      expect(await apply(command('up', 1, ids, [move('b', 0)], clock(0)))).toMatchObject({ kind: 'acknowledged' });
+      const later = command('down', 1, ids, [move('b', 2)], clock(1000));
+      expect(await apply(later)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(['a', 'c', 'b', 'd', 'e']);
+      expect(documents.get('sermons/b')?.title).toBe('Words for b');
+    });
+
+    it('applies a staged sequence while retaining a different moved item', async () => {
+      expect(await apply(command('independent-e', 1, ids, [move('e', 0)], clock(1000)))).toMatchObject({ kind: 'acknowledged' });
+      const sequence = command('two-steps', 1, ids, [move('b', 2), move('a', 1)], clock(0));
+      expect(await apply(sequence)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(['e', 'c', 'a', 'b', 'd']);
+    });
+
+    it.each([false, true])('recognizes the same final placement after several staged moves (clocked: %s)', async clocked => {
+      const time = (offset: number) => clocked ? clock(offset) : null;
+      expect(await apply(command('desktop-c-before-b', 1, ids, [move('c', 1)], time(0)))).toMatchObject({ kind: 'acknowledged' });
+      const sameFinalOrder = command('phone-staged-same-place', 1, ids, [move('b', 2), move('c', 0), move('c', 1)], time(1000));
+      expect(await apply(sameFinalOrder)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(['a', 'c', 'b', 'd', 'e']);
+      expect([...documents.keys()].filter(path => path.includes('/_seriesItemPlacementHistory/'))).toEqual([]);
+    });
+
+    it('does not let a previous reorder certify a destination anchor replaced before that reorder', async () => {
+      const remove = command('desktop-remove-d', 1, ids, [], null, false);
+      remove.edits[0].afterItems = rows(['a', 'b', 'c', 'e']);
+      expect(await apply(remove)).toMatchObject({ kind: 'acknowledged' });
+      const restore = command('desktop-readd-d', 2, ['a', 'b', 'c', 'e'], [], null, false);
+      restore.edits[0].afterItems = rows(['a', 'b', 'c', 'e', 'd']);
+      expect(await apply(restore)).toMatchObject({ kind: 'acknowledged' });
+
+      const first = command('phone-first', 1, ids, [move('b', 0)], null);
+      first.edits[0].membership!.reorderQueueId = 'same-phone';
+      expect(await apply(first)).toMatchObject({ kind: 'acknowledged' });
+      const second = command('phone-second', 1, ['b', 'a', 'c', 'd', 'e'], [move('b', 2)], null);
+      second.edits[0].membership = { ...second.edits[0].membership!, reorderQueueId: 'same-phone', predecessorOperationId: 'phone-first' };
+      expect(await apply(second)).toMatchObject({ kind: 'conflict' });
+      expect(stored()).toEqual(['b', 'a', 'c', 'e', 'd']);
+    });
+
+    it('does not require a deleted anchor from a transient unsaved position', async () => {
+      const sequence = command('two-positions', 1, ids, [move('b', 3), move('b', 0)], clock(1000));
+      const surviving = ['a', 'b', 'c', 'e'];
+      const remove = command('remove-anchor', 1, ids, [move('d', 4)], clock(0), false);
+      remove.edits[0].afterItems = rows(surviving);
+      expect(await apply(remove)).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(sequence)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(['b', 'a', 'c', 'e']);
+    });
+
+    it('records the confirmed return even when the dialog ends in the opening order', async () => {
+      const early = command('pending-down', 1, ids, [move('b', 2)], clock(0));
+      const returned = command('same-order-save', 1, ids, [move('b', 2), move('b', 1)], clock(1000));
+      expect(await apply(returned)).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(early)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(ids);
+    });
+
+    it('does not turn an acknowledgement of an added member into proof of a remote move', async () => {
+      const extra = 'f';
+      documents.set('sermons/' + extra, { userId: owner, title: 'An added member' });
+      const withExtra = [...ids, extra];
+      const early = command('offline-reorder-after-add', 1, withExtra, [move('b', 0)], clock(0));
+      early.edits[0].membership!.predecessorOperationId = 'offline-add';
+      const remoteDown = ['a', 'c', 'b', 'd', 'e'];
+      expect(await apply(command('desktop-down', 1, ids, [move('b', 2)], clock(1000)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(command('desktop-return', 2, remoteDown, [move('b', 1)], clock(2000)))).toMatchObject({ kind: 'acknowledged' });
+      const add = command('offline-add', 1, ids, [move('b', 2)], null, false);
+      add.edits[0].afterItems = rows(withExtra);
+      expect(await apply(add)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(withExtra);
+      expect(await apply(early)).toMatchObject({ kind: 'acknowledged' });
+      expect(stored()).toEqual(withExtra);
+    });
+
+    it.each([true, false])('accepts an exact preceding reorder through an unrelated metadata save (same queue: %s)', async sameQueue => {
+      const up = ['b', 'a', 'c', 'd', 'e'];
+      const first = command('first-queued', 1, ids, [move('b', 0)], null);
+      first.edits[0].membership = { ...first.edits[0].membership!, reorderQueueId: 'phone-queue' };
+      expect(await apply(first)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { protocol: 1, kind: 'update', owner, operationId: 'independent-description',
+        resource: series, generation: 'opening-series', dependsOn: [],
+        changes: [{ path: ['description'], before: { exists: false }, after: { exists: true, value: 'Keep these words' } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      const second = command('second-queued', 1, up, [move('b', 2)], null);
+      second.edits[0].membership = { ...second.edits[0].membership!, predecessorOperationId: 'first-queued',
+        reorderQueueId: sameQueue ? 'phone-queue' : 'other-queue' };
+      expect(await apply(second)).toMatchObject({ kind: sameQueue ? 'acknowledged' : 'conflict' });
+      expect(stored()).toEqual(sameQueue ? ['a', 'c', 'b', 'd', 'e'] : up);
+      expect(documents.get('series/' + series.id)?.description).toBe('Keep these words');
+    });
+
+    it('does not let an old multi-series packet replay a tracked item reorder alongside an assignment', async () => {
+      expect(await apply(command('desktop-up', 1, ids, [move('b', 0)], clock(0)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(command('desktop-return', 2, ['b','a','c','d','e'], [move('b', 1)], clock(1000)))).toMatchObject({ kind: 'acknowledged' });
+      const target = { collection: 'series', id: 'old-target' };
+      const f = 'f';
+      putSeries(target.id);
+      documents.set('sermons/' + f, { userId: owner, title: 'Another member' });
+      const stale = command('mixed-old-packet', 1, ids, [move('b', 2)], null, false);
+      const combined = { ...stale, resource: target, generation: null,
+        edits: [{ resource: target, generation: null, beforeItems: [], afterItems: rows([f]) }, ...stale.edits] };
+      expect(await processCommand(owner, combined)).toMatchObject({ kind: 'refused', code: 'series-reorder-needs-review' });
+      expect(stored()).toEqual(ids);
+      expect(documents.get('series/' + target.id)?.items).toEqual([]);
+    });
+
+    it('keeps the saved order when times overlap or an old client cannot prove a move', async () => {
+      expect(await apply(command('up', 1, ids, [move('b', 0)], clock(0)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(command('return', 2, ['b','a','c','d','e'], [move('b', 1)], clock(1000)))).toMatchObject({ kind: 'acknowledged' });
+      expect(await apply(command('unknown', 1, ids, [move('b', 2)], null))).toMatchObject({ kind: 'conflict' });
+      expect(await apply(command('old', 1, ids, [move('b', 2)], null, false))).toMatchObject({
+        kind: 'conflict', snapshot: { resource: series, value: { sermonIds: ids } },
+        conflicts: [{ path: ['items'], base: { value: rows(ids) }, mine: { value: rows(['a', 'c', 'b', 'd', 'e']) }, theirs: { value: rows(ids) } }],
+      });
+      expect(stored()).toEqual(ids);
+    });
   });
 
   describe('same-owner series assignment chronology', () => {

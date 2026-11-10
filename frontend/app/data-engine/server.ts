@@ -41,6 +41,7 @@ import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValid
 import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField } from './rowFieldAction';
+import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
@@ -71,7 +72,7 @@ import type { SeriesMembershipHistoryEntry, SeriesMembershipHistoryPage } from '
 import type { FeedWrite } from './serverFeed';
 import type { StepPlacementWrite } from './stepPlacement.server';
 import type { OutlinePointPlacementHistoryPage } from './types';
-import type { CouncilTopicPlacementHistoryPage, GroupFlowStepPlacementHistoryPage, ServiceOrderPlacementHistoryPage, CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { CouncilTopicPlacementHistoryPage, GroupFlowStepPlacementHistoryPage, SeriesItemPlacementHistoryPage, ServiceOrderPlacementHistoryPage, CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 
@@ -523,7 +524,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -552,6 +553,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   groupFlowStepPlacement?: StepPlacementWrite;
   councilTopicPlacement?: StepPlacementWrite;
   outlinePointPlacement?: OutlinePointPlacementWrite;
+  seriesItemPlacement?: StepPlacementWrite[];
   seriesMembershipWrites: readonly SeriesMembershipWrite[];
   cachedSeriesHead?: Promise<DocumentData | undefined>;
 }) {
@@ -594,7 +596,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const serviceStepMetadata = metadataAfterServiceOrderStepPlacement({ ...snapshot, metadata: orderPlacementMetadata }, raw,
       primary ? serviceOrderStepPlacement : undefined);
     const groupStepMetadata = metadataAfterGroupStepPlacement({ ...snapshot, metadata: serviceStepMetadata }, raw, primary ? groupFlowStepPlacement : undefined);
-    const finalMetadata = metadataAfterCouncilTopicPlacement({ ...snapshot, metadata: groupStepMetadata }, raw, primary ? councilTopicPlacement : undefined);
+    const councilMetadata = metadataAfterCouncilTopicPlacement({ ...snapshot, metadata: groupStepMetadata }, raw, primary ? councilTopicPlacement : undefined);
+    const finalMetadata = metadataAfterSeriesItemPlacement({ ...snapshot, metadata: councilMetadata }, raw, primary ? seriesItemPlacement : undefined);
     const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
@@ -623,6 +626,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
       ...serviceOrderStepPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
+  }
+  const displacedSeriesItems = seriesItemPlacement?.flatMap(effect => effect.displaced ?? []) ?? [];
+  if (displacedSeriesItems.length && primarySnapshot.metadata) {
+    const history = adminDb.collection('series').doc(primarySnapshot.resource.id).collection(SERIES_ITEM_PLACEMENT_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { owner,
+      changes: displacedSeriesItems, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString() });
   }
   if (outlinePointPlacement?.displaced && primarySnapshot.metadata) {
     const history = adminDb.collection(primarySnapshot.resource.collection).doc(primarySnapshot.resource.id).collection(OUTLINE_POINT_PLACEMENT_HISTORY);
@@ -768,6 +777,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
     let serviceOrderStepPlacement: ServiceOrderStepPlacementWrite | undefined;
     let groupFlowStepPlacement: StepPlacementWrite | undefined;
+    let seriesItemPlacement: StepPlacementWrite[] | undefined;
     let councilTopicPlacement: StepPlacementWrite | undefined;
     let outlinePointPlacement: OutlinePointPlacementWrite | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
@@ -798,6 +808,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
+        seriesPlacementMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
         ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
           catalogVersion: async () => readHeadVersion(owner, 'series', await readSeriesHead()),
           read: async member => (await transaction.get(seriesMembershipHeadRef(member))).data(),
@@ -857,6 +868,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       serviceOrderPlacement = plan.serviceOrderPlacement;
       serviceOrderStepPlacement = plan.serviceOrderStepPlacement;
       groupFlowStepPlacement = plan.groupFlowStepPlacement;
+      seriesItemPlacement = plan.seriesItemPlacement;
       councilTopicPlacement = plan.councilTopicPlacement;
       outlinePointPlacement = plan.outlinePointPlacement;
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
@@ -877,7 +889,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1109,6 +1121,14 @@ export async function listCouncilTopicPlacementHistory(owner: string, councilId:
     owner, { collection: 'councils', id: councilId }, COUNCIL_TOPIC_PLACEMENT_HISTORY, generation, cursor, 'council-gone',
   );
   return { owner, councilId, generation, ...page };
+}
+
+export async function listSeriesItemPlacementHistory(owner: string, seriesId: string, generation: string,
+  cursor?: string): Promise<SeriesItemPlacementHistoryPage> {
+  const page = await listHistoryEntries<SeriesItemPlacementHistoryPage['entries'][number]>(
+    owner, { collection: 'series', id: seriesId }, SERIES_ITEM_PLACEMENT_HISTORY, generation, cursor, 'series-gone',
+  );
+  return { owner, seriesId, generation, ...page };
 }
 
 export async function listGroupStepPlacementHistory(owner: string, groupId: string, generation: string,

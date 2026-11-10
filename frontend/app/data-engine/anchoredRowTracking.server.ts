@@ -51,7 +51,7 @@ export function trackAnchoredRows<Row extends PlacementStep>({ collection, field
     return { floor: value.floor, head: value.head, guardLegacy: value.guardLegacy === true || moves.length > 0, moves, births };
   }
 
-  function lineage(raw: unknown, current: ResourceSnapshot, rows: Row[], opening: PlacementStep[], move: TrackedMove) {
+  function lineage(raw: unknown, current: ResourceSnapshot, rows: Row[], opening: PlacementStep[], move: TrackedMove, acceptedBirth?: number) {
     const revision = current.metadata?.revision ?? 0;
     const tracked = readTracking(raw, rows, revision);
     const previous = tracked?.moves.find(item => item.stepId === move.stepId);
@@ -63,7 +63,9 @@ export function trackAnchoredRows<Row extends PlacementStep>({ collection, field
       const before = opening.find(row => row.id === id);
       const currentRow = rows.find(row => row.id === id);
       const born = tracked?.births.find(item => item.id === id)?.revision ?? 0;
-      return before && currentRow && rowIdentity(before) === rowIdentity(currentRow) && born <= continuity;
+      // A continued move proves the moved row, not that the device saw a new lifetime of a neighbour.
+      const witnessed = id === move.stepId ? continuity : move.observedRevision;
+      return before && currentRow && rowIdentity(before) === rowIdentity(currentRow) && (born <= witnessed || born === acceptedBirth);
     });
     return { available, trusted: continuity >= (tracked?.floor ?? revision), previous, queueDigest };
   }
@@ -84,7 +86,7 @@ export function trackAnchoredRows<Row extends PlacementStep>({ collection, field
   }
 
   /** Stamp layout continuity on ordinary writes too, including unstamped permutations from older clients. */
-  function metadataAfter(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, write?: StepPlacementWrite) {
+  function metadataAfter(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, write?: StepPlacementWrite | StepPlacementWrite[]) {
     const { metadata, resource, value } = snapshot;
     if (!metadata || resource.collection !== collection || !value) return metadata;
     const steps = read(value[field]);
@@ -95,19 +97,22 @@ export function trackAnchoredRows<Row extends PlacementStep>({ collection, field
       && validRevision(stored.revision, metadata.revision) && stored.revision + 1 === metadata.revision;
     const previous = sameGeneration && before ? readTracking(stored, before, metadata.revision - 1) : undefined;
     const untracked = !sameGeneration || !before || (object(stored) && stored[proofKey] !== undefined && !previous);
-    const unstamped = !write && before && retainedStepOrderChanged(before, steps);
+    const writes = Array.isArray(write) ? write : write ? [write] : [];
+    const proofs = new Map<string, NonNullable<StepPlacementWrite['proof']>>();
+    for (const effect of writes) if (effect.proof) proofs.set(effect.proof.stepId, effect.proof);
+    const unstamped = !writes.length && before && retainedStepOrderChanged(before, steps);
     let floor = untracked || unstamped ? metadata.revision : previous?.floor ?? metadata.revision - 1;
     const live = new Map(steps.map(step => [step.id, rowIdentity(step)]));
     const opening = new Map(before?.map(step => [step.id, rowIdentity(step)]));
     const same = (id: string) => live.has(id) && opening.get(id) === live.get(id);
     const moves = (previous?.moves ?? []).filter(proof => proof.revision >= floor
-      && same(proof.stepId) && proof.stepId !== write?.proof?.stepId);
+      && same(proof.stepId) && !proofs.has(proof.stepId));
     const births = (previous?.births ?? []).filter(birth => birth.revision >= floor && same(birth.id));
-    if (write?.proof) moves.push({ ...write.proof, revision: metadata.revision });
+    for (const proof of proofs.values()) moves.push({ ...proof, revision: metadata.revision });
     if (!untracked) for (const step of steps) if (!same(step.id)) births.push({ id: step.id, revision: metadata.revision });
     floor = Math.max(floor, moves.at(-limit - 1)?.revision ?? 0, births.at(-limit - 1)?.revision ?? 0);
     const storedTracking = object(stored) && stored[proofKey];
-    const guardLegacy = Boolean(write || previous?.guardLegacy || (sameGeneration && object(storedTracking) && storedTracking.guardLegacy === true));
+    const guardLegacy = Boolean(writes.length || previous?.guardLegacy || (sameGeneration && object(storedTracking) && storedTracking.guardLegacy === true));
     return { ...metadata, [proofKey]: { head: headFor(steps), floor, guardLegacy,
       moves: moves.filter(move => move.revision >= floor).slice(-limit), births: births.filter(birth => birth.revision >= floor).slice(-limit) } };
   }

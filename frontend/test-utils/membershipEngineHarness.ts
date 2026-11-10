@@ -8,6 +8,7 @@ import { createIndexedDbManualScopes } from '@/data-engine/manualScopes.client';
 import { createIndexedDbMembershipScopes } from '@/data-engine/membershipScopes.client';
 import { ResourceObserver } from '@/data-engine/observer';
 import { DataEngineRuntime } from '@/data-engine/runtime';
+import { metadataAfterSeriesItemPlacement } from '@/data-engine/seriesItemPlacement.server';
 import { planDataCommand } from '@/data-engine/serverRelations';
 import { installStorageHarness } from '@/data-engine/__tests__/storageHarness';
 
@@ -27,12 +28,25 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
   const cursors = new Map<string, CollectionCursor>();
   let sequence = 0, version = 1, engine!: DataEngine, activeRuntime!: DataEngineRuntime;
   const read = (resource: ResourceRef) => copy(server.get(key(resource)) ?? { resource, value: null, metadata: null });
+  const seriesMetadata = new Map<string, unknown>();
+  const rememberSeries = (snapshot: ResourceSnapshot, writes?: Parameters<typeof metadataAfterSeriesItemPlacement>[2]) => {
+    if (snapshot.resource.collection !== 'series') return;
+    const previous = server.get(key(snapshot.resource));
+    const stored = previous && { ...previous.value, _dataEngine: seriesMetadata.get(key(snapshot.resource)) };
+    seriesMetadata.set(key(snapshot.resource), metadataAfterSeriesItemPlacement(snapshot, stored, writes));
+  };
+  for (const snapshot of initial) rememberSeries(snapshot);
   const transport: EngineTransport = {
     read: jest.fn(async (_owner, resource) => read(resource)),
     send: jest.fn(async command => {
       if (receipts.has(command.operationId)) return copy(receipts.get(command.operationId)!);
-      const plan = await planDataCommand(command, read(command.resource), inMemoryRelationReader(command.owner, read, () => server.values()));
-      for (const snapshot of plan.writes) { server.set(key(snapshot.resource), copy(snapshot)); owners.set(key(snapshot.resource), command.owner); }
+      const plan = await planDataCommand(command, read(command.resource), {
+        ...inMemoryRelationReader(command.owner, read, () => server.values()),
+        seriesPlacementMetadata: resource => seriesMetadata.get(key(resource)),
+      });
+      for (const snapshot of plan.writes) {
+        rememberSeries(snapshot, key(snapshot.resource) === key(command.resource) ? plan.seriesItemPlacement : undefined);
+        server.set(key(snapshot.resource), copy(snapshot)); owners.set(key(snapshot.resource), command.owner); }
       if (plan.writes.length) version += 1;
       const result = plan.result.kind === 'acknowledged' ? { ...plan.result,
         relatedSnapshots: plan.writes.filter(snapshot => key(snapshot.resource) !== key(command.resource)) } : plan.result;
@@ -69,5 +83,5 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
   return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; }, get runtime() { return activeRuntime; },
-    replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); if (snapshot.value) owners.set(key(snapshot.resource), snapshot.value.userId); version += 1; } };
+    replace: (snapshot: ResourceSnapshot) => { rememberSeries(snapshot); server.set(key(snapshot.resource), copy(snapshot)); if (snapshot.value) owners.set(key(snapshot.resource), snapshot.value.userId); version += 1; } };
 }

@@ -44,7 +44,8 @@ export function DataMembershipStatus({ action, onDiscarded, onReview, onKeep }: 
     finally { setBusy(false); }
   };
   const words = action.errorWords;
-  const changedStage = words && 'key' in words && words.key === 'dataSync.failure.membershipStageChanged';
+  const changedStage = words && 'key' in words
+    && ['dataSync.failure.membershipStageChanged', 'workspaces.series.reorderRecovery.changed'].includes(words.key);
   const trouble = action.phase && !changedStage ? troubleKey(action) : null;
   const compared = action.delivery?.comparisons;
   const exact = action.delivery?.canChooseExact && compared?.length && onKeep;
@@ -64,7 +65,7 @@ export function DataMembershipStatus({ action, onDiscarded, onReview, onKeep }: 
         <p className="break-words">{t('workspaces.series.membershipHistory.stored', { value: stored ? stored.label || t('common.unknown') : t('addSermon.noSeriesOption') })}</p>
       </li>)}</ul>
     </section>}
-    {action.delivery?.canDiscard && <div className="space-y-2">
+    {action.delivery?.canDiscard && !action.delivery.reorderComparison && <div className="space-y-2">
       {!exact && <p>{t('dataSync.discardActionHint')}</p>}
       <div className="flex flex-wrap gap-2">
         {exact && onReview && <button type="button" disabled={busy} className="rounded-lg border px-3 py-1.5 disabled:opacity-50"

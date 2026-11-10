@@ -15,6 +15,7 @@ import { legacyTemplatePlacementNeedsReview, planOutlinePointPlacement, type Out
 import { advanceResourceSnapshot, applyCommand, diffFields, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
+import { isPureSeriesReorder, legacyReorderedSeries, legacySeriesReorderNeedsReview, planSeriesItemPlacement } from './seriesItemPlacement.server';
 import { indexedSeriesMembership, memberResource, membershipKey, mergeOrderedSeriesItems, readSeriesMembershipMoves, reconcileDeletedSeriesMembership, resolveSeriesMembership, seriesLocation, type MembershipLocation, type SeriesMembershipMove, type SeriesMembershipPlacement, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { planServiceOrderPlacement, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
 import { planServiceOrderStepPlacement, type ServiceOrderStepPlacementWrite } from './serviceOrderStepPlacement.server';
@@ -36,11 +37,12 @@ type SeriesMembershipReader = {
 export interface RelationReader {
   serviceOrderPlacement?: { rawMetadata: unknown; serverMs: number | undefined };
   seriesMembershipOrder?: SeriesMembershipReader;
+  seriesPlacementMetadata?(resource: ResourceRef): unknown;
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite; councilTopicPlacement?: StepPlacementWrite }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; seriesItemPlacement?: StepPlacementWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite; groupFlowStepPlacement?: StepPlacementWrite; councilTopicPlacement?: StepPlacementWrite }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -119,6 +121,7 @@ class RelationPlanner {
   private serviceOrderPlacement?: ServiceOrderPlacementWrite;
   private serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
   private groupFlowStepPlacement?: StepPlacementWrite;
+  private seriesItemPlacement?: StepPlacementWrite[];
   private councilTopicPlacement?: StepPlacementWrite;
   private outlinePointPlacement?: OutlinePointPlacementWrite;
 
@@ -262,6 +265,33 @@ class RelationPlanner {
 
   private async seriesRelation(command: Extract<DataCommand, { relation: 'series-membership' }>): Promise<CommandResult | undefined> {
     const order = this.reader.seriesMembershipOrder;
+    const first = command.edits[0];
+    const raw = this.reader.serviceOrderPlacement?.rawMetadata;
+    if (first.membership?.reorder) {
+      if (command.edits.length !== 1) return fail(INVALID_DOCUMENT);
+      const series = await this.get(first.resource);
+      const value = this.live(series, first.generation);
+      const planned = planSeriesItemPlacement(command, first, series, currentItems(value), this.reader.seriesPlacementMetadata?.(first.resource) ?? raw,
+        order?.serverMs ?? this.reader.serviceOrderPlacement?.serverMs);
+      if ('code' in planned) return fail(planned.code);
+      if ('conflict' in planned) return this.conflict([planned.conflict]);
+      const fields = seriesFields(planned.items);
+      await this.checkSeriesTargets(fields.items as DocumentData[]);
+      this.stage(series, fields);
+      this.seriesItemPlacement = planned.writes;
+      return;
+    }
+    for (const edit of legacyReorderedSeries(command.edits)) {
+      const series = await this.get(edit.resource);
+      const metadata = this.reader.seriesPlacementMetadata?.(edit.resource) ?? (key(edit.resource) === key(this.primary.resource) ? raw : undefined);
+      if (legacySeriesReorderNeedsReview(command, edit, series, metadata)) {
+        if (command.edits.length === 1 && isPureSeriesReorder(first)) {
+          return this.conflict([{ path: ['items'], base: { exists: true, value: first.beforeItems },
+            mine: { exists: true, value: first.afterItems }, theirs: { exists: true, value: currentItems(series.value!) } }]);
+        }
+        return { kind: 'refused', operationId: command.operationId, code: 'series-reorder-needs-review' };
+      }
+    }
     if (command.edits[0].membership && order) {
       const moves = readSeriesMembershipMoves(command.edits, order.serverMs);
       if (!moves) return fail(INVALID_DOCUMENT);
@@ -785,6 +815,7 @@ class RelationPlanner {
       ...(this.groupFlowStepPlacement && { groupFlowStepPlacement: this.groupFlowStepPlacement }),
       ...(this.councilTopicPlacement && { councilTopicPlacement: this.councilTopicPlacement }),
       ...(this.outlinePointPlacement && { outlinePointPlacement: this.outlinePointPlacement }),
+      ...(this.seriesItemPlacement && { seriesItemPlacement: this.seriesItemPlacement }),
       ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
 }

@@ -41,3 +41,20 @@ it('permits proven failure only when the entire dependent chain has no unknown d
   expect(describeMembershipDelivery(record, [...failed, later], [])).toMatchObject({ phase: 'refused', canDiscard: false });
   expect(describeMembershipDelivery(record, [...failed, { ...later, command: null }], [])).toMatchObject({ canDiscard: true });
 });
+
+it('presents both actual orders from a recoverable reorder without granting a dependent choice', () => {
+  const row = (id: string, position: number) => ({ id, refId: id, type: 'sermon' as const, position });
+  const proposed = [row('b', 1), row('a', 2)];
+  const stored = [row('a', 1), row('b', 2)];
+  const scope: MembershipScopeRecord = { ...record, requestIds: ['a'], action: { kind: 'reorder', seriesId: 'a', itemIds: ['b', 'a'] } };
+  const snapshot = { ...baseline, value: { ...baseline.value, items: stored },
+    metadata: { protocol: 1 as const, generation: 'series-generation', revision: 3, deleted: false } };
+  const answered: CommitRequest = { ...request('a'), atomic: undefined, state: 'conflict', value: { ...baseline.value, items: proposed },
+    result: { kind: 'conflict', operationId: 'a', snapshot, conflicts: [{ path: ['items'], base: { exists: true, value: stored },
+      mine: { exists: true, value: proposed }, theirs: { exists: true, value: stored } }] } };
+  const reorderComparison = { seriesId: 'a', generation: 'series-generation', revision: 3, proposed, stored };
+  expect(describeMembershipDelivery(scope, [answered], [])).toMatchObject({ reorderComparison, canChooseReorder: true });
+  const later = { ...request('later'), atomic: undefined, predecessor: answered.id };
+  expect(describeMembershipDelivery(scope, [answered, later], [])).toMatchObject({ reorderComparison, canChooseReorder: false });
+  expect(describeMembershipDelivery(scope, [{ ...answered, owner: 'other' }], [])).not.toHaveProperty('reorderComparison');
+});
