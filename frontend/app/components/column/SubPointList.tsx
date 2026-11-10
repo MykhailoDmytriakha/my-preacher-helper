@@ -11,13 +11,13 @@ import {
   type DropResult,
 } from "@hello-pangea/dnd";
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from "@heroicons/react/24/outline";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from "@/components/PointNote";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/subPoints";
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
+import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import type { SubPoint } from "@/models/models";
 
@@ -27,6 +27,7 @@ interface SubPointListProps {
   isPointLocked: boolean;
   onAdd: (outlinePointId: string, text: string) => void;
   onEdit: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
   onEditNote?: (outlinePointId: string, subPointId: string, note?: string) => void;
@@ -94,6 +95,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   isPointLocked,
   onAdd,
   onEdit,
+  onTitleDraftChange,
   onDelete,
   onReorder,
   onEditNote,
@@ -110,9 +112,17 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const [addText, setAddText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const openingTitle = useRef("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const hasTitleDraft = isAdding || editingId !== null;
+  useLayoutEffect(() => {
+    if (!onTitleDraftChange || !hasTitleDraft) return;
+    onTitleDraftChange(outlinePointId, true);
+    return () => onTitleDraftChange(outlinePointId, false);
+  }, [hasTitleDraft, onTitleDraftChange, outlinePointId]);
 
   useEffect(() => {
     if (!hideList && isAdding && addInputRef.current) {
@@ -140,19 +150,15 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   };
 
   const handleEditSave = () => {
-    const textToSave = normalizeCapitalizedTitle(editText);
-    if (!editingId || !textToSave) {
-      setEditingId(null);
-      setEditText("");
-      return;
-    }
-    onEdit(outlinePointId, editingId, textToSave);
+    const textToSave = changedCapitalizedTitle(editText, openingTitle.current);
+    if (editingId && textToSave) onEdit(outlinePointId, editingId, textToSave);
     setEditingId(null);
     setEditText("");
   };
 
   const startEditingSubPoint = (sp: SubPoint) => {
     if (isPointLocked) return;
+    openingTitle.current = sp.text;
     setEditingId(sp.id);
     setEditText(sp.text);
   };

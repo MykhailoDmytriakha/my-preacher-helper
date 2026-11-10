@@ -432,6 +432,55 @@ describe('SermonOutline Component', () => {
     expect(screen.queryByText('Updated outline')).not.toBeInTheDocument();
   });
 
+  test.each(['point', 'sub-point'])('keeps a refreshed %s title when confirming its untouched input', async target => {
+    const point = { id: 'intro1', text: 'Opening point', subPoints: [{ id: 's1', text: 'Opening sub-point', position: 0 }] };
+    const original = { ...mockSermon, outline: { ...mockSermon.outline!, introduction: [point] } };
+    const opening = target === 'point' ? point.text : point.subPoints[0].text;
+    const nextPoint = target === 'point'
+      ? { ...point, text: 'Saved on the phone' }
+      : { ...point, subPoints: [{ ...point.subPoints[0], text: 'Saved on the phone' }] };
+    const { rerender } = render(<SermonOutline sermon={original} />);
+    fireEvent.doubleClick(screen.getByText(opening));
+    rerender(<SermonOutline sermon={{ ...original, outline: { ...original.outline, introduction: [nextPoint] } }} />);
+    await act(async () => fireEvent.keyDown(screen.getByDisplayValue(opening), { key: 'Enter' }));
+
+    expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+    expect(screen.getByText('Saved on the phone')).toBeVisible();
+  });
+
+  test.each([false, true])('shows the latest outline after closing a second untouched title (parent advanced: %s)', async parentAdvanced => {
+    let finishSave!: (outline: SermonOutlineType) => void;
+    mockUpdateSermonOutline.mockImplementation(() => new Promise(resolve => { finishSave = resolve; }));
+    const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+
+    fireEvent.doubleClick(screen.getByText('Introduction point 1'));
+    const editor = screen.getByPlaceholderText('structure.editPointPlaceholder');
+    fireEvent.change(editor, { target: { value: 'First real change' } });
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    await waitFor(() => expect(mockUpdateSermonOutline).toHaveBeenCalledTimes(1));
+
+    fireEvent.doubleClick(screen.getByText('Main point 1'));
+    const acknowledged = {
+      introduction: [{ id: 'intro1', text: 'First real change' }],
+      main: [{ id: 'main1', text: 'New title in the acknowledged outline' }],
+      conclusion: mockSermon.outline!.conclusion,
+    };
+    await act(async () => finishSave(acknowledged));
+    if (parentAdvanced) {
+      rerender(<SermonOutline sermon={{ ...mockSermon, outline: {
+        ...acknowledged, main: [{ id: 'main1', text: 'Newer title from the parent' }],
+      } }} />);
+    }
+    const second = screen.getByDisplayValue('Main point 1');
+    expect(second).toHaveFocus();
+    expect(screen.queryByText('New title in the acknowledged outline')).not.toBeInTheDocument();
+    await act(async () => fireEvent.keyDown(second, { key: 'Enter' }));
+
+    expect(mockUpdateSermonOutline).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('First real change')).toBeVisible();
+    expect(screen.getByText(parentAdvanced ? 'Newer title from the parent' : acknowledged.main[0].text)).toBeVisible();
+  });
+
   test('preserves typing and its opening merge baseline when the parent refreshes', async () => {
     const { rerender } = render(<SermonOutline sermon={mockSermon} />);
     fireEvent.doubleClick(screen.getByText('Introduction point 1'));

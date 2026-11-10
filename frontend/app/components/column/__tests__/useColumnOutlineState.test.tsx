@@ -44,7 +44,7 @@ describe("useColumnOutlineState", () => {
 
   const renderState = (overrides: Partial<Parameters<typeof useColumnOutlineState>[0]> = {}) =>
     renderHook(
-      () =>
+      (options = overrides) =>
         useColumnOutlineState({
           id: "main",
           sermonId: "sermon-1",
@@ -54,9 +54,10 @@ describe("useColumnOutlineState", () => {
           onAddOutlinePoint,
           scheduleTask,
           t,
-          ...overrides,
+          ...options,
         }),
       {
+        initialProps: overrides,
         wrapper: ({ children }) => (
           <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>
         ),
@@ -152,6 +153,21 @@ describe("useColumnOutlineState", () => {
       "preferMine",
       expect.objectContaining({ apply: expect.any(Function) })
     );
+  });
+
+  it("keeps a refreshed focus title when confirming its untouched input", async () => {
+    const { result, rerender } = renderState();
+    act(() => result.current.handleStartEdit(initialSermonPoints[0]));
+    rerender({
+      initialSermonPoints: [{ ...initialSermonPoints[0], text: "Saved on the phone" }, initialSermonPoints[1]],
+    });
+    expect(result.current.editingText).toBe("First point");
+    act(() => result.current.handleSaveEdit());
+    await settle();
+
+    expect(writer.updateSermonOutline).not.toHaveBeenCalled();
+    expect(result.current.localSermonPoints[0].text).toBe("Saved on the phone");
+    expect(result.current.editingPointId).toBeNull();
   });
 
   it("capitalizes the first letter after punctuation across point and sub-point handlers", async () => {

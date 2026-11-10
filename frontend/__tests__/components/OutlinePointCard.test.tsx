@@ -97,6 +97,41 @@ it('keeps normalized inline save, blank rejection, cancel, delete and collapse l
   expect(onDeletePoint).toHaveBeenCalledWith('point');
 });
 
+it.each(['Enter', 'Save', 'reverted typing'])('keeps a refreshed point title when closing without a change via %s', action => {
+  const onSaveEdit = jest.fn();
+  const { rerender } = render(<OutlinePointCard {...base} onSaveEdit={onSaveEdit} />);
+  fireEvent.click(screen.getByRole('heading', { name: 'Point' }));
+  const editor = screen.getByRole('textbox');
+  if (action === 'reverted typing') {
+    fireEvent.change(editor, { target: { value: 'Draft title' } });
+    fireEvent.change(editor, { target: { value: 'Point' } });
+  }
+
+  rerender(<OutlinePointCard {...base} point={{ ...point, text: 'Saved on the phone' }} onSaveEdit={onSaveEdit} />);
+  expect(editor).toHaveValue('Point');
+  if (action === 'Save') fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+  else fireEvent.keyDown(editor, { key: 'Enter' });
+
+  expect(onSaveEdit).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: 'Saved on the phone' })).toBeVisible();
+});
+
+it('preserves an explicit capitalization correction to a legacy title', () => {
+  const onSaveEdit = jest.fn();
+  render(<OutlinePointCard {...base} point={{ ...point, text: 'lowercase title' }} onSaveEdit={onSaveEdit} />);
+
+  fireEvent.click(screen.getByRole('heading', { name: 'lowercase title' }));
+  fireEvent.keyDown(screen.getByDisplayValue('lowercase title'), { key: 'Enter' });
+  expect(onSaveEdit).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('heading', { name: 'lowercase title' }));
+  const editor = screen.getByDisplayValue('lowercase title');
+  fireEvent.change(editor, { target: { value: 'Lowercase title' } });
+  fireEvent.keyDown(editor, { key: 'Enter' });
+  expect(onSaveEdit).toHaveBeenCalledTimes(1);
+  expect(onSaveEdit).toHaveBeenCalledWith('point', 'Lowercase title');
+});
+
 it('preserves focus actions, all-thought lock semantics, note ownership and AI gating', () => {
   const onAddThought = jest.fn(); const onTogglePointLock = jest.fn(); const onAiSortPoint = jest.fn(); const onSetPointNote = jest.fn(); const onSetSubPointNote = jest.fn();
   const props = { ...base, pointItems: [item('first'), item('second')], isFocusMode: true, onAddThought, onTogglePointLock, onAiSortPoint, onSetPointNote, onSetSubPointNote, showNotes: true };

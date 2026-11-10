@@ -67,7 +67,7 @@ export interface OpenPointEditorArgs {
   point: SermonPoint;
   isLocked?: boolean;
   isFocusMode?: boolean;
-  setLocalEditText: React.Dispatch<React.SetStateAction<string>>;
+  setLocalEditText: (text: string) => void;
   setIsEditingLocally: React.Dispatch<React.SetStateAction<boolean>>;
   onEditPoint?: (point: SermonPoint) => void;
 }

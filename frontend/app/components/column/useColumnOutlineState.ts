@@ -10,7 +10,7 @@ import {
 } from "@/services/outline.service";
 import { newClientId } from "@/utils/clientId";
 import { OutlineCapture } from "@/utils/outlineCapture";
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
+import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import { mapColumnIdToSectionType } from "./utils";
@@ -72,6 +72,7 @@ export function useColumnOutlineState({
   const writer = useStructureWriter();
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const openingTitle = useRef("");
   const [addingNewPoint, setAddingNewPoint] = useState(false);
   const [newPointText, setNewPointText] = useState("");
   const [insertPointIndex, setInsertPointIndex] = useState<number | null>(null);
@@ -190,8 +191,10 @@ export function useColumnOutlineState({
   };
 
   const handleStartEdit = (point: SermonPoint) => {
+    const title = capitalizeFirstLetter(point.text);
+    openingTitle.current = title;
     setEditingPointId(point.id);
-    setEditingText(capitalizeFirstLetter(point.text));
+    setEditingText(title);
     setAddingNewPoint(false);
   };
 
@@ -201,7 +204,7 @@ export function useColumnOutlineState({
   };
 
   const handleSaveEdit = () => {
-    const textToSave = normalizeCapitalizedTitle(editingText);
+    const textToSave = changedCapitalizedTitle(editingText, openingTitle.current);
     if (!editingPointId || !textToSave) {
       handleCancelEdit();
       return;

@@ -15,7 +15,7 @@ import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips
 import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getOutlinePointAiSortState } from '@/utils/aiSorting';
 import { debugLog } from '@/utils/debugMode';
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
+import { capitalizeFirstLetter, changedCapitalizedTitle } from '@/utils/textNormalization';
 
 import { recordAudioThought } from './audio';
 import { BG_GRAY_LIGHTER_DARK, INLINE_EDIT_ACTION_BUTTON_BASE_CLASS, TRANSLATION_COMMON_CANCEL, TRANSLATION_COMMON_DELETE, TRANSLATION_COMMON_SAVE } from './constants';
@@ -155,6 +155,7 @@ export const OutlinePointCard: React.FC<{
   // Local inline edit state (normal mode)
   const [isEditingLocally, setIsEditingLocally] = React.useState(false);
   const [localEditText, setLocalEditText] = React.useState(point.text);
+  const openingTitle = React.useRef(point.text);
   const localEditRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (isEditingLocally && localEditRef.current) {
@@ -163,20 +164,15 @@ export const OutlinePointCard: React.FC<{
     }
   }, [isEditingLocally]);
 
-  const handleLocalSave = () => {
-    const textToSave = normalizeCapitalizedTitle(localEditText);
-    if (!textToSave) {
-      setIsEditingLocally(false);
-      setLocalEditText(point.text);
-      return;
-    }
-    onSaveEdit?.(point.id, textToSave);
-    setIsEditingLocally(false);
-  };
-
   const handleLocalCancel = () => {
     setIsEditingLocally(false);
     setLocalEditText(point.text);
+  };
+
+  const handleLocalSave = () => {
+    const textToSave = changedCapitalizedTitle(localEditText, openingTitle.current);
+    if (textToSave) onSaveEdit?.(point.id, textToSave);
+    handleLocalCancel();
   };
 
   const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
@@ -297,7 +293,10 @@ export const OutlinePointCard: React.FC<{
             point,
             isLocked: isPointLocked,
             isFocusMode,
-            setLocalEditText,
+            setLocalEditText: text => {
+              openingTitle.current = text;
+              setLocalEditText(text);
+            },
             setIsEditingLocally,
             onEditPoint,
           })}

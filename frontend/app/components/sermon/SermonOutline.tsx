@@ -2,7 +2,7 @@ import { DragDropContext, Draggable, DraggableProvided, DraggableStateSnapshot, 
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { SubPointList } from '@/components/column/SubPointList';
@@ -13,7 +13,7 @@ import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { OutlineCapture } from '@/utils/outlineCapture';
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
+import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { NEUTRAL_CAPTION, getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
@@ -102,8 +102,25 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     conclusion: '',
   });
   const [collapsedPoints, setCollapsedPoints] = useState<Record<string, boolean>>({});
+  const activeSubPointDrafts = useRef(new Set<string>());
+  const [hasSubPointDraft, setHasSubPointDraft] = useState(false);
+  const [acceptedOutline, setAcceptedOutline] = useState<{
+    parent: SermonOutline | null;
+    value: SermonOutline | null;
+  } | null>(null);
+  const hasPointDraft = editingPointId !== null || addingNewToSection !== null;
+  const hasPointDraftRef = useRef(false);
+  useLayoutEffect(() => { hasPointDraftRef.current = hasPointDraft; }, [hasPointDraft]);
+
+  const handleSubPointDraftChange = useCallback((pointId: string, active: boolean) => {
+    const drafts = activeSubPointDrafts.current;
+    if (active) drafts.add(pointId);
+    else drafts.delete(pointId);
+    setHasSubPointDraft(drafts.size > 0);
+  }, []);
 
   // --- All useRef hooks after useState ---
+  const openingTitle = useRef("");
   /**
    * The plan THIS VIEW LOADED WITH — the base its saves merge against.
    *
@@ -115,13 +132,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const baseOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
   // A section's fold choice belongs to this view, independently of edits and delivery.
   const chosenSectionsRef = useRef(new Set<SectionType>());
-  /**
-   * Counts edits and newly opened draft fields, including nested subpoint inputs.
-   * A response from before that draft must not replace its list or merge baseline.
-   * Attempts of the same save do not count.
-   */
+  // Only submitted edits own a generation. An open title protects its own draft separately.
   const saveGenerationRef = useRef(0);
-  /** The newest edit whose save has finished; an engine document is followed again once it catches up. */
   const settledGenerationRef = useRef(0);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -147,10 +159,14 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   // An engine writer lays each change over the document's current copy, so the document
   // stays the only store: follow it whenever no save of this panel is on its way.
   useEffect(() => {
-    if (editingPointId || addingNewToSection) return;
+    if (hasPointDraft || hasSubPointDraft || activeSubPointDrafts.current.size > 0) return;
     if (settledGenerationRef.current !== saveGenerationRef.current) return;
-    setSectionPoints(mapOutline(sermon.outline));
-    baseOutlineRef.current = sermon.outline ?? null;
+    const parent = sermon.outline ?? null;
+    // A locally accepted edit may be visible before its parent catches up. Once the parent
+    // has changed, follow that new document rather than reapplying an older accepted copy.
+    const visible = acceptedOutline?.parent === parent ? acceptedOutline.value : parent;
+    setSectionPoints(mapOutline(visible ?? undefined));
+    baseOutlineRef.current = visible;
     placementVersion.current = writer.outlinePlacementVersion?.();
     if (saveGenerationRef.current === 0) {
       setExpandedSections(previous => {
@@ -159,7 +175,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         return next;
       });
     }
-  }, [sermon.outline, editingPointId, addingNewToSection, writer]);
+  }, [sermon.outline, acceptedOutline, hasPointDraft, hasSubPointDraft, writer]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -226,16 +242,12 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, begin: () => ({
       stored: (saved, sameView) => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
-        const visible = sameView ? saved : parentOutlineRef.current;
-        const committed: SermonOutline = {
-          introduction: visible?.introduction ?? [],
-          main: visible?.main ?? [],
-          conclusion: visible?.conclusion ?? [],
-        };
-        baseOutlineRef.current = committed;
+        const parent = parentOutlineRef.current;
         settledGenerationRef.current = generationAtRequest;
-        setSectionPoints({ introduction: committed.introduction, mainPart: committed.main, conclusion: committed.conclusion });
-        if (sameView) onOutlineUpdate?.(committed);
+        setAcceptedOutline({ parent, value: sameView ? saved : parent });
+        if (sameView && !hasPointDraftRef.current && activeSubPointDrafts.current.size === 0) {
+          onOutlineUpdate?.(saved);
+        }
       },
       failed: err => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
@@ -274,8 +286,10 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
   const handleStartEdit = (point: SermonPoint) => {
     if (isReadOnly) return;
+    const title = capitalizeFirstLetter(point.text);
+    openingTitle.current = title;
     setEditingPointId(point.id);
-    setEditingText(capitalizeFirstLetter(point.text)); // Set initial text for editing
+    setEditingText(title);
     setAddingNewToSection(null); // Ensure add mode is off
   };
 
@@ -286,9 +300,9 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
   const handleSaveEdit = () => {
     if (isReadOnly) return;
-    const textToSave = normalizeCapitalizedTitle(editingText);
+    const textToSave = changedCapitalizedTitle(editingText, openingTitle.current);
     if (!editingPointId || !textToSave) {
-      handleCancelEdit(); // Cancel if empty
+      handleCancelEdit();
       return;
     }
 
@@ -641,6 +655,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                             isPointLocked={isReadOnly}
                             onAdd={handleAddSubPoint}
                             onEdit={handleEditSubPoint}
+                            onTitleDraftChange={handleSubPointDraftChange}
                             onDelete={handleDeleteSubPoint}
                             onReorder={handleReorderSubPoints}
                             getAffectedThoughtCount={(spId) => sermon.thoughts.filter((th) => th.subPointId === spId).length}
@@ -727,16 +742,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     <DragDropContext dragHandleUsageInstructions={dragWords.dragHandleUsageInstructions}
       onDragStart={dragWords.announceStart} onDragUpdate={dragWords.announceUpdate}
       onDragEnd={(result, provided) => { dragWords.announceEnd(result, provided); onDragEnd(result); }}>
-      <div
-        className="mt-4"
-        onFocusCapture={(event) => {
-          // Nested editors own their input state. Capture draft ownership here
-          // before a background prop refresh can remove their point or subpoint.
-          if (event.target.matches('input, textarea, [contenteditable="true"]')) {
-            saveGenerationRef.current += 1;
-          }
-        }}
-      >
+      <div className="mt-4">
         {renderSection('introduction')}
         {renderSection('mainPart')}
         {renderSection('conclusion')}

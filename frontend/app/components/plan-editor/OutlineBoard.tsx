@@ -29,7 +29,7 @@ import { findPointSection } from '@/utils/outlineDnd';
 import { sermonNoteChanged, withOutlineNoteText, type OutlineNoteOpening, type OutlineNoteTarget } from '@/utils/sermonNoteText';
 import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
+import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';
@@ -219,6 +219,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const [openedNoteIds, setOpenedNoteIds] = useState<Set<string>>(new Set());
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const openingPointTitle = useRef('');
   const [addingToSection, setAddingToSection] = useState<SectionKey | null>(null);
   const [newPointText, setNewPointText] = useState('');
   const [collapsedPoints, setCollapsedPoints] = useState<Record<string, boolean>>({});
@@ -227,6 +228,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const [newSubPointText, setNewSubPointText] = useState('');
   const [editingSubPointId, setEditingSubPointId] = useState<string | null>(null);
   const [editingSubPointText, setEditingSubPointText] = useState('');
+  const openingSubPointTitle = useRef('');
   const [pendingSubPointDelete, setPendingSubPointDelete] = useState<{
     outlinePointId: string;
     subPointId: string;
@@ -248,9 +250,18 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     setAddingToSection(null);
   };
 
+  const startEditingPoint = (point: OutlinePoint) => {
+    if (isReadOnly) return;
+    const title = capitalizeFirstLetter(point.text);
+    openingPointTitle.current = title;
+    setEditingPointId(point.id);
+    setEditingText(title);
+    setAddingToSection(null);
+  };
+
   const saveEdit = () => {
     if (isReadOnly) return;
-    const text = normalizeCapitalizedTitle(editingText);
+    const text = changedCapitalizedTitle(editingText, openingPointTitle.current);
     if (!editingPointId || !text) {
       setEditingPointId(null);
       setEditingText('');
@@ -348,15 +359,17 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   const startEditingSubPoint = (sp: SubPoint) => {
     if (isReadOnly) return;
+    const title = capitalizeFirstLetter(sp.text);
+    openingSubPointTitle.current = title;
     setEditingSubPointId(sp.id);
-    setEditingSubPointText(capitalizeFirstLetter(sp.text));
+    setEditingSubPointText(title);
     setAddingSubPointTo(null);
     setNewSubPointText('');
   };
 
   const saveSubPointEdit = (outlinePointId: string, subPointId: string) => {
     if (isReadOnly) return;
-    const value2 = normalizeCapitalizedTitle(editingSubPointText);
+    const value2 = changedCapitalizedTitle(editingSubPointText, openingSubPointTitle.current);
     if (value2) {
       editSubPoint(outlinePointId, subPointId, value2);
     }
@@ -934,12 +947,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                 )}
                                 <span
                                   className={`min-w-0 text-sm text-gray-800 dark:text-gray-200 break-words ${isReadOnly ? '' : 'cursor-text'}`}
-                                  onDoubleClick={() => {
-                                    if (isReadOnly) return;
-                                    setEditingPointId(point.id);
-                                    setEditingText(capitalizeFirstLetter(point.text));
-                                    setAddingToSection(null);
-                                  }}
+                                  onDoubleClick={() => startEditingPoint(point)}
                                 >
                                   <ScriptureText text={point.text} />
                                 </span>
@@ -951,11 +959,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             <div className={`flex items-center gap-0.5 max-lg:opacity-100 max-lg:pointer-events-auto ${planActions.actions}`}>
                               {!directText && <button type="button"
                                 aria-label={t('common.edit')}
-                                onClick={() => {
-                                  setEditingPointId(point.id);
-                                  setEditingText(capitalizeFirstLetter(point.text));
-                                  setAddingToSection(null);
-                                }}
+                                onClick={() => startEditingPoint(point)}
                                 className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                               >
                                 <PencilIcon className="h-4 w-4" />

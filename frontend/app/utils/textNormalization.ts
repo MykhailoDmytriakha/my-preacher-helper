@@ -13,3 +13,9 @@ export const capitalizeFirstLetter = (value: string): string => {
 
 export const normalizeCapitalizedTitle = (value: string): string =>
   capitalizeFirstLetter(value).trim();
+
+export function changedCapitalizedTitle(value: string, openingTitle: string): string | undefined {
+  if (value === openingTitle) return undefined;
+  const title = normalizeCapitalizedTitle(value);
+  return title && title !== openingTitle ? title : undefined;
+}

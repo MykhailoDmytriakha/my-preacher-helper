@@ -189,6 +189,22 @@ describe('OutlineBoard', () => {
     expect(screen.queryByPlaceholderText('structure.subPointPlaceholder')).not.toBeInTheDocument();
   });
 
+  it.each(['point', 'sub-point'])('keeps a refreshed %s title when confirming its untouched input', target => {
+    const point = { id: 'p1', text: 'Opening point', subPoints: [{ id: 's1', text: 'Opening sub-point', position: 1000 }] };
+    const opening = target === 'point' ? point.text : point.subPoints[0].text;
+    const nextPoint = target === 'point'
+      ? { ...point, text: 'Saved on the phone' }
+      : { ...point, subPoints: [{ ...point.subPoints[0], text: 'Saved on the phone' }] };
+    const onChange = jest.fn();
+    const { rerender } = render(<OutlineBoard value={{ ...empty(), main: [point] }} onChange={onChange} />);
+    fireEvent.doubleClick(screen.getByText(opening));
+    rerender(<OutlineBoard value={{ ...empty(), main: [nextPoint] }} onChange={onChange} />);
+    fireEvent.keyDown(screen.getByDisplayValue(opening), { key: 'Enter' });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('Saved on the phone')).toBeVisible();
+  });
+
   it('edits a sub-point while preserving its identity, position and siblings', () => {
     const first = { id: 's1', text: 'First', position: 1000, note: 'Keep this note' };
     const second = { id: 's2', text: 'Second', position: 2000 };

@@ -130,6 +130,22 @@ describe('SubPointList', () => {
     expect(actionSlot).toHaveClass('justify-end');
   });
 
+  it.each(['Enter', 'Save'])('keeps a refreshed sub-point title when closing without a change via %s', action => {
+    const onEdit = jest.fn();
+    const props = { outlinePointId: 'point-1', isPointLocked: false, onAdd: jest.fn(), onEdit, onDelete: jest.fn(), t };
+    const subPoint = { id: 'sub-1', text: 'Opening title', position: 1000 };
+    const { rerender } = render(<SubPointList {...props} subPoints={[subPoint]} />);
+    fireEvent.doubleClick(screen.getByText('Opening title'));
+
+    rerender(<SubPointList {...props} subPoints={[{ ...subPoint, text: 'Saved on the phone' }]} />);
+    const editor = screen.getByDisplayValue('Opening title');
+    if (action === 'Save') fireEvent.click(screen.getByLabelText('common.save'));
+    else fireEvent.keyDown(editor, { key: 'Enter' });
+
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(screen.getByText('Saved on the phone')).toBeVisible();
+  });
+
   it('enters sub-point edit mode on double-click and saves the edited text', () => {
     const handleEdit = jest.fn();
 
