@@ -21,8 +21,9 @@ import type { BibleId } from '@/utils/bibles';
  *                 prompts and anything a machine compares. Never shown as the interface's words.
  *
  * The NUMBERS are the reader's Bible's: a reference is kept in the Bible it was written in and
- * shown in the Bible of the interface's language — "Пс 50:12" for a Russian reader is "Ps 51:10"
- * for an English one (`scriptureReferenceNumbering.ts`).
+ * shown in the Bible of the interface's language by default. A reading surface can name the Bible
+ * it displays: "Пс 50:12" in the Synodal Bible is "Пс.51:10" in the King James, even with a
+ * Russian interface (`scriptureReferenceNumbering.ts`).
  */
 export type ScriptureRefStyle = 'short' | 'long' | 'canonical';
 
@@ -47,6 +48,8 @@ export interface ScriptureRefFormat {
    */
   locale?: AppLocale;
   style?: ScriptureRefStyle;
+  /** Numbers of the Bible shown on a reading surface, independent of the interface language. */
+  numbering?: BibleId;
 }
 
 function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat): string {
@@ -57,14 +60,14 @@ function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat):
 
 /**
  * The reference in the Bible it is read in: the canonical face in the King James, the others in
- * the Bible of the interface's language, and with no language as it was written. A reference that
- * does not name its Bible is read the way the interface typed it before Bibles were kept. A verse
- * wins over a chapter range left beside it — old data carries both.
+ * the explicitly read Bible or the interface's Bible by default. Without either, keep the written
+ * numbers. A reference that does not name its Bible is read the way the interface typed it before
+ * Bibles were kept. A verse wins over a chapter range left beside it — old data carries both.
  */
-function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short' }: ScriptureRefFormat): Passage[] {
+function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short', numbering }: ScriptureRefFormat): Passage[] {
   if (style === 'canonical') return passagesIn(ref, CANONICAL_BIBLE);
-  if (!locale) return passagesIn(ref, undefined);
-  return passagesIn(withStoredBible(ref, locale), referenceBibleFor(locale));
+  const target = numbering ?? (locale ? referenceBibleFor(locale) : undefined);
+  return passagesIn(locale ? withStoredBible(ref, locale) : ref, target);
 }
 
 /** "5", "9-10", "5:17", "5:17-26", "9:19-10:4". */

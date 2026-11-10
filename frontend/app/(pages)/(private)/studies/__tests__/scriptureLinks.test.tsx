@@ -40,9 +40,9 @@ jest.mock('@/hooks/useStudyNoteShareLinks', () => ({ useStudyNoteShareLinks: jes
 jest.mock('@/hooks/useTags', () => ({ useTags: jest.fn() }));
 
 /** A reference pressed on the list opens over it (the owner, 2026-10-21); the Bible page is the window's own button. */
-async function openInBible(name: string) {
-  fireEvent.click(screen.getByRole('button', { name }));
-  const dialog = await screen.findByRole('dialog', { name });
+async function openInBible(linkName: string, dialogName = linkName) {
+  fireEvent.click(screen.getByRole('button', { name: linkName }));
+  const dialog = await screen.findByRole('dialog', { name: dialogName });
   expect(mockRouter.push).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
   return new URL(mockRouter.push.mock.calls[0]?.[0] as string, 'https://app.test').searchParams;
@@ -74,9 +74,10 @@ describe('StudiesPage — references in notes', () => {
     });
   });
 
-  it('draws a reference in a note as a link that opens the Synodal psalm the note meant, and comes back to the notes', async () => {
+  it('labels the KJV preview without changing the note’s Synodal link or its way back', async () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
     render(<StudiesPage />);
-    const query = await openInBible('Пс 22:1');
+    const query = await openInBible('Пс 22:1', 'Ps.23:1');
     expect(query.get('book')).toBe('psalms');
     expect(query.get('at')).toBe('22:1');
     expect(query.get('tr')).toBe('rst');

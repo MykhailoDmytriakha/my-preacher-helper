@@ -61,14 +61,29 @@ describe('VerseSheet — the passage over the screen', () => {
     await waitFor(() => expect(lit(dialog)).toEqual(['1:1', '1:2', '1:3']));
   });
 
-  it('reads the text in the Bible of the device and finds the passage there', async () => {
-    window.localStorage.setItem('bible:translation', 'kjv');
-    const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `Psalm ${index + 1}:${verse + 1}`)) };
+  it.each([
+    {
+      reference: { bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12, label: 'Пс 50:12' } as const,
+      reading: 'kjv', firstVerse: '51:10', title: 'Ps.51:10', wholeChapter: false,
+    },
+    {
+      reference: { bible: 'kjv', book: 'Psalms', chapter: 23 } as const,
+      reading: 'rst', firstVerse: '22:1', title: 'Ps.22', wholeChapter: true,
+    },
+  ] as const)('names the held passage in the Bible being read ($title)', async ({ reference, reading, firstVerse, title, wholeChapter }) => {
+    window.localStorage.setItem('bible:translation', reading);
+    const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount(reading, 'Psalms', index + 1) }, (__, verse) => `Psalm ${index + 1}:${verse + 1}`)) };
     jest.mocked(fetchBookText).mockResolvedValue(psalms as never);
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12, label: 'Пс 50:12' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Пс 50:12' });
-    await waitFor(() => expect(lit(dialog)).toEqual(['51:10']));
-    expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'kjv');
+    const openInBible = jest.fn();
+    render(<VerseSheet reference={reference} onClose={jest.fn()} openInBible={openInBible} />);
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(lit(dialog)[0]).toBe(firstVerse));
+    expect(lit(dialog)).toHaveLength(wholeChapter ? 6 : 1);
+    expect(fetchBookText).toHaveBeenCalledWith('Psalms', reading);
+    expect(dialog).toHaveAccessibleName(title);
+    expect(within(dialog).getByRole('heading', { name: title })).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
+    expect(openInBible).toHaveBeenCalledWith(reference);
   });
 
   // A big book is drawn around the passage, as in the reader: a psalm in a meeting does not build the

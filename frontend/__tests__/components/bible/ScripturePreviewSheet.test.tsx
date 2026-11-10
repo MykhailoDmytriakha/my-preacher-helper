@@ -43,6 +43,17 @@ describe('the reading preview over a study note', () => {
     expect(useScriptureUsage).toHaveBeenLastCalledWith(reference, 'current', 'en');
   });
 
+  it('names the current passage in the same numbering in the reader and its notes tab', async () => {
+    localStorage.setItem('bible:translation', 'rst');
+    const psalm = { bible: 'kjv' as const, book: 'Psalms', chapter: 23, fromVerse: 4 };
+    render(<ScripturePreviewSheet reference={psalm} currentNoteId="current" onClose={jest.fn()} />);
+    const dialog = screen.getByRole('dialog', { name: 'Ps.22:4' });
+    fireEvent.click(within(dialog).getByRole('tab', { name: /bible.preview.myNotes/ }));
+    const notes = within(dialog).getByRole('tabpanel');
+    expect(within(notes).getByText('Ps.22:4')).toBeVisible();
+    expect(useScriptureUsage).toHaveBeenLastCalledWith(psalm, 'current', 'en');
+  });
+
   it('says on the tab how many notes are found, also when the list may be incomplete', async () => {
     const found = { id: 'n', kind: 'note' as const, title: 'Related note', href: '/studies/n', reference, match: 'same' as const, excerpt: 'Mention.', content: 'Mention.' };
     const count = () => screen.queryByTestId('related-count')?.textContent ?? null;

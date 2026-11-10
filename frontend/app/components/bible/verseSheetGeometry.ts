@@ -8,7 +8,7 @@ import type { ScriptureRefShape } from '@/utils/scriptureReference';
  * passage comes to rest, and which way it went when the person scrolled it out of sight.
  */
 
-/** A reference the window opens: its numbers are in `bible`; `label` is the words the person tapped. */
+/** A reference the window opens; both its coordinates and any authored label use `bible` numbering. */
 export type SheetReference = ScriptureRefShape & { bible: BibleId; label?: string };
 
 /** The longest passage lit at once: a chapter range is a few chapters, never a whole book by accident. */

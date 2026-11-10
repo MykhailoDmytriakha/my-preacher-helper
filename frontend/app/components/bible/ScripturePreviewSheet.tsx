@@ -78,10 +78,10 @@ export function ScripturePreviewSheet({ reference, currentNoteId, onClose }: {
     onClose={onClose}
     openInBible={openReference}
     // The count shows once the search has finished, also from an incomplete list: the panel says it may be incomplete.
-    related={{ label: t('bible.preview.myNotes'), count: usage.loading ? undefined : usage.results.length, render: returnToText => <>
+    related={{ label: t('bible.preview.myNotes'), count: usage.loading ? undefined : usage.results.length, render: (returnToText, passageLabel) => <>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('bible.preview.notesForPassage')}</h3>
-        <span className="text-xs text-gray-500 dark:text-gray-400">{formatScriptureReference(reference, { locale })}</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{passageLabel}</span>
       </div>
       <div aria-live="polite">
         {usage.loading && <p role="status" className="py-4 text-sm text-gray-500 dark:text-gray-400">{t('bible.preview.loadingNotes')}</p>}

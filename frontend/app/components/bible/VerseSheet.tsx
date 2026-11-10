@@ -46,7 +46,7 @@ type VerseSheetProps = {
    * Optional personal material alongside the reader; both views retain their reading positions.
    * `count`, once known, sits on the tab as a badge, so the reader sees there is something without opening it.
    */
-  related?: { label: string; count?: number; render: (returnToText: () => void) => ReactNode };
+  related?: { label: string; count?: number; render: (returnToText: () => void, passageLabel: string) => ReactNode };
   /**
    * THE WINDOW'S ONE WAY OUT — the Bible page at a passage, its way back the screen under the window,
    * through the screen's own rule (saving first, or not at all while unsaved words would be lost): the
@@ -135,7 +135,12 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   // A book named whole ("Руфь" on a note's chip) opens at its start, with nothing lit and nothing to come back to.
   const wholeBook = !reference.chapter;
   const wholeChapter = !reference.fromVerse;
-  const label = reference.label ?? formatScriptureReference(reference, { locale, style: 'short' });
+  const label = useMemo(() => {
+    const readingLabel = formatScriptureReference(reference, { locale, numbering: reading });
+    if (!reference.label) return readingLabel;
+    const writtenLabel = formatScriptureReference(reference, { locale, numbering: reference.bible });
+    return writtenLabel === readingLabel ? reference.label : readingLabel;
+  }, [reference, locale, reading]);
   const firstKey = keys[0];
   const isPsalms = reference.book === 'Psalms';
   const chapterWord = useCallback((chapter: number) => t(isPsalms ? 'bible.psalm' : 'bible.chapter', { number: chapter }), [isPsalms, t]);
@@ -380,7 +385,7 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
           )}
         </div>
         {related && <div role="tabpanel" id={`${viewId}-related`} aria-labelledby={`${viewId}-related-tab`} aria-hidden={!relatedOpen || undefined} inert={!relatedOpen} tabIndex={0} className={`col-start-1 row-start-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 sm:px-4 ${!relatedOpen ? 'invisible' : ''}`}>
-          {related.render(returnToText)}
+          {related.render(returnToText, label)}
         </div>}
         </div>
         {!relatedOpen && away && (
