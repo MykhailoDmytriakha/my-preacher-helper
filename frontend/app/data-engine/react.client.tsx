@@ -981,11 +981,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     }).catch(failure => {
       recovery?.reject(failure);
       if (!active) return;
+      // An ordinary opening remains pending while the tab cannot read. Once it can, try again.
+      // Recovering a draft is the person's action and still reports its own refusal.
+      if (!recovery && needsConnection(failure)) {
+        stopWaiting = browser.engine.onceReachable(() => { if (active) setAttempt(value => value + 1); });
+        return;
+      }
       setError(failure, recovery ? 'refused' : 'read');
-      // Refused only because this tab could not ask the server — hidden, or offline with no copy here:
-      // read again once it can (BUG-20261006-hidden-tab-document-read-not-retried). Recovering a draft
-      // is the person's action and is never repeated behind the person's back.
-      if (!recovery && needsConnection(failure)) stopWaiting = browser.engine.onceReachable(() => { if (active) setAttempt(value => value + 1); });
     });
     // Leaving the screen is a moment to save, not to forget (BUG-20260919-engine-leaving-strands-last-edit):
     // with autosave, whatever the debounce had not sent yet becomes a durable request as the editor closes.

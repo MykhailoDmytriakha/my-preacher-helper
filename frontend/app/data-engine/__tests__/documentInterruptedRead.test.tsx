@@ -47,10 +47,8 @@ it.each([
   await waitFor(() => expect(harness.transport.read).toHaveBeenCalledTimes(1));
   act(() => { reachable(harness.engine, kind, false); });
   await act(async () => { pending.reject(networkError(code)); await settleEngine(); });
-  await waitFor(() => expect(view.result.current.error).not.toBeNull());
-  await act(async () => { await settleEngine(); });
+  expect(view.result.current).toMatchObject({ loading: true, data: null, error: null });
   expect(harness.transport.read).toHaveBeenCalledTimes(1);
-  expect(view.result.current.data).toBeNull();
 
   act(() => { reachable(harness.engine, kind, true); });
 
@@ -118,7 +116,7 @@ it('cancels a paused opening when its screen unmounts', async () => {
   await waitFor(() => expect(harness.transport.read).toHaveBeenCalledTimes(1));
   act(() => { harness.engine.setVisible(false); });
   await act(async () => { pending.reject(networkError()); await settleEngine(); });
-  await waitFor(() => expect(view.result.current.error).not.toBeNull());
+  expect(view.result.current).toMatchObject({ loading: true, data: null, error: null });
   view.unmount();
   harness.engine.setVisible(true);
   await settleEngine();
@@ -160,7 +158,7 @@ it('stops after one resumed read if the reachable server still refuses it', asyn
   await waitFor(() => expect(harness.transport.read).toHaveBeenCalledTimes(1));
   act(() => { harness.engine.setVisible(false); });
   await act(async () => { pending.reject(networkError()); await settleEngine(); });
-  await waitFor(() => expect(view.result.current.error).not.toBeNull());
+  expect(view.result.current).toMatchObject({ loading: true, data: null, error: null });
   act(() => { harness.engine.setVisible(true); });
   await waitFor(() => expect(harness.transport.read).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(view.result.current.error).not.toBeNull());

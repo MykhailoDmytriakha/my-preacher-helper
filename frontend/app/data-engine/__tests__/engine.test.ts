@@ -5,7 +5,7 @@ import { createMemoryCommitStore } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { installStorageHarness } from './storageHarness';
-import { AddressedFailures } from '../failures';
+import { AddressedFailures, PausedReadFailure } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
@@ -976,6 +976,45 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+
+  it.each(['visibility', 'network'] as const)('preserves the pause when a document read fails after %s already returned', async interruption => {
+    const s = setup({ cached: false });
+    const read = deferred<ResourceSnapshot>();
+    const failure = Object.assign(new Error('The server could not be reached'), { code: 'unavailable' });
+    jest.mocked(s.transport.read).mockReturnValueOnce(read.promise);
+    const opening = s.engine.openEditor(resource, 'returning').catch(error => error);
+    await drainMicrotasks();
+    expect(s.transport.read).toHaveBeenCalledTimes(1);
+    const toggle = interruption === 'visibility' ? s.engine.setVisible.bind(s.engine) : s.engine.setOnline.bind(s.engine);
+    toggle(false);
+    toggle(true);
+    read.reject(failure);
+    const paused = await opening;
+    expect(paused).toBeInstanceOf(PausedReadFailure);
+    expect(paused.cause).toBe(failure);
+    const reopened = await s.engine.openEditor(resource, 'returning');
+    expect(reopened.getState().checkpoint.draft?.content).toBe('base');
+    expect(s.transport.send).not.toHaveBeenCalled();
+    s.engine.dispose();
+  });
+
+  it.each([
+    { code: 'permission-denied', hiddenThenReturned: true },
+    { code: 'unavailable', hiddenThenReturned: false },
+  ])('keeps a $code answer distinct from a paused opening (tab returned: $hiddenThenReturned)', async ({ code, hiddenThenReturned }) => {
+    const s = setup({ cached: false });
+    const read = deferred<ResourceSnapshot>();
+    const failure = Object.assign(new Error('The read did not succeed'), { code });
+    jest.mocked(s.transport.read).mockReturnValueOnce(read.promise);
+    const opening = s.engine.openEditor(resource, 'returning').catch(error => error);
+    await drainMicrotasks();
+    expect(s.transport.read).toHaveBeenCalledTimes(1);
+    if (hiddenThenReturned) { s.engine.setVisible(false); s.engine.setVisible(true); }
+    read.reject(failure);
+    expect(await opening).toBe(failure);
+    expect(s.transport.read).toHaveBeenCalledTimes(1);
+    s.engine.dispose();
+  });
 
   it('calls a waiting screen once when the tab can ask the server, never while it cannot, and not after it stops waiting', async () => {
     const s = setup({ online: false });

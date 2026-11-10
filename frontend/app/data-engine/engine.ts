@@ -220,6 +220,7 @@ export class DataEngine {
   private generation = 0;
   private online = true;
   private visible = true;
+  private readPause = 0;
   private disposed = false;
   /** The next send of an unanswered delivery (`unanswered.ts`), and the attempts its pause was set for. */
   private redeliveryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -346,6 +347,7 @@ export class DataEngine {
     this.visible = visible;
     if (visible) this.refreshLocalOnReturn();
     if (!changed) return;
+    if (!visible) this.readPause += 1;
     this.options.collections?.setVisible(visible);
     this.options.observer.setVisible(visible);
     if (visible) this.backgroundDrain();
@@ -430,6 +432,7 @@ export class DataEngine {
   setOnline(online: boolean): void {
     if (this.disposed || this.online === online) return;
     this.online = online;
+    if (!online) this.readPause += 1;
     this.options.collections?.setOnline(online);
     this.options.observer.setOnline(online);
     if (online) this.backgroundDrain();
@@ -1733,14 +1736,14 @@ export class DataEngine {
     const cached = await this.knownSnapshot(owner, generation, resource);
     if (cached) return cached;
     if (!this.online || !this.visible) throw Object.assign(new Error('The document is not available in the local cache'), { code: NEEDS_CONNECTION });
+    const startedBeforePause = this.readPause;
     let server: ResourceSnapshot;
     try {
       server = await this.options.transport.read(owner, resource);
     } catch (error) {
       this.assertCurrent(owner, generation);
-      // The first request may have started before the tab went hidden or lost its connection.
-      // Reuse the opening's reachability continuation; storage and explicit actions never replay here.
-      if (!this.canRead() && isConnectionFailure(error)) throw new PausedReadFailure(error);
+      // A failed response can settle after visibility or connectivity has already returned.
+      if (startedBeforePause !== this.readPause && isConnectionFailure(error)) throw new PausedReadFailure(error);
       throw error;
     }
     this.assertCurrent(owner, generation);
