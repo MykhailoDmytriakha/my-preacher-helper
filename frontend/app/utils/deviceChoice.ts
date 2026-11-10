@@ -47,7 +47,7 @@ function savedAt(raw: string | null): number {
 /** What the page's first read found in storage — for the technical details a feedback report sends. */
 export type DeviceChoiceFound = 'none' | 'stored' | 'unreadable';
 
-export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTab, onFirstRead }: {
+export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTab, onFirstRead, firstPaint }: {
   key: string;
   /** Storage's text as a choice; nothing or a broken record gives the defaults. */
   parse: (raw: string | null) => T;
@@ -57,12 +57,16 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
   onOtherTab?: () => void;
   /** What the page's first read found: a record, none, or storage it could not read — for the same report. */
   onFirstRead?: (found: DeviceChoiceFound) => void;
+  /** A pre-hydration copy, ordered against validated records. An undated clear takes effect on the next document. */
+  firstPaint?: { read: () => string | null; accepts: (raw: string) => boolean };
 }): DeviceChoice<T> {
   let current: T | null = null;
   /** The moment of the action behind `current`; 0 — a record from before the moment was kept. */
   let currentAt = 0;
   let watching = false;
   let firstReadSaid = false;
+  let firstPaintPending = Boolean(firstPaint);
+  let unreadAt = 0;
   // Changes made while storage could not be read: held over the defaults for the visit, never written over a record the
   // page has not seen, and laid on that record once storage answers (Codex review, 01.11: a toggle saved the defaults'
   // numbers over the stored ones).
@@ -72,6 +76,7 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
     firstReadSaid = true;
     onFirstRead?.(found);
   };
+  const storedRecord = (raw: string | null) => raw !== null && firstPaint && !firstPaint.accepts(raw) ? null : raw;
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((listener) => listener());
 
@@ -80,18 +85,26 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
   const onStorage = (event: StorageEvent) => {
     if (event.storageArea !== window.localStorage) return;
     if (event.key === null) {
-      // Another tab cleared the whole storage: the next read takes what storage holds now.
+      // A whole-storage clear carries no action time. Keep the preference of an already painted document.
+      if (firstPaint) return;
       current = null;
       currentAt = 0;
     } else {
       if (event.key !== key) return;
-      const at = savedAt(event.newValue);
+      const raw = storedRecord(event.newValue);
+      if (event.newValue !== null && raw === null) return;
+      const at = savedAt(raw);
+      const knownAt = Math.max(currentAt, unreadAt);
       // Not newer than a choice this version made or read: an event queued with an older value, an equal
       // moment, or a record of the earlier version without a moment. A page holding only such a record
       // (moment 0) follows every change.
-      if (current && currentAt > 0 && at <= currentAt) return;
-      current = parse(event.newValue);
+      if (current && knownAt > 0 && at <= knownAt) return;
+      current = parse(raw);
       currentAt = at;
+      if (firstPaint) {
+        unread = null;
+        unreadAt = 0;
+      }
     }
     onOtherTab?.();
     notify();
@@ -104,14 +117,23 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
       watching = true;
       window.addEventListener('storage', onStorage);
     }
+    const initial = firstPaintPending ? firstPaint?.read() ?? null : null;
     let raw: string | null;
     try {
-      raw = window.localStorage.getItem(key);
+      raw = storedRecord(window.localStorage.getItem(key));
     } catch {
       sayFirstRead('unreadable');
-      return fallback;
+      if (initial === null) return fallback;
+      // The browser has a first-paint copy. Wait for storage before writing a change over it.
+      firstPaintPending = false;
+      current = parse(initial);
+      currentAt = savedAt(initial);
+      unread = {};
+      return current;
     }
+    firstPaintPending = false;
     sayFirstRead(raw === null ? 'none' : 'stored');
+    if (initial !== null && (raw === null || savedAt(initial) >= savedAt(raw))) raw = initial;
     current = parse(raw);
     currentAt = savedAt(raw);
     return current;
@@ -130,19 +152,22 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
     if (unread) {
       let held: string | null;
       try {
-        held = window.localStorage.getItem(key);
+        held = storedRecord(window.localStorage.getItem(key));
       } catch {
         return now;
       }
-      current = { ...parse(held), ...unread };
-      currentAt = savedAt(held);
+      const at = savedAt(held);
+      if (!firstPaint || (held !== null && at >= currentAt)) {
+        current = { ...parse(held), ...unread };
+        currentAt = at;
+      }
       unread = null;
       notify();
       return current;
     }
     let raw: string | null;
     try {
-      raw = window.localStorage.getItem(key);
+      raw = storedRecord(window.localStorage.getItem(key));
     } catch {
       return now;
     }
@@ -159,12 +184,14 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
     if (typeof window !== 'undefined' && (unread || !current)) {
       // Storage could not be read: the change stays in memory, and nothing is written over the record it holds.
       unread = { ...(unread ?? {}), ...change };
+      if (firstPaint) unreadAt = Math.max(Date.now(), currentAt + 1, unreadAt + 1);
       current = { ...base, ...change };
       notify();
       return 'memory-only';
     }
     const next = { ...base, ...change };
-    const at = Math.max(Date.now(), currentAt + 1);
+    const at = Math.max(Date.now(), currentAt + 1, unreadAt + 1);
+    unreadAt = 0;
     current = next;
     currentAt = at;
     const raw = JSON.stringify({ ...next, [SAVED_AT]: at });
@@ -197,6 +224,8 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
       current = null;
       currentAt = 0;
       unread = null;
+      firstPaintPending = Boolean(firstPaint);
+      unreadAt = 0;
     },
   };
 }

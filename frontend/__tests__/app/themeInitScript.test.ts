@@ -3,7 +3,7 @@
  * app/layout.tsx renders into <head> (BUG-20260929-tests-check-their-own-copy: this file used to
  * test a copy of its logic, so breaking the real script left it green).
  */
-import { THEME_INIT_SCRIPT } from '@/utils/themeInitScript';
+import { THEME_BOOT_RECORD_ATTRIBUTE, THEME_INIT_SCRIPT, THEME_STORAGE_KEY } from '@/utils/themeInitScript';
 
 const STORAGE_KEY = 'theme-preference';
 
@@ -24,6 +24,7 @@ describe('theme initialization script', () => {
     localStorage.clear();
     root().classList.remove('dark');
     root().removeAttribute('data-theme-preference');
+    root().removeAttribute(THEME_BOOT_RECORD_ATTRIBUTE);
     originalMatchMedia = window.matchMedia;
   });
 
@@ -48,6 +49,19 @@ describe('theme initialization script', () => {
 
       expect(root().getAttribute('data-theme-preference')).toBe(expected);
     });
+  });
+
+  it('applies and exposes the dated preference before hydration', () => {
+    systemPrefersDark(false);
+    localStorage.setItem(STORAGE_KEY, 'light');
+    const stored = JSON.stringify({ preference: 'dark', __savedAt: 123 });
+    localStorage.setItem(THEME_STORAGE_KEY, stored);
+
+    runThemeScript();
+
+    expect(root().getAttribute(THEME_BOOT_RECORD_ATTRIBUTE)).toBe(stored);
+    expect(root().getAttribute('data-theme-preference')).toBe('dark');
+    expect(root().classList.contains('dark')).toBe(true);
   });
 
   describe('dark mode determination', () => {

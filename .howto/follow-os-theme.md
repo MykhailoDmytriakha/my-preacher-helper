@@ -2,16 +2,16 @@ when: theme does not follow OS after wake · prefers-color-scheme late · dark m
 
 # Follow the OS theme
 
-The theme is applied in three places with one rule — `dark` when the stored preference is `dark`, or `system` and the OS prefers dark: the inline `themeInitScript` in `frontend/app/layout.tsx` (before hydration), the always-mounted `ThemeWatcher` in `frontend/app/components/ThemeWatcher.tsx` (live), and `useThemePreference` in `frontend/app/hooks/useThemePreference.ts` (when the person changes the toggle). OS-following logic belongs in `ThemeWatcher`, nowhere else.
+The inline `themeInitScript` in `frontend/app/layout.tsx` applies the preference before hydration. After that, `frontend/app/utils/themePreference.ts` uses the shared `deviceChoice` as the current document’s choice and applies it to the root. `ThemeWatcher` owns the live OS listener, and every toggle uses the same choice.
 
 ## How
 
-- The switch is the `dark` class on `<html>` (Tailwind `darkMode: "class"`, `frontend/tailwind.config.ts`). The preference lives in `localStorage` under `theme-preference`: `light` · `dark` · `system` (default).
+- The switch is the `dark` class on `<html>` (Tailwind `darkMode: "class"`, `frontend/tailwind.config.ts`). The dated preference lives under `theme-preference-v2`. The first-paint script can still read a prior `theme-preference` string (`light`, `dark`, or `system`) when no dated value exists. A confirmed save also mirrors the string for a tab still on the old bundle.
 - `themeInitScript` runs synchronously in `<head>` before React, so the first paint has the right theme (no flash). It runs once per full page load only.
 - `ThemeWatcher` is rendered at the app root in `frontend/app/layout.tsx`. It re-applies on mount, on `matchMedia('(prefers-color-scheme: dark)')` `change` (with the legacy `addListener` fallback), and on device wake — `visibilitychange` to visible or window `focus`.
-- It reads the preference fresh from `localStorage` on every apply, never from cached React state, so it always honours the latest toggle choice and never fights it.
+- On wake or OS changes, the watcher uses the choice already held in memory and samples the OS colour scheme again. A newer dated storage event updates the choice in other tabs. At hydration the first-paint record is compared with the record then stored so that a late script neither misses a new choice nor replaces a newer first paint with an old read.
 - On wake, one delayed check is not enough: after sleep or refocus, macOS/Chrome can take 50–500ms+ to pass the OS theme change to `matchMedia`. Schedule progressive retries `WAKE_RETRY_DELAYS = [50, 300, 1000]`; each retry simply re-applies (`classList.toggle` is idempotent), so a late arrival is caught by the next one.
-- `useThemePreference` owns only the preference for the toggle UI: read, persist, apply on change. It is mounted only inside `ThemeModeToggle`; do not put the live OS listener there.
+- `useThemePreference` displays the current document preference. An explicit click updates the root and saves through the shared device choice. Opening the menu does not write a preference. An old bundle’s undated write cannot replace a dated choice in the new bundle. A browser-wide storage clear takes effect on the next document, since it carries no order relative to choices already made in this one.
 - Tests: `frontend/__tests__/components/ThemeWatcher.test.tsx` covers live change, wake retries, focus, the legacy API and cleanup.
 
 ## Why

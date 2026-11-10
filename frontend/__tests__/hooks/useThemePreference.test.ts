@@ -2,6 +2,9 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 import { useThemePreference, type ThemePreference } from '@/hooks/useThemePreference';
 
+import { THEME_BOOT_RECORD_ATTRIBUTE, THEME_STORAGE_KEY } from '@/utils/themeInitScript';
+import { themeChoice } from '@/utils/themePreference';
+
 const STORAGE_KEY = 'theme-preference';
 
 // Live OS-theme following (matchMedia 'change' + device-wake retries) now lives in
@@ -17,6 +20,8 @@ describe('useThemePreference Hook', () => {
     localStorage.clear();
     document.documentElement.classList.remove('dark');
     document.documentElement.removeAttribute('data-theme-preference');
+    document.documentElement.removeAttribute(THEME_BOOT_RECORD_ATTRIBUTE);
+    themeChoice.resetForTests();
     jest.clearAllMocks();
 
     // Save original matchMedia
@@ -105,6 +110,63 @@ describe('useThemePreference Hook', () => {
     });
 
     expect(result.current.preference).toBe('dark');
+  });
+
+  it('shows the explicit choice when the menu remounts without writing an older storage value', () => {
+    const first = renderHook(() => useThemePreference());
+    act(() => first.result.current.setPreference('dark'));
+    first.unmount();
+
+    const read = Storage.prototype.getItem;
+    const stale = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      return key === STORAGE_KEY ? 'light' : read.call(this, key);
+    });
+    try {
+      const { result } = renderHook(() => useThemePreference());
+
+      expect(result.current.preference).toBe('dark');
+      expect(read.call(localStorage, STORAGE_KEY)).toBe('dark');
+    } finally {
+      stale.mockRestore();
+    }
+  });
+
+  it('keeps an explicit choice in the visit when its write is refused and an older tab event arrives', () => {
+    const older = JSON.stringify({ preference: 'dark', __savedAt: 20 });
+    localStorage.setItem(THEME_STORAGE_KEY, older);
+    const { result } = renderHook(() => useThemePreference());
+    const write = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+    try {
+      act(() => result.current.setPreference('light'));
+      act(() => window.dispatchEvent(new StorageEvent('storage', {
+        key: THEME_STORAGE_KEY, newValue: older, storageArea: localStorage,
+      })));
+
+      expect(result.current.preference).toBe('light');
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+      expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe(older);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it('does not replace an explicit choice made while reading storage was denied', () => {
+    const boot = JSON.stringify({ preference: 'dark', __savedAt: 10 });
+    document.documentElement.setAttribute(THEME_BOOT_RECORD_ATTRIBUTE, boot);
+    const read = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    try {
+      const { result } = renderHook(() => useThemePreference());
+      expect(result.current.preference).toBe('dark');
+      act(() => result.current.setPreference('light'));
+      act(() => window.dispatchEvent(new StorageEvent('storage', {
+        key: THEME_STORAGE_KEY, newValue: JSON.stringify({ preference: 'system', __savedAt: 20 }), storageArea: localStorage,
+      })));
+
+      expect(result.current.preference).toBe('light');
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it('should persist preference to localStorage when changed', async () => {
