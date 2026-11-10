@@ -13,8 +13,9 @@ const DOCUMENT_PROOF_CEILING = 960 * 1024;
 
 type RowScope = { rowId: string; rowCreatedAt: string };
 type Member = TagProofIdentity & Pick<TagMembershipProof, 'present'>;
-type Group = Omit<TagMembershipProof, 'present'> & Partial<RowScope> & { members: Member[] };
-type Entry = TagMembershipProof & TagProofIdentity & Partial<RowScope>;
+export type SourceNoteProofMark = { queueDigest?: string; tracked?: true };
+type Group = Omit<TagMembershipProof, 'present'> & Partial<RowScope> & SourceNoteProofMark & { members: Member[] };
+type Entry = TagMembershipProof & TagProofIdentity & Partial<RowScope> & SourceNoteProofMark;
 
 export function readTagProofStorage(raw: unknown): { floor: number; entries: unknown[] } {
   if (!object(raw)) return { floor: 0, entries: [] };
@@ -46,8 +47,8 @@ export function retainTagProofStorage(entries: Iterable<Entry>, floor: number, v
   const groups = new Map<string, Group>();
   let bytes = jsonBytes({ floor: Number.MAX_SAFE_INTEGER, groups: [] });
   for (const proof of recent) {
-    const { revision, operationId, time, causal, rowId, rowCreatedAt, present } = proof;
-    const stamp = { revision, operationId, time, causal, ...(rowId !== undefined && { rowId, rowCreatedAt }) };
+    const { revision, operationId, time, causal, rowId, rowCreatedAt, present, queueDigest, tracked } = proof;
+    const stamp = { revision, operationId, time, causal, ...(queueDigest && { queueDigest }), ...(tracked && { tracked }), ...(rowId !== undefined && { rowId, rowCreatedAt }) };
     const key = JSON.stringify(stamp);
     const group = groups.get(key);
     const member = 'tag' in proof ? { tag: proof.tag, present } : { tagDigest: proof.tagDigest, present };

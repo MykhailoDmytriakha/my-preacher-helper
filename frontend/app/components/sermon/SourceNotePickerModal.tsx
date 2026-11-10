@@ -41,7 +41,7 @@ interface SourceNotePickerModalProps {
   /** Notes the sermon was linked to WHEN THIS DIALOG OPENED. */
   selectedNoteIds: string[];
   /** Persist the list. The opening revision/baseline is owned by the caller — see the hook. */
-  onSave: (noteIds: string[]) => Promise<SourceNoteSaveResult>;
+  onSave: (noteIds: string[], touched: string[]) => Promise<SourceNoteSaveResult>;
   onClose: () => void;
   saving?: boolean;
   /**
@@ -63,8 +63,8 @@ export default function SourceNotePickerModal({
   const { notes, loading, isMissing } = useStudyNoteDirectory();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedNoteIds));
-  /** Did the person actually touch the ticks? Decides whether Save has anything to say. */
-  const [dirty, setDirty] = useState(false);
+  /** A deliberate return still owns this note's final selection. */
+  const [touched, setTouched] = useState<Set<string>>(() => new Set());
   const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -116,7 +116,7 @@ export default function SourceNotePickerModal({
     // While a save is in flight the writer already holds the list it was given; a later tick
     // would be lost the moment a successful answer closes this dialog.
     if (saving) return;
-    setDirty(true);
+    setTouched(previous => new Set(previous).add(noteId));
     setSelected((previous) => {
       const next = new Set(previous);
       if (next.has(noteId)) next.delete(noteId);
@@ -128,18 +128,18 @@ export default function SourceNotePickerModal({
   const handleSave = async () => {
     // Nothing was touched: there is nothing to say to the server, and saying it anyway would
     // move the sermon's revision and make every other device see a change that did not happen.
-    if (!dirty) {
+    if (!touched.size) {
       onClose();
       return;
     }
-    const result = await onSave(Array.from(selected));
+    const result = await onSave([...selected], [...touched]);
     if (result.outcome === 'stale') {
       // The server's list is now the truth this dialog works from, so a deliberate second
       // press means "mine wins" instead of hitting the same refusal again.
       setSelected(new Set(result.serverNoteIds ?? []));
       // The adopted list is the server's, not a choice of the person's — the next press has to
       // mean something again.
-      setDirty(false);
+      setTouched(new Set());
       return;
     }
     if (result.outcome === 'failed') return;
@@ -303,7 +303,7 @@ export default function SourceNotePickerModal({
                   type="button"
                   disabled={saving}
                   onClick={() => {
-                    setDirty(true);
+                    setTouched(previous => new Set([...previous, ...selected]));
                     setSelected(new Set());
                   }}
                   className="text-sm font-medium text-gray-500 underline-offset-2 transition-colors hover:text-red-600 hover:underline dark:text-gray-400 dark:hover:text-red-400"

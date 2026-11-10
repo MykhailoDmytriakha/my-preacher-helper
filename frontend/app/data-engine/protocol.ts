@@ -19,6 +19,7 @@ import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { placementSteps } from './serviceOrderStepPlacement';
+import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { mergeTemplateOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
@@ -172,6 +173,8 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.groupFlowStepPlacement !== undefined && !validGroupStepPlacement(command)) fail('Invalid group step placement');
     if (command.councilTopicPlacement !== undefined && !validCouncilTopicPlacement(command)) fail('Invalid council topic placement');
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
+    if (command.sourceNoteLinkAction !== undefined && (command.resource.collection !== 'sermons'
+      || !validSourceNoteLinkAction(command.sourceNoteLinkAction, sourceNoteLinkChange(command.changes), isValidIdentifier))) fail('Invalid source note selection');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');

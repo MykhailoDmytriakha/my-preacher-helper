@@ -49,6 +49,7 @@ import { metadataAfterServiceOrderPlacement, SERVICE_ORDER_PLACEMENT_HISTORY, ty
 import { alignServiceOrderFlagRepresentation, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, type ServiceOrderFlagHistoryPage, type ServiceOrderStepTitleHistoryPage } from './serviceOrderStepAction';
 import { metadataAfterServiceOrderStepPlacement, SERVICE_ORDER_STEP_PLACEMENT_HISTORY, type ServiceOrderStepPlacementWrite } from './serviceOrderStepPlacement.server';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { metadataAfterSourceNoteLinks, orderSourceNoteLinks, retainedSourceNoteLinkHistory, SOURCE_NOTE_LINK_HISTORY, type SourceNoteLinkHistoryEntry } from './sourceNoteLinkOrder.server';
 import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY, type ThoughtLockHistoryPage } from './thoughtLockAction';
 import { isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY, thoughtPlacementConflictId, type ThoughtPlacementHistoryPage } from './thoughtPlacementAction';
@@ -403,7 +404,7 @@ function historyEntryId(snapshot: ResourceSnapshot, operationId: string): string
 const TAG_HISTORY_TARGET_BYTES = 768 * 1024;
 
 function persistTagHistory<Entry>(transaction: Transaction, snapshot: ResourceSnapshot, operationId: string,
-  collection: string, field: 'tags' | 'fields', entries: readonly Entry[]) {
+  collection: string, field: 'tags' | 'fields' | 'entries', entries: readonly Entry[]) {
   const { resource, metadata } = snapshot;
   const generation = metadata!.generation;
   const history = adminDb.collection(resource.collection).doc(resource.id).collection(collection);
@@ -524,7 +525,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -548,6 +549,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
+  sourceNoteOrder?: ReturnType<typeof orderSourceNoteLinks>;
   serviceOrderPlacement?: ServiceOrderPlacementWrite;
   serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
   groupFlowStepPlacement?: StepPlacementWrite;
@@ -589,7 +591,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
-    const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
+    const sourceNotes = metadataAfterSourceNoteLinks({ ...snapshot, metadata: documentTags }, raw, primary ? sourceNoteOrder : undefined);
+    const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: sourceNotes }, raw);
     const outlinePointPlacementMetadata = metadataAfterOutlinePointPlacement({ ...snapshot, metadata: outlineMoves }, raw, primary ? outlinePointPlacement : undefined);
     const orderPlacementMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlinePointPlacementMetadata }, raw,
       primary ? serviceOrderPlacement : undefined, !primary && Boolean(serviceOrderPlacement));
@@ -644,6 +647,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     && existingRowField(primarySnapshot.value?.thoughts, entry.rowId, thoughtTagTarget(entry.field)) === entry.winnerValue);
   if (tagHistory?.length && primarySnapshot.metadata) {
     persistTagHistory(transaction, primarySnapshot, command.operationId, THOUGHT_TAG_HISTORY, 'fields', tagHistory);
+  }
+  const sourceNoteHistory = retainedSourceNoteLinkHistory(primarySnapshot, sourceNoteOrder);
+  if (sourceNoteHistory.length && primarySnapshot.metadata) {
+    persistTagHistory(transaction, primarySnapshot, command.operationId, SOURCE_NOTE_LINK_HISTORY, 'entries', sourceNoteHistory);
   }
   const documentTagHistory = documentTagOrder?.displaced.filter(entry =>
     tagMembership(tagField(primarySnapshot.value), entry.tag) === entry.winnerValue);
@@ -774,6 +781,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let exegeticalOrder: ReturnType<typeof orderExegeticalPoints> | undefined;
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
+    let sourceNoteOrder: ReturnType<typeof orderSourceNoteLinks> | undefined;
     let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
     let serviceOrderStepPlacement: ServiceOrderStepPlacementWrite | undefined;
     let groupFlowStepPlacement: StepPlacementWrite | undefined;
@@ -803,7 +811,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       thoughtPlacementOrder = orderThoughtPlacement(alignThoughtLockRepresentation(thoughtLockOrder.command, current), current, raw?._dataEngine, serverMs);
       thoughtTagOrder = orderThoughtTags(thoughtPlacementOrder.command, command, current, raw?._dataEngine, serverMs);
       documentTagOrder = orderDocumentTags(thoughtTagOrder.command, command, current, raw?._dataEngine, serverMs);
-      markOrder = await planBibleMarkOrder(transaction, documentRef, documentTagOrder.command, current, raw?._dataEngine, serverMs);
+      sourceNoteOrder = orderSourceNoteLinks(documentTagOrder.command, current, raw?._dataEngine, serverMs);
+      markOrder = await planBibleMarkOrder(transaction, documentRef, sourceNoteOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
@@ -859,7 +868,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -889,7 +898,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1121,6 +1130,12 @@ export async function listCouncilTopicPlacementHistory(owner: string, councilId:
     owner, { collection: 'councils', id: councilId }, COUNCIL_TOPIC_PLACEMENT_HISTORY, generation, cursor, 'council-gone',
   );
   return { owner, councilId, generation, ...page };
+}
+
+export async function listSermonSourceNoteLinkHistory(owner: string, sermonId: string, generation: string, cursor?: string) {
+  const page = await listHistoryEntries<{ id: string; entries: SourceNoteLinkHistoryEntry[] }>(owner,
+    { collection: 'sermons', id: sermonId }, SOURCE_NOTE_LINK_HISTORY, generation, cursor, 'sermon-gone');
+  return { owner, sermonId, generation, ...page };
 }
 
 export async function listSeriesItemPlacementHistory(owner: string, seriesId: string, generation: string,

@@ -1907,6 +1907,8 @@
       "chipTitle": "Built on the note: {{title}}",
       "menuAdd": "Link a study note",
       "menuEdit": "Change linked notes",
+      "linked": "Linked",
+      "unlinked": "Unlinked",
       "saveError": "Could not save the link. Try again.",
       "openNote": "Open the note: {{title}}",
       "picker": {

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
 import { DataSession } from '@/data-engine/session';
@@ -105,6 +105,158 @@ beforeEach(() => {
     });
     transactionTail = run.catch(() => undefined);
     return run;
+  });
+});
+
+describe('saved sermon source-note selection chronology', () => {
+  const owner = 'owner-1';
+  const source = 'sermon-source-a';
+  const other = 'sermon-source-b';
+  const clock = (offset: number) => ({ earliestMs: 1_799_999_980_000 + offset, latestMs: 1_799_999_980_005 + offset });
+
+  async function seed(initial: string[]) {
+    for (const id of [source, other]) {
+      const note = await processCommand(owner, { protocol: 1, kind: 'create', owner, operationId: 'create-' + id,
+        resource: { collection: 'studyNotes', id }, generation: null, dependsOn: [],
+        value: { userId: owner, title: id, content: 'Keep the note words', type: 'note', isDraft: false,
+          scriptureRefs: [], tags: [], createdAt: '2026-11-09', updatedAt: '2026-11-09' } });
+      expect(note).toMatchObject({ kind: 'acknowledged' });
+    }
+    const opening = create();
+    if (opening.kind !== 'create') throw new Error('Expected a sermon creation');
+    expect(await processCommand(owner, { ...opening, value: { ...opening.value, sourceNoteIds: initial } })).toMatchObject({ kind: 'acknowledged' });
+  }
+
+  function select(operationId: string, before: string[], after: string[], noteId: string, observedRevision: number, time: number | null,
+    proof: { queueId?: string; predecessorOperationId?: string; reviewed?: true } = {}) {
+    return processCommand(owner, { protocol: 1, kind: 'update', owner, operationId, resource, generation: 'create-1', dependsOn: [],
+      changes: [{ path: ['sourceNoteIds'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      sourceNoteLinkAction: { observedRevision, time: time === null ? null : clock(time),
+        ...(proof.reviewed && { reviewed: proof.reviewed }),
+        changes: [{ noteId, linked: after.includes(noteId), ...(proof.queueId && { queueId: proof.queueId }),
+          ...(proof.predecessorOperationId && { predecessorOperationId: proof.predecessorOperationId }) }] } });
+  }
+
+  it.each([false, true])('keeps the later choice after a round trip (originally linked: %s)', async linked => {
+    const initial = linked ? [source] : [];
+    const changed = linked ? [] : [source];
+    await seed(initial);
+    expect(await select('desktop-first', initial, changed, source, 1, 1000)).toMatchObject({ kind: 'acknowledged' });
+    expect(await select('desktop-return', changed, initial, source, 2, 2000)).toMatchObject({ kind: 'acknowledged' });
+    expect(await select('phone-early', initial, changed, source, 1, 0)).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual(initial);
+  });
+
+  it('applies a later selection from an old opening and retains the displaced action', async () => {
+    await seed([]);
+    await select('desktop-link', [], [source], source, 1, 1000);
+    await select('desktop-unlink', [source], [], source, 2, 2000);
+    expect(await select('phone-late', [], [source], source, 1, 3000)).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([source]);
+    await expect(listSermonSourceNoteLinkHistory(owner, resource.id, 'create-1')).resolves.toMatchObject({
+      owner, sermonId: resource.id, entries: [{ entries: [{ noteId: source, linked: false, keptLinked: true,
+        actionTime: clock(2000), keptActionTime: clock(3000) }] }],
+    });
+  });
+
+  it.each([false, true])('keeps a question when the incoming selection has no usable clock (legacy: %s)', async legacy => {
+    await seed([]);
+    await select('desktop-link', [], [source], source, 1, 1000);
+    await select('desktop-unlink', [source], [], source, 2, 2000);
+    const result = legacy ? await processCommand(owner, { protocol: 1, kind: 'update', owner,
+      operationId: 'phone-old-bundle', resource, generation: 'create-1', dependsOn: [],
+      changes: [{ path: ['sourceNoteIds'], before: { exists: true, value: [] }, after: { exists: true, value: [source] } }],
+    }) : await select('phone-unclocked', [], [source], source, 1, null);
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: [{
+      path: ['sourceNoteIds', 'string:' + source], mine: { exists: true, value: true }, theirs: { exists: true, value: false },
+    }] });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+  });
+
+  it.each([true, false])('accepts only its exact pending predecessor without a clock (same queue: %s)', async sameQueue => {
+    await seed([]);
+    await select('phone-first-link', [], [source], source, 1, null, { queueId: 'phone-link-queue' });
+    await select('desktop-independent-link', [source], [source, other], other, 2, 1000);
+    const result = await select('phone-next-unlink', [source], [], source, 1, null,
+      { queueId: sameQueue ? 'phone-link-queue' : 'other-link-queue', predecessorOperationId: 'phone-first-link' });
+    expect(result.kind).toBe(sameQueue ? 'acknowledged' : 'conflict');
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual(sameQueue ? [other] : [source, other]);
+  });
+
+  it('asks again if the same note changed and returned after the shown comparison', async () => {
+    await seed([]);
+    await select('desktop-link', [], [source], source, 1, 1000);
+    await select('desktop-return', [source], [], source, 2, 2000);
+    expect(await select('phone-unclocked', [], [source], source, 1, null)).toMatchObject({ kind: 'conflict' });
+    await select('desktop-link-again', [], [source], source, 3, 3000);
+    await select('desktop-unlink-again', [source], [], source, 4, 4000);
+    expect(await select('reviewed-stale', [], [source], source, 3, 5000, { reviewed: true })).toMatchObject({ kind: 'conflict' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+    expect(await select('reviewed-fresh', [], [source], source, 5, 6000, { reviewed: true })).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([source]);
+  });
+
+  it.each([false, true])('does not refresh the action time of an earlier loser when resolving another note (keep my link: %s)', async keepMine => {
+    await seed([]);
+    await select('desktop-a-link', [], [source], source, 1, null);
+    await select('desktop-a-unlink', [source], [], source, 2, null);
+    await select('desktop-b-link', [], [other], other, 3, 2500);
+    await select('desktop-b-unlink', [other], [], other, 4, 3000);
+    const disputed = await processCommand(owner, { protocol: 1, kind: 'update', owner, operationId: 'phone-add-both', resource,
+      generation: 'create-1', dependsOn: [],
+      changes: [{ path: ['sourceNoteIds'], before: { exists: true, value: [] }, after: { exists: true, value: [source, other] } }],
+      sourceNoteLinkAction: { observedRevision: 1, time: clock(2000), changes: [
+        { noteId: source, linked: true }, { noteId: other, linked: true },
+      ] } });
+    expect(disputed).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['sourceNoteIds', 'string:' + source] }] });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+    const wanted = keepMine ? [source, other] : [other];
+    expect(await processCommand(owner, { protocol: 1, kind: 'update', owner, operationId: 'phone-review-a', resource,
+      generation: 'create-1', dependsOn: [],
+      changes: [{ path: ['sourceNoteIds'], before: { exists: true, value: [] }, after: { exists: true, value: wanted } }],
+      sourceNoteLinkAction: { observedRevision: 5, time: clock(4000), reviewed: true, changes: [
+        ...(keepMine ? [{ noteId: source, linked: true }] : []),
+        { noteId: other, linked: true, prior: { before: false, observedRevision: 1, time: clock(2000) } },
+      ] } })).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual(keepMine ? [source] : []);
+  });
+
+  it('does not let an old unsigned client undo a tracked no-op with ambiguous timing', async () => {
+    await seed([]);
+    await select('desktop-link', [], [source], source, 1, 1000);
+    await select('desktop-return', [source], [], source, 2, 2000);
+    await select('phone-returns-off', [], [], source, 1, null);
+    expect(await processCommand(owner, { protocol: 1, kind: 'update', owner,
+      operationId: 'old-unsigned-add', resource, generation: 'create-1', dependsOn: [],
+      changes: [{ path: ['sourceNoteIds'], before: { exists: true, value: [] }, after: { exists: true, value: [source] } }],
+    })).toMatchObject({ kind: 'conflict' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+  });
+
+  it('records a touched selection returned before its one Save', async () => {
+    await seed([]);
+    expect(await select('desktop-explicit-return', [], [], source, 1, 2000)).toMatchObject({ kind: 'acknowledged' });
+    expect(await select('phone-early', [], [source], source, 1, 1000)).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+  });
+
+  it('does not re-link a source deleted before the incoming Save arrives', async () => {
+    await seed([]);
+    const removed = await processCommand(owner, { protocol: 1, kind: 'delete', owner, operationId: 'remove-source',
+      resource: { collection: 'studyNotes', id: source }, generation: 'create-' + source, dependsOn: [],
+      baseline: (await readDocument(owner, { collection: 'studyNotes', id: source })).value });
+    expect(removed).toMatchObject({ kind: 'acknowledged' });
+    expect(await select('phone-late', [], [source], source, 1, 3000)).toMatchObject({ kind: 'refused' });
+    expect(documents.get('sermons/' + resource.id)?.sourceNoteIds).toEqual([]);
+  });
+
+  it('keeps source-note selections made independently on both devices', async () => {
+    await seed([]);
+    expect(await select('desktop-other', [], [other], other, 1, 1000)).toMatchObject({ kind: 'acknowledged' });
+    expect(await select('phone-source', [], [source], source, 1, 0)).toMatchObject({ kind: 'acknowledged' });
+    const saved = documents.get('sermons/' + resource.id)?.sourceNoteIds as string[];
+    expect([...saved].sort()).toEqual([source, other]);
+    expect(documents.get('sermons/' + resource.id)?.title).toBe('First');
   });
 });
 

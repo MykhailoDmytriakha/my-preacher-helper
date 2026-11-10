@@ -52,6 +52,14 @@ const councilOutcome = z.object({ discussed: z.boolean(), acceptedOptionId: z.st
 const councilOutcomeDrafts = z.record(id, z.object({ generation: id, reviewed: z.literal(true).optional(), action: z.object({
   rowId: id, rowCreatedAt: z.string().min(1), before: councilOutcome, after: councilOutcome, observedRevision, time: actionTime,
 }) }));
+const sourceNoteSelection = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
+  z.object({ exists: z.literal(true), value: z.array(id) })]);
+const sourceNoteLinkCapture = z.object({
+  opening: z.object({ sermonId: id, generation: id.nullable(), revision: observedRevision, selected: sourceNoteSelection, pending: z.array(id) }),
+  action: z.object({ observedRevision, time: actionTime, reviewed: z.literal(true).optional(),
+    changes: z.array(z.object({ noteId: id, linked: z.boolean(), queueId: id.optional(), predecessorOperationId: id.optional(),
+      prior: z.object({ before: z.boolean(), observedRevision: observedRevision.nullable(), time: actionTime }).optional() })).min(1) }),
+});
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
@@ -59,13 +67,14 @@ const recordSchema = z.object({
   retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
     councilTopicPlacement: councilPlacementCapture.optional(), councilFieldsGeneration: id.nullable().optional(),
-    outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional() }).optional(),
+    outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional(), sourceNoteLinks: sourceNoteLinkCapture.optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(z.object({ path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema })).default([]),
+    sourceNoteLinkRetry: sourceNoteLinkCapture.optional(),
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
@@ -97,6 +106,9 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const ref = record.checkpoint.confirmed.resource;
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
     || (record.checkpoint.remoteCandidate && !sameResource(ref, record.checkpoint.remoteCandidate.resource))) throw new Error('Checkpoint identity mismatch');
+  const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];
+  if (sourceLinks.some(links => links && (ref.collection !== 'sermons' || links.opening.sermonId !== ref.id
+    || links.action.observedRevision !== links.opening.revision))) throw new Error('Source note checkpoint identity mismatch');
   if (ref.collection !== 'groups' && (record.retainedManualChoice?.groupStepPlacement
     || record.retainedManualChoice?.groupFieldsGeneration !== undefined || record.checkpoint.groupFlowStepPlacementRetry
     || record.checkpoint.groupTitleDraft || record.checkpoint.groupStatusDraft || record.checkpoint.groupBlockTitleDrafts

@@ -9,7 +9,6 @@ import { useDocumentActions } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
   applySourceNoteLinkPatch,
-  openingContextOf,
   useSourceNoteLink,
   type SourceNoteOpeningContext,
 } from "@/hooks/useSermonNoteLinks";
@@ -68,7 +67,7 @@ export default function OptionMenu({
   useEffect(() => {
     sermonRef.current = sermon;
   }, [sermon]);
-  const { saving: savingSourceNotes, setSourceNotes } = useSourceNoteLink(sermon, (patch) => {
+  const { saving: savingSourceNotes, openSourceNotes, setSourceNotes } = useSourceNoteLink(sermon, (patch) => {
     const own = sermonRef.current;
     if (!own || own.id !== patch.sermonId) return;
     onUpdate?.(applySourceNoteLinkPatch(own, patch));
@@ -168,9 +167,12 @@ export default function OptionMenu({
   const handleEditSourceNotes = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-    setSourceNoteOpening(openingContextOf(sermon));
-    setShowSourceNotePicker(true);
     closeMenu();
+    void openSourceNotes().then(opening => {
+      if (!opening) return;
+      setSourceNoteOpening(opening);
+      setShowSourceNotePicker(true);
+    });
   };
 
   const handleRemoveFromSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
@@ -279,11 +281,11 @@ export default function OptionMenu({
           selectedNoteIds={sourceNoteOpening.noteIds ?? []}
           saving={savingSourceNotes}
           returnFocusTo={triggerRef}
-          onSave={async (noteIds) => {
+          onSave={async (noteIds, touched) => {
             // `force`: the dialog only asks when the person actually changed the ticks, so an
             // identical-looking set is still a deliberate choice and must reach the server —
             // it may differ from what the server now holds.
-            const result = await setSourceNotes(noteIds, sourceNoteOpening, { force: true });
+            const result = await setSourceNotes(noteIds, sourceNoteOpening, { force: true, touched });
             if (result.outcome === 'stale') {
               // RE-ARM THE PROOF, not just the checkboxes. The dialog adopts the server's list,
               // but a second press still has to vouch for something the server recognises —

@@ -168,14 +168,18 @@ describe('OptionMenu Component', () => {
    * this menu while every component and hook test stayed green — which is exactly what an
    * adversarial review pointed out.
    */
-  it('offers "link a note" when the sermon has none, and opens the picker', () => {
-    render(<OptionMenu {...defaultProps} />);
+  it('offers "link a note" when the sermon has none, and opens the picker', async () => {
+    const { id, ...value } = mockSermon;
+    const harness = membershipEngineHarness([{ resource: { collection: 'sermons', id }, value: value as never, metadata: null }]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><OptionMenu {...defaultProps} /></DataEngineProvider>);
+    await act(settleEngine);
     fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
 
     const action = screen.getByText('sermon.sourceNotes.menuAdd');
     fireEvent.click(action);
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('offers "change linked notes" once the sermon names one', () => {
@@ -390,10 +394,10 @@ describe('OptionMenu on the data engine', () => {
   });
 
   /** `stored` is what the server holds; `shown` is the copy the screen hands the menu. */
-  function setup(shown: Sermon, stored: Sermon = shown, props: Partial<React.ComponentProps<typeof OptionMenu>> = {}) {
+  function setup(shown: Sermon, stored: Sermon = shown, props: Partial<React.ComponentProps<typeof OptionMenu>> = {}, legacy = false) {
     const { id: _id, ...value } = stored;
     const harness = membershipEngineHarness([
-      { resource, value: value as never, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } },
+      { resource, value: value as never, metadata: legacy ? null : { protocol: 1, generation: 'g', revision: 1, deleted: false } },
       ...noteIds.map((note): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: note }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
         value: { userId: 'user-1', title: note, content: '', scriptureRefs: [], tags: [], isDraft: false } })),
     ]);
@@ -520,48 +524,42 @@ describe('OptionMenu on the data engine', () => {
   describe('source-note links', () => {
     const openPicker = (label: string) => { openMenu(); fireEvent.click(screen.getByText(label)); };
 
-    it('re-arms the proof after a refusal, so a deliberate second press can win', async () => {
-      // Found in the browser, not by a unit test: adopting the stored LIST is only half the exit. The
-      // second press must also vouch for something the engine recognises, or the same click is
-      // refused for ever — a dead end dressed as a safety feature.
+    it('opens the canonical source links even if the card still shows an old list', async () => {
       const shown: Sermon = { ...baseSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
       const { harness, view } = setup(shown, { ...baseSermon, sourceNoteIds: ['from-phone'] });
       openPicker('sermon.sourceNotes.menuEdit');
-      await settle();
-
-      // Tick another note, or there is nothing to save and the writer is skipped by design.
-      fireEvent.click(noteBox());
-      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-      // Refused: the stored list is handed back and shown, and nothing was sent.
       await screen.findByTestId('missing-note-row');
-      await waitFor(() => expect(noteBox()).toBeEnabled());
-      expect(harness.transport.send).not.toHaveBeenCalled();
-      expect(stored(harness).sourceNoteIds).toEqual(['from-phone']);
-
       fireEvent.click(noteBox());
       fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       await deliver(harness);
-      await waitFor(() => expect(stored(harness).sourceNoteIds).toEqual(['from-phone', 'note-2']));
+      expect(stored(harness).sourceNoteIds).toEqual(['from-phone', 'note-2']);
+      expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        sourceNoteLinkAction: { observedRevision: 1, time: null, changes: [{ noteId: 'note-2', linked: true, queueId: expect.any(String) }] },
+      }));
       view.unmount();
     });
 
     it('keeps the opening proof even if the sermon underneath refreshes while the picker is open', async () => {
-      // The picker holds the ticks it opened with; if the proof were re-read from the refreshed
-      // prop, the guard would bless overwriting whatever the other device just stored.
-      const opened: Sermon = { ...baseSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
-      const { harness, view, rerender } = setup(opened, { ...baseSermon, sourceNoteIds: ['from-phone'] });
-      openPicker('sermon.sourceNotes.menuEdit');
-      await settle();
+      const shown: Sermon = { ...baseSermon, sourceNoteIds: [], rev: { core: 3 } };
+      const { harness, view, rerender } = setup(shown, shown);
+      openPicker('sermon.sourceNotes.menuAdd');
+      await screen.findByRole('dialog');
+      const resource = { collection: 'sermons', id: shown.id };
+      const previous = harness.read(resource);
+      const next = { ...shown, sourceNoteIds: ['from-phone'], rev: { core: 9 } };
+      harness.replace({ ...previous, metadata: { ...previous.metadata!, revision: 2 }, value: { ...previous.value!, sourceNoteIds: next.sourceNoteIds } });
+      rerender(next);
 
-      // Another device's write arrives and the page re-renders underneath the open dialog.
-      rerender({ ...baseSermon, sourceNoteIds: ['from-phone'], rev: { core: 9 } });
       fireEvent.click(noteBox());
       fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-
-      await screen.findByTestId('missing-note-row');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       await deliver(harness);
-      expect(stored(harness).sourceNoteIds).toEqual(['from-phone']);
-      expect(harness.transport.send).not.toHaveBeenCalled();
+      expect(stored(harness).sourceNoteIds).toEqual(['from-phone', 'note-2']);
+      expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        sourceNoteLinkAction: expect.objectContaining({ observedRevision: 1, changes: [{ noteId: 'note-2', linked: true, queueId: expect.any(String) }] }),
+      }));
       view.unmount();
     });
 
@@ -582,6 +580,95 @@ describe('OptionMenu on the data engine', () => {
       await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ sourceNoteIds: ['note-2'] })));
       await deliver(harness);
       expect(stored(harness).sourceNoteIds).toEqual(['note-2']);
+      expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        sourceNoteLinkAction: expect.objectContaining({ changes: [{ noteId: 'note-2', linked: true, queueId: expect.any(String) }] }),
+      }));
+      view.unmount();
+    });
+
+    it.each([false, true])('carries two offline saves in order (legacy sermon: %s)', async legacy => {
+      const shown = { ...baseSermon, sourceNoteIds: [] };
+      const { harness, view } = setup(shown, shown, {}, legacy);
+      await settle();
+      act(() => harness.engine.setOnline(false));
+      for (const checked of [false, true]) {
+        openPicker('sermon.sourceNotes.menuAdd');
+        await screen.findByText('A note to tick');
+        expect(noteBox().checked).toBe(checked);
+        fireEvent.click(noteBox());
+        fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      }
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      act(() => harness.engine.setOnline(true));
+      await deliver(harness);
+      await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(2));
+      const [add, remove] = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+      expect(add).toMatchObject({ generation: legacy ? null : 'g',
+        sourceNoteLinkAction: { time: null, changes: [{ noteId: 'note-2', linked: true, queueId: expect.any(String) }] } });
+      if (add.kind !== 'update') throw new Error('Expected an update');
+      expect(remove).toMatchObject({ generation: legacy ? add.operationId : 'g',
+        sourceNoteLinkAction: { time: null, changes: [{ noteId: 'note-2', linked: false,
+          queueId: add.sourceNoteLinkAction?.changes[0].queueId, predecessorOperationId: add.operationId }] } });
+      expect(stored(harness).sourceNoteIds).toEqual([]);
+      view.unmount();
+    });
+
+    it.each([false, true])('follows a pending choice confirmed while the picker stays open (legacy sermon: %s)', async legacy => {
+      const shown = { ...baseSermon, sourceNoteIds: [] };
+      const { harness, view } = setup(shown, shown, {}, legacy);
+      await settle();
+      act(() => harness.engine.setOnline(false));
+      openPicker('sermon.sourceNotes.menuAdd');
+      await screen.findByText('A note to tick');
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      openPicker('sermon.sourceNotes.menuAdd');
+      await screen.findByText('A note to tick');
+      expect(noteBox()).toBeChecked();
+      act(() => harness.engine.setOnline(true));
+      await deliver(harness);
+      expect(stored(harness).sourceNoteIds).toEqual(['note-2']);
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await deliver(harness);
+
+      const [add, remove] = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+      if (add?.kind !== 'update') throw new Error('Expected the earlier update');
+      expect(remove).toMatchObject({ generation: legacy ? add.operationId : 'g',
+        sourceNoteLinkAction: { changes: [{ noteId: 'note-2', linked: false,
+          queueId: add.sourceNoteLinkAction?.changes[0].queueId, predecessorOperationId: add.operationId }] } });
+      expect(stored(harness).sourceNoteIds).toEqual([]);
+      view.unmount();
+    });
+
+    it('carries independent links through an offline no-op on a sermon with no source field', async () => {
+      const { harness, view } = setup(baseSermon);
+      await settle();
+      act(() => harness.engine.setOnline(false));
+      openPicker('sermon.sourceNotes.menuAdd');
+      await screen.findByText('A note to tick');
+      fireEvent.click(noteBox());
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      openPicker('sermon.sourceNotes.menuAdd');
+      await screen.findByText('A note to tick');
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      const previous = harness.read(resource);
+      harness.replace({ ...previous, metadata: { ...previous.metadata!, revision: 2 },
+        value: { ...previous.value, sourceNoteIds: ['from-phone'] } });
+      act(() => harness.engine.setOnline(true));
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).sourceNoteIds).toEqual(['from-phone', 'note-2']));
+      expect(harness.transport.send).toHaveBeenCalledTimes(2);
       view.unmount();
     });
 

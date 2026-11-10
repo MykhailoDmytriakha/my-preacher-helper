@@ -27,7 +27,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
-import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, sourceNoteAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -37,6 +37,7 @@ import { comparableSermonFields } from './sermonFieldChoice';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
+import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { redeliveryDelay } from './unanswered';
 
 
@@ -114,6 +115,7 @@ export interface ManagedEditor {
   getPresence(): RecordPresence;
   getDelivery(): JournalEntry[];
   getSermonPlanModeOpening?(shown: SessionCheckpoint): ReturnType<typeof sermonPlanModeOpening>;
+  getSourceNoteLinkOpening?(): SourceNoteLinkOpening;
   getActions(): Array<{ id: string; delivery: MembershipDelivery }>;
   carryCouncilTopicToNew(topicId: string, title: string): Promise<ResourceSnapshot>;
   carryCouncilTopicToExisting(topicId: string, destinationId: string): Promise<ResourceSnapshot>;
@@ -1142,6 +1144,7 @@ export class DataEngine {
     if (!records.some(({ record }) => !this.editors.has(record.editorId))) return [];
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
+    const sourceNoteAnswers = sourceNoteAnswerScopes(requests);
     return records.filter(({ record }) => !this.editors.has(record.editorId))
       .map(({ id, record }) => {
         const reconciled = reconcileRecoveryRecord(record, requests);
@@ -1149,7 +1152,11 @@ export class DataEngine {
         const answer = Object.values(reconciled.checkpoint.pending).some(intent => intent.borrowedManualScope)
           ? null : savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource, pendingIds, requests, this.pending);
         const actionResolutionRequired = requiresWholeActionResolution(owner, record.editorId, pendingIds, requests);
-        return { id, record: reconciled, ...(!record.recoveryVersion && !equalValues(record, reconciled) ? { discardRecord: copy(record) } : {}), ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}) };
+        const sourceNoteChoiceEditorId = pendingIds.length && sourceNoteAnswers.find(candidate =>
+          pendingIds.every(id => candidate.requests.has(id)))?.editorId;
+        return { id, record: reconciled, ...(!record.recoveryVersion && !equalValues(record, reconciled) ? { discardRecord: copy(record) } : {}),
+          ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}),
+          ...(sourceNoteChoiceEditorId && { sourceNoteChoiceEditorId }) };
       })
       .filter(({ record }) => isRecoverableCheckpoint(record) && !isPassiveManualContinuation(record));
   }
@@ -1955,6 +1962,9 @@ export class DataEngine {
           || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
           throw Object.assign(new Error('The shown council changed'), { code: 'decision-changed' });
         }
+        if (action?.kind === 'sermon-source-note-links' && !matchesSourceNoteOpening(checkpoint.confirmed, action.selection)) {
+          throw Object.assign(new Error('The shown sermon changed'), { code: 'decision-changed' });
+        }
         const next = updater(checkpoint.draft);
         let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
         if (action?.kind === 'service-order-placement'
@@ -2150,6 +2160,7 @@ export class DataEngine {
           return copy(documentRecordPresence(frozen, entry.observation, undefined, accepted));
         },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
+        getSourceNoteLinkOpening: () => { active(); return sourceNoteLinkOpening(controller.getState().checkpoint, this.commitRecords); },
         getSermonPlanModeOpening: shown => {
           active();
           return sameResource(shown.confirmed.resource, frozen) ? sermonPlanModeOpening(shown, [...this.commitRecords.values()]) : undefined;
@@ -2347,8 +2358,9 @@ export class DataEngine {
     try {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
-        if ((preference || (checkpoint.confirmed.resource.collection === 'sermons' && comparableSermonFields(checkpoint.conflicts)))
-          && controller.getState().checkpoint.dirty) {
+        const resolved = controller.getState().checkpoint;
+        if ((preference || resolved.sourceNoteLinkRetry || (checkpoint.confirmed.resource.collection === 'sermons'
+          && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
@@ -2356,7 +2368,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry) {
+        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }

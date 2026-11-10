@@ -22,6 +22,8 @@ import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
+import type { SourceNoteLinkAction } from './sourceNoteLinkAction';
+import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { OutlinePointGap, OutlinePointOrder } from '@/utils/outlineDnd';
@@ -86,6 +88,7 @@ export type EditorCommitAction =
   | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'comment-kind'; commentKind: CommentKindCapture }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
+  | { kind: 'sermon-source-note-links'; selection: SourceNoteLinkCapture }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
@@ -239,6 +242,7 @@ export type DataCommand = CommandBase & (
       exegeticalPlanActions?: ExegeticalPointStamp[];
       thoughtTagActions?: TagMembershipWire<ThoughtTagAction>[];
       tagMembershipActions?: TagMembershipWire<TagMembershipAction>[];
+      sourceNoteLinkAction?: SourceNoteLinkAction;
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;

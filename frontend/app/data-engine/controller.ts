@@ -36,6 +36,8 @@ import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
+import { legacySourceNoteChange } from './sourceNoteLinkAction';
+import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
@@ -47,6 +49,7 @@ import type { AutosaveFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
+import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
@@ -82,7 +85,7 @@ export interface EditorRecord extends VersionedRecovery {
   /** Basis of the retained changes, separate from the last accepted server snapshot. */
   retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null;
     councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null;
-    outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null };
+    outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null; sourceNoteLinks?: SourceNoteLinkCapture };
 }
 
 export interface CheckpointStore {
@@ -98,6 +101,7 @@ export interface RecoveryCheckpoint {
   discardRecord?: EditorRecord;
   /** Derived by engine discovery; never stored in the checkpoint. */
   answer?: DocumentAnswer;
+  sourceNoteChoiceEditorId?: string;
   /** The held requests can only be resolved through their complete atomic action. */
   actionResolutionRequired?: boolean;
 }
@@ -744,6 +748,9 @@ export class EditorController {
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
     const shown = this.record();
     const ordinary = !selection && !correction ? await this.ordinaryAnswerFor(cancelled) : undefined;
+    const sourceNoteComparison = readSourceNoteLinkComparison(shown.checkpoint);
+    const sourceNoteTail = !selection && !correction && sourceNoteComparison && ordinary
+      ? sourceNoteChoiceTail(ordinary, shown.checkpoint.remoteCandidate) : undefined;
     const positionRefused = ordinary && isAnchoredPlacementRefusal(ordinary.first);
     let savedOrder: ResourceSnapshot | null | undefined;
     if (positionRefused) {
@@ -768,7 +775,7 @@ export class EditorController {
         const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && readOutlinePointPlacementComparison(checkpoint))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
-        if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
+        if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
           && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.outlinePointPlacement || request.groupFlowStepPlacement || request.councilTopicPlacement || hasAutosaveRowFieldCaptures(request)
             || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction || request.studyNoteTypeAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
@@ -966,13 +973,20 @@ export class EditorController {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
           }
         }
+        const sourceNoteRequest = ordinary?.first ?? retired.find(request => decided.pending[request.id]
+          && (request.sourceNoteLink || legacySourceNoteChange(request.command)));
+        const originalSourceLinks = sourceNoteRequest?.sourceNoteLink;
+        const sourceNoteRetry = !selection && reviewedSourceNoteLinks(decided, originalSourceLinks, choice,
+          choiceTime ?? originalSourceLinks?.action.time ?? null, sourceNoteTail,
+          originalSourceLinks ? undefined : legacySourceNoteChange(sourceNoteRequest?.command));
+        if (sourceNoteRetry) session.stageSourceNoteLinkRetry(sourceNoteRetry);
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
         if (!ordinary) return retainedPlacementTail ? { editorRecords: [projected, retainedPlacementTail], manualRecoveries: [] } : projected;
         const { confirmed, draft } = projected.checkpoint;
         const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined);
         return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedPlacementTail ? [retainedPlacementTail] : []] };
-      }, ordinary ? { roots: [ordinary.first], ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }) }
+      }, ordinary ? { roots: [ordinary.first], ...(sourceNoteTail && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }) }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
     await this.applyChoiceProjection(source, projected, captures, anchoredChoice);

@@ -29,6 +29,7 @@ import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { sourceNoteQueueRebase } from './sourceNoteLinkCapture';
 
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
 import type { DataEngineRuntime } from './runtime';
@@ -192,9 +193,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         generation: record.baseline.metadata?.generation ?? null, dependsOn: [],
         thoughtPlacementActions: record.thoughtPlacementActions,
       }, ancestor, authored, snapshot) : undefined;
+    const sourceNotes = sourceNoteQueueRebase(snapshot, record.sourceNoteLink);
     const ordinary = outline ?? (record.baseline.resource.collection === 'groups' && sameGeneration ? mergeGroupFlowRebase(ancestor, authored, snapshot.value)
       : rebaseOptionalPrayerTags(record.baseline.resource.collection, ancestor, authored, snapshot.value,
-        mergeDocumentFields(ancestor, authored, snapshot.value)));
+        mergeDocumentFields(sourceNotes ? sourceNotes.align(ancestor) : ancestor, sourceNotes ? sourceNotes.align(authored) : authored, snapshot.value)));
     const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>
       path.length === 2 && path[0] === 'preparation' && path[1] === 'exegeticalPlan')
       ? rebaseQueuedExegeticalPoint(ancestor, authored, snapshot.value, record.exegeticalPlanActions) : undefined;
@@ -210,7 +212,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       if (code) return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code } };
     }
     const church = sameGeneration ? retainAuthoredChurch(merged, snapshot, record.preachDateFieldActions) : merged;
-    const intended = sameGeneration ? retainPreachStatusIntent(church, snapshot, record.preachStatusActions) : church;
+    const withPreachStatus = sameGeneration ? retainPreachStatusIntent(church, snapshot, record.preachStatusActions) : church;
+    const intended = sourceNotes ? sourceNotes.restore(withPreachStatus) : withPreachStatus;
     const flag = record.preachStatusActions?.length ? explicitPreachedFlag(intended?.preachDates, false) : undefined;
     const stepFlag = record.serviceOrderFlagActions?.flagged;
     const stepTitle = record.serviceOrderStepTitleActions?.title;

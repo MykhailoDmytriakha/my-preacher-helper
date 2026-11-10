@@ -1,7 +1,7 @@
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { cancellationScope } from './atomicCommits';
 import { orderCommitRequests } from './commits';
-import { isDocumentEditor, readManualScopeIdentity } from './editorIdentity';
+import { isDocumentEditor, isResourceActionEditor, readManualScopeIdentity } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectSavedChoiceDependents } from './manualChoice';
 import { storedManualContinuation } from './manualReturnSources';
@@ -9,6 +9,7 @@ import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
+import { legacySourceNoteChange, SOURCE_NOTE_FIELD } from './sourceNoteLinkAction';
 
 import type { CommitRequest, ManualChoiceRecovery } from './commits';
 import type { EditorRecord } from './controller';
@@ -30,7 +31,8 @@ export interface OrdinaryAnswerChoice {
 function ordinaryUpdate(request: CommitRequest): boolean {
   const { baseline, value, command } = request;
   return !request.atomic && !request.retentionScope && baseline.value !== null && value !== null
-    && (!command || command.kind === 'update') && isDocumentEditor(request.editorId, baseline.resource);
+    && (!command || command.kind === 'update') && (isDocumentEditor(request.editorId, baseline.resource)
+      || Boolean((request.sourceNoteLink || legacySourceNoteChange(command)) && isResourceActionEditor(request.editorId, baseline.resource)));
 }
 
 function ordinaryBasis(request: CommitRequest): ResourceSnapshot {
@@ -92,6 +94,16 @@ export function ordinaryAnswerChoice(first: CommitRequest, requests: readonly Co
   sources?: ManualChoiceSources): OrdinaryAnswerChoice | null {
   const choice = candidateOrdinaryAnswer(first, requests);
   return choice && choice.manual.every(request => sources?.get(request.id)?.scopeId === request.editorId) ? choice : null;
+}
+
+/** Only records whose entire pending work is in this proved chain can share its question. */
+export function sourceNoteAnswerScopes(requests: readonly CommitRequest[]) {
+  return requests.flatMap(first => {
+    if ((!first.sourceNoteLink && !legacySourceNoteChange(first.command)) || first.result?.kind !== 'conflict'
+      || !first.result.conflicts.length || first.result.conflicts.some(({ path }) => path[0] !== SOURCE_NOTE_FIELD || path.length !== 2)) return [];
+    const choice = ordinaryAnswerChoice(first, requests);
+    return choice ? [{ editorId: first.editorId, requests: new Set(choice.scope.map(request => request.id)) }] : [];
+  });
 }
 
 export async function manualOrdinaryChoiceSources(store: ManualScopeStore, owner: string, resource: ResourceRef,

@@ -22,6 +22,7 @@ import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowFiel
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
 import type { AccountPreferenceField } from './accountPreference';
@@ -30,6 +31,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
+import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CommandResult, ConflictDetail, CouncilTopicPlacementCapture, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
@@ -47,6 +49,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
+  sourceNoteLinkRetry?: SourceNoteLinkCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
@@ -206,6 +209,8 @@ export class DataSession {
       && equalValues(councilRetry.placement.time, request.councilTopicPlacement.placement.time)) {
       delete this.state.councilTopicPlacementRetry;
     }
+    if (request.sourceNoteLink && this.state.sourceNoteLinkRetry && request.editGeneration === this.state.editGeneration
+      && equalValues(request.sourceNoteLink.opening, this.state.sourceNoteLinkRetry.opening)) delete this.state.sourceNoteLinkRetry;
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
       && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
@@ -530,6 +535,13 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  stageSourceNoteLinkRetry(capture: SourceNoteLinkCapture): void {
+    if (!this.state.draft) return;
+    this.state.draft = projectSourceNoteChoices(this.state.draft, capture.action.changes);
+    this.state.sourceNoteLinkRetry = copy(capture);
+    this.state.dirty = true;
+  }
+
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
     this.state.accountPreferenceRetry = { field, time };
   }
@@ -542,6 +554,7 @@ export class DataSession {
     delete this.state.outlinePointPlacementRetry;
     delete this.state.groupFlowStepPlacementRetry;
     delete this.state.councilTopicPlacementRetry;
+    delete this.state.sourceNoteLinkRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];

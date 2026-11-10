@@ -41,11 +41,14 @@ import { validateResourceDocument } from './resourceSchemas';
 import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { readSermonPlanModeComparison as sermonPlanModeComparison } from './sermonFieldChoice';
 import { deletedUnder, type SessionCheckpoint } from './session';
+import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
+import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { readStudyNoteTypeComparison as studyNoteTypeComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
+
 
 
 import type { StudyAnalysisWrite } from './analysisReshape';
@@ -98,6 +101,7 @@ export function readTagOpening(...args: Parameters<typeof observeDocumentTagBasi
 export function captureTagIntents(...args: Parameters<typeof makeDocumentTagIntents>) { return makeDocumentTagIntents(...args); }
 export function validTagIntents(...args: Parameters<typeof validDocumentTagIntents>) { return validDocumentTagIntents(...args); }
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
+export function readSourceNoteLinkComparison(checkpoint: SessionCheckpoint) { return sourceNoteLinkComparison(checkpoint); }
 export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
 export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
@@ -125,6 +129,13 @@ export function isRecoveryHeldOpen(records: readonly EditorRecord[], answers: re
 export function councilRefusalHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return refusalHeldOpen(records, answers); }
 /** Capture shown recovery work through the public engine facade. */
 export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
+
+/** Multiple projections of a single answered source-note Save share its exact question. */
+export function sourceNoteChoiceRecord(records: readonly RecoveryCheckpoint[]): RecoveryCheckpoint | undefined {
+  const editorId = records[0]?.sourceNoteChoiceEditorId;
+  return editorId && records.every(record => record.sourceNoteChoiceEditorId === editorId)
+    ? records.find(({ record }) => record.editorId === editorId && sourceNoteLinkComparison(record.checkpoint)) : undefined;
+}
 
 /** Whether a pending edit was cancelled because its editor retired. */
 export function isInactiveEditorError(error: unknown): boolean { return inactiveEditor(error); }
@@ -452,6 +463,19 @@ export function useDocumentActions() {
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),
     commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction) =>
       withEditor(resource, editor => action ? editor.commit(updater, action) : editor.commit(updater)),
+    openSourceNoteLinks: (resource: ResourceRef) => withEditor(resource, async editor =>
+      editor.getSourceNoteLinkOpening?.() ?? sourceNoteLinkOpening(editor.getState().checkpoint)),
+    saveSourceNoteLinks: (resource: ResourceRef, opening: SourceNoteLinkOpening, requested: string[], touched: readonly string[]) => {
+      if (!owner || actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
+      const selection = captureSourceNoteChoices(opening, requested, touched, actionClock.capture(owner) ?? null);
+      return withEditor(resource, async editor => {
+        await editor.commit(current => {
+          if (!current) throw Object.assign(new Error('The sermon was deleted'), { code: 'decision-changed' });
+          return projectSourceNoteChoices(current, selection.action.changes);
+        }, { kind: 'sermon-source-note-links', selection });
+        return sourceNoteLinkOpening(editor.getState().checkpoint);
+      });
+    },
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
     submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction }) => withEditor(resource, editor => action.kind === 'delete'
@@ -476,9 +500,14 @@ export function useDocumentActions() {
         && checkpoint.confirmed.resource.id === resource.id && checkpoint.confirmed.resource.collection === resource.collection
         && (resource.collection === 'sermons' ? outlinePointPlacementComparison(checkpoint)
           : ['groups', 'councils'].includes(resource.collection) && checkpoint.serviceOrderPlacementComparison));
-      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement)
+      const comparedSourceNotes = scope?.records.some(({ owner: recordOwner, checkpoint }) => recordOwner === owner
+        && checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.confirmed.resource.id === resource.id
+        && sourceNoteLinkComparison(checkpoint));
+      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes)
         ? actionClock.capture(owner) ?? null : undefined;
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
+      const sourceNoteAnswer = comparedSourceNotes && sourceNoteChoiceRecord(waiting);
+      if (sourceNoteAnswer) waiting = [sourceNoteAnswer];
       const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
         && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
       if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
@@ -507,10 +536,11 @@ export function useDocumentActions() {
             const time = seen ? actionClock.capture(owner) ?? null : null;
             await editor.keepLocal(scope ? shown(record) : undefined, undefined, placementTime);
             if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
-            else await editor.save();
+            else if (!comparedSourceNotes) await editor.save();
             continue;
           }
           await editor.acceptRemote(scope ? shown(record) : undefined);
+          if (comparedSourceNotes) continue;
           const { checkpoint } = editor.getState();
           if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);

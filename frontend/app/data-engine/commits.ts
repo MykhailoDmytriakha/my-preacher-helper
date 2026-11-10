@@ -30,13 +30,15 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
-import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
+import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
+import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
 import type { AccountPreferenceObservations } from './accountPreference';
@@ -132,6 +134,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   exegeticalPlanActions?: ExegeticalPointStamp[];
   thoughtTagActions?: ThoughtTagAction[];
   tagMembershipActions?: TagMembershipAction[];
+  sourceNoteLink?: SourceNoteLinkCapture;
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
@@ -257,6 +260,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.accountPreferenceActions ?? null, incoming.accountPreferenceActions ?? null)
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
+    || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
@@ -378,7 +382,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -578,7 +582,9 @@ export class CommitQueue {
       return clone(result.request);
     }
     const accountRetry = intent.accountPreferenceRetry;
-    const editorAction = frozenOptions?.action ?? (accountRetry
+    const editorAction = frozenOptions?.action ?? (intent.sourceNoteLinkRetry
+      ? { kind: 'sermon-source-note-links', selection: intent.sourceNoteLinkRetry } as const
+      : accountRetry
       ? { kind: 'account-preference', fields: [accountRetry.field], time: accountRetry.time } as const
       : intent.serviceOrderPlacementRetry
       ? { kind: 'service-order-placement', move: intent.serviceOrderPlacementRetry } as const
@@ -591,10 +597,15 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
+    const sourceNoteLink = editorAction?.kind === 'sermon-source-note-links'
+      ? sourceNoteQueueCapture(editorAction.selection, newClientId) : undefined;
+    if (sourceNoteLink && (!intent.draft || !matchesSourceNoteOpening(baseline, sourceNoteLink))) {
+      throw Object.assign(new Error('The shown sermon changed'), { code: 'decision-changed' });
+    }
     if (editorAction?.kind === 'service-order-step-placement'
       && (baseline.resource.collection !== 'serviceOrders'
         || editorAction.move.generation !== (baseline.metadata?.generation ?? null))) {
@@ -717,6 +728,7 @@ export class CommitQueue {
       ...rowFields,
       ...(thoughtTagActions && { thoughtTagActions }),
       ...(tagMembershipActions && { tagMembershipActions }),
+      ...(sourceNoteLink && { sourceNoteLink }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -1235,13 +1247,22 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    const sourceNoteLink = record.sequence === 0 ? record.sourceNoteLink : undefined;
+    let intended = record.intended;
+    if (sourceNoteLink) {
+      if (!source.value || !intended || !matchesSourceNoteOpening(source, sourceNoteLink)) {
+        return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+      }
+      ({ source, intended } = sourceNoteCommandCopies(source, intended, sourceNoteLink));
+      retainedRoots.push(SOURCE_NOTE_FIELD);
+    }
     const mode = record.sequence === 0 ? record.sermonPlanModeAction : undefined;
     if (mode && equalValues(mode.before, mode.after)) retainedRoots.push('planMode');
     try {
       const participant = seriesCommandParticipant(record);
       prepared = participant.captured
         ? { command: prepareAtomicSeriesCommand(owner, operationId, [participant]), submittedValue: record.intended }
-        : prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, retainedRoots);
+        : prepareDomainCommand(owner, operationId, source, intended, targets, evidence, retainedRoots);
     } catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request
@@ -1293,6 +1314,12 @@ export class CommitQueue {
       if (topicKind) command.councilTopicKindActions = topicKind;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
+    }
+    if (sourceNoteLink) {
+      if (command.kind !== 'update' || !validSourceNoteLinkAction(sourceNoteLink.action, sourceNoteLinkChange(command.changes), isValidIdentifier)) {
+        return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+      }
+      command.sourceNoteLinkAction = sourceNoteLink.action;
     }
     if (record.councilTopicQueue && command.resource.collection === 'councils' && (command.kind === 'create'
       || (command.kind === 'update' && command.changes.some(change => change.path.length === 1 && change.path[0] === 'topics')))) {

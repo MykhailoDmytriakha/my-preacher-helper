@@ -14,6 +14,7 @@ import { restoreSavedRowFieldDrafts } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { withoutUnsignedTemplateOrder } from './templateOutlineMerge';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { changedThoughtTagTarget } from './thoughtTagAction';
@@ -122,7 +123,7 @@ export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], b
     merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
 }
 
-type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement'>;
+type RetainedPlacement = Pick<NonNullable<EditorRecord['retainedManualChoice']>, 'groupStepPlacement' | 'councilTopicPlacement' | 'outlinePointPlacement' | 'sourceNoteLinks'>;
 
 function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
   base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
@@ -219,6 +220,12 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     const groupMove = formOwned ? undefined : request.groupFlowStepPlacement;
     const councilMove = formOwned ? undefined : request.councilTopicPlacement;
     const outlineMove = formOwned ? undefined : templateMove(request);
+    const sourceNotes = formOwned ? undefined : request.sourceNoteLink;
+    if (sourceNotes && basis) {
+      const linked = projectSourceNoteChoices(basis, sourceNotes.action.changes);
+      projected.set(request.id, linked);
+      return [retain(request.id, linked, basis, { sourceNoteLinks: sourceNotes })];
+    }
     if (outlineMove) {
       const placed = projectResourceOutlinePoint(stored.resource.collection, basis, outlineMove);
       projected.set(request.id, placed ?? basis);
@@ -259,6 +266,16 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
   if (!retained) return record;
   const original = record.checkpoint.confirmed;
   const confirmed = known && canReplaceSnapshot(original, known) ? known : original;
+  const sourceNotes = retained.sourceNoteLinks;
+  if (sourceNotes) {
+    if (!confirmed.value || !matchesSourceNoteOpening(confirmed, sourceNotes)) throw Object.assign(
+      new Error('The retained sermon source selection is unavailable'), { code: 'decision-changed' });
+    const draft = projectSourceNoteChoices(confirmed.value, sourceNotes.action.changes);
+    const checkpoint = afterChoice(confirmed, draft, record.checkpoint.editGeneration);
+    checkpoint.sourceNoteLinkRetry = sourceNotes;
+    checkpoint.dirty = true;
+    return { ...record, checkpoint };
+  }
   const move = retained.groupStepPlacement;
   if (move) {
     const unavailable = () => Object.assign(new Error('The retained step position is unavailable'), { code: 'decision-changed' });

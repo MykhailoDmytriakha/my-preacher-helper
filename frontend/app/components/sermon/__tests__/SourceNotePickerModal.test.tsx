@@ -78,7 +78,7 @@ it('saves exactly what is left ticked, then closes', async () => {
   fireEvent.click(row.querySelector('input') as HTMLElement);
   fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
 
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1', 'n2']));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1', 'n2'], ['n2']));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 
@@ -121,7 +121,7 @@ it('ADOPTS the server list when the save was refused, so the next press is not d
   fireEvent.click(row.querySelector('input') as HTMLElement);
   fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
 
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1', 'n2']));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1', 'n2'], ['n2']));
   // The dialog stays, now showing what the OTHER device stored — pressing Save again means
   // "mine wins" rather than repeating a refusal against a stale baseline for ever.
   expect(onClose).not.toHaveBeenCalled();
@@ -146,7 +146,7 @@ it('shows a linked note that was DELETED as its own removable row', async () => 
   fireEvent.click(deadRow.querySelector('input') as HTMLElement);
   fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
 
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1']));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(['n1'], expect.any(Array)));
 });
 
 it('unlinks everything in one press', () => {

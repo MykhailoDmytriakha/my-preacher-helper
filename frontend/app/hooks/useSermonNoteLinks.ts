@@ -13,6 +13,7 @@ import { sermonListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { SourceNoteLinkOpening } from '@/data-engine/sourceNoteLinkCapture';
 import type { Sermon, StudyNote } from '@/models/models';
 
 /**
@@ -132,6 +133,7 @@ export interface SourceNoteOpeningContext {
   sermonId: string | null;
   noteIds: string[] | null;
   revision: number;
+  engine?: SourceNoteLinkOpening;
 }
 
 export function openingContextOf(
@@ -221,6 +223,7 @@ export function applySourceNoteLinkPatch<T extends Sermon>(copy: T, patch: Sourc
 
 export interface SourceNoteLinkResult {
   saving: boolean;
+  openSourceNotes: () => Promise<SourceNoteOpeningContext | null>;
   setSourceNotes: (
     nextIds: string[],
     opening: SourceNoteOpeningContext,
@@ -232,6 +235,7 @@ export interface SourceNoteLinkResult {
        * the write would silently leave the other device's list in place.
        */
       force?: boolean;
+      touched?: readonly string[];
     }
   ) => Promise<SourceNoteSaveResult>;
 }
@@ -315,11 +319,26 @@ export function useSourceNoteLink(
     [queryClient, uid, onPatched]
   );
 
+  const openSourceNotes = useCallback(async (): Promise<SourceNoteOpeningContext | null> => {
+    const id = sermonRef.current?.id;
+    if (!id) return null;
+    try {
+      const engine = await documentActions.openSourceNoteLinks({ collection: 'sermons', id });
+      if (sermonRef.current?.id !== id) return null;
+      return { sermonId: id, noteIds: engine.selected.exists ? engine.selected.value as string[] : null,
+        revision: engine.revision, engine };
+    } catch (error) {
+      console.error('Failed to open the sermon source notes:', error);
+      toast.error(t('sermon.sourceNotes.saveError'));
+      return null;
+    }
+  }, [documentActions, t]);
+
   const setSourceNotes = useCallback(
     async (
       nextIds: string[],
       opening: SourceNoteOpeningContext,
-      options?: { force?: boolean }
+      options?: { force?: boolean; touched?: readonly string[] }
     ): Promise<SourceNoteSaveResult> => {
       const target = sermonRef.current ?? sermon;
       if (!target) return { outcome: 'failed' };
@@ -342,6 +361,12 @@ export function useSourceNoteLink(
 
       setSaving(true);
       try {
+        if (opening.engine) {
+          if (!options?.touched?.length) return { outcome: 'unchanged' };
+          const shown = await documentActions.saveSourceNoteLinks({ collection: 'sermons', id: target.id }, opening.engine, nextIds, options.touched);
+          onPatched?.({ sermonId: target.id, sourceNoteIds: shown.selected.exists ? shown.selected.value as string[] : [] });
+          return { outcome: 'saved' };
+        }
         // Same rule as the legacy guard, applied to the engine's current copy: a list chosen
         // elsewhere since this dialog opened is handed back, never overwritten.
         let refusedWith: string[] | null = null;
@@ -369,8 +394,8 @@ export function useSourceNoteLink(
         setSaving(false);
       }
     },
-    [sermon, publish, t, documentActions]
+    [sermon, publish, t, documentActions, onPatched]
   );
 
-  return { saving, setSourceNotes };
+  return { saving, openSourceNotes, setSourceNotes };
 }

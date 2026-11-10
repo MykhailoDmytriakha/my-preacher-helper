@@ -11,9 +11,10 @@ import { outlinePointConflictComparison } from '@/components/plan-editor/outline
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
+import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -25,6 +26,7 @@ import { outlineRecoveryValue } from '@/utils/outlineRecovery';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -133,6 +135,23 @@ function fieldComparison(entry: Waiting, t: (key: string) => string): TextCompar
   const title = comparison.title ?? t('serviceOrders.flag');
   const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
   return { title, valueKind: 'field', mine: words(mine), stored: words(stored) };
+}
+
+type SourceNoteComparison = NonNullable<ReturnType<typeof readSourceNoteLinkComparison>>;
+
+function SourceNoteConflict({ comparison }: { comparison: SourceNoteComparison }) {
+  const { t, language } = useTranslation();
+  const { notes, isMissing } = useStudyNoteDirectory();
+  const byId = new Map(notes.map(note => [note.id, note]));
+  const locale = resolveAppLocale(language);
+  const text = (side: 'mine' | 'stored') => comparison.choices.map(choice => {
+    const note = byId.get(choice.noteId);
+    const name = (note && studyNoteOwnName(note, locale)) || t(isMissing(choice.noteId)
+      ? 'sermon.sourceNotes.picker.deletedNote' : 'studiesWorkspace.untitled');
+    return name + ' · ' + t(choice[side] ? 'sermon.sourceNotes.linked' : 'sermon.sourceNotes.unlinked');
+  }).join('\n');
+  return <FieldComparison comparison={{ identity: comparison.identity, valueKind: 'field',
+    title: t('sermon.sourceNotes.menuEdit'), mine: text('mine'), stored: text('stored') }} />;
 }
 
 const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerseChapter', 'toVerse'];
@@ -269,7 +288,9 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const record = entry.record;
       const resource = record.checkpoint.confirmed.resource;
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
-      const drafts = decided.filter(candidate => isOneShotRecord(candidate.record) !== screen && sameResource(candidate.record.checkpoint.confirmed.resource, resource));
+      const waiting = decided.filter(candidate => isOneShotRecord(candidate.record) !== screen && sameResource(candidate.record.checkpoint.confirmed.resource, resource));
+      const exactSourceNote = !screen && sourceNoteChoiceRecord(waiting);
+      const drafts = exactSourceNote ? [exactSourceNote] : waiting;
       const { checkpoint } = drafts[0].record;
       const scope = captureRecoveryChoice(drafts.map(draft => draft.record));
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
@@ -491,18 +512,22 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     const comparison = fieldComparison(entry, t);
     const checkpoint = entry.records[0].checkpoint;
     const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
+    const sourceNotes = entry.records.length === 1 ? readSourceNoteLinkComparison(checkpoint) : undefined;
+    const comparingField = Boolean(comparison || sourceNotes);
     return notice(
       <>
-        {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}
+        {comparingField && <section aria-label={t('dataSync.versionComparison')} className="mb-3">
+          {sourceNotes ? <SourceNoteConflict comparison={sourceNotes} /> : comparison && <FieldComparison comparison={comparison} />}
+        </section>}
         <SaveConflictBanner
           entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
-          pendingText={comparison ? undefined : mine || undefined}
-          description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
-          keepMineLabel={comparison ? t('dataSync.useLocalVersion') : undefined}
-          takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined}
+          pendingText={comparingField ? undefined : mine || undefined}
+          description={comparingField ? t('dataSync.fieldVersionChanged') : undefined}
+          keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
+          takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement)); }}
-          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', Boolean(comparison)); }}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes)); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField); }}
           busy={busy}
           className="mb-3"
         />

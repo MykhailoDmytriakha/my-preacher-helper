@@ -78,16 +78,20 @@ export function readManualScopeIdentity(scopeId: string): { parentEditorId: stri
   }
 }
 
-function tabForEditor(editorId: string, resource: ResourceRef): string | null {
+function tabForEditor(editorId: string, resource: ResourceRef, oneShot = false): string | null {
   try {
     const parts: unknown = JSON.parse(editorId);
     return Array.isArray(parts) && parts.length === 5
       && parts.every(part => typeof part === 'string' && part.length > 0)
-      && parts[1] === resource.collection && parts[2] === resource.id && parts[3] !== ACTION_SLOT
+      && parts[1] === resource.collection && parts[2] === resource.id && (parts[3] === ACTION_SLOT) === oneShot
       ? parts[0] : null;
   } catch {
     return null;
   }
+}
+
+export function isResourceActionEditor(editorId: string, resource: ResourceRef): boolean {
+  return tabForEditor(openingEditorId(editorId), resource, true) !== null;
 }
 
 export function isDocumentEditor(editorId: string, resource: ResourceRef): boolean {
