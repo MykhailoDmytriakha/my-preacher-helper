@@ -1,3 +1,5 @@
+import { nestPointUnderPoint, nestPointUnderPointAt } from '@/utils/outlineDnd';
+
 import { documentEngineHarness, settleEngine } from '../../../test-utils/documentEngineHarness';
 import { editorIdentity } from '../editorIdentity';
 import { projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
@@ -10,7 +12,7 @@ import { submittedWorkCheckpoint } from '../submittedWork';
 
 import type { CommitRequest } from '../commits';
 import type { EditorRecord } from '../controller';
-import type { DocumentData, ResourceSnapshot } from '../types';
+import type { DataCommand, DocumentData, ResourceSnapshot } from '../types';
 import type { SermonOutline } from '@/models/models';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -77,6 +79,107 @@ it.each(['existing parent', 'new parent', 'promoted'] as const)('recovers a chil
   expect(copy).toBeDefined();
   const expected = withSavedWords('Phone child words');
   expect(recoverManualChoiceCopy(copy, stored).checkpoint).toMatchObject({ draft: value(expected), conflicts: [] });
+});
+
+describe('words on a point that became a subpoint', () => {
+  const child = { id: 'child', text: 'Opening child words', position: 1 };
+  const neighbor = { id: 'neighbor', text: 'Existing subpoint', position: 1 };
+  const parent = { ...other, subPoints: [neighbor] };
+  const offlineWords = 'Independently typed words';
+
+  function nesting(withChild: boolean) {
+    const original = withChild ? { ...point, subPoints: [child] } : point;
+    const start = { introduction: [], main: [original], conclusion: [parent] };
+    const withWords = (text: string, childText = child.text) => ({ ...start, main: [{ ...original, text,
+      ...(withChild && { subPoints: [{ ...child, text: childText }] }) }] });
+    const nest = (structure: SermonOutline) => nestPointUnderPoint(structure, point.id, parent.id);
+    return { start, withWords, nest };
+  }
+
+  function update(id: string, start: SermonOutline, after: SermonOutline): Extract<DataCommand, { kind: 'update' }> {
+    return { protocol: 1, kind: 'update', owner: 'owner', operationId: id, resource, generation: metadata.generation,
+      dependsOn: [], changes: diffFields(value(start), value(after)) };
+  }
+
+  const apply = async (command: DataCommand, saved: ResourceSnapshot) => (await planDataCommand(command, saved,
+    { get: async () => saved, list: async () => [saved] })).result;
+
+  it.each([
+    { withChild: false, nestingFirst: true }, { withChild: true, nestingFirst: true },
+    { withChild: false, nestingFirst: false }, { withChild: true, nestingFirst: false },
+  ])('composes saved nesting and independent words (child: $withChild, nesting delivered first: $nestingFirst)', async ({ withChild, nestingFirst }) => {
+    const { start, withWords, nest } = nesting(withChild);
+    const edited = withWords(offlineWords, 'Independently typed child words');
+    const nested = nest(start);
+    const saved = snapshot(nestingFirst ? nested : edited, 2);
+    const result = await apply(update('delayed', start, nestingFirst ? edited : nested), saved);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: nest(edited) } } });
+  });
+
+  it('preserves both surrounding subpoints when nesting into an interior slot', async () => {
+    const { start, withWords } = nesting(true);
+    const destination = { ...parent, subPoints: [...parent.subPoints, { id: 'after', text: 'Following subpoint', position: 2 }] };
+    const before = { ...start, conclusion: [destination] };
+    const edited = { ...withWords(offlineWords), conclusion: [destination] };
+    const nestAt = (structure: SermonOutline) => nestPointUnderPointAt(structure, point.id, parent.id, 1);
+    const result = await apply(update('edit-between-siblings', before, edited), snapshot(nestAt(before), 2));
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { structure: nestAt(edited) } } });
+  });
+
+  it('asks about competing words at the saved subpoint without reviving the old position', async () => {
+    const { start, withWords, nest } = nesting(true);
+    const saved = snapshot(nest(withWords('Computer words')), 2);
+    const result = await apply(update('competing', start, withWords(offlineWords)), saved);
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: [{
+      path: ['structure', 'conclusion', 'id:b', 'subPoints', 'id:a', 'text'],
+      base: { value: point.text }, mine: { value: offlineWords }, theirs: { value: 'Computer words' },
+    }] });
+  });
+
+  it.each([false, true])('keeps only the chosen words, including exact numbering and extra fields (already nested: %s)', async alreadyNested => {
+    const { start, withWords, nest } = nesting(true);
+    const layout = { scale: 2 };
+    const before = alreadyNested ? { ...nest(start), layout } : start;
+    const h = documentEngineHarness(snapshot(before), { apply });
+    const browser = h.createBrowser();
+    try {
+      const engine = browser.engine;
+      engine.setOnline(false);
+      engine.setOwner('owner');
+      const editor = await engine.openEditor(resource, browser.editorId(resource));
+      const words = withWords(offlineWords);
+      const authored = alreadyNested ? { ...nest(words), layout } : words;
+      await editor.edit(value(authored));
+      await editor.save();
+      const nested = { ...nest(withWords('Computer words')), layout };
+      h.silentRemote(value(nested));
+      engine.setOnline(true);
+      await engine.retry();
+      await settleEngine();
+      expect(editor.getState().result?.kind).toBe('conflict');
+      await editor.keepLocal();
+      await editor.save();
+      await engine.retry();
+      await settleEngine();
+      expect(h.server.value?.structure).toEqual({ ...nest(words), layout });
+    } finally { browser.dispose(); }
+  });
+
+  it.each([false, true])('recovers only words from an unsigned old move (child: %s)', async withChild => {
+    const { start, withWords, nest } = nesting(withChild);
+    const edited = withWords(offlineWords, 'Independently typed child words');
+    const old = { ...edited, introduction: edited.main, main: [] };
+    const command = update('legacy-nested', start, old);
+    const current = snapshot(nest(start), 3);
+    const result = await apply(command, current);
+    expect(result).toMatchObject({ kind: 'refused', code: 'template-point-placement-needs-review' });
+    const refused: CommitRequest = { ...request(command.operationId, old), baseline: snapshot(start), working: snapshot(start),
+      initialized: true, command, submitted: value(old), state: 'refused', result };
+    const choice = ordinaryAnswerChoice(refused, [refused])!;
+    const [copy] = ordinaryStoredChoice('owner', [choice], [{ ...refused, state: 'cancelled', revision: 1 }], current).editorRecords;
+    expect(copy).toBeDefined();
+    expect(recoverManualChoiceCopy(copy, current).checkpoint).toMatchObject({ draft: value(nest(edited)), conflicts: [] });
+  });
 });
 
 it('captures the same recovered move once when two Saves start before the first completes', async () => {

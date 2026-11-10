@@ -5,6 +5,7 @@ import { normalizeStructureTag } from '@/utils/structureTags';
 import { findThoughtSectionInStructure, resolveSectionFromOutline, resolveSectionFromTags, SECTION_ORDER } from '@/utils/thoughtOrdering';
 
 import { equalValues, object } from './fieldValues';
+import { usesSavedTemplateLayout } from './templateOutlineMerge';
 
 import type { DocumentData, FieldValue, Json } from './types';
 import type { OutlinePoint, Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
@@ -107,6 +108,7 @@ export function chooseLocalPlacement(collection: string, base: DocumentData | nu
   theirs: DocumentData | null, merged: DocumentData | null, merge: MergeFields, explicit?: ReadonlySet<string>): DocumentData | null {
   if (!base || !mine || !theirs || !merged) return merged;
   if (collection === 'planTemplates' && object(mine.structure)) {
+    if (usesSavedTemplateLayout(base.structure, mine.structure, theirs.structure, merged.structure)) return merged;
     return { ...merged, structure: chooseOutlineChanges(base.structure as unknown as SermonOutline,
       mine.structure as unknown as SermonOutline, theirs.structure as unknown as SermonOutline, merge,
       { retainLocalPaths: true }) as unknown as Json };

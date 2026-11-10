@@ -32,54 +32,57 @@ const topology = (outline: TemplateOutline) => SECTION_KEYS.map(section => outli
 const index = (outline: TemplateOutline) => new Map(SECTION_KEYS.flatMap(section => outline[section].map(row => [row.id, row] as const)));
 const arrayField = (rows: Row[]): FieldValue => ({ exists: true, value: rows });
 
+function pointParents(outline: TemplateOutline) {
+  return new Map<string, string | null>([...index(outline).values()].flatMap(point => [
+    [point.id, null] as const, ...children(point).map(row => [row.id, point.id] as const),
+  ]));
+}
+
 function keepsPointHomes(before: TemplateOutline, after: TemplateOutline): boolean {
   const updated = index(after);
   const retained = new Set([...index(before).keys()].filter(id => updated.has(id)));
   if (!equalValues(positions(before, retained), positions(after, retained))) return false;
-  const parents = (outline: TemplateOutline) => new Map(SECTION_KEYS.flatMap(section => outline[section].flatMap(point => [
-    [point.id, null] as const,
-    ...children(point).map(row => [row.id, point.id] as const),
-  ])));
-  const nextParents = parents(after);
-  return [...parents(before)].every(([id, parent]) => !nextParents.has(id) || nextParents.get(id) === parent);
+  const nextParents = pointParents(after);
+  return [...pointParents(before)].every(([id, parent]) => !nextParents.has(id) || nextParents.get(id) === parent);
 }
 
-/** A child still edited under its old parent belongs to the saved parent on both merge inputs. */
-function childRehomes(before: TemplateOutline, local: TemplateOutline, stored: Map<string, Row>) {
-  const opening = index(before), authored = index(local);
-  const savedParents = new Map<string, string | null>([...stored.values()].flatMap(row => [
-    [row.id, null] as const, ...children(row).map(child => [child.id, row.id] as const),
-  ]));
+/** Align content by identity when one branch alone changed where a point lives. */
+function changedParents(before: TemplateOutline, content: TemplateOutline, placed: TemplateOutline) {
+  const opening = pointParents(before), authored = pointParents(content), destinations = pointParents(placed);
   const homes = new Map<string, string | null>();
-  for (const row of opening.values()) {
-    const edited = authored.get(row.id);
-    if (!edited) continue;
-    for (const child of children(edited)) {
-      const home = savedParents.get(child.id);
-      if (home !== undefined && home !== row.id && children(row).some(original => original.id === child.id)
-        && (home === null || !opening.has(home) || authored.has(home))) homes.set(child.id, home);
-    }
+  for (const [id, parent] of opening) {
+    const home = destinations.get(id);
+    if (authored.has(id) && home !== undefined && home !== parent
+      && (home === null || !opening.has(home) || authored.has(home))) homes.set(id, home);
   }
   return homes;
 }
 
-function projectChildren(rows: Map<string, Row>, stored: Map<string, Row>, homes: Map<string, string | null>): void {
-  if (!homes.size) return;
+function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, homes: Map<string, string | null>): boolean {
+  if (!homes.size) return true;
   const arrivals = new Map<string, Row[]>(), promoted: Row[] = [];
+  const arrive = (home: string, row: Row) => arrivals.set(home, [...arrivals.get(home) ?? [], row]);
   for (const row of rows.values()) {
     const original = children(row);
     const retained = original.filter(child => {
       const home = homes.get(child.id);
       if (home === undefined) return true;
       if (home === null) promoted.push(child);
-      else arrivals.set(home, [...arrivals.get(home) ?? [], child]);
+      else arrive(home, child);
       return false;
     });
-    if (retained.length !== original.length) rows.set(row.id, { ...row, subPoints: retained });
+    const home = homes.get(row.id);
+    if (typeof home === 'string') {
+      // The point and its children each need their own proved destination in a two-level outline.
+      if (retained.length) return false;
+      const { subPoints: _children, ...point } = row;
+      arrive(home, point);
+      rows.delete(row.id);
+    } else if (retained.length !== original.length) rows.set(row.id, { ...row, subPoints: retained });
   }
   for (const row of promoted) rows.set(row.id, row);
   for (const [id, moved] of arrivals) {
-    const saved = stored.get(id)!;
+    const saved = placed.get(id)!;
     const row = rows.get(id);
     const existing = row ? children(row) : [];
     const present = new Map([...existing, ...moved].map(child => [child.id, child]));
@@ -88,30 +91,41 @@ function projectChildren(rows: Map<string, Row>, stored: Map<string, Row>, homes
     const subPoints = withoutUnsignedRowOrder(existing, [...savedOrder, ...existing.filter(child => !savedIds.has(child.id))]);
     rows.set(id, { ...(row ?? saved), subPoints });
   }
+  return true;
 }
 
 /** Edits without a new placement follow point identities into their saved sections. */
 export function mergeTemplateOutlineContent(base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[], merge: Merge): MergeResult | null {
   const before = templateOutline(base.value), local = templateOutline(mine.value), stored = templateOutline(theirs.value);
-  if (!before || !local || !stored || !keepsPointHomes(before, local) || equalValues(topology(before), topology(stored))) return null;
-  const live = index(stored);
-  const homes = childRehomes(before, local, live);
+  if (!before || !local || !stored) return null;
+  const openingTopology = topology(before);
+  const storedPlaces = keepsPointHomes(before, local) && !equalValues(openingTopology, topology(stored));
+  const localPlaces = !storedPlaces && keepsPointHomes(before, stored) && !equalValues(openingTopology, topology(local));
+  if (!storedPlaces && !localPlaces) return null;
+  const placement = storedPlaces ? stored : local;
+  const content = storedPlaces ? local : stored;
+  const live = index(placement);
+  const homes = changedParents(before, content, placement);
+  const review = { value: mine, conflicts: [{ path, base, mine, theirs }] };
   const project = (outline: TemplateOutline) => {
     const rows = index(outline);
-    projectChildren(rows, live, homes);
+    if (!projectPointHomes(rows, live, homes)) return undefined;
     return (section: SectionKey) => {
-      const here = new Set(stored[section].map(row => row.id));
-      const placed = stored[section].flatMap(point => rows.get(point.id) ?? []);
+      const here = new Set(placement[section].map(row => row.id));
+      const placed = placement[section].flatMap(point => rows.get(point.id) ?? []);
       // Keep deleted rows in the ancestor so a separate text edit still conflicts.
-      const original = outline[section].filter(row => !live.has(row.id) || here.has(row.id)).map(row => rows.get(row.id)!);
+      const original = outline[section].filter(row => !live.has(row.id) || here.has(row.id)).flatMap(row => rows.get(row.id) ?? []);
       const present = new Set(original.map(row => row.id));
       return withoutUnsignedRowOrder(placed, [...original, ...placed.filter(row => !present.has(row.id))]);
     };
   };
-  const opening = project(before), authored = project(local);
+  const opening = project(before), projected = project(content);
+  if (!opening || !projected) return review;
   const value: DocumentData = {}, conflicts: ConflictDetail[] = [];
   for (const section of SECTION_KEYS) {
-    const result = merge(arrayField(opening(section)), arrayField(authored(section)), arrayField(stored[section]), [...path, section]);
+    const localRows = storedPlaces ? projected(section) : local[section];
+    const savedRows = storedPlaces ? stored[section] : projected(section);
+    const result = merge(arrayField(opening(section)), arrayField(localRows), arrayField(savedRows), [...path, section]);
     value[section] = result.value.value as Json;
     conflicts.push(...result.conflicts);
   }
@@ -122,7 +136,18 @@ export function mergeTemplateOutlineContent(base: FieldValue, mine: FieldValue, 
     conflicts.push(...result.conflicts);
   }
   // A competing nesting change can put a child under two parents in the section merges.
-  return templateOutline(value) ? { value: { exists: true, value }, conflicts } : { value: mine, conflicts: [{ path, base, mine, theirs }] };
+  return templateOutline(value) ? { value: { exists: true, value }, conflicts } : review;
+}
+
+/** A text choice already projected onto the saved layout needs no second outline reconstruction. */
+export function usesSavedTemplateLayout(opening: unknown, proposed: unknown, current: unknown, merged: unknown): boolean {
+  const before = templateOutline(opening), local = templateOutline(proposed);
+  const saved = templateOutline(current), candidate = templateOutline(merged);
+  if (!before || !local || !saved || !candidate) return false;
+  const layout = (outline: TemplateOutline) => SECTION_KEYS.map(section => outline[section].map(row => [
+    row.id, children(row).map(child => [child.id, child.position]),
+  ]));
+  return equalValues(layout(before), layout(local)) && equalValues(layout(saved), layout(candidate));
 }
 
 function positions(outline: TemplateOutline, retained: ReadonlySet<string>) {
