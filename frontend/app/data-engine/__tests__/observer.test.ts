@@ -362,6 +362,39 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  it.each(['visibility', 'connection'] as const)(
+    'retires an earlier read warning after a %s pause without advancing the retry',
+    async (lifecycle) => {
+      const h = harness();
+      h.read.mockRejectedValueOnce(new Error('Earlier check failed'))
+        .mockRejectedValueOnce(new Error('Current check failed')).mockResolvedValue(snapshot(4));
+      h.watch();
+      h.next(snapshot(3));
+      await h.observer.refresh(resource);
+      expect(h.state()).toMatchObject({ snapshot: snapshot(3), readiness: 'unknown', error: true });
+
+      await jest.advanceTimersByTimeAsync(8_800);
+      const available = (value: boolean) => {
+        if (lifecycle === 'visibility') h.observer.setVisible(value);
+        else h.observer.setOnline(value);
+      };
+      available(false);
+      await jest.advanceTimersByTimeAsync(1_700);
+      available(true);
+      expect(h.state()).toMatchObject({ snapshot: snapshot(3), readiness: 'unknown', error: false });
+
+      await jest.advanceTimersByTimeAsync(19_499);
+      expect(h.read).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(h.read).toHaveBeenCalledTimes(2);
+      expect(h.state()).toMatchObject({ snapshot: snapshot(3), readiness: 'unknown', error: true });
+
+      await h.observer.refresh(resource);
+      expect(h.state()).toMatchObject({ snapshot: snapshot(4), readiness: 'server', error: false });
+      h.observer.dispose();
+    },
+  );
+
   it('backs off failed reads with a bounded maximum', async () => {
     const h = harness(); h.read.mockRejectedValue(new Error('Network failure.')); h.watch();
     await jest.advanceTimersByTimeAsync(2_500);

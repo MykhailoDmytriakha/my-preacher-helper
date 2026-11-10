@@ -204,7 +204,8 @@ export class ResourceObserver {
   private restart(): void {
     for (const entry of this.entries.values()) {
       this.stop(entry);
-      entry.state = { ...entry.state, readiness: 'unknown', checking: false };
+      // The next observation must report its own failure. Retain the copy and retry budget.
+      entry.state = { ...entry.state, readiness: 'unknown', checking: false, error: false };
       this.emit(entry);
       this.start(entry, true);
     }
