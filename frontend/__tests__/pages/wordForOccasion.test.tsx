@@ -32,10 +32,17 @@ jest.mock('@/components/bible/useBookTexts', () => ({ useBookTexts: () => mockTe
 jest.mock('@/components/bible/VerseWindow', () => ({ useVerseWindow: () => ({ open: mockOpen, sheet: null }) }));
 // The pastor's own places: the hook is the seam (the engine has its own tests); what the page passes it is checked here.
 const mockAdd = jest.fn((_place?: unknown) => Promise.resolve());
-const mockRemove = jest.fn((_id?: string) => Promise.resolve());
-let mockOwn: { id: string; ref: Record<string, unknown>; createdAt: string }[] = [];
+const mockRemove = jest.fn((_place?: unknown) => Promise.resolve());
+let mockOwn: { ids: string[]; ref: Record<string, unknown>; createdAt: string }[] = [];
+let mockComplete = true;
+const mockToastError = jest.fn();
+jest.mock('sonner', () => ({ toast: { error: (...args: unknown[]) => mockToastError(...args), success: jest.fn() } }));
+jest.mock('@/data-engine/DataCollectionStatus', () => ({ DataCollectionStatus: () => null }));
 jest.mock('@/hooks/useOccasionPlaces', () => ({
-  useOccasionPlaces: (occasionId: string | null) => ({ places: occasionId ? mockOwn : [], canAdd: Boolean(occasionId), loading: false, add: mockAdd, remove: mockRemove }),
+  ...jest.requireActual('@/hooks/useOccasionPlaces'),
+  useOccasionPlaces: (occasionId: string | null) => ({
+    places: occasionId ? mockOwn : [], state: null, complete: mockComplete, canAdd: Boolean(occasionId), loading: false, add: mockAdd, remove: mockRemove,
+  }),
 }));
 // The address half of the search is Nuqs's (its own tests); here the field only has to filter.
 jest.mock('@/hooks/useSearchInputQuery', () => {
@@ -152,7 +159,9 @@ describe('word for the occasion — the pastor\'s own places', () => {
     mockRemove.mockClear();
     mockRouteId = 'assurance';
     mockOwn = [];
+    mockComplete = true;
     mockTexts = new Map();
+    mockToastError.mockClear();
   });
 
   it('invites to add a place while there is none', () => {
@@ -160,6 +169,22 @@ describe('word for the occasion — the pastor\'s own places', () => {
     const own = screen.getByRole('region', { name: 'careWord.own.title' });
     expect(within(own).getByText('careWord.own.empty')).toBeInTheDocument();
     expect(within(own).getByRole('button', { name: 'careWord.own.add' })).toBeInTheDocument();
+  });
+
+  it('does not say "no places" while the list is not known whole — an unread list is not an empty one', () => {
+    mockComplete = false;
+    render(<WordForOccasionSituationPage />);
+    const own = screen.getByRole('region', { name: 'careWord.own.title' });
+    expect(within(own).queryByText('careWord.own.empty')).toBeNull();
+    expect(within(own).getByText('careWord.own.loading')).toBeInTheDocument();
+  });
+
+  it('keeps a run of whole chapters whole — Мф 5-7 stays 5 to 7', async () => {
+    render(<WordForOccasionSituationPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'careWord.own.add' }));
+    fireEvent.change(screen.getByLabelText('careWord.own.fieldLabel'), { target: { value: 'Мф 5-7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'careWord.own.save' }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalledWith({ bible: 'rst', book: 'Matthew', chapter: 5, toChapter: 7 }));
   });
 
   it('keeps a typed place in the reader\'s Bible, as he wrote it — Пс 22:4 stays Synodal 22:4', async () => {
@@ -181,6 +206,11 @@ describe('word for the occasion — the pastor\'s own places', () => {
     fireEvent.click(screen.getByRole('button', { name: 'careWord.own.save' }));
     expect(screen.getByText('careWord.own.invalid')).toBeInTheDocument();
 
+    // John 3 has 36 verses: an end past it names no place, though its start does.
+    fireEvent.change(field, { target: { value: 'Ин 3:16-999' } });
+    fireEvent.click(screen.getByRole('button', { name: 'careWord.own.save' }));
+    expect(screen.getByText('careWord.own.invalid')).toBeInTheDocument();
+
     // The Gideons give John 10:28-29 for assurance; typed in Russian it is the same place.
     fireEvent.change(field, { target: { value: 'Ин 10:28-29' } });
     fireEvent.click(screen.getByRole('button', { name: 'careWord.own.save' }));
@@ -189,7 +219,7 @@ describe('word for the occasion — the pastor\'s own places', () => {
   });
 
   it('shows an own place with its words, opens it over the page, and removes it by its own button', () => {
-    mockOwn = [{ id: 'own-1', ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
+    mockOwn = [{ ids: ['own-1'], ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
     mockTexts = new Map([['Psalms', synodalPsalms]]);
     render(<WordForOccasionSituationPage />);
     const own = screen.getByRole('region', { name: 'careWord.own.title' });
@@ -201,7 +231,7 @@ describe('word for the occasion — the pastor\'s own places', () => {
   });
 
   it('asks before removing an own place, and removes it only on yes', async () => {
-    mockOwn = [{ id: 'own-1', ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
+    mockOwn = [{ ids: ['own-1', 'own-1-twin'], ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
     render(<WordForOccasionSituationPage />);
     const own = screen.getByRole('region', { name: 'careWord.own.title' });
 
@@ -215,6 +245,17 @@ describe('word for the occasion — the pastor\'s own places', () => {
     fireEvent.click(within(own).getByRole('button', { name: 'careWord.own.remove' }));
     dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'careWord.own.removeConfirm' }));
-    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('own-1'));
+    // The place is removed as one, with every copy of it (two devices may have added it).
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith(expect.objectContaining({ ids: ['own-1', 'own-1-twin'] })));
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  it('says it when a removal is refused, instead of pretending', async () => {
+    mockOwn = [{ ids: ['own-1'], ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
+    mockRemove.mockImplementationOnce(() => Promise.reject(new Error('refused while its creation is pending')));
+    render(<WordForOccasionSituationPage />);
+    fireEvent.click(within(screen.getByRole('region', { name: 'careWord.own.title' })).getByRole('button', { name: 'careWord.own.remove' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'careWord.own.removeConfirm' }));
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('careWord.own.removeFailed'));
   });
 });

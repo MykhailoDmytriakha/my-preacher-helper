@@ -71,7 +71,7 @@ const preparation = object({
   homileticPlan: object({ modernTranslation: text.optional(), updatedPlan: children(object({ id, title: text })).optional(), sermonPlan: children(object({ id, title: text })).optional() }).optional(),
 });
 // A place in the numbering of the Bible it was written in (`bible`), as `ScriptureRefShape` keeps it.
-const placeRef = object({ bible: z.enum(['kjv', 'rst', 'ubio']), book: id, chapter: number.int().positive(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), endChapter: number.int().positive().optional() });
+const placeRef = object({ bible: z.enum(['kjv', 'rst', 'ubio']), book: id, chapter: number.int().positive(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), endChapter: number.int().positive().optional(), toChapter: number.int().positive().optional() });
 const scripture = object({ id, book: id, chapter: number.int().positive().optional(), toChapter: number.int().positive().optional(), endChapter: number.int().positive().optional(), toVerseChapter: number.int().positive().optional(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), text: text.optional() });
 const seriesItem = object({ id, type: z.enum(['sermon', 'group']), refId: id, position: number, plannedDate: text.optional(), completedAt: text.optional() });
 const block = object({ id, type: z.enum(['announcement', 'topic', 'scripture', 'questions', 'explanation', 'notes', 'prayer', 'custom']), title: text, summary: text.optional(), content: text, scriptureRefs: strings.optional(), questions: strings.optional(), status: z.enum(['empty', 'draft', 'filled']), createdAt: text, updatedAt: text });

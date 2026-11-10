@@ -60,6 +60,19 @@ describe('word for the occasion — the merged Gideon index', () => {
     expect(repeats).toEqual([]);
   });
 
+  it('keeps no two writings of the very same verses in a situation — Psalm 23 and Psalm 23:1-6 are one place', () => {
+    const twins: string[] = [];
+    for (const occasion of OCCASIONS) {
+      const seen = new Set<string>();
+      for (const place of occasion.places) {
+        const key = versesHeldIn(place, 'kjv').map((v) => `${v.book}:${v.chapter}:${v.verse}`).join('|');
+        if (seen.has(key)) twins.push(`${occasion.id} · ${place.book} ${place.chapter}`);
+        seen.add(key);
+      }
+    }
+    expect(twins).toEqual([]);
+  });
+
   it('keeps the King James numbering the indexes print: the Shepherd psalm is Psalm 23 here', () => {
     const lonely = occasionById('lonely')!;
     expect(lonely.places.some((place) => place.book === 'Psalms' && place.chapter === 23)).toBe(true);

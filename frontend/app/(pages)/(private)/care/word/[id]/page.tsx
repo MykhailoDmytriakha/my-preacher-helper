@@ -4,18 +4,21 @@ import { ArrowLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 
 import { useBookTexts } from '@/components/bible/useBookTexts';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useOccasionPlaces, type OwnPlaceRef } from '@/hooks/useOccasionPlaces';
+import { ownPlaceKey, useOccasionPlaces, type OwnPlace, type OwnPlaceRef } from '@/hooks/useOccasionPlaces';
 import { useRouteId } from '@/hooks/useRouteId';
+import { namesAPlace } from '@/utils/bibleLink';
 import { canGoBackToPage } from '@/utils/modalHistory.client';
 import { placePreview } from '@/utils/placeText';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
-import { referenceBibleFor, versesHeldIn } from '@/utils/scriptureReferenceNumbering';
+import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { EMERALD_ACTION } from '@/utils/themeColors';
 import { occasionById, occasionNameKey } from '@/utils/wordForOccasion';
@@ -33,9 +36,6 @@ const RUN_VERSES_SHOWN = 8;
 const CHAPTER_VERSES_SHOWN = 2;
 
 type Place = ScriptureRefShape & { bible: BibleId; chapter: number };
-
-/** The verses a place holds, as one key: two places are the same place when they hold the same verses. */
-const placeKey = (place: Place): string => versesHeldIn(place, 'kjv').map((v) => `${v.book}:${v.chapter}:${v.verse}`).join('|');
 
 /**
  * ONE TOPIC of the word for the occasion: its places, each with its words in the reader's Bible,
@@ -67,11 +67,13 @@ export default function WordForOccasionSituationPage() {
   // Back keeps the index's search: the index is in history whenever a chip led here.
   const back = () => (canGoBackToPage() ? router.back() : router.push('/care/word'));
   const labelOf = (place: Place) => formatScriptureReference(place, { locale, style: 'short' });
-  const known = new Set([...(occasion?.places ?? []), ...own.places.map((place) => place.ref)].map(placeKey));
+  const known = new Set([...(occasion?.places ?? []), ...own.places.map((place) => place.ref)].map(ownPlaceKey));
   // Removing is asked first: a place he added by hand is his own work, and a stray press must not take it.
-  const removeOwn = async (id: string, label: string) => {
+  // A refusal is said, never swallowed: a place still on its way (added offline a moment ago) cannot be
+  // removed yet, and a silent "removed" that comes back later is worse than the honest "not yet".
+  const removeOwn = async (place: OwnPlace, label: string) => {
     if (!(await confirm({ title: { key: 'careWord.own.removeTitle', values: { place: label } }, description: { key: 'careWord.own.removeDescription' }, confirmText: { key: 'careWord.own.removeConfirm' } }))) return;
-    await awaitWriteOperation(own.remove(id), () => undefined).catch(() => undefined);
+    await own.remove(place).catch(() => { toast.error(t('careWord.own.removeFailed', { place: label })); });
   };
 
   return (
@@ -125,12 +127,13 @@ export default function WordForOccasionSituationPage() {
             <h2 id="own-places-title" className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               {t('careWord.own.title')}
             </h2>
+            <div className="mt-3"><DataCollectionStatus state={own.state} /></div>
             {own.places.length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-2.5">
+              <ul className="flex flex-col gap-2.5">
                 {own.places.map((place) => {
                   const label = labelOf(place.ref);
                   return (
-                    <li key={place.id}>
+                    <li key={place.ids[0]}>
                       <PlaceCard
                         label={label}
                         note={null}
@@ -142,7 +145,7 @@ export default function WordForOccasionSituationPage() {
                           // Shown on hover and on keyboard focus; a phone has no hover, so there it always stands.
                           <button
                             type="button"
-                            onClick={() => { void removeOwn(place.id, label); }}
+                            onClick={() => { void removeOwn(place, label); }}
                             aria-label={t('careWord.own.remove', { place: label })}
                             title={t('careWord.own.remove', { place: label })}
                             className="relative z-10 -my-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 group-hover:opacity-100 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400 [@media(hover:none)]:opacity-100"
@@ -156,13 +159,14 @@ export default function WordForOccasionSituationPage() {
                 })}
               </ul>
             ) : (
-              <p className="mt-2.5 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{t('careWord.own.empty')}</p>
+              // "No places" only when the list is known whole: an unread list is not an empty one.
+              <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">{t(own.complete ? 'careWord.own.empty' : 'careWord.own.loading')}</p>
             )}
             {own.canAdd && (
               <AddPlace
                 bible={bible}
                 locale={locale}
-                isKnown={(place) => known.has(placeKey(place))}
+                isKnown={(place) => known.has(ownPlaceKey(place))}
                 onAdd={(place) => awaitWriteOperation(own.add(place), () => undefined).then(() => undefined)}
               />
             )}
@@ -234,13 +238,16 @@ function AddPlace({ bible, locale, isKnown, onAdd }: {
     if (saving) return;
     const parsed = parseReferenceText(typed, { locale });
     const place = parsed?.book && parsed.chapter ? { ...parsed, bible, chapter: parsed.chapter } as OwnPlaceRef : null;
-    if (!place || !versesHeldIn(place, bible).length) { setProblem(t('careWord.own.invalid')); return; }
+    // A place this Bible has, every end of it: "Ин 3:16-999" names no place (`namesAPlace`, the reader's own rule).
+    if (!place || !namesAPlace(place)) { setProblem(t('careWord.own.invalid')); return; }
     if (isKnown(place)) { setProblem(t('careWord.own.duplicate')); return; }
     const kept: OwnPlaceRef = {
       bible, book: place.book, chapter: place.chapter,
       ...(place.fromVerse !== undefined && { fromVerse: place.fromVerse }),
       ...(place.toVerse !== undefined && { toVerse: place.toVerse }),
       ...(place.endChapter !== undefined && { endChapter: place.endChapter }),
+      // "Мф 5-7": a run of whole chapters keeps its end (Codex review, 2026-11-10).
+      ...(place.toChapter !== undefined && place.toChapter !== place.chapter && { toChapter: place.toChapter }),
     };
     setSaving(true);
     onAdd(kept).then(close, () => setProblem(t('careWord.own.failed'))).finally(() => setSaving(false));

@@ -28,6 +28,8 @@ describe('occasionPlaces — the pastor\'s own places', () => {
     expect(() => validateResourceDocument('occasionPlaces', place(), { kind: 'create' })).not.toThrow();
     expect(() => validateResourceDocument('occasionPlaces', place({ ref: { bible: 'kjv', book: 'Psalms', chapter: 23 } }), { kind: 'create' })).not.toThrow();
     expect(() => validateResourceDocument('occasionPlaces', place({ ref: { bible: 'ubio', book: 'John', chapter: 14, fromVerse: 1, toVerse: 3 } }), { kind: 'create' })).not.toThrow();
+    // A run of whole chapters ("Мф 5-7") keeps its end.
+    expect(() => validateResourceDocument('occasionPlaces', place({ ref: { bible: 'rst', book: 'Matthew', chapter: 5, toChapter: 7 } }), { kind: 'create' })).not.toThrow();
   });
 
   it('refuses a place that does not say where it stands: no Bible, an unknown Bible, no chapter, no topic', () => {
