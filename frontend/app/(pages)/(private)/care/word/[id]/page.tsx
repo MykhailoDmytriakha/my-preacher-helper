@@ -116,7 +116,7 @@ export default function WordForOccasionSituationPage() {
                     words={wordsOf(texts.get(place.book), place, bible)}
                     loadingWords={t('careWord.textLoading')}
                     openLabel={t('careWord.openPlace', { place: label })}
-                    onOpen={() => verseWindow.open({ ...place, label })}
+                    onOpen={() => verseWindow.open(place)}
                   />
                 </li>
               );
@@ -140,7 +140,7 @@ export default function WordForOccasionSituationPage() {
                         words={wordsOf(texts.get(place.ref.book), place.ref, bible)}
                         loadingWords={t('careWord.textLoading')}
                         openLabel={t('careWord.openPlace', { place: label })}
-                        onOpen={() => verseWindow.open({ ...place.ref, label })}
+                        onOpen={() => verseWindow.open(place.ref)}
                         action={(
                           // Shown on hover and on keyboard focus; a phone has no hover, so there it always stands.
                           <button

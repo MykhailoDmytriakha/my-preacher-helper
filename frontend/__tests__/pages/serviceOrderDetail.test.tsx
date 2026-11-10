@@ -1571,7 +1571,7 @@ describe('References in the words of a service', () => {
     state.orders = [service]; state.loading = false; state.isOnline = true; state.orderPresence = undefined;
     render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
-    expect(await screen.findByRole('dialog', { name: 'Ruth 1:2' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Ruth.1:2' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'bible.sheet.openInBible' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(mockUpdateSteps).not.toHaveBeenCalled();
@@ -1598,7 +1598,7 @@ describe('Verse reading from a retained service', () => {
       view.rerender(<ServiceOrderPage />);
     }
     fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
-    expect(await screen.findByRole('dialog', { name: 'Ruth 1:2' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Ruth.1:2' })).toBeVisible();
     const leave = screen.queryByRole('button', { name: 'bible.sheet.openInBible' });
     // Queued words can be projected into a retained copy after the local editing mirror resets.
     expect(leave).not.toBeInTheDocument();

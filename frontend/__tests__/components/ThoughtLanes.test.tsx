@@ -36,7 +36,7 @@ it('opens a scripture reference in a sub-point lane heading', () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
 
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
 

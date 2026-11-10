@@ -27,7 +27,7 @@ describe('ScriptureLinks — a reference in text is a link where a screen opens 
     render(<ScriptureLinks onOpen={onOpen}><PlanMarkdown markdown={plan} /></ScriptureLinks>);
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Быт. 6:13', 'Быт. 19:24']);
     fireEvent.click(screen.getByRole('button', { name: 'Быт. 6:13' }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'rst', book: 'Genesis', chapter: 6, fromVerse: 13, label: 'Быт. 6:13' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'rst', book: 'Genesis', chapter: 6, fromVerse: 13 }));
     // The sentence keeps every word around the link.
     expect(screen.getByRole('button', { name: 'Быт. 6:13' }).closest('p')).toHaveTextContent('Потоп: «конец всякой плоти пришёл» (Быт. 6:13). См. ссылку и Мф. 24:38.');
   });

@@ -42,7 +42,8 @@ jest.mock('@/hooks/useTags', () => ({ useTags: jest.fn() }));
 /** A reference pressed on the list opens over it (the owner, 2026-10-21); the Bible page is the window's own button. */
 async function openInBible(name: string) {
   fireEvent.click(screen.getByRole('button', { name }));
-  const dialog = await screen.findByRole('dialog', { name });
+  // The window names the place itself, as the Bible it reads numbers it; the passage is checked by the address it opens.
+  const dialog = await screen.findByRole('dialog');
   expect(mockRouter.push).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
   return new URL(mockRouter.push.mock.calls[0]?.[0] as string, 'https://app.test').searchParams;

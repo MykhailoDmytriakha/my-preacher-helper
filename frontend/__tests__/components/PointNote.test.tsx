@@ -187,7 +187,7 @@ it.each([false, true])('opens a verse from a displayed reminder without editing 
   const onChange = jest.fn();
   render(<ScriptureLinks onOpen={onOpen}><PointNote note="Read Ruth 1:2" onChange={onChange} isReadOnly={isReadOnly} /></ScriptureLinks>);
   fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(onChange).not.toHaveBeenCalled();
   if (!isReadOnly) {

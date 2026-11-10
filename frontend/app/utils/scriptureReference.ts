@@ -47,6 +47,13 @@ export interface ScriptureRefFormat {
    */
   locale?: AppLocale;
   style?: ScriptureRefStyle;
+  /**
+   * The Bible whose numbers to print, where the reference stands over that Bible's text: the verse
+   * window reads in the Bible the device chose, so its title is "Пс.23" over the King James text a
+   * Russian reader opened, as the Bible page names it. Omitted, the Bible of the interface's language.
+   * The canonical face ignores it.
+   */
+  bible?: BibleId;
 }
 
 function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat): string {
@@ -57,14 +64,15 @@ function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat):
 
 /**
  * The reference in the Bible it is read in: the canonical face in the King James, the others in
- * the Bible of the interface's language, and with no language as it was written. A reference that
- * does not name its Bible is read the way the interface typed it before Bibles were kept. A verse
- * wins over a chapter range left beside it — old data carries both.
+ * the Bible named for the text beside it, else the Bible of the interface's language, and with
+ * neither as it was written. A reference that does not name its Bible is read the way the interface
+ * typed it before Bibles were kept. A verse wins over a chapter range left beside it — old data
+ * carries both.
  */
-function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short' }: ScriptureRefFormat): Passage[] {
+function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short', bible }: ScriptureRefFormat): Passage[] {
   if (style === 'canonical') return passagesIn(ref, CANONICAL_BIBLE);
-  if (!locale) return passagesIn(ref, undefined);
-  return passagesIn(withStoredBible(ref, locale), referenceBibleFor(locale));
+  if (!locale) return passagesIn(ref, bible);
+  return passagesIn(withStoredBible(ref, locale), bible ?? referenceBibleFor(locale));
 }
 
 /** "5", "9-10", "5:17", "5:17-26", "9:19-10:4". */

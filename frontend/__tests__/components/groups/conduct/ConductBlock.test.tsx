@@ -244,7 +244,7 @@ describe('ConductBlock', () => {
   it('opens a reference of the block over the meeting and closes it back to the same block', () => {
     render(<ConductBlock {...defaultProps} template={{ ...mockTemplate, scriptureRefs: ['Рим 8:28', 'see the handout'] }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Рим 8:28' }));
-    expect(screen.getByRole('dialog', { name: 'Рим 8:28' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Rom.8:28' })).toBeInTheDocument();
     expect(screen.getByText('Main Topic')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'bible.sheet.close' })[0]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -265,7 +265,7 @@ describe('ConductBlock', () => {
     fireEvent.click(screen.getByText('Notes'));
     expect(screen.getByRole('button', { name: 'Пс 22' })).toBeInTheDocument();
     fireEvent.click(ephesians);
-    expect(screen.getByRole('dialog', { name: 'Еф 4:1' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Eph.4:1' })).toBeInTheDocument();
   });
 
   it('keeps a label the app cannot read as a reference, or that names no place, as a plain label', () => {

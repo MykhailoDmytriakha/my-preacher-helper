@@ -744,7 +744,7 @@ describe('SermonOutline Component', () => {
     } }} isReadOnly /></ScriptureLinks>);
     for (const [label, chapter, verse] of [['Ruth 1:2', 1, 2], ['Ruth 2:1', 2, 1]] as const) {
       fireEvent.click(await screen.findByRole('button', { name: label }));
-      expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ book: 'Ruth', chapter, fromVerse: verse, label }));
+      expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ book: 'Ruth', chapter, fromVerse: verse }));
     }
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(mockUpdateSermonOutline).not.toHaveBeenCalled();

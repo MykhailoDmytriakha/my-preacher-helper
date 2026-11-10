@@ -36,7 +36,7 @@ type ScriptureLinksValue = { locale: AppLocale; written: AppLocale | null; onOpe
 const ScriptureLinksContext = createContext<ScriptureLinksValue | null>(null);
 
 /**
- * References in the text inside are links; `onOpen` gets the one pressed, its words as `label`. Each is
+ * References in the text inside are links; `onOpen` gets the one pressed. Each is
  * read in the Bible it was written in (`bibleLink.ts` → `writtenLanguage`): `writtenIn` is the language
  * of the document they belong to (`utils/documentLanguage.ts`) — its words decide a book Russian and
  * Ukrainian write alike, before the words of one text in it.
@@ -102,7 +102,7 @@ function ScriptureLink({ found, children, tone = 'default' }: { found: Pick<Refe
   const open = (event: MouseEvent) => {
     // The text may sit in something pressable — a block row selects its block: the press is the link's.
     event.stopPropagation();
-    links.onOpen({ ...found.reference, label: found.raw });
+    links.onOpen(found.reference);
   };
   return (
     <>

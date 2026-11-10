@@ -128,7 +128,7 @@ describe('word for the occasion — one situation', () => {
     const psalm = screen.getAllByRole('listitem').find((item) => /Пс\.?\s?22\b/.test(item.textContent ?? ''))!;
 
     fireEvent.click(within(psalm).getByRole('button'));
-    expect(mockOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'kjv', book: 'Psalms', chapter: 23, label: expect.stringMatching(/22/) }));
+    expect(mockOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'kjv', book: 'Psalms', chapter: 23 }));
   });
 
   it('goes back to the index it came from, keeping its search; straight to the index when it came from nowhere', () => {

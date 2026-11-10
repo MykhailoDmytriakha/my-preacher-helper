@@ -135,7 +135,9 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   // A book named whole ("Руфь" on a note's chip) opens at its start, with nothing lit and nothing to come back to.
   const wholeBook = !reference.chapter;
   const wholeChapter = !reference.fromVerse;
-  const label = reference.label ?? formatScriptureReference(reference, { locale, style: 'short' });
+  // The place named as the text below numbers it, as the Bible page names it: "Пс.23" over the King
+  // James text a Russian reader chose, whatever words were pressed to open it (the owner, 2026-11-10).
+  const label = formatScriptureReference(reference, { locale, style: 'short', bible: reading });
   const firstKey = keys[0];
   const isPsalms = reference.book === 'Psalms';
   const chapterWord = useCallback((chapter: number) => t(isPsalms ? 'bible.psalm' : 'bible.chapter', { number: chapter }), [isPsalms, t]);

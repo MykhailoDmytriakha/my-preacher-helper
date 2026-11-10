@@ -70,7 +70,7 @@ it('makes every reference in the block\'s Markdown a link in place that opens ov
   // No chip repeats them under the text.
   expect(screen.getAllByRole('button', { name: /^(Рим|Бытие) / })).toHaveLength(3);
   fireEvent.click(romans);
-  expect(screen.getByRole('dialog', { name: 'Рим 13' })).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: 'Rom.13' })).toBeInTheDocument();
 });
 
 // A block whose own words do not say the language takes the group's (Codex, 2026-10-21): a Ukrainian group's
@@ -100,5 +100,5 @@ it('opens a book kept whole over the meeting, and leaves a place its Bible lacks
   );
   expect(screen.queryByRole('button', { name: 'Рим 25' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Руфь' }));
-  expect(screen.getByRole('dialog', { name: 'Руфь' })).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: 'Ruth' })).toBeInTheDocument();
 });

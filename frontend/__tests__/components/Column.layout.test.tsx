@@ -131,7 +131,7 @@ it('opens references in a displayed column point instead of editing its title', 
   render(<ScriptureLinks onOpen={onOpen}><Column id="main" title="Main" items={[]} outlinePoints={[{ id: 'ref-point', text: 'Read Ruth 1:2' }]} /></ScriptureLinks>);
   const links = screen.getAllByRole('button', { name: 'Ruth 1:2' });
   for (const link of links) fireEvent.click(link);
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
 

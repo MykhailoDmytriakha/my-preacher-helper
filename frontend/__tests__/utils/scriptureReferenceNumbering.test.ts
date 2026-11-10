@@ -220,6 +220,16 @@ describe('a reference on the screen — BUG-20261012-psalm-verse-numbering-not-m
     expect(formatScriptureReference(stored, { locale: 'en' })).toBe('Ps.23');
     expect(formatScriptureReference(stored, { style: 'canonical' })).toBe('Psalms 23');
   });
+
+  // Over a Bible's text, a place is numbered as that text numbers it (the owner chose this for the
+  // verse window, 2026-11-10): a Russian reader of the King James sees "Пс.23" above Psalm 23.
+  it('is numbered in the Bible named for the text beside it, the book still in the interface language', () => {
+    const shepherd = { bible: 'kjv' as const, book: 'Psalms', chapter: 23, fromVerse: 4 };
+    expect(formatScriptureReference(shepherd, { locale: 'ru', bible: 'kjv' })).toBe('Пс.23:4');
+    expect(formatScriptureReference(shepherd, { locale: 'ru' })).toBe('Пс.22:4');
+    expect(formatScriptureReference({ bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 }, { locale: 'en', bible: 'rst' })).toBe('Ps.50:12');
+    expect(formatScriptureReference(shepherd, { style: 'canonical', bible: 'rst' })).toBe('Psalms 23:4');
+  });
 });
 
 // BUG-20261017-reference-across-chapters-in-other-bible: a reference whose verses fall in two chapters of

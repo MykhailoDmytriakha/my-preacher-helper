@@ -1274,7 +1274,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                           const writtenIn = reference ? writtenInFor(ref, reference, locale) : undefined;
                           return (
                             <span key={ref} className="inline-flex items-center">
-                              <Chip tone="emerald" size="xs" weight="bold" onClick={reference && (!reference.chapter || namesAPlace(reference)) ? () => verseWindow.open({ ...reference, label: ref }) : undefined}>
+                              <Chip tone="emerald" size="xs" weight="bold" onClick={reference && (!reference.chapter || namesAPlace(reference)) ? () => verseWindow.open(reference) : undefined}>
                                 {ref}
                               </Chip>
                               {writtenIn ? <WrittenInMark bible={writtenIn} /> : null}
