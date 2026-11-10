@@ -568,7 +568,8 @@ export function useDocumentActions() {
           if (comparedSourceNotes || capturedByChoice) continue;
           const { checkpoint } = editor.getState();
           if (Object.keys(checkpoint.pending).length) continue;
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
+            || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }

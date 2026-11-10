@@ -7,13 +7,14 @@ import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflic
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { RowDetailActions, RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
-import type { RowFieldTarget, RowValue } from './rowFieldAction';
+import type { RowFieldTarget } from './rowFieldAction';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
 export const PREACH_DATE_FIELDS = ['audience', 'churchCity', 'church'] as const;
 export type PreachDateField = typeof PREACH_DATE_FIELDS[number];
-export type PreachDateFieldActions = RowDetailActions<PreachDateField, RowValue>;
-export type PreachDateFieldHistoryEntry = RowDetailHistoryEntry<PreachDateField, RowValue>;
+export type PreachDateFieldValue = string | null | ChurchValue;
+export type PreachDateFieldActions = RowDetailActions<PreachDateField, PreachDateFieldValue>;
+export type PreachDateFieldHistoryEntry = RowDetailHistoryEntry<PreachDateField, PreachDateFieldValue>;
 export type PreachDateFieldHistoryPage = {
   owner: string; sermonId: string; generation: string; nextCursor: string | null;
   entries: Array<{ id: string; acceptedAt: string; fields: PreachDateFieldHistoryEntry[] }>;
@@ -31,17 +32,17 @@ const CHURCH: RowFieldTarget<ChurchValue> = { field: 'preachDates', leaf: 'churc
 const AUDIENCE: RowFieldTarget<string | null> = { field: 'preachDates', leaf: 'audience', missing: null, accepts: optionalShort };
 const CITY: RowFieldTarget<string | null> = { field: 'preachDates', leaf: ['church', 'city'], missing: null, accepts: optionalShort };
 
-export const churchIdentity = (value: RowValue | undefined): DocumentData | undefined => isChurchValue(value)
+export const churchIdentity = (value: PreachDateFieldValue | undefined): DocumentData | undefined => isChurchValue(value)
   ? { id: value.id, name: value.name } : undefined;
 
-export function preachDateFieldTarget(field: PreachDateField): RowFieldTarget<RowValue> {
+export function preachDateFieldTarget(field: PreachDateField): RowFieldTarget<PreachDateFieldValue> {
   if (field === 'audience') return AUDIENCE;
   if (field === 'churchCity') return CITY;
   return CHURCH;
 }
 
 /** A city belongs to the shown church. A replacement church includes its city as part of the selection. */
-export const PREACH_DATE_FIELD_POLICY: RowDetailPolicy<PreachDateField, RowValue> = {
+export const PREACH_DATE_FIELD_POLICY: RowDetailPolicy<PreachDateField, PreachDateFieldValue> = {
   collection: 'sermons', fields: PREACH_DATE_FIELDS, birth: PREACH_ROW_BIRTH, target: preachDateFieldTarget,
   proofs: 'preachDateFieldProofs', actions: 'preachDateFieldActions', history: '_preachDateFieldHistory',
   scopes: (rows, field) => field === 'churchCity'
@@ -78,7 +79,7 @@ export function capturePreachDateFields(baseline: ResourceSnapshot, predecessor:
   const { rowId, rowCreatedAt, fields, time } = saved;
   const beforeRows = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const afterRows = draft?.preachDates;
-  const captures: RowDetailCaptures<PreachDateField, RowValue> = {};
+  const captures: RowDetailCaptures<PreachDateField, PreachDateFieldValue> = {};
   if (fields?.audience === true) {
     const after = existingRowField(afterRows, rowId, AUDIENCE);
     if (after !== undefined) captures.audience = { rowId, rowCreatedAt, time, after };

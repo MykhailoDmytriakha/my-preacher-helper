@@ -19,6 +19,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
+import { competingServiceStepScripture, isServiceStepScriptureList, serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { hasAmbiguousOutlineTextMerge, mergeOutlineContent } from './templateOutlineMerge';
@@ -567,6 +568,15 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   const marks = verseMarksAt(path);
   if (marks) return mergeVerseMarks(marks, base, mine, theirs, path);
   if (mergedWhole(path, base.value, mine.value, theirs.value)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+  if (serviceOrderStepField(path)?.field === 'scriptureRefs') {
+    if (competingServiceStepScripture(base.value, mine.exists ? mine.value : [], theirs.exists ? theirs.value : [])) {
+      return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+    }
+    if (!base.exists && isServiceStepScriptureList(mine.value) && isServiceStepScriptureList(theirs.value)) {
+      const merged = mergeArrayFields({ exists: true, value: [] }, mine, theirs, path);
+      if (merged) return merged;
+    }
+  }
   const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {

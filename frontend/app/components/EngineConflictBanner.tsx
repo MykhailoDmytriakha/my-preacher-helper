@@ -140,6 +140,10 @@ function fieldComparison(entry: Waiting, t: (key: string) => string, locale: Ret
     const untitled = t('serviceOrders.flagHistory.untitled');
     return { title: t('serviceOrders.stepTitle'), valueKind: 'field', mine: mine || untitled, stored: stored || untitled };
   }
+  if (field === 'scriptureRefs') {
+    const words = (references: string[]) => references.join(', ') || t('legacyRecovery.empty');
+    return { title: t('serviceOrders.refs'), valueKind: 'field', mine: words(mine), stored: words(stored) };
+  }
   const title = comparison.title ?? t('serviceOrders.flag');
   const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
   return { title, valueKind: 'field', mine: words(mine), stored: words(stored) };

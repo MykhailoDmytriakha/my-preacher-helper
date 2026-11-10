@@ -21,7 +21,7 @@ import type { AutosaveRowFieldActions } from './rowFieldAutosave';
 import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SermonChurchFill } from './sermonChurchFill';
-import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
+import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepScriptureActions, ServiceOrderStepScriptureCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
 import type { SourceNoteLinkAction } from './sourceNoteLinkAction';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
@@ -83,6 +83,7 @@ export type EditorCommitAction =
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
+  | { kind: 'service-order-step-scripture'; scripture: ServiceOrderStepScriptureCapture }
   | { kind: 'council-lifecycle'; time: ActionTime | null }
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
@@ -219,6 +220,7 @@ export type DataCommand = CommandBase & (
       serviceOrderTitleAction?: DocumentFieldAction;
       serviceOrderFlagActions?: ServiceOrderFlagActions;
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
+      serviceOrderStepScriptureActions?: ServiceOrderStepScriptureActions;
       councilAssemblyActions?: CouncilAssemblyActions;
       councilTopicKindActions?: CouncilTopicKindActions;
       councilTopicQueue?: string;

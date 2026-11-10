@@ -13,7 +13,7 @@ import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTi
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
-import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
+import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { readThoughtPlacementChoice } from './thoughtPlacementAction';
 import { readThoughtTagChoice } from './thoughtTagAction';
@@ -133,6 +133,12 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   const target = serviceOrderStepField(conflicts[0]?.path);
   if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
   const { id, field } = target;
+  if (field === 'scriptureRefs') {
+    const mine = existingRowField(draft.steps, id, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
+    const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
+    if (!mine || !stored || equalValues(mine, stored)) return undefined;
+    return { field, mine, stored };
+  }
   const compared = (value: DocumentData) => ({
     ...Object.fromEntries(Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key))),
     steps: Array.isArray(value.steps) ? value.steps.map(step => object(step)

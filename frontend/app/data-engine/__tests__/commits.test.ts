@@ -1151,6 +1151,43 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('sends the exact service step Scripture predecessor through an intervening body save', async () => {
+    const opening = { id: 'reading', title: 'Reading', scriptureRefs: ['John 3:16'], body: 'Original words' };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps: [opening], createdAt: '2026-11-10', updatedAt: '2026-11-10' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const s = setup({ opening: base });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(base);
+    const seen = { rowId: opening.id, generation: 'order', observedRevision: 1 };
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const reference = { ...opening, scriptureRefs: ['John 3:17'] };
+    editor.edit({ ...base.value, steps: [reference] });
+    const first = (await queue.save('order', editor.checkpoint(), { action: { kind: 'service-order-step-scripture',
+      scripture: { ...seen, before: opening.scriptureRefs, after: reference.scriptureRefs, time },
+    } }))!;
+    editor.applyCommit(first);
+    const paragraph = { ...reference, body: 'Independently saved words' };
+    editor.edit({ ...base.value, steps: [paragraph] });
+    const middle = (await queue.save('order', editor.checkpoint(), { predecessorId: first.id }))!;
+    editor.applyCommit(middle);
+    const cleared = { ...paragraph, scriptureRefs: [] };
+    editor.edit({ ...base.value, steps: [cleared] });
+    const last = (await queue.save('order', editor.checkpoint(), { predecessorId: middle.id, action: { kind: 'service-order-step-scripture',
+      scripture: { ...seen, before: paragraph.scriptureRefs, after: [], time },
+    } }))!;
+    expect(last.serviceOrderStepScriptureActions?.scriptureRefs).toMatchObject({ predecessorOperationId: first.id, before: paragraph.scriptureRefs, after: [] });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: last.id,
+      serviceOrderStepScriptureActions: last.serviceOrderStepScriptureActions, changes: [{ path: ['steps'],
+        before: { exists: true, value: [paragraph] }, after: { exists: true, value: [cleared] },
+      }],
+    }));
+    expect(s.server().value?.steps).toEqual([cleared]);
+  });
+
   it('keeps an unseen dependent Save when reviewing a legacy step flag conflict', async () => {
     const step = { id: 'opening', title: 'Opening' };
     const opening: ResourceSnapshot = {

@@ -76,6 +76,14 @@ export function continuousRowDetailFrame(proof: Proof | undefined): boolean {
   return Boolean(proof && previous && !previous.includes(proof.digest));
 }
 
+export function needsLegacyRowDetailOpeningReview(raw: unknown, policy: { proofs: string }, field: string,
+  rowId: string, born: string, value: RowValue, revision: number): boolean {
+  const { values, floor } = readProofs(raw, policy.proofs, field);
+  const proof = matchingProof(values, rowId, born, value, undefined, revision);
+  // An evicted creation proof alone cannot hide a change back to the opening.
+  return proof ? !continuousRowDetailFrame(proof) : floor > 1;
+}
+
 function nextPriorFrames(prior: Proof | undefined, hasOpening: boolean, changed: boolean): string[] | undefined {
   if (!hasOpening) return [];
   const frames = prior?.priorFrames;
@@ -111,6 +119,7 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
       return { command, ...(!equalValues(value, action.after) && { uncertain: rowDetailConflict(action, target, value) }) };
     }
   }
+  if (policy.mergesIndependently?.(action.before, action.after, value)) return { command };
   if (policy.needsChoice?.(field, action.before, action.after, value)) {
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
@@ -259,11 +268,13 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       const enteredScope = policy.causalScopeEntry && scope !== undefined && oldScope === undefined;
       if (!time && !changed && !scopeChanged && !unordered.has(rowId)) return [];
       const oldValue = previousBirths.get(rowId) === born ? previous.get(rowId) : undefined;
-      const prior = policy.requireObserved && oldValue !== undefined
+      const remembersOpenings = policy.requireObserved || policy.rememberOpenings;
+      const prior = remembersOpenings && oldValue !== undefined
         ? matchingProof(stored.values, rowId, born, oldValue, oldScope, metadata.revision - 1) : undefined;
       // A type change can make a new scoped proof without advancing the outcome itself.
       const valueRevision = policy.requireObserved ? (changed ? metadata.revision : prior?.valueRevision ?? prior?.revision ?? metadata.revision) : undefined;
-      const priorFrames = policy.requireObserved ? nextPriorFrames(prior, oldValue !== undefined, changed || scopeChanged) : undefined;
+      const hasOpening = policy.rememberOpenings ? previousBirths.get(rowId) === born : oldValue !== undefined;
+      const priorFrames = remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged) : undefined;
       const bound = policy.requireObserved && queueDigest && (changed || scopeChanged);
       return [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
         ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),

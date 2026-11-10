@@ -2872,6 +2872,142 @@ describe('transactional DataEngine server', () => {
     }
   });
 
+  it.each([
+    { label: 'two replacements', stored: ['John 3:18'], incoming: ['John 3:17'], kind: 'conflict', expected: ['John 3:18'] },
+    { label: 'a replacement and a clear', stored: ['John 3:18'], incoming: [], kind: 'conflict', expected: ['John 3:18'] },
+    { label: 'two replacements on a legacy long step ID', stored: ['John 3:18'], incoming: ['John 3:17'],
+      kind: 'conflict', expected: ['John 3:18'], rowId: 'x'.repeat(129) },
+    { label: 'a clear and a replacement', stored: [], incoming: ['John 3:17'], kind: 'conflict', expected: [] },
+    { label: 'two additions', stored: ['John 3:16', 'John 3:18'], incoming: ['John 3:16', 'John 3:17'],
+      kind: 'acknowledged', expected: ['John 3:16', 'John 3:18', 'John 3:17'] },
+  ])('does not invent a service step Scripture list without action order: $label', async ({ stored, incoming, kind, expected, rowId = 'opening' }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-scripture-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const opening = { id: rowId, title: 'Scripture', body: 'Original words', scriptureRefs: ['John 3:16'], flagged: true };
+    const other = { id: 'closing', title: 'Closing', scriptureRefs: ['Psalm 23:1'] };
+    const before = [opening, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: before },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, first: typeof opening) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: [first, other] } }],
+    });
+    const desktop = { ...opening, body: 'Independent words', scriptureRefs: stored };
+    expect((await processCommand(base.owner, edit('computer', desktop))).kind).toBe('acknowledged');
+    const answer = await processCommand(base.owner, edit('phone', { ...opening, scriptureRefs: incoming }));
+    expect(answer.kind).toBe(kind);
+    expect((await readDocument(base.owner, resource)).value?.steps).toEqual([{ ...desktop, scriptureRefs: expected }, other]);
+    if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['steps', 'id:' + rowId, 'scriptureRefs'],
+      base: { exists: true, value: opening.scriptureRefs }, mine: { exists: true, value: incoming },
+      theirs: { exists: true, value: stored },
+    }] });
+  });
+
+  it.each([
+    { label: 'phone earlier', phoneAt: 20, stored: ['John 3:18'], incoming: ['John 3:17'], expected: ['John 3:18'] },
+    { label: 'phone later', phoneAt: 90, stored: ['John 3:18'], incoming: ['John 3:17'], expected: ['John 3:17'] },
+    { label: 'phone clears later', phoneAt: 90, stored: ['John 3:18'], incoming: [], expected: [] },
+    { label: 'computer clears later', phoneAt: 20, stored: [], incoming: ['John 3:17'], expected: [] },
+  ])('orders a service step Scripture replacement by action time: $label', async ({ phoneAt, stored, incoming, expected }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-scripture-timed' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const opening = { id: 'reading', title: 'Scripture', body: 'Original words', scriptureRefs: ['John 3:16'] };
+    const other = { id: 'closing', title: 'Closing', scriptureRefs: ['Psalm 23:1'] };
+    const initial = [opening, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: initial },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof opening, at: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: initial }, after: { exists: true, value: [after, other] } }],
+      serviceOrderStepScriptureActions: { scriptureRefs: { rowId: opening.id, rowCreatedAt: opening.id, before: opening.scriptureRefs,
+        after: after.scriptureRefs, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } },
+    });
+    const desktop = { ...opening, body: 'Independent words', scriptureRefs: stored };
+    expect((await processCommand(base.owner, edit('computer', desktop, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', { ...opening, scriptureRefs: incoming }, phoneAt);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [{ ...desktop, scriptureRefs: expected }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('serviceOrders/step-scripture-timed/_stepScriptureHistory/'));
+    const displaced = phoneAt < 65 ? incoming : stored;
+    expect(history).toHaveLength(1);
+    expect(history[0][1]).toMatchObject({ fields: [{ rowId: opening.id, field: 'scriptureRefs', value: displaced, winnerValue: expected }] });
+  });
+
+  it.each([false, true])('merges two service step Scripture additions on an older omitted field (clocked: %s)', async clocked => {
+    const resource = { collection: 'serviceOrders', id: 'step-scripture-legacy-empty' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const opening = { id: 'reading', title: 'Scripture' };
+    await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: [opening] },
+    });
+    const add = (operationId: string, reference: string, at: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: [opening] }, after: { exists: true, value: [{ ...opening, scriptureRefs: [reference] }] } }],
+      ...(clocked && { serviceOrderStepScriptureActions: { scriptureRefs: { rowId: opening.id, rowCreatedAt: opening.id, before: [],
+        after: [reference], observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } } }),
+    });
+    expect((await processCommand(base.owner, add('computer', 'John 3:16', 65))).kind).toBe('acknowledged');
+    const phone = await processCommand(base.owner, add('phone', 'Psalm 23:1', 90));
+    expect(phone).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { steps: [{ ...opening, scriptureRefs: ['John 3:16', 'Psalm 23:1'] }] } } });
+  });
+
+  it.each([{ different: ['John 3:18'] }, { different: ['John 3:16', 'John 3:18'] }])('does not revive an old service step Scripture edit after a return through %j', async ({ different }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-scripture-round-trip' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const opening = { id: 'reading', title: 'Scripture', scriptureRefs: ['John 3:16'] };
+    await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: [opening] },
+    });
+    const edit = (operationId: string, before: string[], after: string[]) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: [{ ...opening, scriptureRefs: before }] },
+        after: { exists: true, value: [{ ...opening, scriptureRefs: after }] } }],
+    });
+    const initial = opening.scriptureRefs;
+    expect((await processCommand(base.owner, edit('replace', initial, different))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('return', different, initial))).kind).toBe('acknowledged');
+    expect(await processCommand(base.owner, edit('late-old-copy', initial, ['John 3:17']))).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: ['steps', 'id:reading', 'scriptureRefs'], theirs: { exists: true, value: initial } }] });
+    expect((await readDocument(base.owner, resource)).value?.steps).toEqual([opening]);
+  });
+
+  it('reviews an old service step Scripture replacement after its return evidence was evicted', async () => {
+    const resource = { collection: 'serviceOrders', id: 'step-scripture-eviction' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const legacy = { id: 'x'.repeat(129), title: 'Older step', scriptureRefs: ['John 3:16'] };
+    const initial = [...Array.from({ length: 33 }, (_, index) => ({ id: 'step-' + index, title: 'Reading', scriptureRefs: ['John 3:16'] })), legacy];
+    await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Service', rank: 100, createdAt: now, updatedAt: now, steps: initial },
+    });
+    const edit = (operationId: string, before: typeof initial, after: typeof initial) => processCommand(base.owner, {
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const changeFirst = (reference: string) => [{ ...initial[0], scriptureRefs: [reference] }, ...initial.slice(1)];
+    const replaced = changeFirst('John 3:18');
+    expect((await edit('replace', initial, replaced)).kind).toBe('acknowledged');
+    expect((await edit('return', replaced, initial)).kind).toBe('acknowledged');
+    const newer = initial.map((row, index) => index > 0 && index < 33 ? { ...row, scriptureRefs: ['Psalm 23:1'] } : row);
+    expect((await edit('edit-other-steps', initial, newer)).kind).toBe('acknowledged');
+    const late = await edit('late-old-copy', initial, changeFirst('John 3:17'));
+    expect(late).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: ['steps', 'id:step-0', 'scriptureRefs'], theirs: { exists: true, value: ['John 3:16'] } }] });
+    expect((await readDocument(base.owner, resource)).value?.steps).toEqual(newer);
+    const longerIdEdit = [...newer.slice(0, -1), { ...legacy, scriptureRefs: ['John 3:17'] }];
+    expect(await edit('old-format-long-id', newer, longerIdEdit)).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { steps: longerIdEdit } } });
+  });
+
   it('accepts the first explicit flag on an older step that omitted the optional flag', async () => {
     const resource = { collection: 'serviceOrders', id: 'missing-flag' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };

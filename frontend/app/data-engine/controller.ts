@@ -37,6 +37,7 @@ import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRow
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
+import { keepUncontestedServiceStepScripture, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepScriptureChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
@@ -799,7 +800,7 @@ export class EditorController {
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.outlinePointPlacement || request.groupFlowStepPlacement || request.councilTopicPlacement || hasAutosaveRowFieldCaptures(request)
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.serviceOrderStepScriptureActions || request.outlinePointPlacement || request.groupFlowStepPlacement || request.councilTopicPlacement || hasAutosaveRowFieldCaptures(request)
             || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction || request.studyNoteTypeAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
@@ -821,6 +822,7 @@ export class EditorController {
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
+        const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
@@ -933,9 +935,13 @@ export class EditorController {
           const rowRequests = ordinary ? [ordinary.first] : retired.filter(request => request.cancelledByChoice && source!.pending[request.id]);
           for (const request of rowRequests) assertCouncilTopicChoice(request.result);
           if (stored && rowRequests.some(request => {
-            const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title;
+            const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title
+              ?? request.serviceOrderStepScriptureActions?.scriptureRefs;
             return step && !hasServiceOrderStep(stored.steps, step.rowId);
           })) throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
+          if (scriptureRow && (!stored || !hasServiceOrderStep(stored.steps, scriptureRow))) {
+            throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
+          }
           if (stored && rowRequests.some(request => {
             const selected = request.councilAssemblyActions?.forAssembly ?? request.councilTopicKindActions?.kind;
             return (selected && !hasCouncilTopic(stored.topics, selected.rowId))
@@ -985,6 +991,7 @@ export class EditorController {
               writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined;
           if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
           const retained = !selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+            ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1023,6 +1030,13 @@ export class EditorController {
             if (!later) throw new Error('The later comment text could not be captured');
             session.applyCommit(later); replacements.push(later);
           }
+        }
+        if (choice === 'local' && scriptureRow) {
+          const scripture = serviceStepScriptureChoice(session.checkpoint(), scriptureRow, choiceTime ?? null);
+          const replacement = scripture && this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {
+            action: { kind: 'service-order-step-scripture', scripture },
+          });
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         const sourceNoteRequest = ordinary?.first ?? retired.find(request => decided.pending[request.id]
           && (request.sourceNoteLink || legacySourceNoteChange(request.command)));

@@ -20,6 +20,8 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   allowUnclocked?: boolean;
   atomicChoice?: true;
   requireObserved?: true;
+  rememberOpenings?: true;
+  mergesIndependently?: (before: Value, after: Value, stored: Value) => boolean;
   causalScopeEntry?: boolean;
   allowUnchanged?: (field: Field, value: Value) => boolean;
   validAfter?: (field: Field, value: Value) => boolean;

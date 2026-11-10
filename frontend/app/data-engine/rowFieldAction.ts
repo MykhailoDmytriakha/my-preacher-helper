@@ -3,7 +3,7 @@ import { equalValues, object, readField } from './fieldValues';
 import type { ActionTime } from './actionClock';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
-export type RowValue = string | number | boolean | null | DocumentData;
+export type RowValue = string | number | boolean | null | DocumentData | string[];
 export type RowFieldTarget<Value extends RowValue> = {
   field: string;
   leaf: string | readonly [string, string];

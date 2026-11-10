@@ -115,6 +115,32 @@ describe('authored scalar values in saved-version choices', () => {
     } finally { error.mockRestore(); }
   });
 
+  it.each([
+    { label: 'choose saved and keep authored words', rowId: 'step', local: false },
+    { label: 'choose local on a long legacy step ID', rowId: 'x'.repeat(129), local: true },
+  ])('settles the service step Scripture comparison: $label', async ({ rowId, local }) => {
+    const resource = { collection: 'serviceOrders', id: 'scripture-versions' };
+    const item = { id: rowId, title: 'Reading', body: 'Original words', scriptureRefs: ['John 3:16'] };
+    const value = { userId: 'owner', title: 'Sunday service', steps: [item], rank: 1, createdAt: at, updatedAt: at };
+    const harness = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemote({ steps: [{ ...item, scriptureRefs: ['John 3:18'] }] });
+    await act(async () => {
+      await actions!.commit(resource, current => ({ ...current!, steps: [{ ...item, body: 'Independently authored words', scriptureRefs: ['John 3:17'] }] }));
+      await settleEngine();
+    });
+    const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(panel).getByLabelText('dataSync.yourVersion')).toHaveTextContent('John 3:17');
+    expect(within(panel).getByLabelText('dataSync.storedVersion')).toHaveTextContent('John 3:18');
+    fireEvent.click(screen.getByRole('button', { name: local ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    if (!local) fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    await waitFor(() => expect(harness.server.value?.steps).toEqual([
+      { ...item, body: 'Independently authored words', scriptureRefs: [local ? 'John 3:17' : 'John 3:18'] },
+    ]));
+  });
+
   it('shows both versions of the same step title without showing unrelated text', async () => {
     const resource = { collection: 'serviceOrders', id: 'step-title-versions' };
     const item = { id: 'step', title: 'Opening step', body: 'Keep these words.' };

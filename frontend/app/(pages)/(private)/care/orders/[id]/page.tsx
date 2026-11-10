@@ -224,7 +224,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const typedRef = useRef<ServiceOrderStep[]>(liveSteps);
   typedRef.current = liveSteps;
 
-  const pending = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; run: () => void; titleCapture?: ServiceOrderStepTitleCapture }>());
+  const pending = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; run: () => void; step?: ServiceOrderStepCapture }>());
 
   // An order just created opens ready to be written in: its name is a placeholder, and the first
   // thing its owner wants is to replace it.
@@ -446,14 +446,14 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * armed on one service and fired after the route swapped to another used to reach the new
    * editor's mirror — the funeral's sentence appearing inside the wedding.
    */
-  const schedule = useCallback((key: string, run: () => void, titleCapture?: ServiceOrderStepTitleCapture) => {
+  const schedule = useCallback((key: string, run: () => void, step?: ServiceOrderStepCapture) => {
     const existing = pending.current.get(key);
     if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
       pending.current.delete(key);
       run();
     }, 700);
-    pending.current.set(key, { timer, run, titleCapture });
+    pending.current.set(key, { timer, run, step });
   }, []);
 
   /** Runs what is waiting under this key, if anything is. Nothing waiting means nothing to do. */
@@ -1137,7 +1137,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                         const next = event.target.value;
                         const key = `${step.id}:title`;
                         const waiting = pending.current.get(key);
-                        const opening = waiting?.titleCapture;
+                        const opening = waiting?.step?.field === 'title' ? waiting.step.change : undefined;
                         // A pause or blur saves one typing burst. Its last input time goes with the original displayed value.
                         const capture = waiting
                           ? opening && { ...opening, after: next, time: captureTitleTime?.() ?? null }
@@ -1145,7 +1145,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                         mirror((steps) =>
                           steps.map((entry) => (entry.id === step.id ? { ...entry, title: next } : entry))
                         );
-                        schedule(key, () => setStepTitle(step.id, next, capture), capture);
+                        schedule(key, () => setStepTitle(step.id, next, capture), capture && { field: 'title', change: capture });
                       }}
                       onBlur={() => flush(`${step.id}:title`)}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
@@ -1184,12 +1184,20 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                         const typedRefs = event.target.value;
                         setRefsDraft((drafts) => ({ ...drafts, [step.id]: typedRefs }));
                         const next = parseRefs(typedRefs);
+                        const key = `${step.id}:refs`;
+                        const waiting = pending.current.get(key);
+                        const prior = waiting?.step?.field === 'scriptureRefs' ? waiting.step.change : undefined;
+                        const version = waiting ? undefined : shownStepVersion();
+                        const change = prior ? { ...prior, after: next,
+                          time: JSON.stringify(prior.after) === JSON.stringify(next) ? prior.time : captureTitleTime?.() ?? null }
+                          : version && { ...version, rowId: step.id, before: step.scriptureRefs ?? [], after: next, time: captureTitleTime?.() ?? null };
+                        const capture = change && { field: 'scriptureRefs' as const, change };
                         mirror((steps) =>
                           steps.map((entry) =>
                             entry.id === step.id ? { ...entry, scriptureRefs: next } : entry
                           )
                         );
-                        schedule(`${step.id}:refs`, () => patchStep(step.id, 'refs', { scriptureRefs: next }));
+                        schedule(key, () => patchStep(step.id, 'refs', { scriptureRefs: next }, capture), capture);
                       }}
                       onBlur={() => {
                         flush(`${step.id}:refs`);
