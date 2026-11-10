@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-
+import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { documentTagChange, documentTagCollection, documentTagConflictPath, tagList } from './documentTagMembership';
 import { object } from './fieldValues';
 import { boundedRowId, isRowChange, rowConflictPath, rowConflictValue } from './rowFieldAction';
@@ -15,7 +14,6 @@ export type IndexedTagConflict = Omit<Conflict, 'conflicts'> & {
   conflicts: (ConflictDetail | TagReference)[];
 };
 
-const PART_CHARACTERS = 250_000;
 const MAX_PARTS = 12;
 
 export type SplitTagConflict = Pick<Conflict, 'kind' | 'operationId'> & { tagReceiptParts: number; tagReceiptDigest: string };
@@ -25,34 +23,16 @@ export function isSplitTagConflict(result: object): result is SplitTagConflict {
 }
 
 export function validTagReceiptPartCount(count: unknown): count is number {
-  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 && count <= MAX_PARTS;
+  return validConflictPartCount(count, MAX_PARTS);
 }
 
-/** Each string stays below Firestore's byte limit, including UTF-8 encoding. */
-export function splitTagConflictJson(json: string): string[] | undefined {
-  const parts: string[] = [];
-  for (let start = 0; start < json.length;) {
-    let end = Math.min(start + PART_CHARACTERS, json.length);
-    const last = json.charCodeAt(end - 1);
-    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--;
-    parts.push(json.slice(start, end));
-    if (parts.length > MAX_PARTS) return undefined;
-    start = end;
-  }
-  return parts;
-}
-
-export const tagReceiptDigest = (json: string) => createHash('sha256').update(json).digest('base64url');
+export const splitTagConflictJson = (json: string) => splitConflictJson(json, MAX_PARTS);
+export const tagReceiptDigest = conflictReceiptDigest;
 
 export function readTagConflictParts(parts: readonly unknown[], manifest: SplitTagConflict): IndexedTagConflict | undefined {
-  if (!parts.every(part => typeof part === 'string' && part.length <= PART_CHARACTERS)) return undefined;
-  const json = parts.join('');
-  if (tagReceiptDigest(json) !== manifest.tagReceiptDigest) return undefined;
-  try {
-    const result: unknown = JSON.parse(json);
-    return object(result) && result.kind === 'conflict' && result.operationId === manifest.operationId && isIndexedTagConflict(result)
-      ? result : undefined;
-  } catch { return undefined; }
+  const result = readConflictJsonParts(parts, manifest.tagReceiptParts, manifest.tagReceiptDigest);
+  return object(result) && result.kind === 'conflict' && result.operationId === manifest.operationId && isIndexedTagConflict(result)
+    ? result : undefined;
 }
 
 export function isIndexedTagConflict(result: object): result is IndexedTagConflict {

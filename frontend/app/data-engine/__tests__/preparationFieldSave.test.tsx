@@ -508,8 +508,13 @@ it.each([
     await waitFor(() => expect(t.h.transport.send).toHaveBeenCalled());
     await act(async () => { await t.h.engine.retry(); await settleEngine(); });
     const stored = field === 'verse' ? t.h.server.value?.verse : (t.h.server.value?.preparation as { textContext: Record<string, unknown> }).textContext[field];
-    expect(stored).toEqual(field === 'repeatedWords' ? ['Later text words', 'Earlier text draft'] : laterValue);
-    expect(input).toHaveValue(field === 'repeatedWords' ? 'Later text words, Earlier text draft' : 'Earlier text draft');
+    expect(stored).toEqual(laterValue);
+    expect(input).toHaveValue('Earlier text draft');
+    if (field === 'repeatedWords') {
+      const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+      expect(comparison).toHaveTextContent('Earlier text draft');
+      expect(comparison).toHaveTextContent('Later text words');
+    }
   } finally { await finish(t.view); }
 });
 

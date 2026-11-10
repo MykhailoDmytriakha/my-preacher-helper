@@ -387,6 +387,33 @@ describe('Durable commit requests', () => {
     expect(s.server().value).toMatchObject({ title: baseline.value?.title, verse: 'John 3:16' });
   });
 
+  it('keeps repeated words linked to their exact predecessor through a context Save', async () => {
+    const original = { repeatedWords: ['grace', 'faith'], contextNotes: 'Original context' };
+    const opening = { ...initial(), value: { ...initial().value, preparation: { textContext: original } } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const value = (repeatedWords: string[], contextNotes: string) => ({ ...opening.value,
+      preparation: { textContext: { repeatedWords, contextNotes } } });
+    const firstWords = ['mercy', 'faith'];
+    editor.edit(value(firstWords, original.contextNotes));
+    const first = (await queue.save('repeated-words', editor.checkpoint(), { documentMetadataTime: null }))!;
+    editor.applyCommit(first);
+    const context = 'Independent context written between the two list saves';
+    editor.edit(value(firstWords, context));
+    const middle = (await queue.save('context', editor.checkpoint(), { predecessorId: first.id }))!;
+    editor.applyCommit(middle);
+    editor.edit(value([], context));
+    const last = (await queue.save('repeated-words', editor.checkpoint(), { predecessorId: middle.id, documentMetadataTime: null }))!;
+    expect(middle.sermonRepeatedWordsAction).toBeUndefined();
+    expect(last.sermonRepeatedWordsAction).toEqual({ observedRevision: 1, time: null, predecessorOperationId: first.id,
+      before: { exists: true, value: firstWords }, after: { exists: true, value: [] } });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: last.id,
+      sermonRepeatedWordsAction: { observedRevision: 1, time: null, predecessorOperationId: first.id } }));
+    expect(s.server().value?.preparation).toEqual({ textContext: { repeatedWords: [], contextNotes: context } });
+  });
+
   it.each(['questionWord', 'pluralKey'] as const)('keeps the exact queued thesis %s across an unrelated sentence Save', async field => {
     const thesis = { questionWord: 'why', pluralKey: 'reasons', transitionSentence: 'Opening sentence' };
     const opening = { ...initial(), value: { ...initial().value, preparation: { thesis } } };

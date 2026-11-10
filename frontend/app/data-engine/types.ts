@@ -239,6 +239,7 @@ export type DataCommand = CommandBase & (
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonThesisFieldActions?: Partial<Record<SermonThesisField, DocumentFieldStamp>>;
+      sermonRepeatedWordsAction?: DocumentFieldStamp;
       sermonPlanModeAction?: SermonPlanModeStamp;
       accountPreferenceActions?: AccountPreferenceStamps;
       serviceOrderPlacement?: ServiceOrderPlacement;

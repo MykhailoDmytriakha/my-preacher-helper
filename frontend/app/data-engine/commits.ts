@@ -135,6 +135,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonThesisFieldActions?: SermonThesisObservations;
+  sermonRepeatedWordsAction?: DocumentFieldObservation<FieldValue>;
   sermonPlanModeAction?: SermonPlanModeObservation;
   accountPreferenceActions?: AccountPreferenceObservations;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
@@ -264,6 +265,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
     || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
     || !equalValues(current.sermonThesisFieldActions ?? null, incoming.sermonThesisFieldActions ?? null)
+    || !equalValues(current.sermonRepeatedWordsAction ?? null, incoming.sermonRepeatedWordsAction ?? null)
     || !equalValues(current.sermonPlanModeAction ?? null, incoming.sermonPlanModeAction ?? null)
     || !equalValues(current.serviceOrderPlacement ?? null, incoming.serviceOrderPlacement ?? null)
     || !equalValues(current.serviceOrderStepPlacement ?? null, incoming.serviceOrderStepPlacement ?? null)
@@ -397,7 +399,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {

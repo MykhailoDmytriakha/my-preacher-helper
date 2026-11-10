@@ -29,6 +29,7 @@ export type PreparationPlanItem = { id: string; title: string };
 export const trimmedPreparationText: PreparationValue<string> = {
   read: value => typeof value === 'string' ? value : '', save: value => value.trim(), describe: value => value,
 };
+export const repeatedWordsPath = ['preparation', 'textContext', 'repeatedWords'] as const;
 export const preparationWords: PreparationValue<string> = {
   read: value => typeof value === 'string' ? value : Array.isArray(value) ? value.join(', ') : '',
   save: value => value.split(',').map(word => word.trim()).filter(Boolean), describe: value => value,

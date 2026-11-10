@@ -4281,6 +4281,172 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('sermon Preparation repeated words', () => {
+    const words = (repeatedWords: string[] | undefined, contextNotes = 'Original context') => ({
+      textContext: { ...(repeatedWords !== undefined && { repeatedWords }), contextNotes,
+        passageSummary: 'Independent summary', readWholeBookOnceConfirmed: true },
+    });
+
+    it.each([
+      { label: 'two replacements', base: ['grace'], stored: ['peace'], incoming: ['mercy'], conflict: true },
+      { label: 'a replacement and a clear', base: ['grace'], stored: ['peace'], incoming: [], conflict: true },
+      { label: 'a clear and a replacement', base: ['grace'], stored: [], incoming: ['mercy'], conflict: true },
+      { label: 'one disputed word in a longer list', base: ['grace', 'faith'], stored: ['peace', 'faith'], incoming: ['mercy', 'faith'], conflict: true },
+      { label: 'two independent additions', base: ['grace'], stored: ['grace', 'peace'], incoming: ['grace', 'mercy'], expected: ['grace', 'peace', 'mercy'] },
+      { label: 'two independent additions with an omitted list', base: undefined, stored: ['peace'], incoming: ['mercy'], expected: ['peace', 'mercy'] },
+      { label: 'replacements of different words', base: ['grace', 'faith'], stored: ['grace', 'peace'], incoming: ['mercy', 'faith'], expected: ['peace', 'mercy'] },
+    ])('keeps the exact saved meaning for $label', async ({ base, stored, incoming, expected, conflict }) => {
+      const generation = 'repeated-words-seed';
+      const initial = words(base);
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: initial } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const edit = (id: string, preparation: ReturnType<typeof words>) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: initial }, after: { exists: true, value: preparation } }],
+      });
+      const desktop = words(stored, 'An independent desktop paragraph');
+      expect(await processCommand(command.owner, edit('computer', desktop))).toMatchObject({ kind: 'acknowledged' });
+      const reply = await processCommand(command.owner, edit('phone', words(incoming)));
+      if (conflict) {
+        expect(reply).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'textContext', 'repeatedWords'],
+          base: { exists: true, value: base }, mine: { exists: true, value: incoming }, theirs: { exists: true, value: stored },
+        }], snapshot: { value: { preparation: desktop } } });
+      } else {
+        expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: {
+          textContext: { ...desktop.textContext, repeatedWords: expected },
+        } } } });
+      }
+    });
+
+    it.each([
+      { label: 'older phone', base: ['grace'], stored: ['peace'], incoming: ['mercy'], at: 20, expected: ['peace'] },
+      { label: 'newer phone', base: ['grace'], stored: ['peace'], incoming: ['mercy'], at: 80, expected: ['mercy'] },
+      { label: 'later phone clear', base: ['grace'], stored: ['peace'], incoming: [], at: 80, expected: [] },
+      { label: 'later desktop clear', base: ['grace'], stored: [], incoming: ['mercy'], at: 20, expected: [] },
+      { label: 'same word in a longer list', base: ['grace', 'faith'], stored: ['peace', 'faith'], incoming: ['mercy', 'faith'], at: 80, expected: ['mercy', 'faith'] },
+      { label: 'different words in a longer list', base: ['grace', 'faith'], stored: ['grace', 'peace'], incoming: ['mercy', 'faith'], at: 80, expected: ['peace', 'mercy'] },
+      { label: 'two additions to a previously omitted list', base: undefined, stored: ['peace'], incoming: ['mercy'], at: 80, expected: ['peace', 'mercy'] },
+    ])('uses action time only for a competing repeated word: $label', async ({ base, stored, incoming, at, expected }) => {
+      const generation = 'repeated-words-timed';
+      const initial = words(base);
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: initial } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const edit = (id: string, preparation: ReturnType<typeof words>, offset: number) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: initial }, after: { exists: true, value: preparation } }],
+        sermonRepeatedWordsAction: { observedRevision: 1,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } },
+      });
+      const note = 'Separately saved desktop paragraph';
+      expect(await processCommand(command.owner, edit('computer', words(stored, note), 40))).toMatchObject({ kind: 'acknowledged' });
+      const delayed = edit('phone', words(incoming), at);
+      const reply = await processCommand(command.owner, delayed);
+      expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: words(expected, note) } } });
+      expect(await processCommand(command.owner, delayed)).toEqual(reply);
+    });
+
+    it.each([100, null])('retains a same-result decision from a different opening (time: %s)', async laterTime => {
+      const generation = 'repeated-words-same-result';
+      const original = ['grace'], middle = ['peace'], saved = ['faith'];
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      await processCommand(command.owner, { ...command, value: { ...command.value, preparation: words(original) } });
+      const edit = (id: string, before: string[], after: string[], offset: number | null, revision: number) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: words(before) }, after: { exists: true, value: words(after) } }],
+        sermonRepeatedWordsAction: { observedRevision: revision,
+          time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } },
+      });
+      for (const action of [edit('first', original, middle, 10, 1), edit('second', middle, saved, 20, 2),
+        edit('different-opening-same-result', original, saved, laterTime, 1)]) {
+        expect(await processCommand(command.owner, action)).toMatchObject({ kind: 'acknowledged' });
+      }
+      expect(await processCommand(command.owner, edit('delayed-other-word', middle, ['mercy'], 60, 2))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'textContext', 'repeatedWords'] }],
+        snapshot: { value: { preparation: words(saved) } },
+      });
+    });
+
+    it.each([false, true])('keeps an explicit clear when an older addition saw no repeated-words field (stamped: %s)', async stamped => {
+      const generation = 'repeated-words-missing-clear';
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      await processCommand(command.owner, { ...command, value: { ...command.value, preparation: words(undefined) } });
+      const edit = (id: string, before: string[] | undefined, after: string[], offset: number, revision: number, hasStamp = true) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: words(before) }, after: { exists: true, value: words(after) } }],
+        ...(hasStamp && { sermonRepeatedWordsAction: { observedRevision: revision,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } } }),
+      });
+      expect(await processCommand(command.owner, edit('added', undefined, ['grace'], 20, 1))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, edit('cleared', ['grace'], [], 90, 2))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, edit('delayed-add', undefined, ['grace'], 50, 1, stamped))).toMatchObject({
+        kind: stamped ? 'acknowledged' : 'conflict', snapshot: { value: { preparation: words([]) } },
+      });
+    });
+
+    it('replays the exact repeated-words comparison when it does not fit in one receipt', async () => {
+      const generation = 'repeated-words-large-receipt';
+      const opening = ['g'.repeat(300_000)], stored = ['p'.repeat(300_000)], incoming = ['m'.repeat(300_000)];
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: words(opening) } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const edit = (id: string, before: string[], after: string[], contextNotes?: string) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: words(before) }, after: { exists: true, value: words(after, contextNotes) } }],
+      });
+      expect(await processCommand(command.owner, edit('computer', opening, stored))).toMatchObject({ kind: 'acknowledged' });
+      const delayed = edit('phone', opening, incoming);
+      const answer = await processCommand(command.owner, delayed);
+      expect(answer.kind).toBe('conflict');
+      if (answer.kind !== 'conflict') return;
+      expect(answer.conflicts).toEqual([{ path: ['preparation', 'textContext', 'repeatedWords'],
+        base: { exists: true, value: opening }, mine: { exists: true, value: incoming }, theirs: { exists: true, value: stored },
+      }]);
+      expect(await processCommand(command.owner, edit('later-context', stored, stored, 'Later context'))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, delayed)).toEqual(answer);
+    });
+
+    it('does not lend an unrelated list edit clock to an earlier replacement', async () => {
+      const generation = 'repeated-words-unrelated-clock';
+      const original = ['grace', 'faith'], stored = ['peace', 'faith'], extra = [...stored, 'hope'];
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      await processCommand(command.owner, { ...command, value: { ...command.value, preparation: words(original) } });
+      const edit = (id: string, before: string[], after: string[], offset: number, revision: number) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: words(before) }, after: { exists: true, value: words(after) } }],
+        sermonRepeatedWordsAction: { observedRevision: revision,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } },
+      });
+      for (const action of [edit('first', original, stored, 20, 1), edit('add', stored, extra, 60, 2), edit('remove', extra, stored, 90, 3)]) {
+        expect(await processCommand(command.owner, action)).toMatchObject({ kind: 'acknowledged' });
+      }
+      expect(await processCommand(command.owner, edit('old-phone', original, ['mercy', 'faith'], 50, 1))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'textContext', 'repeatedWords'] }],
+        snapshot: { value: { preparation: words(stored) } },
+      });
+    });
+
+    it.each([false, true])('preserves a restored repeated word against a delayed old change (stamped: %s)', async stamped => {
+      const generation = 'repeated-words-return';
+      const command = create(generation) as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: words(['grace', 'faith']) } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const edit = (id: string, before: string[], after: string[], offset: number, revision: number, includeStamp = true) => ({
+        ...update(id, generation),
+        changes: [{ path: ['preparation'], before: { exists: true, value: words(before) }, after: { exists: true, value: words(after) } }],
+        ...(includeStamp && { sermonRepeatedWordsAction: { observedRevision: revision,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } } }),
+      });
+      const original = ['grace', 'faith'], changed = ['mercy', 'faith'];
+      expect(await processCommand(command.owner, edit('desktop-first', original, changed, 20, 1))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, edit('desktop-return', changed, original, 90, 2))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(command.owner, edit('old-phone', original, ['peace', 'faith'], 50, 1, stamped))).toMatchObject({
+        kind: stamped ? 'acknowledged' : 'conflict', snapshot: { value: { preparation: words(original) } },
+      });
+    });
+  });
+
   describe('sermon thesis short field chronology', () => {
     const opening = { questionWord: 'why', pluralKey: 'reasons', transitionSentence: 'The original transition words' };
     const thesis = (field: 'questionWord' | 'pluralKey', words: string, transition = opening.transitionSentence) =>

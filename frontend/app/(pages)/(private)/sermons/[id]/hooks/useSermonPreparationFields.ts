@@ -1,5 +1,5 @@
 import { usePreparationField, usePreparationTextField } from '@/hooks/usePreparationTextField';
-import { isSermonGoalType, preparationPlan, preparationWords, trimmedPreparationText } from '@/utils/preparationFieldValues';
+import { isSermonGoalType, preparationPlan, preparationWords, repeatedWordsPath, trimmedPreparationText } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ResourceRef } from '@/data-engine/types';
@@ -30,7 +30,7 @@ export function useSermonPreparationFields(prepResource: ResourceRef | null) {
   const contextVerse = usePreparationField(prepResource, ['verse'], 'wizard.steps.textContext.passageInput.label', { ...trimmedPreparationText, valid: value => value.trim().length > 0 }, captureMetadataTime);
   const passageSummary = usePreparationField(prepResource, ['preparation', 'textContext', 'passageSummary'], 'wizard.steps.textContext.passageSummary.title', trimmedPreparationText);
   const contextNotes = usePreparationTextField(prepResource, ['preparation', 'textContext', 'contextNotes'], 'wizard.steps.textContext.actions.findContext');
-  const repeatedWords = usePreparationField(prepResource, ['preparation', 'textContext', 'repeatedWords'], 'wizard.steps.textContext.actions.findRepeatedWords', preparationWords);
+  const repeatedWords = usePreparationField(prepResource, repeatedWordsPath, 'wizard.steps.textContext.actions.findRepeatedWords', preparationWords, captureMetadataTime);
   const goalType = usePreparationField<string>(prepResource, ['preparation', 'preachingGoal', 'type'], 'wizard.steps.goals.goal.typeLabel', {
     ...trimmedPreparationText, valid: isSermonGoalType,
     describe: value => t(value ? `wizard.steps.goals.goal.types.${value}` : 'wizard.steps.goals.goal.typePlaceholder'),

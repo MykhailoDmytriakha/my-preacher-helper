@@ -4,6 +4,7 @@ import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
+import { competingStringListEdits, singleStringListEdit } from './authoredStringList';
 import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
@@ -26,34 +27,61 @@ export const SERMON_GOAL_TYPE_HISTORY = '_goalTypeHistory';
 export const SERMON_PLAN_MODE_HISTORY = '_planModeHistory';
 export const SERMON_CHURCH_HISTORY = '_churchHistory';
 export const DOCUMENT_METADATA_HISTORY = '_metadataHistory';
-type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string; initialized?: true };
+type ListOpening = { digest: string; removed?: string; added?: string };
+type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string; initialized?: true; listOpening?: ListOpening };
 type DocumentFieldOrder = {
   command: DataCommand;
   stamp?: ActionTime | null;
   initialized?: true;
   previous?: FieldProof;
+  listOpening?: { basis: ListOpening; intended: FieldValue };
+  acknowledgedListChoice?: true;
   displaced?: { value: FieldValue; winnerValue: FieldValue; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime };
   uncertain?: ConflictDetail[];
 };
 
 const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
+const presentWordList = (value: FieldValue): FieldValue => value.exists ? value : { exists: true, value: [] };
+const sameFieldOpening = (first: FieldValue, second: FieldValue, target: DocumentFieldTarget) =>
+  target.action === 'sermonRepeatedWordsAction' ? equalValues(presentWordList(first), presentWordList(second)) : equalValues(first, second);
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
-  .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
+  .update(target.field === 'verse' ? String(value.value)
+    : commandFingerprint(target.action === 'sermonRepeatedWordsAction' ? presentWordList(value) : value)).digest('base64url');
 
-const MAX_THESIS_OPENINGS = 16;
+const MAX_FIELD_OPENINGS = 16;
 
-function pastThesisOpenings(raw: unknown, target: DocumentFieldTarget): string[] | null | undefined {
+function pastFieldOpenings(raw: unknown, target: DocumentFieldTarget): string[] | null | undefined {
   const proof = object(raw) ? raw[target.proof] : undefined;
   const openings = object(proof) ? proof.pastOpenings : undefined;
   if (openings === null || (Array.isArray(openings) && openings.every(value => typeof value === 'string'))) return openings;
 }
 
-function nextThesisOpenings(raw: unknown, target: DocumentFieldTarget, opening: FieldValue, changed: boolean) {
-  const past = pastThesisOpenings(raw, target);
+function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: FieldValue, changed: boolean) {
+  const past = pastFieldOpenings(raw, target);
   if (!changed || past === null) return past;
   const digest = fieldDigest(opening, target);
   if (past?.includes(digest)) return past;
-  return (past?.length ?? 0) < MAX_THESIS_OPENINGS ? [...past ?? [], digest] : null;
+  return (past?.length ?? 0) < MAX_FIELD_OPENINGS ? [...past ?? [], digest] : null;
+}
+
+const tracksOpeningReturns = (target: DocumentFieldTarget) =>
+  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction';
+
+const wordDigest = (word: string | undefined) => word === undefined ? undefined
+  : createHash('sha256').update(JSON.stringify(word)).digest('base64url');
+const digestText = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]{43}$/.test(value);
+
+function listOpeningFor(change: FieldChange, target: DocumentFieldTarget): ListOpening | undefined {
+  const edit = singleStringListEdit(change.before.exists ? change.before.value : [], change.after.value);
+  if (!edit) return;
+  const removed = wordDigest(edit.removed), added = wordDigest(edit.added);
+  return { digest: fieldDigest(change.before, target), ...(removed && { removed }), ...(added && { added }) };
+}
+
+function readListOpening(value: unknown): ListOpening | undefined {
+  if (!object(value) || !digestText(value.digest)) return;
+  return { digest: value.digest, ...(digestText(value.removed) && { removed: value.removed }),
+    ...(digestText(value.added) && { added: value.added }) };
 }
 
 function previousField(raw: unknown, current: ResourceSnapshot, target: DocumentFieldTarget): FieldProof | undefined {
@@ -64,7 +92,9 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
   if (!value || !acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
+  const listOpening = target.action === 'sermonRepeatedWordsAction' ? readListOpening(proof.listOpening) : undefined;
   return time !== undefined ? { value, revision: proof.revision, time,
+    ...(listOpening && { listOpening }),
     ...(typeof proof.operationId === 'string' && { operationId: proof.operationId }),
     ...(target.action === 'sermonPlanModeAction' && proof.initialized === true && { initialized: true as const }) } : undefined;
 }
@@ -90,13 +120,31 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
   previous: FieldProof, target: DocumentFieldTarget): DocumentFieldOrder {
   const { value, time } = previous;
   const before = action.before.value, after = action.after.value, stored = value.value;
+  const repeatedWords = target.action === 'sermonRepeatedWordsAction';
+  if (repeatedWords) {
+    const same = sameFieldOpening(action.after, value, target), returned = sameFieldOpening(action.before, value, target);
+    const competing = competingStringListEdits(before, after, stored);
+    if (!same && !returned && !competing) return { command, stamp: null };
+    const opening = listOpeningFor(change, target), savedOpening = previous.listOpening;
+    const sharedSlot = opening && savedOpening && opening.digest === savedOpening.digest
+      && opening.removed === savedOpening.removed && (opening.removed !== undefined || same);
+    const returnedSlot = returned && opening && savedOpening
+      && ((opening.removed !== undefined && opening.removed === savedOpening.added)
+        || (opening.added !== undefined && opening.added === savedOpening.removed));
+    if (!sharedSlot && !returnedSlot) {
+      return same ? { command, stamp: null, acknowledgedListChoice: true } : { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: value }] };
+    }
+  }
   const standalone = target.field !== 'verse' || typeof before === 'string' && typeof after === 'string' && typeof stored === 'string'
     && (before.trim() === '' || isStandaloneScriptureReference(before))
     && isStandaloneScriptureReference(after) && isStandaloneScriptureReference(stored);
   const order = standalone && time && action.time ? compareActionTime(action.time, time) : 0;
-  if (equalValues(action.after, value)) return order > 0 ? { command, stamp: action.time } : order < 0 ? { command, previous } : { command, stamp: null };
+  if (sameFieldOpening(action.after, value, target)) {
+    return order > 0 ? { command, stamp: action.time } : order < 0 ? { command, previous }
+      : { command, stamp: null, ...(repeatedWords && { acknowledgedListChoice: true }) };
+  }
   if (!order || !time || !action.time) {
-    const needsReview = equalValues(action.before, value)
+    const needsReview = repeatedWords || equalValues(action.before, value)
       || (target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after));
     const uncertain = needsReview ? [{ path: change.path, base: change.before, mine: change.after, theirs: value }] : undefined;
     return { command, uncertain };
@@ -138,8 +186,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (uncertain) return { command, uncertain: [uncertain] };
     if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
   }
-  if (!action && target.action === 'sermonThesisFieldActions' && equalValues(stored, change.before)) {
-    const past = pastThesisOpenings(raw, target);
+  if (!action && tracksOpeningReturns(target) && sameFieldOpening(stored, change.before, target)) {
+    const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot tell a returned word from an untouched opening.
     if (past === null || past?.includes(fieldDigest(stored, target))) {
       return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
@@ -162,7 +210,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   }
   if (previous && previous.revision > action.observedRevision) {
     // An exact local predecessor is causal even when its action clock was unavailable.
-    if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && equalValues(previous.value, action.before)) {
+    if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && sameFieldOpening(previous.value, action.before, target)) {
       return { command, stamp: action.time };
     }
     const order = decideUnobservedField(command, change, action, previous, target);
@@ -222,7 +270,11 @@ function alignCouncilLifecycle(order: DocumentFieldOrder, current: ResourceSnaps
 
 export function orderDocumentFields(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const fields = documentFieldTargets(command.resource.collection).map(target => {
-    const order = orderDocumentField(command, current, raw, serverMs, target);
+    const planned = orderDocumentField(command, current, raw, serverMs, target);
+    const change = target.action === 'sermonRepeatedWordsAction' && planned.stamp && command.kind === 'update'
+      ? documentFieldChange(command.changes, target) : undefined;
+    const basis = change && listOpeningFor(change, target);
+    const order = basis && change ? { ...planned, listOpening: { basis, intended: change.after } } : planned;
     if (target.field === 'church') command = resolvePlannedChurchFill(command, order.command, current);
     else if (target.action === 'seriesFieldActions' && target.field === 'title') command = resolveSeriesTitleMirror(command, order, current);
     else if (target.field === 'heldAt') command = alignCouncilLifecycle(order, current);
@@ -256,19 +308,23 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)
       && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
       ? rawMetadata.revision : metadata.revision;
-    const sameWordWon = target.action === 'sermonThesisFieldActions' && order?.stamp != null;
+    const sameWordWon = tracksOpeningReturns(target) && (order?.stamp != null || order?.acknowledgedListChoice);
+    const listOpening = order?.listOpening && equalValues(order.listOpening.intended, value) ? order.listOpening.basis : undefined;
+    const time = target.action === 'sermonRepeatedWordsAction' && !listOpening ? null : order?.stamp ?? null;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
-      value, revision, time: order?.stamp ?? null,
+      value, revision, time,
+      ...(listOpening && { listOpening }),
       ...((changed || sameWordWon || ((target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && order?.stamp !== undefined)) && metadata.operationId
         && { operationId: metadata.operationId }),
       ...(order?.initialized && { initialized: true as const }),
     };
     const match = usesDigest(target) ? { digest: fieldDigest(proof.value, target) } : { [target.field]: proof.value.value };
-    const pastOpenings = target.action === 'sermonThesisFieldActions' && rawValue && object(rawMetadata)
-      && rawMetadata.generation === metadata.generation ? nextThesisOpenings(rawMetadata, target, rawValue, changed) : undefined;
+    const pastOpenings = tracksOpeningReturns(target) && rawValue && object(rawMetadata)
+      && rawMetadata.generation === metadata.generation ? nextFieldOpenings(rawMetadata, target, rawValue, changed) : undefined;
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
       ...(proof.initialized && { initialized: true as const }),
+      ...(proof.listOpening && { listOpening: proof.listOpening }),
       ...(pastOpenings !== undefined && { pastOpenings }) }]] as const;
   });
   const commentPlaceFrames = nextCommentPlaceFrames(snapshot, raw as DocumentData | undefined);

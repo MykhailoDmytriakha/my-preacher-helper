@@ -6,13 +6,14 @@ import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { aiModelDefaultsDocument } from '@/services/aiModelDefaults.server';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
-import { isSermonGoalType, preparationConfirmationPaths } from '@/utils/preparationFieldValues';
+import { isSermonGoalType, preparationConfirmationPaths, repeatedWordsPath } from '@/utils/preparationFieldValues';
 import { TAG_NAME_EXISTS } from '@/utils/tagName';
 
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
+import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
 import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
@@ -27,7 +28,7 @@ import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, t
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { EXEGETICAL_POINT_HISTORY, metadataAfterExegeticalPoints, orderExegeticalPoints, retainedExegeticalPointHistory } from './exegeticalPointOrder.server';
-import { equalValues, readField } from './fieldValues';
+import { equalValues, object, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
@@ -88,6 +89,7 @@ export function readActionClockChallenge(collection: string, headers: Headers, d
 
 export const MAX_COMMAND_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 1_000_000;
+const MAX_EXACT_RECEIPT_PARTS = 20;
 const MAX_EFFECT_BYTES = 8 * 1024 * 1024;
 const MAX_LIST_BYTES = 4 * 1024 * 1024;
 const RECEIPTS = '_dataEngineReceipts';
@@ -217,7 +219,18 @@ interface CompactAcknowledgement {
   committed: EngineMetadata;
   affected?: Acknowledgement['affected'];
 }
-type StoredReceipt = Omit<CommandReceipt, 'result'> & { result: CommandResult | CompactAcknowledgement | IndexedTagConflict | SplitTagConflict };
+type ExactConflict = Extract<CommandResult, { kind: 'conflict' }>;
+type SplitExactConflict = Pick<ExactConflict, 'kind' | 'operationId'> & {
+  exactReceiptParts: number;
+  exactReceiptDigest: string;
+};
+type ConflictManifest = SplitTagConflict | SplitExactConflict;
+type StoredReceipt = Omit<CommandReceipt, 'result'> & {
+  result: CommandResult | CompactAcknowledgement | IndexedTagConflict | ConflictManifest;
+};
+const isSplitExactConflict = (result: object): result is SplitExactConflict => 'exactReceiptParts' in result;
+const comparesRepeatedWords = (conflicts: readonly ConflictDetail[]) =>
+  conflicts.some(({ path }) => equalValues(path, repeatedWordsPath));
 const compact = (result: StoredReceipt['result']): result is CompactAcknowledgement => 'receiptVersion' in result;
 const unavailableReceiptSnapshot = () => new DataEngineServerError('receipt-snapshot-unavailable', 503);
 
@@ -254,7 +267,7 @@ function readReceipt(raw: Record<string, unknown> | undefined): StoredReceipt | 
       || !['acknowledged', 'conflict', 'deleted', 'refused', 'blocked'].includes(String(result.kind))) {
     throw new DataEngineServerError(INVALID_RECEIPT, 409);
   }
-  const parsed = 'receiptVersion' in result ? readCompactAcknowledgement(result as Record<string, unknown>) : result as CommandResult | IndexedTagConflict | SplitTagConflict;
+  const parsed = 'receiptVersion' in result ? readCompactAcknowledgement(result as Record<string, unknown>) : result as CommandResult | IndexedTagConflict | ConflictManifest;
   return { owner: raw.owner as string, operationId: raw.operationId as string, commandHash: raw.commandHash as string, result: parsed };
 }
 
@@ -281,22 +294,44 @@ function prepareReceipt(owner: string, command: DataCommand, commandHash: string
     const stored = serializeReceipt({ ...identity, result: compacted });
     if (fits(stored)) return { result, stored };
     const parts = splitTagConflictJson(stored.resultJson);
-    if (parts) return { result, parts, stored: serializeReceipt({ ...identity,
+    if (parts) return { result, parts: { collection: '_tagParts', values: parts }, stored: serializeReceipt({ ...identity,
       result: { kind: 'conflict', operationId: command.operationId, tagReceiptParts: parts.length, tagReceiptDigest: tagReceiptDigest(stored.resultJson) },
+    }) };
+  }
+  if (result.kind === 'conflict' && comparesRepeatedWords(result.conflicts)) {
+    const parts = splitConflictJson(ordinary.resultJson, MAX_EXACT_RECEIPT_PARTS);
+    if (parts) return { result, parts: { collection: '_conflictParts', values: parts }, stored: serializeReceipt({ ...identity,
+      result: { kind: 'conflict', operationId: command.operationId, exactReceiptParts: parts.length,
+        exactReceiptDigest: conflictReceiptDigest(ordinary.resultJson) },
     }) };
   }
   const refusal: CommandResult = { kind: 'refused', operationId: command.operationId, code: 'receipt-too-large' };
   return { result: refusal, stored: serializeReceipt({ ...identity, result: refusal }) };
 }
 
-const tagReceiptPartRef = (receipt: DocumentReference, index: number) => receipt.collection('_tagParts').doc(String(index));
+const receiptPartRef = (receipt: DocumentReference, collection: string, index: number) =>
+  receipt.collection(collection).doc(String(index));
 
-async function readTagReceiptParts(transaction: Transaction, receipt: DocumentReference, manifest: SplitTagConflict): Promise<IndexedTagConflict> {
-  if (!validTagReceiptPartCount(manifest.tagReceiptParts)) throw new DataEngineServerError(INVALID_RECEIPT, 409);
-  const parts = await Promise.all(Array.from({ length: manifest.tagReceiptParts }, (_, index) => transaction.get(tagReceiptPartRef(receipt, index))));
-  const result = readTagConflictParts(parts.map(part => part.data()?.json), manifest);
-  if (!result) throw new DataEngineServerError(INVALID_RECEIPT, 409);
-  return result;
+async function readReceiptParts(transaction: Transaction, receipt: DocumentReference, manifest: ConflictManifest,
+  command: DataCommand): Promise<ExactConflict | IndexedTagConflict> {
+  const readParts = async (collection: string, count: number) => {
+    const parts = await Promise.all(Array.from({ length: count }, (_, index) =>
+      transaction.get(receiptPartRef(receipt, collection, index))));
+    return parts.map(part => part.data()?.json);
+  };
+  if (isSplitTagConflict(manifest)) {
+    if (validTagReceiptPartCount(manifest.tagReceiptParts)) {
+      const result = readTagConflictParts(await readParts('_tagParts', manifest.tagReceiptParts), manifest);
+      if (result) return result;
+    }
+  } else if (validConflictPartCount(manifest.exactReceiptParts, MAX_EXACT_RECEIPT_PARTS)) {
+    const result = readConflictJsonParts(await readParts('_conflictParts', manifest.exactReceiptParts),
+      manifest.exactReceiptParts, manifest.exactReceiptDigest) as ExactConflict | undefined;
+    if (object(result) && result.kind === 'conflict' && result.operationId === command.operationId
+      && equalValues(result.snapshot?.resource, command.resource)
+      && Array.isArray(result.conflicts) && comparesRepeatedWords(result.conflicts)) return result;
+  }
+  throw new DataEngineServerError(INVALID_RECEIPT, 409);
 }
 
 function replayAcknowledgement(result: CompactAcknowledgement, resource: ResourceRef, raw: Record<string, unknown> | undefined): Acknowledgement {
@@ -334,7 +369,7 @@ function withAcceptedCopies(result: CommandResult, effects: ResourceSnapshot[]):
 }
 
 async function previousCommandResult(previous: StoredReceipt | undefined, command: DataCommand, commandHash: string,
-  raw: Record<string, unknown> | undefined, readParts: (manifest: SplitTagConflict) => Promise<IndexedTagConflict>): Promise<CommandResult | undefined> {
+  raw: Record<string, unknown> | undefined, readParts: (manifest: ConflictManifest) => Promise<ExactConflict | IndexedTagConflict>): Promise<CommandResult | undefined> {
   if (!owns(command.owner, command.resource, raw)) {
     if (previous && compact(previous.result)) throw unavailableReceiptSnapshot();
     return { kind: 'refused', operationId: command.operationId, code: PERMISSION_DENIED };
@@ -344,7 +379,8 @@ async function previousCommandResult(previous: StoredReceipt | undefined, comman
     return { kind: 'refused', operationId: command.operationId, code: 'operation-id-reused' };
   }
   if (compact(previous.result)) return replayAcknowledgement(previous.result, command.resource, raw);
-  const stored = isSplitTagConflict(previous.result) ? await readParts(previous.result) : previous.result;
+  const stored = isSplitTagConflict(previous.result) || isSplitExactConflict(previous.result)
+    ? await readParts(previous.result) : previous.result;
   if (isIndexedTagConflict(stored)) {
     const result = expandTagConflict(stored, command);
     if (!result) throw new DataEngineServerError(INVALID_RECEIPT, 409);
@@ -694,6 +730,18 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
       : readField(primarySnapshot.value, documentFieldPath(target));
     if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
+    if (target.action === 'sermonRepeatedWordsAction') {
+      if (!primarySnapshot.metadata) continue;
+      const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
+      const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');
+      // Keep one exact list per history document. Two competing lists can exceed Firestore's document limit.
+      transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId) + '-repeatedWords'), {
+        generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+        fields: [{ field: target.field, value: displaced.value.value ?? null, winnerDigest,
+          actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime }],
+      });
+      continue;
+    }
     if (target.field === 'color' || target.action === 'commentPlaceAction' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
       || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'accountPreferenceActions') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
@@ -799,7 +847,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     const raw = stored.exists ? stored.data() : undefined;
     const previous = existingReceipt.exists ? readReceipt(existingReceipt.data()) : undefined;
     const replay = await previousCommandResult(previous, command, commandHash, raw,
-      manifest => readTagReceiptParts(transaction, commandReceiptRef, manifest));
+      manifest => readReceiptParts(transaction, commandReceiptRef, manifest, command));
     if (replay) return replay.kind === 'acknowledged' ? relatedAcknowledgement(transaction, owner, replay) : replay;
 
     const dependencies = await Promise.all(command.dependsOn.map(id => transaction.get(receiptRef(owner, id))));
@@ -936,7 +984,10 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, receipt.stored);
-    receipt.parts?.forEach((json, index) => transaction.set(tagReceiptPartRef(commandReceiptRef, index), { json }));
+    if (receipt.parts) {
+      const { collection, values } = receipt.parts;
+      values.forEach((json, index) => transaction.set(receiptPartRef(commandReceiptRef, collection, index), { json }));
+    }
     return result;
   });
   const tag = deletedTag as string | null;

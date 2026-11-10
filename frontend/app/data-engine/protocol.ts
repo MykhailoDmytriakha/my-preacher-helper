@@ -2,12 +2,14 @@ import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { outlinePointGap, SECTION_KEYS, type OutlinePointGap } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
+import { repeatedWordsPath } from '@/utils/preparationFieldValues';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 import { stepGap } from '@/utils/serviceOrderStepPlacement';
 import { isModelPreferenceField } from '@/utils/userModelPreference';
 
 import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
+import { competingStringListEdits, isAuthoredStringList } from './authoredStringList';
 import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
@@ -19,7 +21,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
-import { competingServiceStepScripture, isServiceStepScriptureList, serviceOrderStepField } from './serviceOrderStepAction';
+import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { hasAmbiguousOutlineTextMerge, mergeOutlineContent } from './templateOutlineMerge';
@@ -568,11 +570,11 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   const marks = verseMarksAt(path);
   if (marks) return mergeVerseMarks(marks, base, mine, theirs, path);
   if (mergedWhole(path, base.value, mine.value, theirs.value)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
-  if (serviceOrderStepField(path)?.field === 'scriptureRefs') {
-    if (competingServiceStepScripture(base.value, mine.exists ? mine.value : [], theirs.exists ? theirs.value : [])) {
+  if (serviceOrderStepField(path)?.field === 'scriptureRefs' || equalValues(path, repeatedWordsPath)) {
+    if (competingStringListEdits(base.value, mine.exists ? mine.value : [], theirs.exists ? theirs.value : [])) {
       return { value: mine, conflicts: [{ path, base, mine, theirs }] };
     }
-    if (!base.exists && isServiceStepScriptureList(mine.value) && isServiceStepScriptureList(theirs.value)) {
+    if (!base.exists && isAuthoredStringList(mine.value) && isAuthoredStringList(theirs.value)) {
       const merged = mergeArrayFields({ exists: true, value: [] }, mine, theirs, path);
       if (merged) return merged;
     }

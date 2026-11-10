@@ -1,3 +1,4 @@
+import { isAuthoredStringList } from './authoredStringList';
 import { equalValues } from './fieldValues';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { captureSeenRowDetail } from './rowDetailCapture';
@@ -38,17 +39,13 @@ export const SERVICE_ORDER_FLAG_TARGET: RowFieldTarget<boolean> = {
 };
 const MAX_ORDERED_REFERENCE_LENGTH = 512;
 
-export function isServiceStepScriptureList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(reference => typeof reference === 'string');
-}
-
 export function isSingleServiceStepScripture(value: unknown): value is string[] {
-  return isServiceStepScriptureList(value) && value.length <= 1
+  return isAuthoredStringList(value) && value.length <= 1
     && value.every(reference => reference.length > 0 && reference.length <= MAX_ORDERED_REFERENCE_LENGTH);
 }
 
 export const SERVICE_ORDER_STEP_SCRIPTURE_LIST: RowFieldTarget<string[]> = {
-  field: 'steps', leaf: 'scriptureRefs', missing: [], accepts: isServiceStepScriptureList,
+  field: 'steps', leaf: 'scriptureRefs', missing: [], accepts: isAuthoredStringList,
 };
 export const SERVICE_ORDER_STEP_SCRIPTURE_TARGET = { ...SERVICE_ORDER_STEP_SCRIPTURE_LIST, accepts: isSingleServiceStepScripture };
 
@@ -107,15 +104,6 @@ export function captureServiceOrderStep(baseline: ResourceSnapshot, predecessor:
 export function matchesServiceOrderStep<Value extends string | boolean | string[]>(changes: FieldChange[], target: RowFieldTarget<Value>,
   action?: RowDetailObservation<Value>): boolean {
   return Boolean(action && matchesRowDetailBirth(changes, action, STEP_ID) && matchesRowAction(changes, action, target));
-}
-
-/** Two edits that remove the same reference cannot silently turn competing replacements into additions. */
-export function competingServiceStepScripture(base: unknown, mine: unknown, theirs: unknown): boolean {
-  if (!isServiceStepScriptureList(base) || !isServiceStepScriptureList(mine) || !isServiceStepScriptureList(theirs)) return false;
-  const seen = new Set(base), local = new Set(mine), stored = new Set(theirs);
-  if (!base.some(reference => !local.has(reference) && !stored.has(reference))) return false;
-  return mine.some(reference => !seen.has(reference) && !stored.has(reference))
-    || theirs.some(reference => !seen.has(reference) && !local.has(reference));
 }
 
 /** The unchecked checkbox is the same when a legacy row omits it or stores false. */
