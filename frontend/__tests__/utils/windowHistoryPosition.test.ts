@@ -102,6 +102,81 @@ afterEach(() => {
 });
 
 describe('window history reading position', () => {
+  it('opens a sermon at its beginning without forgetting the list or an eventual reading place', () => {
+    stop = installWindowHistoryPosition();
+    const list = window.history.state;
+    readAt(101);
+    document.body.innerHTML = '<div data-page-loading></div>';
+    window.history.pushState({ __NA: true, tree: 'detail' }, '', '/sermons/one');
+    const detail = window.history.state;
+
+    flushFrames();
+    expect(scroll).not.toHaveBeenCalled();
+    document.body.innerHTML = '<main><h1>Sermon</h1></main>';
+    geometry(4500);
+    flushFrames();
+    expect(y).toBe(0);
+
+    readAt(430);
+    traverse(list, '/sermons?q=remember');
+    flushFrames();
+    expect(y).toBe(101);
+    traverse(detail, '/sermons/one');
+    flushFrames();
+    expect(y).toBe(430);
+  });
+
+  it('remembers where an opening should begin when Back leaves it before it is ready', () => {
+    const list = leaveList();
+    const detail = window.history.state;
+    document.body.innerHTML = '<div data-page-loading></div>';
+    flushFrames();
+    expect(y).toBe(500);
+
+    traverse(list, '/sermons?q=remember');
+    document.body.innerHTML = '<main>List</main>';
+    geometry(4900);
+    flushFrames();
+    expect(y).toBe(500);
+
+    traverse(detail, '/sermons/one');
+    document.body.innerHTML = '<main><h1>Sermon</h1></main>';
+    geometry(4500);
+    flushFrames();
+    expect(y).toBe(0);
+  });
+
+  it('does not reset the reading place when returning to classic mode on the same sermon', () => {
+    rawReplace.call(window.history, { __NA: true }, '', '/sermons/one?mode=raw');
+    stop = installWindowHistoryPosition();
+    readAt(170);
+    window.history.pushState({ __NA: true }, '', '/sermons/one');
+    flushFrames();
+    expect(y).toBe(170);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('lets the person take over before the opening settles', () => {
+    leaveList();
+    window.dispatchEvent(new WheelEvent('wheel'));
+    readAt(170);
+    flushFrames();
+    expect(y).toBe(170);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it.each(['/sermons/one#reading', '/sermons/one?mode=raw', '/sermons?q=other', '/bible?book=john'])(
+    'leaves an explicit or in-place destination to its own navigation: %s',
+    href => {
+      stop = installWindowHistoryPosition();
+      readAt(101);
+      window.history.pushState({ __NA: true }, '', href);
+      flushFrames();
+      expect(y).toBe(101);
+      expect(scroll).not.toHaveBeenCalled();
+    }
+  );
+
   it('restores a readable shorter document once the saved offset fits after its short fallback', () => {
     const state = leaveList();
     geometry(1000); readAt(0);
@@ -228,6 +303,7 @@ describe('window history reading position', () => {
     for (let index = 0; index < 110; index++) {
       readAt(index + 1);
       window.history.pushState({}, '', `/sermons/${index}`);
+      flushFrames();
     }
     const positions = JSON.parse(window.sessionStorage.getItem('navigation:window-positions:v1') ?? '[]');
     expect(positions).toHaveLength(100);

@@ -18,6 +18,12 @@ const entryId = (value: unknown): string | null => {
 const measure = (): Position => ({ x: Math.max(0, window.scrollX), y: Math.max(0, window.scrollY) });
 const ownsWindowPosition = (href: string): boolean => resolveOfflineShellRoute(new URL(href).pathname) !== 'bible';
 
+function opensSermonAtBeginning(previousHref: string, href: string): boolean {
+  const target = new URL(href);
+  return target.pathname !== new URL(previousHref).pathname
+    && !target.search && !target.hash && resolveOfflineShellRoute(target.pathname) === 'sermon';
+}
+
 function isSavedPosition(value: unknown): value is SavedPosition {
   const record = stateRecord(value);
   return typeof record.entry === 'string' && typeof record.href === 'string'
@@ -33,8 +39,8 @@ function readSavedPositions(): Map<string, SavedPosition> {
   } catch { return new Map(); }
 }
 
-/** Restore only a traversed visit, after its readable document geometry returns.
- * New routes keep the router's ordinary landing. Bible/pane readers retain their own owners.
+/** Restore a traversed visit after its readable document geometry returns.
+ * An ordinary sermon opening starts at the top. Bible and pane readers retain their own owners.
  */
 export function installWindowHistoryPosition(): () => void {
   installModalHistory();
@@ -57,9 +63,12 @@ export function installWindowHistoryPosition(): () => void {
   }
 
   function save() {
-    if (pending || !current.id || !ownsWindowPosition(current.href)) return;
+    if (!current.id || !ownsWindowPosition(current.href)) return;
+    // An unfinished visit must remember its destination, not the offset it inherited.
+    const position = pending ?? { entry: current.id, href: current.href, ...current.position };
+    if (saved.get(current.id) === position) return;
     saved.delete(current.id);
-    saved.set(current.id, { entry: current.id, href: current.href, ...current.position });
+    saved.set(current.id, position);
     while (saved.size > MAX_SAVED_VISITS) saved.delete(saved.keys().next().value!);
     try { window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...saved.values()])); }
     catch { /* The in-document map remains usable when device storage refuses the convenience. */ }
@@ -101,9 +110,8 @@ export function installWindowHistoryPosition(): () => void {
     current.position = measure();
   }
 
-  function begin() {
+  function begin(position = current.id ? saved.get(current.id) : undefined) {
     stableHeight = -1; stableFrames = 0; applied = false;
-    const position = current.id ? saved.get(current.id) : undefined;
     pending = position?.href === current.href && ownsWindowPosition(current.href) ? position : null;
     schedule();
   }
@@ -111,10 +119,16 @@ export function installWindowHistoryPosition(): () => void {
   const push: History['pushState'] = function (data: unknown, unused: string, url?: string | URL | null) {
     if (!active || isModalHistoryMutation()) return originalPush.call(history, data, unused, url);
     capture(); save(); cancel();
+    const previousHref = current.href;
     const supplied = entryId(data);
     const id = supplied && supplied !== current.id ? supplied : newHistoryEntryId();
     originalPush.call(history, { ...stateRecord(data), [HISTORY_ENTRY_KEY]: id }, unused, url);
     current = { id, href: window.location.href, position: measure() };
+    if (opensSermonAtBeginning(previousHref, current.href)) {
+      // Next can keep the old list offset when the new root is in view under the sticky nav.
+      // Schedule after router focus and after saving the list's place for Back.
+      begin({ entry: id, href: current.href, x: 0, y: 0 });
+    }
   };
   const replace: History['replaceState'] = function (data: unknown, unused: string, url?: string | URL | null) {
     if (!active || isModalHistoryMutation()) return originalReplace.call(history, data, unused, url);

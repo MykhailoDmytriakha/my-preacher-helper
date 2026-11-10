@@ -89,6 +89,15 @@ unreachable, and allow navigation without optional Navigation Timing measurement
 final document whose saved coordinate is no longer reachable keeps native scrolling available
 until newer input/navigation; the module does not promise a semantic anchor for changed words.
 
+A fresh push to a different, plain sermon detail address starts at the beginning. Next can
+retain the list offset when the new page root is within the viewport even though the sticky
+navigation covers its title. Save the outgoing reading place first, then use the same settled
+window-position controller to start the new visit at zero. If the person leaves before the
+title is ready, save the new visit's intended position so Forward can still start there.
+Same-path mode changes, fragment links and addresses with an explicit view keep their
+navigation behavior. Check the title's actual top against the bottom of the sticky navigation
+at the affected window dimensions as well as checking the address and scroll offset.
+
 The Bible route keeps its own verse/arrival owner (`lastPlace`/`BibleBookReader`); note panes
 keep `useNoteScrollPosition`. This is a bounded history return, not continuous page anchoring.
 Keep native `history.scrollRestoration` unchanged, and never add reset timers or writers to
