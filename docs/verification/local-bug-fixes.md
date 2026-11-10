@@ -8615,3 +8615,11 @@ The original protocol tests reproduced a false neighbor-order conflict and an ac
 - Before and after reports, screenshots and logs are in the local case under `artifacts/group-shared-block-20261110`.
 
 After deployment, confirm the released version first. In an isolated disposable group with two populated steps, duplicate one step offline, delete the original from a second profile and reconnect the first profile. Reverse the delivery order in a second disposable plan. Reload and compare the copied text, both visible step numbers and the untouched leader notes. Remove the disposable plans after acceptance.
+
+## BUG-20261018-ipad-sermon-plan-button · Mobile Safari recheck on 2026-11-10
+
+Safari 26.1 in an iPad Air 11 simulator opened the manual plan from the sermon detail button four times across two disposable sermons at 820 CSS px. The cases covered the first opening, a second opening of the same sermon, another sermon, and opening after reload. Saved plan words appeared in all four cases. I inspected the first and post-reload screenshots. The canonical snapshots of both sermons matched before and after, with no page exception in the four observations.
+
+The local build `8O6qYaSkYp6XrLOLFkLrH` used `3db590b8` and an uncommitted QA adapter for Firebase Auth. The adapter used the local Auth emulator. The browser used local Firestore as well. SafariDriver's element click selected text instead of opening the plan, so the successful runs invoked the actual button through the DOM. The first attempt stopped during sign-in navigation. The second saw the plan in the DOM but captured an earlier frame and left the sermon on a WebDriver Back command. Neither was counted among the four runs. This evidence covers a Safari tab. The original error on the physical iPad remains open.
+
+The simulator and temporary listeners were closed, and the normal compiled output and tracked source were restored. Screenshots, original attempts, the adapter patch and the exact test runner are in the local case under `artifacts/ipad-plan-safari-20261110`. If the device fails again, capture the running app version, route mode and technical details before clearing or replacing any browser data.
