@@ -311,3 +311,17 @@ it('still compares newly created same-leaf words and scalar or deleted ancestors
   expect(mergeFields(missing, field({ title: 'Mine' }), field({ verse: 'Theirs' })).conflicts).toHaveLength(1);
   expect(mergeFields(missing, field({ id: 'same', title: 'Mine' }), field({ id: 'same', verse: 'Theirs' }), ['points', 'id:same']).conflicts).toHaveLength(1);
 });
+
+it('does not present a note-only comparison when the same outline point was moved twice', () => {
+  const moved = { id: 'moved', text: 'Moved point' };
+  const reminder = { id: 'reminder', text: 'Separate point', note: 'Opening reminder' };
+  const base = { outline: { introduction: [], main: [moved, reminder], conclusion: [] } };
+  const mine = { outline: { introduction: [moved], main: [{ ...reminder, note: 'My reminder' }], conclusion: [] } };
+  const theirs = { outline: { introduction: [], main: [{ ...reminder, note: 'Saved reminder' }], conclusion: [moved] } };
+  const result = mergeDocumentFields(base, mine, theirs);
+
+  expect(result).toEqual({
+    value: field(mine),
+    conflicts: [{ path: ['outline'], base: field(base.outline), mine: field(mine.outline), theirs: field(theirs.outline) }],
+  });
+});

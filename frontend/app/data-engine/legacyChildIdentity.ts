@@ -62,17 +62,20 @@ function defectKey(issue: ZodIssue, value: unknown): string | null {
   return location ? JSON.stringify([scope, location, identity, occurrence]) : null;
 }
 
+export function outlineIdentityRows(value: unknown): Record<string, unknown>[] {
+  if (!object(value)) return [];
+  return ['introduction', 'main', 'conclusion'].flatMap(name => {
+    const points = value[name];
+    return Array.isArray(points) ? points.filter(object).flatMap(point =>
+      [point, ...(Array.isArray(point.subPoints) ? point.subPoints.filter(object) : [])]) : [];
+  });
+}
+
 /** Return the rows governed by this issue, including outline-wide identities. */
 function duplicateRows(issue: ZodIssue, value: unknown): Record<string, unknown>[] {
   if (issue.code !== 'custom') return [];
   const identity = issue.params?.identity;
-  if (issue.params?.scope === 'outline') {
-    if (!object(value)) return [];
-    return ['introduction', 'main', 'conclusion'].flatMap(name => {
-      const points = value[name];
-      return Array.isArray(points) ? points.filter(object).flatMap(point => [point, ...(Array.isArray(point.subPoints) ? point.subPoints.filter(object) : [])]) : [];
-    }).filter(row => row.id === identity);
-  }
+  if (issue.params?.scope === 'outline') return outlineIdentityRows(value).filter(row => row.id === identity);
   let list = value;
   for (const part of issue.path.slice(0, -2)) {
     if (typeof part === 'number' && Array.isArray(list)) list = list[part];

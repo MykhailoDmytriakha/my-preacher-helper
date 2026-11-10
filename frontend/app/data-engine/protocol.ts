@@ -20,7 +20,7 @@ import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionCon
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
-import { mergeTemplateOutlineContent } from './templateOutlineMerge';
+import { hasAmbiguousReminderMerge, mergeOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
 export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
@@ -554,9 +554,9 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
-  if (path.length === 1 && path[0] === 'structure') {
-    const template = mergeTemplateOutlineContent(base, mine, theirs, path, mergeFields);
-    if (template) return template;
+  if (path.length === 1 && (path[0] === 'structure' || path[0] === 'outline')) {
+    const outline = mergeOutlineContent(base, mine, theirs, path, mergeFields);
+    if (outline) return outline;
   }
   // Group block editors refresh this stamp for any edit. It must not veto independent authored fields.
   if (path.length === 3 && path[0] === 'templates' && path[1].startsWith('id:') && path[2] === 'updatedAt'
@@ -568,7 +568,11 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
     // Independently added map fields share an empty ancestor; deletion and keyed identity stay whole.
-    return mergeObjects(base.exists ? base.value as DocumentData : {}, mine.value, theirs.value, path);
+    const merged = mergeObjects(base.exists ? base.value as DocumentData : {}, mine.value, theirs.value, path);
+    if (path.length === 1 && path[0] === 'outline' && hasAmbiguousReminderMerge(merged)) {
+      return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+    }
+    return merged;
   }
   if (base.exists && mine.exists && theirs.exists) {
     if (Array.isArray(base.value) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {

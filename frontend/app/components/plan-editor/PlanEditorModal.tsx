@@ -633,8 +633,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   if (needsWholeChoice && !wholeReviewOpen) return;
                   let chosen: SermonOutline;
                   try {
-                    chosen = needsWholeChoice ? outline
-                      : chooseOutlineLocalChanges(baseOutlineRef.current, outline, collision.serverOutline);
+                    chosen = needsWholeChoice ? outline : noteChoice?.acceptLocal()
+                      ?? chooseOutlineLocalChanges(baseOutlineRef.current, outline, collision.serverOutline);
                   } catch (error) {
                     if (!(error instanceof OutlineChoiceReviewRequiredError)) throw error;
                     requireWholeReview();
@@ -665,14 +665,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 onClick={() => {
                   const theirs = fromSermon(collision.serverOutline);
                   if (noteChoice) {
-                    let chosen: SermonOutline;
-                    try { chosen = noteChoice.acceptStored(); }
-                    catch (error) {
-                      if (!(error instanceof OutlineChoiceReviewRequiredError)) throw error;
-                      requireWholeReview();
-                      setWholeReviewOpen(false);
-                      return;
-                    }
+                    const chosen = noteChoice.acceptStored();
                     baseOutlineRef.current = theirs;
                     selectConflict(chosen, theirs);
                     setOutline(chosen);

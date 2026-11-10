@@ -96,3 +96,24 @@ it('chooses the stored reminder without discarding a separate plan edit made whi
   expect(choice).toMatchObject({ mine: 'Reminder from this device', stored: 'Reminder from the other device' });
   expect(choice?.acceptStored().main).toEqual([stored.main[0], mine.main[1]]);
 });
+
+it('keeps exact saved positions when resolving a reminder inside the plan editor', () => {
+  const opening = { ...sub('reminder', 'Point', 8), note: 'Opening reminder' };
+  const sibling = sub('sibling', 'Neighbor', 4);
+  const before = plan([point('holder', 'Holder', [sibling, opening])]);
+  const mine = plan([point('holder', 'Holder', [sibling, { ...opening, note: 'Local note' }])]);
+  const stored = plan([point('holder', 'Stored title', [sibling, { ...opening, note: 'Stored note' }])]);
+  const choice = readOutlineNoteChoice(before, mine, stored);
+  expect(choice?.acceptStored()).toEqual(stored);
+  expect(choice?.acceptLocal()).toEqual(plan([{ ...stored.main[0], subPoints: mine.main[0].subPoints }]));
+});
+
+it('leaves competing moves to the structure comparison even with only one reported note conflict', () => {
+  const moved = point('moved', 'Moved point');
+  const reminder = { ...point('reminder', 'Separate point'), note: 'Opening reminder' };
+  const before = plan([moved, reminder]);
+  const mine = { ...plan([{ ...reminder, note: 'Local reminder' }]), introduction: [moved] };
+  const stored = plan([{ ...reminder, note: 'Stored reminder' }], [moved]);
+
+  expect(readOutlineNoteChoice(before, mine, stored)).toBeUndefined();
+});

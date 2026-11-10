@@ -1,7 +1,9 @@
 import { SECTION_KEYS } from '@/utils/outlineDnd';
+import { sermonNoteConflictTarget } from '@/utils/sermonNoteText';
 
 import { withoutUnsignedRowOrder } from './anchoredRowPlacement';
 import { equalValues, object, readField } from './fieldValues';
+import { childIdentityIssues, outlineIdentityRows } from './legacyChildIdentity';
 
 import type { ConflictDetail, DocumentData, FieldValue, Json } from './types';
 import type { SectionKey } from '@/utils/outlineDnd';
@@ -58,7 +60,15 @@ function changedParents(before: TemplateOutline, content: TemplateOutline, place
   return homes;
 }
 
-function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, homes: Map<string, string | null>): boolean {
+function untouchedRemovedChildren(before: TemplateOutline, content: TemplateOutline, placed: TemplateOutline): Set<string> {
+  const live = pointParents(placed);
+  const authored = new Map([...index(content).values()].flatMap(children).map(row => [row.id, row]));
+  return new Set([...index(before).values()].flatMap(children)
+    .filter(row => !live.has(row.id) && equalValues(row, authored.get(row.id))).map(row => row.id));
+}
+
+function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, homes: Map<string, string | null>,
+  untouchedRemovals?: ReadonlySet<string>): boolean {
   if (!homes.size) return true;
   const arrivals = new Map<string, Row[]>(), promoted: Row[] = [];
   const arrive = (home: string, row: Row) => arrivals.set(home, [...arrivals.get(home) ?? [], row]);
@@ -73,8 +83,9 @@ function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, hom
     });
     const home = homes.get(row.id);
     if (typeof home === 'string') {
-      // The point and its children each need their own proved destination in a two-level outline.
-      if (retained.length) return false;
+      // A demoted point cannot hold children. A proved removal of an untouched
+      // child needs no new home, but never discard a child with authored changes.
+      if (retained.some(child => !untouchedRemovals?.has(child.id))) return false;
       const { subPoints: _children, ...point } = row;
       arrive(home, point);
       rows.delete(row.id);
@@ -94,22 +105,36 @@ function projectPointHomes(rows: Map<string, Row>, placed: Map<string, Row>, hom
   return true;
 }
 
+const outlineLayout = (outline: TemplateOutline) => SECTION_KEYS.map(section => outline[section].map(row => [
+  row.id, children(row).map(child => [child.id, child.position]),
+]));
+const reminders = (outline: TemplateOutline) => SECTION_KEYS.flatMap(section => outline[section].flatMap(row =>
+  [row.note, ...children(row).map(child => child.note)]));
+
+function reminderContentEdit(before: TemplateOutline, after: TemplateOutline): boolean {
+  return equalValues(outlineLayout(before), outlineLayout(after)) && !equalValues(reminders(before), reminders(after));
+}
+
 /** Edits without a new placement follow point identities into their saved sections. */
-export function mergeTemplateOutlineContent(base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[], merge: Merge): MergeResult | null {
+export function mergeOutlineContent(base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[], merge: Merge): MergeResult | null {
   const before = templateOutline(base.value), local = templateOutline(mine.value), stored = templateOutline(theirs.value);
   if (!before || !local || !stored) return null;
   const openingTopology = topology(before);
-  const storedPlaces = keepsPointHomes(before, local) && !equalValues(openingTopology, topology(stored));
-  const localPlaces = !storedPlaces && keepsPointHomes(before, stored) && !equalValues(openingTopology, topology(local));
+  // A sermon note Save may bundle other authored fields. Only the branch
+  // whose whole placement is unchanged can carry those fields across a move.
+  const contentOnly = path[0] === 'outline' ? reminderContentEdit : keepsPointHomes;
+  const storedPlaces = contentOnly(before, local) && !equalValues(openingTopology, topology(stored));
+  const localPlaces = !storedPlaces && contentOnly(before, stored) && !equalValues(openingTopology, topology(local));
   if (!storedPlaces && !localPlaces) return null;
   const placement = storedPlaces ? stored : local;
   const content = storedPlaces ? local : stored;
   const live = index(placement);
   const homes = changedParents(before, content, placement);
+  const untouchedRemovals = path[0] === 'outline' && homes.size ? untouchedRemovedChildren(before, content, placement) : undefined;
   const review = { value: mine, conflicts: [{ path, base, mine, theirs }] };
   const project = (outline: TemplateOutline) => {
     const rows = index(outline);
-    if (!projectPointHomes(rows, live, homes)) return undefined;
+    if (!projectPointHomes(rows, live, homes, untouchedRemovals)) return undefined;
     return (section: SectionKey) => {
       const here = new Set(placement[section].map(row => row.id));
       const placed = placement[section].flatMap(point => rows.get(point.id) ?? []);
@@ -139,15 +164,29 @@ export function mergeTemplateOutlineContent(base: FieldValue, mine: FieldValue, 
   return templateOutline(value) ? { value: { exists: true, value }, conflicts } : review;
 }
 
+/** Independent section merges can put the same point in two homes. A reminder
+ * comparison cannot authorize selecting either placement. */
+export function hasAmbiguousReminderMerge(merged: MergeResult): boolean {
+  return merged.conflicts.length === 1 && sermonNoteConflictTarget(merged.conflicts[0].path) !== undefined
+    && childIdentityIssues(outlineIdentityRows(merged.value.value)).length > 0;
+}
+
 /** A text choice already projected onto the saved layout needs no second outline reconstruction. */
 export function usesSavedTemplateLayout(opening: unknown, proposed: unknown, current: unknown, merged: unknown): boolean {
   const before = templateOutline(opening), local = templateOutline(proposed);
   const saved = templateOutline(current), candidate = templateOutline(merged);
   if (!before || !local || !saved || !candidate) return false;
-  const layout = (outline: TemplateOutline) => SECTION_KEYS.map(section => outline[section].map(row => [
-    row.id, children(row).map(child => [child.id, child.position]),
-  ]));
-  return equalValues(layout(before), layout(local)) && equalValues(layout(saved), layout(candidate));
+  return equalValues(outlineLayout(before), outlineLayout(local)) && equalValues(outlineLayout(saved), outlineLayout(candidate));
+}
+
+/** Keep the exact positions chosen by an outline merge when answering a reminder question. */
+export function usesMergedSermonReminderLayout(opening: unknown, proposed: unknown, current: unknown, merged: unknown): boolean {
+  const before = templateOutline(opening), local = templateOutline(proposed);
+  const saved = templateOutline(current), candidate = templateOutline(merged);
+  if (!before || !local || !saved || !candidate) return false;
+  const selected = outlineLayout(candidate);
+  return (reminderContentEdit(before, local) && equalValues(outlineLayout(saved), selected))
+    || (reminderContentEdit(before, saved) && equalValues(outlineLayout(local), selected));
 }
 
 function positions(outline: TemplateOutline, retained: ReadonlySet<string>) {

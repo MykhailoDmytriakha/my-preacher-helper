@@ -6,6 +6,8 @@ import { isCollectionServed } from '@/data-engine/activation';
 import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
+import { readSermonConflict } from '@/data-engine/rowConflictDetails';
+import { keepUncontestedSermonFields } from '@/data-engine/sermonFieldChoice';
 import { DataSession } from '@/data-engine/session';
 import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
 
@@ -6669,4 +6671,134 @@ describe('deleting an outline node while a thought is linked to it', () => {
     });
   });
 
+});
+
+describe('an inline reminder queued across a sermon outline move', () => {
+  const owner = 'owner';
+  const resource = { collection: 'sermons', id: 'reminder-placement' };
+  const openingNote = 'Opening reminder';
+  const localNote = 'Words typed in the open reminder';
+  const storedNote = 'Independently edited reminder';
+  const reminder = { id: 'reminder', text: 'Main point', note: openingNote };
+  const parent = { id: 'parent', text: 'Destination' };
+  const sibling = { id: 'sibling', text: 'Keep this sibling', position: 4, note: 'Independent note' };
+  const outline = (main: SermonOutline['main'], conclusion: SermonOutline['conclusion'] = []): SermonOutline =>
+    ({ introduction: [], main, conclusion });
+  const nested = (note: string) => outline([], [{ ...parent, text: 'Renamed destination', isReviewed: true,
+    subPoints: [sibling, { ...reminder, position: 8, note }] }]);
+  const create = (before: SermonOutline): DataCommand => ({ protocol: 1, owner, resource, operationId: 'create-reminder',
+    generation: null, dependsOn: [], kind: 'create',
+    value: { userId: owner, title: 'Reminder sermon', verse: 'John 3:16', date: '2026-11-09', thoughts: [], outline: before as unknown as Json } });
+  const save = (id: string, before: SermonOutline, after: SermonOutline): DataCommand => ({
+    protocol: 1, owner, resource, operationId: id, generation: 'create-reminder', dependsOn: [], kind: 'update',
+    changes: [{ path: ['outline'], before: { exists: true, value: before as unknown as Json },
+      after: { exists: true, value: after as unknown as Json } }],
+  });
+
+  it.each([true, false])('keeps both the move and the reminder words (placement delivered first: %s)', async placementFirst => {
+    const before = outline([reminder, parent]);
+    const [move, edit] = [save('move', before, nested(openingNote)), save('edit', before, outline([{ ...reminder, note: localNote }, parent]))];
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, placementFirst ? move : edit)).toMatchObject({ kind: 'acknowledged' });
+    const result = await processCommand(owner, placementFirst ? edit : move);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: nested(localNote) } } });
+    expect((await readDocument(owner, resource))?.value?.outline).toEqual(nested(localNote));
+    expect(await processCommand(owner, placementFirst ? edit : move)).toEqual(result);
+  });
+
+  it('asks about the two words at the relocated note when both sides edit them', async () => {
+    const before = outline([reminder, parent]);
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('move-and-edit', before, nested(storedNote)))).toMatchObject({ kind: 'acknowledged' });
+    const result = await processCommand(owner, save('edit', before, outline([{ ...reminder, note: localNote }, parent])));
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: [{
+      path: ['outline', 'conclusion', 'id:parent', 'subPoints', 'id:reminder', 'note'],
+      base: { exists: true, value: openingNote }, mine: { exists: true, value: localNote }, theirs: { exists: true, value: storedNote },
+    }] });
+    expect((await readDocument(owner, resource))?.value?.outline).toEqual(nested(storedNote));
+  });
+
+  it.each(['local', 'saved'])('a %s note choice keeps the precise relocated outline and a separate local edit', async choice => {
+    const before = outline([reminder, parent]);
+    const created = await processCommand(owner, create(before));
+    if (created.kind !== 'acknowledged') throw new Error('Expected sermon creation');
+    const moved = await processCommand(owner, save('move-and-edit', before, nested(storedNote)));
+    if (moved.kind !== 'acknowledged') throw new Error('Expected moved point');
+    const command = save('edit', before, outline([{ ...reminder, note: localNote }, parent]));
+    if (command.kind !== 'update') throw new Error('Expected update');
+    const change = { path: ['title'], before: { exists: true, value: 'Reminder sermon' }, after: { exists: true, value: 'Local title' } };
+    const result = await processCommand(owner, { ...command, changes: [...command.changes, change] });
+    if (result.kind !== 'conflict') throw new Error('Expected reminder conflict');
+    const session = new DataSession(created.snapshot);
+    const proposed = { ...created.snapshot.value!, outline: command.changes[0].after.value!, title: 'Local title' };
+    session.edit(proposed);
+    session.prepare(command.operationId, owner);
+    session.accept(result);
+    const shown = session.checkpoint();
+    expect(readSermonConflict(shown)).toMatchObject({ kind: 'note-text', mine: localNote, stored: storedNote });
+    session.release(result.operationId);
+    const accepted = choice === 'local' ? (session.keepLocal(), session.checkpoint().draft)
+      : keepUncontestedSermonFields(shown.confirmed, shown.draft, shown.remoteCandidate, shown.conflicts);
+    expect(accepted).toMatchObject({
+      title: 'Local title', outline: nested(choice === 'local' ? localNote : storedNote),
+    });
+  });
+
+  it('keeps a separate title edit bundled with the note when another device moves the point', async () => {
+    const neighbor = { id: 'neighbor', text: 'Opening neighbor title' };
+    const before = outline([reminder, parent, neighbor]);
+    const moved = nested(openingNote);
+    const saved = { ...moved, main: [neighbor] };
+    const renamed = { ...neighbor, text: 'New neighbor title from the same Save' };
+    const proposed = outline([{ ...reminder, note: localNote }, parent, renamed]);
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('move', before, saved))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('edit', before, proposed))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: { ...nested(localNote), main: [renamed] } } },
+    });
+  });
+
+  it('keeps the text of a promoted subpoint when the later delivery clears its reminder', async () => {
+    const opening = outline([{ ...parent, subPoints: [{ ...reminder, position: 4 }, sibling] }]);
+    const promoted = outline([{ ...parent, subPoints: [sibling] }], [{ ...reminder, text: 'Renamed by the moving device' }]);
+    const cleared = { id: reminder.id, text: reminder.text, position: 4 };
+    const proposed = outline([{ ...parent, subPoints: [cleared, sibling] }]);
+    expect(await processCommand(owner, create(opening))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('promote', opening, promoted))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('clear', opening, proposed))).toMatchObject({ kind: 'acknowledged' });
+    const live = (await readDocument(owner, resource))?.value?.outline as unknown as SermonOutline;
+    expect(live).toEqual({ ...promoted, conclusion: [{ id: reminder.id, text: 'Renamed by the moving device' }] });
+  });
+
+  it.each([true, false])('keeps a moved reminder and the removal of its unchanged child (move first: %s)', async placementFirst => {
+    const removed = { id: 'old-child', text: 'Former child', position: 3, note: 'Child reminder' };
+    const before = outline([{ ...reminder, subPoints: [removed] }, parent]);
+    const edited = outline([{ ...reminder, subPoints: [removed], note: localNote }, parent]);
+    const [move, edit] = [save('move-with-removal', before, nested(openingNote)), save('edit-parent-note', before, edited)];
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, placementFirst ? move : edit)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, placementFirst ? edit : move)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: nested(localNote) } },
+    });
+  });
+
+  it('holds changed words of a child deleted as the parent is moved', async () => {
+    const child = { id: 'old-child', text: 'Former child', position: 3, note: 'Child reminder' };
+    const before = outline([{ ...reminder, subPoints: [child] }, parent]);
+    const edited = outline([{ ...reminder, subPoints: [{ ...child, note: localNote }] }, parent]);
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('move-with-removal', before, nested(openingNote)))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('edit-child', before, edited))).toMatchObject({ kind: 'conflict' });
+    expect((await readDocument(owner, resource))?.value?.outline).toEqual(nested(openingNote));
+  });
+
+  it('keeps the removal in the database when a reminder edit arrives later', async () => {
+    const before = outline([reminder, parent]);
+    const without = outline([parent]);
+    expect(await processCommand(owner, create(before))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('remove', before, without))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(owner, save('edit', before, outline([{ ...reminder, note: localNote }, parent]))))
+      .toMatchObject({ kind: 'conflict' });
+    expect((await readDocument(owner, resource))?.value?.outline).toEqual(without);
+  });
 });

@@ -5,7 +5,7 @@ import { normalizeStructureTag } from '@/utils/structureTags';
 import { findThoughtSectionInStructure, resolveSectionFromOutline, resolveSectionFromTags, SECTION_ORDER } from '@/utils/thoughtOrdering';
 
 import { equalValues, object } from './fieldValues';
-import { usesSavedTemplateLayout } from './templateOutlineMerge';
+import { usesMergedSermonReminderLayout, usesSavedTemplateLayout } from './templateOutlineMerge';
 
 import type { DocumentData, FieldValue, Json } from './types';
 import type { OutlinePoint, Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
@@ -66,15 +66,20 @@ function thoughtChoices(base: DocumentData, mine: DocumentData, theirs: Document
   });
 }
 
-function chooseSermonOutline(base: DocumentData, mine: DocumentData, theirs: DocumentData,
+function chooseSermonOutline(base: DocumentData, mine: DocumentData, theirs: DocumentData, merged: DocumentData,
   choices: ThoughtChoice[], merge: MergeFields): SermonOutline | undefined {
   const local = outlineOf(mine), remote = outlineOf(theirs);
   if (!local) return equalValues(base.outline, mine.outline) ? remote : undefined;
   const requiredIds = choices.filter(choice => choice.local).flatMap(choice =>
     [choice.value.outlinePointId, choice.value.subPointId].filter((id): id is string => typeof id === 'string' && id.length > 0));
-  const present = new Set(Object.values(remote ?? emptyOutline()).flatMap((points: OutlinePoint[]) =>
-    points.flatMap(point => [point.id, ...(point.subPoints ?? []).map(sub => sub.id)])));
-  if (equalValues(base.outline, mine.outline) && requiredIds.every(id => present.has(id))) return remote;
+  const coversThoughts = (outline: SermonOutline | undefined) => {
+    const present = new Set(Object.values(outline ?? emptyOutline()).flatMap((points: OutlinePoint[]) =>
+      points.flatMap(point => [point.id, ...(point.subPoints ?? []).map(sub => sub.id)])));
+    return requiredIds.every(id => present.has(id));
+  };
+  if (equalValues(base.outline, mine.outline) && coversThoughts(remote)) return remote;
+  const candidate = outlineOf(merged);
+  if (usesMergedSermonReminderLayout(base.outline, mine.outline, theirs.outline, merged.outline) && coversThoughts(candidate)) return candidate;
   return chooseOutlineChanges(outlineOf(base), local, remote, merge, { requiredIds, retainLocalPaths: true });
 }
 
@@ -115,7 +120,7 @@ export function chooseLocalPlacement(collection: string, base: DocumentData | nu
   }
   if (collection !== 'sermons' || !Array.isArray(mine.thoughts)) return merged;
   const candidate = copy(merged), choices = thoughtChoices(base, mine, theirs, candidate, explicit);
-  const outline = chooseSermonOutline(base, mine, theirs, choices, merge);
+  const outline = chooseSermonOutline(base, mine, theirs, candidate, choices, merge);
   if (outline) candidate.outline = outline as unknown as Json;
   placeThoughts(base, mine, theirs, candidate, choices, outline);
   return candidate;

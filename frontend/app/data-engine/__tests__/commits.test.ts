@@ -457,6 +457,50 @@ describe('Durable commit requests', () => {
     }
   });
 
+  it.each([false, true])('uses a relocated reminder after a predecessor ACK (saved words also changed: %s)', async competing => {
+    const opening = { id: 'point', text: 'Point', note: 'Opening reminder' };
+    const parent = { id: 'destination', text: 'Destination' };
+    const outline = { introduction: [], main: [opening, parent], conclusion: [] };
+    const changed = 'Locally edited reminder';
+    const stored = competing ? 'Independently saved reminder' : opening.note;
+    const movedOutline = { ...outline, main: [parent], conclusion: [
+      { id: 'holder', text: 'New holder', subPoints: [{ ...opening, position: 1, note: stored }] },
+    ] };
+    const baseline = initial();
+    Object.assign(baseline.value!, { verse: 'John 3:16', date: '2026-11-09', thoughts: [], outline });
+    const s = setup({ opening: baseline, nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(baseline);
+    const titled = { ...baseline.value!, title: 'Own preceding save' };
+    editor.edit(titled);
+    const first = (await queue.save('edit', editor.checkpoint()))!;
+    editor.edit({ ...titled, outline: { ...outline, main: [{ ...opening, note: changed }, parent] } });
+    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, action: {
+      kind: 'sermon-note-text', opening: { sermonId: baseline.resource.id, generation: 'g', pending: [first.id],
+        target: { kind: 'point', id: opening.id }, text: opening.note },
+    } }))!;
+    const arrived = { ...baseline, value: { ...titled, outline: movedOutline },
+      metadata: { ...baseline.metadata!, operationId: first.id, revision: 2 } };
+    s.replace(arrived);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: arrived });
+    await s.makeQueue().queue.drain(true);
+
+    if (competing) {
+      expect((await s.requests.list('owner')).find(item => item.id === second.id)).toMatchObject({
+        state: 'conflict', result: { conflicts: [{
+          path: ['outline', 'conclusion', 'id:holder', 'subPoints', 'id:point', 'note'],
+          base: { value: opening.note }, mine: { value: changed }, theirs: { value: stored },
+        }] },
+      });
+      expect(s.server().value?.outline).toEqual(movedOutline);
+    } else {
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id }));
+      expect(s.server().value?.outline).toEqual({ ...movedOutline, conclusion: [
+        { ...movedOutline.conclusion[0], subPoints: [{ ...opening, position: 1, note: changed }] },
+      ] });
+    }
+  });
+
   it('preserves the authored Bible word through queue restart and replays the exact ancestor after a different predecessor ACK', async () => {
     const s = setup();
     const { queue } = s.makeQueue();
