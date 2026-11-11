@@ -240,7 +240,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   /** The Bible the screen under the window reads (the reader's); places it moves to are counted in it. By default, the interface's. */
   bible?: BibleId;
   /** How that screen names a place, so a place moved to reads as `place` does; by default as Studies name it. */
-  placeOf?: (reference: ScriptureReference) => string;
+  placeOf?: (reference: ScriptureReference, bible: BibleId) => string;
   /** The verse's words, or "Ис 40–41 — главы целиком" for a comment on whole chapters; empty where the text is not at hand. */
   context?: string;
   /**

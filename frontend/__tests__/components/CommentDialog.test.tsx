@@ -975,8 +975,9 @@ describe('CommentDialog', () => {
       first.unmount();
       render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ps 51:8" bible="kjv" onClose={jest.fn()} />);
       await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
-      // The words of the place as chosen, in the comment's own Bible.
-      expect(screen.getByText('Psalms 50:12')).toBeInTheDocument();
+      // The place as chosen, named and quoted in the Bible the window shows (the owner, 2026-11-11); it is saved in the
+      // comment's own, below.
+      expect(screen.getByText('Psalms 51:10')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
       expect(mockEngine.updateNote).toHaveBeenCalledWith(expect.objectContaining({
         updates: { scriptureRefs: [{ id: 'r', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 }] },
@@ -1114,7 +1115,8 @@ describe('CommentDialog', () => {
       render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Рим 14:24–26" bible="rst" placeOf={placeOf} onClose={jest.fn()} />);
       await screen.findByRole('heading', { name: 'comment.title' });
       // The title is asked of the screen's way of naming, with the comment's own reference — not the first piece the screen gave.
-      expect(placeOf).toHaveBeenCalledWith(expect.objectContaining({ bible: 'kjv', book: 'Romans', chapter: 16 }));
+      // It is handed the Bible the screen shows, to name it in.
+      expect(placeOf).toHaveBeenCalledWith(expect.objectContaining({ bible: 'kjv', book: 'Romans', chapter: 16 }), 'rst');
     });
 
     it('closes, saying where it is, when the version taken is a note stored without a type', async () => {
