@@ -87,6 +87,24 @@
 
 ## 🔵 P3 — открыто
 
+
+### BUG-20261112-prayer-delete-before-sync · Delete rejects an unsynced prayer request
+
+**P3.** The person explicitly removed their new prayer, but it is saved and remains visible after reconnect. They have to repeat the deletion.
+**Observed.** Installed Chrome without a visible window at 390 and 1280 px, localhost build `N1TnDnnZG3qBDU79uTfzS` at `4c8a3a15`, local Auth and Firestore.
+**Steps.** Open Prayer Journal online, disconnect, add one prayer, then confirm Delete from its card or detail page. Both paths show "Failed to save" and log "Resolve pending commands before deleting". On reconnect only create is acknowledged, and the prayer is still present after reload.
+**Expected.** Once the new prayer is visible, the explicit confirmation captures deletion of that exact creation, including across restart. The queue protects other versions and unrelated prayers.
+**Class.** The public document action blocks deletion with pending work. A first creation can already be visible on the device and be the exact target of an explicit delete.
+
+| Place | Status | Check |
+|---|---|---|
+| Prayer Journal card and prayer details | Confirmed | Both paths call `usePrayerRequestsEngine.deletePrayer` and the same document action. |
+| `data-engine/controller.ts` and durable queue | Confirmed | The pending guard refuses before capture. Check the exact create dependency and server tombstone after restart. |
+| Care own place | Existing control | The earlier fix already handles deletion behind a pending first create. |
+| Other callers | Audit | Check which routes expose an ordinary first create with Delete available. Preserve special relation and owner-accepted boundaries. |
+
+**Evidence.** `artifacts/prayer-delete-before-sync-20261112/before/`. Both qualifying runs observed zero 5xx responses and zero external requests.
+
 ### BUG-20261107-analysis-messages-hidden-below-lg · На телефоне и iPad в портрете разбор молча отказывает: объяснения стоят только в боковой панели, а её там нет
 **P3** — данные целы, но отказ без слов читается как поломка («потянул — ничего не произошло»). **Найден.** 2026-11-07 · агент, по коду, разбирая жалобу владельца на первую строку; воспроизведение живьём не снималось.
 **Якорь.** `frontend/app/components/bible/analysis/AnalysisEditor.tsx:358` — `<aside className="hidden … lg:flex">`: панель есть только от 1024 px; `:361` — `message` выводится только внутри неё. Сообщения ставятся в `:186` (`analysis.tie.miss`), `:188` (`tie.done`/`tie.turned`), `:206` (`analysis.tie.has` — строка уже привязана, тянуть нельзя), `:241` (связь убрана).
