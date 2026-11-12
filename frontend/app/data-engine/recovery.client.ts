@@ -179,6 +179,13 @@ export function isOnlySubmittedCopy(record: EditorRecord, includes: (requestId: 
     && pending.some(([, intent]) => intent.generation === checkpoint.editGeneration && equalValues(intent.value, checkpoint.draft));
 }
 
+/** A submitted creation already followed by Delete contributes no independent draft to reopen. */
+export function isOnlyRemovedCreationCopy(record: EditorRecord, creations: ReadonlySet<string>): boolean {
+  const { checkpoint } = record;
+  return checkpoint.confirmed.value === null && !checkpoint.conflicts.length && !checkpoint.remoteCandidate
+    && !record.retainedManualChoice && isOnlySubmittedCopy(record, id => creations.has(id));
+}
+
 /** A saved projection still pins its receipts, but offers no competing recovery copy. */
 export function isPassiveManualContinuation(record: EditorRecord): boolean {
   return isOnlySubmittedCopy(record, id => Boolean(record.checkpoint.pending[id].borrowedManualScope));

@@ -38,6 +38,35 @@ async function addPlace(browser: BrowserDataEngine) {
   await creator.close({ flush: false });
 }
 
+async function openPendingPlace() {
+  let server: ResourceSnapshot = absent;
+  let sequence = 0;
+  const journal = new Map<string, JournalEntry>();
+  const runtime = new DataEngineRuntime({
+    journal: {
+      list: async () => [...journal.values()],
+      put: async entry => { journal.set(entry.command.operationId, entry); },
+      remove: async (_owner, operation) => { journal.delete(operation); },
+    },
+    transport: { read: async () => server, send: async command => {
+      const result = applyCommand(command, server);
+      if (result.kind === 'acknowledged') server = result.snapshot;
+      return result;
+    } },
+  });
+  const queue = new CommitQueue({ store: createMemoryCommitStore(), runtime, operationId: () => 'place-' + ++sequence,
+    readConfirmed: async () => server });
+  runtime.setOwner('owner');
+  queue.setOwner('owner');
+  const creation = new DataSession(absent);
+  creation.edit(place());
+  const parent = (await queue.save('creator', creation.checkpoint()))!;
+  const remover = await EditorController.open({ owner: 'owner', editorId: 'remover', snapshot: absent, runtime, commits: queue,
+    submittedCheckpoint: submittedWorkCheckpoint('owner', resource, [parent])!,
+    store: { read: async () => undefined, put: async () => undefined }, operationId: () => 'unused', isCurrentOwner: () => true });
+  return { parent, remover, queue, runtime, stored: () => server };
+}
+
 describe('occasionPlaces — the pastor\'s own places', () => {
   it('is a collection the engine owns, its person writing the topic and the place and removing them', () => {
     expect(isEngineOwned('occasionPlaces')).toBe(true);
@@ -135,6 +164,29 @@ describe('occasionPlaces — the pastor\'s own places', () => {
     }
   });
 
+  it('does not capture deletion of a pending creation already refused without a snapshot', async () => {
+    const h = documentEngineHarness(absent, { apply: (command, current) => command.kind === 'create'
+      ? { kind: 'refused', operationId: command.operationId, code: 'permission-denied' }
+      : applyCommand(command, current) });
+    const browser = h.createBrowser();
+    browser.engine.setOnline(false);
+    browser.engine.setOwner('owner');
+    try {
+      await addPlace(browser);
+      const remover = await browser.engine.openEditor(resource, browser.editorId(resource, ACTION_SLOT));
+      browser.engine.setOnline(true);
+      await browser.engine.retry();
+      await settleEngine();
+      expect(remover.getState().result).toMatchObject({ kind: 'refused', code: 'permission-denied' });
+      await expect(remover.remove()).rejects.toMatchObject({ code: 'pending-delivery-first' });
+      expect(remover.getState().checkpoint.draft).toEqual(place());
+      expect(await h.commits.list('owner')).toHaveLength(1);
+    } finally {
+      browser.dispose();
+      await settleEngine();
+    }
+  });
+
   it('ends the removal without a delete command if the earlier creation was refused', async () => {
     const h = documentEngineHarness(absent, { apply: (command, current) => command.kind === 'create'
       ? { kind: 'refused', operationId: command.operationId, code: 'already-exists' }
@@ -196,6 +248,43 @@ describe('occasionPlaces — the pastor\'s own places', () => {
     }
   });
 
+  it('asks for a choice without sending delete when the creation receipt carries later words', async () => {
+    const prayer = { collection: 'prayerRequests', id: 'new-prayer' };
+    const opening = { resource: prayer, value: null, metadata: null };
+    const prayerValue = { userId: 'owner', title: 'Prayer', status: 'active', updates: [],
+      createdAt: '2026-11-12T20:00:00.000Z', updatedAt: '2026-11-12T20:00:00.000Z' };
+    const h = documentEngineHarness(opening, { apply: (command, current) => {
+      const answer = applyCommand(command, current);
+      if (command.kind !== 'create' || answer.kind !== 'acknowledged' || !answer.snapshot.metadata) return answer;
+      return { ...answer, committed: answer.snapshot.metadata, snapshot: { ...answer.snapshot,
+        value: { ...answer.snapshot.value, description: 'Written later from the phone' },
+        metadata: { ...answer.snapshot.metadata, revision: 2, operationId: 'phone-edit' } } };
+    } });
+    const browser = h.createBrowser();
+    browser.engine.setOnline(false);
+    browser.engine.setOwner('owner');
+    try {
+      const creator = await browser.engine.createEditor(prayer, browser.editorId(prayer, ACTION_SLOT));
+      await creator.commit(() => prayerValue);
+      await creator.close({ flush: false });
+      const remover = await browser.engine.openEditor(prayer, browser.editorId(prayer, ACTION_SLOT));
+      await remover.remove();
+      browser.engine.setOnline(true);
+      await browser.engine.retry();
+      await settleEngine();
+
+      expect(jest.mocked(h.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['create']);
+      expect(h.server.value?.description).toBe('Written later from the phone');
+      const records = await h.commits.list('owner');
+      expect(records.find(request => request.value === null)).toMatchObject({ state: 'conflict' });
+      expect(collectionDocumentViews('owner', 'prayerRequests', [h.server], records)[0])
+        .toMatchObject({ value: { description: 'Written later from the phone' }, needsAttention: true, deleting: false });
+    } finally {
+      browser.dispose();
+      await settleEngine();
+    }
+  });
+
   it('settles an already deleted place on replay of the same creation receipt', async () => {
     const h = documentEngineHarness(absent, { apply: (command, current) => {
       const result = applyCommand(command, current);
@@ -229,32 +318,25 @@ describe('occasionPlaces — the pastor\'s own places', () => {
     }
   });
 
+  it('does not capture deletion when a different saved copy was already observed', async () => {
+    const { remover, queue, runtime } = await openPendingPlace();
+    const independent = { ...absent, value: place({ occasionId: 'another-topic' }),
+      metadata: { protocol: 1 as const, generation: 'independent', revision: 1, deleted: false, operationId: 'independent' } };
+    try {
+      await remover.observe(independent, 'server');
+      expect(remover.getState().checkpoint.remoteCandidate).toEqual(independent);
+      await expect(remover.remove()).rejects.toMatchObject({ code: 'pending-delivery-first' });
+      expect(remover.getState().checkpoint.draft).toEqual(place());
+      expect(await queue.list()).toHaveLength(1);
+    } finally {
+      remover.dispose();
+      queue.setOwner(null);
+      runtime.setOwner(null);
+    }
+  });
+
   it('keeps the observed create as predecessor when its ACK reaches a different editor before remove capture', async () => {
-    let server: ResourceSnapshot = absent;
-    let sequence = 0;
-    const journal = new Map<string, JournalEntry>();
-    const runtime = new DataEngineRuntime({
-      journal: {
-        list: async () => [...journal.values()],
-        put: async entry => { journal.set(entry.command.operationId, entry); },
-        remove: async (_owner, operation) => { journal.delete(operation); },
-      },
-      transport: { read: async () => server, send: async command => {
-        const result = applyCommand(command, server);
-        if (result.kind === 'acknowledged') server = result.snapshot;
-        return result;
-      } },
-    });
-    const queue = new CommitQueue({ store: createMemoryCommitStore(), runtime, operationId: () => 'place-' + ++sequence,
-      readConfirmed: async () => server });
-    runtime.setOwner('owner');
-    queue.setOwner('owner');
-    const creation = new DataSession(absent);
-    creation.edit(place());
-    const parent = (await queue.save('creator', creation.checkpoint()))!;
-    const remover = await EditorController.open({ owner: 'owner', editorId: 'remover', snapshot: absent, runtime, commits: queue,
-      submittedCheckpoint: submittedWorkCheckpoint('owner', resource, [parent])!,
-      store: { read: async () => undefined, put: async () => undefined }, operationId: () => 'unused', isCurrentOwner: () => true });
+    const { parent, remover, queue, runtime, stored } = await openPendingPlace();
     let removal: Promise<void> | undefined;
     let pendingAtPress: string[] = [];
     const stop = queue.subscribe(({ request }) => {
@@ -270,7 +352,7 @@ describe('occasionPlaces — the pastor\'s own places', () => {
       const captured = (await queue.list()).find(request => request.editorId === 'remover');
       expect(captured).toMatchObject({ predecessor: parent.id, value: null });
       await queue.drain(true);
-      expect(server.metadata).toMatchObject({ generation: parent.id, deleted: true });
+      expect(stored().metadata).toMatchObject({ generation: parent.id, deleted: true });
     } finally {
       stop();
       remover.dispose();

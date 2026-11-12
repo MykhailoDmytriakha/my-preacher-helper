@@ -60,7 +60,13 @@ function setup() {
     const runtime = makeRuntime();
     const engine = new DataEngine({ runtime, transport, commits: requests, checkpoints: createIndexedDbCheckpoints(),
       observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
-      snapshots: { read: async (_owner, resource) => copy(cached.get(resource.id)), put: async (_owner, snapshot) => { cached.set(snapshot.resource.id, copy(snapshot)); } },
+      snapshots: {
+        read: async (_owner, resource) => {
+          const cachedSnapshot = cached.get(resource.id);
+          return cachedSnapshot && copy(cachedSnapshot);
+        },
+        put: async (_owner, snapshot) => { cached.set(snapshot.resource.id, copy(snapshot)); },
+      },
       operationId: () => `operation-${++sequence}` });
     engine.setOnline(false); engine.setOwner('owner'); return engine;
   };
@@ -121,6 +127,26 @@ it('captures new member and membership together offline, hides them from old rea
   expect(jest.mocked(s.transport.send).mock.calls[0][0]).toMatchObject({ kind: 'relation', relation: 'series-member-create' });
   expect((await queue.list()).map(row => row.state)).toEqual(['acknowledged', 'acknowledged']);
   expect(s.rows.get('new')?.value?.title).toBe('New sermon'); expect(s.rows.get('b')?.value?.sermonIds).toEqual(['new']);
+});
+
+it('keeps a sermon and its series membership together when ordinary removal is attempted before sync', async () => {
+  const s = setup(), { queue } = s.make();
+  const saved = await queue.saveAtomic(creatingMember());
+  expect(saved[0].atomic?.id).toBe(saved[0].id);
+  const engine = s.makeEngine();
+  try {
+    const editor = await engine.openEditor(saved[0].baseline.resource, 'reopened-sermon');
+    expect(editor.getState()).toMatchObject({ actionResolutionRequired: true, checkpoint: { draft: { title: 'New sermon' } } });
+    await expect(editor.remove()).rejects.toMatchObject({ code: 'pending-delivery-first' });
+    expect(editor.getState().checkpoint.draft?.title).toBe('New sermon');
+    expect(await queue.list()).toHaveLength(2);
+    expect(collectionDocumentViews('owner', 'sermons', [], await queue.list())[0]).toMatchObject({ value: { title: 'New sermon' } });
+    engine.setOnline(true);
+    await engine.retry();
+    expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['relation']);
+    expect(s.rows.get('b')?.value?.sermonIds).toEqual(['new']);
+    expect(s.rows.get('new')?.value?.title).toBe('New sermon');
+  } finally { engine.dispose(); }
 });
 
 it('replays lost creation acknowledgement with one identity and refuses partial cancellation', async () => {

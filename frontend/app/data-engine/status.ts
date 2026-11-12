@@ -1,4 +1,5 @@
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
+import { canRemovePendingCreation, hasForeignPendingSnapshot } from './deletionOrdering';
 import { sameManualSelection } from './manualScope';
 import { shownDeliveryState } from './unanswered';
 
@@ -110,14 +111,11 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   const { checkpoint } = state;
   const pendingIds = Object.keys(checkpoint.pending);
   const candidate = checkpoint.remoteCandidate;
-  const operationId = candidate?.metadata?.operationId;
-  const ownEcho = Boolean(operationId && (pendingIds.includes(operationId)
-    || Object.values(checkpoint.pending).some(pending => pending.operations?.includes(operationId))));
   const hasUnqueuedGeneration = pendingIds.length === 0
     || Object.values(checkpoint.pending).every(pending => pending.generation < checkpoint.editGeneration);
   const refused = state.result?.kind === 'conflict' || state.result?.kind === 'refused'
     || delivery.some(entry => ['blocked', 'refused', 'conflict'].includes(entry.state));
-  const foreign = Boolean(candidate && !ownEcho);
+  const foreign = hasForeignPendingSnapshot(checkpoint);
   const terminal = delivery.length > 0 && delivery.every(entry => entry.state === 'conflict' || entry.state === 'refused');
   const settled = pendingIds.length === 0 || (state.savedIntentReplaceable ?? terminal);
   const deletedCandidate = foreign && candidate?.value === null;
@@ -127,7 +125,9 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
     hasForeignChange: foreign,
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
-    canRemove: state.durable && !state.preparing && pendingIds.length === 0 && checkpoint.confirmed.value !== null && !checkpoint.confirmed.metadata?.deleted,
+    canRemove: state.durable && !state.preparing && !checkpoint.confirmed.metadata?.deleted
+      && ((pendingIds.length === 0 && checkpoint.confirmed.value !== null)
+        || (!refused && canRemovePendingCreation(state))),
     // A refusal has no other version to take, but "use the server's version" still means dropping
     // this device's refused change — without it a refused screen draft had no way back.
     canAcceptRemote: !state.actionResolutionRequired && (foreign

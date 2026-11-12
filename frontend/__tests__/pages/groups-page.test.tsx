@@ -7,6 +7,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 
 const mockPush = jest.fn();
+const mockRefreshRecovery = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: jest.fn() }),
@@ -31,7 +32,7 @@ jest.mock('@/utils/clientId', () => ({
 // The page reads the engine through these; there is no DataEngineProvider in this test.
 jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: jest.fn(() => ({ browser: null, owner: 'user-1' })),
-  useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn() })),
+  useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: mockRefreshRecovery })),
 }));
 
 jest.mock('@/data-engine/DataCollectionStatus', () => ({
@@ -63,9 +64,10 @@ jest.mock('@/components/groups/EngineCreateGroupModal', () => ({
 }));
 
 jest.mock('@/components/groups/EngineDeleteGroupModal', () => ({
-  EngineDeleteGroupModal: ({ groupId, onClose }: any) => (
+  EngineDeleteGroupModal: ({ groupId, onClose, onDeleted }: any) => (
     <div data-testid="engine-delete-group-modal" data-group-id={groupId}>
       <button onClick={onClose}>close-delete</button>
+      <button onClick={() => (onDeleted ?? onClose)()}>commit-delete</button>
     </div>
   ),
 }));
@@ -219,6 +221,18 @@ describe('GroupsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete g2' }));
     expect(screen.getByTestId('engine-delete-group-modal')).toHaveAttribute('data-group-id', 'g2');
+  });
+
+  it('refreshes recovery choices after a successful list deletion', () => {
+    render(<GroupsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete g1' }));
+    fireEvent.click(screen.getByText('close-delete'));
+    expect(mockRefreshRecovery).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete g1' }));
+    fireEvent.click(screen.getByText('commit-delete'));
+    expect(screen.queryByTestId('engine-delete-group-modal')).not.toBeInTheDocument();
+    expect(mockRefreshRecovery).toHaveBeenCalledTimes(1);
   });
 
   it('reads groups and series for the signed-in user', () => {

@@ -13,6 +13,7 @@ import { captureCommentPlace, matchesCommentPlaceRequest } from './commentPlaceA
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
+import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
@@ -35,7 +36,7 @@ import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerC
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
-import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
+import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields } from './sermonFieldChoice';
@@ -1149,7 +1150,11 @@ export class DataEngine {
   }
 
   /** Discovery never takes ownership of, rewrites or removes a saved editor. */
-  async listRecoverable(resource?: ResourceRef): Promise<RecoveryCheckpoint[]> {
+  listRecoverable(resource?: ResourceRef): Promise<RecoveryCheckpoint[]> {
+    return this.discoverRecoverable(resource);
+  }
+
+  private async discoverRecoverable(resource: ResourceRef | undefined, forRecoveryChoices = false): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner();
     if (resource) this.validateResource(resource, owner);
     const generation = this.generation;
@@ -1162,7 +1167,9 @@ export class DataEngine {
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     const fieldAnswers = singleFieldAnswerScopes(requests);
-    return records.filter(({ record }) => !this.editors.has(record.editorId))
+    const removingCreations = forRecoveryChoices ? creationsAwaitingRemoval(requests) : undefined;
+    return records.filter(({ record }) => !this.editors.has(record.editorId)
+      && (!removingCreations?.size || !isOnlyRemovedCreationCopy(record, removingCreations)))
       .map(({ id, record }) => {
         const reconciled = reconcileRecoveryRecord(record, requests);
         const pendingIds = Object.keys(reconciled.checkpoint.pending);
@@ -1184,7 +1191,7 @@ export class DataEngine {
     if (resource) this.validateResource(resource, owner);
     const store = this.recoveryStore();
     const records = manualChoicesOnly && store.listManualChoiceCopies
-      ? await store.listManualChoiceCopies(owner, resource) : await this.listRecoverable(resource);
+      ? await store.listManualChoiceCopies(owner, resource) : await this.discoverRecoverable(resource, true);
     const choices = manualChoicesOnly ? records.filter(({ record }) => isManualChoiceRecoveryIdentity(record.editorId)) : records;
     return this.recoveryChoices(owner, generation, 'checkpoint', choices, record => record.id);
   }

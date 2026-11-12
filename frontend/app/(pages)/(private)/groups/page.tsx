@@ -62,7 +62,8 @@ function EngineGroupsPage() {
         onDiscardRecovery={recovery.discard} /></>} />
     {creation && <EngineCreateGroupModal key={`${owner}:${creation.id}`} groupId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/groups/${id}`); }} />}
-    {deleting && <EngineDeleteGroupModal key={`${owner}:${deleting}`} groupId={deleting} onClose={() => setDeleting(null)} />}
+    {deleting && <EngineDeleteGroupModal key={`${owner}:${deleting}`} groupId={deleting} onClose={() => setDeleting(null)}
+      onDeleted={() => { setDeleting(null); void recovery.refresh(); }} />}
   </>;
 }
 function GroupsView({ source, onCreate, onDelete, feedback }: {

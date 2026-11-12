@@ -14,7 +14,7 @@ import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
 import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
-import { isDocumentDeletion, pendingOccasionPlaceCreation } from './deletionOrdering';
+import { canRemovePendingCreation, isDocumentDeletion, pendingStandaloneCreation } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
@@ -180,9 +180,9 @@ export interface EditorState {
 
 /** A single editor owns its checkpoint; the runtime owns delivery for every editor. */
 function captureSaveOptions(captured: SessionCheckpoint, pending: [string, SessionCheckpoint['pending'][string]][], captureScope?: string) {
-  const creation = captured.draft === null && pendingOccasionPlaceCreation(captured);
+  const creation = captured.draft === null && pendingStandaloneCreation(captured);
   const newestGeneration = Math.max(...pending.map(([, request]) => request.generation));
-  // The acknowledgement may have arrived after Remove captured the displayed place.
+  // The acknowledgement may have arrived after Remove captured the displayed creation.
   const predecessorIds = creation ? [creation[0]]
     : pending.filter(([, request]) => request.generation === newestGeneration).map(([id]) => id);
   const options: { predecessorIds?: string[]; retentionScope?: string } = {};
@@ -386,14 +386,13 @@ export class EditorController {
     });
   }
 
-  /** Queue a deletion of a confirmed document, or of the exact immutable place just added here. */
+  /** Queue a deletion of a confirmed document or the exact first creation shown to the person. */
   remove(onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string): Promise<void> {
-    this.assertCurrent();
-    const checkpoint = this.session.checkpoint();
-    const create = this.options.commits && pendingOccasionPlaceCreation(checkpoint);
-    const pendingPlace = create && equalValues(create[1].value, checkpoint.draft);
-    if ((Object.keys(checkpoint.pending).length && !pendingPlace) || this.prepared || this.preparations || this.choices) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: PENDING_DELIVERY_FIRST }));
-    if ((!checkpoint.confirmed.value && !pendingPlace) || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
+    const state = this.getState();
+    const { checkpoint } = state;
+    const pendingCreation = this.options.commits && canRemovePendingCreation(state);
+    if ((Object.keys(checkpoint.pending).length && !pendingCreation) || this.prepared || this.preparations || this.choices) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: PENDING_DELIVERY_FIRST }));
+    if ((!checkpoint.confirmed.value && !pendingCreation) || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
     if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
     const persisting = this.edit(null);
     const deletion = this.session.checkpoint();

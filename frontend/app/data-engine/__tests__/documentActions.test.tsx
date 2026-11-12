@@ -5,6 +5,8 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
+import type { DocumentData, ResourceSnapshot } from '../types';
+
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -12,8 +14,10 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const resource = { collection: 'sermons', id: 'sermon-1' };
 const stored = { userId: 'owner', title: 'Grace', verse: 'John 1:14', date: '2026-09-01', thoughts: [], sourceNoteIds: ['note-a'] };
 
-function setup() {
-  const harness = documentEngineHarness({ resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+const savedSermon: ResourceSnapshot = { resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
+
+function setup(snapshot = savedSermon) {
+  const harness = documentEngineHarness(snapshot);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const wrapper = ({ children }: { children: React.ReactNode }) => <DataEngineProvider>{children}</DataEngineProvider>;
   return { harness, ...renderHook(() => useDocumentActions(), { wrapper }) };
@@ -36,6 +40,84 @@ describe('one action on a document no screen has open', () => {
     await act(async () => { await result.current.remove(resource); });
     await waitFor(async () => { await settleEngine(); expect(harness.server.metadata?.deleted).toBe(true); });
     expect(harness.server.value).toBeNull();
+  });
+
+  const creations: { collection: string; value: DocumentData }[] = [
+    { collection: 'prayerRequests', value: { title: 'Prayer for a neighbor', status: 'active', updates: [] } },
+    { collection: 'tags', value: { name: 'Patience', color: '#000000', required: false } },
+    { collection: 'planTemplates', value: { name: 'Reusable outline', structure: { introduction: [], main: [], conclusion: [] } } },
+    { collection: 'groups', value: { title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [] } },
+    { collection: 'councils', value: { title: 'Council', status: 'preparing', topics: [] } },
+    { collection: 'series', value: { title: 'Series', theme: 'Series', bookOrTopic: 'Topic', status: 'draft', sermonIds: [] } },
+    { collection: 'sermons', value: { title: 'Sermon', verse: 'John 1:14', date: '2026-11-12', thoughts: [] } },
+    { collection: 'studyNotes', value: { title: 'Note', content: 'Words', type: 'note', scriptureRefs: [], tags: [], isDraft: false } },
+  ];
+  it.each(creations)('deletes the exact pending first creation in $collection after reconnect', async ({ collection, value }) => {
+    const target = { collection, id: 'new-document' };
+    const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    const timestamp = '2026-11-12T20:00:00.000Z';
+    try {
+      await act(async () => {
+        await result.current.create(target, { ...value, userId: 'owner', createdAt: timestamp, updatedAt: timestamp });
+        if (collection === 'studyNotes') {
+          await expect(result.current.submit(target, { kind: 'delete' })).resolves.toMatchObject({ kind: 'submitted' });
+        } else {
+          await expect(result.current.remove(target)).resolves.toBeUndefined();
+        }
+      });
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      const queued = await harness.commits.list('owner');
+      const creation = queued.find(item => item.value !== null);
+      expect(creation).toBeDefined();
+      expect(queued.find(item => item.value === null)).toMatchObject({ predecessor: creation?.id });
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+      const sent = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+      expect(sent.map(command => [command.kind, command.resource.id])).toEqual([['create', target.id], ['delete', target.id]]);
+      expect(sent[1].generation).toBe(sent[0].operationId);
+      expect(harness.server).toMatchObject({ resource: target, value: null, metadata: { deleted: true } });
+    } finally { unmount(); }
+  });
+
+  it('does not offer a deleted creation as a draft while leaving a separate local copy available', async () => {
+    const target = { collection: 'groups', id: 'new-group' };
+    const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    const group = { userId: 'owner', title: 'New group', status: 'draft', templates: [], flow: [], meetingDates: [] };
+    try {
+      await act(async () => { await result.current.create(target, group); });
+      const [groupChoice] = await harness.engine.listRecoveryChoices(target);
+      expect(groupChoice?.record.checkpoint.draft?.title).toBe('New group');
+      const copy = await harness.engine.openEditor(target, 'private-group');
+      await copy.edit({ ...group, title: 'Independent unsaved words' });
+      await copy.close({ flush: false });
+      await settleEngine();
+      await act(async () => { await result.current.remove(target); });
+      const titles = (await harness.engine.listRecoveryChoices(target)).map(entry => entry.record.checkpoint.draft?.title);
+      expect(titles).not.toContain('New group');
+      expect(titles).toContain('Independent unsaved words');
+    } finally { unmount(); }
+  });
+
+  it('keeps a later captured edit to a new prayer behind the ordinary deletion guard', async () => {
+    const target = { collection: 'prayerRequests', id: 'prayer-with-an-edit' };
+    const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    try {
+      await act(async () => {
+        const timestamp = '2026-11-12T20:00:00.000Z';
+        await result.current.create(target, { userId: 'owner', title: 'Prayer', status: 'active', updates: [],
+          createdAt: timestamp, updatedAt: timestamp });
+        await result.current.commit(target, current => ({ ...current!, description: 'Later words' }));
+        await expect(result.current.remove(target)).rejects.toThrow('Resolve pending commands before deleting');
+      });
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+      expect(harness.server.value?.description).toBe('Later words');
+      expect(jest.mocked(harness.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['create', 'update']);
+    } finally { unmount(); }
   });
 
   it.each(['update', 'delete'] as const)('retains the exact public %s capture until its caller releases it', async kind => {

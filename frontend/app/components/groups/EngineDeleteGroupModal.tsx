@@ -8,14 +8,16 @@ import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { useTranslation } from '@locales/useTranslation';
 
 /** The delete confirmation opens the same protected document editor as the detail screen. */
-export function EngineDeleteGroupModal({ groupId, onClose }: { groupId: string; onClose: () => void }) {
+export function EngineDeleteGroupModal({ groupId, onClose, onDeleted }: {
+  groupId: string; onClose: () => void; onDeleted: () => void;
+}) {
   const { t } = useTranslation();
   const data = useGroupDataDocument(groupId);
   const [busy, setBusy] = useState(false);
   const remove = async () => {
     if (busy || data.loading) return;
     setBusy(true);
-    try { await data.deleteGroupDetail(); onClose(); }
+    try { await data.deleteGroupDetail(); onDeleted(); }
     catch { setBusy(false); }
   };
   return <FormDialog title={t('workspaces.groups.actions.deleteConfirmTitle')} onClose={onClose} tone="emerald">

@@ -10,7 +10,7 @@ import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
-import { followsOccasionPlaceCreation, provesOccasionPlaceCreation } from './deletionOrdering';
+import { followsStandaloneCreation, isRemovalAfterStandaloneCreation, provesStandaloneCreation } from './deletionOrdering';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
@@ -105,8 +105,9 @@ function templatePlacementBirthRevision(record: CommitRequest, predecessor: Comm
 
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
   const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
-  if (predecessor && followsOccasionPlaceCreation(record, predecessor)
-    && !['queued', 'prepared'].includes(predecessor.state) && !provesOccasionPlaceCreation(predecessor)) {
+  if (predecessor && isRemovalAfterStandaloneCreation(record)
+    && !['queued', 'prepared'].includes(predecessor.state)
+    && !(followsStandaloneCreation(record, predecessor) && provesStandaloneCreation(predecessor))) {
     return { ...record, initialized: true, state: 'refused',
       result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
   }
