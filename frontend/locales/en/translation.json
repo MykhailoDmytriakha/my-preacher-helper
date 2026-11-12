@@ -4034,6 +4034,7 @@
     "toChapter": "To Chapter",
     "quickRefPlaceholder": "Quick add: e.g., isa 47 8-10 or rev 18 4",
     "quickRefError": "Cannot parse reference. Use format: book chapter verse [to]",
+    "referenceAlreadyAdded": "This reference is already in the note.",
     "tags": "Tags",
     "addTag": "Add tag",
     "saveNote": "Save note",

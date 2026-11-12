@@ -788,6 +788,165 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getByRole('button', { name: 'John 3:16' })).toBeInTheDocument();
     });
 
+    it('keeps one reference after entering the same place twice and still adds a different verse', () => {
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const quick = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
+        for (const reference of ['John 3:16', 'John 3:16', 'Romans 8:28']) {
+            fireEvent.change(quick, { target: { value: reference } });
+            fireEvent.keyDown(quick, { key: 'Enter' });
+        }
+
+        expect(screen.getByRole('button', { name: 'Romans 8:28' })).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: 'John 3:16' })).toHaveLength(1);
+    });
+
+    it.each(['add', 'edit'] as const)('keeps one reference when the picker would %s a duplicate', mode => {
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const quick = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
+        for (const reference of ['John 3:16', 'Romans 8:28']) {
+            fireEvent.change(quick, { target: { value: reference } });
+            fireEvent.keyDown(quick, { key: 'Enter' });
+        }
+
+        fireEvent.click(mode === 'add' ? screen.getByTitle('studiesWorkspace.browseBooks')
+            : screen.getByRole('button', { name: 'Romans 8:28' }));
+        const picker = within(screen.getByRole('dialog', {
+            name: mode === 'add' ? 'studiesWorkspace.addReference' : 'studiesWorkspace.editReference',
+        }));
+        fireEvent.change(picker.getByLabelText('studiesWorkspace.book'), { target: { value: 'John' } });
+        fireEvent.change(picker.getByLabelText('studiesWorkspace.chapter'), { target: { value: '3' } });
+        fireEvent.change(picker.getByLabelText('studiesWorkspace.from'), { target: { value: '16' } });
+        fireEvent.click(picker.getByRole('button', { name: mode === 'add' ? 'studiesWorkspace.addReferenceShort' : 'common.save' }));
+
+        expect(screen.getAllByRole('button', { name: 'John 3:16' })).toHaveLength(1);
+        expect(screen.getByRole('button', { name: 'Romans 8:28' })).toBeInTheDocument();
+        expect(screen.getByText('studiesWorkspace.referenceAlreadyAdded')).toBeInTheDocument();
+    });
+
+    it('removes only the selected reference from an old note with reused IDs', () => {
+        const note = { ...mockNotes[1], scriptureRefs: [
+            { id: 'old-shared-id', bible: 'kjv' as const, book: 'John', chapter: 3, fromVerse: 16 },
+            { id: 'old-shared-id', bible: 'kjv' as const, book: 'Romans', chapter: 8, fromVerse: 28 },
+        ] };
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [note], noteDelivery: acceptedNoteDelivery(), loading: false,
+            createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const john = screen.getByRole('button', { name: 'John 3:16' });
+        fireEvent.click(within(john).getByRole('button', { name: 'studiesWorkspace.removeReference' }));
+
+        expect(screen.queryByRole('button', { name: 'John 3:16' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Romans 8:28' })).toBeInTheDocument();
+    });
+
+    it('retains the saved quote when explicitly adding the same passage from another Bible', async () => {
+        const quoted = { id: 'saved-ref', bible: 'rst', book: 'John', chapter: 3, fromVerse: 16, text: 'Original saved quote' } as const;
+        const note = { ...mockNotes[1], scriptureRefs: [quoted] };
+        const updateNote = jest.fn().mockReturnValue({
+            acceptance: Promise.resolve({ kind: 'persisted' }),
+            persistence: Promise.resolve(),
+            result: Promise.resolve({ id: note.id, revision: 2 }),
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [note], noteDelivery: acceptedNoteDelivery(),
+            loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+        });
+        jest.useFakeTimers();
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const quick = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
+            fireEvent.change(quick, { target: { value: 'John 3:16' } });
+            fireEvent.keyDown(quick, { key: 'Enter' });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1500); });
+
+            expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+                updates: expect.objectContaining({
+                    scriptureRefs: [quoted, expect.objectContaining({ bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 })],
+                }),
+            }));
+        } finally { jest.useRealTimers(); }
+    });
+
+    it('keeps both authored verses when the English Bible maps them to one verse', () => {
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const quick = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
+        for (const reference of ['Пс 3:1', 'Пс 3:2']) {
+            fireEvent.change(quick, { target: { value: reference } });
+            fireEvent.keyDown(quick, { key: 'Enter' });
+        }
+
+        expect(screen.getAllByRole('button', { name: /Psalm[s]? 3:/ })).toHaveLength(2);
+    });
+
+    it('keeps a reference picker open while an unrelated saved title refreshes the note', async () => {
+        const reference = { id: 'confirmed-reference', bible: 'kjv' as const, book: 'John', chapter: 3, fromVerse: 16 };
+        const note = { ...mockNotes[1], scriptureRefs: [reference] };
+        const state = {
+            uid: 'user-1', notes: [note], noteDelivery: acceptedNoteDelivery(), loading: false,
+            createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        };
+        (useStudyNotes as jest.Mock).mockReturnValue(state);
+        const view = render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByRole('button', { name: 'John 3:16' }));
+        const picker = within(screen.getByRole('dialog', { name: 'studiesWorkspace.editReference' }));
+        fireEvent.change(picker.getByLabelText('studiesWorkspace.from'), { target: { value: '17' } });
+
+        (useStudyNotes as jest.Mock).mockReturnValue({ ...state, notes: [
+            { ...note, title: 'Title updated elsewhere', scriptureRefs: [{ ...reference }] },
+        ] });
+        view.rerender(<StudyNoteEditorPage />);
+        await waitFor(() => expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue('Title updated elsewhere'));
+        const retainedPicker = within(screen.getByRole('dialog', { name: 'studiesWorkspace.editReference' }));
+        expect(retainedPicker.getByLabelText('studiesWorkspace.from')).toHaveValue('17');
+        fireEvent.click(retainedPicker.getByRole('button', { name: 'common.save' }));
+        expect(screen.getByRole('button', { name: 'John 3:17' })).toBeInTheDocument();
+    });
+
+    it('keeps one reference per place when an AI proposal repeats a reference', async () => {
+        const john = { book: 'John', chapter: 3, fromVerse: 16 };
+        const romans = { book: 'Romans', chapter: 8, fromVerse: 28 };
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ success: true, data: { scriptureRefs: [john, { ...john }, romans] } }),
+        });
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.findRefs'));
+        fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.applySelected'));
+
+        expect(screen.getByRole('button', { name: 'Romans 8:28' })).toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: 'John 3:16' })).toHaveLength(1);
+    });
+
+    it('keeps one suggested chapter and both distinct verses in their authored numbering', async () => {
+        const chapter = { bible: 'kjv', book: 'John', chapter: 3 };
+        const verse = { bible: 'rst', book: 'Psalms', chapter: 3, fromVerse: 1 };
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ success: true, data: { scriptureRefs: [
+                chapter, { ...chapter, fromVerse: 1, toVerse: 36 }, verse, { ...verse, fromVerse: 2 },
+            ] } }),
+        });
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.findRefs'));
+        const apply = await screen.findByText('studiesWorkspace.aiAnalyze.applySelected');
+        const preview = within(screen.getByRole('dialog', { name: 'studiesWorkspace.aiAnalyze.resultsTitle' }));
+        expect(preview.getAllByText(/^John 3/)).toHaveLength(1);
+        expect(preview.getAllByText(/Psalm[s]? 3:/)).toHaveLength(2);
+        fireEvent.click(apply);
+
+        expect(screen.getAllByRole('button', { name: /^John 3/ })).toHaveLength(1);
+        expect(screen.getAllByRole('button', { name: /Psalm[s]? 3:/ })).toHaveLength(2);
+    });
+
     it('blocks overlapping menu actions while an independent request survives a failure', async () => {
         const requests: Record<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }> = {};
         (global.fetch as jest.Mock) = jest.fn((_url, init) => new Promise((resolve, reject) => {

@@ -55,7 +55,7 @@ import { sectionDisplayLabel, findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
-import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
@@ -70,6 +70,7 @@ import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfir
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
 import UnreadableNoteDrafts from '../components/UnreadableNoteDrafts';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
+import { appendSuggestedReferences, findOpenedReference, hasDuplicateAuthoredReference, sameAuthoredReference, type NoteReferenceOpening } from '../noteReferenceEdits';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
@@ -348,15 +349,8 @@ function useNoteAIAssistant({
         saveAtOnceRef.current = true;
         if (data.title) setTitle(data.title);
 
-        if (data.scriptureRefs && data.scriptureRefs.length > 0) {
-            setScriptureRefs((prev: ScriptureReference[]) => {
-                // The same place counts once whichever Bible numbers it (Пс 22 and Ps 23).
-                const newRefs = data.scriptureRefs!.filter((nr: ScriptureReference) =>
-                    !prev.some((er: ScriptureReference) => sameScriptureReference(er, nr))
-                ).map((ref: Omit<ScriptureReference, 'id'>) => ({ ...ref, id: makeId() }));
-                return [...prev, ...newRefs];
-            });
-        }
+        const suggested = data.scriptureRefs?.map(ref => ({ ...ref, id: makeId() }));
+        if (suggested?.length) setScriptureRefs(prev => appendSuggestedReferences(prev, suggested));
 
         if (data.tags && data.tags.length > 0) {
             setTags((prev: string[]) => Array.from(new Set([...prev, ...data.tags!])));
@@ -771,11 +765,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     // Input states
     const [tagInput, setTagInput] = useState('');
     const [quickRefInput, setQuickRefInput] = useState('');
-    const [quickRefError, setQuickRefError] = useState<FailureWords | null>(null);
+    const [referenceError, setReferenceError] = useState<FailureWords | null>(null);
 
     // Tag / Reference Pickers
     const [showTagCatalog, setShowTagCatalog] = useState(false);
-    const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
+    const [referenceBeingEdited, setReferenceBeingEdited] = useState<(NoteReferenceOpening & { noteId: string }) | null>(null);
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [previewReference, setPreviewReference] = useState<ScriptureReference | null>(null);
     // A reference in the note's text opens the window its chips open: the passage, and the notes on it.
@@ -1224,6 +1218,29 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     const commentView = commentPageView(type, title, scriptureRefs, bibleLocale);
 
+    const referenceEdit = referenceBeingEdited?.noteId === noteId ? referenceBeingEdited : undefined;
+    const editingReference = referenceEdit && findOpenedReference(scriptureRefs, referenceEdit);
+    const editReference = (reference: ScriptureReference) => {
+        setReferenceError(null);
+        setReferenceBeingEdited({ noteId, reference, uniqueId: scriptureRefs.filter(ref => ref.id === reference.id).length === 1 });
+        setShowRefPicker(false);
+    };
+    const saveReference = (reference: Omit<ScriptureReference, 'id'>, edit?: NoteReferenceOpening) => {
+        setReferenceError(null);
+        const shown = edit && findOpenedReference(scriptureRefs, edit);
+        if (edit && (!shown || sameAuthoredReference(shown, reference))) return;
+        if (hasDuplicateAuthoredReference(scriptureRefs, reference, shown)) {
+            setReferenceError({ key: 'studiesWorkspace.referenceAlreadyAdded' });
+            return;
+        }
+        const next = { ...reference, id: shown?.id ?? makeId() };
+        setScriptureRefs(current => {
+            const target = edit && findOpenedReference(current, edit);
+            if ((edit && !target) || hasDuplicateAuthoredReference(current, reference, target)) return current;
+            return target ? current.map(ref => ref === target ? next : ref) : [...current, next];
+        });
+    };
+
     // The note's own properties. They are ONE instance, handed either to the side
     // panel or to the narrow-screen tray below the text — never both, because each
     // carries live inputs and pickers.
@@ -1264,10 +1281,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                     <ScriptureRefBadge
                                         key={ref.id}
                                         reference={ref}
-                                        isEditing={isEditing ? editingRefIndex === idx : false}
-                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : () => setPreviewReference(ref)}
+                                        isEditing={isEditing && editingReference === ref}
+                                        onClick={isEditing ? () => editReference(ref) : () => setPreviewReference(ref)}
                                         tone={commentView.refTone}
-                                        onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
+                                        onRemove={isEditing ? () => {
+                                            setReferenceError(null);
+                                            setScriptureRefs(prev => prev.filter((_, i) => i !== idx));
+                                        } : undefined}
                                     />
                                 ))}
                             </div>
@@ -1277,15 +1297,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             <div className="flex items-center gap-2 mt-auto pt-2">
                                 <input
                                     value={quickRefInput}
-                                    onChange={(e) => { setQuickRefInput(e.target.value); setQuickRefError(null); }}
+                                    onChange={(e) => { setQuickRefInput(e.target.value); setReferenceError(null); }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
                                             // Typed in the Bible its book's name is written in — the note's words decide one Russian
                                             // and Ukrainian write alike ("1Цар") — and kept so.
                                             const parsed = referenceFromTyped(quickRefInput.trim(), { locale: bibleLocale, written: textLanguage(`${title}\n${content}`) });
-                                            if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
-                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
+                                            if (!parsed) { setReferenceError({ key: 'studiesWorkspace.quickRefError' }); return; }
+                                            saveReference(parsed);
                                             setQuickRefInput('');
                                         }
                                     }}
@@ -1293,7 +1313,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                     className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
                                 />
                                 <button
-                                    onClick={() => setShowRefPicker(true)}
+                                    onClick={() => { setReferenceError(null); setShowRefPicker(true); }}
                                     className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
                                     title={t('studiesWorkspace.browseBooks')}
                                 >
@@ -1301,27 +1321,22 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                 </button>
                             </div>
                         )}
-                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{sayFailure(quickRefError, t)}</p>}
+                        {isEditing && referenceError && <p role="status" className="text-xs text-red-500 mt-1">{sayFailure(referenceError, t)}</p>}
 
                         {showRefPicker && (
                             <ScriptureRefPicker
                                 mode="add"
-                                onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
+                                onConfirm={ref => { saveReference(ref); setShowRefPicker(false); }}
                                 onCancel={() => setShowRefPicker(false)}
                             />
                         )}
 
-                        {editingRefIndex !== null && (
+                        {editingReference && (
                             <ScriptureRefPicker
                                 mode="edit"
-                                initialRef={scriptureRefs[editingRefIndex]}
-                                onConfirm={(ref) => {
-                                    setScriptureRefs(prev => {
-                                        const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
-                                    });
-                                    setEditingRefIndex(null);
-                                }}
-                                onCancel={() => setEditingRefIndex(null)}
+                                initialRef={editingReference}
+                                onConfirm={ref => { saveReference(ref, referenceEdit); setReferenceBeingEdited(null); }}
+                                onCancel={() => setReferenceBeingEdited(null)}
                             />
                         )}
                     </div>

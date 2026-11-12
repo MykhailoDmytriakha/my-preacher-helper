@@ -266,16 +266,15 @@ export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T
 }
 
 /**
- * Whether two references name the same place, whichever Bibles they were written in: the same verses
- * in the King James, a whole chapter being its verses from the first to the last — "Пс 9" and
- * "Пс 9:1-39" are one place.
+ * Whether two references name the same place in the comparison Bible.
+ * A whole chapter matches its full verse interval. Comparing in the authored Bible preserves
+ * distinct verses that can share one number when projected into another translation.
  */
-export function sameScriptureReference(a: ScriptureRefShape, b: ScriptureRefShape): boolean {
+export function sameScriptureReference(a: ScriptureRefShape, b: ScriptureRefShape, inBible: BibleId = CANONICAL_BIBLE): boolean {
   if (a.book !== b.book) return false;
   const verses = (passage: Passage): Passage => (passage.fromVerse !== undefined ? passage
-    : { ...passage, fromVerse: 1, toVerse: verseCount(CANONICAL_BIBLE, a.book, passage.toChapter) });
-  const left = passagesIn(a, CANONICAL_BIBLE).map(verses);
-  const right = passagesIn(b, CANONICAL_BIBLE).map(verses);
-  return left.length === right.length && left.every((passage, i) => passage.chapter === right[i].chapter
-    && passage.toChapter === right[i].toChapter && passage.fromVerse === right[i].fromVerse && passage.toVerse === right[i].toVerse);
+    : { ...passage, fromVerse: 1, toVerse: verseCount(inBible, a.book, passage.toChapter) });
+  const left = passagesIn(a, inBible).map(verses);
+  const right = passagesIn(b, inBible).map(verses);
+  return left.length === right.length && left.every((passage, i) => samePassage(passage, right[i]));
 }

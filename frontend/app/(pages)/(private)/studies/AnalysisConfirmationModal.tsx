@@ -10,6 +10,8 @@ import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
+import { suggestedReferenceDiff } from './noteReferenceEdits';
+
 import type { AppLocale } from '@/utils/appLocale';
 
 
@@ -87,7 +89,7 @@ export default function AnalysisConfirmationModal({
     const hasTags = result.tags !== undefined;
     const hasRefs = result.scriptureRefs !== undefined;
 
-    // Shown and compared as prose, Psalms renumbered as the reader's Bible numbers them.
+    // Display names use the reader’s Bible. The shared comparison uses stored references.
     const formatRef = (ref: ScriptureReference) =>
         formatScriptureReference(ref, { locale: bibleLocale, style: 'long' });
 
@@ -97,11 +99,7 @@ export default function AnalysisConfirmationModal({
     const addedTags = resultTags.filter(tag => !currentTagsSet.has(tag));
     const keptTags = resultTags.filter(tag => currentTagsSet.has(tag));
 
-    // Refs diff — merge semantics: only new items matter
-    const currentRefKeys = new Set((currentScriptureRefs || []).map(formatRef));
-    const resultRefs = result.scriptureRefs || [];
-    const addedRefs = resultRefs.filter(r => !currentRefKeys.has(formatRef(r)));
-    const keptRefs = resultRefs.filter(r => currentRefKeys.has(formatRef(r)));
+    const { added: addedRefs, kept: keptRefs } = suggestedReferenceDiff(currentScriptureRefs ?? [], result.scriptureRefs ?? []);
 
     const titleChanged = hasTitle && currentTitle !== result.title;
     const titleIsNew = hasTitle && !currentTitle?.trim();
