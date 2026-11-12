@@ -100,7 +100,7 @@ describe('StudiesPage — a note\'s title says its language', () => {
     });
     mockRouter.push.mockClear();
     render(<StudiesPage />);
-    const query = await openInBible('1Цар 3:5');
+    const query = await openInBible('1Цар 3:5', '1Kgs.3:5');
     expect(query.get('book')).toBe('1-kings');
     expect(query.get('tr')).toBe('ubio');
   });

@@ -28,17 +28,17 @@ describe('VerseSheet — the passage over the screen', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('opens with the words tapped as its title, the passage lit and its neighbours dark', async () => {
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, toVerse: 3, label: 'Руфь 1:2–3' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2–3' });
+  it('opens with the place as its title, the passage lit and its neighbours dark', async () => {
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, toVerse: 3 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2-3' });
     await waitFor(() => expect(lit(dialog)).toEqual(['1:2', '1:3']));
     expect(within(dialog).getByText('bible.translations.rst.name')).toBeInTheDocument();
     expect(fetchBookText).toHaveBeenCalledWith('Ruth', 'rst');
   });
 
   it('keeps both endpoint chapters in the verse window', async () => {
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, endChapter: 2, toVerse: 1, label: 'Ruth 1:2-2:1' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Ruth 1:2-2:1' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, endChapter: 2, toVerse: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2-2:1' });
     await waitFor(() => expect(lit(dialog)).toEqual(['1:2', '1:3', '2:1']));
   });
 
@@ -46,8 +46,8 @@ describe('VerseSheet — the passage over the screen', () => {
     const { container: sign } = render(<BibleIcon />);
     const bibleSign = sign.querySelector('path')?.getAttribute('d');
     const openInBible = jest.fn();
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, toVerse: 3, label: 'Руфь 1:2–3' }} onClose={jest.fn()} openInBible={openInBible} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2–3' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, toVerse: 3 }} onClose={jest.fn()} openInBible={openInBible} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2-3' });
     const door = within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' });
     expect(door).toHaveClass(...PLACE_DOOR_TONES.bible.split(' '));
     expect(door.querySelector('path')?.getAttribute('d')).toBe(bibleSign);
@@ -56,14 +56,14 @@ describe('VerseSheet — the passage over the screen', () => {
   });
 
   it('lights every verse of a chapter named whole', async () => {
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, label: 'Руфь 1' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1' });
     await waitFor(() => expect(lit(dialog)).toEqual(['1:1', '1:2', '1:3']));
   });
 
   it.each([
     {
-      reference: { bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12, label: 'Пс 50:12' } as const,
+      reference: { bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 } as const,
       reading: 'kjv', firstVerse: '51:10', title: 'Ps.51:10', wholeChapter: false,
     },
     {
@@ -86,14 +86,28 @@ describe('VerseSheet — the passage over the screen', () => {
     expect(openInBible).toHaveBeenCalledWith(reference);
   });
 
+  // The owner chose this, 2026-11-10 (BUG-20261110-verse-window-label-numbering-vs-reading-bible): a
+  // Russian reader of the King James pressed "Пс 22" and saw "Пс.22" over Psalm 23. The title follows the
+  // text, not the Bible of the interface's language — here the mirror: English words, the Synodal read.
+  it('names the place as the Bible it reads numbers it when that is not the Bible of the interface', async () => {
+    const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('rst', 'Psalms', index + 1) }, (__, verse) => `Псалом ${index + 1}:${verse + 1}`)) };
+    jest.mocked(fetchBookText).mockResolvedValue(psalms as never);
+    render(<VerseSheet reference={{ bible: 'kjv', book: 'Psalms', chapter: 23 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ps.22' });
+    expect(dialog.querySelector('h2')).toHaveTextContent('Ps.22');
+    expect(within(dialog).getByText('bible.translations.rst.name')).toBeInTheDocument();
+    await waitFor(() => expect(lit(dialog)[0]).toBe('22:1'));
+    expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'rst');
+  });
+
   // A big book is drawn around the passage, as in the reader: a psalm in a meeting does not build the
   // whole Psalter (the owner's iPad, 2026-10-16).
   it('draws only the psalms around the passage of a big book; the others stand as boxes', async () => {
     window.localStorage.setItem('bible:translation', 'kjv');
     const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `Psalm ${index + 1}:${verse + 1}`)) };
     jest.mocked(fetchBookText).mockResolvedValue(psalms as never);
-    render(<VerseSheet reference={{ bible: 'kjv', book: 'Psalms', chapter: 120, fromVerse: 2, toVerse: 3, label: 'Ps 120:2-3' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Ps 120:2-3' });
+    render(<VerseSheet reference={{ bible: 'kjv', book: 'Psalms', chapter: 120, fromVerse: 2, toVerse: 3 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ps.120:2-3' });
     await waitFor(() => expect(lit(dialog)).toEqual(['120:2', '120:3']));
     expect(dialog.querySelector('[data-verse="1:1"]')).toBeNull();
     expect(dialog.querySelector('section[data-chapter="1"]')).toHaveAttribute('data-box');
@@ -162,8 +176,8 @@ describe('VerseSheet — the passage over the screen', () => {
 
   it('closes by its button, by Escape and by a press beside it', async () => {
     const onClose = jest.fn();
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={onClose} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={onClose} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.close' }));
     fireEvent.keyDown(document, { key: 'Escape' });
     const beside = screen.getAllByRole('button', { name: 'bible.sheet.close', hidden: true }).find((button) => !dialog.contains(button));
@@ -175,10 +189,10 @@ describe('VerseSheet — the passage over the screen', () => {
     render(
       <>
         <button type="button">Next block</button>
-        <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={jest.fn()} />
+        <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />
       </>
     );
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     const close = within(dialog).getByRole('button', { name: 'bible.sheet.close' });
     expect(dialog).toHaveFocus();
     close.focus();
@@ -190,9 +204,9 @@ describe('VerseSheet — the passage over the screen', () => {
 
   it('leaves focus where the person put it when the screen under it renders again', async () => {
     // A meeting renders every second for its timer, with a new close callback each time.
-    const reference = { bible: 'rst' as const, book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' };
+    const reference = { bible: 'rst' as const, book: 'Ruth', chapter: 1, fromVerse: 1 };
     const { rerender } = render(<VerseSheet reference={reference} onClose={() => undefined} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
     const text = dialog.querySelector<HTMLElement>('[tabindex="0"]') as HTMLElement;
     text.focus();
@@ -206,10 +220,10 @@ describe('VerseSheet — the passage over the screen', () => {
     const close = jest.fn();
     function PreachingPage() {
       useKeyboardShortcut({ onEscape: leave, onBackspace: leave });
-      return <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={close} />;
+      return <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={close} />;
     }
     render(<PreachingPage />);
-    await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     fireEvent.keyDown(document.body, { key: 'Escape' });
     fireEvent.keyDown(document.body, { key: 'Backspace' });
     expect(close).toHaveBeenCalledTimes(1);
@@ -220,12 +234,12 @@ describe('VerseSheet — the passage over the screen', () => {
     // The question comes later, as in life: the timer's ✕ pressed while the text is open.
     const page = (asking: boolean) => (
       <>
-        <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={jest.fn()} />
+        <VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />
         <ConfirmModal isOpen={asking} onClose={jest.fn()} onConfirm={jest.fn()} title="End the sermon?" cancelText="Stay" />
       </>
     );
     const { rerender } = render(page(false));
-    await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     rerender(page(true));
     const stay = screen.getByRole('button', { name: 'Stay' });
     stay.focus();
@@ -235,8 +249,8 @@ describe('VerseSheet — the passage over the screen', () => {
 
   it('says the text could not be read and reads it again on request', async () => {
     jest.mocked(fetchBookText).mockRejectedValueOnce(new Error('offline'));
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:1' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     fireEvent.click(await within(dialog).findByRole('button', { name: 'bible.retry' }));
     await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
   });

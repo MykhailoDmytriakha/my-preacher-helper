@@ -10,9 +10,9 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { getLocalizedBookName } from '@/utils/bibleBooks';
 import { isBibleId, type BibleId } from '@/utils/bibles';
-import { passageWords, verseWords, type BookText } from '@/utils/bibleText';
+import { verseWords, type BookText } from '@/utils/bibleText';
+import { placeLine, placeShown } from '@/utils/placeText';
 import { chaptersAround, movedReference, versesAround } from '@/utils/scriptureNeighbours';
-import { formatScriptureReference } from '@/utils/scriptureReference';
 import { passagesIn, referenceBibleFor, sameScriptureReference, scriptureReferencesOverlap, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -53,8 +53,8 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   restoreOwn?: (reference: ScriptureReference) => void;
   /** The Bible the screen under the window reads; a place with no Bible of its own is counted in it. By default, the interface's. */
   bible?: BibleId;
-  /** How that screen names a place; by default as Studies name it. */
-  placeOf?: (reference: ScriptureReference) => string;
+  /** How that screen names a place, in the Bible it is handed — the screen's own; by default as Studies name it. */
+  placeOf?: (reference: ScriptureReference, bible: BibleId) => string;
   /** The words of the place it stands on, as that screen gave them. */
   context?: string;
   /** The exact occurrence opened on the screen, before any explicit move or stored-version choice. */
@@ -67,13 +67,13 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   const { t, language } = useTranslation();
   const locale = resolveAppLocale(language);
   const screenBible = bible ?? referenceBibleFor(locale);
-  const labelOf = (ref: ScriptureReference) => (placeOf ? placeOf(ref) : formatScriptureReference(ref, { locale }));
   /*
    * A COMMENT MOVES IN THE BIBLE IT WAS WRITTEN IN. Read in another Bible, a place loses what it is: Synodal Psalms 114 and
    * 115 are both King James 116, Synodal Psalm 9 is King James 9–10, Synodal Psalm 9:20–25 runs over a chapter's edge
    * there. Three rounds of review found moves lost or reshaped by such readings (Codex review, 2026-10-28), so the list, the
    * reader's window and a save count in the comment's own Bible — the one the person reads, but for a translation switched
-   * since — and a reading in the screen's Bible only names it (`placeOf`).
+   * since — and the place under the title is shown in the screen's Bible: its name and its words (`placeShown`; the owner,
+   * 2026-11-11 — as the verse window, a place is numbered as the words beside it number it).
    */
   const home = standing?.chapter !== undefined ? withStoredBible(standing, locale) : null;
   const onChapter = home !== null && home.fromVerse === undefined;
@@ -90,6 +90,12 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   const placeBible: BibleId = here && isBibleId(here.bible) ? here.bible : screenBible;
   const texts = useBookTexts(here && (open || moved || ownName) ? [here.book] : [], placeBible);
   const text = here ? texts.get(here.book) ?? null : null;
+  // The place under the title and its words, in the Bible the screen shows: its text too, where the comment counts in another.
+  const named = moved ?? (ownName ? home : null);
+  const screenTexts = useBookTexts(named && screenBible !== placeBible ? [named.book] : [], screenBible);
+  const screenText = named ? (screenBible === placeBible ? texts : screenTexts).get(named.book) : undefined;
+  const shownOf = (ref: ScriptureReference) => placeShown(ref, screenBible, { text: screenText, locale, name: placeOf });
+  const labelOf = (ref: ScriptureReference) => shownOf(ref).name;
 
   const moveTo = (ref: ScriptureReference) => setMoved(home && sameScriptureReference(ref, home) ? null : ref);
   /**
@@ -112,18 +118,16 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
     return notes.some((other) => other.type === 'comment' && other.id !== ownId
       && other.scriptureRefs.some((ref) => (ref.fromVerse !== undefined) === (spot.verse !== undefined) && scriptureReferencesOverlap(ref, there)));
   };
-  // The words under the title follow the place the window names: the verse says its own, a chapter says it is whole.
+  // The words under the title follow the place the window names, in the same Bible: the verse says its own, a chapter says it
+  // is whole.
   const wordsOf = (ref: ScriptureReference) => {
+    const shown = shownOf(ref);
     if (onChapter || ref.fromVerse === undefined) {
       const chapters = ref.toChapter !== undefined && ref.toChapter > (ref.chapter ?? 0);
-      return t(chapters ? 'comment.wholeChapters' : 'comment.wholeChapter', { place: labelOf(ref) });
+      return t(chapters ? 'comment.wholeChapters' : 'comment.wholeChapter', { place: shown.name });
     }
-    // A place chosen in the reader is numbered in the Bible read there: its words are read where it falls in this one.
-    const [first] = passagesIn(ref, placeBible);
-    if (!text || first?.fromVerse === undefined) return '';
-    return passageWords(text, { chapter: first.chapter, verse: first.fromVerse }, { chapter: first.toChapter, verse: first.toVerse ?? first.fromVerse });
+    return placeLine(shown.verses);
   };
-  const named = moved ?? (ownName ? home : null);
   // A screen that says how it names places has the window name its own — every piece of it, where its Bible parts it
   // (Codex review r4, 2026-10-28) — and so does the window that took another device's place.
   const homeLabel = (place: string) => ((ownName || placeOf) && home ? labelOf(home) : place);

@@ -23,7 +23,7 @@ export default function ScriptureOpening({ text, reference = null, onOpen }: Scr
   const links = useScriptureLinks();
   if (!reference || (!links && !onOpen)) return <>{text}</>;
   const open = () => {
-    if (links) links.onOpen({ ...reference.reference, label: text.slice(0, reference.end) });
+    if (links) links.onOpen(reference.reference);
     else onOpen?.(reference.href, reference);
   };
   return (

@@ -160,7 +160,7 @@ describe("FullPlanContent", () => {
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "John 3:16" }));
-    expect(screen.getByRole("dialog", { name: "John 3:16" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "John.3:16" })).toBeInTheDocument();
     expect(screen.getByText("Intro text")).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

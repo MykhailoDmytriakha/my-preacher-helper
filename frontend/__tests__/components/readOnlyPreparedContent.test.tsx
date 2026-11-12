@@ -49,6 +49,6 @@ it.each(['title', 'unplaced-title', 'kept-reference'])('opens a verse from the r
     flow: [], meetingDates: [] } as unknown as Group;
   render(<ScriptureLinks onOpen={onOpen}><GroupReadOnlyContent group={group} /></ScriptureLinks>);
   fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });

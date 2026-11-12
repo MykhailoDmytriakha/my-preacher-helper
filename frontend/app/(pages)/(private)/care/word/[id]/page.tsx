@@ -15,9 +15,8 @@ import { ownPlaceKey, useOccasionPlaces, type OwnPlace, type OwnPlaceRef } from 
 import { useRouteId } from '@/hooks/useRouteId';
 import { namesAPlace } from '@/utils/bibleLink';
 import { canGoBackToPage } from '@/utils/modalHistory.client';
-import { placePreview } from '@/utils/placeText';
+import { placeShown, versesPreview, type PlaceVerse } from '@/utils/placeText';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
-import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { EMERALD_ACTION } from '@/utils/themeColors';
@@ -26,7 +25,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
-import type { BookText } from '@/utils/bibleText';
+import type { ScriptureRefShape } from '@/utils/scriptureReference';
 import type { ReactNode } from 'react';
 
 import '@locales/i18n';
@@ -66,7 +65,8 @@ export default function WordForOccasionSituationPage() {
 
   // Back keeps the index's search: the index is in history whenever a chip led here.
   const back = () => (canGoBackToPage() ? router.back() : router.push('/care/word'));
-  const labelOf = (place: Place) => formatScriptureReference(place, { locale, style: 'short' });
+  // Each place's name and words from the one Bible this page reads them in (`placeShown`).
+  const shownOf = (place: Place) => placeShown(place, bible, { text: texts.get(place.book), locale });
   const known = new Set([...(occasion?.places ?? []), ...own.places.map((place) => place.ref)].map(ownPlaceKey));
   // Confirm removing a place he added by hand. The engine owns the removal through delivery.
   const removeOwn = async (place: OwnPlace, label: string) => {
@@ -105,13 +105,14 @@ export default function WordForOccasionSituationPage() {
 
           <ul className="mt-5 flex flex-col gap-2.5">
             {occasion.places.map((place) => {
-              const label = labelOf(place);
+              const shown = shownOf(place);
+              const label = shown.name;
               return (
                 <li key={label}>
                   <PlaceCard
                     label={label}
                     note={place.sources > 1 ? t('careWord.inIndexes', { count: place.sources }) : null}
-                    words={wordsOf(texts.get(place.book), place, bible)}
+                    words={wordsOf(shown.verses, place)}
                     loadingWords={t('careWord.textLoading')}
                     openLabel={t('careWord.openPlace', { place: label })}
                     onOpen={() => verseWindow.open(place)}
@@ -129,13 +130,14 @@ export default function WordForOccasionSituationPage() {
             {own.places.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
                 {own.places.map((place) => {
-                  const label = labelOf(place.ref);
+                  const shown = shownOf(place.ref);
+                  const label = shown.name;
                   return (
                     <li key={place.ids[0]}>
                       <PlaceCard
                         label={label}
                         note={null}
-                        words={wordsOf(texts.get(place.ref.book), place.ref, bible)}
+                        words={wordsOf(shown.verses, place.ref)}
                         loadingWords={t('careWord.textLoading')}
                         openLabel={t('careWord.openPlace', { place: label })}
                         onOpen={() => verseWindow.open(place.ref)}
@@ -177,8 +179,8 @@ export default function WordForOccasionSituationPage() {
   );
 }
 
-function wordsOf(text: BookText | undefined, place: Place, bible: BibleId): string | null {
-  return placePreview(text, place, bible, place.fromVerse === undefined ? CHAPTER_VERSES_SHOWN : RUN_VERSES_SHOWN);
+function wordsOf(verses: readonly PlaceVerse[], place: Place): string | null {
+  return versesPreview(verses, place.fromVerse === undefined ? CHAPTER_VERSES_SHOWN : RUN_VERSES_SHOWN);
 }
 
 /**

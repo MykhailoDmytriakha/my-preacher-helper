@@ -318,7 +318,7 @@ describe('the plan header is the same in every mode', () => {
       mockPush.mockClear();
       const link = within(screen.getByTestId('plan-header-verse')).getByRole('button', { name: '1 Chronicles 4:9-10' });
       act(() => { link.click(); });
-      const dialog = await screen.findByRole('dialog', { name: '1 Chronicles 4:9-10' });
+      const dialog = await screen.findByRole('dialog', { name: '1Chr.4:9-10' });
       expect(mockPush).not.toHaveBeenCalled();
       act(() => { within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }).click(); });
       await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
@@ -339,7 +339,7 @@ describe('the plan header is the same in every mode', () => {
     await renderPage(<AiPlanPage />);
     const reference = within(screen.getByTestId('plan-header-verse')).getByRole('button', { name: '1 Chronicles 4:9-10' });
     act(() => { reference.click(); });
-    const dialog = await screen.findByRole('dialog', { name: '1 Chronicles 4:9-10' });
+    const dialog = await screen.findByRole('dialog', { name: '1Chr.4:9-10' });
 
     cleanup();
     mockPathname = '/sermons/sermon-1/plan/manual';

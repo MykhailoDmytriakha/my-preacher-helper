@@ -61,7 +61,7 @@ async function open(kind: 'verse' | 'reference') {
   resetCrossReferencePrefsForTests();
   jest.mocked(fetchBookText).mockResolvedValue(book as never);
   let view;
-  if (kind === 'verse') view = render(<VerseSheet reference={{ bible: 'kjv', book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }} onClose={jest.fn()} />);
+  if (kind === 'verse') view = render(<VerseSheet reference={{ bible: 'kjv', book: 'Ruth', chapter: 1, fromVerse: 2 }} onClose={jest.fn()} />);
   else {
     const index = getBookIds().indexOf('Ruth');
     view = render(<CrossReferenceSheet at={{ chapter: 1, verse: 1 }} bookId="Ruth" bible="kjv" locale="en"
@@ -69,7 +69,7 @@ async function open(kind: 'verse' | 'reference') {
     const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
     fireEvent.click(await within(list).findByText('Ruth 1:2'));
   }
-  const dialog = await screen.findByRole('dialog', { name: 'Ruth 1:2' });
+  const dialog = await screen.findByRole('dialog', { name: kind === 'verse' ? 'Ruth.1:2' : 'Ruth 1:2' });
   const pane = dialog.querySelector<HTMLElement>('div[tabindex="0"]')!;
   await waitFor(() => expect(pane.scrollTop).toBe(720));
   return { ...view, dialog, pane };

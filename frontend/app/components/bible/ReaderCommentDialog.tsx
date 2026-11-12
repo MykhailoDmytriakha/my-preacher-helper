@@ -179,7 +179,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
     ? passageWords(text, { chapter: passage.chapter, verse: passage.fromVerse! }, { chapter: passage.toChapter, verse: passage.toVerse ?? passage.fromVerse! })
     : t(passage && passage.toChapter > passage.chapter ? 'comment.wholeChapters' : 'comment.wholeChapter', { place });
   const target: CommentTarget = commenting.kind === 'edit' ? { kind: 'edit', id: commenting.id } : { kind: 'new', reference: commenting.reference };
-  const placeOf = (one: ScriptureReference) => readerPlaceName(one, bible, locale);
+  const placeOf = (one: ScriptureReference, shownIn: BibleId) => readerPlaceName(one, shownIn, locale);
   // A comment on whole chapters keeps its chapter doors: its verses are not chosen in the text. On verses, the window says
   // what it is — a comment or a paragraph — and lets it be changed: a new one as the bar's button chose, a written one as
   // it was saved or, never chosen, as its length reads (the owner, 2026-11-06).

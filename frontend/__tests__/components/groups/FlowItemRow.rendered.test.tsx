@@ -88,7 +88,7 @@ it('opens a reference in the block text without selecting the block', () => {
         </ScriptureLinks>
     );
     fireEvent.click(screen.getByRole('button', { name: 'Бытие 13:1–12' }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Genesis', chapter: 13, fromVerse: 1, toVerse: 12, label: 'Бытие 13:1–12' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Genesis', chapter: 13, fromVerse: 1, toVerse: 12 }));
     expect(onSelect).not.toHaveBeenCalled();
     // The block's title and the leader's note carry their references too.
     fireEvent.click(screen.getByRole('button', { name: 'Рим 13' }));

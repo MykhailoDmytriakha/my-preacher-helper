@@ -36,8 +36,8 @@ describe('OutlineBoard', () => {
     fireEvent.click(pointReference);
     fireEvent.click(subPointReference);
 
-    expect(onOpen).toHaveBeenNthCalledWith(1, expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
-    expect(onOpen).toHaveBeenNthCalledWith(2, expect.objectContaining({ book: 'Ruth', chapter: 2, fromVerse: 1, label: 'Ruth 2:1' }));
+    expect(onOpen).toHaveBeenNthCalledWith(1, expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
+    expect(onOpen).toHaveBeenNthCalledWith(2, expect.objectContaining({ book: 'Ruth', chapter: 2, fromVerse: 1 }));
     expect(onChange).not.toHaveBeenCalled();
 
     fireEvent.doubleClick(pointReference);

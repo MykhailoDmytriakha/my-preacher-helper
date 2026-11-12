@@ -34,7 +34,7 @@ function blockReferences(kept: string[], locale: AppLocale, written: AppLocale |
       ? found.some((each) => each.reference && sameScriptureReference(each.reference, reference))
       : found.some((each) => !each.reference && each.label === label);
     const writtenIn = reference ? writtenInFor(label, reference, locale) : undefined;
-    if (!same) found.push({ key: `${found.length}|${label}`, label, reference: reference ? { ...reference, label } : null, ...(writtenIn ? { writtenIn } : {}) });
+    if (!same) found.push({ key: `${found.length}|${label}`, label, reference, ...(writtenIn ? { writtenIn } : {}) });
   };
   kept.forEach((raw) => {
     const reference = referenceFromTyped(raw, { locale, written });

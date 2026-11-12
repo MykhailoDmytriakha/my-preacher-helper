@@ -29,8 +29,8 @@ jest.mock('@/services/firebaseAuth.service', () => ({ auth: { currentUser: { get
 jest.mock('../../components/SermonsBuiltOnNote', () => ({ __esModule: true, default: () => null }));
 // The window itself has its own tests; here it says which passage the page asked it for.
 jest.mock('@/components/bible/ScripturePreviewSheet', () => ({
-  ScripturePreviewSheet: ({ reference }: { reference: { bible?: string; book: string; chapter?: number; fromVerse?: number; label?: string } }) => (
-    <div role="dialog" aria-label={reference.label}>{`${reference.bible} ${reference.book} ${reference.chapter}:${reference.fromVerse}`}</div>
+  ScripturePreviewSheet: ({ reference }: { reference: { bible?: string; book: string; chapter?: number; fromVerse?: number } }) => (
+    <div role="dialog">{`${reference.bible} ${reference.book} ${reference.chapter}:${reference.fromVerse}`}</div>
   ),
 }));
 
@@ -57,12 +57,12 @@ describe('a note\'s page — references in its text', () => {
   it('opens a reference pressed in the text in the note\'s verse window', () => {
     open([note('Войди в покой', 'Христос говорит: «не выходите…» (Мф 24:26). И там другой призыв (Лк 17:30).')]);
     fireEvent.click(screen.getByRole('button', { name: 'Мф 24:26' }));
-    expect(screen.getByRole('dialog', { name: 'Мф 24:26' })).toHaveTextContent('rst Matthew 24:26');
+    expect(screen.getByRole('dialog')).toHaveTextContent('rst Matthew 24:26');
   });
 
   it('reads "1Цар 3:5" of a note titled in Ukrainian as 1 Kings in Ohienko', () => {
     open([note('Мій Господь з’явився уві сні', '1Цар 3:5')]);
     fireEvent.click(screen.getByRole('button', { name: '1Цар 3:5' }));
-    expect(screen.getByRole('dialog', { name: '1Цар 3:5' })).toHaveTextContent('ubio 1 Kings 3:5');
+    expect(screen.getByRole('dialog')).toHaveTextContent('ubio 1 Kings 3:5');
   });
 });

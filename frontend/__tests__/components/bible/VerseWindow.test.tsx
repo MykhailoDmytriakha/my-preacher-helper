@@ -45,14 +45,14 @@ describe('ScriptureLinksInWindow — a pressed reference opens over the page', (
   it('opens the passage over the page and leaves the page where it is', async () => {
     render(<ScriptureLinksInWindow><p><ScriptureText text="Прочитайте Руфь 1:2" /></p></ScriptureLinksInWindow>);
     fireEvent.click(screen.getByRole('button', { name: 'Руфь 1:2' }));
-    expect(await screen.findByRole('dialog', { name: 'Руфь 1:2' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Ruth.1:2' })).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
 
   it('goes to the Bible at the passage from the window, the way back this page, and closes the window', async () => {
     render(<ScriptureLinksInWindow><p><ScriptureText text="Прочитайте Руфь 1:2" /></p></ScriptureLinksInWindow>);
     fireEvent.click(screen.getByRole('button', { name: 'Руфь 1:2' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
     const href = new URL(String(push.mock.calls[0]?.[0]), 'https://app.test');
     expect(href.pathname).toBe('/bible');
@@ -66,7 +66,7 @@ describe('ScriptureLinksInWindow — a pressed reference opens over the page', (
   it('keeps the ending chapter when a typed passage opens in the window and then the Bible', async () => {
     render(<ScriptureLinksInWindow><p><ScriptureText text="Read Ruth 1:2–2:1" /></p></ScriptureLinksInWindow>);
     fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2–2:1' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Ruth 1:2–2:1' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2-2:1' });
     await waitFor(() => expect(Array.from(dialog.querySelectorAll('[data-arrival="on"]')).map(row => row.getAttribute('data-verse'))).toEqual(['1:2', '1:3', '2:1']));
     await userEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
     await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
@@ -80,7 +80,7 @@ describe('ScriptureLinksInWindow — a pressed reference opens over the page', (
   it('offers no way to the Bible where leaving would lose unsaved words', async () => {
     render(<ScriptureLinksInWindow toBible={false}><p><ScriptureText text="Руфь 1:2" /></p></ScriptureLinksInWindow>);
     fireEvent.click(screen.getByRole('button', { name: 'Руфь 1:2' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2' });
     expect(within(dialog).queryByRole('button', { name: 'bible.sheet.openInBible' })).toBeNull();
   });
 
@@ -88,14 +88,14 @@ describe('ScriptureLinksInWindow — a pressed reference opens over the page', (
     const beforeSwitch = jest.fn().mockResolvedValue(false);
     render(<ScriptureLinksInWindow beforeSwitch={beforeSwitch}><p><ScriptureText text="Руфь 1:2" /></p></ScriptureLinksInWindow>);
     fireEvent.click(screen.getByRole('button', { name: 'Руфь 1:2' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2' });
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2' });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
     });
     expect(beforeSwitch).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
     // Codex's review, 2026-10-21: the refused save closed the window and the place read in it.
-    expect(screen.getByRole('dialog', { name: 'Руфь 1:2' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Ruth.1:2' })).toBeInTheDocument();
   });
 
   it("opens a sermon's verse over the page too, not through its own way to the Bible", async () => {
@@ -107,7 +107,7 @@ describe('ScriptureLinksInWindow — a pressed reference opens over the page', (
       </ScriptureLinksInWindow>
     );
     fireEvent.click(screen.getByRole('button', { name: 'Руфь 1:2' }));
-    expect(await screen.findByRole('dialog', { name: 'Руфь 1:2' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Ruth.1:2' })).toBeInTheDocument();
     expect(onOpen).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
@@ -172,8 +172,8 @@ describe('the window leaves only by the screen\'s own way out', () => {
 // Codex's review, 2026-10-21: a book named whole on a note's chip said "no such book or chapter".
 describe('a book named whole', () => {
   it('opens at its start with nothing lit and no "not found"', async () => {
-    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', label: 'Руфь' }} onClose={jest.fn()} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Руфь' });
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth' }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth' });
     await waitFor(() => expect(dialog.querySelector('[data-verse="1:1"]')).not.toBeNull());
     expect(within(dialog).queryByText('bible.goToNotFound')).toBeNull();
     expect(dialog.querySelectorAll('[data-arrival="on"]')).toHaveLength(0);
