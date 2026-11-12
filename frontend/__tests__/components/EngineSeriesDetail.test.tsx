@@ -4,6 +4,7 @@ import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRe
 import { EngineSeriesDetail } from '@/components/series/EngineSeriesDetail';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
@@ -15,7 +16,7 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'o
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: mockRelatedGroupError }) }));
-jest.mock('@/hooks/useDashboardSermons', () => ({ useDashboardSermons: () => ({ sermons: [], loading: false, error: null }) }));
+jest.mock('@/hooks/useDashboardSermons', () => ({ useDashboardSermons: jest.fn() }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <p>{content}</p> }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
@@ -27,13 +28,20 @@ const series = (id: string, occupied = false): ResourceSnapshot => ({ resource: 
   metadata: { protocol: 1, generation: `g-${id}`, revision: 1, deleted: false },
   value: { userId: 'owner', title: id, theme: id, bookOrTopic: 'Romans', status: 'draft', createdAt: 'now', updatedAt: 'now',
     items: occupied ? [member] : [], sermonIds: [], seriesKind: occupied ? 'group' : 'sermon' } });
-function setup(id = 'b') {
-  const harness = membershipEngineHarness([series('a', true), series('b'), { resource: { collection: 'groups', id: 'g' }, metadata: null, value: { userId: 'owner', title: 'Meeting' } }]);
+function setup(id = 'b', snapshots: ResourceSnapshot[] = [series('a', true), series('b'),
+  { resource: { collection: 'groups', id: 'g' }, metadata: null, value: { userId: 'owner', title: 'Meeting' } }]) {
+  const harness = membershipEngineHarness(snapshots);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   function Workspace() { return <DataEngineProvider><SeriesMembershipRecovery /><EngineSeriesDetail seriesId={id} /></DataEngineProvider>; }
   return { harness, Workspace, view: render(<Workspace />) };
 }
-beforeEach(() => { mockRelatedGroupError = null; jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
+beforeEach(() => {
+  mockRelatedGroupError = null;
+  jest.clearAllMocks();
+  jest.mocked(useDashboardSermons).mockReturnValue({ sermons: [], loading: false, error: null,
+    complete: false, checking: false, refresh: async () => undefined });
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+});
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 it('projects a queued atomic move immediately, recovers its status after restart, then confirms it', async () => {
   const { harness, view, Workspace } = setup();
@@ -109,6 +117,80 @@ it('opens creation from the series picker with a durable preset and submits only
   expect(harness.transport.send).toHaveBeenCalledTimes(1);
   const id = (harness.read(series('b').resource).value!.sermonIds as string[])[0];
   expect(harness.read({ collection: 'sermons', id }).value).toMatchObject({ title: 'Born in this series' }); view.unmount();
+});
+
+it.each(['offline series', 'accepted cache'] as const)('preserves the neighboring member in the %s after linked Delete', async surface => {
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series,sermons';
+  jest.mocked(useDashboardSermons).mockImplementation(
+    jest.requireActual<typeof import('@/hooks/useDashboardSermons')>('@/hooks/useDashboardSermons').useDashboardSermons,
+  );
+  const title = 'A sermon to remove';
+  const neighbor: ResourceSnapshot = {
+    resource: { collection: 'sermons', id: 'neighbor' },
+    metadata: { protocol: 1, generation: 'neighbor-generation', revision: 1, deleted: false },
+    value: { userId: 'owner', title: 'Neighbor sermon', verse: 'Romans 3', date: 'now', thoughts: [] },
+  };
+  const membership = { id: 'neighbor-member', type: 'sermon', refId: 'neighbor', position: 1 };
+  const opening = series('b');
+  opening.value = { ...opening.value, items: [membership], sermonIds: ['neighbor'] };
+  const { harness, view, Workspace } = setup('b', [opening, neighbor]);
+  try {
+    await screen.findByRole('heading', { name: 'Neighbor sermon' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'workspaces.series.actions.addSermon' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'addSermon.createNewSermon' }));
+    const field = await screen.findByLabelText('addSermon.titleLabel');
+    await waitFor(() => expect(field).toBeEnabled());
+    fireEvent.change(field, { target: { value: title } });
+    fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Romans 1' } });
+    await waitFor(() => expect(screen.getByLabelText('addSermon.seriesLabel')).toHaveValue('b'));
+    await act(async () => { await settleEngine(); harness.engine.setOnline(false); });
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await screen.findByRole('heading', { name: title });
+    const created = (await harness.commits.list('owner')).find(row => row.baseline.resource.collection === 'sermons')!;
+    await act(async () => {
+      const editor = await harness.engine.openEditor(created.baseline.resource, 'pending-linked-delete');
+      await editor.remove();
+      await editor.close({ flush: false });
+      await settleEngine();
+    });
+
+    if (surface === 'accepted cache') {
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+      expect(harness.read(opening.resource).value?.items).toEqual([membership]);
+      const cached = await harness.engine.peekCollectionCached('series');
+      expect(cached.snapshots.find(copy => copy.resource.id === 'b')?.value?.items).toEqual([membership]);
+      return;
+    }
+
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument();
+    expect(screen.queryByText('common.unknown')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Neighbor sermon' })).toBeInTheDocument();
+    view.unmount();
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+      const browser = harness.createBrowser(); browser.engine.setOnline(false); return browser;
+    });
+    const restarted = render(<Workspace />);
+    try {
+      await screen.findByRole('heading', { name: 'Neighbor sermon' });
+      expect(screen.queryByText('common.unknown')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument();
+    } finally { restarted.unmount(); }
+  } finally { view.unmount(); }
+});
+
+it('keeps the unknown card when there is no evidence of member removal', async () => {
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series,sermons';
+  jest.mocked(useDashboardSermons).mockImplementation(
+    jest.requireActual<typeof import('@/hooks/useDashboardSermons')>('@/hooks/useDashboardSermons').useDashboardSermons,
+  );
+  const opening = series('b');
+  opening.value = { ...opening.value, items: [{ id: 'unknown-member', type: 'sermon', refId: 'unknown', position: 1 }],
+    sermonIds: ['unknown'] };
+  const { view } = setup('b', [opening]);
+  try {
+    expect(await screen.findByRole('heading', { name: 'common.unknown' })).toBeInTheDocument();
+  } finally { view.unmount(); }
 });
 
 it('reads a series during silent storage without mutation controls, then restores editing when opening finishes', async () => {

@@ -1,3 +1,4 @@
+import { deletionConflicts } from './deletionContent';
 import { commandReferenceResources, documentReferenceResources } from './documentReferences';
 import { requiredDomainTargets } from './domainPolicy';
 import { equalValues } from './fieldValues';
@@ -6,7 +7,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { CommitRequest } from './commits';
 import type { EditorState } from './controller';
 import type { SessionCheckpoint } from './session';
-import type { ResourceRef } from './types';
+import type { DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -47,6 +48,129 @@ export function canRemovePendingCreation({ checkpoint, result, actionResolutionR
   return Boolean(creation && equalValues(creation[1].value, checkpoint.draft));
 }
 
+export interface PendingRemovalOpening {
+  ids: string[];
+  shown: DocumentData;
+}
+
+/** Only a saved value on screen can supply the opening for a queued Delete. */
+export function pendingRemovalOpening(state: EditorState): PendingRemovalOpening | null {
+  const { checkpoint, result, actionResolutionRequired, pendingMembershipCreation, preparedOperationId } = state;
+  const { confirmed, draft, pending } = checkpoint;
+  if (!draft || !standaloneCreationCollections.has(confirmed.resource.collection) || confirmed.metadata?.deleted
+    || (actionResolutionRequired && !pendingMembershipCreation) || preparedOperationId || result?.kind === 'refused' || result?.kind === 'conflict'
+    || checkpoint.conflicts.length || hasForeignPendingSnapshot(checkpoint)) return null;
+  const entries = Object.entries(pending);
+  if (!entries.length || entries.some(([, item]) => !item.value || item.borrowedManualScope)) return null;
+  const latest = Math.max(...entries.map(([, item]) => item.generation));
+  return latest === checkpoint.editGeneration && entries.some(([, item]) => item.generation === latest && equalValues(item.value, draft))
+    ? { ids: entries.map(([id]) => id), shown: draft } : null;
+}
+
+function isMembershipCreation(request: CommitRequest): boolean {
+  const { atomic, baseline } = request;
+  return atomic?.kind === 'create-member' && atomic.id === request.id && atomic.participants.length === 2
+    && atomic.participants[0] === request.id && atomic.participants[1] !== request.id
+    && ['groups', 'sermons'].includes(baseline.resource.collection) && !request.predecessor
+    && baseline.value === null && baseline.metadata === null;
+}
+
+function membershipCreationPeer(request: CommitRequest, byId: ReadonlyMap<string, CommitRequest>): CommitRequest | undefined {
+  if (!isMembershipCreation(request)) return undefined;
+  const peer = byId.get(request.atomic!.participants[1]);
+  return peer && peer.owner === request.owner && peer.baseline.resource.collection === 'series'
+    && peer.baseline.value !== null && peer.value !== null && equalValues(peer.atomic, request.atomic) ? peer : undefined;
+}
+
+function exactMembershipAnswer(primary: CommitRequest, peer: CommitRequest): boolean {
+  const answer = peer.result;
+  if (answer?.kind !== 'acknowledged' || !answer.committed) return false;
+  const proof = answer.committed;
+  // The atomic ACK owns the rebased peer. An earlier Save can have versioned a
+  // legacy series between capture and the atomic creation.
+  const generation = peer.baseline.metadata?.generation
+    ?? (peer.predecessor ? peer.working.metadata?.generation : primary.id);
+  return proof.operationId === primary.id && proof.generation === generation
+    && !proof.deleted && coversCommittedEffect(answer.snapshot, peer.baseline.resource, proof);
+}
+
+const changedRemoval = () => Object.assign(new Error('The saved work shown before Delete changed'), { code: 'decision-changed' });
+
+/** Freeze the observed chain and, for an absent baseline, its exact creation. */
+export function captureRemovalLineage(opening: PendingRemovalOpening, baseline: ResourceSnapshot,
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[]): string[] {
+  if (!predecessor || !equalValues(opening.shown, predecessor.value)) throw changedRemoval();
+  const remaining = new Set(opening.ids);
+  const byId = new Map(records.map(request => [request.id, request]));
+  const lineage = new Set<string>();
+  let cursor: CommitRequest | undefined = predecessor;
+  while (cursor) {
+    if (lineage.has(cursor.id) || cursor.owner !== predecessor.owner || !sameResource(cursor.baseline.resource, baseline.resource)
+      || (cursor.atomic && !membershipCreationPeer(cursor, byId)) || cursor.value === null || ['conflict', 'refused', 'cancelled'].includes(cursor.state)) throw changedRemoval();
+    lineage.add(cursor.id);
+    remaining.delete(cursor.id);
+    if (!remaining.size && (baseline.value !== null || !cursor.predecessor)) break;
+    cursor = cursor.predecessor ? byId.get(cursor.predecessor) : undefined;
+  }
+  if (remaining.size || !cursor || (baseline.value === null && (cursor.baseline.value !== null || cursor.baseline.metadata !== null))) {
+    throw changedRemoval();
+  }
+  return [...lineage].reverse();
+}
+
+function exactRemovalAnswer(request: CommitRequest): boolean {
+  const answer = request.result;
+  if (answer?.kind !== 'acknowledged' || !sameResource(answer.snapshot.resource, request.baseline.resource)) return false;
+  if (!request.sequence) return !answer.committed && equalValues(answer.snapshot, request.working)
+    && equalValues(request.working.value, request.intended);
+  const operationId = request.sequence === 1 ? request.id : `${request.id}-${request.sequence - 1}`;
+  const proof = answer.committed ?? answer.snapshot.metadata;
+  return Boolean(proof && proof.operationId === operationId && coversCommittedEffect(answer.snapshot, request.baseline.resource, proof));
+}
+
+function readRemovalLineage(request: CommitRequest, byId: ReadonlyMap<string, CommitRequest>): CommitRequest[] | null {
+  const ids = request.removalLineage;
+  if (!ids?.length || ids.at(-1) !== request.predecessor || new Set(ids).size !== ids.length) return null;
+  const chain: CommitRequest[] = [];
+  for (const [index, id] of ids.entries()) {
+    const record = byId.get(id);
+    if (!record || record.owner !== request.owner || !sameResource(record.baseline.resource, request.baseline.resource)
+      || (record.atomic && (index !== 0 || !membershipCreationPeer(record, byId))) || record.value === null || (index > 0 && record.predecessor !== ids[index - 1])) return null;
+    chain.push(record);
+  }
+  return chain;
+}
+
+/** Continue only after the exact writes shown at Delete have succeeded. */
+export function initializePendingRemoval(request: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
+  const rejected: CommitRequest = { ...request, initialized: true, state: 'refused',
+    result: { kind: 'refused', operationId: request.id, code: 'decision-changed' } };
+  const byId = new Map(records.map(record => [record.id, record]));
+  const chain = readRemovalLineage(request, byId);
+  if (!chain) return rejected;
+  const first = chain[0], last = chain.at(-1)!;
+  const peer = membershipCreationPeer(first, byId);
+  const prerequisites = peer ? [...chain, peer] : chain;
+  if (prerequisites.some(record => ['conflict', 'refused', 'cancelled'].includes(record.state))) return rejected;
+  if (prerequisites.some(record => !terminal(record))) return null;
+  if (chain.some(record => !exactRemovalAnswer(record)) || (peer && !exactMembershipAnswer(first, peer))) return rejected;
+  if (request.baseline.value === null && !provesStandaloneCreation(first)) return rejected;
+  const accepted = chain.flatMap(record => record.result?.kind === 'acknowledged' ? [record.result] : []);
+  const snapshot = accepted.at(-1)!.snapshot;
+  // A write to a legacy record can be its first version. Its own receipt must
+  // prove that the operation established the generation, even on replay.
+  const firstProof = accepted.map(answer => answer.committed ?? answer.snapshot.metadata).find(Boolean);
+  if (request.baseline.value !== null && !request.baseline.metadata && firstProof
+    && (firstProof.revision !== 1 || firstProof.operationId !== firstProof.generation)) return rejected;
+  const generation = request.baseline.metadata?.generation ?? (request.baseline.value === null ? first.id : firstProof?.generation ?? null);
+  if (accepted.some(({ snapshot: copy }) => copy.metadata && copy.metadata.generation !== generation)
+    || (snapshot.metadata?.generation ?? null) !== generation) return rejected;
+  const conflicts = snapshot.value && deletionConflicts(request.baseline.resource.collection, last.value!, snapshot.value);
+  if (conflicts?.length) return { ...request, initialized: true, state: 'conflict',
+    result: { kind: 'conflict', operationId: request.id, snapshot, conflicts } };
+  return { ...request, initialized: true, working: snapshot, intended: null };
+}
+
 /** Durable shape of a removal captured before the first creation was confirmed. */
 export function isRemovalAfterStandaloneCreation(request: CommitRequest): boolean {
   const { baseline } = request;
@@ -62,12 +186,29 @@ export function followsStandaloneCreation(request: CommitRequest, predecessor: C
     && (!predecessor.command || predecessor.command.kind === 'create');
 }
 
+/** The generation the list may hide while Delete still awaits its result. */
+export function pendingRemovalGeneration(request: CommitRequest): string | null {
+  return request.baseline.metadata?.generation ?? (request.baseline.value === null
+    ? request.removalLineage?.[0] ?? request.predecessor : request.working.metadata?.generation ?? null);
+}
+
 /** First saves that are already followed by a durable, unresolved Delete. */
 export function creationsAwaitingRemoval(requests: readonly CommitRequest[]): ReadonlySet<string> {
   const byId = new Map(requests.map(request => [request.id, request]));
   const creations = new Set<string>();
   for (const request of requests) {
     if (request.state !== 'queued' && request.state !== 'prepared') continue;
+    if (request.removalLineage) {
+      const chain = request.baseline.value === null && readRemovalLineage(request, byId);
+      const peer = chain && membershipCreationPeer(chain[0], byId);
+      const holds = (record: CommitRequest, exact: () => boolean) => record.state === 'queued' || record.state === 'prepared'
+        || (record.state === 'acknowledged' && exact());
+      if (chain && chain.every(record => holds(record, () => exactRemovalAnswer(record)))
+        && (!peer || holds(peer, () => exactMembershipAnswer(chain[0], peer)))) {
+        chain.forEach(record => creations.add(record.id));
+      }
+      continue;
+    }
     const creation = request.predecessor && byId.get(request.predecessor);
     if (!creation || !followsStandaloneCreation(request, creation)) continue;
     if (creation.state === 'queued' || creation.state === 'prepared'
@@ -99,7 +240,9 @@ export function captureDeleteOrder(request: CommitRequest, records: readonly Com
     ];
     return references.some(resource => sameResource(resource, target));
   }).map(prior => prior.id);
-  return { ...request, deleteAfter };
+  const first = request.removalLineage && records.find(prior => prior.id === request.removalLineage?.[0]);
+  const participants = first && isMembershipCreation(first) ? first.atomic!.participants : [];
+  return { ...request, deleteAfter: [...new Set([...(request.removalLineage ?? []), ...participants, ...deleteAfter])] };
 }
 
 /** A missing prerequisite is not proof of completion; capture retention keeps its payload. */

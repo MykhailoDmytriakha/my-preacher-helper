@@ -15,7 +15,7 @@ import { captureCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, matchingCouncilAssembl
 import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopicKind, type CouncilTopicKindActions } from './councilTopicKindAction';
 import { councilTopicPlacementPredecessor, councilTopicWitness, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
-import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
+import { captureDeleteOrder, captureRemovalLineage, deleteOrderReady, replayDeleteOrder, type PendingRemovalOpening } from './deletionOrdering';
 import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
@@ -161,6 +161,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   groupStatusAction?: DocumentFieldAction;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
+  /** Exact visible saves that authorize an ordinary deletion once they are accepted. */
+  removalLineage?: string[];
   revision: number;
   initialized: boolean;
   working: ResourceSnapshot;
@@ -309,6 +311,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.preachStatusActions ?? null, incoming.preachStatusActions ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
+    || !equalValues(current.removalLineage ?? null, incoming.removalLineage ?? null)
     || current.retentionScope !== incoming.retentionScope
     || !equalValues(current.transferredFrom ?? null, incoming.transferredFrom ?? null)) throw new Error('Saved generation cannot change its captured intent');
 }
@@ -373,6 +376,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 }
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+  pendingRemoval?: PendingRemovalOpening;
   seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
   meetingDateAction?: DatedRowActionCapture;
@@ -424,6 +428,7 @@ function hasTimedAncestor(record: CommitRequest): boolean {
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, ...(options.seriesMembership && { seriesMembership: clone(options.seriesMembership) }), predecessorIds: options.predecessorIds && [...options.predecessorIds],
+    pendingRemoval: options.pendingRemoval && clone(options.pendingRemoval),
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
     meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
     groupMeetingFieldCaptures: options.groupMeetingFieldCaptures && clone(options.groupMeetingFieldCaptures),
@@ -663,6 +668,7 @@ export class CommitQueue {
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
+    const removalLineage = frozenOptions?.pendingRemoval && captureRemovalLineage(frozenOptions.pendingRemoval, baseline, predecessor, records);
     const sourceNoteLink = editorAction?.kind === 'sermon-source-note-links'
       ? sourceNoteQueueCapture(editorAction.selection, newClientId) : undefined;
     if (sourceNoteLink && (!intent.draft || !matchesSourceNoteOpening(baseline, sourceNoteLink))) {
@@ -815,6 +821,7 @@ export class CommitQueue {
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.seriesMembership && { seriesMembership: frozenOptions.seriesMembership }),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
+      ...(removalLineage && { removalLineage }),
       baseline, value: clone(value), predecessor: predecessor?.id ?? null,
       ...(planTextEvidence ? { planTextEvidence } : {}),
       revision: 0, initialized: false, working: baseline, intended: clone(value),
@@ -1147,7 +1154,10 @@ export class CommitQueue {
       if (requiredMoves.some(candidate => candidate.state !== 'acknowledged')) return Promise.resolve(false);
     }
     const participants = atomicParticipants(record, records);
-    if (participants.some(participant => !deleteOrderReady(participant, records))) return Promise.resolve(false);
+    // An earlier refused Save can leave a later Save waiting forever. Resolve that
+    // Delete outcome during initialization, before its normal delivery frontier.
+    if (participants.some(participant => (participant.initialized || !participant.removalLineage)
+      && !deleteOrderReady(participant, records))) return Promise.resolve(false);
     if (!participants[0].command && participants.every(participant => participant.initialized && !terminal(participant) && !participant.unfinalized.length)) {
       const references = participants.flatMap(participant => [
         ...documentReferenceResources(participant.working.resource, participant.working.value, participant.intended),

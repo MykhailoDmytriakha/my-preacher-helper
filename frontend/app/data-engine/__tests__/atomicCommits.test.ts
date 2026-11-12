@@ -100,11 +100,14 @@ it('applies both sides of a fresh move answer without rescanning every request',
   expect(passes).toBeLessThanOrEqual(5);
 });
 
-const creatingMember = () => {
+const creatingMember = (destination = series('b')) => {
   const creation = new DataSession({ resource: { collection: 'sermons', id: 'new' }, value: null, metadata: null });
   creation.edit({ userId: 'owner', title: 'New sermon', verse: 'Romans 1', date: 'now', thoughts: [] });
-  const linked = new DataSession(series('b'));
-  linked.edit({ ...series('b').value, items: [{ id: 'sermon-new', type: 'sermon', refId: 'new', position: 1 }], sermonIds: ['new'] });
+  const linked = new DataSession(destination);
+  const previous = (destination.value?.items ?? []) as Array<{ id: string; type: string; refId: string; position: number }>;
+  const sermonIds = (destination.value?.sermonIds ?? []) as string[];
+  linked.edit({ ...destination.value, items: [...previous, { id: 'sermon-new', type: 'sermon', refId: 'new', position: previous.length + 1 }],
+    sermonIds: [...sermonIds, 'new'] });
   return [{ editorId: 'new-sermon', captured: creation.checkpoint(), predecessorId: null },
     { editorId: 'series-link', captured: linked.checkpoint(), predecessorId: null }];
 };
@@ -129,23 +132,85 @@ it('captures new member and membership together offline, hides them from old rea
   expect(s.rows.get('new')?.value?.title).toBe('New sermon'); expect(s.rows.get('b')?.value?.sermonIds).toEqual(['new']);
 });
 
-it('keeps a sermon and its series membership together when ordinary removal is attempted before sync', async () => {
+it.each([false, true])('honors Delete of the exact sermon created with series membership (edited after creation: %s)', async edited => {
   const s = setup(), { queue } = s.make();
-  const saved = await queue.saveAtomic(creatingMember());
+  const neighbor = { id: 'existing-member', type: 'sermon', refId: 'neighbor', position: 1 };
+  const existingSeries = series('b');
+  existingSeries.value = { ...existingSeries.value, items: [neighbor], sermonIds: ['neighbor'] };
+  s.rows.set('b', existingSeries);
+  s.rows.set('neighbor', { resource: { collection: 'sermons', id: 'neighbor' },
+    value: { userId: 'owner', title: 'Neighbor', verse: 'Romans 2', date: 'now', thoughts: [] },
+    metadata: { protocol: 1, generation: 'existing-sermon', revision: 1, deleted: false } });
+  const saved = await queue.saveAtomic(creatingMember(existingSeries));
   expect(saved[0].atomic?.id).toBe(saved[0].id);
-  const engine = s.makeEngine();
+  let engine = s.makeEngine();
   try {
     const editor = await engine.openEditor(saved[0].baseline.resource, 'reopened-sermon');
     expect(editor.getState()).toMatchObject({ actionResolutionRequired: true, checkpoint: { draft: { title: 'New sermon' } } });
-    await expect(editor.remove()).rejects.toMatchObject({ code: 'pending-delivery-first' });
-    expect(editor.getState().checkpoint.draft?.title).toBe('New sermon');
-    expect(await queue.list()).toHaveLength(2);
-    expect(collectionDocumentViews('owner', 'sermons', [], await queue.list())[0]).toMatchObject({ value: { title: 'New sermon' } });
+    if (edited) await editor.commit(current => ({ ...current!, title: 'Separately saved sermon title' }));
+    await expect(editor.remove()).resolves.toBeUndefined();
+    expect(editor.getState().checkpoint.draft).toBeNull();
+    expect(s.transport.send).not.toHaveBeenCalled();
+    await editor.close({ flush: false });
+    engine.dispose();
+    engine = s.makeEngine();
+    const reopened = await engine.openEditor(saved[0].baseline.resource, 'after-browser-restart');
+    expect(reopened.getState().checkpoint.draft).toBeNull();
+    engine.setOnline(true);
+    await engine.retry();
+    const sent = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+    expect(sent.map(command => command.kind)).toEqual(edited ? ['relation', 'update', 'delete'] : ['relation', 'delete']);
+    expect(sent.at(-1)?.generation).toBe(saved[0].id);
+    expect(s.rows.get('b')?.value?.sermonIds).toEqual(['neighbor']);
+    expect(s.rows.get('b')?.value?.items).toEqual([neighbor]);
+    expect(s.rows.get('new')).toMatchObject({ value: null, metadata: { deleted: true, generation: saved[0].id } });
+    expect(s.rows.get('neighbor')?.value?.title).toBe('Neighbor');
+  } finally { engine.dispose(); }
+});
+
+it('removes a new member when an earlier series Save established the legacy series generation', async () => {
+  const s = setup(), { queue } = s.make();
+  const legacy = { ...series('b'), metadata: null };
+  s.rows.set('b', legacy);
+  const opening = new DataSession(legacy);
+  opening.edit({ ...legacy.value, title: 'Previously edited series' });
+  const edit = (await queue.save('legacy-series-edit', opening.checkpoint()))!;
+  const [member, peer] = creatingMember(legacy);
+  const [primary] = await queue.saveAtomic([member, { ...peer, predecessorId: edit.id,
+    captured: { ...peer.captured, draft: { ...peer.captured.draft, title: 'Previously edited series' } } }]);
+  const engine = s.makeEngine();
+  try {
+    const editor = await engine.openEditor(primary.baseline.resource, 'linked-legacy-delete');
+    await editor.remove();
+    await editor.close({ flush: false });
+    engine.setOnline(true);
+    await engine.retry();
+
+    const sent = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+    expect(sent.map(command => command.kind)).toEqual(['update', 'relation', 'delete']);
+    expect(s.rows.get('b')).toMatchObject({ value: { title: 'Previously edited series', items: [] },
+      metadata: { generation: sent[0].operationId } });
+    expect(s.rows.get('new')?.metadata?.deleted).toBe(true);
+  } finally { engine.dispose(); }
+});
+
+it('keeps the linked Delete refused when the destination series disappeared before creation', async () => {
+  const s = setup(), { queue } = s.make();
+  const saved = await queue.saveAtomic(creatingMember());
+  const engine = s.makeEngine();
+  try {
+    const editor = await engine.openEditor(saved[0].baseline.resource, 'linked-delete-without-series');
+    await editor.remove();
+    await editor.close({ flush: false });
+    const destination = series('b');
+    s.rows.set('b', { ...destination, value: null, metadata: { ...destination.metadata!, revision: 2, deleted: true } });
     engine.setOnline(true);
     await engine.retry();
     expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['relation']);
-    expect(s.rows.get('b')?.value?.sermonIds).toEqual(['new']);
-    expect(s.rows.get('new')?.value?.title).toBe('New sermon');
+    expect(s.rows.has('new')).toBe(false);
+    expect((await queue.list()).find(row => row.value === null)).toMatchObject({
+      state: 'refused', result: { kind: 'refused', code: 'decision-changed' },
+    });
   } finally { engine.dispose(); }
 });
 

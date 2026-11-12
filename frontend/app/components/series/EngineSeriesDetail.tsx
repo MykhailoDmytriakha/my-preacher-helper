@@ -10,7 +10,7 @@ import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleto
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, knownCollectionRemovals, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
@@ -84,9 +84,13 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const projected = collection.series.find(series => series.id === seriesId);
   // Presentation only. Never feed a submitted collection projection into the metadata form's ancestor.
   const series = !readOnly && projected ? { ...base, items: projected.items, sermonIds: projected.sermonIds, seriesKind: projected.seriesKind } : base;
-  const items = (series.items ?? []).map(item => ({ item,
-    sermon: item.type === 'sermon' ? sermons.sermons.find(sermon => sermon.id === item.refId) : undefined,
-    group: item.type === 'group' ? groups.groups.find(group => group.id === item.refId) : undefined }));
+  const removedSermons = knownCollectionRemovals(sermons.state);
+  const removedGroups = knownCollectionRemovals(groups.state);
+  const items = (series.items ?? [])
+    .filter(item => !(item.type === 'sermon' ? removedSermons : removedGroups).has(item.refId))
+    .map(item => ({ item,
+      sermon: item.type === 'sermon' ? sermons.sermons.find(sermon => sermon.id === item.refId) : undefined,
+      group: item.type === 'group' ? groups.groups.find(group => group.id === item.refId) : undefined }));
   const refresh = async () => { await Promise.all([document.retry(), collection.refreshSeries()]); };
   return <SeriesDetailView readOnly={readOnly} series={series} items={items}
     sermonsRead={listReadState(sermons)} groupsRead={listReadState(groups)} onBack={() => router.push('/series')}

@@ -1,3 +1,4 @@
+import { knownCollectionRemovals } from '../collectionPresentation';
 import { collectionDocumentViews } from '../collectionView';
 import type { CommitRequest } from '../commits';
 import type { ResourceSnapshot } from '../types';
@@ -10,6 +11,16 @@ const request = (id = 'save'): CommitRequest => ({ id, owner: 'owner', editorId:
   initialized: false, working: snapshot(), intended: { userId: 'owner', title: id },
   command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] });
 const views = (requests: CommitRequest[], snapshots = [snapshot()]) => collectionDocumentViews('owner', 'groups', snapshots, requests);
+
+it('keeps a tombstone authoritative when later private words are still recoverable', () => {
+  const removed = { ...snapshot(3), value: null, metadata: { ...snapshot(3).metadata!, deleted: true } };
+  const privateWords = { resource, value: { userId: 'owner', title: 'Words to recover' },
+    pending: true, needsAttention: true, deleting: false };
+  expect(knownCollectionRemovals({ snapshots: [removed], documents: [privateWords],
+    complete: true, freshness: 'cache', checking: false, version: 3, error: null })).toEqual(new Set(['g']));
+  expect(privateWords.value.title).toBe('Words to recover');
+});
+
 
 it('presents submitted creation and updates without changing confirmed snapshots', () => {
   const saved = request(), absent = { resource, value: null, metadata: null };

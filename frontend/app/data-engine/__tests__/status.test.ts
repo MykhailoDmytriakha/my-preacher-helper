@@ -174,13 +174,20 @@ describe('Shared synchronization status', () => {
     s.checkpoint.conflicts = [{ path: ['content'], base: { exists: true, value: 'base' }, mine: { exists: true, value: 'mine' }, theirs: { exists: true, value: 'theirs' } }];
     expect(describeSync(s, observation, []).phase).toBe('conflict');
   });
-  it('only offers removal for a durable live document without pending commands', () => {
+  it('requires a durable live document and the exact visible Save for removal', () => {
     const s = state(); expect(describeSync(s, observation, []).canRemove).toBe(true);
     s.preparing = true; expect(describeSync(s, observation, []).canRemove).toBe(false);
     s.preparing = false;
     s.durable = false; expect(describeSync(s, observation, []).canRemove).toBe(false);
     s.durable = true; s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };
     expect(describeSync(s, observation, [pending('unknown')]).canRemove).toBe(false);
+    const session = new DataSession(snapshot);
+    const value = { ...snapshot.value, content: 'Saved while offline' };
+    session.edit(value);
+    session.registerCommit('save', session.checkpoint().editGeneration, value);
+    s.checkpoint = session.checkpoint();
+    expect(describeSync(s, observation, []).canRemove).toBe(true);
+    expect(describeSync(s, observation, [pending('refused')]).canRemove).toBe(false);
     s.checkpoint.pending = {}; s.checkpoint.confirmed.value = null;
     expect(describeSync(s, observation, []).canRemove).toBe(false);
   });

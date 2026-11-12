@@ -1,5 +1,5 @@
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
-import { canRemovePendingCreation, hasForeignPendingSnapshot } from './deletionOrdering';
+import { canRemovePendingCreation, hasForeignPendingSnapshot, pendingRemovalOpening } from './deletionOrdering';
 import { sameManualSelection } from './manualScope';
 import { shownDeliveryState } from './unanswered';
 
@@ -127,7 +127,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && !checkpoint.confirmed.metadata?.deleted
       && ((pendingIds.length === 0 && checkpoint.confirmed.value !== null)
-        || (!refused && canRemovePendingCreation(state))),
+        || (!refused && (canRemovePendingCreation(state) || Boolean(pendingRemovalOpening(state))))),
     // A refusal has no other version to take, but "use the server's version" still means dropping
     // this device's refused change — without it a refused screen draft had no way back.
     canAcceptRemote: !state.actionResolutionRequired && (foreign

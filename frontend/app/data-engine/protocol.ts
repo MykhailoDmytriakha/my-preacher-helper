@@ -13,12 +13,12 @@ import { competingStringListEdits, isAuthoredStringList } from './authoredString
 import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
+import { deletionConflicts } from './deletionContent';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
-import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -851,15 +851,7 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
 /** Mutates only the cloned candidate; a conflict prevents the entire candidate from committing. */
 function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData, previous: DocumentData,
   verifyGroupCopy?: (source: DocumentData) => boolean): ConflictDetail[] {
-  if (command.kind === 'delete') {
-    // A relation may have updated a reverse index after this person's saved DELETE.
-    // Compare authored content; the cascade still resolves the actual owning relationships.
-    const ignored = new Set(['rev', 'updatedAt', 'id', '_dataEngine', ...relationMirrorFields(command.resource.collection)]);
-    const content = (data: DocumentData) => Object.fromEntries(Object.entries(data).filter(([key]) => !ignored.has(key)));
-    return equalValues(content(command.baseline), content(value)) ? [] : [
-      { path: [], base: { exists: true, value: command.baseline }, mine: { exists: false }, theirs: { exists: true, value } },
-    ];
-  }
+  if (command.kind === 'delete') return deletionConflicts(command.resource.collection, command.baseline, value);
   const conflicts: ConflictDetail[] = command.resource.collection === 'sermons' ? scratchConsumptionConflicts(command.changes, value) : [];
   const frameChanges = command.resource.collection === 'studyNotes' && value.type === 'analysis'
     ? command.changes.filter(change => ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field)) : [];

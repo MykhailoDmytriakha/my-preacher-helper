@@ -17,7 +17,7 @@ import { analysisCreationScope as initialAnalysisScope } from './analysisCreatio
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
-import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
+import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
 import { firstCommentReference as readCommentReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
 import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison } from './commentPlaceChoice';
@@ -130,6 +130,9 @@ export function isLiveCollectionDocument<T extends CollectionPresentationRow>(ro
 }
 
 
+export function knownCollectionRemovals(state?: CollectionState | null): ReadonlySet<string> {
+  return collectionRemovals(state);
+}
 export type { RecoveryChoiceScope } from './recoveryChoice';
 export type { LegacyRecoverySource } from './legacyRecovery.client';
 export type { DocumentWriteReceipt } from './commitReceipt';

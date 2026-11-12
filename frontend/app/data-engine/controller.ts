@@ -3,7 +3,7 @@ import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacem
 
 import { readAccountPreferenceComparison } from './accountPreference';
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
-import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } from './atomicCommits';
+import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { keepUncontestedCommentFields } from './commentKindChoice';
@@ -14,7 +14,8 @@ import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
 import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
-import { canRemovePendingCreation, isDocumentDeletion, pendingStandaloneCreation } from './deletionOrdering';
+import { deletionConflicts } from './deletionContent';
+import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pendingStandaloneCreation, type PendingRemovalOpening } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
@@ -168,6 +169,8 @@ export interface EditorState {
   /** An explicit Save has not transferred its captured intent to a durable request. */
   captureFailed?: boolean;
   actionResolutionRequired?: boolean;
+  /** The sole pending relation created this exact document as its primary member. */
+  pendingMembershipCreation?: string;
   /** Derived by the engine from every held request and its cancellation scope. */
   savedIntentReplaceable?: boolean;
   /** Borrowed form scopes with actual terminal answers, available for explicit recovery. */
@@ -179,7 +182,9 @@ export interface EditorState {
 }
 
 /** A single editor owns its checkpoint; the runtime owns delivery for every editor. */
-function captureSaveOptions(captured: SessionCheckpoint, pending: [string, SessionCheckpoint['pending'][string]][], captureScope?: string) {
+function captureSaveOptions(captured: SessionCheckpoint, pending: [string, SessionCheckpoint['pending'][string]][],
+  captureScope?: string, pendingRemoval?: PendingRemovalOpening) {
+  if (pendingRemoval) return { predecessorIds: pendingRemoval.ids, retentionScope: captureScope, pendingRemoval };
   const creation = captured.draft === null && pendingStandaloneCreation(captured);
   const newestGeneration = Math.max(...pending.map(([, request]) => request.generation));
   // The acknowledgement may have arrived after Remove captured the displayed creation.
@@ -217,7 +222,7 @@ export class EditorController {
   private held = false;
   /** How many completed commits the device has already had cleared. */
   private clearedCommits = 0;
-  private atomicPending = new Set<string>();
+  private atomicPending = new Map<string, AtomicCommitIdentity>();
 
   private constructor(private readonly options: ControllerOptions) {
     this.session = new DataSession(options.snapshot);
@@ -275,9 +280,11 @@ export class EditorController {
   getState(): EditorState {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
+    const atomic = this.atomicPending.size === 1 ? this.atomicPending.values().next().value : undefined;
     return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0 || this.choices > 0, captureFailed: this.pendingCaptures.failed,
       preparedOperationId: this.prepared?.operationId,
       actionResolutionRequired: this.atomicPending.size > 0,
+      pendingMembershipCreation: atomic?.kind === 'create-member' && checkpoint.pending[atomic.id] ? atomic.id : undefined,
       manualWork: Object.entries(checkpoint.pending).some(([id, intent]) => intent.borrowedManualScope || this.manualRequests.has(id)) };
   }
 
@@ -305,7 +312,7 @@ export class EditorController {
   }
 
   save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
-    action?: EditorCommitAction): Promise<void> {
+    action?: EditorCommitAction, pendingRemoval?: PendingRemovalOpening): Promise<void> {
     this.assertCurrent();
     const capturedAction = action && JSON.parse(JSON.stringify(action)) as EditorCommitAction;
     // Never freeze a Save against a choice whose durable baseline is still unsettled.
@@ -328,7 +335,7 @@ export class EditorController {
           if (session.applyCommit(request) && !completed.includes(request.id)) completed.push(request.id);
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
-        const options = { ...captureSaveOptions(captured, pending, captureScope), checkpoint: projectCheckpoint, ...(capturedAction && { action: capturedAction }) };
+        const options = { ...captureSaveOptions(captured, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint, ...(capturedAction && { action: capturedAction }) };
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
         captureComplete();
@@ -391,9 +398,23 @@ export class EditorController {
     const state = this.getState();
     const { checkpoint } = state;
     const pendingCreation = this.options.commits && canRemovePendingCreation(state);
-    if ((Object.keys(checkpoint.pending).length && !pendingCreation) || this.prepared || this.preparations || this.choices) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: PENDING_DELIVERY_FIRST }));
-    if ((!checkpoint.confirmed.value && !pendingCreation) || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
+    const pendingRemoval = this.options.commits && !pendingCreation && pendingRemovalOpening(state);
+    if ((Object.keys(checkpoint.pending).length && !pendingCreation && !pendingRemoval) || this.prepared || this.preparations || this.choices) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: PENDING_DELIVERY_FIRST }));
+    if ((!checkpoint.confirmed.value && !pendingCreation && !pendingRemoval) || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
     if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
+    if (pendingRemoval) {
+      const reserved = this.session.reserveEditGeneration();
+      const deletion = DataSession.restore(checkpoint);
+      deletion.applyReservedRemoval(reserved);
+      return this.save(deletion.checkpoint(), undefined, receipt => {
+        const current = this.session.checkpoint();
+        if (current.editGeneration === checkpoint.editGeneration && current.draft
+          && !deletionConflicts(current.confirmed.resource.collection, pendingRemoval.shown, current.draft).length) {
+          this.session.applyReservedRemoval(reserved);
+        }
+        onCaptured?.(receipt);
+      }, captureScope, undefined, pendingRemoval);
+    }
     const persisting = this.edit(null);
     const deletion = this.session.checkpoint();
     const saving = this.save(deletion, undefined, onCaptured, captureScope);
@@ -679,7 +700,7 @@ export class EditorController {
         this.completedCommits = completedCommits;
         this.result = continuation.answer ?? continuation.acknowledged.at(-1)?.result ?? this.result;
         const followed = current.filter(request => continuation.checkpoint.pending[request.id]);
-        this.atomicPending = new Set(followed.filter(request => request.atomic).map(request => request.id));
+        this.atomicPending = new Map(followed.flatMap(request => request.atomic ? [[request.id, request.atomic] as const] : []));
         this.held = isRecoverableCheckpoint(candidate);
         this.clearedCommits = completedCommits.length;
         this.durable = true; this.error = null; this.errorCode = null;
@@ -741,7 +762,7 @@ export class EditorController {
     if (this.session.checkpoint().pending[request.id] && editorSlot(request.editorId) === null
       && !isDocumentDeletion(request)) this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id)) return;
-    if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.add(request.id);
+    if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.set(request.id, request.atomic);
     else this.atomicPending.delete(request.id);
     if (request.state === 'cancelled' && request.cancelledByAction) {
       const priorId = request.predecessor;

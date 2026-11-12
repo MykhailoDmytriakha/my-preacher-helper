@@ -95,6 +95,7 @@ export function deletedUnder(live: SessionCheckpoint, shown: ShownCopy): boolean
 /** The editor's confirmed baseline and local intent have independent lifetimes. */
 export class DataSession {
   private state: SessionCheckpoint;
+  private reservedEditGeneration = 0;
 
   constructor(snapshot: ResourceSnapshot) {
     this.state = { confirmed: copy(snapshot), draft: copy(snapshot.value), dirty: false, editGeneration: 0, remoteCandidate: null, conflicts: [], pending: {} };
@@ -109,6 +110,18 @@ export class DataSession {
   checkpoint(): SessionCheckpoint { return copy(this.state); }
   getState(): SessionCheckpoint { return this.checkpoint(); }
 
+  /** Reserve a distinct Save identity while a removal is being written. */
+  reserveEditGeneration(): number {
+    this.reservedEditGeneration = Math.max(this.reservedEditGeneration, this.state.editGeneration) + 1;
+    return this.reservedEditGeneration;
+  }
+
+  applyReservedRemoval(generation: number): void {
+    if (generation <= this.state.editGeneration) return;
+    this.applyEdit(null, generation);
+  }
+
+
   /**
    * `shown` is the copy the screen showed while the person typed. Typing on a copy a deletion from
    * another device has replaced here a moment ago (`deletedUnder`) is typing in progress when the
@@ -116,6 +129,10 @@ export class DataSession {
    * with the deletion as the newer version the person decides on.
    */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): void {
+    this.applyEdit(value, this.reserveEditGeneration(), shown, autosaveStamp);
+  }
+
+  private applyEdit(value: DocumentData | null, generation: number, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): void {
     if (value !== null && shown && deletedUnder(this.state, shown)) {
       this.state.remoteCandidate = copy(this.state.confirmed);
       this.state.confirmed = copy(shown.confirmed);
@@ -130,7 +147,7 @@ export class DataSession {
     if (planActions) this.state.exegeticalPointDrafts = planActions;
     else delete this.state.exegeticalPointDrafts;
     this.state.draft = copy(value);
-    this.state.editGeneration += 1;
+    this.state.editGeneration = generation;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 
@@ -242,7 +259,7 @@ export class DataSession {
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (newRowMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
       // The exact move took only the position. Save the additional typing in its own generation.
-      this.state.editGeneration += 1;
+      this.state.editGeneration = this.reserveEditGeneration();
     }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
     return request.state === 'acknowledged';
@@ -289,7 +306,7 @@ export class DataSession {
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
     this.state.conflicts = copy(conflicts);
     this.state.remoteCandidate = conflicts.length ? copy(accepted) : null;
-    this.state.editGeneration += 1;
+    this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = !equalValues(this.state.draft, accepted.value);
   }
 
@@ -451,7 +468,7 @@ export class DataSession {
     if (placementSource) carryAnchoredDraftChronology(placementSource, this.state);
     if (this.state.conflicts.length) this.state.remoteCandidate = copy(this.state.confirmed);
     this.retainCouncilTopicReview(merged.conflicts);
-    this.state.editGeneration += 1;
+    this.state.editGeneration = this.reserveEditGeneration();
   }
 
   retainCouncilTopicReview(conflicts: readonly ConflictDetail[]): void {
@@ -475,7 +492,7 @@ export class DataSession {
     }
     this.state.draft = copy(this.state.confirmed.value);
     this.clearAutosaveFieldDrafts();
-    this.state.editGeneration += 1;
+    this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = false;
     this.state.conflicts = [];
   }
@@ -547,7 +564,7 @@ export class DataSession {
     }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
-    this.state.editGeneration += 1;
+    this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
   }
 

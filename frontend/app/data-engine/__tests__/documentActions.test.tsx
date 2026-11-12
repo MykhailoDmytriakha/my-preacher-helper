@@ -5,6 +5,9 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
+import { collectionDocumentViews } from '../collectionView';
+import { applyCommand } from '../protocol';
+
 import type { DocumentData, ResourceSnapshot } from '../types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -16,8 +19,8 @@ const stored = { userId: 'owner', title: 'Grace', verse: 'John 1:14', date: '202
 
 const savedSermon: ResourceSnapshot = { resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
 
-function setup(snapshot = savedSermon) {
-  const harness = documentEngineHarness(snapshot);
+function setup(snapshot = savedSermon, options?: Parameters<typeof documentEngineHarness>[1]) {
+  const harness = documentEngineHarness(snapshot, options);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const wrapper = ({ children }: { children: React.ReactNode }) => <DataEngineProvider>{children}</DataEngineProvider>;
   return { harness, ...renderHook(() => useDocumentActions(), { wrapper }) };
@@ -80,7 +83,34 @@ describe('one action on a document no screen has open', () => {
     } finally { unmount(); }
   });
 
-  it('does not offer a deleted creation as a draft while leaving a separate local copy available', async () => {
+  it.each(creations.filter(item => item.collection !== 'prayerRequests'))(
+    'removes a new $collection after separately saving an edit',
+    async ({ collection, value }) => {
+      const target = { collection, id: 'create-edit-delete' };
+      const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      await act(async () => { harness.engine.setOnline(false); });
+      const time = '2026-11-12T20:00:00.000Z';
+      const edit: DocumentData = collection === 'tags' ? { color: '#2563eb' }
+        : collection === 'planTemplates' ? { name: 'Updated template' } : { title: 'Updated title' };
+      try {
+        await act(async () => {
+          await result.current.create(target, { ...value, userId: 'owner', createdAt: time, updatedAt: time });
+          await result.current.commit(target, current => ({ ...current!, ...edit }));
+          if (collection === 'studyNotes') await result.current.submit(target, { kind: 'delete' });
+          else await result.current.remove(target);
+        });
+        expect(harness.transport.send).not.toHaveBeenCalled();
+        await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+        const commands = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+        expect(commands.map(command => command.kind)).toEqual(['create', 'update', 'delete']);
+        expect(commands[2].generation).toBe(commands[0].operationId);
+        expect(harness.server).toMatchObject({ resource: target, value: null, metadata: { deleted: true } });
+      } finally { unmount(); }
+    },
+  );
+
+  it.each([false, true])('omits the exact deleted creation from recovery and keeps private words (edited: %s)', async edited => {
     const target = { collection: 'groups', id: 'new-group' };
     const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
     await waitFor(() => expect(result.current.ready).toBe(true));
@@ -90,6 +120,9 @@ describe('one action on a document no screen has open', () => {
       await act(async () => { await result.current.create(target, group); });
       const [groupChoice] = await harness.engine.listRecoveryChoices(target);
       expect(groupChoice?.record.checkpoint.draft?.title).toBe('New group');
+      if (edited) await act(async () => {
+        await result.current.commit(target, current => ({ ...current!, title: 'Saved group title' }));
+      });
       const copy = await harness.engine.openEditor(target, 'private-group');
       await copy.edit({ ...group, title: 'Independent unsaved words' });
       await copy.close({ flush: false });
@@ -97,27 +130,141 @@ describe('one action on a document no screen has open', () => {
       await act(async () => { await result.current.remove(target); });
       const titles = (await harness.engine.listRecoveryChoices(target)).map(entry => entry.record.checkpoint.draft?.title);
       expect(titles).not.toContain('New group');
+      expect(titles).not.toContain('Saved group title');
       expect(titles).toContain('Independent unsaved words');
     } finally { unmount(); }
   });
 
-  it('keeps a later captured edit to a new prayer behind the ordinary deletion guard', async () => {
+  it.each(['new', 'stored', 'legacy'] as const)('honors Delete after the shown pending edit and restart (%s)', async kind => {
+    const alreadyStored = kind !== 'new';
     const target = { collection: 'prayerRequests', id: 'prayer-with-an-edit' };
-    const { harness, result, unmount } = setup({ resource: target, value: null, metadata: null });
+    const timestamp = '2026-11-12T20:00:00.000Z';
+    const prayer = { userId: 'owner', title: 'Prayer', status: 'active', updates: [], createdAt: timestamp, updatedAt: timestamp };
+    const baseline: ResourceSnapshot = alreadyStored
+      ? { resource: target, value: prayer, metadata: kind === 'legacy' ? null : { protocol: 1, generation: 'original', revision: 1, deleted: false } }
+      : { resource: target, value: null, metadata: null };
+    const { harness, result, unmount } = setup(baseline);
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => { harness.engine.setOnline(false); });
     try {
       await act(async () => {
-        const timestamp = '2026-11-12T20:00:00.000Z';
-        await result.current.create(target, { userId: 'owner', title: 'Prayer', status: 'active', updates: [],
-          createdAt: timestamp, updatedAt: timestamp });
-        await result.current.commit(target, current => ({ ...current!, description: 'Later words' }));
-        await expect(result.current.remove(target)).rejects.toThrow('Resolve pending commands before deleting');
+        if (!alreadyStored) await result.current.create(target, prayer);
+        await result.current.commit(target, current => ({ ...current!, description: 'Saved just before Delete' }));
+        await expect(result.current.remove(target)).resolves.toBeUndefined();
       });
-      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
-      expect(harness.server.value?.description).toBe('Later words');
-      expect(jest.mocked(harness.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['create', 'update']);
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      const saved = await harness.commits.list('owner');
+      const deletion = saved.find(request => request.value === null);
+      expect(deletion?.predecessor).toBe(saved.find(request => request.value?.description === 'Saved just before Delete')?.id);
     } finally { unmount(); }
+
+    const reopened = harness.createBrowser();
+    reopened.engine.setOnline(false);
+    reopened.engine.setOwner('owner');
+    try {
+      const document = await reopened.engine.openEditor(target, reopened.editorId(target, 'detail'));
+      expect(document.getState().checkpoint.draft).toBeNull();
+      await document.close({ flush: false });
+      reopened.engine.setOnline(true);
+      await reopened.engine.retry();
+      await settleEngine();
+      const sent = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+      expect(sent.map(command => command.kind)).toEqual(alreadyStored ? ['update', 'delete'] : ['create', 'update', 'delete']);
+      expect(sent.at(-1)?.generation).toBe(baseline.metadata?.generation ?? sent[0].operationId);
+      expect(harness.server).toMatchObject({ resource: target, value: null, metadata: { deleted: true } });
+    } finally { reopened.dispose(); }
+  });
+
+  it.each(['unseen edit', 'refused ancestor'] as const)('preserves the record when pending Delete meets a %s', async problem => {
+    const target = { collection: 'prayerRequests', id: 'existing-prayer' };
+    const timestamp = '2026-11-12T20:00:00.000Z';
+    const value = { userId: 'owner', title: 'Prayer', status: 'active', updates: [], createdAt: timestamp, updatedAt: timestamp };
+    const { harness, result, unmount } = setup({ resource: target, value,
+      metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } }, {
+      apply: (command, current) => problem === 'refused ancestor' && command.kind === 'update'
+        ? { kind: 'refused', operationId: command.operationId, code: 'permission-denied' } : applyCommand(command, current),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    try {
+      await act(async () => {
+        await result.current.commit(target, current => ({ ...current!, description: 'Shown edit' }));
+        if (problem === 'refused ancestor') await result.current.commit(target, current => ({ ...current!, description: 'Second shown edit' }));
+        await result.current.remove(target);
+      });
+      if (problem === 'unseen edit') harness.silentRemote({ title: 'From the other device' });
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+      expect(jest.mocked(harness.transport.send).mock.calls.map(([command]) => command.kind)).toEqual(['update']);
+      expect(harness.server.metadata?.deleted).toBe(false);
+      if (problem === 'unseen edit') expect(harness.server.value).toMatchObject({ title: 'From the other device', description: 'Shown edit' });
+      const records = await harness.commits.list('owner');
+      const deletion = records.find(request => request.value === null);
+      expect(deletion?.state).toBe(problem === 'unseen edit' ? 'conflict' : 'refused');
+      expect(collectionDocumentViews('owner', target.collection, [harness.server], records)[0])
+        .toMatchObject({ value: harness.server.value, deleting: false, needsAttention: true });
+    } finally { unmount(); }
+  });
+
+  it('keeps the visible saved edit when it cannot capture Delete on this device', async () => {
+    const target = { collection: 'prayerRequests', id: 'delete-storage-failure' };
+    const value = { userId: 'owner', title: 'Prayer', status: 'active', updates: [] };
+    const { harness, result, unmount } = setup({ resource: target, value,
+      metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    try {
+      await act(async () => { await result.current.commit(target, current => ({ ...current!, description: 'Visible words' })); });
+      const opened = await harness.engine.openEditor(target, 'before-remove');
+      harness.storage.writeFailure = true;
+      await expect(opened.remove()).rejects.toThrow('disk full');
+      harness.storage.writeFailure = false;
+      expect(opened.getState().checkpoint.draft?.description).toBe('Visible words');
+      expect((await harness.commits.list('owner')).map(request => request.value?.description)).toEqual(['Visible words']);
+    } finally { harness.storage.writeFailure = false; unmount(); }
+  });
+
+  it('keeps later typing in its own saved generation while the earlier Delete is writing', async () => {
+    const target = { collection: 'prayerRequests', id: 'typing-during-delete' };
+    const value = { userId: 'owner', title: 'Prayer', status: 'active', updates: [] };
+    const { harness, result, unmount } = setup({ resource: target, value,
+      metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { harness.engine.setOnline(false); });
+    let start!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { start = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const create = harness.commits.createWithCheckpoint!;
+    const storage = jest.spyOn(harness.commits, 'createWithCheckpoint').mockImplementation(async (request, project) => {
+      if (request.value === null) { start(); await held; }
+      return create(request, project);
+    });
+    try {
+      await act(async () => { await result.current.commit(target, current => ({ ...current!, description: 'Saved opening' })); });
+      const editor = await harness.engine.openEditor(target, 'typing-during-delete');
+      const removal = editor.remove();
+      await started;
+      const editing = editor.edit({ ...value, description: 'Typed later' });
+      const saving = editor.save();
+      const completion = Promise.all([removal, editing, saving]);
+      release();
+      await completion;
+      const records = await harness.commits.list('owner');
+      const deleted = records.find(request => request.value === null);
+      const latest = records.find(request => request.value?.description === 'Typed later');
+      expect(latest?.predecessor).toBe(deleted?.id);
+      expect(latest!.editGeneration).toBeGreaterThan(deleted!.editGeneration);
+      expect(editor.getState().checkpoint.draft?.description).toBe('Typed later');
+      await editor.close({ flush: false });
+    } finally { release(); storage.mockRestore(); unmount(); }
+
+    const restarted = harness.createBrowser();
+    restarted.engine.setOnline(false);
+    restarted.engine.setOwner('owner');
+    try {
+      const editor = await restarted.engine.openEditor(target, 'after-typing-during-delete');
+      expect(editor.getState().checkpoint.draft?.description).toBe('Typed later');
+    } finally { restarted.dispose(); }
   });
 
   it.each(['update', 'delete'] as const)('retains the exact public %s capture until its caller releases it', async kind => {
