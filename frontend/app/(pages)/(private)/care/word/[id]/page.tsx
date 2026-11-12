@@ -48,7 +48,7 @@ type Place = ScriptureRefShape & { bible: BibleId; chapter: number };
  * every label and every word on this page are the reader's Bible's, through the numbering module.
  */
 export default function WordForOccasionSituationPage() {
-  const id = useRouteId();
+  const id = useRouteId(2);
   const occasion = id ? occasionById(id) : undefined;
   const { t } = useTranslation();
   const { locale } = useAppLocale();

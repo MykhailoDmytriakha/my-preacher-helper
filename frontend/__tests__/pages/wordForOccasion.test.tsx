@@ -17,13 +17,15 @@ import type { BookText } from '@/utils/bibleText';
 const mockOpen = jest.fn();
 const mockBack = jest.fn();
 const mockPush = jest.fn();
-let mockRouteId = 'afraid';
+let mockRouteId: string | undefined = 'afraid';
 let mockCanGoBack = true;
 let mockTexts: ReadonlyMap<string, BookText> = new Map();
 
-jest.mock('next/navigation', () => ({ useRouter: () => ({ back: mockBack, push: mockPush }) }));
+jest.mock('next/navigation', () => ({
+  useParams: () => mockRouteId === undefined ? {} : { id: mockRouteId },
+  useRouter: () => ({ back: mockBack, push: mockPush }),
+}));
 jest.mock('@/hooks/useAppLocale', () => ({ useAppLocale: () => ({ locale: 'ru' }) }));
-jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => mockRouteId }));
 jest.mock('@/utils/modalHistory.client', () => ({
   ...jest.requireActual('@/utils/modalHistory.client'),
   canGoBackToPage: () => mockCanGoBack,
@@ -144,12 +146,17 @@ describe('word for the occasion — one situation', () => {
     expect(mockPush).toHaveBeenCalledWith('/care/word');
   });
 
-  it('says plainly when the address names no situation', () => {
-    mockRouteId = 'no-such-situation';
-    render(<WordForOccasionSituationPage />);
+  it.each(['router', 'browser address'])('says plainly when the %s names no situation', source => {
+    mockRouteId = source === 'router' ? 'no-such-situation' : undefined;
+    window.history.replaceState(null, '', '/care/word/no-such-situation');
+    try {
+      render(<WordForOccasionSituationPage />);
 
-    expect(screen.getByText('careWord.notFound')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.getByText('careWord.notFound')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
   });
 });
 
@@ -170,6 +177,23 @@ describe('word for the occasion — the pastor\'s own places', () => {
     const own = screen.getByRole('region', { name: 'careWord.own.title' });
     expect(within(own).getByText('careWord.own.empty')).toBeInTheDocument();
     expect(within(own).getByRole('button', { name: 'careWord.own.add' })).toBeInTheDocument();
+  });
+
+  it('opens the topic with its static and saved places when only the offline address identifies it', () => {
+    mockRouteId = undefined;
+    mockOwn = [{ ids: ['saved-place'], ref: { bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 4 }, createdAt: '2026-11-10T00:00:00Z' }];
+    mockTexts = new Map([['Psalms', synodalPsalms]]);
+    window.history.replaceState(null, '', '/care/word/lonely');
+    try {
+      render(<WordForOccasionSituationPage />);
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('careWord.topics.lonely');
+      expect(screen.getByText('Пс 22:1 Пс 22:2 …')).toBeInTheDocument();
+      const own = screen.getByRole('region', { name: 'careWord.own.title' });
+      expect(within(own).getByText('Пс 22:4')).toBeInTheDocument();
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   it('does not say "no places" while the list is not known whole — an unread list is not an empty one', () => {
