@@ -420,6 +420,9 @@
 
 **Перепроверка 2026-11-08.** На локальной сборке 4NRTHeeYAJZ2_tJ5J9vaq в установленном Chrome при 390 и 1280 px ошибки глубины обновления не было ни в одном из 17 прогонов. В 15 контрольных проходах весь текст остался после перезагрузки. В двух проходах со сменой адреса потерялся фокус, а продолжение вообще не дошло до редактора. Это отдельный подтверждённый BUG-20261108-new-note-first-autosave-loses-editor-focus. Исторический сбой оставлен открытым до нового воспроизведения со стеком. Доказательства в локальном деле под `artifacts/rapid-editor-350`.
 
+**Recheck 2026-11-12.** Headless Chrome on `19534162` passed ten note and comment runs at 390 and 1280 px. A separate rebuild of `67e06daf` passed eight matching note runs. The full text matched in the editor, emulator and after reload in all 18. No React update-depth errors, page errors or HTTP 5xx responses. Trusted browser input covered rapid keys, bulk insertion and the first address change. The original session and physical keyboard were unavailable. The historical issue remains open. Evidence in `artifacts/note-update-depth-20261112/report.md`.
+
+
 ### BUG-20261016-structure-resize-update-loop · При серии изменений ширины страницы доска структуры падает с React185
 **Severity.** Предварительно P2 — экран перестаёт работать до повторного открытия; текст не вводился и записей не отправлялось. Повторяемость ещё не установлена.
 **Найден.** 2026-10-16 · Codex, QA BUG-20261003-structure-board-cards-narrow-on-ipad; сбой в быстрой серии; повтор с двумя кадрами ожидания на размер прошёл. Итого1сбой/2серии.
