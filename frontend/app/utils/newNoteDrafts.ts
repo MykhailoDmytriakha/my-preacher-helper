@@ -63,13 +63,19 @@ function isNotePayload(value: unknown): value is NoteDraftPayload {
   const fields = ['tags', 'scriptureRefs', 'dictationSourceIds', 'recordingSourceIds']
     .filter(field => Object.prototype.hasOwnProperty.call(note, field));
   const metadata = Object.fromEntries(fields.map(field => [field, (note as unknown as Record<string, unknown>)[field]])) as DocumentData;
-  return isValidRecoveryPatch('studyNotes', metadata);
+  const review = note.referenceRecovery;
+  return isValidRecoveryPatch('studyNotes', metadata) && (review === undefined
+    || (Boolean(review) && Array.isArray(review.accepted) && Array.isArray(review.stored)
+      && (review.acceptedRevision === undefined || (Number.isSafeInteger(review.acceptedRevision) && review.acceptedRevision >= 0))
+      && (review.engineRevision === undefined || (Number.isSafeInteger(review.engineRevision) && review.engineRevision > 0))
+      && isValidRecoveryPatch('studyNotes', { scriptureRefs: review.accepted } as unknown as DocumentData)
+      && isValidRecoveryPatch('studyNotes', { scriptureRefs: review.stored } as unknown as DocumentData)));
 }
 
 /** A blank visit is not an unfinished note. Metadata-only work still counts. */
 function hasNoteWork(value: NoteDraftPayload): boolean {
   return Boolean(value.title.trim() || value.content.trim() || value.tags.length || value.scriptureRefs.length
-    || value.recordingSourceIds?.length || value.dictationSourceIds?.length);
+    || value.referenceRecovery || value.recordingSourceIds?.length || value.dictationSourceIds?.length);
 }
 
 export function findNewNoteDrafts(uid: string, representedIds: ReadonlySet<string>, confirmedCreationIds: ReadonlySet<string>): NewNoteDraft[] {

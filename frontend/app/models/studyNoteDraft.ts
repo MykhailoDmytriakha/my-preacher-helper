@@ -1,5 +1,13 @@
 import type { ScriptureReference, StudyNoteType } from '@/models/models';
 
+/** The compared saved reference list and its scoped alternative for an unanswered choice. */
+export interface NoteReferenceRecovery {
+    accepted: ScriptureReference[];
+    acceptedRevision?: number;
+    engineRevision?: number;
+    stored: ScriptureReference[];
+}
+
 /**
  * Exactly the fields the note editor owns. The durable draft stores this shape, so a
  * recovered draft can be compared against, and applied to, the editor state without
@@ -14,5 +22,6 @@ export interface NoteDraftPayload {
     recordingSourceIds?: string[];
     tags: string[];
     scriptureRefs: ScriptureReference[];
+    referenceRecovery?: NoteReferenceRecovery;
     type: StudyNoteType;
 }

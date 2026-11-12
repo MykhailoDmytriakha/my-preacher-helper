@@ -17,7 +17,7 @@ import type { CommentKindCapture, CommentKindSeen } from '@/data-engine/commentK
 import type { CommentPlaceCapture, CommentPlaceSeen } from '@/data-engine/commentPlaceAction';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTitleSeen, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
-import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
+import type { DocumentData, ResourceSnapshot, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
 import type { AnalysisReshapeEdit } from '@/utils/studyAnalysisReshape';
@@ -78,7 +78,7 @@ const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 
   ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
 }) as unknown as DocumentData;
 
-type SavedNote = StudyNote & { revision?: number };
+export type SavedStudyNote = StudyNote & { revision?: number; referenceEngineRevision?: number; studyNoteReferenceAliases?: StudyNoteReferenceAlias[] };
 type NoteUpdate = {
   id: string;
   updates: Partial<StudyNote>;
@@ -90,6 +90,7 @@ type NoteUpdate = {
   commentKindCapture?: CommentKindCapture;
   commentPlaceCapture?: CommentPlaceCapture;
   tagMembership?: readonly DocumentTagIntent[];
+  referenceEvidence?: StudyNoteReferenceEvidence;
 };
 
 /**
@@ -255,10 +256,10 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
       if (!uid) {
         const refused = refusal();
-        const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
+        const result = refused.acceptance.then(() => undefined as never) as Promise<SavedStudyNote>;
         void result.catch(() => undefined);
         return { ...refused, result };
       }
@@ -283,11 +284,13 @@ export function useStudyNotesEngine(enabled: boolean) {
         && Boolean(commentPlaceCapture.compound) === (typeof patch.paragraph === 'boolean' || patch.type !== undefined)
         && same(firstCommentReference(storedReferences(expectedBaseline?.scriptureRefs)), commentPlaceCapture.seen.reference.value)
         ? commentPlaceCapture : undefined;
+      const referenceAction = Array.isArray(patch.scriptureRefs) ? referenceEvidence : undefined;
       const action = kind ? { kind: 'comment-kind' as const, commentKind: kind }
         : place ? { kind: 'comment-place' as const, commentPlace: place }
-        : title ? { kind: 'study-note-title' as const, title, type, tagMembership: timedTags }
-        : type ? { kind: 'study-note-type' as const, type, tagMembership: timedTags }
-          : timedTags ? { kind: 'document-tags' as const, tagMembership: timedTags } : undefined;
+        : title ? { kind: 'study-note-title' as const, title, type, tagMembership: timedTags, referenceEvidence: referenceAction }
+        : type ? { kind: 'study-note-type' as const, type, tagMembership: timedTags, referenceEvidence: referenceAction }
+          : referenceAction ? { kind: 'study-note-references' as const, referenceEvidence: referenceAction, tagMembership: timedTags }
+            : timedTags ? { kind: 'document-tags' as const, tagMembership: timedTags } : undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
         setUpdating(count => count + 1);
         let staleTimedField: StaleWriteError | undefined;
@@ -362,11 +365,12 @@ export function useStudyNotesEngine(enabled: boolean) {
           setUpdating(count => count - 1);
         }
       });
-      if (!submission) return { ...skippedWrite(), result: Promise.resolve<SavedNote>(undefined as never) };
+      if (!submission) return { ...skippedWrite(), result: Promise.resolve<SavedStudyNote>(undefined as never) };
       const result = submission.snapshot.then(snapshot => {
         if (!snapshot.value) throw new Error('Accepted study note is missing');
         const revision = (snapshot.value.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE];
-        return { ...engineNote(snapshot.value, id, locale), revision };
+        const studyNoteReferenceAliases = snapshot.metadata?.studyNoteReferenceAliases;
+        return { ...engineNote(snapshot.value, id, locale), revision, referenceEngineRevision: snapshot.metadata?.revision, ...(studyNoteReferenceAliases && { studyNoteReferenceAliases }) };
       });
       void result.catch(() => undefined);
       return { ...submission, result };

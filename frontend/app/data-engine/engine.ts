@@ -44,6 +44,7 @@ import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
+import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { redeliveryDelay } from './unanswered';
 
 
@@ -1342,6 +1343,9 @@ export class DataEngine {
     const answered = requests.filter(request => request.owner === owner
       && sameResource(request.baseline.resource, resource) && (!selected || selected.has(request.id))
       && (request.state === 'refused' || request.state === 'conflict'));
+    if (answered.some(request => request.result?.kind === 'conflict' && hasStudyNoteReferenceReview(request.result.conflicts))) {
+      throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
+    }
     if (answered.length) {
       const sources = await this.manualChoices(owner, resource, requests);
       this.assertCurrent(owner, generation);

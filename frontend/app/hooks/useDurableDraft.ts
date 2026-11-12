@@ -29,6 +29,7 @@ interface AdoptedDraft<T> {
   identity: string | null;
   copy: DurableDraftCopy<T>;
   selectedAt?: DraftHandoff;
+  allowConfirmedReturn?: boolean;
 }
 
 export interface UseDurableDraftOptions<T> {
@@ -73,7 +74,7 @@ export interface UseDurableDraftResult<T> {
   /** Hide equal shown words; only an equal complete baseline proves them settled. */
   settleRecovered: (verifiedBaseline?: T) => void;
   /** The user took the recovered text — hide the offer, KEEP the stored copy. */
-  acceptRecovered: () => void;
+  acceptRecovered: (options?: { transferToWriter: true }) => void;
   /** The user chose to keep the server version — forget the draft. */
   discardRecovered: () => void;
   /** Transfer this exact payload to a durably captured canonical request. */
@@ -279,7 +280,8 @@ export function useDurableDraft<T>({
       // person returned to the baseline before this writer's first debounce.
       const identity = recoveryKeyRef.current;
       for (const entry of [...adoptedRef.current.values()]) {
-        if (entry.identity === identity && !entry.selectedAt) retireKnownCopies(entry.copy.value, identity);
+        if (entry.identity === identity && (!entry.selectedAt || (entry.allowConfirmedReturn
+          && entry.selectedAt.key === targetKey && editedAt > entry.selectedAt.editedAt))) retireKnownCopies(entry.copy.value, identity);
       }
       return;
     }
@@ -361,10 +363,14 @@ export function useDurableDraft<T>({
   }, [retireKnownCopies]);
 
   /** Explicitly adopt this physical source, retaining it until exact retirement. */
-  const acceptRecovered = useCallback(() => {
+  const acceptRecovered = useCallback((options?: { transferToWriter: true }) => {
     const copy = selectedRef.current;
     if (!copy) return;
-    adoptedRef.current.set(copy.key, { identity: recoveryKeyRef.current, copy });
+    const writer = keyRef.current;
+    const transfer = options?.transferToWriter && writer;
+    adoptedRef.current.set(copy.key, { identity: recoveryKeyRef.current, copy, ...(transfer && {
+      selectedAt: { key: writer, editedAt: editRef.current.editedAt }, allowConfirmedReturn: true,
+    }) });
     settleRecovered();
   }, [settleRecovered]);
 

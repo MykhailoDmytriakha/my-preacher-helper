@@ -14,7 +14,7 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
-import { equalValues, object, own, readField } from './fieldValues';
+import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { mergeIdentityTree } from './identityTreeMerge';
@@ -26,6 +26,7 @@ import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscard
 import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
+import { alignStudyNoteReferenceChange, coalesceStudyNoteReferences, isOrdinaryReferenceDocument, reviewedStudyNoteReferences, studyNoteReferenceReview, studyNoteReferencesPath, type StudyNoteReferenceOrder } from './studyNoteReferenceMerge';
 import { hasAmbiguousOutlineTextMerge, mergeOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
@@ -33,8 +34,9 @@ export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisResha
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
-  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap,
+  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap, StudyNoteReferenceAlias,
 } from './types';
+import type { ScriptureReference } from '@/models/models';
 
 /**
  * Where a tombstone names its owner. Deliberately NOT the collection's legacy owner field: every
@@ -764,6 +766,53 @@ export function mergeDocumentFields(base: DocumentData | null, mine: DocumentDat
   return merged;
 }
 
+/** Rebase held note work through the server's confirmed reference identities. */
+export function mergeDocumentAfterAcknowledgement(base: DocumentData | null, mine: DocumentData | null,
+  stored: ResourceSnapshot): ReturnType<typeof mergeFields> {
+  const { value, metadata } = stored;
+  const aliases = metadata?.studyNoteReferenceAliases;
+  if (stored.resource.collection !== 'studyNotes' || !aliases?.length
+    || !isOrdinaryReferenceDocument(base) || !isOrdinaryReferenceDocument(mine) || !isOrdinaryReferenceDocument(value)) {
+    return mergeDocumentFields(base, mine, value);
+  }
+  return mergeStudyNoteWithAliases(base, mine, value, aliases);
+}
+
+function mergeStudyNoteWithAliases(base: DocumentData, mine: DocumentData, value: DocumentData,
+  aliases: readonly StudyNoteReferenceAlias[]): ReturnType<typeof mergeFields> {
+  const before = readField(base, studyNoteReferencesPath), after = readField(mine, studyNoteReferencesPath);
+  const theirs = readField(value, studyNoteReferencesPath);
+  const aligned = alignStudyNoteReferenceChange(before, after, theirs, aliases);
+  if (!aligned) {
+    const result = mergeDocumentFields(base, mine, value);
+    if (result.value.exists && object(result.value.value)) putField(result.value.value, studyNoteReferencesPath, after);
+    return { value: result.value, conflicts: [...result.conflicts.filter(conflict => conflict.path[0] !== studyNoteReferencesPath[0]),
+      { path: studyNoteReferencesPath, base: before, mine: after, theirs }] };
+  }
+  const opening = writeField(base, studyNoteReferencesPath, aligned.before);
+  const local = writeField(mine, studyNoteReferencesPath, aligned.after);
+  const result = mergeDocumentFields(opening, local, value);
+  if (result.value.exists && object(result.value.value)) {
+    const referenceConflicts = result.conflicts.filter(conflict => conflict.path[0] === studyNoteReferencesPath[0]);
+    result.conflicts = [...result.conflicts.filter(conflict => conflict.path[0] !== studyNoteReferencesPath[0]),
+      ...studyNoteReferenceReview(aligned.before, readField(result.value.value, studyNoteReferencesPath), theirs, aligned.review ?? [], referenceConflicts, after)];
+  }
+  return result;
+}
+
+/** The page has a separate draft lifetime and rebases only its references on a write ACK. */
+export function rebaseAcceptedStudyNoteReferences(submitted: ScriptureReference[], draft: ScriptureReference[],
+  accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[]) {
+  if (equalValues(submitted, draft)) return { references: accepted, storedChoice: accepted, needsReview: false };
+  const value = (references: ScriptureReference[]): DocumentData => ({ scriptureRefs: references as unknown as Json[] });
+  const merged = mergeStudyNoteWithAliases(value(submitted), value(draft), value(accepted), aliases);
+  const references = object(merged.value.value) && Array.isArray(merged.value.value.scriptureRefs)
+    ? merged.value.value.scriptureRefs as unknown as ScriptureReference[] : draft;
+  const reviewed = reviewedStudyNoteReferences(merged.conflicts, readField(value(accepted), studyNoteReferencesPath));
+  const storedChoice = reviewed && Array.isArray(reviewed.stored.value) ? reviewed.stored.value as unknown as ScriptureReference[] : accepted;
+  return { references: equalValues(references, accepted) ? accepted : references, storedChoice, needsReview: Boolean(merged.conflicts.length) };
+}
+
 function mergeObjects(base: DocumentData, mine: DocumentData, theirs: DocumentData, path: string[]): ReturnType<typeof mergeFields> {
   const result: DocumentData = {}, conflicts: ConflictDetail[] = [];
   for (const key of new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])) {
@@ -844,13 +893,14 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
     resource: { ...current.resource }, value: next,
     metadata: { protocol: 1, generation: current.metadata?.generation ?? operationId,
       revision: (current.metadata?.revision ?? 0) + 1, deleted: next === null, operationId,
-      ...(current.metadata?.shareRevocation ? { shareRevocation: current.metadata.shareRevocation } : {}) },
+      ...(current.metadata?.shareRevocation ? { shareRevocation: current.metadata.shareRevocation } : {}),
+      ...(next && current.metadata?.studyNoteReferenceAliases?.length ? { studyNoteReferenceAliases: current.metadata.studyNoteReferenceAliases } : {}) },
   };
 }
 
 /** Mutates only the cloned candidate; a conflict prevents the entire candidate from committing. */
 function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData, previous: DocumentData,
-  verifyGroupCopy?: (source: DocumentData) => boolean): ConflictDetail[] {
+  verifyGroupCopy?: (source: DocumentData) => boolean, referenceChange?: FieldChange): ConflictDetail[] {
   if (command.kind === 'delete') return deletionConflicts(command.resource.collection, command.baseline, value);
   const conflicts: ConflictDetail[] = command.resource.collection === 'sermons' ? scratchConsumptionConflicts(command.changes, value) : [];
   const frameChanges = command.resource.collection === 'studyNotes' && value.type === 'analysis'
@@ -880,7 +930,7 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
   const datesChanged = sermon && command.changes.find(change => change.path[0] === 'preachDates');
   const preachedFlag = datesChanged ? command.changes.find(change => change.path[0] === 'isPreached') : undefined;
   for (const change of command.changes) {
-    if (frameChanges.includes(change) || groupChanges.includes(change) || change === planText || change === preachedFlag) continue;
+    if (frameChanges.includes(change) || groupChanges.includes(change) || change === planText || change === preachedFlag || change === referenceChange) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
     const initialMeeting = command.resource.collection === 'groups' && change.path[0] === 'meetingDates'
@@ -949,7 +999,7 @@ export function confirmedExistingDeletion(command: DataCommand, result: CommandR
 }
 
 export function applyCommand(command: DataCommand, current: ResourceSnapshot,
-  verifyGroupCopy?: (source: DocumentData) => boolean): CommandResult {
+  verifyGroupCopy?: (source: DocumentData) => boolean, orderStudyNoteReference?: StudyNoteReferenceOrder): CommandResult {
   validateCommand(command);
   const refused = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
   if (command.kind === 'relation') return refused('relation-requires-transaction');
@@ -961,6 +1011,7 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot,
     return refused('permission-denied');
   }
   let value: DocumentData;
+  let addedReferenceAliases: StudyNoteReferenceAlias[] = [];
   if (command.kind === 'create') {
     if (current.value) return refused('already-exists');
     value = clone(command.value);
@@ -980,7 +1031,14 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot,
       // an explicit decision; never infer an ancestor from delivery time or word count.
       return refused('decision-required');
     }
-    const conflicts = applyExistingFields(command, value, current.value, verifyGroupCopy);
+    const referenceChange = ordinaryStudyNoteReferenceChange(command, current.value);
+    const conflicts = applyExistingFields(command, value, current.value, verifyGroupCopy, referenceChange);
+    if (referenceChange) {
+      const merged = reconcileStudyNoteReferenceChange(referenceChange, current.value, current.metadata?.studyNoteReferenceAliases ?? [], orderStudyNoteReference);
+      putField(value, studyNoteReferencesPath, merged.value);
+      conflicts.push(...merged.conflicts);
+      addedReferenceAliases = merged.aliases;
+    }
     const topics = command.kind === 'update' && command.resource.collection === 'councils'
       ? command.changes.find(change => change.path[0] === 'topics') : undefined;
     if (topics) {
@@ -992,10 +1050,33 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot,
   }
   const changedFields = commandFields(command, value, current.value);
   if (!validCandidate(command, value, current.value, changedFields)) return refused('invalid-document');
-  return {
-    kind: 'acknowledged', operationId: command.operationId,
-    snapshot: advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId, changedFields),
-  };
+  const snapshot = advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId, changedFields);
+  if (addedReferenceAliases.length) {
+    snapshot.metadata!.studyNoteReferenceAliases = [...(snapshot.metadata!.studyNoteReferenceAliases ?? []), ...addedReferenceAliases];
+  }
+  return { kind: 'acknowledged', operationId: command.operationId, snapshot };
+}
+
+function ordinaryStudyNoteReferenceChange(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, previous: DocumentData): FieldChange | undefined {
+  if (command.kind !== 'update' || command.resource.collection !== 'studyNotes' || !isOrdinaryReferenceDocument(previous)) return undefined;
+  const changedType = command.changes.find(change => equalValues(change.path, ['type']));
+  if (changedType?.after.exists && changedType.after.value !== 'note' && changedType.after.value !== 'question') return undefined;
+  return command.changes.find(change => equalValues(change.path, studyNoteReferencesPath));
+}
+
+function reconcileStudyNoteReferenceChange(change: FieldChange, previous: DocumentData, known: readonly StudyNoteReferenceAlias[],
+  order?: StudyNoteReferenceOrder) {
+  const theirs = readField(previous, studyNoteReferencesPath);
+  const aligned = alignStudyNoteReferenceChange(change.before, change.after, theirs, known, order);
+  if (!aligned) return { value: change.after, conflicts: [{ path: change.path, base: change.before, mine: change.after, theirs }], aliases: [] };
+  const merged = mergeFields(aligned.before, aligned.after, theirs, change.path);
+  if (aligned.review) {
+    const conflicts = studyNoteReferenceReview(aligned.before, merged.value, theirs, aligned.review, merged.conflicts, change.after);
+    if (conflicts.length) return { value: merged.value, conflicts, aliases: [] };
+  }
+  if (merged.conflicts.length) return { ...merged, aliases: [] };
+  const coalesced = coalesceStudyNoteReferences(aligned.before, aligned.after, theirs, merged.value, known, isValidIdentifier);
+  return { value: coalesced.value, conflicts: merged.conflicts, aliases: [...(aligned.additions ?? []), ...coalesced.aliases] };
 }
 
 function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null,

@@ -52,6 +52,21 @@ describe('HTTP engine transport', () => {
       await expect(createHttpEngineTransport().send(command)).rejects.toMatchObject({ code: 'data-loss' });
     }
   });
+  it('keeps the authored opening when decoding a reference conflict', async () => {
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 17 };
+    const saved = { ...phone, id: 'saved-ref', fromVerse: 16 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const update: DataCommand = { protocol: 1, owner: 'owner', operationId: 'reference-edit', resource: command.resource,
+      kind: 'update', generation: 'g1', dependsOn: [],
+      changes: [{ path: ['scriptureRefs'], before: list([{ ...phone, fromVerse: 16 }]), after: list([phone]) }] };
+    const result = { kind: 'conflict', operationId: update.operationId, snapshot: { ...snapshot,
+      value: { ...snapshot.value, scriptureRefs: [saved] } },
+    conflicts: [{ path: ['scriptureRefs'], code: 'study-note-reference-review', base: list([saved]),
+      mine: list([{ ...phone, id: saved.id }]), theirs: list([saved]), studyNoteReferenceOpening: list([phone]) }] };
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: result });
+    expect(await createHttpEngineTransport().send(update)).toEqual(result);
+  });
+
   it('preserves the original committed metadata when a replay snapshot is newer', async () => {
     const committed = { ...snapshot.metadata!, operationId: 'op' };
     const current = { ...snapshot, metadata: { ...committed, revision: 2, operationId: 'later' } };

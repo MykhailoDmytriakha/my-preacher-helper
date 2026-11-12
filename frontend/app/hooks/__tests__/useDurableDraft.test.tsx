@@ -44,6 +44,27 @@ describe('useDurableDraft', () => {
     expect(readDraft(held[0].key)).toBeNull();
   });
 
+  it.each(['replacement', 'confirmed return'] as const)('keeps a restored copy until this writer records its %s', outcome => {
+    const earlier = draftKey('uid-1', 'note-1', 'note', 'earlier');
+    const sibling = draftKey('uid-1', 'note-1', 'note', 'sibling');
+    const writer = draftKey('uid-1', 'note-1', 'note', 'writer');
+    saveDraft(earlier, 'Unanswered review');
+    saveDraft(sibling, 'Unanswered review');
+    const siblingRaw = localStorage.getItem(sibling);
+    const view = render('Confirmed baseline', { writerId: 'writer' });
+    act(() => view.result.current.selectRecovered(earlier));
+    act(() => view.result.current.acceptRecovered({ transferToWriter: true }));
+    act(() => jest.advanceTimersByTime(300));
+    expect(readDraft(earlier)?.value).toBe('Unanswered review');
+
+    view.rerender({ value: 'Review with newest observation' });
+    if (outcome === 'confirmed return') view.rerender({ value: 'Confirmed baseline' });
+    act(() => jest.advanceTimersByTime(300));
+    expect(readDraft(earlier)).toBeNull();
+    expect(localStorage.getItem(sibling)).toBe(siblingRaw);
+    expect(readDraft(writer)?.value).toBe(outcome === 'replacement' ? 'Review with newest observation' : undefined);
+  });
+
   it('keeps the chosen alternative if the editor leaves before it takes ownership', () => {
     const view = render('Updated version', { writerId: 'current' });
     act(() => { view.result.current.holdAlternative('Confirmed typing')?.(true); });

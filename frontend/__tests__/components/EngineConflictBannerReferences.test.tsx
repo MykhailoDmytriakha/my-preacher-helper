@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React, { useEffect } from 'react';
 
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { editorIdentity } from '@/data-engine/editorIdentity';
+import { applyCommand } from '@/data-engine/protocol';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
@@ -53,6 +54,57 @@ async function preview(reference: Omit<ScriptureReference, 'id'> & Record<string
 describe('readable complete references in a saved-version choice', () => {
   beforeEach(() => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'studyNotes'; mockLanguage = 'en'; actions = null; });
   afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+
+  it.each([
+    ['mine', false], ['stored', false], ['mine', true], ['stored', true],
+  ] as const)('decides the coalesced reference in the global banner: %s, with competing text: %s', async (side, competingText) => {
+    const phone = { ...original, id: 'phone-reference', fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-reference' };
+    const independent = { ...unchanged, id: 'phone-extra' };
+    const neighbor = { id: 'desktop-extra', bible: 'kjv', book: 'Romans', chapter: 8, fromVerse: 28 };
+    let firstSubmission = true;
+    const harness = documentEngineHarness({ resource, value: { ...value, scriptureRefs: competingText ? [phone] : [] },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } }, {
+      apply(command, current) {
+        if (!competingText || !firstSubmission) return applyCommand(command, current);
+        firstSubmission = false;
+        const stored = { ...current, metadata: { ...current.metadata!, studyNoteReferenceAliases: [{ from: phone.id, to: desktop.id }] } };
+        return applyCommand(command, stored);
+      },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    act(() => harness.engine.setOnline(false));
+    await act(async () => {
+      if (!competingText) await actions!.submit(resource, { kind: 'update', update: current => ({ ...current!, scriptureRefs: [phone] }) }, { captureScope: 'note-page' });
+      await actions!.submit(resource, { kind: 'update', update: current => ({
+        ...current!, content: 'Independently written words', scriptureRefs: [independent],
+      }) }, { captureScope: 'note-page' });
+      await settleEngine();
+    });
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    harness.silentRemote({ scriptureRefs: [desktop, neighbor], ...(competingText && { content: 'Competing saved words' }) });
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+    const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(panel).getAllByLabelText('dataSync.yourVersion')[0]).toHaveTextContent('legacyRecovery.empty');
+    expect(within(panel).getAllByLabelText('dataSync.storedVersion')[0]).toHaveTextContent('John 3:16');
+    expect(panel).not.toHaveTextContent(/Luke|Romans/);
+    if (competingText) {
+      expect(within(panel).getAllByLabelText('dataSync.yourVersion')[1]).toHaveTextContent('Independently written words');
+      expect(within(panel).getAllByLabelText('dataSync.storedVersion')[1]).toHaveTextContent('Competing saved words');
+    } else expect(panel).not.toHaveTextContent('Independently written words');
+
+    fireEvent.click(screen.getByRole('button', { name: side === 'mine' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    if (side === 'stored') fireEvent.click(await screen.findByRole('button', {
+      name: competingText ? 'dataSync.confirmStoredFields.confirm' : 'dataSync.confirmStoredField.confirm',
+    }));
+    await waitFor(() => {
+      expect(harness.server.value?.content).toBe(competingText && side === 'stored' ? 'Competing saved words' : 'Independently written words');
+      expect(harness.server.value?.scriptureRefs).toEqual(expect.arrayContaining([independent, neighbor]));
+      expect(harness.server.value?.scriptureRefs).toHaveLength(side === 'stored' ? 3 : 2);
+    });
+  });
 
   it('shows a numeric-only verse change instead of only the unchanged book', async () => {
     const shown = await preview({ bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 });

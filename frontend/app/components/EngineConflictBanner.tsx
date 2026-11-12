@@ -10,8 +10,9 @@ import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
+import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteReferenceComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
@@ -450,7 +451,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   }, [browser, owner, waiting, openAnswers, pathname, screenSearch, withdraw, withdrawDelete]);
   if (!entry) return <>{discardDialog}{confirmDialog}</>;
 
-  const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs', fieldOnly = false) => {
+  const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs', fieldOnly = false, multipleFields = false) => {
     const targetBrowser = browser;
     const targetOwner = owner;
     const pending = { target, browser: targetBrowser, owner: targetOwner };
@@ -463,7 +464,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
         if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
           || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
         await settle(choice, targetBrowser, target, fieldOnly);
-      }, isCurrent, fieldOnly ? 'dataSync.confirmStoredField' : undefined);
+      }, isCurrent, multipleFields ? 'dataSync.confirmStoredFields' : fieldOnly ? 'dataSync.confirmStoredField' : undefined);
     } finally {
       if (pendingChoice.current === pending) pendingChoice.current = null;
     }
@@ -557,21 +558,36 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     const checkpoint = entry.records[0].checkpoint;
     const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
     const sourceNotes = entry.records.length === 1 ? readSourceNoteLinkComparison(checkpoint) : undefined;
-    const comparingField = Boolean(comparison || sourceNotes);
+    const referenceReview = entry.records.length === 1 ? readStudyNoteReferenceComparison(checkpoint) : undefined;
+    if (!referenceReview && waitsForStudyNoteReferenceReview(checkpoint)) {
+      return notice(<div role="status" className={NOTICE_BOX}>
+        <p className={NOTICE_BODY}>{t('dataSync.referenceComparisonUnavailable')}</p>
+        {mine && <button type="button" className={SECONDARY_BUTTON} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>}
+      </div>);
+    }
+    const comparingField = Boolean(comparison || sourceNotes || referenceReview);
     return notice(
       <>
         {comparingField && <section aria-label={t('dataSync.versionComparison')} className="mb-3">
           {sourceNotes ? <SourceNoteConflict comparison={sourceNotes} /> : comparison && <FieldComparison comparison={comparison} />}
+          {referenceReview && <div className="space-y-2">
+            {referenceReview.rows.length > 0 && <FieldComparison comparison={studyNoteReferenceComparison(referenceReview.rows, t, resolveAppLocale(interfaceLanguage))} />}
+            {referenceReview.fields.map(({ path, mine, theirs }) => <FieldComparison key={path[0]} comparison={{
+              title: fieldLabel(t, path[0]), valueKind: 'field',
+              mine: mine.exists ? show(mine.value) : t('legacyRecovery.empty'),
+              stored: theirs.exists ? show(theirs.value) : t('legacyRecovery.empty'),
+            }} />)}
+          </div>}
         </section>}
         <SaveConflictBanner
           entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
           pendingText={comparingField ? undefined : mine || undefined}
-          description={comparingField ? t('dataSync.fieldVersionChanged') : undefined}
+          description={comparingField ? t(referenceReview?.fields.length ? 'dataSync.noteFieldsChanged' : 'dataSync.fieldVersionChanged') : undefined}
           keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint))); }}
-          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField); }}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint))); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean(referenceReview?.fields.length && referenceReview.rows.length)); }}
           busy={busy}
           className="mb-3"
         />

@@ -1364,6 +1364,223 @@ describe('transactional DataEngine server', () => {
     expect(documents.get('sermons/sermon-1')?._dataEngine).toMatchObject({ revision: 1, generation: 'create-1' });
   });
 
+  it('replays a note-reference coalescence with the current stored identity after unrelated writes', async () => {
+    const resource = { collection: 'studyNotes', id: 'shared-reference-note' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const note = { userId: base.owner, type: 'note', content: 'Original words', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed-reference-note', value: note })).kind)
+      .toBe('acknowledged');
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const other = { ...phone, id: 'other-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const append = (operationId: string, refs: Array<typeof phone>) => ({
+      ...base, kind: 'update', generation: 'seed-reference-note', operationId,
+      changes: [{ path: ['scriptureRefs'], before: { exists: true, value: [] }, after: { exists: true, value: refs } }],
+    });
+    expect((await processCommand(base.owner, append('desktop-reference-save', [desktop, other]))).kind).toBe('acknowledged');
+    const command = append('phone-reference-save', [phone]);
+    const aliases = [{ from: phone.id, to: desktop.id }];
+    const accepted = await processCommand(base.owner, command);
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { scriptureRefs: [desktop, other] },
+      metadata: { studyNoteReferenceAliases: aliases } } });
+    expect((await processCommand(base.owner, { ...base, kind: 'update', generation: 'seed-reference-note', operationId: 'later-words',
+      changes: [{ path: ['content'], before: { exists: true, value: note.content }, after: { exists: true, value: 'Later words' } }],
+    })).kind).toBe('acknowledged');
+
+    const current = await readDocument(base.owner, resource);
+    const replay = await processCommand(base.owner, command);
+    expect(current).toMatchObject({ value: { scriptureRefs: [desktop, other], content: 'Later words' },
+      metadata: { studyNoteReferenceAliases: aliases, revision: 4 } });
+    expect(replay).toMatchObject({ kind: 'acknowledged', snapshot: current, committed: { revision: 3, operationId: command.operationId } });
+    if (replay.kind === 'acknowledged') expect(replay.committed).not.toHaveProperty('studyNoteReferenceAliases');
+  });
+
+  it.each([
+    ['later edit', 110, 112, 17, [17, 28]],
+    ['later removal', 110, 112, null, [28]],
+    ['earlier removal', 75, 79, null, [16, 28]],
+    ['overlapping removal', 89, 101, null, undefined],
+  ] as const)('uses proven action order for a coalesced reference: %s', async (_case, start, end, verse, expected) => {
+    const resource = { collection: 'studyNotes', id: 'timed-reference-note' };
+    const base = { protocol: 1 as const, owner: 'owner-1', resource, dependsOn: [] };
+    const clock = (start: number, end: number) => ({ earliestMs: 1_800_000_000_000 + start, latestMs: 1_800_000_000_000 + end });
+    const note = { userId: base.owner, type: 'note', content: 'Original words', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const other = { ...phone, id: 'other-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const update = (operationId: string, before: typeof phone[], after: typeof phone[], studyNoteReferenceTimes: Record<string, ReturnType<typeof clock>>) =>
+      ({ ...base, kind: 'update' as const, generation: 'seed-timed-reference-note', operationId, studyNoteReferenceTimes,
+        changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }] });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed-timed-reference-note', value: note })).kind)
+      .toBe('acknowledged');
+    expect((await processCommand(base.owner, update('desktop-reference-save', [], [desktop, other], { [desktop.id]: clock(90, 95) }))).kind)
+      .toBe('acknowledged');
+    expect((await processCommand(base.owner, update('phone-reference-save', [], [phone], { [phone.id]: clock(30, 35) }))).kind)
+      .toBe('acknowledged');
+    const result = await processCommand(base.owner,
+      update('offline-reference-change', [phone], verse === null ? [] : [{ ...phone, fromVerse: verse }], { [phone.id]: clock(start, end) }));
+    const saved = await readDocument(base.owner, resource);
+    if (expected) {
+      expect(result.kind).toBe('acknowledged');
+      expect((saved.value?.scriptureRefs as typeof phone[]).map(ref => ref.fromVerse)).toEqual(expected);
+    } else {
+      expect(result.kind).toBe('conflict');
+      expect(saved.value?.scriptureRefs).toEqual([desktop, other]);
+    }
+  });
+
+  it.each([
+    ['desktop-phone-delete', 50, true],
+    ['phone-desktop-delete', 50, true],
+    ['phone-delete-desktop', 50, true],
+    ['desktop-phone-delete', 110, false],
+    ['phone-desktop-delete', 110, false],
+    ['phone-delete-desktop', 110, false],
+  ] as const)('retains the latest timed reference intent across %s at %s', async (delivery, at, keepJohn) => {
+    const resource = { collection: 'studyNotes', id: 'ordered-reference-note' };
+    const base = { protocol: 1 as const, owner: 'owner-1', resource, dependsOn: [] };
+    const clock = (start: number) => ({ earliestMs: 1_800_000_000_000 + start, latestMs: 1_800_000_000_001 + start });
+    const note = { userId: base.owner, type: 'note', content: 'Original words', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const romans = { ...phone, id: 'romans-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const luke = { ...phone, id: 'luke-ref', book: 'Luke', chapter: 1, fromVerse: 1 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const update = (operationId: string, before: typeof phone[], after: typeof phone[], studyNoteReferenceTimes: Record<string, ReturnType<typeof clock>>) =>
+      ({ ...base, kind: 'update' as const, generation: 'seed-ordered-reference-note', operationId, studyNoteReferenceTimes,
+        changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }] });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed-ordered-reference-note', value: note })).kind)
+      .toBe('acknowledged');
+    const commands = {
+      desktop: update('desktop-reference-save', [], [desktop, romans], { [desktop.id]: clock(90) }),
+      phone: update('phone-reference-save', [], [phone], { [phone.id]: clock(30) }),
+      delete: update('phone-reference-delete', [phone], [luke], { [phone.id]: clock(at), [luke.id]: clock(at + 1) }),
+    };
+    for (const name of delivery.split('-') as Array<keyof typeof commands>) {
+      expect((await processCommand(base.owner, commands[name])).kind).toBe('acknowledged');
+    }
+    const saved = await readDocument(base.owner, resource);
+    expect((saved.value?.scriptureRefs as typeof phone[]).map(ref => ref.book).sort())
+      .toEqual(keepJohn ? ['John', 'Luke', 'Romans'] : ['Luke', 'Romans']);
+    if (!keepJohn) {
+      const newId = { ...phone, id: 'fresh-addition' };
+      const existing = saved.value?.scriptureRefs as typeof phone[];
+      expect((await processCommand(base.owner, update('later-re-add', existing, [...existing, newId], { [newId.id]: clock(116) }))).kind)
+        .toBe('acknowledged');
+      expect((await readDocument(base.owner, resource)).value?.scriptureRefs).toEqual([...existing, newId]);
+    }
+  });
+
+  it.each([
+    ['desktop-phone-edit', 110, 17], ['phone-desktop-edit', 110, 17], ['phone-edit-desktop', 110, 17],
+    ['desktop-phone-edit', 50, 16], ['phone-desktop-edit', 50, 16], ['phone-edit-desktop', 50, 16],
+  ] as const)('applies only the later reference intent after an edit across %s at %s', async (delivery, at, verse) => {
+    const resource = { collection: 'studyNotes', id: 'edited-reference-note' };
+    const base = { protocol: 1 as const, owner: 'owner-1', resource, dependsOn: [] };
+    const clock = (start: number) => ({ earliestMs: 1_800_000_000_000 + start, latestMs: 1_800_000_000_001 + start });
+    const note = { userId: base.owner, type: 'note', content: 'Original words', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const romans = { ...phone, id: 'romans-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const update = (operationId: string, before: typeof phone[], after: typeof phone[], studyNoteReferenceTimes: Record<string, ReturnType<typeof clock>>) =>
+      ({ ...base, kind: 'update' as const, generation: 'seed-edited-reference-note', operationId, studyNoteReferenceTimes,
+        changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }] });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed-edited-reference-note', value: note })).kind)
+      .toBe('acknowledged');
+    const commands = {
+      desktop: update('desktop-reference-save', [], [desktop, romans], { [desktop.id]: clock(90) }),
+      phone: update('phone-reference-save', [], [phone], { [phone.id]: clock(30) }),
+      edit: update('phone-reference-edit', [phone], [{ ...phone, fromVerse: 17 }], { [phone.id]: clock(at) }),
+    };
+    for (const name of delivery.split('-') as Array<keyof typeof commands>) {
+      expect((await processCommand(base.owner, commands[name])).kind).toBe('acknowledged');
+    }
+    const saved = await readDocument(base.owner, resource);
+    const references = saved.value?.scriptureRefs as typeof phone[];
+    expect(references).toHaveLength(2);
+    expect(references.find(ref => ref.book === 'John')?.fromVerse).toBe(verse);
+    expect(references).toContainEqual(romans);
+
+    if (verse === 17) {
+      const independentlyAdded = { ...desktop, id: 'new-john' };
+      expect((await processCommand(base.owner, update('new-reference', references, [...references, independentlyAdded],
+        { [independentlyAdded.id]: clock(118) }))).kind).toBe('acknowledged');
+      expect((await readDocument(base.owner, resource)).value?.scriptureRefs).toEqual([...references, independentlyAdded]);
+    }
+  });
+
+  it.each([false, true])('holds an unordered duplicate-lineage removal by the canonical or absorbed ID: %s', async reverse => {
+    const resource = { collection: 'studyNotes', id: 'ambiguous-reference-note' };
+    const base = { protocol: 1 as const, owner: 'owner-1', resource, dependsOn: [] };
+    const clock = (start: number, end: number) => ({ earliestMs: 1_800_000_000_000 + start, latestMs: 1_800_000_000_000 + end });
+    const note = { userId: base.owner, type: 'note', content: 'Original words', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const neighbor = { ...phone, id: 'romans-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const update = (operationId: string, before: typeof phone[], after: typeof phone[],
+      studyNoteReferenceTimes: Record<string, ReturnType<typeof clock>>, observed = 1) =>
+      ({ ...base, kind: 'update' as const, generation: 'seed-ambiguous-reference-note', operationId, studyNoteReferenceTimes,
+        studyNoteReferenceObservedRevisions: Object.fromEntries([...before, ...after].map(row => [row.id, observed])), changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }] });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed-ambiguous-reference-note', value: note })).kind)
+      .toBe('acknowledged');
+    const births = [update('phone-reference-save', [], [phone], { [phone.id]: clock(30, 35) }),
+      update('desktop-reference-save', [], [desktop, neighbor], { [desktop.id]: clock(20, 100) })];
+    for (const birth of reverse ? births.reverse() : births) expect((await processCommand(base.owner, birth)).kind).toBe('acknowledged');
+    const saved = await readDocument(base.owner, resource);
+    expect((await processCommand(base.owner, update('unordered-removal', [phone], [], { [phone.id]: clock(50, 55) }))).kind).toBe('conflict');
+    expect(await readDocument(base.owner, resource)).toEqual(saved);
+
+    const current = saved.value?.scriptureRefs as typeof phone[];
+    expect((await processCommand(base.owner, update('observed-removal', current, [neighbor], {}, saved.metadata!.revision))).kind).toBe('acknowledged');
+    const removed = await readDocument(base.owner, resource);
+    expect(removed.value?.scriptureRefs).toEqual([neighbor]);
+    const fresh = { ...phone, id: 'fresh-ref' };
+    expect((await processCommand(base.owner, update('unproved-addition', [], [fresh], {}, 1))).kind).toBe('conflict');
+    expect(await readDocument(base.owner, resource)).toEqual(removed);
+    expect((await processCommand(base.owner, update('observed-addition', [neighbor], [neighbor, fresh], {}, removed.metadata!.revision))).kind)
+      .toBe('acknowledged');
+    expect((await readDocument(base.owner, resource)).value?.scriptureRefs).toEqual([neighbor, fresh]);
+  });
+
+  it('coalesces the exact live reference before considering a different row that used to have the same words', async () => {
+    const resource = { collection: 'studyNotes', id: 'exact-reference-match' };
+    const base = { protocol: 1 as const, owner: 'owner-1', resource, dependsOn: [] };
+    const note = { userId: base.owner, type: 'note', content: 'Words to keep', scriptureRefs: [], tags: [],
+      isDraft: false, createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const original = { id: 'original-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const edited = { ...original, fromVerse: 17 };
+    const deliberate = { ...original, id: 'deliberate-ref' };
+    const delayed = { ...original, id: 'delayed-ref' };
+    const romans = { ...original, id: 'neighbor-ref', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const list = (value: typeof original[]) => ({ exists: true, value });
+    const update = (operationId: string, before: typeof original[], after: typeof original[], id: string, time: number) => ({
+      ...base, kind: 'update' as const, generation: 'seed-exact-reference', operationId,
+      studyNoteReferenceTimes: { [id]: { earliestMs: 1_800_000_000_000 + time, latestMs: 1_800_000_000_001 + time } },
+      studyNoteReferenceObservedRevisions: { [id]: 1 },
+      changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }],
+    });
+    const commands = [
+      { ...base, kind: 'create' as const, generation: null, operationId: 'seed-exact-reference', value: note },
+      update('first-add', [], [original, romans], original.id, 30),
+      update('first-edit', [original, romans], [edited, romans], original.id, 60),
+      update('independent-add', [edited, romans], [edited, romans, deliberate], deliberate.id, 90),
+      update('delayed-add', [], [delayed], delayed.id, 120),
+    ];
+    for (const command of commands) expect((await processCommand(base.owner, command)).kind).toBe('acknowledged');
+    expect(await readDocument(base.owner, resource)).toMatchObject({
+      value: { scriptureRefs: [edited, romans, deliberate], content: note.content },
+      metadata: { studyNoteReferenceAliases: [{ from: delayed.id, to: deliberate.id }] },
+    });
+  });
+
   it('replays original committed evidence with the current snapshot after later edits and a lost acknowledgement', async () => {
     const original = await processCommand('owner-1', create());
     await processCommand('owner-1', update());

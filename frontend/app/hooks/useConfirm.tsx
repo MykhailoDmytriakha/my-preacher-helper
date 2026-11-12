@@ -102,7 +102,7 @@ export function useConfirm(): {
   return { confirm, confirmDialog, withdraw };
 }
 
-export type DiscardQuestionKey = 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval' | 'bible.marks.conflictDiscard';
+export type DiscardQuestionKey = 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredFields' | 'dataSync.confirmStoredPointRemoval' | 'bible.marks.conflictDiscard';
 
 /**
  * CANCEL THAT THROWS AWAY WHAT THE PERSON CHANGED ASKS FIRST; with nothing changed it just closes.

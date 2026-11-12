@@ -23,12 +23,13 @@ import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
-import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
+import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
 import type { AccountPreferenceField } from './accountPreference';
@@ -396,7 +397,7 @@ export class DataSession {
         this.state.draft, councilMoves.reduce(projectCouncilTopicOnDocument, incoming))
       : accepted.resource.collection === 'groups' ? mergeGroupFlowRebase(acceptedAncestor, this.state.draft, incoming)
         : rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
-          mergeDocumentFields(templateAncestor, this.state.draft, incoming));
+          mergeDocumentAfterAcknowledgement(templateAncestor, this.state.draft, { ...accepted, value: incoming }));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
@@ -483,6 +484,11 @@ export class DataSession {
   acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
     if (!this.state.remoteCandidate) return;
+    const referenceChoice = chooseStudyNoteReferences(this.state, 'stored');
+    if (referenceChoice) {
+      this.finishReferenceChoice(referenceChoice);
+      return;
+    }
     this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.remoteCandidate = null;
     if (atChoice !== undefined) {
@@ -497,9 +503,24 @@ export class DataSession {
     this.state.conflicts = [];
   }
 
+  private finishReferenceChoice(draft: DocumentData): void {
+    this.state.confirmed = copy(this.state.remoteCandidate!);
+    this.state.draft = copy(draft);
+    this.state.remoteCandidate = null;
+    this.state.conflicts = [];
+    this.clearAutosaveFieldDrafts();
+    this.state.editGeneration = this.reserveEditGeneration();
+    this.state.dirty = !equalValues(draft, this.state.confirmed.value);
+  }
+
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
+    const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
+    if (referenceChoice) {
+      this.finishReferenceChoice(referenceChoice);
+      return;
+    }
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
     const title = readOutlineTitleComparison(this.state);
     if (title?.removed) {

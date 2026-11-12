@@ -10,13 +10,15 @@ import { ACTION_CLOCK_HEADER, isClockTime, readsDocumentActionClock, usesActionC
 import { actionClock } from './actionClock.client';
 import { getResourcePolicy, isValidIdentifier, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { validStudyNoteReferenceAliases } from './studyNoteReferenceMerge';
 
-import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, DataCommand, EngineTransport, Json, ResourceSnapshot } from './types';
+import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, DataCommand, EngineTransport, Json, ResourceSnapshot, StudyNoteReferenceAlias } from './types';
 
 const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
 const resourceSchema = z.object({ collection: z.string(), id: z.string() });
 const metadataSchema = z.object({ protocol: z.literal(1), generation: z.string().min(1), revision: z.number().int().safe().positive(), deleted: z.boolean(), operationId: z.string().refine(isValidIdentifier).optional(),
-  shareRevocation: z.string().refine(isValidIdentifier).optional() });
+  shareRevocation: z.string().refine(isValidIdentifier).optional(),
+  studyNoteReferenceAliases: z.custom<StudyNoteReferenceAlias[]>(value => validStudyNoteReferenceAliases(value, isValidIdentifier)).optional() });
 const field = z.object({ exists: z.boolean(), value: json.optional() });
 export const snapshotSchema: z.ZodType<ResourceSnapshot> = z.object({
   resource: resourceSchema,
@@ -40,7 +42,7 @@ const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(),
     affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).max(99).optional(),
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
-  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), code: z.string().optional(), base: field, mine: field, theirs: field })),
+  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), code: z.string().optional(), base: field, mine: field, theirs: field, studyNoteReferenceOpening: field.optional() })),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional() }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),

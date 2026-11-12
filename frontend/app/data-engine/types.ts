@@ -68,6 +68,11 @@ export interface CommandBase {
   dependsOn: string[];
 }
 
+export interface StudyNoteReferenceEvidence {
+  times?: Record<string, ActionTime>;
+  observedRevisions?: Record<string, number>;
+}
+
 export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
@@ -90,8 +95,9 @@ export type EditorCommitAction =
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
   | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
-  | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
-  | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
+  | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
+  | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
+  | { kind: 'study-note-references'; referenceEvidence: StudyNoteReferenceEvidence; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'comment-kind'; commentKind: CommentKindCapture }
   | { kind: 'comment-place'; commentPlace: CommentPlaceCapture }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
@@ -230,6 +236,8 @@ export type DataCommand = CommandBase & (
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteTypeAction?: DocumentFieldStamp;
+      studyNoteReferenceTimes?: Record<string, ActionTime>;
+      studyNoteReferenceObservedRevisions?: Record<string, number>;
       commentKindAction?: CommentKindStamp;
       commentPlaceAction?: CommentPlaceStamp;
       planTemplateNameAction?: DocumentFieldStamp;
@@ -300,6 +308,8 @@ export type DataCommand = CommandBase & (
     }> }
 );
 
+export interface StudyNoteReferenceAlias { from: string; to: string }
+
 export interface EngineMetadata {
   protocol: 1;
   generation: string;
@@ -309,6 +319,8 @@ export interface EngineMetadata {
   operationId?: string;
   /** Latest committed revocation for this note, independent of its authored content. */
   shareRevocation?: string;
+  /** Stable identities absorbed by another reference in this note generation. */
+  studyNoteReferenceAliases?: StudyNoteReferenceAlias[];
 }
 
 export interface ResourceSnapshot {
@@ -321,6 +333,8 @@ export interface ResourceSnapshot {
 export interface ConflictDetail {
   path: string[];
   code?: string;
+  /** Exact list submitted by the editor before the server remapped reference identities. */
+  studyNoteReferenceOpening?: FieldValue;
   base: FieldValue;
   mine: FieldValue;
   theirs: FieldValue;

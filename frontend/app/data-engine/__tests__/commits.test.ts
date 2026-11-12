@@ -99,6 +99,135 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it.each(['edit', 'remove', 'write words'] as const)('keeps later offline work after equivalent references coalesce: %s', async action => {
+    const opening: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'note', content: 'Keep these words', tags: [], scriptureRefs: [], isDraft: false,
+        createdAt: 'created', updatedAt: 'updated' } };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const other = { id: 'other-ref', bible: 'kjv', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const s = setup({ opening, nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    editor.edit({ ...opening.value, scriptureRefs: [phone] });
+    const add = (await queue.save('note-editor', editor.checkpoint()))!;
+    editor.applyCommit(add);
+    const later = action === 'write words' ? { ...opening.value, scriptureRefs: [phone], content: 'Later local words' }
+      : { ...opening.value, scriptureRefs: action === 'remove' ? [] : [{ ...phone, fromVerse: 17 }] };
+    editor.edit(later);
+    const successor = (await queue.save('note-editor', editor.checkpoint()))!;
+    expect(successor.predecessor).toBe(add.id);
+
+    s.replace({ ...opening, value: { ...opening.value, scriptureRefs: [desktop, other] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-update' } });
+    await s.makeQueue().queue.drain(true);
+
+    const final = (await s.requests.list('owner')).find(request => request.id === successor.id);
+    expect(s.server().value?.scriptureRefs).toEqual([desktop, other]);
+    if (action === 'write words') {
+      expect(s.transport.send).toHaveBeenCalledTimes(2);
+      expect(final?.state).toBe('acknowledged');
+      expect(s.server().value?.content).toBe('Later local words');
+    } else {
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      expect(final).toMatchObject({ state: 'conflict', value: later, result: { kind: 'conflict' } });
+      expect(s.server().value?.content).toBe('Keep these words');
+    }
+  });
+
+  it.each(['local', 'stored'] as const)('resolves only the compared ordinary note reference through its action editor: %s', async choice => {
+    const opening: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'note', content: 'Opening words', tags: [], scriptureRefs: [], isDraft: false,
+        createdAt: 'created', updatedAt: 'updated' } };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const independent = { id: 'phone-extra', bible: 'kjv', book: 'Luke', chapter: 3, fromVerse: 1 };
+    const neighbor = { id: 'desktop-extra', bible: 'kjv', book: 'Romans', chapter: 8, fromVerse: 28 };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine();
+    const editorId = editorIdentity('phone', opening.resource, ACTION_SLOT, 'opening');
+    const action = await engine.openEditor(opening.resource, editorId);
+    await action.commit(value => ({ ...value, scriptureRefs: [phone] }));
+    await action.commit(value => ({ ...value, content: 'Later phone words', scriptureRefs: [independent] }));
+    s.replace({ ...opening, value: { ...opening.value, scriptureRefs: [desktop, neighbor] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-update' } });
+    engine.setOnline(true);
+    await engine.retry();
+    await settle();
+
+    const shown = await s.checkpoints.read('owner', editorId);
+    expect(action.getState().checkpoint.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['scriptureRefs', 'id:desktop-ref'] }),
+    ]));
+    if (choice === 'local') await action.keepLocal(shown);
+    else await action.acceptRemote(shown);
+    if (action.getState().checkpoint.dirty && !Object.keys(action.getState().checkpoint.pending).length) await action.save();
+    await engine.retry();
+    await settle();
+
+    expect(s.server().value?.content).toBe('Later phone words');
+    expect(s.server().value?.scriptureRefs).toEqual(expect.arrayContaining([independent, neighbor]));
+    expect((s.server().value?.scriptureRefs as typeof desktop[]).some(ref => ref.id === desktop.id)).toBe(choice === 'stored');
+    expect((s.server().value?.scriptureRefs as typeof desktop[])).toHaveLength(choice === 'stored' ? 3 : 2);
+    action.close({ flush: false });
+    engine.dispose();
+  });
+
+  it('sends the time of a queued offline removal with the original reference opening after coalescence', async () => {
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const opening: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'note', content: 'Opening words', tags: [], scriptureRefs: [], isDraft: false,
+        createdAt: 'created', updatedAt: 'updated' } };
+    const s = setup({ opening, nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    editor.edit({ ...opening.value, scriptureRefs: [phone] });
+    const add = (await queue.save('note-editor', editor.checkpoint()))!;
+    editor.applyCommit(add);
+    const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_112 };
+    editor.edit({ ...opening.value, content: 'Independent phone words', scriptureRefs: [] });
+    const action = { kind: 'study-note-references' as const,
+      referenceEvidence: { times: { [phone.id]: time }, observedRevisions: { [phone.id]: 1 } } };
+    await queue.save('note-editor', editor.checkpoint(), { action });
+
+    s.replace({ ...opening, value: { ...opening.value, scriptureRefs: [desktop] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-update' } });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      studyNoteReferenceTimes: { [phone.id]: time },
+      studyNoteReferenceObservedRevisions: { [phone.id]: 1 },
+      changes: expect.arrayContaining([{ path: ['scriptureRefs'], before: { exists: true, value: [phone] }, after: { exists: true, value: [] } }]),
+    }));
+  });
+
+  it('retains the observed reference opening after an unrelated predecessor acknowledges the other device’s addition', async () => {
+    const opening: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'note', content: 'Opening words', tags: [], scriptureRefs: [], isDraft: false,
+        createdAt: 'created', updatedAt: 'updated' } };
+    const phone = { id: 'phone-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const desktop = { ...phone, id: 'desktop-ref' };
+    const s = setup({ opening, nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const local = { ...opening.value, content: 'Later local words' };
+    editor.edit(local);
+    const first = (await queue.save('note-editor', editor.checkpoint()))!;
+    editor.applyCommit(first);
+    editor.edit({ ...local, scriptureRefs: [phone] });
+    await queue.save('note-editor', editor.checkpoint());
+
+    s.replace({ ...opening, value: { ...opening.value, scriptureRefs: [desktop] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-update' } });
+    await s.makeQueue().queue.drain(true);
+
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(s.server().value).toMatchObject({ scriptureRefs: [desktop], content: 'Later local words' });
+    expect(jest.mocked(s.transport.send).mock.calls[1][0]).toMatchObject({
+      changes: [{ path: ['scriptureRefs'], before: { exists: true, value: [] }, after: { exists: true, value: [phone] } }],
+    });
+  });
+
   it.each([false, true])('carries a queued meeting-plan copy through its predecessor (newer source in the ACK: %s)', async newer => {
     const resource = { collection: 'groups', id: 'meeting-plan' };
     const template = { id: 'source', type: 'custom', title: 'Source', content: 'Shown words', status: 'filled',

@@ -43,6 +43,7 @@ import { keepUncontestedServiceStepScripture, reviewedServiceStepScriptureRows, 
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
+import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
@@ -823,7 +824,7 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && readOutlinePointPlacementComparison(checkpoint))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
@@ -1072,6 +1073,13 @@ export class EditorController {
             action: scriptureRow ? { kind: 'service-order-step-scripture', scripture: scriptures[0] }
               : { kind: 'service-order-step-scripture-review', scriptures },
           });
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
+        }
+        const referenceReview = !selection && !correction && readStudyNoteReferenceComparison(decided);
+        if (referenceReview) {
+          const accepted = session.checkpoint();
+          const action = reviewedReferenceEvidence(accepted, referenceReview.comparedIds);
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, accepted, { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         const sourceNoteRequest = ordinary?.first ?? retired.find(request => decided.pending[request.id]

@@ -25,6 +25,7 @@ import { planShareCapability, type ShareCapabilityCommand } from './shareCapabil
 
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { StepPlacementWrite } from './stepPlacement.server';
+import type { StudyNoteReferenceOrder } from './studyNoteReferenceMerge';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { SeriesItem } from '@/models/models';
 
@@ -37,6 +38,7 @@ type SeriesMembershipReader = {
   readDeletion(location: MembershipLocation): Promise<number | undefined>;
 };
 export interface RelationReader {
+  orderStudyNoteReference?: StudyNoteReferenceOrder;
   serviceOrderPlacement?: { rawMetadata: unknown; serverMs: number | undefined };
   seriesMembershipOrder?: SeriesMembershipReader;
   seriesPlacementMetadata?(resource: ResourceRef): unknown;
@@ -793,7 +795,7 @@ class RelationPlanner {
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
     const verifyCopy = effective.kind === 'update' && effective.groupFlowCopySources
       ? verifyGroupCopySource(this.reader.serviceOrderPlacement?.rawMetadata, this.primary.metadata?.generation) : undefined;
-    const result = applyCommand(effective, this.primary, verifyCopy);
+    const result = applyCommand(effective, this.primary, verifyCopy, this.reader.orderStudyNoteReference);
     if (result.kind !== 'acknowledged') return result;
     if (command.resource.collection === 'tags') {
       const name = result.snapshot.value?.name;

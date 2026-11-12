@@ -35,7 +35,7 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
-import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
+import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentAfterAcknowledgement, MAX_RELATION_RESOURCES } from './protocol';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
@@ -66,7 +66,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture, StudyNoteReferenceEvidence } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
@@ -155,6 +155,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   rebasedGroupCopySources?: DocumentData[];
   rebasedGroupRetirements?: DocumentData[];
+  studyNoteReferenceChange?: FieldChange;
+  studyNoteReferenceEvidence?: StudyNoteReferenceEvidence;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
   groupTitleAction?: DocumentFieldAction;
@@ -735,6 +737,8 @@ export class CommitQueue {
     const commentPlace = placeCapture && captureCommentPlace(baseline, intent.draft, placeCapture, Boolean(placeRequestId
       && matchesCommentPlaceRequest(records.find(record => record.id === placeRequestId), owner, baseline.resource, placeCapture.seen)));
     if (placeCapture && !commentPlace) throw Object.assign(new Error('The comment move opening changed'), { code: 'comment-place-basis-changed' });
+    const studyNoteReferenceEvidence = baseline.resource.collection === 'studyNotes' && editorAction && 'referenceEvidence' in editorAction
+      ? editorAction.referenceEvidence : undefined;
     const tagMembership = editorAction && 'tagMembership' in editorAction ? editorAction.tagMembership : undefined;
     const tagMembershipActions = captureDocumentTags(baseline, predecessor, intent.draft, tagMembership, records);
     const templateCapture = editorAction?.kind === 'plan-template-name' ? editorAction.name : undefined;
@@ -811,6 +815,7 @@ export class CommitQueue {
       ...rowFields,
       ...(thoughtTagActions && { thoughtTagActions }),
       ...(tagMembershipActions && { tagMembershipActions }),
+      ...(studyNoteReferenceEvidence && { studyNoteReferenceEvidence: clone(studyNoteReferenceEvidence) }),
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
@@ -1377,6 +1382,17 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
+    if (record.sequence === 0 && command.kind === 'update' && record.studyNoteReferenceChange) {
+      const referenceChange = record.studyNoteReferenceChange;
+      command.changes = command.changes.map(change => equalValues(change.path, referenceChange.path) ? clone(referenceChange) : change);
+    }
+    if (record.sequence === 0 && command.kind === 'update' && command.resource.collection === 'studyNotes'
+      && command.generation === record.baseline.metadata?.generation
+      && command.changes.some(change => change.path.length === 1 && change.path[0] === 'scriptureRefs')) {
+      const evidence = record.studyNoteReferenceEvidence;
+      if (evidence?.times) command.studyNoteReferenceTimes = clone(evidence.times);
+      if (evidence?.observedRevisions) command.studyNoteReferenceObservedRevisions = clone(evidence.observedRevisions);
+    }
     if (firstMeeting && command.kind === 'update') {
       command.changes = command.changes.map(change => change.path[0] === 'meetingDates' ? clone(firstMeeting) : change);
     }
@@ -1481,7 +1497,7 @@ export class CommitQueue {
     const commit = async (next: CommitRequest) => { await this.persistTransition(record, next, owner, generation); return true; };
     if (record.command) result = confirmedExistingDeletion(record.command, result) ?? result;
     if (result.kind !== 'acknowledged') return commit({ ...record, state: result.kind === 'refused' ? 'refused' : 'conflict', result: { ...result, operationId: record.id } });
-    const rebased = mergeDocumentFields(record.submitted, record.intended, result.snapshot.value);
+    const rebased = mergeDocumentAfterAcknowledgement(record.submitted, record.intended, result.snapshot);
     if (rebased.conflicts.length) return commit({ ...record, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot: result.snapshot, conflicts: rebased.conflicts } });
     const intended = rebased.value.exists ? rebased.value.value as DocumentData : null;
     const complete = equalValues(intended, result.snapshot.value);

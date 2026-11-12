@@ -25,7 +25,7 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
-import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
+import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
 import { isCapturedAutosaveRowFieldConflict, retainQueuedThoughtPlacements } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -33,6 +33,7 @@ import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './se
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { sourceNoteQueueRebase } from './sourceNoteLinkCapture';
+import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
 import type { DataEngineRuntime } from './runtime';
@@ -211,7 +212,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const groupRetirements = group && ancestor && authored ? groupFlowRetirementSources(ancestor, authored) : [];
     const ordinary = outline ?? (group ? mergeGroupFlowRebase(ancestor, authored, snapshot.value, groupCopies)
       : rebaseOptionalPrayerTags(record.baseline.resource.collection, ancestor, authored, snapshot.value,
-        mergeDocumentFields(sourceNotes ? sourceNotes.align(ancestor) : ancestor, sourceNotes ? sourceNotes.align(authored) : authored, snapshot.value)));
+        sameGeneration && snapshot.metadata?.studyNoteReferenceAliases?.length
+          ? mergeDocumentAfterAcknowledgement(ancestor, authored, snapshot)
+          : mergeDocumentFields(sourceNotes ? sourceNotes.align(ancestor) : ancestor, sourceNotes ? sourceNotes.align(authored) : authored, snapshot.value)));
     const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>
       path.length === 2 && path[0] === 'preparation' && path[1] === 'exegeticalPlan')
       ? rebaseQueuedExegeticalPoint(ancestor, authored, snapshot.value, record.exegeticalPlanActions) : undefined;
@@ -234,7 +237,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const stepTitle = record.serviceOrderStepTitleActions?.title;
     const assembly = record.councilAssemblyActions?.forAssembly;
     const topicKind = record.councilTopicKindActions?.kind;
+    const timedReference = sameGeneration && Boolean(record.studyNoteReferenceEvidence) && hasStudyNoteReferenceReview(rebased.conflicts);
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
+      || (timedReference && conflict.path[0] === 'scriptureRefs')
       || (record.groupFirstMeetingChange && conflict.path[0] === 'meetingDates')
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
@@ -250,9 +255,12 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       }));
     const deferDate = sameGeneration && rebased.conflicts.some(isDateConflict);
     if (rebased.conflicts.length && !canOrder) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
-    // The preceding ACK can carry another device's date. Send the original ancestor
-    // for this exact leaf so the server can order it or keep the ordinary choice.
+    // The preceding ACK can carry another device's references or date. The server
+    // needs the actual opening for the exact field the person touched.
+    const studyNoteReferenceChange = sameGeneration && snapshot.resource.collection === 'studyNotes'
+      ? captureStudyNoteReferenceChange(ancestor, authored) : undefined;
     return { ...record, initialized: true, working: snapshot, ...legacyLineage,
+      ...(studyNoteReferenceChange && { studyNoteReferenceChange }),
       intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
       ...(groupCopies.length && { rebasedGroupCopySources: groupCopies }),

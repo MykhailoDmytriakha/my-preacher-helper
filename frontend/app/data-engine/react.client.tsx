@@ -38,7 +38,7 @@ import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
-import { mergeFields } from './protocol';
+import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
@@ -49,6 +49,8 @@ import { deletedUnder, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
+import { readStudyNoteReferenceComparison as studyNoteReferenceComparison } from './studyNoteReferenceChoice';
+import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { readStudyNoteTypeComparison as studyNoteTypeComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
@@ -91,7 +93,10 @@ export function readCommentTextComparison(checkpoint: SessionCheckpoint) { retur
 export function firstCommentReference(...args: Parameters<typeof readCommentReference>) { return readCommentReference(...args); }
 export function matchesCommentPlaceScope(...args: Parameters<typeof matchesPlaceScope>) { return matchesPlaceScope(...args); }
 export function replaceCommentReference(...args: Parameters<typeof replacePlaceReference>) { return replacePlaceReference(...args); }
+export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) { return studyNoteReferenceComparison(checkpoint); }
+export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) { return hasStudyNoteReferenceReview(checkpoint.conflicts); }
 export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
+export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export const captureOutlinePointPlacement = captureOutlinePlacement;
@@ -539,6 +544,9 @@ export function useDocumentActions() {
       if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
         new Error('The shown saved copy changed'), { code: 'decision-changed' });
       let taken = 0;
+      if (!exactField && (scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForStudyNoteReferenceReview(checkpoint))) {
+        throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
+      }
       if (scope && choice === 'theirs' && !exactField) {
         // Modern copies settle through the same request-scoped projection as screen drafts.
         taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
@@ -577,7 +585,7 @@ export function useDocumentActions() {
           if (comparedSourceNotes || capturedByChoice) continue;
           const { checkpoint } = editor.getState();
           if (Object.keys(checkpoint.pending).length) continue;
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
             || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
