@@ -1,5 +1,3 @@
-import { auth } from '@services/firebaseAuth.service';
-
 /**
  * WHO the cached data belongs to is part of its identity.
  *
@@ -11,15 +9,15 @@ import { auth } from '@services/firebaseAuth.service';
  * rules cannot help here; they gate the SERVER, not a copy already on the machine.
  *
  * The lists were already owner-scoped (`['sermons', uid]`); the detail was not.
- * This keeps one definition so the two cannot drift apart again.
+ * Keys are defined here once, so two copies of one key cannot drift apart again.
  *
  * The other layer is accountQueryCache: each resolved account restores its own
  * persisted client, and QueryProvider remounts that lifetime on an identity change.
  * Older device copies are preserved or moved through canonical migration, never
  * globally cleared on sign-out.
  */
-export const sermonDetailKey = (uid: string | undefined, sermonId: string) =>
-  ['sermon', uid ?? 'unresolved-owner', sermonId] as const;
+
+import { auth } from '@services/firebaseAuth.service';
 
 /**
  * `uid` may be undefined while auth is still resolving: callers need a STABLE key for that
@@ -27,30 +25,7 @@ export const sermonDetailKey = (uid: string | undefined, sermonId: string) =>
  */
 export const sermonListKey = (uid: string | undefined) => ['sermons', uid] as const;
 
-/**
- * The study-note list, owner-scoped like the sermon list.
- *
- * It lives here rather than inside `useStudyNotes` because a SECOND reader now shares the
- * same cache entry: the sermon screen resolves the titles of the notes it was built on, and
- * the note screen derives which sermons point back at it. Two hooks holding two spellings of
- * the same key would each fetch their own copy and then disagree about what is on the disk.
- */
-export const studyNoteListKey = (uid: string | undefined) => ['study-notes', uid] as const;
-
-/**
- * The pastor's orders of service. Owner-scoped like every other list here, and for the same
- * reason: the cache is persisted to IndexedDB and outlives a sign-out, so a key that names
- * only the collection is shared by every account that ever used this browser.
- */
-export const serviceOrderListKey = (uid: string | undefined) => ['serviceOrders', uid] as const;
-
 /** The SDK owns action-time identity; an obsolete browser mirror cannot resurrect a signed-out owner. */
 export function resolveOwnerUid(): string | undefined {
   return auth.currentUser?.uid;
 }
-
-/**
- * The pastor's councils — owner-scoped for the same reason as the orders of service above:
- * the persisted cache outlives a sign-out.
- */
-export const councilListKey = (uid: string | undefined) => ['councils', uid] as const;

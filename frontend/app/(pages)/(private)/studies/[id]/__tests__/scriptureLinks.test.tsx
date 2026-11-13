@@ -17,9 +17,6 @@ import type { StudyNote } from '@/models/models';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), useParams: jest.fn(), useSearchParams: jest.fn() }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'ru' } }) }));
-jest.mock('@/hooks/useDocumentFreshness', () => ({
-  useDocumentFreshness: () => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() }),
-}));
 jest.mock('@/hooks/useWideViewport', () => ({ useWideViewport: () => true, useRoomyHeader: () => true }));
 jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');

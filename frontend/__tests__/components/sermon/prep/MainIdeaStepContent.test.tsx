@@ -6,7 +6,6 @@ jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
-import { useFieldDraft } from '@/hooks/useFieldDraft';
 
 import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 
@@ -19,7 +18,7 @@ interface FixtureProps {
 /** Presentation-only parent: persistence and ancestry are covered by preparationFieldSave.test.tsx. */
 function MainIdeaFixture(props: FixtureProps) {
   const usePresentationField = (value = '', onSave?: FixtureProps['onSaveContextIdea']): PreparationTextBinding => {
-    const [draft, update] = useFieldDraft(value);
+    const [draft, update] = React.useState(value);
     const [busy, setBusy] = React.useState(false);
     return { subject: 'presentation-field', value: draft, ready: true, active: true, busy, dirty: draft !== value, error: null,
       begin: async () => undefined, update: async next => { update(next); }, cancel: async () => { update(value); }, retry: async () => undefined,

@@ -68,11 +68,6 @@ jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
 }));
 
-// The legacy reader must stay untouched on the engine.
-jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn(),
-}));
-
 // Mock child components (if any are direct children of the page)
 jest.mock('@/components/plan/KeyFragmentsModal', () => {
   const React = require('react');

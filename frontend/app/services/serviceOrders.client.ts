@@ -2,9 +2,8 @@ import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 
 /**
  * Orders of service are read and written only through the data engine (engineOwnedCollections.ts);
- * what stays here is the collection name, its revision parts and how a stored document is shaped.
+ * what stays here is its revision parts and how a stored document is shaped.
  */
-export const SERVICE_ORDERS_COLLECTION = 'serviceOrders';
 
 /**
  * Independently edited parts of an order. Kept apart so renaming it, rewriting one step and
@@ -13,7 +12,6 @@ export const SERVICE_ORDERS_COLLECTION = 'serviceOrders';
  */
 export const SERVICE_ORDER_META_AGGREGATE = 'meta';
 export const SERVICE_ORDER_STEPS_AGGREGATE = 'steps';
-export const SERVICE_ORDER_PLACEMENT_AGGREGATE = 'placement';
 
 /**
  * What a document is allowed to be missing and still be usable. A rite written before a field

@@ -5,14 +5,12 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { useAuth } from '@/providers/AuthProvider';
-import { getSermons } from '@services/sermon.service';
 import { membershipEngineHarness } from '@test-utils/membershipEngineHarness';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
-jest.mock('@services/sermon.service', () => ({ getSermons: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }) }));
 
@@ -45,7 +43,6 @@ it('reads this owner’s on-device sermons through the real engine while offline
   expect(engine.collectionTransport.list).not.toHaveBeenCalled();
   expect(engine.collectionTransport.changes).not.toHaveBeenCalled();
   expect(engine.transport.read).not.toHaveBeenCalled();
-  expect(getSermons).not.toHaveBeenCalled();
 
   await act(async () => { unmount(); });
 });

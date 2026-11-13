@@ -7,14 +7,12 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
-import { getSermons } from '@/services/sermon.service';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/services/firebaseAuth.service', () => ({ auth: { currentUser: { uid: 'owner' } } }));
-jest.mock('@/services/sermon.service', () => ({ getSermons: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
@@ -53,7 +51,6 @@ it('creates through the real entry point, keeps submitted input in list/calendar
   expect(screen.getByTestId('calendar')).toHaveTextContent('Queued sermon');
   // Waiting in the queue is the ordinary way; the screen says nothing about it (isSyncTrouble).
   expect(screen.queryByText('dataSync.phase.queued')).not.toBeInTheDocument();
-  expect(getSermons).not.toHaveBeenCalled();
   const request = (await harness.commits.list('owner'))[0], resource = request.baseline.resource;
   view.unmount(); const restored = mount();
   await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('Queued sermon'));

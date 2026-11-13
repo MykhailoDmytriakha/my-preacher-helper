@@ -4,9 +4,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { actionBlockedLabelKey, isActionBlocked, type UsageAction } from '@/utils/usageGates';
 
 import { useServerFirstQuery } from './useServerFirstQuery';
-import { userEntitlementQuery, USER_ENTITLEMENT_QUERY_KEY } from './useUserEntitlement';
-
-export const AI_USAGE_QUERY_KEY = USER_ENTITLEMENT_QUERY_KEY;
+import { userEntitlementQuery } from './useUserEntitlement';
 
 /**
  * UI-only view of the server-enforced AI allowance.

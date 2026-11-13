@@ -3,7 +3,6 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { TestProviders } from '../../../test-utils/test-providers';
 
 jest.mock('@locales/i18n', () => ({}));
@@ -71,11 +70,6 @@ jest.mock('@/components/navigation/ModeToggle', () => ({
   default: () => <div data-testid="mode-toggle" />,
 }));
 
-jest.mock('@/services/userSettings.service', () => ({
-  ...jest.requireActual('@/services/userSettings.service'),
-  hasGroupsAccess: jest.fn(),
-}));
-
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => ({
@@ -94,13 +88,10 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
-
 describe('DashboardNav active state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     pathnameMock = '/dashboard';
-    mockHasGroupsAccess.mockResolvedValue(true);
   });
 
   it('marks the dashboard nav item active on /dashboard instead of sermons', () => {

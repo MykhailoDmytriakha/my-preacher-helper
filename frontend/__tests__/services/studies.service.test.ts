@@ -36,23 +36,6 @@ async function importServiceWithClientMocks() {
   return import('@/services/studies.service');
 }
 
-const baseNote = {
-  userId: 'user-1',
-  title: 'Faith note',
-  content: 'Pray with faith',
-  scriptureRefs: [{ book: 'Hebrews', chapter: 11, fromVerse: 1 }],
-  tags: ['faith'],
-  type: 'note' as const,
-  createdAt: '2026-03-01T00:00:00.000Z',
-  updatedAt: '2026-03-02T00:00:00.000Z',
-};
-
-const docSnap = (id: string, data: Record<string, unknown>, exists = true) => ({
-  id,
-  exists: () => exists,
-  data: () => data,
-});
-
 describe('studies.service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -62,22 +45,6 @@ describe('studies.service', () => {
   afterEach(() => {
     jest.dontMock('@/config/firebaseClientDb');
     jest.dontMock('firebase/firestore');
-  });
-
-  // Study notes are written only through the data engine; the list read the sermon side uses remains.
-  it('reads and filters study notes through the client SDK', async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        docSnap('note-1', baseNote),
-        docSnap('note-2', { ...baseNote, title: 'Other', tags: ['hope'] }),
-      ],
-    });
-
-    const service = await importServiceWithClientMocks();
-    const notes = await service.getStudyNotes('user-1', { tag: 'faith', q: 'pray' });
-
-    expect(notes.map((note) => note.id)).toEqual(['note-1']);
-    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('exposes no study note writer', async () => {

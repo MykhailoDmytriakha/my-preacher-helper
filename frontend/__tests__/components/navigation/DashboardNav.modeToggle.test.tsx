@@ -4,7 +4,6 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import ModeToggle from '@/components/navigation/ModeToggle';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 import { TestProviders } from '../../../test-utils/test-providers';
 // Use mocked ModeToggle rendered inside DashboardNav and query by testids exposed there
@@ -47,7 +46,6 @@ const resetScenario = () => {
     loading: false,
     awaitingFirstAnswer: false,
   };
-  mockHasGroupsAccess.mockResolvedValue(true);
 };
 
 jest.mock('@/hooks/useSermonRead', () => {
@@ -96,11 +94,6 @@ jest.mock('@/components/navigation/FeedbackModal', () => ({
   ) 
 }));
 jest.mock('@/components/navigation/MobileMenu', () => ({ __esModule: true, default: () => <div data-testid="mobile-menu" /> }));
-jest.mock('@/services/userSettings.service', () => ({
-  ...jest.requireActual('@/services/userSettings.service'),
-  hasGroupsAccess: jest.fn(),
-}));
-const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
 
 // Mock segmented toggle to a minimal testable version with stable testids
@@ -460,21 +453,6 @@ describe('DashboardNav mode toggle', () => {
 });
 
 describe('Navigation button visibility', () => {
-  it('keeps released groups visible when the legacy access helper denies access', async () => {
-    mockHasGroupsAccess.mockResolvedValueOnce(false);
-    pathnameMock = '/dashboard';
-
-    render(
-      <TestProviders>
-        <DashboardNav />
-      </TestProviders>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('navigation.groups')).toBeInTheDocument();
-    });
-  });
-
   it('ignores retired groups feature toggle events', async () => {
     pathnameMock = '/dashboard';
     render(

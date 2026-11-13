@@ -3,7 +3,6 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 import { TestProviders } from '../../../test-utils/test-providers';
 import { setDebugModeEnabled } from '@/utils/debugMode';
@@ -22,7 +21,6 @@ const resetScenario = () => {
   replaceMock.mockReset();
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
-  mockHasGroupsAccess.mockResolvedValue(true);
   // Enable debug mode for tests to verify logging
   setDebugModeEnabled(true);
 };
@@ -49,12 +47,6 @@ jest.mock('@/components/navigation/LanguageSwitcher', () => ({ __esModule: true,
 jest.mock('@/components/navigation/UserProfileDropdown', () => ({ __esModule: true, default: () => <div data-testid="user-dropdown" /> }));
 jest.mock('@/components/navigation/FeedbackModal', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/navigation/MobileMenu', () => ({ __esModule: true, default: () => <div data-testid="mobile-menu" /> }));
-jest.mock('@/services/userSettings.service', () => ({
-  ...jest.requireActual('@/services/userSettings.service'),
-  hasGroupsAccess: jest.fn(),
-}));
-
-const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
 
 // Mock ModeToggle

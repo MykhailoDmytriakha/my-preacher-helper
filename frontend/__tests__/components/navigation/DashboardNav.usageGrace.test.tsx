@@ -40,9 +40,7 @@ jest.mock('@/hooks/useFeedback', () => ({
   }),
 }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
-jest.mock('@/services/userSettings.service', () => ({
-  hasGroupsAccess: jest.fn().mockResolvedValue(true),
-}));
+jest.mock('@/services/userSettings.service', () => ({}));
 jest.mock('@/components/navigation/LanguageSwitcher', () => () => null);
 jest.mock('@/components/navigation/UserProfileDropdown', () => () => null);
 jest.mock('@/components/navigation/MobileMenu', () => () => null);

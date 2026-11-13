@@ -28,13 +28,13 @@ The project uses TypeScript path aliases to avoid complex relative paths. These 
 **DO:**
 ```typescript
 import { ChevronIcon } from '@components/Icons';
-import { getSermonById } from '@/services/sermon.service';
+import { updateUserLanguage } from '@/services/userSettings.service';
 ```
 
 **DON'T:**
 ```typescript
 import { ChevronIcon } from '../../components/Icons';
-import { getSermonById } from '../services/sermon.service';
+import { updateUserLanguage } from '../services/userSettings.service';
 ```
 
 ### 2. Import Order
@@ -54,7 +54,7 @@ import { toast } from 'sonner';
 // Path alias imports (ordered by alias)
 import type { Sermon } from '@/models/models';
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
-import { getSermonById } from '@/services/sermon.service';
+import { updateUserLanguage } from '@/services/userSettings.service';
 import { formatDate } from '@/utils/dateFormatter';
 import { useTranslation } from '@locales/useTranslation';
 
