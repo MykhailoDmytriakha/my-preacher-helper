@@ -23,13 +23,17 @@ function proofs(rawMetadata: unknown, target: DatedRowTarget): Proof[] {
   });
 }
 
-function meetingProofFloor(rawMetadata: unknown): number {
-  const floor = object(rawMetadata) ? rawMetadata.meetingDateProofFloor : undefined;
+function dateProofFloor(rawMetadata: unknown, target: DatedRowTarget): number {
+  const floor = object(rawMetadata) ? rawMetadata[proofFloorKey(target)] : undefined;
   return proofRevision(floor) ? floor : 0;
 }
 
-function uncertainMeetingDate(command: DataCommand, action: DatedRowActionEvidence): DateOrder {
-  return { command, uncertain: [uncertainRowChange(action, MEETING_DATE_TARGET)] };
+function proofFloorKey(target: DatedRowTarget): string {
+  return target === MEETING_DATE_TARGET ? 'meetingDateProofFloor' : 'preachDateProofFloor';
+}
+
+function uncertainDate(command: DataCommand, action: DatedRowActionEvidence, target: DatedRowTarget): DateOrder {
+  return { command, uncertain: [uncertainRowChange(action, target)] };
 }
 
 function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>, target: DatedRowTarget,
@@ -42,7 +46,7 @@ function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>
     return chronology < 0 || target === MEETING_DATE_TARGET ? { command, kept: previous } : { command };
   }
   if (!displaced) {
-    return target === MEETING_DATE_TARGET && action.before === date ? uncertainMeetingDate(command, action) : { command };
+    return target === MEETING_DATE_TARGET && action.before === date ? uncertainDate(command, action, target) : { command };
   }
   const { value, winnerValue, ...details } = displaced;
   return { command: ordered.command, target,
@@ -62,8 +66,8 @@ export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, r
   const previous = proofs(rawMetadata, target).find(item => item.rowId === action.rowId && item.date === currentDate
     && item.revision <= current.metadata!.revision);
   if (previous && previous.revision > action.observedRevision) return compareUnobservedDate(command, target, action, previous);
-  if (!previous && target === MEETING_DATE_TARGET && currentDate === action.before
-    && action.observedRevision < Math.min(meetingProofFloor(rawMetadata), current.metadata.revision)) return uncertainMeetingDate(command, action);
+  if (!previous && currentDate === action.before
+    && action.observedRevision < Math.min(dateProofFloor(rawMetadata, target), current.metadata.revision)) return uncertainDate(command, action, target);
   if (!previous && (currentDate === action.after || (target === MEETING_DATE_TARGET && action.observedRevision < current.metadata.revision))) return { command };
   return { command, action };
 }
@@ -93,7 +97,6 @@ export function metadataAfterDatedRow(snapshot: ResourceSnapshot, raw: Record<st
   const unique = [...new Map(keep.slice().reverse().map(proof => [proof.rowId, proof])).values()].reverse();
   const retained = unique.slice(0, MAX_PROOFS);
   // After pruning, an action older than an evicted proof cannot infer that a matching value is untouched.
-  const floor = target === MEETING_DATE_TARGET
-    ? unique.slice(MAX_PROOFS).reduce((value, proof) => Math.max(value, proof.revision), meetingProofFloor(raw?._dataEngine)) : 0;
-  return { ...snapshot.metadata, ...(retained.length && { [target.proofs]: retained }), ...(floor && { meetingDateProofFloor: floor }) };
+  const floor = unique.slice(MAX_PROOFS).reduce((value, proof) => Math.max(value, proof.revision), dateProofFloor(raw?._dataEngine, target));
+  return { ...snapshot.metadata, ...(retained.length && { [target.proofs]: retained }), ...(floor && { [proofFloorKey(target)]: floor }) };
 }

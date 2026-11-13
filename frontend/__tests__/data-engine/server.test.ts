@@ -5814,3 +5814,38 @@ describe('deleting an outline node while a thought is linked to it', () => {
   });
 
 });
+
+it('does not let a delayed old preaching date win after its newer proof is evicted by 32 other rows', async () => {
+  const rows = Array.from({ length: 33 }, (_, index) => ({ id: 'row-' + index, date: '2026-01-01',
+    church: { id: 'church', name: 'Church' }, createdAt: '2026-01-01T00:00:00.000Z' }));
+  documents.set('sermons/sermon', { userId: 'owner-1', title: 'Sermon', verse: 'John 1:1', date: '2026-01-01',
+    thoughts: [], preachDates: rows, _dataEngine: { protocol: 1, generation: 'sermon-g', revision: 1, deleted: false } });
+  const command = (operationId: string, rowId: string, after: string, time: number): DataCommand => {
+    const raw = documents.get('sermons/sermon')!;
+    const beforeRows = JSON.parse(JSON.stringify(raw.preachDates));
+    const before = beforeRows.find((row: { id: string }) => row.id === rowId).date;
+    return { protocol: 1, operationId, owner: 'owner-1', resource: { collection: 'sermons', id: 'sermon' },
+      generation: 'sermon-g', dependsOn: [], kind: 'update', changes: [{ path: ['preachDates'],
+        before: { exists: true, value: beforeRows },
+        after: { exists: true, value: beforeRows.map((row: { id: string }) => row.id === rowId ? { ...row, date: after } : row) } }],
+      preachDateAction: { rowId, before, after, observedRevision: (raw._dataEngine as { revision: number }).revision,
+        time: { earliestMs: time, latestMs: time + 1 } } };
+  };
+  const t = 1_799_999_900_000;
+  const old = command('old-date', 'row-0', '2026-01-02', t + 10);
+  expect((await processCommand('owner-1', command('new-date', 'row-0', '2026-01-03', t + 100))).kind).toBe('acknowledged');
+  expect((await processCommand('owner-1', command('newer-undo', 'row-0', '2026-01-01', t + 200))).kind).toBe('acknowledged');
+  for (let i = 1; i <= 32; i++) {
+    expect((await processCommand('owner-1', command('other-' + i, 'row-' + i, '2026-01-04', t + 300 + i * 10))).kind).toBe('acknowledged');
+  }
+  expect(transactionReads).toHaveLength(34 * 3);
+  expect(transactionWrites).toHaveLength(34 * 4);
+  const proof = documents.get('sermons/sermon')!._dataEngine as { preachDateActions: Array<{ rowId: string }> };
+  expect(proof.preachDateActions).toHaveLength(32);
+  expect(proof.preachDateActions.some(row => row.rowId === 'row-0')).toBe(false);
+  const result = await processCommand('owner-1', old);
+  process.stdout.write('TRACE evicted date: ' + JSON.stringify({ result: result.kind,
+    date: (documents.get('sermons/sermon')!.preachDates as Array<{ date: string }>)[0].date }) + '\n');
+  expect(result.kind).toBe('conflict');
+  expect((documents.get('sermons/sermon')!.preachDates as Array<{ date: string }>)[0].date).toBe('2026-01-01');
+});
