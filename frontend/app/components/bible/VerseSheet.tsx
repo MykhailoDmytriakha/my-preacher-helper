@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
@@ -107,6 +108,7 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   const reading: BibleId = useMemo(() => readTranslation(locale), [locale]);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [away, setAway] = useState<'up' | 'down' | null>(null);
   const [showRelated, setShowRelated] = useState(false);
@@ -142,15 +144,25 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   const isPsalms = reference.book === 'Psalms';
   const chapterWord = useCallback((chapter: number) => t(isPsalms ? 'bible.psalm' : 'bible.chapter', { number: chapter }), [isPsalms, t]);
 
+  // A text that did not come is said so, and read again when the server is back in reach, without the
+  // button (`useReadAgainWhenReachable`, BUG-20261112-link-texts-stay-dots-after-reconnect).
   useEffect(() => {
+    begin(`${reading}:${reference.book}:${attempt}`);
+    // Not due: a pass the server's return began, with the server out of reach again — the message stays.
+    if (!due()) return undefined;
     let alive = true;
     setState({ status: 'loading' });
+    const mark = asking();
     fetchBookText(reference.book, reading).then(
       (text) => { if (alive) setState({ status: 'ready', text }); },
-      () => { if (alive) setState({ status: 'error' }); },
+      () => {
+        if (!alive) return;
+        setState({ status: 'error' });
+        failed(mark);
+      },
     );
     return () => { alive = false; };
-  }, [reference.book, reading, attempt]);
+  }, [reference.book, reading, attempt, round, begin, due, asking, failed]);
 
   // The window lies between what must stay in sight, measured again whenever those bars change size
   // (a turned phone, a timer that grows a line). With too little room left — a phone on its side

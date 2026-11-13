@@ -7,6 +7,7 @@ import { VerseSheet } from '@/components/bible/VerseSheet';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 import { fetchBookText } from '@/utils/bibleText';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 import { verseCount } from '@/utils/versification';
 
@@ -18,6 +19,7 @@ const lit = (dialog: HTMLElement) => Array.from(dialog.querySelectorAll('[data-a
 
 beforeEach(() => {
   window.localStorage.setItem('bible:translation', 'rst');
+  __resetConnectivityForTests();
   jest.mocked(fetchBookText).mockReset();
   jest.mocked(fetchBookText).mockResolvedValue(ruth as never);
 });
@@ -238,5 +240,40 @@ describe('VerseSheet — the passage over the screen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
     fireEvent.click(await within(dialog).findByRole('button', { name: 'bible.retry' }));
     await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
+  });
+
+  // BUG-20261112-link-texts-stay-dots-after-reconnect, the same illness in the passage window: the text that
+  // did not come is read again when the server is back in reach, without the person pressing the button.
+  it('reads the text again by itself when the server answers again', async () => {
+    jest.mocked(fetchBookText).mockRejectedValueOnce(new Error('offline'));
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
+    await within(dialog).findByRole('button', { name: 'bible.retry' });
+    act(() => reportServerUnreachable());
+    act(() => reportServerReachable());
+    await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
+    expect(fetchBookText).toHaveBeenCalledTimes(2);
+  });
+
+  // Codex review, round 2, 2026-11-12: a return of the server lost again before the window acted on it.
+  it('does not read the text when the server comes back and at once goes out of reach again', async () => {
+    jest.mocked(fetchBookText).mockRejectedValue(new Error('offline'));
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
+    await within(dialog).findByRole('button', { name: 'bible.retry' });
+    act(() => { reportServerUnreachable(); reportServerReachable(); reportServerUnreachable(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(fetchBookText).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not read an opened passage again when the server comes back', async () => {
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
+    await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
+    act(() => reportServerUnreachable());
+    act(() => reportServerReachable());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(lit(dialog)).toEqual(['1:1']);
+    expect(fetchBookText).toHaveBeenCalledTimes(1);
   });
 });

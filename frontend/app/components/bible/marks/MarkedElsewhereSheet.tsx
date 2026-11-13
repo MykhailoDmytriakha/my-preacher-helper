@@ -1,7 +1,8 @@
 'use client';
 
-import { Fragment, useEffect, useId, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { marksOnWord, type MarkColor, type MarkedElsewhere, type VerseMarks } from '@/utils/bibleMarks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
@@ -22,20 +23,57 @@ import type { AppLocale } from '@/utils/appLocale';
  */
 type Entry = { bible: BibleId; verses: MarkedElsewhere[] };
 
-/** The other Bibles' texts of the book, fetched once each (kept on the device by the worker). */
-function useOtherTexts(bookId: string, bibles: readonly BibleId[]): ReadonlyMap<BibleId, BookText | 'failed'> {
-  const [texts, setTexts] = useState<ReadonlyMap<BibleId, BookText | 'failed'>>(new Map());
+type OtherTexts = ReadonlyMap<BibleId, BookText | 'failed'>;
+const NO_TEXTS: OtherTexts = new Map();
+
+/**
+ * The other Bibles' texts of the book, fetched once each (kept on the device by the worker) and kept for
+ * one book: a text of the book left must not stand under the next one's verse. A text that did not come
+ * is said so and read again when the server is back in reach (`useReadAgainWhenReachable`,
+ * BUG-20261112-link-texts-stay-dots-after-reconnect) — that one alone: a translation already shown is
+ * not read again, where a second failure would take its words away, nor is one still on its way. The
+ * person's own asking — the window opened again, another list of translations, the book come back to —
+ * reads what did not come at once, as it always did.
+ */
+function useOtherTexts(bookId: string, bibles: readonly BibleId[]): OtherTexts {
+  const [kept, setKept] = useState<{ bookId: string; texts: OtherTexts }>({ bookId, texts: NO_TEXTS });
+  const texts = kept.bookId === bookId ? kept.texts : NO_TEXTS;
+  const onTheWay = useRef(new Set<string>());
+  const shownBook = useRef(bookId);
+  shownBook.current = bookId;
   const wanted = bibles.join('|');
+  /** The translations on screen now: the death of a read the window no longer shows is nobody's wait any more. */
+  const onScreen = useRef(wanted);
+  onScreen.current = wanted;
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
   useEffect(() => {
-    let alive = true;
+    begin(`${bookId}:${wanted}`);
+    // An answer for a book the window has left is dropped.
+    const put = (bible: BibleId, text: BookText | 'failed') => {
+      if (shownBook.current !== bookId) return;
+      setKept((known) => ({ bookId, texts: new Map(known.bookId === bookId ? known.texts : NO_TEXTS).set(bible, text) }));
+    };
     for (const bible of (wanted ? wanted.split('|') : []) as BibleId[]) {
+      const key = `${bookId}:${bible}`;
+      const here = texts.get(bible);
+      if ((here && here !== 'failed') || onTheWay.current.has(key) || !due(key)) continue;
+      const mark = asking(key);
+      onTheWay.current.add(key);
       fetchBookText(bookId, bible).then(
-        (text) => { if (alive) setTexts((known) => new Map(known).set(bible, text)); },
-        () => { if (alive) setTexts((known) => new Map(known).set(bible, 'failed')); },
+        (text) => {
+          onTheWay.current.delete(key);
+          put(bible, text);
+        },
+        () => {
+          onTheWay.current.delete(key);
+          put(bible, 'failed');
+          if (shownBook.current === bookId && onScreen.current.split('|').includes(bible)) failed(mark, key);
+        },
       );
     }
-    return () => { alive = false; };
-  }, [bookId, wanted]);
+    // `texts` is read to skip what is here already; reading again on its change would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, wanted, round, begin, due, asking, failed]);
   return texts;
 }
 

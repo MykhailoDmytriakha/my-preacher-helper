@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { countCrossReferences, loadCrossRefs, type CrossRefsBook } from '@/utils/crossReferences';
 import { useTranslation } from '@locales/useTranslation';
@@ -27,16 +28,21 @@ export function useBookCrossRefs(bookId: string, bible: BibleId, text: BookText 
 
   // The text first: links mean nothing without it, and on a weak network it must not wait behind them.
   const textReady = Boolean(text);
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
   useEffect(() => {
-    if (!shown || !textReady) return undefined;
+    begin(`${bookId}:${shown}:${textReady}`);
+    // Not due: a pass the server's return began, with the server out of reach again.
+    if (!shown || !textReady || !due()) return undefined;
     let alive = true;
+    const mark = asking();
     loadCrossRefs(bookId).then(
       (loaded) => { if (alive) setSet(loaded); },
-      // No set (offline before the first visit): the text reads as always, without chips.
-      () => undefined,
+      // No set (offline before the first visit): the text reads as always, without chips — and the set is
+      // asked for again when the server is back in reach (BUG-20261112-link-texts-stay-dots-after-reconnect).
+      () => { if (alive) failed(mark); },
     );
     return () => { alive = false; };
-  }, [bookId, shown, textReady]);
+  }, [bookId, shown, textReady, round, begin, due, asking, failed]);
 
   const counts = useMemo(
     () => (set && set.id === bookId && text ? countCrossReferences(set, bible, text.chapters) : null),
