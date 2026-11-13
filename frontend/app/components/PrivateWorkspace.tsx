@@ -81,7 +81,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
           </div>
         </>
       )}
-      {!bibleReader && <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">{recovery}</div>}
+      {!isPreachingPlan && !bibleReader && <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">{recovery}</div>}
       <main
         ref={contentRef}
         id="main-content"

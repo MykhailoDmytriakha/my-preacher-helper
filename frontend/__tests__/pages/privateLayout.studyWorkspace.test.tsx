@@ -64,18 +64,31 @@ describe('bounded study workspace routing', () => {
         },
     );
 
-    it('keeps the workspace and background delivery mounted when preaching hides navigation', () => {
-        mockPathname = '/sermons/sermon-1/plan';
-        mockSearch = 'planView=preaching';
-        render(<PrivateLayout>Preaching content</PrivateLayout>);
-        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-        expect(screen.queryByText('Guest notice')).not.toBeInTheDocument();
-        const workspace = screen.getByTestId('data-engine-workspace');
-        expect(workspace).toContainElement(screen.getByRole('main'));
-        expect(workspace).toContainElement(screen.getByText('Preaching content'));
-        expect(workspace).toContainElement(screen.getByTestId('outbox-drain'));
-        expect(workspace).toContainElement(screen.getByTestId('membership-recovery'));
-    });
+    it.each(['/sermons/sermon-1/plan', '/sermons/sermon-1/plan/manual'])(
+        'hides workspace recovery while preaching at %s and restores it on exit', (pathname) => {
+            mockPathname = pathname;
+            const { rerender } = render(<PrivateLayout>Plan content</PrivateLayout>);
+            const recovery = ['membership-recovery', 'analysis-recovery', 'settings-recovery'];
+            const drain = screen.getByTestId('outbox-drain');
+            for (const notice of recovery) expect(screen.getByTestId(notice)).toBeInTheDocument();
+
+            mockSearch = 'planView=preaching';
+            rerender(<PrivateLayout>Preaching content</PrivateLayout>);
+            expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+            expect(screen.queryByText('Guest notice')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('engine-conflicts')).not.toBeInTheDocument();
+            const workspace = screen.getByTestId('data-engine-workspace');
+            expect(workspace).toContainElement(screen.getByRole('main'));
+            expect(workspace).toContainElement(screen.getByText('Preaching content'));
+            expect(screen.getByTestId('outbox-drain')).toBe(drain);
+            for (const notice of recovery) expect(screen.queryByTestId(notice)).not.toBeInTheDocument();
+
+            mockSearch = '';
+            rerender(<PrivateLayout>Plan content</PrivateLayout>);
+            for (const notice of recovery) expect(screen.getByTestId(notice)).toBeInTheDocument();
+            expect(screen.getByTestId('outbox-drain')).toBe(drain);
+        },
+    );
 });
 
 describe('Bible sync notice placement', () => {

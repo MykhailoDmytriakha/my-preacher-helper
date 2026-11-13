@@ -9159,3 +9159,16 @@ On `5634ba0e`, installed headless Chrome used build `6yYq6g9v5uGYVs7grVrbb` with
 Offline reload served the saved analysis with all 47 words and both lines. The repeat also showed the cached Studies note and opened the previously visited Sermons through its navigation link without replacing the document. I inspected the analysis and Sermons screenshots. The first run expected the wrong Studies heading while the correct workspace was visible. The repeat asserts the exact heading and note. The generic request-failure check includes intentionally interrupted and offline requests. Separate checks confirmed the saved revision and unrelated note and observed no page errors. All owned ports and profiles closed. Four focused suites passed 84 tests.
 
 The original nine requests remain unclassified. Product source stayed unchanged. Evidence is at `artifacts/worker-reload-offline-20261113/report.md`. After an authorized deployment, use one disposable analysis, reload, and check a previously visited section on the same device. Keep delayed response bodies on the emulator.
+
+
+## BUG-20261113-workspace-recovery-interrupts-preaching · Keep workspace comparisons off the preaching screen
+
+Sermons → sermon → Sermon plan → Preach. With an unresolved first-day-of-week change in Settings, the manual plan showed its comparison and saved-draft controls above the sermon text at 390 and 820 CSS px. The workspace had already hidden its navigation and other conflict notices, while the shared area for Settings, series membership and analysis recovery still rendered.
+
+The shared workspace applies the same preaching guard to that area. The existing regression now tests the regular and manual route shapes, restores the three recovery mounts on exit, and verifies the same background delivery component throughout. The providers, durable drafts, and offline page memory stay active. Ordinary pages and the pinned Bible header retain their notice placement.
+
+The two red cases passed after the change. Four focused suites passed 87 tests. Full Jest passed 15,153 tests in 1,196 suites, with 17 tests and three suites skipped. Scoped ESLint, TypeScript and the production-mode build passed.
+
+In installed headless Chrome with isolated Auth and Firestore, baseline `6yYq6g9v5uGYVs7grVrbb` displayed the real Settings comparison. Build `gFo3VErKYgIkVISCqroJx` kept it out of both the manual and From thoughts plans at 390 and 820 px. The manual plan passed its online reload. The From thoughts plan also loaded via the service worker while offline, preserving the text and timer view. Returning to the ordinary sermon address restored the comparison, and the saved version could be accepted and read after reload. I inspected the before, after and offline screenshots. All owned listeners and profiles closed. Evidence is at `artifacts/preaching-recovery-20261113/report.md`.
+
+After an authorized deployment, verify the served revision and use a disposable test account with an existing Settings decision. Open an existing plan, choose Preach, and inspect the text and timer. Reload a previously opened plan offline, restore the connection and leave the preaching view. Verify the same decision is offered and can still be answered in Settings. Keep the forced conflict creation on local emulators.
