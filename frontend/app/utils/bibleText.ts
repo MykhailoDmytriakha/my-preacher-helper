@@ -2,6 +2,7 @@ import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { warmWordFormData } from '@/utils/bibleSearch/wordFormData';
 import { BIBLE_TEXT_CACHE, isBookShaped } from '@/utils/bibleTextCache';
+import { fetchBibleJson } from '@/utils/fetchBibleJson';
 import { chapterCount } from '@/utils/versification';
 
 /**
@@ -125,30 +126,6 @@ const readJson = async (response: Response): Promise<unknown> => {
   }
 };
 
-/** The whole answer — headers and body — within the deadline, or an error; a silent network never hangs the reader. */
-async function fetchWithin(fetchFn: typeof fetch, url: string, deadlineMs: number): Promise<{ response: Response; data: unknown }> {
-  const controller = typeof AbortController === 'undefined' ? undefined : new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      controller?.abort();
-      reject(new Error(`No answer within ${deadlineMs} ms: ${url}`));
-    }, deadlineMs);
-  });
-  try {
-    return await Promise.race([
-      (async () => {
-        const response = await fetchFn(url, controller ? { signal: controller.signal } : undefined);
-        const data = response.ok ? await readJson(response.clone()) : undefined;
-        return { response, data };
-      })(),
-      deadline,
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /**
  * One book from the device's copy only — no network: what can be read at once, offline too. A copy
  * that fails the check is thrown away, as `fetchBookText` does, and counts as none.
@@ -186,7 +163,7 @@ export async function fetchBookText(
     if (isBookText(data, bookId, bible)) return data;
     await forget(cache, url);
   }
-  const { response, data } = await fetchWithin(fetchFn, url, deadlineMs);
+  const { response, data } = await fetchBibleJson(fetchFn, url, deadlineMs);
   if (!response.ok) throw new Error(`Bible text for ${bookId}: HTTP ${response.status}`);
   if (!isBookText(data, bookId, bible)) {
     // The worker may have stored this answer on its way through: it must not stay.
@@ -249,7 +226,7 @@ export async function warmBibleText({
       const bookId = missing[next++];
       const url = bookTextUrl(bookId, bible);
       try {
-        const { response, data } = await fetchWithin(fetchFn, url, deadlineMs);
+        const { response, data } = await fetchBibleJson(fetchFn, url, deadlineMs);
         if (!response.ok || !isBookText(data, bookId, bible)) {
           await forget(cache, url);
           continue;

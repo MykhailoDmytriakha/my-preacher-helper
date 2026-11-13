@@ -1,6 +1,7 @@
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLE_CROSSREFS_CACHE, bibleCrossRefsBase, isCrossRefsShaped, NUMBERS_PER_LINK } from '@/utils/bibleCrossRefsCache';
-import { bookSlug } from '@/utils/bibleText';
+import { BOOK_TEXT_DEADLINE_MS, bookSlug } from '@/utils/bibleText';
+import { fetchBibleJson } from '@/utils/fetchBibleJson';
 import { placesIn, verseCount, type VersePlace } from '@/utils/versification';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -59,9 +60,8 @@ async function readBookSet(bookId: string, fetchFn: typeof fetch): Promise<Cross
     // Storage may be unavailable even while the book is reachable on the network.
   }
 
-  const response = await fetchFn(url);
+  const { response, data } = await fetchBibleJson(fetchFn, url, BOOK_TEXT_DEADLINE_MS);
   if (!response.ok) throw new Error(`Cross references of ${bookId}: ${response.status}`);
-  const data: unknown = await (cache ? response.clone() : response).json();
   if (!isBookSet(data, bookId)) throw new Error(`Cross references of ${bookId}: not the book's set`);
   try {
     // Make the first visible set durable even when the worker is still writing or has no control.
@@ -78,7 +78,7 @@ export function loadCrossRefs(bookId: string, fetchFn: typeof fetch = fetch): Pr
   if (known) return known;
   const pending = readBookSet(bookId, fetchFn);
   loaded.set(bookId, pending);
-  pending.catch(() => loaded.delete(bookId));
+  void pending.catch(() => { if (loaded.get(bookId) === pending) loaded.delete(bookId); });
   return pending;
 }
 

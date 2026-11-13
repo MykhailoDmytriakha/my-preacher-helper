@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { useBookTexts } from '@/components/bible/useBookTexts';
-import { BIBLE_TEXT_NETWORK_FAILURE_HEADER } from '@/utils/bibleTextCache';
+import { BIBLE_ASSET_NETWORK_FAILURE_HEADER } from '@/utils/bibleAssetResponse';
 import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 import type { BibleId } from '@/utils/bibles';
@@ -64,7 +64,7 @@ describe('useBookTexts', () => {
     expect(navigator.onLine).toBe(true);
     const fetchBook = jest.fn();
     if (source === 'browser') fetchBook.mockRejectedValueOnce(new TypeError('unreachable'));
-    else fetchBook.mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers({ [BIBLE_TEXT_NETWORK_FAILURE_HEADER]: '1' }) });
+    else fetchBook.mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers({ [BIBLE_ASSET_NETWORK_FAILURE_HEADER]: '1' }) });
     fetchBook.mockResolvedValueOnce(answer(publicFile(RST_RUTH.slice(1))));
     global.fetch = fetchBook as unknown as typeof fetch;
     const { result } = renderHook(() => useBookTexts(['Ruth'], 'rst'));

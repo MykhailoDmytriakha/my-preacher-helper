@@ -13,6 +13,7 @@ import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
@@ -66,6 +67,7 @@ beforeEach(() => {
   resetCrossReferencePrefsForTests();
   resetPlaceTrailForTests();
   forgetLoadedCrossRefs();
+  __resetConnectivityForTests();
   setRequests = [];
   global.fetch = jest.fn(async (url: string) => {
     if (url.startsWith('/bible-crossrefs/')) setRequests.push(url);
@@ -86,6 +88,60 @@ const openLinksOfSubject = async () => {
 };
 
 describe('cross references in the Bible reader', () => {
+  it.each(['reader', 'window'] as const)('loads the missing reference index after reconnection in the %s', async where => {
+    saveCrossReferencePrefs({ inWindow: true });
+    reportServerUnreachable();
+    const fetchIndex = jest.fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(answer(ruthSet));
+    global.fetch = fetchIndex as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, where));
+    await waitFor(() => expect(fetchIndex).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.ribbon).toBeUndefined();
+    act(() => { reportServerReachable(); });
+    await waitFor(() => expect(result.current.ribbon).toBeDefined());
+    expect(result.current.set).toEqual(ruthSet);
+    expect(fetchIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases a stalled response body and retries after a confirmed recovery', async () => {
+    jest.useFakeTimers();
+    try {
+      reportServerUnreachable();
+      const stalled = { ...answer(ruthSet), json: () => new Promise(() => undefined) };
+      const fetchIndex = jest.fn().mockResolvedValueOnce(stalled).mockResolvedValueOnce(answer(ruthSet));
+      global.fetch = fetchIndex as unknown as typeof fetch;
+      const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(fetchIndex).toHaveBeenCalledTimes(1);
+      act(() => { reportServerReachable(); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(16000); });
+      expect(result.current.set).toEqual(ruthSet);
+      expect(fetchIndex).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('recognizes a body timeout as a network failure while the device stays connected', async () => {
+    jest.useFakeTimers();
+    try {
+      const stalled = { ...answer(ruthSet), json: () => new Promise(() => undefined) };
+      const fetchIndex = jest.fn().mockResolvedValueOnce(stalled).mockResolvedValueOnce(answer(ruthSet));
+      global.fetch = fetchIndex as unknown as typeof fetch;
+      const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+      await act(async () => { await jest.advanceTimersByTimeAsync(15000); });
+      expect(navigator.onLine).toBe(true);
+      expect(getConnectivityStatus()).toBe(false);
+      await act(async () => { reportServerReachable(); await jest.advanceTimersByTimeAsync(0); });
+      expect(result.current.set).toEqual(ruthSet);
+      expect(fetchIndex).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it.each([{ size: 1, pendingSize: false }, { size: 1.3, pendingSize: false }, { size: 1.3, pendingSize: true }])('keeps the current verse when late reference chips change the ribbon at size $size, pending size $pendingSize', async ({ size, pendingSize }) => {
     window.localStorage.setItem('text-scale-preference', String(size));
     const order = ruthText.chapters.flatMap((verses, chapter) => verses.map((_, verse) => `${chapter + 1}:${verse + 1}`));

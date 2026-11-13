@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { verseWords, type BookText } from '@/utils/bibleText';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { countCrossReferences, loadCrossRefs, type CrossRefsBook } from '@/utils/crossReferences';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -30,12 +32,48 @@ export function useBookCrossRefs(bookId: string, bible: BibleId, text: BookText 
   useEffect(() => {
     if (!shown || !textReady) return undefined;
     let alive = true;
-    loadCrossRefs(bookId).then(
-      (loaded) => { if (alive) setSet(loaded); },
-      // No set (offline before the first visit): the text reads as always, without chips.
-      () => undefined,
-    );
-    return () => { alive = false; };
+    let pending = false;
+    let ready = false;
+    let reportedFailure = false;
+    let retried = false;
+    let recovery = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const fetchMissing = bibleAssetFetch(() => {
+      if (!alive || reportedFailure) return false;
+      reportedFailure = true;
+      return true;
+    });
+    const load = () => {
+      if (!alive || pending || ready) return;
+      pending = true;
+      const started = recovery;
+      void loadCrossRefs(bookId, fetchMissing).then(loaded => {
+        if (!alive) return;
+        ready = true;
+        setSet(loaded);
+      }, () => {
+        pending = false;
+        if (!alive || !getConnectivityStatus()) return;
+        if (started !== recovery) load();
+        else if (!retried) {
+          retried = true;
+          retry = setTimeout(() => { if (getConnectivityStatus()) load(); }, 500);
+        }
+      });
+    };
+    const unsubscribe = subscribeToConnectivity(() => {
+      clearTimeout(retry);
+      if (!getConnectivityStatus()) return;
+      recovery++;
+      retried = false;
+      load();
+    });
+    load();
+    return () => {
+      alive = false;
+      clearTimeout(retry);
+      unsubscribe();
+    };
   }, [bookId, shown, textReady]);
 
   const counts = useMemo(

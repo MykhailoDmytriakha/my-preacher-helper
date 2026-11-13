@@ -8,7 +8,6 @@
  */
 export const BIBLE_TEXT_PATH_PREFIX = '/bible-text/';
 export const BIBLE_TEXT_CACHE = 'bible-text';
-export const BIBLE_TEXT_NETWORK_FAILURE_HEADER = 'x-bible-text-network-failure';
 
 /** Each Bible's text folder and its version: a new text of a Bible gets the next version. */
 const BIBLE_TEXT_VERSIONS: Readonly<Record<string, string>> = { rst: 'v1', ubio: 'v1', kjv: 'v1' };

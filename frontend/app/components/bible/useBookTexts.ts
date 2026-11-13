@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
-import { BIBLE_TEXT_NETWORK_FAILURE_HEADER } from '@/utils/bibleTextCache';
-import { beginConnectivityRequest, getConnectivityStatus, reportServerUnreachable, subscribeToConnectivity } from '@/utils/connectivity';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 
 import type { BibleId } from '@/utils/bibles';
 
@@ -53,24 +53,11 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
       const key = `${bible}:${book}`;
       let request = requests.current.get(key);
       if (!request) {
-        const fetchMissing: typeof fetch = async (...args) => {
-          const started = beginConnectivityRequest();
-          // Cache hits cannot confirm connectivity. A missed network request can
-          // ask for one shared health check before the next confirmed recovery.
-          const reportFailure = () => {
-            if (reportedFailures.current.has(key)) return;
-            reportedFailures.current.add(key);
-            reportServerUnreachable(started);
-          };
-          try {
-            const response = await fetch(...args);
-            if (response.headers?.get(BIBLE_TEXT_NETWORK_FAILURE_HEADER) === '1') reportFailure();
-            return response;
-          } catch (error) {
-            reportFailure();
-            throw error;
-          }
-        };
+        const fetchMissing = bibleAssetFetch(() => {
+          if (reportedFailures.current.has(key)) return false;
+          reportedFailures.current.add(key);
+          return true;
+        });
         const current = { promise: fetchBookText(book, bible, { fetchFn: fetchMissing }), recovery: recovery.current };
         request = current;
         requests.current.set(key, current);

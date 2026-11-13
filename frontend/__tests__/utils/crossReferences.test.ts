@@ -142,7 +142,7 @@ describe('cross references', () => {
   describe('loading a book\'s set', () => {
     beforeEach(() => forgetLoadedCrossRefs());
 
-    const answer = (body: unknown, ok = true) => Promise.resolve({ ok, status: ok ? 200 : 404, json: () => Promise.resolve(body) } as Response);
+    const answer = (body: unknown, ok = true) => Promise.resolve(new Response(JSON.stringify(body), { status: ok ? 200 : 404 }));
 
     it('fetches the book\'s file once per visit', async () => {
       const set = setOf('Jude', {});
@@ -150,7 +150,7 @@ describe('cross references', () => {
       await expect(loadCrossRefs('Jude', fetchFn as unknown as typeof fetch)).resolves.toEqual(set);
       await loadCrossRefs('Jude', fetchFn as unknown as typeof fetch);
       expect(fetchFn).toHaveBeenCalledTimes(1);
-      expect(fetchFn).toHaveBeenCalledWith(crossRefsUrl('Jude'));
+      expect(fetchFn).toHaveBeenCalledWith(crossRefsUrl('Jude'), expect.objectContaining({ signal: expect.any(AbortSignal) }));
       expect(crossRefsUrl('1 John')).toBe(`${bibleCrossRefsBase}/1-john.json`);
     });
 
