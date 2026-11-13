@@ -36,6 +36,18 @@ export interface CollectionDocumentView {
   submittedPrayerTagBasis?: DocumentTagOpening;
 }
 
+/** A kind checked at another passage belongs in recovery, separate from the readable comment. */
+function refusedCommentView(requests: readonly CommitRequest[], confirmed: ResourceSnapshot | undefined): ResourceSnapshot | undefined {
+  let readable = confirmed;
+  let refused = false;
+  for (const request of requests) {
+    if (request.result?.kind !== 'refused' || request.result.code !== 'comment-kind-place-changed') continue;
+    refused = true;
+    if (canReplaceSnapshot(readable, request.working)) readable = request.working;
+  }
+  return refused ? readable : undefined;
+}
+
 export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[], journal: readonly JournalEntry[] = []): CollectionDocumentView[] {
   const listed = new Map(snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
   const confirmed = new Map(listed);
@@ -95,10 +107,11 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const pendingRemoval = unsettled.find(request => request.removalLineage || (isRemovalAfterStandaloneCreation(request)
       && (request.initialized || related.some(prior => followsStandaloneCreation(request, prior)))));
     const saved = confirmed.get(id);
-    const showSavedDocument = pendingRemoval && (needsAttention || (saved?.value
-      && (saved.metadata?.generation ?? null) !== pendingRemovalGeneration(pendingRemoval)));
+    const refusedComment = collection === 'studyNotes' ? refusedCommentView(unsettled, saved) : undefined;
+    const showSavedDocument = refusedComment || (pendingRemoval && (needsAttention || (saved?.value
+      && (saved.metadata?.generation ?? null) !== pendingRemovalGeneration(pendingRemoval))));
     // Keep a pending deletion addressable until its acknowledgement.
-    views.set(id, { resource, value: showSavedDocument ? saved?.value ?? null : checkpoint?.draft ?? saved?.value ?? checkpoint?.confirmed.value ?? null,
+    views.set(id, { resource, value: showSavedDocument ? (refusedComment ?? saved)?.value ?? null : checkpoint?.draft ?? saved?.value ?? checkpoint?.confirmed.value ?? null,
       pending: true, needsAttention, deleting: Boolean(!showSavedDocument && checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
       ...(submittedServiceOrderPlacement && { submittedServiceOrderPlacement }),

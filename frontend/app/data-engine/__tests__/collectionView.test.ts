@@ -100,6 +100,29 @@ it('preserves refused edits and exposes competing branches without inventing a w
   expect(views([{ ...request(), state: 'refused' }])[0]).toMatchObject({ value: { title: 'save' }, needsAttention: true });
   expect(views([request('a'), request('b')])[0]).toMatchObject({ value: { title: 'Confirmed' }, pending: true, needsAttention: true });
 });
+it.each(['listed', 'working', 'newer', 'deleted'] as const)('shows the confirmed comment after the rejected kind change (%s)', source => {
+  const target = { collection: 'studyNotes', id: 'comment' };
+  const place = { id: 'verse', book: 'John', chapter: 3, fromVerse: 17 };
+  const opening = { ...snapshot(), resource: target, value: {
+    userId: 'owner', type: 'comment', content: 'Opening words', paragraph: false, scriptureRefs: [place],
+  } };
+  const stored = { ...opening, metadata: { ...opening.metadata!, revision: 2 }, value: {
+    ...opening.value, content: 'Stored words', scriptureRefs: [{ ...place, fromVerse: 18 }],
+  } };
+  const newer = { ...stored, metadata: { ...stored.metadata, revision: 3 }, value: { ...stored.value, content: 'Latest words' } };
+  const deleted = { ...newer, value: null, metadata: { ...newer.metadata, deleted: true } };
+  const draft = { ...stored.value, content: 'Local words', paragraph: true };
+  const rejected: CommitRequest = { ...request('switch-kind'), baseline: opening, working: stored, initialized: true, value: draft,
+    intended: draft, state: 'refused', result: { kind: 'refused', operationId: 'switch-kind', code: 'comment-kind-place-changed' } };
+  const expected = source === 'newer' ? newer : source === 'deleted' ? deleted : stored;
+  const listed = source === 'working' ? [opening] : [expected];
+
+  const [view] = collectionDocumentViews('owner', 'studyNotes', listed, [rejected]);
+
+  expect(view).toMatchObject({ value: expected.value, needsAttention: true, pending: true, deleting: false });
+  expect(rejected.value).toEqual(draft);
+});
+
 it('ignores cancelled work, other owners and other collections', () => {
   expect(views([{ ...request(), state: 'cancelled' }, { ...request('foreign'), owner: 'other' },
     { ...request('elsewhere'), baseline: { ...snapshot(), resource: { collection: 'councils', id: 'g' } } }])[0])
