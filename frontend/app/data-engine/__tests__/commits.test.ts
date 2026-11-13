@@ -2421,6 +2421,166 @@ describe('Durable commit requests', () => {
   });
 
   it.each([
+    { firstField: 'kind', legacy: false },
+    { firstField: 'place', legacy: false },
+    { firstField: 'place', legacy: true },
+  ])('saves an offline Bible comment edit after the queued $firstField change (legacy: $legacy)', async ({ firstField, legacy }) => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', content: 'Original words', ...(!legacy && { paragraph: false }), scriptureRefs: [place] },
+    };
+    const basis = { generation: 'g', revision: 1 };
+    const time = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 };
+    const later = { earliestMs: 1_800_000_001_010, latestMs: 1_800_000_001_015 };
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'comment');
+    try {
+      if (firstField === 'kind') {
+        await editor.commit(current => ({ ...current, paragraph: true }), { kind: 'comment-kind', commentKind: {
+          seen: { ...basis, reference: { exists: true, value: [place] }, kind: { exists: true, value: false } }, time,
+        } });
+      } else {
+        await editor.commit(current => ({ ...current, scriptureRefs: [moved] }), { kind: 'comment-place', commentPlace: {
+          seen: { ...basis, reference: { exists: true, value: place }, paragraph: legacy ? { exists: false } : { exists: true, value: false } }, time,
+        } });
+      }
+      const first = (await s.requests.list('owner'))[0];
+      const [shown] = collectionDocumentViews('owner', 'studyNotes', [opening], [first]);
+      if (firstField === 'kind') {
+        expect(shown.submittedCommentPlace).toMatchObject({ requestId: first.id, paragraph: { exists: true, value: true } });
+        await editor.commit(current => ({ ...current, scriptureRefs: [moved] }), { kind: 'comment-place',
+          commentPlace: { seen: shown.submittedCommentPlace!, time: later } });
+      } else {
+        expect(shown.submittedCommentKind).toMatchObject({ requestId: first.id, reference: { exists: true, value: [moved] },
+          kind: legacy ? { exists: false } : { exists: true, value: false } });
+        await editor.commit(current => ({ ...current, paragraph: true }), { kind: 'comment-kind',
+          commentKind: { seen: shown.submittedCommentKind!, time: later } });
+      }
+      const second = (await s.requests.list('owner')).find(request => request.id !== first.id)!;
+      const action = firstField === 'kind' ? 'commentPlaceAction' : 'commentKindAction';
+      expect(second).toMatchObject({ predecessor: first.id, [action]: { predecessorOperationId: first.id, time: later } });
+      expect(s.transport.send).not.toHaveBeenCalled();
+      engine.setOnline(true);
+      await engine.retry();
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        operationId: second.id, [action]: expect.objectContaining({ predecessorOperationId: first.id, time: later }),
+      }));
+      expect(s.server().value).toMatchObject({ paragraph: true, scriptureRefs: [moved], content: 'Original words' });
+    } finally {
+      engine.dispose();
+    }
+  });
+
+  it.each(['kind', 'place'] as const)('keeps the offline comment proof when the queued %s was just acknowledged before Save', async firstField => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' },
+      metadata: { ...initial().metadata!, revision: 2, operationId: 'opening-ack' },
+      value: { userId: 'owner', type: 'comment', content: 'Original words',
+        paragraph: firstField === 'kind', scriptureRefs: [firstField === 'kind' ? place : moved] },
+    };
+    const basis = { generation: 'g', revision: 1, requestId: 'opening-ack' };
+    const time = { earliestMs: 1_800_000_001_010, latestMs: 1_800_000_001_015 };
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'next-tab');
+    try {
+      if (firstField === 'kind') {
+        await editor.commit(current => ({ ...current, scriptureRefs: [moved] }), { kind: 'comment-place', commentPlace: {
+          seen: { ...basis, reference: { exists: true, value: place }, paragraph: { exists: true, value: true } }, time,
+        } });
+      } else {
+        await editor.commit(current => ({ ...current, paragraph: true }), { kind: 'comment-kind', commentKind: {
+          seen: { ...basis, reference: { exists: true, value: [moved] }, kind: { exists: true, value: false } }, time,
+        } });
+      }
+      const [request] = await s.requests.list('owner');
+      const action = firstField === 'kind' ? 'commentPlaceAction' : 'commentKindAction';
+      expect(request).toMatchObject({ predecessor: null, [action]: { predecessorOperationId: 'opening-ack', time, observedRevision: 1 } });
+      engine.setOnline(true);
+      await engine.retry();
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        [action]: expect.objectContaining({ predecessorOperationId: 'opening-ack', time, observedRevision: 1 }),
+      }));
+    } finally {
+      engine.dispose();
+    }
+  });
+
+  it('retains an acknowledged opening if it leaves the pending list during a frozen Save', async () => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', content: 'Original words', paragraph: false, scriptureRefs: [place] },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const session = new DataSession(opening);
+    session.edit({ ...opening.value, scriptureRefs: [moved] });
+    const first = (await queue.save('first', session.checkpoint(), { action: { kind: 'comment-place', commentPlace: {
+      seen: { generation: 'g', revision: 1, reference: { exists: true, value: place }, paragraph: { exists: true, value: false } }, time: null,
+    } } }))!;
+    session.registerCommit(first.id, 1, first.value);
+    const [shown] = collectionDocumentViews('owner', 'studyNotes', [opening], [first]);
+    session.edit({ ...first.value, paragraph: true });
+    const frozen = session.checkpoint();
+
+    await queue.drain(true);
+    expect((await queue.list()).find(request => request.id === first.id)?.state).toBe('acknowledged');
+    const second = await queue.save('second', frozen, { action: { kind: 'comment-kind',
+      commentKind: { seen: shown.submittedCommentKind!, time: null } } });
+    expect(second).toMatchObject({ predecessor: first.id, commentKindAction: { predecessorOperationId: first.id } });
+    await queue.drain(true);
+    expect(s.server().value).toMatchObject({ paragraph: true, scriptureRefs: [moved], content: 'Original words' });
+  });
+
+  it('keeps the queued kind and words for review if the earlier move acknowledges a different passage', async () => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const saved = { ...place, fromVerse: 18 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', content: 'Original words', paragraph: false, scriptureRefs: [place] },
+    };
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'comment');
+    try {
+      await editor.commit(current => ({ ...current, scriptureRefs: [moved] }), { kind: 'comment-place', commentPlace: {
+        seen: { generation: 'g', revision: 1, reference: { exists: true, value: place }, paragraph: { exists: true, value: false } }, time: null,
+      } });
+      const [first] = await s.requests.list('owner');
+      const [shown] = collectionDocumentViews('owner', 'studyNotes', [opening], [first]);
+      await editor.commit(current => ({ ...current, paragraph: true, content: 'Keep these local words' }),
+        { kind: 'comment-kind', commentKind: { seen: shown.submittedCommentKind!, time: null } });
+      const second = (await s.requests.list('owner')).find(request => request.id !== first.id)!;
+      const computer = { ...opening, value: { ...opening.value, scriptureRefs: [saved] },
+        metadata: { ...opening.metadata!, revision: 2, operationId: 'computer-move' } };
+      s.replace(computer);
+      jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: computer });
+      engine.setOnline(true);
+      await engine.retry();
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        operationId: second.id, commentKindAction: expect.objectContaining({ reference: { exists: true, value: [moved] } }),
+      }));
+      const request = (await s.requests.list('owner')).find(record => record.id === second.id);
+      expect(request).toMatchObject({ value: { paragraph: true, content: 'Keep these local words' },
+        state: 'refused', result: { kind: 'refused', code: 'comment-kind-place-changed' } });
+      expect(s.server().value).toEqual(computer.value);
+    } finally {
+      engine.dispose();
+    }
+  });
+
+  it.each([
     { choice: 'local', competingWords: false, expectedVerse: 17 },
     { choice: 'remote', competingWords: false, expectedVerse: 18 },
     { choice: 'local', competingWords: true, expectedVerse: 17 },

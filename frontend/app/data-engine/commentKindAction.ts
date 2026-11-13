@@ -1,4 +1,5 @@
 import { boundedActionTime, type ActionTime } from './actionClock';
+import { confirmedCommentOpening, matchesCommentOpeningRequest, submittedCommentOpening } from './commentOpening';
 import { equalValues, readField } from './fieldValues';
 
 import type { CommitRequest } from './commits';
@@ -28,35 +29,23 @@ export function matchesCommentKindPlace(note: DocumentData | null, reference: Fi
   return note?.type === 'comment' && equalValues(readField(note, ['scriptureRefs']), reference);
 }
 
-/** The pending request that supplied the kind currently shown by the reader. */
-export function submittedCommentKind(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[]): CommentKindSeen | undefined {
+function matchesKindOpening(note: DocumentData | null, reference: FieldValue, kind: FieldValue): boolean {
+  return note !== null && matchesCommentKindPlace(note, reference) && equalValues(readField(note, ['paragraph']), kind);
+}
+
+/** The pending request that supplied the passage and kind currently shown by the reader. */
+export function submittedCommentKind(owner: string, checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[]): CommentKindSeen | undefined {
   const shown = checkpoint?.draft;
-  if (!checkpoint || shown?.type !== 'comment' || typeof shown.paragraph !== 'boolean') return undefined;
+  if (shown?.type !== 'comment') return undefined;
   const reference = readField(shown, ['scriptureRefs']);
   const kind = readField(shown, ['paragraph']);
-  const byId = new Map(requests.map(request => [request.id, request]));
-  let id = Object.keys(checkpoint.pending).at(-1);
-  const visited = new Set<string>();
-  while (id && !visited.has(id)) {
-    visited.add(id);
-    const request = byId.get(id);
-    if (!request || !matchesCommentKindPlace(request.value, reference) || request.value?.paragraph !== shown.paragraph) return undefined;
-    const action = request.commentKindAction;
-    const generation = request.baseline.metadata?.generation;
-    if (action && generation && generation === checkpoint.confirmed.metadata?.generation && equalValues(action.after, kind)) {
-      return { generation, revision: action.observedRevision, reference, kind, requestId: request.id };
-    }
-    id = request.predecessor ?? undefined;
-  }
-  return undefined;
+  if (kind.exists && typeof kind.value !== 'boolean') return undefined;
+  const opening = submittedCommentOpening(owner, checkpoint, requests, value => matchesKindOpening(value, reference, kind));
+  return opening && { ...opening, reference, kind };
 }
 
 export function matchesCommentKindRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: CommentKindSeen): boolean {
-  const action = request?.commentKindAction;
-  return Boolean(request && action && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
-    && request.baseline.metadata?.generation === seen.generation && matchesCommentKindPlace(request.value, seen.reference)
-    && equalValues(action.after, seen.kind) && action.observedRevision === seen.revision
-    && !['conflict', 'refused', 'cancelled'].includes(request.state));
+  return matchesCommentOpeningRequest(request, owner, resource, seen, value => matchesKindOpening(value, seen.reference, seen.kind));
 }
 
 export function captureCommentKind(baseline: ResourceSnapshot, value: DocumentData | null, capture: CommentKindCapture,
@@ -72,5 +61,6 @@ export function captureCommentKind(baseline: ResourceSnapshot, value: DocumentDa
   const time = capture.time === null ? null : boundedActionTime(capture.time);
   if ((before.exists && typeof before.value !== 'boolean') || equalValues(before, after) || time === undefined) return undefined;
   return { before, after, observedRevision: seen.revision, time, reference: seen.reference,
-    ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
+    ...((knownPredecessor || confirmedCommentOpening(baseline, seen, note => matchesKindOpening(note, seen.reference, seen.kind)))
+      && seen.requestId && { predecessorOperationId: seen.requestId }) };
 }

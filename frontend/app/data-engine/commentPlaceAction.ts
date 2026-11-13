@@ -1,4 +1,5 @@
 import { boundedActionTime, type ActionTime } from './actionClock';
+import { confirmedCommentOpening, matchesCommentOpeningRequest, submittedCommentOpening } from './commentOpening';
 import { equalValues, object, readField } from './fieldValues';
 
 import type { CommitRequest } from './commits';
@@ -74,16 +75,17 @@ export function captureCommentPlace(baseline: ResourceSnapshot, value: DocumentD
   const metadata = baseline.metadata;
   if (baseline.resource.collection !== 'studyNotes' || !metadata || metadata.deleted || metadata.generation !== seen.generation
     || !Number.isSafeInteger(seen.revision) || seen.revision < 1 || seen.revision > metadata.revision
-    || !matchesCommentPlaceScope(baseline.value, seen.reference, seen.paragraph)
-    || !matchesCommentPlaceDestination(value, seen.reference, seen.paragraph, capture.compound)
-    || (seen.requestId && !knownPredecessor && !equalValues(commentPlaceValue(baseline.value), seen.reference))) return undefined;
+    || (!knownPredecessor && (!matchesCommentPlaceScope(baseline.value, seen.reference, seen.paragraph)
+      || (seen.requestId && !equalValues(commentPlaceValue(baseline.value), seen.reference))))
+    || !matchesCommentPlaceDestination(value, seen.reference, seen.paragraph, capture.compound)) return undefined;
   const after = leadingReferenceValue(value);
   const time = capture.time === null ? null : boundedActionTime(capture.time);
   if (time === undefined || equalValues(seen.reference, after)) return undefined;
   return { before: seen.reference, after, paragraph: seen.paragraph, observedRevision: seen.revision, time,
     ...(capture.compound && { compound: true }),
     ...(capture.reviewed && { reviewed: true }),
-    ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
+    ...((knownPredecessor || confirmedCommentOpening(baseline, seen, note => matchesPlaceOpening(note, seen.reference, seen.paragraph)))
+      && seen.requestId && { predecessorOperationId: seen.requestId }) };
 }
 
 export function matchesCommentPlaceDestination(note: DocumentData | null, reference: FieldValue, paragraph: FieldValue, compound?: true): boolean {
@@ -93,34 +95,19 @@ export function matchesCommentPlaceDestination(note: DocumentData | null, refere
     && reference.value.id === destination.value.id;
 }
 
-export function matchesCommentPlaceRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: CommentPlaceSeen): boolean {
-  const action = request?.commentPlaceAction;
-  return Boolean(request && action && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
-    && request.baseline.metadata?.generation === seen.generation && action.observedRevision === seen.revision
-    && equalValues(action.after, seen.reference) && equalValues(action.paragraph, seen.paragraph)
-    && !['conflict', 'refused', 'cancelled'].includes(request.state));
+function matchesPlaceOpening(note: DocumentData | null, reference: FieldValue, paragraph: FieldValue): boolean {
+  return matchesCommentPlaceScope(note, reference, paragraph) && equalValues(commentPlaceValue(note), reference);
 }
 
-export function submittedCommentPlace(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[]): CommentPlaceSeen | undefined {
+export function matchesCommentPlaceRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: CommentPlaceSeen): boolean {
+  return matchesCommentOpeningRequest(request, owner, resource, seen, value => matchesPlaceOpening(value, seen.reference, seen.paragraph));
+}
+
+export function submittedCommentPlace(owner: string, checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[]): CommentPlaceSeen | undefined {
   const shown = checkpoint?.draft;
   const reference = commentPlaceValue(shown ?? null);
-  const generation = checkpoint?.confirmed.metadata?.generation;
-  if (!shown || !generation || !reference.exists) return undefined;
+  if (!shown || !reference.exists) return undefined;
   const paragraph = readField(shown, ['paragraph']);
-  const byId = new Map(requests.map(request => [request.id, request]));
-  let id = Object.keys(checkpoint.pending).at(-1);
-  const visited = new Set<string>();
-  while (id && !visited.has(id)) {
-    visited.add(id);
-    const request = byId.get(id);
-    if (!request || !matchesCommentPlaceScope(request.value, reference, paragraph)
-      || !equalValues(commentPlaceValue(request.value), reference)) return undefined;
-    const action = request.commentPlaceAction;
-    if (action && request.baseline.metadata?.generation === generation
-      && equalValues(action.after, reference) && equalValues(action.paragraph, paragraph)) {
-      return { generation, revision: action.observedRevision, reference, paragraph, requestId: request.id };
-    }
-    id = request.predecessor ?? undefined;
-  }
-  return undefined;
+  const opening = submittedCommentOpening(owner, checkpoint, requests, value => matchesPlaceOpening(value, reference, paragraph));
+  return opening && { ...opening, reference, paragraph };
 }

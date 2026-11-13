@@ -8,6 +8,7 @@ import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActio
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
 import { captureCommentKind, matchesCommentKindRequest, type CommentKindObservation } from './commentKindAction';
+import { commentOpeningPredecessor } from './commentOpening';
 import { captureCommentPlace, matchesCommentPlaceDestination, matchesCommentPlaceRequest, matchesCommentPlaceScope, type CommentPlaceObservation } from './commentPlaceAction';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
@@ -606,7 +607,18 @@ export class CommitQueue {
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
-    const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
+    let predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
+    const action = frozenOptions?.action;
+    // An ACK can remove the opening from the live controller after it froze this Save.
+    // Recover only a request in that frozen checkpoint that still proves what was displayed.
+    if (!predecessor && (action?.kind === 'comment-kind' || action?.kind === 'comment-place')) {
+      const seen = action.kind === 'comment-kind' ? action.commentKind.seen : action.commentPlace.seen;
+      const opening = seen.requestId && Object.prototype.hasOwnProperty.call(intent.pending, seen.requestId)
+        ? records.find(record => record.id === seen.requestId && record.state === 'acknowledged') : undefined;
+      if (opening && (action.kind === 'comment-kind'
+        ? matchesCommentKindRequest(opening, owner, intent.confirmed.resource, action.commentKind.seen)
+        : matchesCommentPlaceRequest(opening, owner, intent.confirmed.resource, action.commentPlace.seen))) predecessor = opening;
+    }
     if (existing) {
       const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
         : intent.outlinePointPlacementRetry;
@@ -731,13 +743,14 @@ export class CommitQueue {
     const planMode = planModeCapture && captureSermonPlanMode(baseline, intent.draft, planModeCapture,
       permitsSermonPlanModePredecessor(records.find(record => record.id === planModeRequestId), owner, baseline.resource, planModeCapture.seen));
     const kindCapture = editorAction?.kind === 'comment-kind' ? editorAction.commentKind : undefined;
-    const kindRequestId = kindCapture?.seen.requestId;
-    const commentKind = kindCapture && captureCommentKind(baseline, intent.draft, kindCapture, Boolean(kindRequestId
-      && matchesCommentKindRequest(records.find(record => record.id === kindRequestId), owner, baseline.resource, kindCapture.seen)));
+    const kindPredecessor = commentOpeningPredecessor(records, predecessor, kindCapture?.seen.requestId);
+    const commentKind = kindCapture && captureCommentKind(baseline, intent.draft, kindCapture,
+      matchesCommentKindRequest(kindPredecessor, owner, baseline.resource, kindCapture.seen));
+    if (kindCapture && !commentKind) throw Object.assign(new Error('The comment kind opening changed'), { code: 'comment-kind-basis-changed' });
     const placeCapture = editorAction?.kind === 'comment-place' ? editorAction.commentPlace : undefined;
-    const placeRequestId = placeCapture?.seen.requestId;
-    const commentPlace = placeCapture && captureCommentPlace(baseline, intent.draft, placeCapture, Boolean(placeRequestId
-      && matchesCommentPlaceRequest(records.find(record => record.id === placeRequestId), owner, baseline.resource, placeCapture.seen)));
+    const placePredecessor = commentOpeningPredecessor(records, predecessor, placeCapture?.seen.requestId);
+    const commentPlace = placeCapture && captureCommentPlace(baseline, intent.draft, placeCapture,
+      matchesCommentPlaceRequest(placePredecessor, owner, baseline.resource, placeCapture.seen));
     if (placeCapture && !commentPlace) throw Object.assign(new Error('The comment move opening changed'), { code: 'comment-place-basis-changed' });
     const studyNoteReferenceEvidence = baseline.resource.collection === 'studyNotes' && editorAction && 'referenceEvidence' in editorAction
       ? editorAction.referenceEvidence : undefined;
@@ -1334,6 +1347,7 @@ export class CommitQueue {
     }
     const markRebase = pendingBibleMarkRebase(record);
     const fields = record.sequence === 0 ? documentFieldTargets(record.working.resource.collection) : [];
+    const commentKind = record.sequence === 0 ? record.commentKindAction : undefined;
     const commentPlace = record.sequence === 0 ? record.commentPlaceAction : undefined;
     if (commentPlace && (record.working.metadata?.generation !== record.baseline.metadata?.generation
       || !matchesCommentPlaceScope(record.working.value, commentPlace.before, commentPlace.paragraph)
@@ -1497,6 +1511,9 @@ export class CommitQueue {
       command.councilTopicQueue = record.councilTopicQueue;
     }
     const stamped = fields.reduce((current, target) => withDocumentFieldAction(current, target, capturedDocumentField(record, target)), command);
+    if (commentKind && (stamped.kind !== 'update' || !stamped.commentKindAction)) {
+      return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
+    }
     if (commentPlace && (stamped.kind !== 'update' || !stamped.commentPlaceAction)) {
       return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
     }

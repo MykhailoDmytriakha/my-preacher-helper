@@ -85,8 +85,8 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const submittedServiceOrderStepPlacements = collection === 'serviceOrders' && !needsAttention
       ? unsettled.flatMap(request => request.serviceOrderStepPlacement ? [{ requestId: request.id, move: request.serviceOrderStepPlacement }] : [])
       : [];
-    const commentKind = !needsAttention && collection === 'studyNotes' && submittedCommentKind(checkpoint, unsettled);
-    const commentPlace = !needsAttention && collection === 'studyNotes' && submittedCommentPlace(checkpoint, unsettled);
+    const commentKind = !needsAttention && collection === 'studyNotes' && submittedCommentKind(owner, checkpoint, unsettled);
+    const commentPlace = !needsAttention && collection === 'studyNotes' && submittedCommentPlace(owner, checkpoint, unsettled);
     const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
