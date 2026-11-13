@@ -2,8 +2,11 @@ import { prepareWordForms } from '../../../test-utils/bibleWordForms';
 
 prepareWordForms(["ru"]);
 
-import { loadSearchIndex, resetSearchIndexesForTests, searchIndexState } from '@/utils/bibleSearch/searchIndexStore';
+import { act, renderHook, waitFor } from '@testing-library/react';
+
+import { loadSearchIndex, resetSearchIndexesForTests, searchIndexState, useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
 import { fetchBookText, keptBookText } from '@/utils/bibleText';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 /*
  * Books saved on the device are searchable at once, whatever the network does: a stalled download of
@@ -19,6 +22,7 @@ const john = { id: 'John', chapters: [['В начале было Слово']] }
 
 beforeEach(() => {
   resetSearchIndexesForTests();
+  __resetConnectivityForTests();
   (keptBookText as jest.Mock).mockImplementation(async (bookId: string) => (bookId === 'John' ? john : null));
   // The network never answers.
   (fetchBookText as jest.Mock).mockImplementation(() => new Promise(() => undefined));
@@ -50,4 +54,65 @@ it('asks again for a book that failed when the connection returns during a load'
   await new Promise((resolve) => setTimeout(resolve, 0));
   const genesisAsks = (fetchBookText as jest.Mock).mock.calls.filter(([bookId]) => bookId === 'Genesis');
   expect(genesisAsks).toHaveLength(2);
+});
+
+
+it('waits for the server and retries missing search books without another browser online event', async () => {
+  const order = ['John', 'Ruth'];
+  let available = false;
+  (fetchBookText as jest.Mock).mockImplementation(async () => {
+    if (!available) throw new Error('offline');
+    return { id: 'Ruth', chapters: [['Now it came to pass in the days when the judges ruled']] };
+  });
+  const { result } = renderHook(() => useSearchIndex('kjv', order, true));
+  await waitFor(() => expect(result.current.missing).toBe(1));
+  expect(result.current.index.has('John')).toBe(true);
+  expect(fetchBookText).toHaveBeenCalledTimes(1);
+
+  act(() => reportServerUnreachable());
+  await act(async () => { window.dispatchEvent(new Event('online')); });
+  expect(fetchBookText).toHaveBeenCalledTimes(1);
+
+  available = true;
+  act(() => reportServerReachable());
+  await waitFor(() => expect(result.current.index.has('Ruth')).toBe(true));
+  expect(result.current.index.has('John')).toBe(true);
+  expect(result.current.missing).toBe(0);
+  expect(fetchBookText).toHaveBeenCalledTimes(2);
+});
+
+
+it('checks availability again before replaying a search batch queued while the first ran', async () => {
+  const order = ['Ruth'];
+  let reject: (error: Error) => void = () => undefined;
+  jest.mocked(fetchBookText)
+    .mockImplementationOnce(() => new Promise((_, refuse) => { reject = refuse; }))
+    .mockResolvedValueOnce({ id: 'Ruth', chapters: [['Now it came to pass']] });
+  const { result } = renderHook(() => useSearchIndex('kjv', order, true));
+  await waitFor(() => expect(fetchBookText).toHaveBeenCalledTimes(1));
+  await act(async () => { reportServerUnreachable(); reportServerReachable(); });
+  act(() => reportServerUnreachable());
+  await act(async () => reject(new Error('offline')));
+  await waitFor(() => expect(result.current.missing).toBe(1));
+  expect(fetchBookText).toHaveBeenCalledTimes(1);
+  act(() => reportServerReachable());
+  await waitFor(() => expect(result.current.index.has('Ruth')).toBe(true));
+  expect(fetchBookText).toHaveBeenCalledTimes(2);
+});
+
+
+it('keeps an explicit search retry when a later automatic retry can no longer run', async () => {
+  const order = ['Ruth'];
+  let reject: (error: Error) => void = () => undefined;
+  jest.mocked(fetchBookText)
+    .mockImplementationOnce(() => new Promise((_, refuse) => { reject = refuse; }))
+    .mockResolvedValueOnce({ id: 'Ruth', chapters: [['Now it came to pass']] });
+  const { result } = renderHook(() => useSearchIndex('kjv', order, true));
+  await waitFor(() => expect(fetchBookText).toHaveBeenCalledTimes(1));
+  void loadSearchIndex('kjv', order);
+  await act(async () => { reportServerUnreachable(); reportServerReachable(); });
+  act(() => reportServerUnreachable());
+  await act(async () => reject(new Error('offline')));
+  await waitFor(() => expect(result.current.index.has('Ruth')).toBe(true));
+  expect(fetchBookText).toHaveBeenCalledTimes(2);
 });

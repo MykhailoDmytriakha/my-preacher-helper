@@ -7,11 +7,12 @@ import { BibleBookList } from '@/components/bible/BibleBookList';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { newEntryState, parsePlaceParam, readLastPlace, type LastPlace } from '@/components/bible/lastPlace';
 import { useReadingBible } from '@/components/bible/useReadingBible';
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { parsePassageEndpoint, wayBackPath } from '@/utils/bibleLink';
 import { isBibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
-import { isBrowserOffline } from '@/utils/connectivity';
 import { replaceHistoryAddress } from '@/utils/historyEntry';
+import { serverInReach, subscribeToReachableAgain } from '@/utils/reachableAgain';
 import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
@@ -53,14 +54,20 @@ export default function BiblePage() {
   useEffect(() => {
     if (!bible) return undefined;
     let alive = true;
+    let reportedFailure = false;
+    const fetchFn = bibleAssetFetch(() => {
+      if (!alive || reportedFailure) return false;
+      reportedFailure = true;
+      return true;
+    });
+    const canContinue = () => alive && serverInReach();
     const run = () => {
-      if (isBrowserOffline()) return;
-      void warmBibleTextOnce({ bible }).then((result) => {
-        if (alive) setStorageFailed(result.storageFailed);
+      if (!canContinue()) return;
+      void warmBibleTextOnce({ bible, fetchFn, canContinue }).then((result) => {
+        if (!alive) return;
+        if (result.onDevice === result.total) reportedFailure = false;
+        setStorageFailed(result.storageFailed);
       });
-    };
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') run();
     };
     const idleWindow = window as Window & {
       requestIdleCallback?: (callback: () => void) => number;
@@ -68,14 +75,12 @@ export default function BiblePage() {
     };
     const idleHandle = idleWindow.requestIdleCallback?.(run);
     const timer = idleHandle === undefined ? window.setTimeout(run, 2000) : undefined;
-    window.addEventListener('online', run);
-    document.addEventListener('visibilitychange', onVisible);
+    const stop = subscribeToReachableAgain(() => queueMicrotask(run));
     return () => {
       alive = false;
       if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
       if (timer !== undefined) window.clearTimeout(timer);
-      window.removeEventListener('online', run);
-      document.removeEventListener('visibilitychange', onVisible);
+      stop();
     };
   }, [bible]);
 

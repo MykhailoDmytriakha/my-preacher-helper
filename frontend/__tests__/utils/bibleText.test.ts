@@ -256,6 +256,22 @@ describe('warmBibleText', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
+  it.each([true, false])('uses the latest warm request only if it is still needed (%s)', async (stillNeeded) => {
+    const cacheStorage = fakeStorage(new FakeCache());
+    let reject: (error: Error) => void = () => undefined;
+    const initial = jest.fn(() => new Promise<Response>((_, refuse) => { reject = refuse; }));
+    const current = jest.fn(async () => jsonResponse(jude));
+    const options = { bible: 'rst' as const, bookIds: ['Jude'], cacheStorage };
+    const first = warmBibleTextOnce({ ...options, fetchFn: initial });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const second = warmBibleTextOnce({ ...options, fetchFn: current, canContinue: () => stillNeeded });
+    reject(new TypeError('offline'));
+    expect(second).toBe(first);
+    await expect(first).resolves.toEqual({ onDevice: Number(stillNeeded), total: 1, storageFailed: false });
+    expect(initial).toHaveBeenCalledTimes(1);
+    expect(current).toHaveBeenCalledTimes(Number(stillNeeded));
+  });
+
   it('runs one more pass when asked during a run, so a book that failed before the reconnect is fetched', async () => {
     const cache = new FakeCache();
     let online = false;

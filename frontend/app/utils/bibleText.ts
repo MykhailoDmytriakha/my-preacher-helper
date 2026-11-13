@@ -246,40 +246,42 @@ export async function warmBibleText({
   return { onDevice, total, storageFailed };
 }
 
-const warmInFlight = new Map<BibleId, Promise<WarmResult>>();
-const warmAgain = new Set<BibleId>();
+type WarmRequest = WarmOptions & { canContinue?: () => boolean };
+type WarmRun = { promise: Promise<WarmResult>; next: WarmRequest | null };
+const warmInFlight = new Map<BibleId, WarmRun>();
 
 /**
  * Keep reading and its word-search prerequisite together, without building a lexical index.
- * The warm-up, never twice at once for one Bible: a reconnect and a return to the tab may both ask
- * for it. A request that arrives during a run is not lost — a book that failed before the
- * connection came back would be skipped by that run — so one more pass follows over what is still
- * missing. Another Bible warms on its own: switching the translation does not wait for the last one.
+ * If another caller asks while this Bible is warming, run once more for the latest caller if it
+ * still needs the result. Another Bible warms independently.
  */
-export function warmBibleTextOnce(options: WarmOptions): Promise<WarmResult> {
+export function warmBibleTextOnce(options: WarmRequest): Promise<WarmResult> {
   const { bible } = options;
   const running = warmInFlight.get(bible);
   if (running) {
-    warmAgain.add(bible);
-    return running;
+    running.next = options;
+    return running.promise;
   }
-  const warm = async (): Promise<WarmResult> => {
-    const text = await warmBibleText(options), language = BIBLES[bible].language;
+  const warm = async (request: WarmRequest): Promise<WarmResult> => {
+    const text = await warmBibleText(request), language = BIBLES[bible].language;
     if (language === 'en') return text;
-    const forms = await warmWordFormData(language, { cacheStorage: options.cacheStorage, timeoutMs: options.deadlineMs });
+    const forms = await warmWordFormData(language, { cacheStorage: request.cacheStorage, timeoutMs: request.deadlineMs });
     return forms.storageFailed ? { ...text, storageFailed: true } : text;
   };
   const run = async (): Promise<WarmResult> => {
-    let result = await warm();
-    while (warmAgain.has(bible)) {
-      warmAgain.delete(bible);
-      result = await warm();
+    let result = await warm(options);
+    let next = started.next;
+    while (next) {
+      started.next = null;
+      if (!next.canContinue || next.canContinue()) result = await warm(next);
+      next = started.next;
     }
     return result;
   };
-  const started = run().finally(() => {
-    warmInFlight.delete(bible);
-  });
+  const started: WarmRun = {
+    next: null,
+    promise: Promise.resolve().then(run).finally(() => { warmInFlight.delete(bible); }),
+  };
   warmInFlight.set(bible, started);
-  return started;
+  return started.promise;
 }

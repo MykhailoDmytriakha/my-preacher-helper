@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, keptBookText } from '@/utils/bibleText';
+import { serverInReach, subscribeToReachableAgain } from '@/utils/reachableAgain';
 
 import { BibleSearchIndex } from './searchIndex';
 import { loadWordFormLexicon, wordFormLexiconReady } from './wordFormLexicon';
@@ -19,13 +21,17 @@ export type SearchIndexState = {
   wordFormsError: Error | null;
 };
 
+type Replay = { manual: boolean; auto: boolean };
+
 type Entry = {
   state: SearchIndexState;
   booksRunning: Promise<void> | null;
-  booksAgain: boolean;
+  booksAgain: Replay | null;
   wordFormsRunning: Promise<void> | null;
-  wordFormsAgain: boolean;
+  wordFormsAgain: Replay | null;
   failed: Set<string>;
+  reportedFailures: Set<string>;
+  active: number;
   listeners: Set<() => void>;
 };
 
@@ -43,8 +49,8 @@ function entryFor(bible: BibleId, order: readonly string[]): Entry {
     entry = {
       state: { index: new BibleSearchIndex(order), indexed: 0, total: BIBLE_BOOKS_DATA.length,
         loading: false, missing: 0, version: 0, wordFormsReady: lexicalReady(bible), wordFormsError: null },
-      booksRunning: null, booksAgain: false, wordFormsRunning: null, wordFormsAgain: false,
-      failed: new Set(), listeners: new Set(),
+      booksRunning: null, booksAgain: null, wordFormsRunning: null, wordFormsAgain: null,
+      failed: new Set(), reportedFailures: new Set(), active: 0, listeners: new Set(),
     };
     entries.set(bible, entry);
   }
@@ -56,27 +62,35 @@ function publish(entry: Entry, change: Partial<SearchIndexState>): void {
   entry.listeners.forEach(listener => listener());
 }
 
+function queueReplay(previous: Replay | null, automatic: boolean): Replay {
+  return { manual: Boolean(previous?.manual || !automatic), auto: Boolean(previous?.auto || automatic) };
+}
+
+function shouldReplay(replay: Replay | null, entry: Entry): boolean {
+  return Boolean(replay?.manual || (replay?.auto && entry.active > 0 && serverInReach()));
+}
+
 /** One language request is shared by its consumers; a reconnect during a refusal earns one later attempt. */
-function loadWordForms(bible: BibleId, entry: Entry): Promise<void> {
+function loadWordForms(bible: BibleId, entry: Entry, automatic: boolean): Promise<void> {
   const language = BIBLES[bible].language;
   if (language === 'en' || lexicalReady(bible)) {
     if (!entry.state.wordFormsReady || entry.state.wordFormsError) publish(entry, { wordFormsReady: true, wordFormsError: null });
     return Promise.resolve();
   }
   if (entry.wordFormsRunning) {
-    entry.wordFormsAgain = true;
+    entry.wordFormsAgain = queueReplay(entry.wordFormsAgain, automatic);
     return entry.wordFormsRunning;
   }
   entry.wordFormsRunning = loadWordFormLexicon(language).then(() => {
     entry.wordFormsRunning = null;
-    entry.wordFormsAgain = false;
+    entry.wordFormsAgain = null;
     publish(entry, { wordFormsReady: true, wordFormsError: null });
   }, error => {
     entry.wordFormsRunning = null;
     const again = entry.wordFormsAgain;
-    entry.wordFormsAgain = false;
+    entry.wordFormsAgain = null;
     publish(entry, { wordFormsReady: false, wordFormsError: error instanceof Error ? error : new Error(String(error)) });
-    if (again) void loadWordForms(bible, entry);
+    if (shouldReplay(again, entry)) void loadWordForms(bible, entry, !again?.manual);
   });
   publish(entry, { wordFormsReady: false, wordFormsError: null });
   return entry.wordFormsRunning;
@@ -89,9 +103,9 @@ async function pass(books: readonly string[], concurrency: number, read: (bookId
 }
 
 /** Kept books join first, without waiting for unrelated network books or the language payload. */
-function loadBooks(bible: BibleId, order: readonly string[], entry: Entry): Promise<void> {
+function loadBooks(bible: BibleId, order: readonly string[], entry: Entry, automatic: boolean): Promise<void> {
   if (entry.booksRunning) {
-    entry.booksAgain = true;
+    entry.booksAgain = queueReplay(entry.booksAgain, automatic);
     return entry.booksRunning;
   }
   const { index } = entry.state;
@@ -108,26 +122,34 @@ function loadBooks(bible: BibleId, order: readonly string[], entry: Entry): Prom
       if (kept) add(kept);
     });
     await pass(waiting.filter(bookId => !index.has(bookId)), NETWORK_CONCURRENCY, async bookId => {
-      try { add(await fetchBookText(bookId, bible)); }
-      catch { entry.failed.add(bookId); }
+      const fetchFn = bibleAssetFetch(() => {
+        if (!entry.active || entry.reportedFailures.has(bookId)) return false;
+        entry.reportedFailures.add(bookId);
+        return true;
+      });
+      try {
+        add(await fetchBookText(bookId, bible, { fetchFn }));
+        entry.reportedFailures.delete(bookId);
+      } catch {
+        entry.failed.add(bookId);
+      }
     });
   }).then(() => {
     entry.booksRunning = null;
     publish(entry, { missing: entry.failed.size });
-    if (entry.booksAgain) {
-      entry.booksAgain = false;
-      void loadBooks(bible, order, entry);
-    }
+    const again = entry.booksAgain;
+    entry.booksAgain = null;
+    if (shouldReplay(again, entry)) void loadBooks(bible, order, entry, !again?.manual);
   });
   publish(entry, { missing: 0 });
   return entry.booksRunning;
 }
 
 /** Focus prepares book previews. A word query or its history requests the independent lexical prerequisite too. */
-export function loadSearchIndex(bible: BibleId, order: readonly string[], withWordForms = true): Promise<void> {
+export function loadSearchIndex(bible: BibleId, order: readonly string[], withWordForms = true, automatic = false): Promise<void> {
   const entry = entryFor(bible, order);
-  const books = loadBooks(bible, order, entry);
-  const wordForms = withWordForms ? loadWordForms(bible, entry) : Promise.resolve();
+  const books = loadBooks(bible, order, entry, automatic);
+  const wordForms = withWordForms ? loadWordForms(bible, entry, automatic) : Promise.resolve();
   return Promise.all([books, wordForms]).then(() => undefined);
 }
 
@@ -143,11 +165,20 @@ export function useSearchIndex(bible: BibleId, order: readonly string[], active:
   );
   useEffect(() => {
     if (!active) return undefined;
-    void loadSearchIndex(bible, order, withWordForms);
-    const again = () => void loadSearchIndex(bible, order, withWordForms);
-    window.addEventListener('online', again);
-    return () => window.removeEventListener('online', again);
-  }, [active, bible, order, withWordForms]);
+    entry.active += 1;
+    let alive = true;
+    const stop = subscribeToReachableAgain(() => {
+      queueMicrotask(() => {
+        if (alive && serverInReach()) void loadSearchIndex(bible, order, withWordForms, true);
+      });
+    });
+    void loadSearchIndex(bible, order, withWordForms, true);
+    return () => {
+      alive = false;
+      entry.active -= 1;
+      stop();
+    };
+  }, [active, bible, entry, order, withWordForms]);
   // A new query renders before its effect: it is already waiting, never an unverified zero-result answer.
   return useMemo(() => withWordForms && !state.wordFormsReady && !state.wordFormsError
     ? { ...state, loading: true } : state, [state, withWordForms]);
