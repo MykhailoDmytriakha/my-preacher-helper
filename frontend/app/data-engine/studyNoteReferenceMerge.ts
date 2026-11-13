@@ -8,10 +8,11 @@ export const studyNoteReferencesPath = ['scriptureRefs'];
 const REFERENCE_REVIEW = 'study-note-reference-review';
 const REFERENCE_ROW_REVIEW = 'study-note-reference-row-review';
 
-type ReferenceRow = DocumentData & { id: string };
+export type ReferenceRow = DocumentData & { id: string };
 export interface StudyNoteReferenceOrder {
   change(authoredId: string, stored: ReferenceRow): -1 | 0 | 1 | 'review';
   addition(authored: ReferenceRow): 'keep' | 'skip' | 'review' | { stored: ReferenceRow; chronology: -1 | 0 | 1 };
+  coalescedAddition?(authored: ReferenceRow, stored: ReferenceRow, chronology: -1 | 1): void;
 }
 
 export function isOrdinaryReferenceDocument(value: DocumentData | null): value is DocumentData {
@@ -123,7 +124,10 @@ export function alignStudyNoteReferenceChange(before: FieldValue, after: FieldVa
     canonicalOpening.add(stored.id);
     alignedBefore.push(stored);
     if (!chronology) review.push(stored.id);
-    else additions.push({ from: row.id, to: stored.id });
+    else {
+      order.coalescedAddition?.(row, stored, chronology);
+      additions.push({ from: row.id, to: stored.id });
+    }
     return [chronology < 0 ? stored : { ...row, id: stored.id }];
   });
   return { before: referenceField(before, alignedBefore), after: referenceField(after, kept),

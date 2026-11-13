@@ -30,6 +30,7 @@ import {
   listServiceOrderPlacementHistory,
   listServiceOrderStepPlacementHistory,
   listServiceOrderStepTitleHistory,
+  listStudyNoteReferenceHistory,
   listStudyNoteTypeHistory,
   listThoughtLockHistory,
   listThoughtPlacementHistory,
@@ -76,6 +77,7 @@ const histories = {
     listDocumentTagHistory(owner, 'prayerRequests', id, generation, cursor) },
   commentKind: { collection: 'studyNotes', list: listCommentKindHistory },
   noteType: { collection: 'studyNotes', list: listStudyNoteTypeHistory },
+  noteReference: { collection: 'studyNotes', list: listStudyNoteReferenceHistory },
   noteTag: { collection: 'studyNotes', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;

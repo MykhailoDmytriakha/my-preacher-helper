@@ -63,8 +63,10 @@ import { metadataAfterServiceOrderStepPlacement, SERVICE_ORDER_STEP_PLACEMENT_HI
 import { orderServiceStepScripture } from './serviceOrderStepScripture.server';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { metadataAfterSourceNoteLinks, orderSourceNoteLinks, retainedSourceNoteLinkHistory, SOURCE_NOTE_LINK_HISTORY, type SourceNoteLinkHistoryEntry } from './sourceNoteLinkOrder.server';
-import { hasStudyNoteReferenceReview, validStudyNoteReferenceAliases } from './studyNoteReferenceMerge';
-import { metadataAfterStudyNoteReferences, planStudyNoteReferenceOrder } from './studyNoteReferenceOrder.server';
+import { hasStudyNoteReferenceReview, isOrdinaryReferenceDocument, studyNoteReferencesPath, validStudyNoteReferenceAliases } from './studyNoteReferenceMerge';
+import { metadataAfterStudyNoteReferences, planStudyNoteReferenceOrder, retainedStudyNoteReferenceHistory,
+  readSplitStudyNoteReferenceHistory, REFERENCE_HISTORY_PARTS, splitLargeStudyNoteReferenceHistory,
+  STUDY_NOTE_REFERENCE_HISTORY, type StudyNoteReferenceHistoryEntry } from './studyNoteReferenceOrder.server';
 import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY, type ThoughtLockHistoryPage } from './thoughtLockAction';
 import { isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY, thoughtPlacementConflictId, type ThoughtPlacementHistoryPage } from './thoughtPlacementAction';
@@ -245,6 +247,10 @@ type StoredReceipt = Omit<CommandReceipt, 'result'> & {
 const isSplitExactConflict = (result: object): result is SplitExactConflict => 'exactReceiptParts' in result;
 const comparesAuthoredList = (conflicts: readonly ConflictDetail[]) =>
   hasStudyNoteReferenceReview(conflicts) || conflicts.some(({ path, code }) => isAuthoredListComparison(code) || homileticComparisonList({ code, path }) !== undefined || equalValues(path, repeatedWordsPath));
+function preservesExactConflict(result: ExactConflict, command: DataCommand): boolean {
+  return comparesAuthoredList(result.conflicts) || (command.kind === 'update' && command.resource.collection === 'studyNotes'
+    && isOrdinaryReferenceDocument(result.snapshot.value) && command.changes.some(change => equalValues(change.path, studyNoteReferencesPath)));
+}
 const compact = (result: StoredReceipt['result']): result is CompactAcknowledgement => 'receiptVersion' in result;
 const unavailableReceiptSnapshot = () => new DataEngineServerError('receipt-snapshot-unavailable', 503);
 
@@ -318,7 +324,7 @@ function prepareReceipt(owner: string, command: DataCommand, commandHash: string
       result: { kind: 'conflict', operationId: command.operationId, tagReceiptParts: parts.length, tagReceiptDigest: tagReceiptDigest(stored.resultJson) },
     }) };
   }
-  if (result.kind === 'conflict' && comparesAuthoredList(result.conflicts)) {
+  if (result.kind === 'conflict' && preservesExactConflict(result, command)) {
     const parts = splitConflictJson(ordinary.resultJson, MAX_EXACT_RECEIPT_PARTS);
     if (parts) return { result, parts: { collection: '_conflictParts', values: parts }, stored: serializeReceipt({ ...identity,
       result: { kind: 'conflict', operationId: command.operationId, exactReceiptParts: parts.length,
@@ -349,7 +355,7 @@ async function readReceiptParts(transaction: Transaction, receipt: DocumentRefer
       manifest.exactReceiptParts, manifest.exactReceiptDigest) as ExactConflict | undefined;
     if (object(result) && result.kind === 'conflict' && result.operationId === command.operationId
       && equalValues(result.snapshot?.resource, command.resource)
-      && Array.isArray(result.conflicts) && comparesAuthoredList(result.conflicts)) return result;
+      && Array.isArray(result.conflicts) && preservesExactConflict(result, command)) return result;
   }
   throw new DataEngineServerError(INVALID_RECEIPT, 409);
 }
@@ -459,17 +465,18 @@ function historyEntryId(snapshot: ResourceSnapshot, operationId: string): string
   return `${String(Number.MAX_SAFE_INTEGER - metadata.revision).padStart(16, '0')}-${hash}`;
 }
 
-const TAG_HISTORY_TARGET_BYTES = 768 * 1024;
+const HISTORY_CHUNK_TARGET_BYTES = 768 * 1024;
 
-function persistTagHistory<Entry>(transaction: Transaction, snapshot: ResourceSnapshot, operationId: string,
-  collection: string, field: 'tags' | 'fields' | 'entries', entries: readonly Entry[]) {
+function persistChunkedHistory<Entry>(transaction: Transaction, snapshot: ResourceSnapshot, operationId: string,
+  collection: string, field: 'tags' | 'fields' | 'entries', entries: readonly Entry[],
+  chunkId: (index: number) => string = index => index === 0 ? operationId : JSON.stringify([operationId, index])) {
   const { resource, metadata } = snapshot;
   const generation = metadata!.generation;
   const history = adminDb.collection(resource.collection).doc(resource.id).collection(collection);
   let chunk: Entry[] = [], index = 0, bytes = 0;
   const flush = () => {
     if (!chunk.length) return;
-    const id = historyEntryId(snapshot, index === 0 ? operationId : JSON.stringify([operationId, index]));
+    const id = historyEntryId(snapshot, chunkId(index));
     transaction.set(history.doc(id), { generation, [field]: chunk });
     chunk = [];
     index++;
@@ -477,7 +484,7 @@ function persistTagHistory<Entry>(transaction: Transaction, snapshot: ResourceSn
   };
   for (const entry of entries) {
     const size = Buffer.byteLength(JSON.stringify(entry)) + 1;
-    if (bytes + size > TAG_HISTORY_TARGET_BYTES) flush();
+    if (bytes + size > HISTORY_CHUNK_TARGET_BYTES) flush();
     chunk.push(entry);
     bytes += size;
   }
@@ -550,6 +557,28 @@ function persistRowDetailHistory<Field extends string, Value extends RowValue>(t
   transaction.set(history.doc(historyEntryId(snapshot, command.operationId)), {
     generation: snapshot.metadata.generation, fields, acceptedAt: new Date().toISOString(),
   });
+}
+
+function persistStudyNoteReferenceHistory(transaction: Transaction, command: DataCommand, snapshot: ResourceSnapshot,
+  plan: ReturnType<typeof planStudyNoteReferenceOrder>, comparison = false) {
+  const entries = retainedStudyNoteReferenceHistory(snapshot, plan, comparison);
+  if (!entries.length || !snapshot.metadata) return;
+  const inline: StudyNoteReferenceHistoryEntry[] = [];
+  const history = adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id).collection(STUDY_NOTE_REFERENCE_HISTORY);
+  const generation = snapshot.metadata.generation;
+  const key = (kind: 'inline' | 'split', index: number) => JSON.stringify([command.operationId, kind, index]);
+  for (const [index, entry] of entries.entries()) {
+    const split = splitLargeStudyNoteReferenceHistory(entry);
+    if (!split) {
+      inline.push(entry);
+      continue;
+    }
+    const document = history.doc(historyEntryId(snapshot, key('split', index)));
+    transaction.set(document, { generation, parts: split.parts.length, digest: split.digest });
+    split.parts.forEach((json, part) => transaction.set(document.collection(REFERENCE_HISTORY_PARTS).doc(String(part)), { json }));
+  }
+  persistChunkedHistory(transaction, snapshot, command.operationId, STUDY_NOTE_REFERENCE_HISTORY, 'entries', inline,
+    index => key('inline', index));
 }
 
 function persistHomileticHistory(transaction: Transaction, command: DataCommand, snapshot: ResourceSnapshot,
@@ -774,16 +803,17 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     existingRowField(primarySnapshot.value?.thoughts, entry.rowId, THOUGHT_TAG_BIRTH) === entry.rowCreatedAt
     && existingRowField(primarySnapshot.value?.thoughts, entry.rowId, thoughtTagTarget(entry.field)) === entry.winnerValue);
   if (tagHistory?.length && primarySnapshot.metadata) {
-    persistTagHistory(transaction, primarySnapshot, command.operationId, THOUGHT_TAG_HISTORY, 'fields', tagHistory);
+    persistChunkedHistory(transaction, primarySnapshot, command.operationId, THOUGHT_TAG_HISTORY, 'fields', tagHistory);
   }
   const sourceNoteHistory = retainedSourceNoteLinkHistory(primarySnapshot, sourceNoteOrder);
   if (sourceNoteHistory.length && primarySnapshot.metadata) {
-    persistTagHistory(transaction, primarySnapshot, command.operationId, SOURCE_NOTE_LINK_HISTORY, 'entries', sourceNoteHistory);
+    persistChunkedHistory(transaction, primarySnapshot, command.operationId, SOURCE_NOTE_LINK_HISTORY, 'entries', sourceNoteHistory);
   }
+  persistStudyNoteReferenceHistory(transaction, command, primarySnapshot, studyNoteReferenceOrder);
   const documentTagHistory = documentTagOrder?.displaced.filter(entry =>
     tagMembership(tagField(primarySnapshot.value), entry.tag) === entry.winnerValue);
   if (documentTagHistory?.length && primarySnapshot.metadata && primarySnapshot.value) {
-    persistTagHistory(transaction, primarySnapshot, command.operationId, DOCUMENT_TAG_HISTORY, 'tags', documentTagHistory);
+    persistChunkedHistory(transaction, primarySnapshot, command.operationId, DOCUMENT_TAG_HISTORY, 'tags', documentTagHistory);
   }
   const pointHistory = retainedExegeticalPointHistory(primarySnapshot, exegeticalOrder);
   if (pointHistory) {
@@ -1092,6 +1122,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     if (result.kind === 'conflict') {
       // Keep a proven earlier value even if another field blocks the command. Mark a result that
       // still depends on the comparison separately from one already visible in the document.
+      persistStudyNoteReferenceHistory(transaction, command, result.snapshot, studyNoteReferenceOrder, true);
       persistHomileticHistory(transaction, command, result.snapshot, homileticOrder, true);
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
     }
@@ -1138,7 +1169,8 @@ export async function readDocument(owner: string, resource: ResourceRef, options
 }
 
 async function readHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
-  generation: string | null | undefined, cursor: string | undefined, unavailable: string, includeLegacy = false) {
+  generation: string | null | undefined, cursor: string | undefined, unavailable: string, includeLegacy = false,
+  project?: (transaction: Transaction, reference: DocumentReference, data: Record<string, unknown> & { id: string }) => Promise<T>) {
   checkOwner(owner);
   if (!validSegment(resource.id) || (typeof generation === 'string' && !validSegment(generation))
     || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
@@ -1161,8 +1193,19 @@ async function readHistoryEntries<T extends { id: string }>(owner: string, resou
       : history.where('generation', '==', actualGeneration);
     const query = (includeLegacy ? versions.where('owner', '==', owner) : versions).orderBy(FieldPath.documentId()).limit(pageSize + 1);
     const page = await transaction.get(cursor ? query.startAfter(cursor) : query);
-    const entries = page.docs.slice(0, pageSize).map(item => ({ ...item.data(), id: item.id }) as T);
-    return { generation: actualGeneration, entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
+    const entries: T[] = [];
+    let bytes = 0;
+    for (const item of page.docs.slice(0, pageSize)) {
+      const data = { ...item.data(), id: item.id };
+      const entry = project ? await project(transaction, history.doc(item.id), data) : data as T;
+      if (project) {
+        const size = Buffer.byteLength(JSON.stringify(entry)) + 1;
+        if (entries.length && bytes + size > MAX_LIST_BYTES) break;
+        bytes += size;
+      }
+      entries.push(entry);
+    }
+    return { generation: actualGeneration, entries, nextCursor: page.docs.length > entries.length ? entries.at(-1)!.id : null };
   });
 }
 
@@ -1375,6 +1418,19 @@ export async function listStudyNoteTypeHistory(owner: string, noteId: string, ge
   const resource = { collection: 'studyNotes', id: noteId };
   const page = await listHistoryEntries<StudyNoteTypeHistoryPage['entries'][number]>(owner, resource, STUDY_NOTE_TYPE_HISTORY, generation, cursor, 'note-gone');
   return { owner, noteId, generation, ...page };
+}
+
+export async function listStudyNoteReferenceHistory(owner: string, noteId: string, generation: string, cursor?: string) {
+  const { entries, nextCursor } = await readHistoryEntries<{ id: string; entries: StudyNoteReferenceHistoryEntry[] }>(owner,
+    { collection: 'studyNotes', id: noteId }, STUDY_NOTE_REFERENCE_HISTORY, generation, cursor, 'note-gone', false,
+    async (transaction, reference, data) => {
+      if (Array.isArray(data.entries)) return { id: data.id, entries: data.entries };
+      const entry = await readSplitStudyNoteReferenceHistory(data.parts, data.digest, async index =>
+        (await transaction.get(reference.collection(REFERENCE_HISTORY_PARTS).doc(String(index)))).data()?.json);
+      if (!entry) throw new DataEngineServerError('note-reference-history-unavailable', 503);
+      return { id: data.id, entries: [entry] };
+    });
+  return { owner, noteId, generation, entries, nextCursor };
 }
 
 export async function listStudyNoteTitleHistory(owner: string, noteId: string, generation: string, cursor?: string): Promise<StudyNoteTitleHistoryPage> {

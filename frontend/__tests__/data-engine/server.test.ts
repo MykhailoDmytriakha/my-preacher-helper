@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
 import { prepareDomainCommand } from '@/data-engine/domainPolicy';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listOutlineTitleHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listOutlineTitleHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteReferenceHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
 import { readSermonConflict } from '@/data-engine/rowConflictDetails';
@@ -1466,6 +1466,15 @@ describe('transactional DataEngine server', () => {
     const saved = await readDocument(base.owner, resource);
     expect((saved.value?.scriptureRefs as typeof phone[]).map(ref => ref.book).sort())
       .toEqual(keepJohn ? ['John', 'Luke', 'Romans'] : ['Luke', 'Romans']);
+    const history = await listStudyNoteReferenceHistory(base.owner, resource.id, 'seed-ordered-reference-note');
+    const displaced = history.entries.flatMap(record => record.entries);
+    expect(displaced).toHaveLength(1);
+    const entry = displaced[0];
+    expect(entry).toMatchObject({
+      value: keepJohn ? null : expect.objectContaining({ book: 'John', fromVerse: 16 }),
+      winner: keepJohn ? expect.objectContaining({ book: 'John', fromVerse: 16 }) : null,
+      actionTime: clock(Math.min(at, 90)), winnerActionTime: clock(Math.max(at, 90)),
+    });
     if (!keepJohn) {
       const newId = { ...phone, id: 'fresh-addition' };
       const existing = saved.value?.scriptureRefs as typeof phone[];
@@ -1506,6 +1515,22 @@ describe('transactional DataEngine server', () => {
     expect(references).toHaveLength(2);
     expect(references.find(ref => ref.book === 'John')?.fromVerse).toBe(verse);
     expect(references).toContainEqual(romans);
+    const history = () => [...documents.entries()]
+      .filter(([path]) => path.startsWith('studyNotes/' + resource.id + '/_studyNoteReferenceHistory/'))
+      .map(([, entry]) => entry);
+    const retained = references.find(ref => ref.book === 'John')!;
+    expect(history()).toEqual([{ generation: 'seed-edited-reference-note', entries: [expect.objectContaining({
+      rowId: retained.id, value: { ...retained, fromVerse: verse === 17 ? 16 : 17 }, winner: retained,
+      actionTime: clock(Math.min(at, 90)), winnerActionTime: clock(Math.max(at, 90)),
+    })] }]);
+    const last = delivery.split('-').at(-1) as keyof typeof commands;
+    expect((await processCommand(base.owner, commands[last])).kind).toBe('acknowledged');
+    expect(history()).toHaveLength(1);
+    await expect(listStudyNoteReferenceHistory(base.owner, resource.id, 'seed-edited-reference-note')).resolves.toMatchObject({
+      owner: base.owner, noteId: resource.id, generation: 'seed-edited-reference-note', entries: history().map(entry => ({ entries: entry.entries })), nextCursor: null,
+    });
+    await expect(listStudyNoteReferenceHistory('other-owner', resource.id, 'seed-edited-reference-note')).rejects.toMatchObject({ status: 403 });
+    await expect(listStudyNoteReferenceHistory(base.owner, resource.id, 'different-note-generation')).rejects.toMatchObject({ status: 404 });
 
     if (verse === 17) {
       const independentlyAdded = { ...desktop, id: 'new-john' };
@@ -1513,6 +1538,134 @@ describe('transactional DataEngine server', () => {
         { [independentlyAdded.id]: clock(118) }))).kind).toBe('acknowledged');
       expect((await readDocument(base.owner, resource)).value?.scriptureRefs).toEqual([...references, independentlyAdded]);
     }
+  });
+
+  it.each([false, true])('retains timed reference choices when a text conflict blocks the save (incoming later: %s)', async later => {
+    const owner = 'owner-1', generation = 'seed-reference-text-conflict';
+    const resource = { collection: 'studyNotes', id: 'reference-text-conflict' };
+    const base = { protocol: 1 as const, owner, resource, dependsOn: [] };
+    const clock = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_001 + at });
+    const original = { id: 'desktop-ref', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const phone = { ...original, id: 'phone-ref' };
+    const edited = { ...phone, fromVerse: 17 };
+    const list = (value: typeof phone[]) => ({ exists: true, value });
+    const content = (before: string, after: string) => ({ path: ['content'],
+      before: { exists: true, value: before }, after: { exists: true, value: after } });
+    const update = (operationId: string, before: typeof phone[], after: typeof phone[], id: string, at: number) =>
+      ({ ...base, kind: 'update' as const, generation, operationId, studyNoteReferenceTimes: { [id]: clock(at) },
+        changes: [{ path: ['scriptureRefs'], before: list(before), after: list(after) }] });
+    const note = { userId: owner, type: 'note', content: 'Opening', scriptureRefs: [], tags: [], isDraft: false,
+      createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    expect((await processCommand(owner, { ...base, kind: 'create', generation: null, operationId: generation, value: note })).kind)
+      .toBe('acknowledged');
+    const desktop = update('desktop-change', [], [original], original.id, 90);
+    expect((await processCommand(owner, { ...desktop, changes: [...desktop.changes, content('Opening', 'Desktop words')] })).kind)
+      .toBe('acknowledged');
+    expect((await processCommand(owner, update('phone-add', [], [phone], phone.id, 30))).kind).toBe('acknowledged');
+    const change = update('phone-change', [phone], [edited], phone.id, later ? 110 : 50);
+    const blocked = { ...change, changes: [...change.changes, content('Opening', 'Phone words')] };
+    const exactEdit = { ...edited, id: original.id };
+    const history = () => listStudyNoteReferenceHistory(owner, resource.id, generation);
+    expect(await processCommand(owner, blocked)).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['content'] }] });
+    expect((await readDocument(owner, resource)).value).toMatchObject({ content: 'Desktop words', scriptureRefs: [original] });
+    await expect(history()).resolves.toMatchObject({ entries: [{ entries: [{
+      rowId: original.id, value: later ? original : exactEdit, winner: later ? exactEdit : original,
+      actionTime: clock(later ? 90 : 50), winnerActionTime: clock(later ? 110 : 90), ...(later && { origin: 'comparison' }),
+    }] }] });
+    expect((await processCommand(owner, blocked)).kind).toBe('conflict');
+    expect((await history()).entries).toHaveLength(1);
+    const accepted = await readDocument(owner, resource);
+    expect((await processCommand(owner, { ...base, kind: 'update', generation, operationId: 'resolve-text',
+      studyNoteReferenceObservedRevisions: { [original.id]: accepted.metadata!.revision },
+      changes: [content('Desktop words', 'Phone words'), ...(later ? [
+        { path: ['scriptureRefs'], before: list([original]), after: list([exactEdit]) },
+      ] : [])] })).kind).toBe('acknowledged');
+    expect((await readDocument(owner, resource)).value).toMatchObject({ content: 'Phone words', scriptureRefs: [later ? exactEdit : original] });
+    expect((await history()).entries).toHaveLength(1);
+  });
+
+  it('keeps both long quotes when together they exceed one Firestore history document', async () => {
+    const owner = 'owner-1', generation = 'seed-long-reference';
+    const resource = { collection: 'studyNotes', id: 'long-reference' };
+    const base = { protocol: 1 as const, owner, resource, dependsOn: [] };
+    const clock = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_001 + at });
+    const original = { id: 'john', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const first = { ...original, text: 'а'.repeat(310_000) };
+    const quote = '𐌀'.repeat(155_000);
+    const later = [0, 1, 2, 3].map(index => ({ ...original, text: quote + index }));
+    const list = (value: typeof original[]) => ({ exists: true, value });
+    const save = (operationId: string, after: typeof original, at: number) => processCommand(owner, {
+      ...base, kind: 'update', generation, operationId, studyNoteReferenceTimes: { [original.id]: clock(at) },
+      studyNoteReferenceObservedRevisions: { [original.id]: 1 },
+      changes: [{ path: ['scriptureRefs'], before: list([original]), after: list([after]) }],
+    });
+    const note = { userId: owner, type: 'note', content: 'Opening', scriptureRefs: [original], tags: [], isDraft: false,
+      createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    expect((await processCommand(owner, { ...base, kind: 'create', generation: null, operationId: generation, value: note })).kind)
+      .toBe('acknowledged');
+    expect((await save('earlier-quote', first, 50)).kind).toBe('acknowledged');
+    for (const [index, version] of later.entries()) {
+      expect((await save('later-quote-' + index, version, 90 + index * 5)).kind).toBe('acknowledged');
+    }
+    expect((await readDocument(owner, resource)).value?.scriptureRefs).toEqual([later.at(-1)]);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('studyNotes/' + resource.id + '/_studyNoteReferenceHistory/'));
+    expect(history.filter(([path]) => path.includes('/_parts/')).length).toBeGreaterThan(4);
+    expect(history.every(([, record]) => Buffer.byteLength(JSON.stringify(record)) < 1_000_000)).toBe(true);
+    const page = await listStudyNoteReferenceHistory(owner, resource.id, generation);
+    expect(page.entries).toHaveLength(3);
+    expect(page.nextCursor).toBe(page.entries.at(-1)!.id);
+    const next = await listStudyNoteReferenceHistory(owner, resource.id, generation, page.nextCursor!);
+    expect(next.entries).toHaveLength(1);
+    expect(next.nextCursor).toBeNull();
+    expect([...page.entries, ...next.entries].flatMap(item => item.entries)).toEqual(later.map((winner, index) => ({
+      rowId: original.id, value: index === 0 ? first : later[index - 1], winner,
+      actionTime: clock(index === 0 ? 50 : 85 + index * 5), winnerActionTime: clock(90 + index * 5),
+    })).reverse());
+    const change = (before: string, after: string) => ({ path: ['content'],
+      before: { exists: true, value: before }, after: { exists: true, value: after } });
+    expect((await processCommand(owner, { ...base, kind: 'update', generation, operationId: 'accepted-text',
+      changes: [change('Opening', 'Current')] })).kind).toBe('acknowledged');
+    const [long, short] = [first, { ...original, fromVerse: 17 }];
+    for (const [operationId, reference] of [['a', long], [JSON.stringify(['a', 'reference', 0]), short]] as const) {
+      const command = { ...base, kind: 'update' as const, generation, operationId,
+        studyNoteReferenceTimes: { [original.id]: clock(120) }, studyNoteReferenceObservedRevisions: { [original.id]: 1 },
+        changes: [{ path: ['scriptureRefs'], before: list([original]), after: list([reference]) }, change('Opening', 'Proposed')] };
+      expect(await processCommand(owner, command)).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['content'] }] });
+    }
+    const comparisons = (await listStudyNoteReferenceHistory(owner, resource.id, generation)).entries.flatMap(record => record.entries)
+      .filter(entry => entry.origin === 'comparison');
+    expect(comparisons.map(entry => entry.winner)).toEqual(expect.arrayContaining([long, short]));
+    expect(comparisons).toHaveLength(2);
+  });
+
+  it('preserves the exact text comparison and timed reference history when the receipt is large', async () => {
+    const owner = 'owner-1', generation = 'seed-large-note-comparison';
+    const resource = { collection: 'studyNotes', id: 'large-note-comparison' };
+    const base = { protocol: 1 as const, owner, resource, dependsOn: [] };
+    const clock = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_001 + at });
+    const original = { id: 'john', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const stored = { ...original, text: 'x'.repeat(620_000) };
+    const incoming = { ...original, text: 'y'.repeat(620_000) };
+    const opening = 'a'.repeat(150_000), current = 'b'.repeat(150_000), proposed = 'c'.repeat(150_000);
+    const list = (value: typeof original[]) => ({ exists: true, value });
+    const note = { userId: owner, type: 'note', content: opening, scriptureRefs: [original], tags: [], isDraft: false,
+      createdAt: '2026-11-12', updatedAt: '2026-11-12' };
+    const update = (operationId: string, after: typeof original, content: string, at: number) => ({
+      ...base, kind: 'update' as const, generation, operationId, studyNoteReferenceTimes: { [original.id]: clock(at) },
+      studyNoteReferenceObservedRevisions: { [original.id]: 1 },
+      changes: [{ path: ['scriptureRefs'], before: list([original]), after: list([after]) },
+        { path: ['content'], before: { exists: true, value: opening }, after: { exists: true, value: content } }],
+    });
+    expect((await processCommand(owner, { ...base, kind: 'create', generation: null, operationId: generation, value: note })).kind)
+      .toBe('acknowledged');
+    expect((await processCommand(owner, update('stored', stored, current, 50))).kind).toBe('acknowledged');
+    const command = update('incoming', incoming, proposed, 90);
+    const conflict = await processCommand(owner, command);
+    expect(conflict).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['content'] }] });
+    expect(await processCommand(owner, command)).toEqual(conflict);
+    await expect(listStudyNoteReferenceHistory(owner, resource.id, generation)).resolves.toMatchObject({ entries: [{ entries: [{
+      rowId: original.id, value: stored, winner: incoming, actionTime: clock(50), winnerActionTime: clock(90), origin: 'comparison',
+    }] }] });
   });
 
   it.each([false, true])('holds an unordered duplicate-lineage removal by the canonical or absorbed ID: %s', async reverse => {
@@ -1537,6 +1690,7 @@ describe('transactional DataEngine server', () => {
     const saved = await readDocument(base.owner, resource);
     expect((await processCommand(base.owner, update('unordered-removal', [phone], [], { [phone.id]: clock(50, 55) }))).kind).toBe('conflict');
     expect(await readDocument(base.owner, resource)).toEqual(saved);
+    expect((await listStudyNoteReferenceHistory(base.owner, resource.id, 'seed-ambiguous-reference-note')).entries).toEqual([]);
 
     const current = saved.value?.scriptureRefs as typeof phone[];
     expect((await processCommand(base.owner, update('observed-removal', current, [neighbor], {}, saved.metadata!.revision))).kind).toBe('acknowledged');
@@ -1579,6 +1733,7 @@ describe('transactional DataEngine server', () => {
       value: { scriptureRefs: [edited, romans, deliberate], content: note.content },
       metadata: { studyNoteReferenceAliases: [{ from: delayed.id, to: deliberate.id }] },
     });
+    expect((await listStudyNoteReferenceHistory(base.owner, resource.id, 'seed-exact-reference')).entries).toEqual([]);
   });
 
   it('replays original committed evidence with the current snapshot after later edits and a lost acknowledgement', async () => {

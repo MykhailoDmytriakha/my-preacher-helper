@@ -1,13 +1,26 @@
 import { createHash } from 'node:crypto';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
+import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { documentProofHeadroom } from './documentProofBudget.server';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
+import { validateResourceDocument } from './resourceSchemas';
 import { isOrdinaryReferenceDocument, referenceRows, studyNoteReferencesPath } from './studyNoteReferenceMerge';
 
 import type { ActionTime } from './actionClock';
-import type { StudyNoteReferenceOrder } from './studyNoteReferenceMerge';
+import type { ReferenceRow, StudyNoteReferenceOrder } from './studyNoteReferenceMerge';
 import type { DataCommand, DocumentData, EngineMetadata, ResourceSnapshot } from './types';
+
+export const STUDY_NOTE_REFERENCE_HISTORY = '_studyNoteReferenceHistory';
+
+export type StudyNoteReferenceHistoryEntry = {
+  rowId: string;
+  value: ReferenceRow | null;
+  winner: ReferenceRow | null;
+  actionTime: ActionTime;
+  winnerActionTime: ActionTime;
+  origin?: 'comparison';
+};
 
 const PROOF_FIELD = 'studyNoteReferenceActionTimes';
 const REMOVAL_FIELD = 'studyNoteReferenceRemovals';
@@ -81,35 +94,106 @@ export function planStudyNoteReferenceOrder(command: DataCommand, current: Resou
       if (time && time.latestMs <= serverMs + 5) times.set(id, time);
     }
   }
+  const displaced: StudyNoteReferenceHistoryEntry[] = [];
+  const retainEarlier = (rowId: string, incoming: ReferenceRow | undefined, stored: ReferenceRow | undefined,
+    incomingTime: ActionTime, storedTime: ActionTime, when: -1 | 1) => {
+    const requested = incoming ? { ...incoming, id: rowId } : null;
+    const saved = stored ?? null;
+    if (equalValues(requested, saved)) return;
+    displaced.push({ rowId, value: when > 0 ? saved : requested, winner: when > 0 ? requested : saved,
+      actionTime: when > 0 ? storedTime : incomingTime, winnerActionTime: when > 0 ? incomingTime : storedTime });
+  };
   const removals = readRemovals(raw, current);
   const aliasTargets = new Set(current.metadata?.studyNoteReferenceAliases?.map(alias => alias.to));
   const order: StudyNoteReferenceOrder = {
     change(authoredId, stored) {
       const proof = previous.get(stored.id);
       if (authoredId === stored.id && observedRevision(authoredId) >= (proof?.revision ?? current.metadata!.revision)) return 0;
-      const when = chronology(times.get(authoredId), proof?.time);
-      return when || (aliasTargets.has(stored.id) ? 'review' : 0);
+      const time = times.get(authoredId);
+      const when = chronology(time, proof?.time);
+      const aliasTarget = aliasTargets.has(stored.id);
+      // A normal edit of the row already seen by this device does not displace a competing action.
+      if (when && time && proof?.time && (authoredId !== stored.id || aliasTarget || !equalValues(observed.get(authoredId), stored))) {
+        retainEarlier(stored.id, requested.get(authoredId), stored, time, proof.time, when);
+      }
+      return when || (aliasTarget ? 'review' : 0);
     },
     addition(authored) {
       const digest = authoredDigest(authored), time = times.get(authored.id);
       const removed = removals.get(digest);
-      if (removed && observedRevision(authored.id) < removed.revision) {
-        const when = chronology(time, removed.time);
-        if (when < 0) return 'skip';
-        if (!when) return 'review';
+      const applicableRemoval = removed && observedRevision(authored.id) < removed.revision ? removed : undefined;
+      const removalTime = applicableRemoval?.time;
+      const whenRemoved = chronology(time, removalTime);
+      if (applicableRemoval && !whenRemoved) return 'review';
+      if (whenRemoved === -1 && time && removalTime) {
+        retainEarlier(authored.id, authored, undefined, time, removalTime, whenRemoved);
+        return 'skip';
       }
       if (saved.some(row => authoredDigest(row) === digest)) return 'keep';
       const origins = saved.filter(row => {
         const proof = previous.get(row.id);
         return proof?.origin === digest && proof.origin !== authoredDigest(row) && !observed.has(row.id);
       });
-      if (origins.length !== 1) return 'keep';
-      const stored = origins[0], proof = previous.get(stored.id)!;
-      if (observedRevision(authored.id) >= proof.revision) return 'keep';
-      return { stored, chronology: chronology(time, proof.time) };
+      const stored = origins.length === 1 ? origins[0] : undefined;
+      const proof = stored && previous.get(stored.id);
+      if (stored && proof && observedRevision(authored.id) < proof.revision) {
+        return { stored, chronology: chronology(time, proof.time) };
+      }
+      if (whenRemoved === 1 && time && removalTime) retainEarlier(authored.id, authored, undefined, time, removalTime, whenRemoved);
+      return 'keep';
+    },
+    coalescedAddition(authored, stored, when) {
+      const time = times.get(authored.id), storedTime = previous.get(stored.id)?.time;
+      if (time && storedTime) retainEarlier(stored.id, authored, stored, time, storedTime, when);
     },
   };
-  return { order, observed, requested, times, previous, removals };
+  return { order, observed, requested, times, previous, removals, displaced };
+}
+
+export function retainedStudyNoteReferenceHistory(snapshot: ResourceSnapshot, plan?: ReturnType<typeof planStudyNoteReferenceOrder>,
+  comparison = false): StudyNoteReferenceHistoryEntry[] {
+  if (!plan?.displaced.length || !snapshot.metadata || !isOrdinaryReferenceDocument(snapshot.value)) return [];
+  const references = referenceRows(readField(snapshot.value, studyNoteReferencesPath));
+  if (!references) return [];
+  const live = new Map(references.map(row => [row.id, row]));
+  return plan.displaced.flatMap(entry => {
+    const applied = equalValues(live.get(entry.rowId) ?? null, entry.winner);
+    if (!applied && !comparison) return [];
+    const stored: StudyNoteReferenceHistoryEntry = applied ? entry : { ...entry, origin: 'comparison' };
+    // A losing payload never enters the document validator. Check both values
+    // before committing anything that the note could not have accepted.
+    try {
+      for (const reference of [entry.value, entry.winner]) {
+        if (reference) validateResourceDocument('studyNotes', { scriptureRefs: [reference] },
+          { kind: 'update', changedFields: ['scriptureRefs'] });
+      }
+      return [stored];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export const REFERENCE_HISTORY_PARTS = '_parts';
+const MAX_HISTORY_PARTS = 20;
+
+export function splitLargeStudyNoteReferenceHistory(entry: StudyNoteReferenceHistoryEntry) {
+  const value = { entries: [entry] };
+  try {
+    validateResourceDocument('studyNotes', value, { kind: 'update', changedFields: [] });
+    if (documentProofHeadroom(value, undefined) >= 0) return;
+  } catch { /* A JSON string also avoids Firestore's map and array depth limit. */ }
+  const json = JSON.stringify(entry);
+  const parts = splitConflictJson(json, MAX_HISTORY_PARTS);
+  if (!parts) throw new Error('Study note reference history exceeds its input bound');
+  return { parts, digest: conflictReceiptDigest(json) };
+}
+
+export async function readSplitStudyNoteReferenceHistory(count: unknown, digest: unknown, read: (index: number) => Promise<unknown>) {
+  if (!validConflictPartCount(count, MAX_HISTORY_PARTS) || typeof digest !== 'string') return;
+  const parts = await Promise.all(Array.from({ length: count }, (_, index) => read(index)));
+  const entry = readConflictJsonParts(parts, count, digest);
+  if (object(entry) && typeof entry.rowId === 'string') return entry as StudyNoteReferenceHistoryEntry;
 }
 
 function newestTime(before: ActionTime | null, after: ActionTime | null): ActionTime | null {
