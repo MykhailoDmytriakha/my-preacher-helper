@@ -164,6 +164,12 @@ export function mergeOutlineContent(base: FieldValue, mine: FieldValue, theirs: 
   return templateOutline(value) ? { value: { exists: true, value }, conflicts } : review;
 }
 
+/** Parent lists cannot independently accept the same identity at two new places. */
+export function duplicatesMergedOutlineIdentity(merged: FieldValue, ...inputs: FieldValue[]): boolean {
+  return childIdentityIssues(outlineIdentityRows(merged.value)).length > 0
+    && inputs.every(input => templateOutline(input.value) !== undefined);
+}
+
 /** A text comparison cannot authorize choosing between competing point locations. */
 export function hasAmbiguousOutlineTextMerge(merged: MergeResult): boolean {
   if (merged.conflicts.length !== 1) return false;

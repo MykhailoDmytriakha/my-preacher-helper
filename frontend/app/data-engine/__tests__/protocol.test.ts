@@ -325,3 +325,19 @@ it('does not present a note-only comparison when the same outline point was move
     conflicts: [{ path: ['outline'], base: field(base.outline), mine: field(mine.outline), theirs: field(theirs.outline) }],
   });
 });
+
+it.each(['outline', 'structure'] as const)('offers a choice instead of giving one subpoint two parents in %s', root => {
+  const child = { id: 'child', text: 'One subpoint', position: 0 };
+  const opening = { id: 'opening', text: 'Opening parent' };
+  const left = { id: 'left', text: 'Left parent' };
+  const right = { id: 'right', text: 'Right parent' };
+  const outline = (main: DocumentData[]) => ({ introduction: [], main, conclusion: [] });
+  const before = outline([{ ...opening, subPoints: [child] }, left, right]);
+  const local = outline([opening, { ...left, subPoints: [child] }, right]);
+  const saved = outline([opening, left, { ...right, subPoints: [child] }]);
+
+  expect(mergeFields(field(before), field(local), field(saved), [root])).toEqual({
+    value: field(local),
+    conflicts: [{ path: [root], base: field(before), mine: field(local), theirs: field(saved) }],
+  });
+});
