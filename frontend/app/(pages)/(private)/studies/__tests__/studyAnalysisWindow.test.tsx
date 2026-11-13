@@ -2,6 +2,8 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
 
 import { fetchBookText } from '@/utils/bibleText';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
+import { __resetReachableAgainForTests } from '@/utils/reachableAgain';
 
 import { StudyAnalysisWindow } from '../StudyAnalysisWindow';
 
@@ -51,7 +53,7 @@ describe('StudyAnalysisWindow — a passage analysis opened in Studies', () => {
     fetchText.mockResolvedValue({ id: 'Ephesians', chapters: [] } as never);
     render(<StudyAnalysisWindow note={analysis()} editing={false} onClose={jest.fn()} />);
     const editor = await screen.findByTestId('editor');
-    expect(fetchText).toHaveBeenCalledWith('Ephesians', 'rst');
+    expect(fetchText).toHaveBeenCalledWith('Ephesians', 'rst', { fetchFn: expect.any(Function) });
     expect(editor).toHaveAttribute('data-bible', 'rst');
     expect(editor).toHaveAttribute('data-book', 'Ephesians');
     expect(editor).toHaveAttribute('data-editing', 'false');
@@ -92,7 +94,7 @@ describe('StudyAnalysisWindow — a passage analysis opened in Studies', () => {
     act(() => action.onClick());
     expect(onClose).toHaveBeenCalledTimes(1);
     await act(async () => { arrive({ id: 'Ephesians', chapters: [] } as never); });
-    expect(screen.getByTestId('editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('editor')).not.toBeInTheDocument();
     expect(toast.dismiss).toHaveBeenCalledWith(id);
     unmount();
     (toast.loading as jest.Mock).mockClear();
@@ -101,6 +103,87 @@ describe('StudyAnalysisWindow — a passage analysis opened in Studies', () => {
     await screen.findByTestId('editor');
     await pause(700);
     expect(toast.loading).not.toHaveBeenCalled();
+  });
+
+  it('opens the same analysis after a book read is interrupted and the server returns', async () => {
+    fetchText.mockImplementationOnce(async () => {
+      reportServerUnreachable();
+      throw new TypeError('Network disconnected');
+    }).mockResolvedValueOnce({ id: 'Ephesians', chapters: [['Павел']] });
+    const onClose = jest.fn();
+    const { unmount } = render(<StudyAnalysisWindow note={analysis()} editing onClose={onClose} />);
+    try {
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('editor')).not.toBeInTheDocument();
+      expect(fetchText).toHaveBeenCalledTimes(1);
+      await act(async () => reportServerReachable());
+      const editor = await screen.findByTestId('editor');
+      expect(editor).toHaveAttribute('data-id', 'a1');
+      expect(editor).toHaveAttribute('data-editing', 'true');
+      expect(fetchText).toHaveBeenCalledTimes(2);
+    } finally {
+      unmount();
+      __resetReachableAgainForTests();
+      __resetConnectivityForTests();
+    }
+  });
+
+  it('keeps the error actions when the server returns and disappears before a retry can start', async () => {
+    fetchText.mockImplementationOnce(async () => {
+      reportServerUnreachable();
+      throw new TypeError('Network disconnected');
+    });
+    const onClose = jest.fn();
+    const { unmount } = render(<StudyAnalysisWindow note={analysis()} editing onClose={onClose} />);
+    try {
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      const [, notice] = jest.mocked(toast.error).mock.calls[0];
+      await act(async () => {
+        reportServerReachable();
+        reportServerUnreachable();
+      });
+      expect(fetchText).toHaveBeenCalledTimes(1);
+      expect(toast.dismiss).not.toHaveBeenCalledWith(notice?.id);
+      expect(onClose).not.toHaveBeenCalled();
+
+      const cancel = notice?.cancel;
+      if (typeof cancel !== 'object' || !cancel || !('onClick' in cancel)) throw new Error('Missing Cancel action');
+      act(() => cancel.onClick({} as never));
+      await act(async () => reportServerReachable());
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(fetchText).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('editor')).not.toBeInTheDocument();
+    } finally {
+      unmount();
+      __resetReachableAgainForTests();
+      __resetConnectivityForTests();
+    }
+  });
+
+  it('uses one outstanding manual retry and accepts its result', async () => {
+    let arrive!: (book: Awaited<ReturnType<typeof fetchBookText>>) => void;
+    fetchText.mockImplementationOnce(async () => {
+      reportServerUnreachable();
+      throw new TypeError('Network disconnected');
+    }).mockImplementationOnce(() => new Promise(resolve => { arrive = resolve; }));
+    const { unmount } = render(<StudyAnalysisWindow note={analysis()} editing={false} onClose={jest.fn()} />);
+    try {
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      const retry = jest.mocked(toast.error).mock.calls[0][1]?.action;
+      if (typeof retry !== 'object' || !retry || !('onClick' in retry)) throw new Error('Missing Retry action');
+      const click = () => retry.onClick({ preventDefault() {} } as never);
+      act(click);
+      expect(fetchText).toHaveBeenCalledTimes(2);
+      act(click);
+      expect(fetchText).toHaveBeenCalledTimes(2);
+      await act(async () => arrive({ id: 'Ephesians', chapters: [['Павел']] }));
+      expect(screen.getByTestId('editor')).toBeInTheDocument();
+    } finally {
+      unmount();
+      __resetReachableAgainForTests();
+      __resetConnectivityForTests();
+    }
   });
 
   it('says a book it cannot read and opens nothing', async () => {

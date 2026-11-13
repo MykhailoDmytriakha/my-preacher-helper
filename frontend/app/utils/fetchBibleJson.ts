@@ -13,6 +13,11 @@ export class BibleAssetHttpError extends Error {
 
 export class BibleAssetDeadlineError extends Error {}
 
+export function canRetryBibleAsset(error: unknown): boolean {
+  return error instanceof TypeError || error instanceof BibleAssetDeadlineError
+    || (error instanceof BibleAssetHttpError && error.retryWhileReachable);
+}
+
 /** The whole answer — headers and body — within the deadline, or an error; a silent network never hangs the reader. */
 export async function fetchBibleJson(fetchFn: typeof fetch, url: string, deadlineMs: number, bodyDeadlineMs?: number): Promise<{ response: Response; data: unknown }> {
   const controller = typeof AbortController === 'undefined' ? undefined : new AbortController();

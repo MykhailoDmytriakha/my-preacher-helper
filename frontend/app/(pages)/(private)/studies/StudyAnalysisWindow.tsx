@@ -2,21 +2,24 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { analysisPassageHref, forgetListArrival, leaveAnalysisAddress, readAnalysisAddress, readListArrival } from '@/components/bible/analysis/analysisAddress';
 import { AnalysisEditor } from '@/components/bible/analysis/AnalysisEditor';
 import { useAnalysisBookMarks } from '@/components/bible/analysis/useAnalysisBookMarks';
 import { BibleIcon } from '@/components/bible/BibleIcon';
+import { useVisibleBookText } from '@/components/bible/useVisibleBookText';
 import { AnalysisIcon } from '@/components/Icons';
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleForLocale, isBibleId, type BibleId } from '@/utils/bibles';
-import { fetchBookText, type BookText } from '@/utils/bibleText';
+import { canRetryBibleAsset } from '@/utils/fetchBibleJson';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { StudyNote } from '@/models/models';
+import type { BookText } from '@/utils/bibleText';
 
 /** A book that has not come by then is said to be on its way. */
 const BOOK_SLOW_MS = 500;
@@ -39,42 +42,104 @@ export function analysisBible(note: Pick<StudyNote, 'analysis' | 'scriptureRefs'
  * than a moment to come says it is being read, with Cancel, or the press looks like it did nothing (Codex UX, 04.11). One
  * kept on the device opens at once, and nothing is said.
  */
-export function StudyAnalysisWindow({ note, editing, onClose }: { note: StudyNote; editing: boolean; onClose: () => void }) {
+export function StudyAnalysisWindow({ note, editing, onClose, listTab }: {
+  note: StudyNote; editing: boolean; onClose: () => void; listTab?: string;
+}) {
   const { t, language } = useTranslation();
   const router = useRouter();
   const locale = resolveAppLocale(language);
   const bookId = note.scriptureRefs[0]?.book ?? '';
   const bible = analysisBible(note, bibleForLocale(locale));
-  const [text, setText] = useState<BookText | null>(null);
+  const bookKey = `${bible}:${bookId}`;
+  const [loaded, setLoaded] = useState<{ key: string; text: BookText } | null>(null);
+  const text = loaded?.key === bookKey ? loaded.text : null;
+  const [attempt, tryAgain] = useState(0);
+  const notificationId = useId();
+  const notificationRun = useRef(0);
+  const [notice, setNotice] = useState<{ key: string; kind: 'loading' | 'unavailable' } | null>(null);
+  const cancelled = useRef(false);
+  const reading = useRef(false);
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
+  const readText = useVisibleBookText();
   // The book is read for the analysis's Bible and book only: a new close or a new language's words do not read it again.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const tRef = useRef(t);
   tRef.current = t;
+  const cancel = useCallback(() => {
+    if (cancelled.current) return;
+    cancelled.current = true;
+    setNotice(null);
+    closeRef.current();
+  }, []);
+  const previousTab = useRef(listTab);
+  useLayoutEffect(() => {
+    if (previousTab.current !== listTab && !text) cancel();
+    previousTab.current = listTab;
+  }, [cancel, listTab, text]);
+
   useEffect(() => {
+    begin(`${bookKey}:${attempt}`);
+    if (cancelled.current || !due()) return undefined;
+    reading.current = true;
     let alive = true;
-    setText(null);
-    const waiting = `analysis-book-${note.id}`;
-    // Said with its Cancel: the person may turn to something else rather than wait (Codex, 04.11).
-    const slow = window.setTimeout(() => toast.loading(tRef.current('bible.loading'), {
-      id: waiting,
-      action: { label: tRef.current('common.cancel'), onClick: () => closeRef.current() },
-    }), BOOK_SLOW_MS);
-    const settle = () => { window.clearTimeout(slow); toast.dismiss(waiting); };
-    fetchBookText(bookId, bible).then(
+    const wanted = () => alive && !cancelled.current;
+    const slow = window.setTimeout(() => {
+      if (!wanted()) return;
+      setNotice(current => current?.key === bookKey ? current : { key: bookKey, kind: 'loading' });
+    }, BOOK_SLOW_MS);
+    const mark = asking();
+    void readText(bookId, bible, wanted).then(
       (book) => {
-        settle();
-        if (alive) setText(book);
+        window.clearTimeout(slow);
+        if (!wanted()) return;
+        reading.current = false;
+        setNotice(null);
+        setLoaded({ key: bookKey, text: book });
       },
-      () => {
-        settle();
-        if (!alive) return;
-        toast.error(tRef.current('bible.loadError'));
-        closeRef.current();
+      (error: unknown) => {
+        window.clearTimeout(slow);
+        if (!wanted()) return;
+        reading.current = false;
+        if (!canRetryBibleAsset(error)) {
+          toast.error(tRef.current('bible.loadError'));
+          cancel();
+          return;
+        }
+        setNotice(current => current?.key === bookKey && current.kind === 'unavailable'
+          ? current : { key: bookKey, kind: 'unavailable' });
+        failed(mark, undefined, error);
       },
     );
-    return () => { alive = false; settle(); };
-  }, [bible, bookId, note.id]);
+    return () => { alive = false; reading.current = false; window.clearTimeout(slow); };
+  }, [attempt, bible, bookId, bookKey, round, begin, due, asking, failed, readText, cancel]);
+
+  // The notice belongs to this opening and survives a skipped or unsuccessful retry.
+  useEffect(() => {
+    if (notice?.key !== bookKey || text) return undefined;
+    const id = `analysis-book-${notificationId}-${++notificationRun.current}`;
+    let shown = true;
+    const dismiss = () => { if (shown) cancel(); };
+    const cancelAction = { label: tRef.current('common.cancel'), onClick: dismiss };
+    if (notice.kind === 'loading') {
+      toast.loading(tRef.current('bible.loading'), { id, action: cancelAction });
+    } else {
+      toast.error(tRef.current('bible.loadError'), {
+        id,
+        duration: Infinity,
+        closeButton: false,
+        action: { label: tRef.current('bible.retry'), onClick: (event) => {
+          event.preventDefault();
+          if (!shown || reading.current) return;
+          reading.current = true;
+          tryAgain(value => value + 1);
+        } },
+        cancel: cancelAction,
+        onDismiss: dismiss,
+      });
+    }
+    return () => { shown = false; toast.dismiss(id); };
+  }, [bookKey, cancel, notificationId, notice, text]);
   const marks = useAnalysisBookMarks({ bible, bookId, text });
   if (!text) return null;
   return (
@@ -105,7 +170,8 @@ export function StudyAnalysisWindow({ note, editing, onClose }: { note: StudyNot
  */
 export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: boolean) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState<{ id: string; editing: boolean } | null>(null);
+  const [open, setOpen] = useState<{ id: string; editing: boolean; visit?: number } | null>(null);
+  const visit = useRef(0);
   const note = open ? notes.find((entry) => entry.id === open.id && entry.type === 'analysis') : undefined;
   const holds = useCallback((id: string) => notes.some((entry) => entry.id === id && entry.type === 'analysis'), [notes]);
   const addressRead = useRef(false);
@@ -140,12 +206,14 @@ export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: bo
     window.addEventListener('popstate', moved);
     return () => { window.removeEventListener('popstate', moved); clearTimeout(after); };
   }, []);
-  const openAnalysis = useCallback((target: StudyNote, editing: boolean) => setOpen({ id: target.id, editing }), []);
+  const openAnalysis = useCallback((target: StudyNote, editing: boolean) => {
+    setOpen({ id: target.id, editing, visit: ++visit.current });
+  }, []);
   const close = useCallback(() => {
     leaveAnalysisAddress(open?.id ?? null);
     setOpen(null);
   }, [open?.id]);
-  return { opened: note && open ? { note, editing: open.editing } : null, open: openAnalysis, close };
+  return { opened: note && open ? { note, editing: open.editing, visit: open.visit } : null, open: openAnalysis, close };
 }
 
 /** How long the card the list was opened at stays lit. */

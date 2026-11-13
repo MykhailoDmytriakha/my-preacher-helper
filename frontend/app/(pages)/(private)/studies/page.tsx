@@ -620,7 +620,7 @@ export default function StudiesPage() {
       })() : null}
 
       {analysis.opened ? (
-        <StudyAnalysisWindow key={analysis.opened.note.id} note={analysis.opened.note} editing={analysis.opened.editing} onClose={analysis.close} />
+        <StudyAnalysisWindow key={`${analysis.opened.note.id}:${analysis.opened.visit ?? 0}`} note={analysis.opened.note} editing={analysis.opened.editing} onClose={analysis.close} listTab={activeTab} />
       ) : null}
 
       <ShareNoteModal

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 
-import { BibleAssetDeadlineError, BibleAssetHttpError } from '@/utils/fetchBibleJson';
+import { canRetryBibleAsset } from '@/utils/fetchBibleJson';
 import { reachableAgainCount, serverInReach, subscribeToReachableAgain } from '@/utils/reachableAgain';
 
 /**
@@ -72,9 +72,7 @@ export function useReadAgainWhenReachable(): {
       again();
       return;
     }
-    const canRetry = error instanceof TypeError || error instanceof BibleAssetDeadlineError ||
-      (error instanceof BibleAssetHttpError && error.retryWhileReachable);
-    if (!canRetry || !serverInReach() || retried.current.get(key) === mark) return;
+    if (!canRetryBibleAsset(error) || !serverInReach() || retried.current.get(key) === mark) return;
 
     retried.current.set(key, mark);
     timers.current.set(key, setTimeout(() => {
