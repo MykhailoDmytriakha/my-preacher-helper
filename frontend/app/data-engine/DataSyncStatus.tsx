@@ -13,13 +13,16 @@ import { useConfirm, useDiscardQuestion, type DiscardQuestionKey } from '@/hooks
 import { useFailureNotice } from '@/hooks/useFailureNotice';
 import { useLasting } from '@/hooks/useLasting';
 import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
-import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { refusalKey, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { useTranslation } from '@locales/useTranslation';
 
 import { isSyncTrouble } from './status';
 
 import type { SyncStatus } from './status';
+
+/** Refusal codes whose sentence this block says under the refusal: the size limit, nothing else. */
+const STATUS_REFUSAL_REASONS: ReadonlySet<string> = new Set(['resource-exhausted']);
 
 export { SyncOutlet } from '@/components/common/syncOutlet';
 
@@ -199,6 +202,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
   const trouble = isSyncTrouble(status?.phase) && !(serverNoticeShown && status?.phase === 'unknown');
   const troublePhase = trouble ? status?.phase : null;
+  // Why the Save was refused — only a text too large for one save is explained here; other codes keep the phase alone.
+  const refusalReason = trouble && status?.phase === 'refused' && status.refusalCode && STATUS_REFUSAL_REASONS.has(status.refusalCode)
+    ? refusalKey(status.refusalCode) : undefined;
   // What the person was shown goes into the technical report's path (owner, 2026-10-10).
   useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
@@ -219,6 +225,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
       {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
       {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}
+      {showPhase && !pendingDeletion && !deleting && refusalReason && <p>{t(refusalReason)}</p>}
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
     </div>}

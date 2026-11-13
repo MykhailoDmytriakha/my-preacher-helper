@@ -8,6 +8,7 @@ import { DataEngineProvider, isOneShotRecord, useDataDocument, useDocumentAction
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { editorIdentity } from '@/data-engine/editorIdentity';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
+import { knownRefusalCodes, refusalKey } from '@/utils/actionFailureMessage';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { CommitRequest } from '@/data-engine/commits';
@@ -256,6 +257,48 @@ describe('a late conflict on a document no screen has open', () => {
     await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
     expect(harness.server.value?.content).toBe('Opening text');
+  });
+
+  it('says why a closed draft was refused when the text was too large to save in one piece', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    jest.mocked(harness.transport.send).mockImplementation(async command => ({ kind: 'refused', operationId: command.operationId, code: 'resource-exhausted' }));
+    await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Too long to save' })); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
+    expect(screen.getByText('dataSync.failure.tooLargeToSave')).toBeInTheDocument();
+    expect(screen.getByText(/Too long to save/)).toBeInTheDocument();
+  });
+
+  // A refused one-shot change says the moved comment passage (as before) and the size limit; no other code gained a sentence.
+  it('says a refusal reason on a refused one-shot change only for the moved comment passage and the size limit', async () => {
+    const shown: string[] = [];
+    for (const code of knownRefusalCodes()) {
+      const harness = documentEngineHarness({ resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+      const view = render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+      await waitFor(() => expect(actions?.ready).toBe(true));
+      jest.mocked(harness.transport.send).mockImplementation(async command => ({ kind: 'refused', operationId: command.operationId, code }));
+      await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Refused words ' + code })); await settleEngine(); await settleEngine(); });
+      await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
+      if (screen.queryByText(refusalKey(code)!)) shown.push(code);
+      view.unmount(); actions = null;
+    }
+    expect(shown.sort()).toEqual(['comment-kind-place-changed', 'resource-exhausted']);
+  });
+
+  it('says the size limit on a screen draft refused after the person left that screen', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    jest.mocked(harness.transport.send).mockImplementation(async command => ({ kind: 'refused', operationId: command.operationId, code: 'resource-exhausted' }));
+    const editor = await harness.engine.openEditor(resource, editorIdentity('test-tab', resource, 'default', 'note-screen'));
+    await act(async () => {
+      await editor.edit({ ...stored, content: 'Words too long to save' }); await editor.save(); await settleEngine(); await settleEngine();
+    });
+    editor.close({ flush: false });
+    await screen.findByText('dataSync.screenDraftBody');
+    expect(screen.getByText('dataSync.failure.tooLargeToSave')).toBeInTheDocument();
+    expect(screen.getByText(/Words too long to save/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toBeInTheDocument();
   });
 
   // BUG-20261107-outdated-tab-refusal-unexplained: the app-wide notice of a refusal says the way out on a tab older than the server.

@@ -338,6 +338,7 @@
       "pendingDeliveryFirst": "Earlier changes are not finished yet: wait until they are delivered or decide them, then try again.",
       "otherChangesFirst": "Save or decide the other changes to this record first.",
       "draftGone": "This draft is no longer available.",
+      "tooLargeToSave": "This text is too large to save in one piece. Shorten it or split it in two — your draft is kept.",
       "draftDone": "This draft has nothing left to recover.",
       "savedWorkChanged": "There are newer saved changes. Your work is still here. Review it and try again.",
       "membershipStageChanged": "This form changed in another tab. Your copy is still here. Check it before closing and reopening the form.",

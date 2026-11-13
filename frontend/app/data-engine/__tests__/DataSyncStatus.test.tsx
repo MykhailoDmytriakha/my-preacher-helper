@@ -5,6 +5,7 @@ import ru from '../../../locales/ru/translation.json';
 import uk from '../../../locales/uk/translation.json';
 import { DataSyncStatus, STATUS_SETTLE_MS } from '../DataSyncStatus';
 import { isSyncTrouble } from '../status';
+import { knownRefusalCodes, refusalKey } from '@/utils/actionFailureMessage';
 import { useServerUnavailable } from '@/hooks/useServerUnavailable';
 import { ServerUnavailableNoticeContext } from '@/hooks/useServerUnavailableNotice';
 import type { ReactElement, ReactNode } from 'react';
@@ -270,6 +271,23 @@ describe('DataSyncStatus', () => {
     rerender(<DataSyncStatus subject="note-2" status={status('refused', { canAcceptRemote: true })} onAcceptRemote={accept} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(accept).not.toHaveBeenCalled();
+  });
+
+  it('says why a save too large for one piece was refused, under the refusal itself', () => {
+    render(<DataSyncStatus subject="doc" status={status('refused', { canKeepLocal: true, refusalCode: 'resource-exhausted' })} onKeepLocal={jest.fn()} />);
+    expect(screen.getByText(en.dataSync.phase.refused)).toBeInTheDocument();
+    expect(screen.getByText(en.dataSync.failure.tooLargeToSave)).toBeInTheDocument();
+  });
+
+  // Only the size limit gained a sentence here: every other code with a sentence stays as before (the phase alone).
+  it.each(knownRefusalCodes())('says a refusal reason under a refused Save only for the size limit: %s', code => {
+    const key = refusalKey(code)!;
+    const sentence = key.split('.').reduce<unknown>((value, part) => (value as Record<string, unknown>)?.[part], en) as string;
+    const view = render(<DataSyncStatus subject="doc" status={status('refused', { canKeepLocal: true, refusalCode: code })} onKeepLocal={jest.fn()} />);
+    expect(screen.getByText(en.dataSync.phase.refused)).toBeInTheDocument();
+    if (code === 'resource-exhausted') expect(screen.getByText(sentence)).toBeInTheDocument();
+    else expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+    view.unmount();
   });
 
   it('asks before accepting the stored copy from a non-conflict refusal', async () => {

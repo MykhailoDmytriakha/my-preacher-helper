@@ -142,8 +142,12 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
     async send(command) {
       assertOwner(command.owner);
       const query = command.kind === 'relation' && command.relation === 'share-link-revoke' ? '?shareNoteReceipt=1' : '';
-      const { value } = await requestOwnerJson<unknown>('/api/data-engine/commands' + query, { method: 'POST', payload: command, messages });
+      const { status, value } = await requestOwnerJson<unknown>('/api/data-engine/commands' + query, {
+        method: 'POST', payload: command, messages, answerStatuses: [409, 413],
+      });
       assertOwner(command.owner);
+      // The command route rejects 413 before processing: no receipt or write is in doubt.
+      if (status === 413) return { kind: 'refused', operationId: command.operationId, code: 'resource-exhausted' };
       const result = parse(resultSchema, value);
       if (result.operationId !== command.operationId || ('snapshot' in result && (
         result.snapshot.resource.collection !== command.resource.collection || result.snapshot.resource.id !== command.resource.id

@@ -31,6 +31,8 @@ export interface SyncStatus {
   /** Keeping this local intent repeats a whole-record deletion, rather than preserving text. */
   deleting?: boolean;
   phase: SyncPhase;
+  /** The code of the editor's refused Save, so the screen can say why (`refusalKey`). */
+  refusalCode?: string;
   freshness: Observation['readiness'];
   checking: boolean;
   readFailed: boolean;
@@ -125,6 +127,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   return {
     deleting: checkpoint.draft === null && checkpoint.confirmed.value !== null,
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
+    ...(phase === 'refused' && state.result?.kind === 'refused' && { refusalCode: state.result.code }),
     hasForeignChange: foreign,
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && pendingIds.length === 0 && checkpoint.confirmed.value !== null && !checkpoint.confirmed.metadata?.deleted,

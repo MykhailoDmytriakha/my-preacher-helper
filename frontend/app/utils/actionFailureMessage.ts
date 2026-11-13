@@ -62,7 +62,19 @@ const KNOWN = new Map<string, string>([
   ['commit-changed', 'dataSync.failure.savedWorkChanged'],
   ['draft-presence-unknown', 'dataSync.failure.draftPresenceUnknown'],
   ['part-gone', 'dataSync.failure.partGone'],
+  // A Save larger than one command may carry (data-engine/server.ts MAX_COMMAND_BYTES): the draft stays.
+  ['resource-exhausted', 'dataSync.failure.tooLargeToSave'],
 ]);
+
+/** The sentence for a refusal the server or the engine answered with a code, when that code has one. */
+export function refusalKey(code: string | undefined): string | undefined {
+  return code ? KNOWN.get(code) : undefined;
+}
+
+/** Every code that has a sentence: a component that shows refusal reasons picks its own few from these. */
+export function knownRefusalCodes(): readonly string[] {
+  return [...KNOWN.keys()];
+}
 // One failure reaches several catches (a draft search and its document, the engine's background
 // report and the list that asked); the console hears it once.
 const logged = new WeakSet<object>();
