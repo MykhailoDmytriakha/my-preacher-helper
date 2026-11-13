@@ -2076,10 +2076,11 @@ export class DataEngine {
               type = undefined;
             }
           }
-          const tagMembership = action.tagMembership;
-          captured = title ? { kind: 'study-note-title', title, type, tagMembership }
-            : type ? { kind: 'study-note-type', type, tagMembership }
-              : edited && tagMembership?.length ? { kind: 'document-tags', tagMembership } : undefined;
+          const { tagMembership, referenceEvidence } = action;
+          captured = title ? { kind: 'study-note-title', title, type, tagMembership, referenceEvidence }
+            : type ? { kind: 'study-note-type', type, tagMembership, referenceEvidence }
+              : edited && referenceEvidence ? { kind: 'study-note-references', referenceEvidence, tagMembership }
+                : edited && tagMembership?.length ? { kind: 'document-tags', tagMembership } : undefined;
         }
         if (action?.kind === 'comment-kind') {
           const { seen } = action.commentKind;

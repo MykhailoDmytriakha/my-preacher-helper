@@ -95,6 +95,30 @@ describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it.each(['title', 'type', 'unchanged title'] as const)('keeps the original reference time alongside %s', async field => {
+    const s = setup({ nativeChoice: true });
+    const reference = { id: 'john', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const seen = { generation: 'generation', revision: 2 };
+    const opening = { ...initial(seen.revision), value: { ...initial().value, type: 'note', scriptureRefs: [reference] } };
+    s.cache.set(keyOf('owner', resource), opening);
+    s.server.set(keyOf('owner', resource), opening);
+    const editor = await s.engine.openEditor(resource, 'timed-reference-and-note-field');
+    try {
+      const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_120 };
+      const referenceEvidence = { times: { john: time } };
+      await editor.commit(current => ({ ...current, scriptureRefs: [],
+        ...(field === 'title' && { title: 'Later title' }), ...(field === 'type' && { type: 'question' }),
+      }), field === 'type'
+        ? { kind: 'study-note-type', type: { seen: { ...seen, type: 'note' }, time }, referenceEvidence }
+        : { kind: 'study-note-title', title: { seen: { ...seen, title: 'Title' }, time }, referenceEvidence });
+      await drainMicrotasks();
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ studyNoteReferenceTimes: { john: time } }));
+    } finally {
+      editor.close();
+      s.engine.setOwner(null);
+    }
+  });
+
   it.each(['open', 'close', 'retry'])('durably queues unsaved point words before two rapid exact outline moves (%s)', async mode => {
     const s = setup({ online: false, nativeChoice: true });
     try {

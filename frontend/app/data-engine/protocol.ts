@@ -779,10 +779,10 @@ export function mergeDocumentAfterAcknowledgement(base: DocumentData | null, min
 }
 
 function mergeStudyNoteWithAliases(base: DocumentData, mine: DocumentData, value: DocumentData,
-  aliases: readonly StudyNoteReferenceAlias[]): ReturnType<typeof mergeFields> {
+  aliases: readonly StudyNoteReferenceAlias[], order?: StudyNoteReferenceOrder): ReturnType<typeof mergeFields> {
   const before = readField(base, studyNoteReferencesPath), after = readField(mine, studyNoteReferencesPath);
   const theirs = readField(value, studyNoteReferencesPath);
-  const aligned = alignStudyNoteReferenceChange(before, after, theirs, aliases);
+  const aligned = alignStudyNoteReferenceChange(before, after, theirs, aliases, order);
   if (!aligned) {
     const result = mergeDocumentFields(base, mine, value);
     if (result.value.exists && object(result.value.value)) putField(result.value.value, studyNoteReferencesPath, after);
@@ -802,10 +802,16 @@ function mergeStudyNoteWithAliases(base: DocumentData, mine: DocumentData, value
 
 /** The page has a separate draft lifetime and rebases only its references on a write ACK. */
 export function rebaseAcceptedStudyNoteReferences(submitted: ScriptureReference[], draft: ScriptureReference[],
-  accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[]) {
+  accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[], pendingAliases: ReadonlyMap<string, string> = new Map()) {
   if (equalValues(submitted, draft)) return { references: accepted, storedChoice: accepted, needsReview: false };
   const value = (references: ScriptureReference[]): DocumentData => ({ scriptureRefs: references as unknown as Json[] });
-  const merged = mergeStudyNoteWithAliases(value(submitted), value(draft), value(accepted), aliases);
+  // These rows have the exact same opening under the new identity. Pass their
+  // pending action to the server, which still decides the order using its proof.
+  const order: StudyNoteReferenceOrder | undefined = pendingAliases.size ? {
+    change: (authoredId, stored) => pendingAliases.get(authoredId) === stored.id ? 1 : 0,
+    addition: () => 'keep',
+  } : undefined;
+  const merged = mergeStudyNoteWithAliases(value(submitted), value(draft), value(accepted), aliases, order);
   const references = object(merged.value.value) && Array.isArray(merged.value.value.scriptureRefs)
     ? merged.value.value.scriptureRefs as unknown as ScriptureReference[] : draft;
   const reviewed = reviewedStudyNoteReferences(merged.conflicts, readField(value(accepted), studyNoteReferencesPath));

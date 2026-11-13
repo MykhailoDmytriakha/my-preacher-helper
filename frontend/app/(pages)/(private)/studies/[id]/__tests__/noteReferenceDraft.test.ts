@@ -85,3 +85,36 @@ it.each(['mine', 'stored'] as const)('restores an unanswered comparison and reta
     expect(decided.references).toEqual(expect.arrayContaining([remote, later, local]));
     expect(decided.references.filter(ref => ref.id === desktop.id)).toEqual(side === 'stored' ? [{ ...desktop, fromVerse: 19 }] : []);
 });
+
+it.each(['remove', 'edit'] as const)('keeps the action time across a same-reference acknowledgement before a timed %s is sent', change => {
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_120 };
+    const next = change === 'edit' ? { ...phone, fromVerse: 17 } : undefined;
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true }, value: next, time });
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [desktop, remote], aliases, revision: 3, engineRevision: 3 });
+    expect(draft.review).toBeUndefined();
+    const canonical = next && { ...next, id: desktop.id };
+    expect(draft.references).toEqual(canonical ? [canonical, remote] : [remote]);
+    expect(draft.edits.get(desktop.id)).toEqual({ reference: canonical, time, observedRevision: undefined });
+    expect(draft.edits.has(phone.id)).toBe(false);
+});
+
+it('does not skip a comparison when the accepted reference has different words', () => {
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_120 };
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true }, time });
+    const different = { ...desktop, text: 'A different quotation' };
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [different, remote], aliases });
+    expect(draft.review?.rows).toEqual([{ mine: { exists: false }, stored: { exists: true, value: different } }]);
+    expect(draft.edits.get(desktop.id)).toBeUndefined();
+});
+
+it('requires a choice when a timed replacement would duplicate a reference from the acknowledgement', () => {
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_120 };
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true },
+        value: { ...remote, id: phone.id }, time });
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [desktop, remote], aliases });
+    expect(draft.review?.ids).toEqual([desktop.id]);
+    expect(draft.edits.get(desktop.id)).toBeUndefined();
+});

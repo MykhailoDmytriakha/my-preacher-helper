@@ -57,6 +57,25 @@ export function currentNoteReference(state: NoteReferenceDraft, opening: NoteRef
         ? { ...opening, reference: { ...opening.reference, id: canonical } } : opening);
 }
 
+function pendingReferenceAliases(state: NoteReferenceDraft, submitted: ScriptureReference[], accepted: ScriptureReference[],
+    aliases: readonly StudyNoteReferenceAlias[]) {
+    const pending = new Map<string, string>();
+    if (state.review) return pending;
+    for (const { from, to } of aliases) {
+        const edit = state.edits.get(from);
+        if (!edit?.time || state.edits.has(to)) continue;
+        const opening = submitted.filter(reference => reference.id === from);
+        const saved = accepted.filter(reference => reference.id === to);
+        const next = state.references.filter(reference => reference.id === from);
+        if (opening.length !== 1 || saved.length !== 1 || next.length > 1
+            || serializeContent(next[0] ?? null) !== serializeContent(edit.reference ?? null)
+            || serializeContent({ ...opening[0], id: to }) !== serializeContent(saved[0])) continue;
+        if (edit.reference && hasDuplicateAuthoredReference(accepted, edit.reference, saved[0])) continue;
+        pending.set(from, to);
+    }
+    return pending;
+}
+
 /** Keep both scoped versions with the same local input, including input batched with an acknowledgement. */
 export function updateNoteReferenceDraft(state: NoteReferenceDraft, action: NoteReferenceDraftAction): NoteReferenceDraft {
     switch (action.type) {
@@ -100,14 +119,23 @@ export function updateNoteReferenceDraft(state: NoteReferenceDraft, action: Note
         }
         case 'acknowledge': {
             const { submitted, accepted, revision, engineRevision, aliases } = action;
-            const rebased = rebaseAcceptedStudyNoteReferences(submitted, state.references, accepted, aliases);
+            const pending = pendingReferenceAliases(state, submitted, accepted, aliases);
+            const rebased = rebaseAcceptedStudyNoteReferences(submitted, state.references, accepted, aliases, pending);
+            const edits = new Map(state.edits);
+            for (const [from, to] of pending) {
+                const edit = state.edits.get(from)!;
+                const reference = rebased.references.find(row => row.id === to);
+                if (serializeContent(reference ?? null) !== serializeContent(edit.reference ? { ...edit.reference, id: to } : null)) continue;
+                edits.delete(from);
+                edits.set(to, { reference, time: edit.time });
+            }
             const previous = state.review?.recovery;
             const rebasedStored = previous && rebaseAcceptedStudyNoteReferences(previous.accepted, previous.stored, accepted, aliases);
             const stored = rebasedStored ? (rebasedStored.needsReview ? rebasedStored.storedChoice : rebasedStored.references)
                 : rebased.needsReview ? rebased.storedChoice : undefined;
             return {
                 references: rebased.references,
-                edits: state.edits,
+                edits,
                 aliases: new Map([...state.aliases, ...aliases.map(({ from, to }) => [from, to] as const)]),
                 review: stored && referenceReview(rebased.references, { accepted, stored, ...(revision !== undefined && { acceptedRevision: revision }), ...(engineRevision !== undefined && { engineRevision }) }),
             };
