@@ -158,6 +158,28 @@ describe('Study note reference reconciliation', () => {
     expect(refs).toHaveLength(choice === 'stored' ? 3 : 2);
   });
 
+  it.each([false, true])('keeps one reference when the reviewed replacement already exists (different quote: %s)', withQuote => {
+    const fromPhone = { ...opening, scriptureRefs: [phone] };
+    const saved = { ...romans, ...(withQuote && { text: 'Saved quotation' }) };
+    const local = { ...romans, ...(withQuote && { text: 'My quotation' }) };
+    const stored = save('desktop', initial, opening, { ...opening, scriptureRefs: [desktop, saved] });
+    const reconciled = save('phone', stored, opening, fromPhone);
+    const next = { ...fromPhone, content: 'Independent words', scriptureRefs: [{ ...local, id: phone.id }] };
+    const response = submit('follow-up', reconciled, fromPhone, next);
+    expect(response.kind).toBe('conflict');
+    const session = new DataSession({ ...initial, value: fromPhone });
+    session.edit(next);
+    session.registerCommit('follow-up', session.checkpoint().editGeneration, next);
+    session.accept(response);
+    session.release('follow-up');
+    if (withQuote) expect(readStudyNoteReferenceComparison(session.checkpoint())?.rows).toContainEqual({
+      mine: { exists: true, value: local }, stored: { exists: true, value: saved },
+    });
+    session.keepLocal();
+    const intended = session.checkpoint().draft!;
+    expect(intended).toMatchObject({ scriptureRefs: [local], content: next.content });
+  });
+
   it('does not redirect an old request to an independently re-added reference with the same words', () => {
     const fromPhone = { ...opening, scriptureRefs: [phone] };
     const stored = save('desktop', initial, opening, { ...opening, scriptureRefs: [desktop, romans] });

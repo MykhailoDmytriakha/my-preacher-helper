@@ -278,3 +278,9 @@ export function sameScriptureReference(a: ScriptureRefShape, b: ScriptureRefShap
   const right = passagesIn(b, inBible).map(verses);
   return left.length === right.length && left.every((passage, i) => samePassage(passage, right[i]));
 }
+
+
+/** A place is compared in the Bible in which the reference was written. */
+export function sameAuthoredScriptureReference(left: ScriptureRefShape, right: ScriptureRefShape): boolean {
+  return left.bible === right.bible && sameScriptureReference(left, right, left.bible);
+}

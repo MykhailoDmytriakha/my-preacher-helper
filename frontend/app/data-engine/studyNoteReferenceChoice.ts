@@ -1,3 +1,5 @@
+import { projectStudyNoteReferenceChoice } from '@/utils/studyNoteReferenceChoice';
+
 import { equalValues, readField, writeField } from './fieldValues';
 import { mergeDocumentFields, mergeFields } from './protocol';
 import {
@@ -40,15 +42,18 @@ function referenceChoice(checkpoint: SessionCheckpoint) {
   const stored = mergeFields(reviewed.accepted, latest, reviewed.stored, studyNoteReferencesPath).value;
   const mineAfterEdit = mergeFields(delta.before, delta.after, mine, studyNoteReferencesPath).value;
   const storedAfterEdit = mergeFields(delta.before, stored, delta.after, studyNoteReferencesPath).value;
-  const localRows = referenceRows(mineAfterEdit), savedRows = referenceRows(storedAfterEdit);
-  if (!localRows || !savedRows) return undefined;
+  const mineRows = referenceRows(mineAfterEdit), savedRows = referenceRows(storedAfterEdit);
+  const acceptedRows = referenceRows(latest);
+  if (!mineRows || !savedRows || !acceptedRows) return undefined;
+  const { references: localRows, collapsed } = projectStudyNoteReferenceChoice(mineRows, savedRows, acceptedRows);
+  const localChoice = localRows === mineRows ? mineAfterEdit : { exists: true, value: localRows };
   const local = new Map(localRows.map(row => [row.id, row]));
   const saved = new Map(savedRows.map(row => [row.id, row]));
   const field = (row: DocumentData | undefined): FieldValue => row === undefined ? { exists: false } : { exists: true, value: row };
   const comparedIds = [...new Set([...local.keys(), ...saved.keys()])].filter(id => !equalValues(local.get(id), saved.get(id)));
-  const rows = comparedIds.map(id => ({ mine: field(local.get(id)), stored: field(saved.get(id)) }));
-  if (!rows.length && !equalValues(mineAfterEdit, storedAfterEdit)) {
-    rows.push({ mine: mineAfterEdit, stored: storedAfterEdit });
+  const rows = comparedIds.map(id => ({ mine: field(local.get(id) ?? collapsed.get(id)), stored: field(saved.get(id)) }));
+  if (!rows.length && !equalValues(localChoice, storedAfterEdit)) {
+    rows.push({ mine: localChoice, stored: storedAfterEdit });
     comparedIds.push(...local.keys());
   }
 
@@ -59,7 +64,7 @@ function referenceChoice(checkpoint: SessionCheckpoint) {
   if (!merge.value.exists || merge.conflicts.some(conflict => conflict.path.length !== 1)
     || reviewed.fieldConflicts.some(conflict => conflict.path.length !== 1)) return undefined;
   return { rows, comparedIds, fields: merge.conflicts, merged: merge.value.value as DocumentData,
-    mine: mineAfterEdit, stored: storedAfterEdit };
+    mine: localChoice, stored: storedAfterEdit };
 }
 
 export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) {

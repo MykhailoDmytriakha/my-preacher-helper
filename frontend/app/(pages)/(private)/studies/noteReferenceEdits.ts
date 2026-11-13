@@ -1,5 +1,5 @@
 import { serializeContent } from '@/utils/contentFingerprint';
-import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
+import { sameAuthoredScriptureReference, sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
 
 import type { ScriptureReference } from '@/models/models';
 
@@ -17,9 +17,7 @@ export function findOpenedReference(references: ScriptureReference[], opening: N
 }
 
 /** An explicit choice can keep the same passage in two different Bibles. */
-export function sameAuthoredReference(left: ReferenceInput, right: ReferenceInput): boolean {
-    return left.bible === right.bible && sameScriptureReference(left, right, left.bible);
-}
+export const sameAuthoredReference = sameAuthoredScriptureReference;
 
 export function hasDuplicateAuthoredReference(references: ScriptureReference[], candidate: ReferenceInput, opening?: ScriptureReference): boolean {
     return references.some(ref => ref !== opening && sameAuthoredReference(ref, candidate));

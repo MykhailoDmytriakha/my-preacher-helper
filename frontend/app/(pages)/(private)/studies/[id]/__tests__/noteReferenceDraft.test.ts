@@ -118,3 +118,49 @@ it('requires a choice when a timed replacement would duplicate a reference from 
     expect(draft.review?.ids).toEqual([desktop.id]);
     expect(draft.edits.get(desktop.id)).toBeUndefined();
 });
+
+it.each(['mine', 'stored'] as const)('preserves one saved reference when resolving an identical replacement with %s', side => {
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true },
+        value: { ...remote, id: phone.id } });
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [desktop, remote], aliases, engineRevision: 3 });
+    expect(draft.review?.rows).toEqual([{ mine: { exists: true, value: { ...remote, id: desktop.id } },
+        stored: { exists: true, value: desktop } }]);
+    draft = updateNoteReferenceDraft(draft, { type: 'choose', side, review: draft.review });
+    expect(draft.references).toEqual(side === 'mine' ? [remote] : [desktop, remote]);
+});
+
+it('shows both quotations before a replacement uses the existing reference identity', () => {
+    const own = { ...remote, text: 'My quotation' };
+    const saved = { ...remote, text: 'Saved quotation' };
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true },
+        value: { ...own, id: phone.id } });
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [desktop, saved], aliases, engineRevision: 3 });
+    expect(draft.review?.rows).toContainEqual({ mine: { exists: true, value: own }, stored: { exists: true, value: saved } });
+    draft = updateNoteReferenceDraft(draft, { type: 'choose', side: 'mine', review: draft.review });
+    expect(draft.references).toEqual([own]);
+    expect(draft.edits.get(remote.id)).toEqual({ reference: own, observedRevision: 3 });
+});
+
+it('preserves the later removal of the destination when keeping the saved reference', () => {
+    const saved = { ...remote, text: 'Saved quotation' };
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'adopt', references: [phone] });
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: phone, uniqueId: true },
+        value: { ...remote, id: phone.id, text: 'My quotation' } });
+    draft = updateNoteReferenceDraft(draft, { type: 'acknowledge', submitted: [phone], accepted: [desktop, saved], aliases, engineRevision: 3 });
+    draft = updateNoteReferenceDraft(draft, { type: 'edit-opening', opening: { reference: saved, uniqueId: true } });
+    draft = updateNoteReferenceDraft(draft, { type: 'choose', side: 'stored', review: draft.review });
+    expect(draft.references).toEqual([desktop]);
+});
+
+it('does not overwrite an independent newer quotation in both versions of a recovered comparison', () => {
+    const earlier = { ...remote, text: 'Saved quotation' };
+    const later = { ...remote, text: 'Independent later quotation' };
+    const moved = { ...remote, id: desktop.id, text: 'Proposed quotation' };
+    let draft = updateNoteReferenceDraft(openingReferenceDraft, { type: 'restore', references: [moved, later],
+        recovery: { accepted: [desktop, earlier], stored: [desktop, later], engineRevision: 3 } });
+    expect(draft.review?.ids).toEqual([desktop.id]);
+    draft = updateNoteReferenceDraft(draft, { type: 'choose', side: 'mine', review: draft.review });
+    expect(draft.references).toEqual([moved, later]);
+});

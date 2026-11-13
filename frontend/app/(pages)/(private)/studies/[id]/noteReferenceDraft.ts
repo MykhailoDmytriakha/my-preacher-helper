@@ -1,5 +1,6 @@
 import { rebaseAcceptedStudyNoteReferences } from '@/data-engine/react.client';
 import { serializeContent } from '@/utils/contentFingerprint';
+import { projectStudyNoteReferenceChoice } from '@/utils/studyNoteReferenceChoice';
 
 import { findOpenedReference, hasDuplicateAuthoredReference, type NoteReferenceOpening } from '../noteReferenceEdits';
 
@@ -20,7 +21,7 @@ interface NoteReferenceDraft {
     references: ScriptureReference[];
     aliases: ReadonlyMap<string, string>;
     edits: ReadonlyMap<string, NoteReferenceEdit>;
-    review?: { recovery: NoteReferenceRecovery; rows: StudyNoteReferenceReviewRow[]; ids: string[] };
+    review?: { recovery: NoteReferenceRecovery; rows: StudyNoteReferenceReviewRow[]; ids: string[]; disputedIds: string[] };
 }
 
 type NoteReferenceDraftAction =
@@ -36,16 +37,22 @@ type NoteReferenceDraftAction =
 export const openingReferenceDraft: NoteReferenceDraft = { references: [], aliases: new Map(), edits: new Map() };
 
 function referenceReview(mine: ScriptureReference[], recovery: NoteReferenceRecovery) {
-    const local = new Map(mine.map(row => [row.id, row]));
+    const { references: chosen, collapsed } = projectStudyNoteReferenceChoice(mine, recovery.stored, recovery.accepted);
+    const local = new Map(chosen.map(row => [row.id, row]));
     const accepted = new Map(recovery.stored.map(row => [row.id, row]));
     const field = (row: ScriptureReference | undefined) => row ? { exists: true, value: { ...row } } : { exists: false };
     const ids = [...new Set([...local.keys(), ...accepted.keys()])].filter(id =>
         serializeContent(local.get(id) ?? null) !== serializeContent(accepted.get(id) ?? null));
-    const rows = ids.map(id => ({ mine: field(local.get(id)), stored: field(accepted.get(id)) }));
-    if (rows.length && local.size === mine.length && accepted.size === recovery.stored.length) return { recovery, rows, ids };
+    const rows = ids.map(id => ({ mine: field(local.get(id) ?? collapsed.get(id)), stored: field(accepted.get(id)) }));
+    if (rows.length && local.size === chosen.length && accepted.size === recovery.stored.length) {
+        const disputedIds = chosen === mine ? ids : [...new Set([...mine.map(row => row.id), ...accepted.keys()])]
+            .filter(id => serializeContent(mine.find(row => row.id === id)) !== serializeContent(accepted.get(id)));
+        return { recovery, rows, ids, disputedIds };
+    }
     if (serializeContent(mine) === serializeContent(recovery.stored)) return undefined;
     // Legacy duplicate IDs or competing list order still need an explicit whole-list decision.
-    return { recovery, ids: [...new Set([...local.keys(), ...accepted.keys()])], rows: [
+    const allIds = [...new Set([...local.keys(), ...accepted.keys()])];
+    return { recovery, ids: allIds, disputedIds: allIds, rows: [
         { mine: { exists: true, value: mine.map(row => ({ ...row })) },
             stored: { exists: true, value: recovery.stored.map(row => ({ ...row })) } },
     ] };
@@ -93,7 +100,7 @@ export function updateNoteReferenceDraft(state: NoteReferenceDraft, action: Note
                 else edits.delete(id);
             }
             if (!review) return { ...state, references, edits };
-            const independent = (row: ScriptureReference) => !review.ids.includes(row.id);
+            const independent = (row: ScriptureReference) => !review.disputedIds.includes(row.id);
             const stored = rebaseAcceptedStudyNoteReferences(
                 state.references.filter(independent), references.filter(independent), review.recovery.stored, [],
             ).references;
@@ -142,15 +149,17 @@ export function updateNoteReferenceDraft(state: NoteReferenceDraft, action: Note
         }
         case 'choose':
             if (!state.review || state.review !== action.review) return state;
+            const references = action.side === 'stored' ? state.review.recovery.stored
+                : projectStudyNoteReferenceChoice(state.references, state.review.recovery.stored, state.review.recovery.accepted).references;
             const edits = new Map(state.edits);
             for (const id of state.review.ids) {
                 edits.delete(id);
                 for (const [from, to] of state.aliases) if (id === to) edits.delete(from);
                 const observedRevision = state.review.recovery.engineRevision;
                 if (action.side === 'mine' && observedRevision) {
-                    edits.set(id, { observedRevision, reference: state.references.find(ref => ref.id === id) });
+                    edits.set(id, { observedRevision, reference: references.find(ref => ref.id === id) });
                 }
             }
-            return { ...state, edits, references: action.side === 'stored' ? state.review.recovery.stored : state.references, review: undefined };
+            return { ...state, edits, references, review: undefined };
     }
 }
