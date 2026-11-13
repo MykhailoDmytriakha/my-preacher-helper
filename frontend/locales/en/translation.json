@@ -1647,7 +1647,7 @@
         "count": "Number on the badge",
         "countMain": "Main",
         "countAll": "All",
-        "countHint": "Main cross-references are the ones at least three reference works give for this verse. {{place}} has {{main}} main ones and {{total}} in all. On the badge: “Main” — {{main}}, “All” — {{total}}. The list it opens is always complete. If a verse has only other cross-references, “Main” shows no badge — tap the verse number to open the list.",
+        "countHint": "Main cross-references are the ones at least three reference works give for this verse. {{place}} has {{main}} main ones and {{total}} in all. On the badge: “Main” — {{main}}, “All” — {{total}}. The list it opens is always complete: with “All” the other cross-references are open in it at once, with “Main” they are folded under the main ones. If a verse has only other cross-references, “Main” shows no badge — tap the verse number to open the list, and they are shown at once.",
         "others": "The other places in the list",
         "othersAddresses": "References only",
         "othersVerses": "With text",
