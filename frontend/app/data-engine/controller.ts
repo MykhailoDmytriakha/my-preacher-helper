@@ -35,6 +35,7 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { readGroupFlowTextChoice, writeGroupFlowTextChoice } from './rowConflictDetails';
 import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
@@ -824,7 +825,7 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint) || readGroupFlowTextChoice(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
@@ -846,6 +847,13 @@ export class EditorController {
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const atChoice = decided === source ? remoteChoice?.draft : undefined;
+        const local = atChoice === undefined ? decided.draft : atChoice;
+        const groupText = !selection && readGroupFlowTextChoice(decided, local);
+        const groupDraft = groupText && writeGroupFlowTextChoice(local, groupText, 'before');
+        const groupRemainder = groupDraft && decided.confirmed.value && decided.remoteCandidate?.value
+          ? mergeDocumentFields(decided.confirmed.value, groupDraft, decided.remoteCandidate.value) : undefined;
+        if (groupRemainder?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
         const placeOpening = !selection && !correction ? commentPlaceChoiceOpening(decided) : undefined;
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
@@ -990,6 +998,11 @@ export class EditorController {
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions, choiceTime, decided);
+          if (groupText) {
+            const reviewed = writeGroupFlowTextChoice(session.checkpoint().draft, groupText, 'mine');
+            if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
+            session.edit(reviewed);
+          }
           if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;
           if (selectedMove) {
@@ -1014,12 +1027,10 @@ export class EditorController {
               merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
           }
         } else {
-          const atChoice = decided === source ? remoteChoice?.draft : undefined;
-          const local = atChoice === undefined ? decided.draft : atChoice;
           const chosenPath = preference?.path ?? (!selection && decided.serviceOrderPlacementComparison ? ['rank'] : undefined);
-          const retainedFields = chosenPath && local && decided.confirmed.value && decided.remoteCandidate?.value
+          const retainedFields = groupRemainder ?? (chosenPath && local && decided.confirmed.value && decided.remoteCandidate?.value
             ? mergeDocumentFields(decided.confirmed.value,
-              writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined;
+              writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined);
           if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
           const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
           const retainedMeeting = meeting && decided.remoteCandidate?.value
@@ -1038,6 +1049,7 @@ export class EditorController {
             const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
             if (merged.value.exists) session.edit(merged.value.value as DocumentData);
             session.retainOutlineTitleActions(decided);
+            if (groupRemainder) session.retainUnreviewedAutosaveActions(decided);
           }
           if (remoteChoice?.refused && !decided.remoteCandidate) {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);

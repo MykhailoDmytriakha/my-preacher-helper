@@ -554,6 +554,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               <FlowEditor
                 flowItem={selectedFlowItem}
                 template={selectedTemplate}
+                feedbackSubject={editor.feedbackSubject}
                 onUpdateTemplate={({ content }) => content === undefined ? undefined : editor.setBlockContent(selectedTemplate, content)}
                 onHoldContent={content => editor.holdBlockContent(selectedTemplate, content)}
                 titleScope={editor.flowTitleScope}

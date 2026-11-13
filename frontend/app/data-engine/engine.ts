@@ -38,6 +38,7 @@ import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { readGroupFlowTextChoice } from './rowConflictDetails';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields } from './sermonFieldChoice';
 import { DataSession } from './session';
@@ -2432,6 +2433,7 @@ export class DataEngine {
     const about = copy(checkpoint.confirmed.resource);
     const pending = checkpoint.pending;
     const preference = readAccountPreferenceComparison(checkpoint);
+    const groupText = readGroupFlowTextChoice(checkpoint);
     const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
     const affected = [...this.manualForms.values()].filter(item => {
       if (item.parent !== parent || !item.scope) return false;
@@ -2443,7 +2445,7 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
         const resolved = controller.getState().checkpoint;
-        if ((preference || meeting || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((preference || meeting || groupText || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
@@ -2451,7 +2453,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (groupText && resolved.dirty) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

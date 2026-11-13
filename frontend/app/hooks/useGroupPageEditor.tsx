@@ -85,6 +85,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     mine: meetingWords(reviewedMeeting.mine), stored: meetingWords(reviewedMeeting.remotePreview ?? reviewedMeeting.stored.value),
     keepMineDisabled: reviewedMeeting.canKeepLocal === false,
   } : flowComparison;
+  const feedbackSubject = manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity;
   const titleHistory = historyScope && { ...historyScope, restore: editTitle };
   const statusHistory = historyScope && { ...historyScope, field: 'status' as const, restore: async (next: string) => {
     if (!isGroupStatus(next)) throw new Error('Invalid group status');
@@ -120,7 +121,8 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
       restore: meeting.restoreField,
     } : undefined,
     deleteGroupDetail: data.deleteGroupDetail,
-    feedback: <DataSyncStatus comparison={comparison || undefined} subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
+    feedbackSubject,
+    feedback: <DataSyncStatus comparison={comparison || undefined} subject={feedbackSubject} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : () => data.keepLocal(comparison ? checkpoint : undefined)}
       onAcceptRemote={manual ? meeting.form.acceptRemote : () => data.acceptRemote(comparison ? checkpoint : undefined)} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}

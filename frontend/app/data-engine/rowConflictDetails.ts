@@ -92,41 +92,73 @@ export function readTagColorConflict(checkpoint: SessionCheckpoint) {
   return readExactTextConflict(checkpoint, 'tags', 'color');
 }
 
-export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
-  const { confirmed, draft, conflicts, remoteCandidate, pending } = checkpoint;
+const groupFlowFields = {
+  block: { birth: GROUP_BLOCK_TITLE_POLICY.birth, target: GROUP_BLOCK_TITLE_POLICY.target('title') },
+  step: { birth: GROUP_STEP_TITLE_POLICY.birth, target: GROUP_STEP_TITLE_POLICY.target('title') },
+  status: { birth: GROUP_BLOCK_STATUS_POLICY.birth, target: GROUP_BLOCK_STATUS_POLICY.target('status') },
+  duration: { birth: GROUP_STEP_DURATION_POLICY.birth, target: GROUP_STEP_DURATION_POLICY.target('durationMin') },
+  content: { birth: GROUP_BLOCK_TITLE_POLICY.birth, target: {
+    field: 'templates', leaf: 'content', accepts: (value: unknown): value is string => typeof value === 'string',
+  } },
+  notes: { birth: GROUP_STEP_TITLE_POLICY.birth, target: {
+    field: 'flow', leaf: 'instanceNotes', missing: null, accepts: (value: unknown): value is string => typeof value === 'string',
+  } },
+} as const;
+
+function groupFlowFieldVersions(checkpoint: SessionCheckpoint, draft: DocumentData | null) {
+  const { confirmed, conflicts, remoteCandidate, pending } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft
     || conflicts.length !== 1 || Object.keys(pending).length !== 1
     || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
   const { path } = conflicts[0];
-  const isBlock = path[0] === 'templates';
-  const field: 'block' | 'step' | 'status' | 'duration' = isBlock ? (path[2] === 'status' ? 'status' : 'block')
-    : (path[2] === 'durationMin' ? 'duration' : 'step');
-  const targets = {
-    block: { birth: GROUP_BLOCK_TITLE_POLICY.birth, target: GROUP_BLOCK_TITLE_POLICY.target('title') },
-    step: { birth: GROUP_STEP_TITLE_POLICY.birth, target: GROUP_STEP_TITLE_POLICY.target('title') },
-    status: { birth: GROUP_BLOCK_STATUS_POLICY.birth, target: GROUP_BLOCK_STATUS_POLICY.target('status') },
-    duration: { birth: GROUP_STEP_DURATION_POLICY.birth, target: GROUP_STEP_DURATION_POLICY.target('durationMin') },
-  };
-  const { birth: birthTarget, target }: { birth: RowFieldTarget<string>; target: RowFieldTarget<string | number | null> } = targets[field];
-  if (path.length !== 3 || path[0] !== target.field || !path[1].startsWith('id:') || path[2] !== target.leaf) return undefined;
+  if (path.length !== 3 || !path[1].startsWith('id:')) return undefined;
+  const comparisonField = (Object.keys(groupFlowFields) as Array<keyof typeof groupFlowFields>).find(field => {
+    const { target } = groupFlowFields[field];
+    return target.field === path[0] && target.leaf === path[2];
+  });
+  if (!comparisonField) return undefined;
+  const { birth: birthTarget, target }: { birth: RowFieldTarget<string>; target: RowFieldTarget<string | number | null> } = groupFlowFields[comparisonField];
   const id = path[1].slice(3);
   const birth = existingRowField(confirmed.value[target.field], id, birthTarget);
   const before = existingRowField(confirmed.value[target.field], id, target);
   const mine = existingRowField(draft[target.field], id, target);
   const stored = existingRowField(remoteCandidate.value[target.field], id, target);
-  if (birth === undefined || before === undefined || mine === undefined || stored === undefined || mine === stored
+  if (birth === undefined || before === undefined || mine === undefined || stored === undefined
     || existingRowField(draft[target.field], id, birthTarget) !== birth
     || existingRowField(remoteCandidate.value[target.field], id, birthTarget) !== birth) return undefined;
+  return { field: comparisonField, target, birthTarget, birth, id, path, before, mine, stored };
+}
+
+export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate } = checkpoint;
+  const versions = groupFlowFieldVersions(checkpoint, draft);
+  if (!versions || versions.mine === versions.stored || !draft || !confirmed.value || !remoteCandidate) return undefined;
+  const { field, target, id, path, before, mine, stored } = versions;
   const compared = (value: DocumentData) => {
     const rows = replaceExistingRowField(value[target.field], id, before, target);
-    const normalized = isBlock && Array.isArray(rows) ? rows.map(row => object(row) && row.id === id
+    const normalized = target.field === 'templates' && Array.isArray(rows) ? rows.map(row => object(row) && row.id === id
       ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'updatedAt')) : row) : rows;
     return { ...Object.fromEntries(Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key))),
       [target.field]: normalized };
   };
-  if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  if (field !== 'content' && field !== 'notes' && !equalValues(compared(confirmed.value), compared(draft))) return undefined;
   return { field, mine, stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
+}
+
+export function readGroupFlowTextChoice(checkpoint: SessionCheckpoint, draft = checkpoint.draft) {
+  const versions = groupFlowFieldVersions(checkpoint, draft);
+  return versions && (versions.field === 'content' || versions.field === 'notes') ? versions : undefined;
+}
+
+/** Replace only the compared text on the exact block or step it belonged to. */
+export function writeGroupFlowTextChoice(value: DocumentData | null, choice: NonNullable<ReturnType<typeof readGroupFlowTextChoice>>,
+  side: 'before' | 'mine'): DocumentData | undefined {
+  const { target, birthTarget, birth, id } = choice;
+  if (!value || existingRowField(value[target.field], id, birthTarget) !== birth
+    || existingRowField(value[target.field], id, target) === undefined) return undefined;
+  const rows = replaceExistingRowField(value[target.field], id, choice[side], target);
+  return rows === undefined ? undefined : { ...value, [target.field]: rows };
 }
 
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) {

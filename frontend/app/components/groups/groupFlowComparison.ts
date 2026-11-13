@@ -10,6 +10,8 @@ const fields = {
   step: 'groupFlow.editor.stepTitleLabel',
   status: 'groupFlow.editor.statusLabel',
   duration: 'groupFlow.editor.durationLabel',
+  content: 'groupFlow.editor.contentLabel',
+  notes: 'groupFlow.editor.notesLabel',
 };
 
 type Translate = (key: string, values?: Record<string, string>) => string;
@@ -17,6 +19,7 @@ type Translate = (key: string, values?: Record<string, string>) => string;
 export function groupFlowFieldText(t: Translate, field: keyof typeof fields, value: string | number | null): string {
   if (field === 'duration') return String(storedFieldValue(t, 'groups.flow', 'durationMin', value));
   if (field === 'status') return t('groupFlow.status.' + value);
+  if (field === 'content' || field === 'notes') return typeof value === 'string' && value ? value : t('dataSync.emptyField');
   return typeof value === 'string' && value ? value : t(field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName');
 }
 

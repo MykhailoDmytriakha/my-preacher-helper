@@ -3,6 +3,7 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useId } from 'react';
 
+import { SyncOutlet } from '@/components/common/syncOutlet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -34,6 +35,7 @@ interface FlowEditorProps {
     onRenameStep: (title: string | null) => Promise<void>;
     onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void;
     onClose: () => void;
+    feedbackSubject?: object;
 }
 
 export default function FlowEditor({
@@ -48,6 +50,7 @@ export default function FlowEditor({
     onRenameStep,
     onUpdateFlowItem,
     onClose,
+    feedbackSubject,
 }: FlowEditorProps) {
     const { t } = useTranslation();
     const titleId = useId();
@@ -85,6 +88,11 @@ export default function FlowEditor({
                     </button>
                 </div>
 
+                {modal && feedbackSubject && (
+                    <div className="max-h-[48dvh] shrink-0 overflow-y-auto overscroll-contain px-5">
+                        <SyncOutlet subject={feedbackSubject} active />
+                    </div>
+                )}
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 pb-5">
                     {/* Status selector */}
                     <div>

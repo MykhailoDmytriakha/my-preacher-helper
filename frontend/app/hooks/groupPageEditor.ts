@@ -50,4 +50,5 @@ export interface GroupPageEditor {
     restore: (rowId: string, rowCreatedAt: string, field: GroupMeetingField, value: string | null) => Promise<void> };
   deleteGroupDetail: () => void | Promise<void>;
   feedback: ReactNode;
+  feedbackSubject?: object;
 }

@@ -3,6 +3,7 @@ import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineH
 import { editorIdentity, manualScopeIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
 import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
+import { readGroupFlowFieldConflict } from '@/data-engine/rowConflictDetails';
 import { DataSession } from '@/data-engine/session';
 import { describeManualSync, describeSync } from '@/data-engine/status';
 
@@ -543,6 +544,84 @@ it('rejects a field choice if another ordinary continuation lands during retirem
     expect((await h.commits.list('owner')).map(request => [request.id, request.state]))
       .toEqual([[first.id, 'conflict'], [second.id, 'queued'], [late.id, 'queued']]);
   } finally { a.dispose(); b.dispose(); }
+});
+
+it.each(['independent', 'competing', 'converged', 'timed'] as const)('keeps %s later group words outside a block content choice', async variant => {
+  const block = { id: 'template', type: 'custom', title: 'Block', status: 'filled', content: 'Opening words',
+    createdAt: 'now', updatedAt: 'now' };
+  const value = { ...original, description: 'Opening description', templates: [block],
+    flow: [{ id: 'step', templateId: block.id, order: 1 }] };
+  const h = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  const engine = h.createBrowser().engine;
+  engine.setOwner('owner'); engine.setOnline(false);
+  try {
+    const editor = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'group', 'block-text'));
+    await editor.commit(current => ({ ...current!, templates: [{ ...block, content: 'Phone words' }] }));
+    h.silentRemote({ templates: [{ ...block, content: 'Desktop words' }] });
+    engine.setOnline(true);
+    await engine.retry();
+    await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+    const current = editor.getState().checkpoint;
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    await editor.edit({
+      ...current.draft!, description: 'Later unsent description',
+      ...(variant === 'converged' ? { templates: [{ ...block, content: 'Desktop words' }] } : {}),
+      ...(variant === 'timed' ? { title: 'Later group title' } : {}),
+    }, undefined, variant === 'timed' ? { field: 'title', time } : undefined);
+    expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(1);
+    if (variant === 'competing') {
+      await h.remote({ description: 'Different desktop description' });
+      await waitFor(() => expect(editor.getState().checkpoint.remoteCandidate?.value?.description).toBe('Different desktop description'));
+      const compared = editor.getState().checkpoint;
+      await expect(editor.keepLocal(undefined, compared)).rejects.toMatchObject({ code: 'decision-changed' });
+      await expect(editor.acceptRemote(undefined, compared)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(editor.getState().checkpoint.draft?.description).toBe('Later unsent description');
+      expect(h.server.value?.description).toBe('Different desktop description');
+      expect((await h.commits.list('owner'))[0]?.state).toBe('conflict');
+    } else {
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint.draft).toMatchObject({
+        description: 'Later unsent description', templates: [{ ...block, content: 'Desktop words' }],
+      });
+      await waitFor(() => expect(h.server.value?.description).toBe('Later unsent description'));
+      if (variant === 'timed') {
+        expect(h.server.value?.title).toBe('Later group title');
+        expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+          groupTitleAction: expect.objectContaining({ before: original.title, after: 'Later group title', time }),
+        }));
+      }
+    }
+  } finally { engine.dispose(); }
+});
+
+it.each(['content', 'instanceNotes'] as const)('saves the exact reviewed %s when mine returns to the opening value', async leaf => {
+  const content = leaf === 'content';
+  const block = { id: 'block', type: 'custom', title: 'Block', status: 'filled', content: 'Opening words', createdAt: 'now', updatedAt: 'now' };
+  const step = { id: 'step', templateId: block.id, order: 1 };
+  const root = content ? 'templates' : 'flow';
+  const row = content ? block : step;
+  const opening = { ...original, templates: [block], flow: [step] };
+  const withWords = (words: string) => ({ [root]: [{ ...row, [leaf]: words }] });
+  const mine = content ? 'Opening words' : null;
+  const h = documentEngineHarness({ resource, value: opening, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  const engine = h.createBrowser().engine;
+  engine.setOwner('owner'); engine.setOnline(false);
+  try {
+    const editor = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'group', 'exact-local-text'));
+    await editor.commit(current => ({ ...current!, ...withWords('Phone words') }));
+    h.silentRemote(withWords('Desktop words'));
+    engine.setOnline(true); await engine.retry();
+    await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+    await editor.edit({ ...editor.getState().checkpoint.draft!, [root]: [row], description: 'Later description' });
+    const checkpoint = editor.getState().checkpoint;
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ mine, stored: 'Desktop words' });
+
+    await editor.keepLocal(undefined, checkpoint);
+    expect(editor.getState().checkpoint.draft).toMatchObject({ [root]: [row], description: 'Later description' });
+    if (!content) expect(editor.getState().checkpoint.draft?.flow).toEqual([step]);
+    await waitFor(() => expect(h.server.value).toMatchObject({ [root]: [row], description: 'Later description' }));
+    if (!content) expect(h.server.value?.flow).toEqual([step]);
+  } finally { engine.dispose(); }
 });
 
 it('does not keep an early generation refusal on a later revision of the rejected generation', async () => {

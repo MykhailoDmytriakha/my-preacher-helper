@@ -593,6 +593,11 @@ export class DataSession {
     carryOutlineTitleActions(source, this.state);
   }
 
+  retainUnreviewedAutosaveActions(source: SessionCheckpoint): void {
+    carryAnchoredDraftChronology(source, this.state, source.conflicts);
+    this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+  }
+
   stageServiceOrderPlacementRetry(move: ServiceOrderPlacementCapture): void {
     if (!this.state.draft) throw new Error('The service order is unavailable');
     this.edit({ ...this.state.draft, rank: move.rank });

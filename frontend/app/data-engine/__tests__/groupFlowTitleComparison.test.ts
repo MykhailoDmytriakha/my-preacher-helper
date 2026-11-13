@@ -24,6 +24,26 @@ describe('group flow title comparison', () => {
     expect(readGroupFlowFieldConflict(checkpoint)).toBeUndefined();
   });
 
+  it.each(['content', 'instanceNotes'] as const)('shows both exact versions of %s before resolving', leaf => {
+    const blockText = leaf === 'content';
+    const root = blockText ? 'templates' : 'flow';
+    const row = blockText ? template : { ...step, instanceNotes: 'Opening notes' };
+    const withWords = (words: string) => ({ ...value, [root]: [{ ...row, [leaf]: words }] });
+    const base = { ...opening, value: { ...value, [root]: [row] } };
+    const checkpoint = new DataSession(base).checkpoint();
+    checkpoint.draft = withWords('Phone words');
+    checkpoint.pending.save = { generation: 1, value: checkpoint.draft };
+    checkpoint.remoteCandidate = { ...base, metadata: { ...metadata, revision: 2 }, value: withWords('Desktop words') };
+    checkpoint.conflicts = [{ path: [root, 'id:' + row.id, leaf], base: { exists: true, value: 'Opening words' },
+      mine: { exists: true, value: 'Phone words' }, theirs: { exists: true, value: 'Desktop words' } }];
+
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({
+      field: blockText ? 'content' : 'notes', mine: 'Phone words', stored: 'Desktop words',
+    });
+    checkpoint.draft.description = 'Separate local edit';
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ mine: 'Phone words', stored: 'Desktop words' });
+  });
+
   it('keeps an explicit step clear visible and declines a replacement row', () => {
     const checkpoint = new DataSession(opening).checkpoint();
     const { instanceTitle: _old, ...cleared } = step;
