@@ -3,6 +3,7 @@ import { withinDeadline } from './withinDeadline';
 import type { SerwistPlugin } from 'serwist';
 
 const RETRY_DEADLINE_MS = 8_000;
+const TRANSIENT_SCRIPT_STATUSES = new Set([502, 503, 504]);
 const SCRIPT_MEDIA_TYPES = new Set(['application/javascript', 'text/javascript', 'application/x-javascript']);
 
 function isSuccessfulScript(response: Response): boolean {
@@ -28,15 +29,21 @@ export function createPrecacheScriptRecovery(origin: string): SerwistPlugin {
     async fetchDidSucceed({ event, request, response }) {
       const url = new URL(request.url);
       if (event.type !== 'fetch' || request.method !== 'GET' || url.origin !== origin
-        || !url.pathname.startsWith('/_next/static/chunks/') || !url.pathname.endsWith('.js')
-        || !isSuccessfulScript(response)) return response;
-      try {
-        return await completeBody(response);
-      } catch (error) {
-        if (request.signal.aborted) throw error;
+        || !url.pathname.startsWith('/_next/static/chunks/') || !url.pathname.endsWith('.js')) return response;
+      if (isSuccessfulScript(response)) {
+        try {
+          return await completeBody(response);
+        } catch (error) {
+          if (request.signal.aborted) throw error;
+        }
+      } else {
+        if (request.signal.aborted || !TRANSIENT_SCRIPT_STATUSES.has(response.status)
+          || response.headers.has('retry-after')) return response;
+        void response.body?.cancel().catch(() => undefined);
       }
 
-      // Only a failed body reaches this point. Retain the request's credentials and integrity.
+      // Keep one bounded retry for a broken body or temporary gateway response.
+      // Retain the request's credentials and integrity.
       const controller = new AbortController();
       const cancel = () => controller.abort(request.signal.reason);
       request.signal.addEventListener('abort', cancel, { once: true });

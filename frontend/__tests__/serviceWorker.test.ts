@@ -150,6 +150,31 @@ describe('service worker transport boundary', () => {
       }
     });
 
+    it.each([502, 503, 504])('recovers a missing app script after a temporary HTTP %i', async status => {
+      const complete = scriptResponse('completed module');
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(complete);
+      try {
+        const response = await networkPrecacheAnswer(new Request(scriptUrl), scriptResponse('temporary failure', status));
+
+        expect(await response.text()).toBe('completed module');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(fetchSpy.mock.calls[0][0]).toMatchObject({ url: scriptUrl, method: 'GET', cache: 'reload' });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('preserves a temporary response with an explicit retry delay', async () => {
+      const failure = new PlatformResponse('wait', { status: 503, headers: { 'retry-after': '20' } }) as unknown as Response;
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      try {
+        await expect(networkPrecacheAnswer(new Request(scriptUrl), failure)).resolves.toBe(failure);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
     it('returns a complete script unchanged and does not repeat the request', async () => {
       const complete = scriptResponse('complete');
       const fetchSpy = jest.spyOn(globalThis, 'fetch');
