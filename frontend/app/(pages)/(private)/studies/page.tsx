@@ -24,6 +24,7 @@ import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
 import { CommentIcon } from '@/components/Icons';
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import Select from '@/components/ui/Select';
+import { useScrollSelection } from '@/hooks/useScrollSelection';
 import { useSearchInputQuery } from '@/hooks/useSearchInputQuery';
 import { useSlidingRow } from '@/hooks/useSlidingRow';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -115,9 +116,8 @@ export default function StudiesPage() {
   const analysis = useStudyAnalysisOpening(notes, notesLoading);
   // Opened at an analysis from the Bible («Все разборы»): its card in sight, lit for a moment.
   const arrivedAt = useListArrival(notes);
-  // The tab the list is on stands in view: on a phone the row is wider than the screen, and opened on «Разборы» it
-  // showed the first three tabs and none lit. The counts arrive after the tabs and widen them, so they move it too.
-  const tabRow = useSlidingRow<HTMLDivElement>('[aria-current="true"]', `${activeTab}:${Object.values(noteCounts).join(',')}`);
+  const tabRow = useSlidingRow<HTMLDivElement>();
+  useScrollSelection(tabRow.rowRef, 'horizontal', '[aria-current="true"]', activeTab);
   const openAnalysis = analysis.open;
   const openNote = useCallback((note: StudyNote, editing: boolean) => (
     note.type === 'analysis' ? openAnalysis(note, editing) : router.push(`/studies/${note.id}${window.location.search}`)
@@ -375,39 +375,41 @@ export default function StudiesPage() {
       {/* Five tabs fit a computer; on a narrow phone the row slides under the finger rather than clip a word. */}
       {/* The row scrolls inside its frame, so the frame's line under the tabs never fades with the row's ends. */}
       <div className="-mx-4 border-b border-gray-200 dark:border-gray-700 sm:mx-0">
-        <div ref={tabRow.rowRef} className={`relative flex overflow-x-auto px-4 sm:px-0 ${tabRow.fade}`}>
-          {STUDY_NOTE_TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              aria-current={activeTab === tab ? 'true' : undefined}
-              className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
-                ${activeTab === tab
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
-            >
-              {t(`studiesWorkspace.tabs.${tab}`)}
-              {/* Show count in parentheses for non-question tabs */}
-              {canDescribeNotes && tab !== 'questions' && (
-                <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                  ({noteCounts[tab]})
-                </span>
-              )}
+        <div ref={tabRow.rowRef} className={`relative overflow-x-auto ${tabRow.fade}`}>
+          <div className="flex w-max min-w-full px-4 sm:px-0">
+            {STUDY_NOTE_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                aria-current={activeTab === tab ? 'true' : undefined}
+                className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
+                  ${activeTab === tab
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+              >
+                {t(`studiesWorkspace.tabs.${tab}`)}
+                {/* Show count in parentheses for non-question tabs */}
+                {canDescribeNotes && tab !== 'questions' && (
+                  <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                    ({noteCounts[tab]})
+                  </span>
+                )}
 
-              {/* Active tab indicator */}
-              {activeTab === tab && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
-              )}
+                {/* Active tab indicator */}
+                {activeTab === tab && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
+                )}
 
-              {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
-              {canDescribeNotes && tab === 'questions' && noteCounts.questions > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                  {noteCounts.questions}
-                </span>
-              )}
-            </button>
-          ))}
+                {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
+                {canDescribeNotes && tab === 'questions' && noteCounts.questions > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    {noteCounts.questions}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

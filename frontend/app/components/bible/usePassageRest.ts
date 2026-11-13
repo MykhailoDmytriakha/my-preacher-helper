@@ -2,8 +2,9 @@
 
 import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
 
+import { scrollInput } from '@/utils/scrollInput';
+
 import { readingSurface } from './readingSurface';
-import { scrollInput } from './scrollInput';
 import { restingScrollTop, type PassageBox } from './verseSheetGeometry';
 
 type Layout = { width: number; height: number; textWidth: number; textHeight: number };

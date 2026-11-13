@@ -9,6 +9,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import Switch from '@/components/ui/Switch';
 import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useScrollSelection } from '@/hooks/useScrollSelection';
 import { useSlidingRow } from '@/hooks/useSlidingRow';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords } from '@/utils/bibleText';
@@ -19,7 +20,6 @@ import { useTranslation } from '@locales/useTranslation';
 import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs, useTrailPrefsWritable } from './placeTrailStore';
 import { useBookTexts } from './useBookTexts';
 import { useFollowAfterClose } from './useFollowAfterClose';
-import { useTrailCentering } from './useTrailCentering';
 
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -115,8 +115,8 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo, lit = false 
   lit?: boolean;
 }) {
   const { t } = useTranslation();
-  const { rowRef, fade } = useSlidingRow<HTMLDivElement>('[data-trail-at]', litLinkKey(trail), { center: false });
-  useTrailCentering(rowRef, 'horizontal', `${litLinkKey(trail)}|${look}`);
+  const { rowRef, fade } = useSlidingRow<HTMLDivElement>();
+  useScrollSelection(rowRef, 'horizontal', '[data-trail-at]', `${litLinkKey(trail)}|${look}`);
   // The place being read stands in the middle of the row whenever the light goes to another link or the
   // links shift — a new link at the end, the light moved back; ordinary reading changes no link,
   // so the row stays where it was scrolled.
@@ -179,7 +179,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
   // The selection moving to another link (or the links shifting) brings it into view; ordinary reading
   // changes no link and leaves the column where the person scrolled it.
   const light = litLinkKey(trail);
-  useTrailCentering(listRef, 'vertical', `${light}|${verseStart}|${look}`);
+  useScrollSelection(listRef, 'vertical', '[data-trail-at]', `${light}|${verseStart}|${look}`);
   const newestFirst = trail.links.map((link, index) => ({ link, index })).reverse();
   const width = verseStart ? COLUMN_WIDTH.verses : COLUMN_WIDTH.places;
   const frame = 'flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';

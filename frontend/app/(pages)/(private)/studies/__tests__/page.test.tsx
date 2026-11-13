@@ -600,46 +600,123 @@ describe('StudiesPage', () => {
       expect(toast).toHaveBeenCalledWith('studiesWorkspace.newAnalysisHint');
     });
 
-    it('keeps the tab the list is on in view where the row is wider than the screen', () => {
-      // A phone: five tabs of 110px in a 300px row. Opened on «Разборы», the row showed the first three tabs and none lit.
-      const widths = jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.tagName === 'BUTTON' ? 110 : 0; });
-      const lefts = jest.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
-        return this.tagName === 'BUTTON' && this.parentElement ? Array.from(this.parentElement.children).indexOf(this) * 110 : 0;
+    function tabGeometry(viewport: number, itemWidth: number) {
+      const layout = { viewport, itemWidth };
+      const tabs = () => screen.getByRole('button', { name: /^studiesWorkspace\.tabs\.analyses/ });
+      const rowOf = (element: HTMLElement) => element.closest<HTMLElement>('.overflow-x-auto');
+      const isTab = (element: HTMLElement) => element.tagName === 'BUTTON' && Boolean(rowOf(element));
+      const contentWidth = () => Math.max(layout.viewport, 5 * layout.itemWidth);
+      const room = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return rowOf(this) === this ? layout.viewport : 0;
       });
-      const room = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => 300);
+      const scrollWidth = jest.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(contentWidth);
+      const previousScrollLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollLeft');
+      const positions = new WeakMap<HTMLElement, number>();
+      Object.defineProperty(HTMLElement.prototype, 'scrollLeft', {
+        configurable: true,
+        get(this: HTMLElement) { return positions.get(this) ?? 0; },
+        set(this: HTMLElement, value: number) {
+          positions.set(this, Math.min(Math.max(0, value), contentWidth() - layout.viewport));
+        },
+      });
+      const originalRect = Element.prototype.getBoundingClientRect;
+      const rect = jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        const row = rowOf(this);
+        if (row === this) return { left: 0, width: layout.viewport } as DOMRect;
+        if (!isTab(this) || !row || !this.parentElement) return originalRect.call(this);
+        const left = Array.from(this.parentElement.children).indexOf(this) * layout.itemWidth - row.scrollLeft;
+        return { left, right: left + layout.itemWidth, width: layout.itemWidth } as DOMRect;
+      });
+      const originalObserver = globalThis.ResizeObserver;
+      const observers = new Set<() => void>();
+      globalThis.ResizeObserver = class extends originalObserver {
+        private readonly deliver: () => void;
+        constructor(callback: ResizeObserverCallback) {
+          super(callback);
+          this.deliver = () => callback([], this);
+        }
+        observe() { observers.add(this.deliver); }
+        disconnect() { observers.delete(this.deliver); }
+      };
+      return {
+        layout,
+        selected: tabs,
+        row: () => rowOf(tabs())!,
+        resize: () => act(() => observers.forEach(deliver => deliver())),
+        restore: () => {
+          globalThis.ResizeObserver = originalObserver;
+          if (previousScrollLeft) Object.defineProperty(HTMLElement.prototype, 'scrollLeft', previousScrollLeft);
+          else Reflect.deleteProperty(HTMLElement.prototype, 'scrollLeft');
+          room.mockRestore();
+          scrollWidth.mockRestore();
+          rect.mockRestore();
+        },
+      };
+    }
+
+    it('keeps the selected tab in view as the row narrows and respects a manual scroll', () => {
+      const tabs = tabGeometry(390, 110);
+      mockQueryState.tab = 'analyses';
+      const view = render(<StudiesPage />);
       try {
-        mockQueryState.tab = 'analyses';
-        render(<StudiesPage />);
-        const tab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/ });
-        expect(screen.getAllByRole('button').filter((button) => button.getAttribute('aria-current') === 'true')).toEqual([tab]);
-        expect(tab.parentElement!.scrollLeft).toBe(4 * 110 - (300 - 110) / 2);
+        expect(tabs.selected()).toHaveAttribute('aria-current', 'true');
+        expect(tabs.selected().getBoundingClientRect().right).toBeLessThanOrEqual(tabs.layout.viewport);
+        fireEvent.wheel(tabs.row(), { deltaY: 120 });
+        fireEvent.touchStart(tabs.selected(), { touches: [{ identifier: 1, clientX: 270, clientY: 100 }] });
+        fireEvent.touchMove(tabs.selected(), { touches: [{ identifier: 1, clientX: 270, clientY: 200 }] });
+        tabs.layout.viewport = 320;
+        tabs.resize();
+        expect(tabs.selected().getBoundingClientRect().right).toBeLessThanOrEqual(tabs.layout.viewport);
+
+        fireEvent.wheel(tabs.row(), { deltaX: -100 });
+        tabs.row().scrollLeft = 25;
+        tabs.layout.viewport = 350;
+        tabs.resize();
+        expect(tabs.row().scrollLeft).toBe(25);
+        fireEvent.click(screen.getByRole('button', { name: /^studiesWorkspace\.tabs\.questions/ }));
+        expect(tabs.row().scrollLeft).toBeGreaterThan(25);
       } finally {
-        widths.mockRestore();
-        lefts.mockRestore();
-        room.mockRestore();
+        view.unmount();
+        tabs.restore();
       }
     });
 
-    it('keeps the open tab in view when the counts arrive after it and widen the tabs', () => {
-      let width = 60;
-      const widths = jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.tagName === 'BUTTON' ? width : 0; });
-      const lefts = jest.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
-        return this.tagName === 'BUTTON' && this.parentElement ? Array.from(this.parentElement.children).indexOf(this) * width : 0;
-      });
-      const room = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => 300);
+    it('keeps a keyboard-focused tab visible when it differs from the selected tab', () => {
+      const tabs = tabGeometry(390, 110);
+      const view = render(<StudiesPage />);
       try {
-        mockQueryState.tab = 'analyses';
-        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [], loading: true });
-        const { rerender } = render(<StudiesPage />);
-        width = 110;
-        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'a1', type: 'analysis' })] });
-        rerender(<StudiesPage />);
-        const tab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/ });
-        expect(tab.parentElement!.scrollLeft).toBe(4 * 110 - (300 - 110) / 2);
+        const selected = screen.getByRole('button', { name: /^studiesWorkspace\.tabs\.all/ });
+        const focused = tabs.selected();
+        const matches = focused.matches.bind(focused);
+        jest.spyOn(focused, 'matches').mockImplementation(selector => selector === ':focus-visible' || matches(selector));
+        focused.focus();
+        tabs.row().scrollLeft = 160;
+        tabs.layout.viewport = 320;
+        tabs.resize();
+        expect(selected).toHaveAttribute('aria-current', 'true');
+        expect(focused).toHaveFocus();
+        expect(focused.getBoundingClientRect().right).toBeLessThanOrEqual(tabs.layout.viewport);
       } finally {
-        widths.mockRestore();
-        lefts.mockRestore();
-        room.mockRestore();
+        view.unmount();
+        tabs.restore();
+      }
+    });
+
+    it('keeps the selected tab in view when the counts arrive and widen the tabs', () => {
+      const tabs = tabGeometry(300, 60);
+      mockQueryState.tab = 'analyses';
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [], loading: true });
+      const view = render(<StudiesPage />);
+      try {
+        expect(tabs.row().scrollLeft).toBe(0);
+        tabs.layout.itemWidth = 110;
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'a1', type: 'analysis' })] });
+        view.rerender(<StudiesPage />);
+        tabs.resize();
+        expect(tabs.selected().getBoundingClientRect().right).toBeLessThanOrEqual(tabs.layout.viewport);
+      } finally {
+        view.unmount();
+        tabs.restore();
       }
     });
 
