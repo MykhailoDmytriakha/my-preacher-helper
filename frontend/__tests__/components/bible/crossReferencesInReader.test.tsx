@@ -243,6 +243,38 @@ describe('cross references in the Bible reader', () => {
       && event.data.code === 'crossRefs-othersAsVerses' && event.data.result === 'on')).toBe(true);
   });
 
+  // The owner, 2026-11-12: with "all" the badge counted nineteen links and the window opened showing three.
+  it('with "all" the window opens with the rest unfolded; folded by hand, they are open again at the next opening', async () => {
+    const others = subject.all.filter((reference) => !isMainReference(reference));
+    expect(others.length).toBeGreaterThan(0);
+    saveCrossReferencePrefs({ mode: 'all' });
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const row = within(dialog).getByRole('button', { name: 'bible.crossRefs.othersSection' });
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(within(dialog).getByRole('button', { name: label(others[0]) })).toBeInTheDocument();
+    // The person's own fold holds while the window is open…
+    await userEvent.click(row);
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    expect(within(dialog).queryByRole('button', { name: label(others[0]) })).not.toBeInTheDocument();
+    // …and the next opening follows the setting again.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'common.close' }));
+    const again = await openLinksOfSubject();
+    expect(within(again).getByRole('button', { name: 'bible.crossRefs.othersSection' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('with "main" the rest stay folded until the person opens them, and are folded again at the next opening', async () => {
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const row = within(dialog).getByRole('button', { name: 'bible.crossRefs.othersSection' });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(row);
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'common.close' }));
+    const again = await openLinksOfSubject();
+    expect(within(again).getByRole('button', { name: 'bible.crossRefs.othersSection' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
   // The owner's iPad, 2026-10-16: a link opened in place of the list, and going back the list started over.
   it('a link opens over the list as a cascade; closed, the list is found exactly as it was', async () => {
     renderRuth();

@@ -300,9 +300,10 @@ function OtherReferences({ references, bible, locale, onPick }: {
 }
 
 /**
- * A verse's links: the main ones with their whole text, the rest folded under them — as verses with
- * their text or only as references, the person's choice (`othersAsVerses`, also in Settings → Bible). The
- * switch stands in the rest's row before its chevron while they are open (the owner, 2026-10-16).
+ * A verse's links: the main ones with their whole text, the rest under them — folded, or open at once
+ * when the badge counts all (`mode`) — as verses with their text or only as references, the person's
+ * choice (`othersAsVerses`, also in Settings → Bible). The switch stands in the rest's row before its
+ * chevron while they are open (the owner, 2026-10-16).
  */
 function ReferenceList({ references, loading, place, verseText, copyText, titleId, bible, locale, texts, othersOpen, onToggleOthers, onPick, onClose }: {
   references: CrossReference[]; loading: boolean; place: string; verseText?: string; copyText?: string; titleId: string;
@@ -396,19 +397,23 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
   const titleId = useId();
   const linkTitleId = useId();
   const [picked, setPicked] = useState<CrossReference | null>(null);
-  const [showOthers, setShowOthers] = useState(false);
-  const { othersAsVerses } = useCrossReferencePrefs();
+  // The person's own fold or unfold of the rest in this window; null — untouched, and the setting decides.
+  const [othersChoice, setOthersChoice] = useState<boolean | null>(null);
+  const { mode, othersAsVerses } = useCrossReferencePrefs();
   const placeKey = at ? `${at.chapter}:${at.verse}` : '';
   useEffect(() => {
     setPicked(null);
-    setShowOthers(false);
+    setOthersChoice(null);
   }, [placeKey]);
 
   const references = useMemo(
     () => (at && set ? crossReferencesAt(set, bible, { book: bookId, chapter: at.chapter, verse: at.verse }) : []),
     [at, bible, bookId, set]
   );
-  const othersOpen = showOthers || !references.some(isMainReference);
+  // The window opens showing what the badge counted (the owner, 2026-11-12: the badge said nineteen and
+  // the window showed three): with "all" the rest stand open, with "main" folded, until the person folds
+  // or unfolds them. A verse with no main links shows its rest always.
+  const othersOpen = !references.some(isMainReference) || (othersChoice ?? mode === 'all');
   // The books whose text the window shows: the main links', the rest's while they are open as verses,
   // and the one picked.
   const textBooks = useMemo(
@@ -440,7 +445,7 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
           locale={locale}
           texts={texts}
           othersOpen={othersOpen}
-          onToggleOthers={() => setShowOthers((value) => !value)}
+          onToggleOthers={() => setOthersChoice(!othersOpen)}
           onPick={setPicked}
           onClose={onClose}
         />

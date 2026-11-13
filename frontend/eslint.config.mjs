@@ -19,7 +19,8 @@ const eslintConfig = [
   {
     ignores: [
       "**/.next/**",
-      "**/.next-typecheck/**",
+      // Build output of any name: the type check's, a second dev server's, an isolated build's.
+      "**/.next-*/**",
       "**/node_modules/**",
       "**/coverage/**",
       "**/dist/**",

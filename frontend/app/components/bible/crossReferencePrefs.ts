@@ -18,6 +18,7 @@ export type CrossReferencePrefs = {
   show: boolean;
   /** The same in a passage window opened from another screen. */
   inWindow: boolean;
+  /** What the badge counts; with 'all' a verse's window also opens with the rest of its links unfolded. */
   mode: CrossReferenceMode;
   /** The window's "others" as verses with their text, like the main links; off — only their references. */
   othersAsVerses: boolean;
