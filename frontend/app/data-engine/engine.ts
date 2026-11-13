@@ -142,9 +142,9 @@ export interface ManagedEditor {
   holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
-  commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
+  commit(updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
-  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null, options?: { captureScope?: string; action?: EditorCommitAction }): Promise<DocumentWriteReceipt>;
+  commitWithReceipt(updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, options?: { captureScope?: string; action?: EditorCommitAction }): Promise<DocumentWriteReceipt>;
   removeWithReceipt(options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
   /** Resolves when the command is durable; delivery continues independently. */
   save(): Promise<void>;
@@ -1972,7 +1972,7 @@ export class DataEngine {
         return pending;
       };
       const placementSaves = new Map<number, ClosingSaveIntent[]>();
-      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
+      const commit = (updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
         const checkpoint = controller.getState().checkpoint;
         if (checkpoint.groupTextReview) throw Object.assign(
@@ -1999,7 +1999,7 @@ export class DataEngine {
         if (action?.kind === 'sermon-source-note-links' && !matchesSourceNoteOpening(checkpoint.confirmed, action.selection)) {
           throw Object.assign(new Error('The shown sermon changed'), { code: 'decision-changed' });
         }
-        const next = updater(checkpoint.draft);
+        const next = updater(checkpoint.draft, checkpoint.confirmed);
         let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
         if (action?.kind === 'service-order-placement'
           && (frozen.collection !== 'serviceOrders' || !next || next.rank !== action.move.rank

@@ -32,5 +32,9 @@ export interface NoteDraftPayload {
     scriptureRefs: ScriptureReference[];
     referenceRecovery?: NoteReferenceRecovery;
     origin?: NoteDraftOrigin;
+    /** This copy still needs explicit review because its original opening is unknown. */
+    reviewLegacyFields?: true;
+    /** Generation of the original saved note when the draft is tied to it. */
+    targetGeneration?: string;
     type: StudyNoteType;
 }

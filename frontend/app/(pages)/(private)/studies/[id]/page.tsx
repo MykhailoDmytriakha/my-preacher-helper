@@ -41,6 +41,7 @@ import { useTags } from '@/hooks/useTags';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { useRoomyHeader, useWideViewport } from '@/hooks/useWideViewport';
 import { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
@@ -58,6 +59,7 @@ import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { fieldLabel } from '@/utils/storedFieldLabel';
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
@@ -78,7 +80,7 @@ import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
-import { hasUnsubmittedNoteField, holdNoteDraftText, noteDraftOrigin, restoreNoteDraft, sameNoteDraft, type NoteDraftPayload } from './noteDraft';
+import { differingNoteDraftFields, editableNoteDraftFields, hasUnsubmittedNoteField, holdNoteDraftText, noteDraftFieldChoice, noteDraftOrigin, restoreNoteDraft, sameNoteDraft, type NoteDraftPayload } from './noteDraft';
 import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { currentNoteReference, openingReferenceDraft, updateNoteReferenceDraft } from './noteReferenceDraft';
@@ -831,7 +833,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
      * runs unguarded, exactly as before, instead of guessing.
      */
     const serverRevisionRef = useRef<number | null>(null);
-    const [saveConflict, setSaveConflict] = useState(false);
+    const [saveConflict, setSaveConflict] = useState<StaleWriteError | null>(null);
+    const restoringDraft = useRef(false);
+    const reviewingLegacyDraft = useRef(false);
+    const restoredGeneration = useRef<string | undefined>(undefined);
+    const currentGeneration = presence?.kind === 'present' ? presence.snapshot.metadata?.generation : undefined;
+    const replacedDraftTarget = Boolean(restoredGeneration.current && currentGeneration && restoredGeneration.current !== currentGeneration);
     /**
      * Bumped when the person insists on their text after a refusal. Without it the
      * banner would close and nothing would be sent until the next keystroke — the
@@ -926,8 +933,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const typeCapture = typeEdit?.owner === uid && typeEdit?.id === noteId && typeEdit.value === type
             ? typeEdit.capture : undefined;
         const opening = !isNew && confirmedDraft && baselineRef.current;
-        const origin = opening && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture);
-        draftSnapshot.current = { authored: authoredDraft, payload: origin ? { ...authoredDraft, origin } : authoredDraft, owner: uid };
+        const origin = opening && !reviewingLegacyDraft.current && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture);
+        const recoveryMeta = restoredGeneration.current && { targetGeneration: restoredGeneration.current };
+        const payload = reviewingLegacyDraft.current ? { ...authoredDraft, ...recoveryMeta, reviewLegacyFields: true as const }
+            : origin ? { ...authoredDraft, ...recoveryMeta, origin } : authoredDraft;
+        draftSnapshot.current = { authored: authoredDraft, payload, owner: uid };
     }
     const draftPayload = draftSnapshot.current.payload;
 
@@ -973,9 +983,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         deliberateOverwriteRef,
         resaveNonce,
         saveAtOnceRef,
-        saveBlocked: saveConflict || Boolean(referenceReview) || unavailable || draftHeld,
-        onConflict: () => setSaveConflict(true),
+        saveBlocked: Boolean(saveConflict || referenceReview || unavailable || draftHeld || replacedDraftTarget),
+        expectedGeneration: restoredGeneration.current,
+        onConflict: setSaveConflict,
         draftOrigin: draftPayload.origin,
+        draftTargetGeneration: draftPayload.targetGeneration,
         onCaptured: markCaptured,
         referenceEdits: referenceDraft.edits,
         onReferenceAcknowledged: (submitted, accepted, aliases, revision, engineRevision) => {
@@ -1059,11 +1071,22 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         if (!unsavedRecovery) return;
         const opening = baselineRef.current;
         const restored = !isNew && opening ? restoreNoteDraft(unsavedRecovery, opening) : unsavedRecovery;
-        const origin = !isNew && opening ? restored.origin : undefined;
+        const origin = !isNew && opening && !restored.reviewLegacyFields ? restored.origin : undefined;
         setTitle(restored.title);
         setContent(restored.content);
         setTags(restored.tags);
         setType(restored.type);
+        restoringDraft.current = Boolean(!isNew && opening);
+        reviewingLegacyDraft.current = Boolean(!isNew && opening && !origin && !restored.referenceRecovery && (currentGeneration || restored.reviewLegacyFields));
+        if (reviewingLegacyDraft.current && opening) {
+            draftSnapshot.current = null;
+            const differing = differingNoteDraftFields(restored, opening);
+            if (differing.length) {
+                const revision = existingNote?.rev?.[NOTE_AGGREGATE] ?? 0;
+                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, revision, revision, { ...opening }, differing, currentGeneration));
+            } else reviewingLegacyDraft.current = false;
+        }
+        restoredGeneration.current = restored.targetGeneration ?? origin?.title?.seen.generation ?? origin?.type?.seen.generation ?? currentGeneration;
         if (origin && opening) {
             // The same displayed value can still have an unfinished action from this device.
             draftSnapshot.current = null;
@@ -1085,9 +1108,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setDictationSourceIds(restored.dictationSourceIds ?? []);
         setRecordingSourceIds(restored.recordingSourceIds ?? restored.dictationSourceIds ?? []);
         // Keep the selected source until the current writer or outbox durably takes over.
-        acceptRecovered(recovery || origin ? { transferToWriter: true } : undefined);
+        acceptRecovered(recovery || origin || reviewingLegacyDraft.current ? { transferToWriter: true } : undefined);
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid, currentGeneration]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1210,10 +1233,74 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             return current.uid === uid && current.noteId === noteId && current.recoveredKey === shownKey && JSON.stringify(current.recovered) === shown;
         });
     };
+    const fieldChoice = saveConflict && restoringDraft.current ? noteDraftFieldChoice(saveConflict, draftPayload) : undefined;
+    const unresolvedFields = saveConflict?.conflictingFields ?? [];
+    const scopedRefusal = Boolean(saveConflict && restoringDraft.current && unresolvedFields.length
+        && unresolvedFields.every(field => editableNoteDraftFields.some(editable => editable === field)));
+    useEffect(() => {
+        if (!scopedRefusal || fieldChoice || replacedDraftTarget || !saveConflict || !rowPayload) return;
+        if (unresolvedFields.some(field => {
+            const key = editableNoteDraftFields.find(editable => editable === field)!;
+            return serializeContent(draftPayload[key]) !== serializeContent(rowPayload[key]);
+        })) return;
+        reviewingLegacyDraft.current = false;
+        draftSnapshot.current = null;
+        setSaveConflict(null);
+        setResaveNonce(value => value + 1);
+    }, [scopedRefusal, fieldChoice, replacedDraftTarget, saveConflict, rowPayload, unresolvedFields, draftPayload]);
+    const answerFieldChoice = (side: 'local' | 'stored') => {
+        const opening = baselineRef.current;
+        if (!fieldChoice || !opening || !saveConflict || currentConflictChoice.current !== conflictChoice) return;
+        if (replacedDraftTarget || (saveConflict.generation && currentGeneration && saveConflict.generation !== currentGeneration)) return;
+        restoredGeneration.current ??= saveConflict.generation;
+        const latestRevision = existingNote?.rev?.[NOTE_AGGREGATE];
+        if (latestRevision !== undefined && latestRevision > saveConflict.actualRevision) {
+            if (reviewingLegacyDraft.current && rowPayload) {
+                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.actualRevision, latestRevision,
+                    { ...rowPayload }, differingNoteDraftFields(draftPayload, rowPayload), currentGeneration));
+                return;
+            }
+            // The refusal predates this row. Ask the ordinary writer to compare the new version
+            // against the unchanged editing basis before applying any choice.
+            setSaveConflict(null);
+            setResaveNonce(value => value + 1);
+            return;
+        }
+        // Advance only the compared field. Every other field still carries its own opening
+        // and is checked normally, including anything changed while this comparison was open.
+        draftSnapshot.current = null;
+        const { field, mine, stored } = fieldChoice;
+        baselineRef.current = { ...opening, [field]: stored };
+        switch (field) {
+            case 'title': setTitle(side === 'stored' ? stored : mine); break;
+            case 'type': setType(side === 'stored' ? stored : mine); break;
+            case 'content': setContent(side === 'stored' ? stored : mine); break;
+            case 'tags': setTags(side === 'stored' ? stored : mine); break;
+            case 'scriptureRefs':
+                dispatchReferences({ type: 'adopt', references: side === 'stored' ? stored : mine });
+                break;
+        }
+        if (reviewingLegacyDraft.current) {
+            const remaining = saveConflict.conflictingFields.filter(key => key !== field);
+            if (remaining.length) {
+                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.expectedRevision, saveConflict.actualRevision,
+                    saveConflict.serverValues, remaining, saveConflict.generation));
+                return;
+            }
+            reviewingLegacyDraft.current = false;
+        }
+        setSaveConflict(null);
+        setResaveNonce(value => value + 1);
+    };
+    const showNoteField = (value: string | string[] | ScriptureReference[]) => {
+        if (typeof value === 'string') return value || t('legacyRecovery.empty');
+        return value.map(item => typeof item === 'string' ? item : formatScriptureReference(item, { locale: bibleLocale })).join('\n')
+            || t('legacyRecovery.empty');
+    };
     const acceptStoredNote = () => askBeforeDiscard(true, () => {
         adoptRow();
-        setSaveConflict(false);
-    }, () => saveConflict && Boolean(rowPayload) && currentConflictChoice.current === conflictChoice);
+        setSaveConflict(null);
+    }, () => Boolean(saveConflict && rowPayload && currentConflictChoice.current === conflictChoice));
 
     const handleDelete = useNoteDeletion({
         confirm,
@@ -1468,7 +1555,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         )}
                         {uid && tagHistory && <TagHistory<DocumentTagHistoryPage['entries'][number], DocumentTagHistoryPage>
                             key={JSON.stringify([uid, noteId, tagHistory.generation])} owner={uid} id={noteId} tags={tags}
-                            generation={tagHistory.generation} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict || isSaving}
+                            generation={tagHistory.generation} disabled={editorIsDirty || !noteIsAccepted || draftHeld || Boolean(saveConflict) || isSaving}
                             identify={page => page.documentId} path={'/api/data-engine/documents/studyNotes/' + encodeURIComponent(noteId) + '/note-tag-history'}
                             select={entries => entries.flatMap(entry => entry.tags.map(tag => ({ id: entry.id, ...tag })))}
                             onRestore={async (tag, present) => {
@@ -1525,7 +1612,26 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         />
                     </section>
                 )}
-                {saveConflict && (
+                {replacedDraftTarget && <p role="status" className="mb-2 text-sm">{t('dataSync.referenceComparisonUnavailable')}</p>}
+                {scopedRefusal && !fieldChoice && !replacedDraftTarget && <p role="status" className="mb-2 text-sm">{t('dataSync.referenceComparisonUnavailable')}</p>}
+                {fieldChoice && (
+                    <section aria-label={t('dataSync.versionComparison')} className="mb-2 space-y-2">
+                        <FieldComparison comparison={{
+                            title: fieldLabel(t, fieldChoice.field),
+                            mine: fieldChoice.field === 'type' ? t(`studiesWorkspace.type.${fieldChoice.mine}`) : showNoteField(fieldChoice.mine),
+                            stored: fieldChoice.field === 'type' ? t(`studiesWorkspace.type.${fieldChoice.stored}`) : showNoteField(fieldChoice.stored),
+                            valueKind: 'field',
+                        }} />
+                        <SaveConflictBanner entityKey="entityNote"
+                            description={t('dataSync.fieldVersionChanged')}
+                            keepMineLabel={t('dataSync.useLocalVersion')}
+                            takeTheirsLabel={t('dataSync.useStoredVersion')}
+                            keepMineDisabled={replacedDraftTarget}
+                            onKeepMine={() => answerFieldChoice('local')}
+                            onTakeTheirs={() => answerFieldChoice('stored')} />
+                    </section>
+                )}
+                {saveConflict && !fieldChoice && !scopedRefusal && !replacedDraftTarget && (
                     <SaveConflictBanner
                         entityKey="entityNote"
                         // No `pendingText`: unlike the sermon header, this editor stays
@@ -1534,7 +1640,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             // Say plainly that this one send is deliberate, or the content
                             // check refuses it again and the button never works.
                             deliberateOverwriteRef.current = true;
-                            setSaveConflict(false);
+                            setSaveConflict(null);
                             setResaveNonce((n) => n + 1);
                         }}
                         onTakeTheirs={() => { void acceptStoredNote(); }}
@@ -1610,7 +1716,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             {/* HEADER TRAY */}
             {renderHeader()}
             {uid && titleHistory && <DocumentFieldHistory key={JSON.stringify([uid, noteId, titleHistory.generation])}
-                current={title} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict}
+                current={title} disabled={editorIsDirty || !noteIsAccepted || draftHeld || Boolean(saveConflict)}
                 session={{ owner: uid, noteId, generation: titleHistory.generation, restore: (value: string) => {
                     setIsEditing(true);
                     saveAtOnceRef.current = true;
@@ -1618,7 +1724,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                     return Promise.resolve();
                 } }} />}
             {uid && typeHistory && <DocumentFieldHistory key={JSON.stringify([uid, noteId, typeHistory.generation, 'type'])}
-                current={type} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict}
+                current={type} disabled={editorIsDirty || !noteIsAccepted || draftHeld || Boolean(saveConflict)}
                 session={{ owner: uid, noteId, generation: typeHistory.generation, field: 'type', restore: async value => {
                     if (!isOrdinaryStudyNoteType(value)) return;
                     setIsEditing(true);

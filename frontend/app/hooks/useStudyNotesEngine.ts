@@ -84,6 +84,7 @@ type NoteUpdate = {
   updates: Partial<StudyNote>;
   captureScope?: string;
   expectedRevision?: number | null;
+  expectedGeneration?: string;
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
   typeCapture?: StudyNoteTypeCapture;
@@ -256,7 +257,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedGeneration, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedStudyNote>;
@@ -295,7 +296,10 @@ export function useStudyNotesEngine(enabled: boolean) {
         setUpdating(count => count + 1);
         let staleTimedField: StaleWriteError | undefined;
         try {
-          return await actions.submit(resource(id), { kind: 'update', update: current => {
+          return await actions.submit(resource(id), { kind: 'update', update: (current, confirmed) => {
+            if (expectedGeneration && expectedGeneration !== confirmed?.metadata?.generation) {
+              throw Object.assign(new Error('The note was replaced'), { code: 'study-note-generation-changed' });
+            }
             if (!current) throw new Error('Study note not found');
             const stored = (current.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE] ?? 0;
             // The baseline is the note as the editor read it. Its references are compared as stored —
@@ -311,7 +315,7 @@ export function useStudyNotesEngine(enabled: boolean) {
             // A note stored without a type is a note — compared and reported as one, as every screen reads it: else an
             // editor that adopted the reported type would be refused again on the same revision (Codex review, 2026-10-28).
             const storedField = (field: string) => (field === 'type' ? read.type ?? 'note'
-              : field === 'title' && title?.seen.missing && current.title === undefined ? '' : read[field]);
+              : field === 'title' && isOrdinaryStudyNote(current) ? read.title ?? '' : read[field]);
             // "Already what I write" is judged on the stored list too, never on a reading of it.
             const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
               ? same(current.scriptureRefs ?? [], value)
@@ -327,7 +331,7 @@ export function useStudyNotesEngine(enabled: boolean) {
               // A refusal reports every compared field so the editor can adopt the complete server version.
               const stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries([...new Set([...compared, ...(commentKindSave || place ? ['type', 'paragraph', 'scriptureRefs'] : [])])]
-                  .map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
+                  .map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])), changedElsewhere, confirmed?.metadata?.generation);
               const ordered = (field: string) => field === 'title' ? Boolean(title && (title.time || title.seen.requestId))
                 : field === 'scriptureRefs' ? Boolean(place)
                   : field === 'paragraph' ? Boolean(kind && (kind.time || kind.seen.requestId))

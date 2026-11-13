@@ -89,7 +89,8 @@ function isNotePayload(value: unknown): value is NoteDraftPayload {
   const note = value as NoteDraftPayload;
   if (typeof note.title !== 'string' || typeof note.content !== 'string'
     || !Array.isArray(note.tags) || !Array.isArray(note.scriptureRefs)
-    || !isOrdinaryStudyNoteType(note.type) || (note.origin !== undefined && !isNoteDraftOrigin(note.origin))) return false;
+    || !isOrdinaryStudyNoteType(note.type) || (note.reviewLegacyFields !== undefined && note.reviewLegacyFields !== true)
+    || (note.targetGeneration !== undefined && (typeof note.targetGeneration !== 'string' || !note.targetGeneration)) || (note.origin !== undefined && !isNoteDraftOrigin(note.origin))) return false;
   // Reuse the canonical field rules without treating partial backup text as a
   // complete document or applying server storage limits to its authored body.
   const fields = ['tags', 'scriptureRefs', 'dictationSourceIds', 'recordingSourceIds']

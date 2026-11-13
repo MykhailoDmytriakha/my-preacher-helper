@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { rebaseAcceptedStudyNoteReferences } from '@/data-engine/react.client';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isStaleWriteError, type StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { prepareDraftCapture, prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
@@ -80,7 +80,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -92,6 +92,8 @@ export function useNoteAutoSave({
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
     draftOrigin?: NoteDraftPayload['origin'];
+    draftTargetGeneration?: string;
+    expectedGeneration?: string;
     titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
     typeEditRef?: React.MutableRefObject<NoteTypeEdit | null>;
     submittedTypeRef?: React.MutableRefObject<SubmittedNoteType | null>;
@@ -108,6 +110,7 @@ export function useNoteAutoSave({
         tagMembership?: readonly DocumentTagIntent[];
         referenceEvidence?: StudyNoteReferenceEvidence;
         expectedRevision?: number | null;
+        expectedGeneration?: string;
         expectedBaseline?: Record<string, unknown> | null;
     }) => StudyNoteSubmission & { result: Promise<SavedStudyNote> };
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }) =>
@@ -130,7 +133,7 @@ export function useNoteAutoSave({
     /** While true the server already refused: stop saving until the person chooses. */
     saveBlocked: boolean;
     /** Raised when the server refused a stale write — the text is NOT lost. */
-    onConflict: () => void;
+    onConflict: (error: StaleWriteError) => void;
     /**
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
@@ -340,7 +343,7 @@ export function useNoteAutoSave({
         setLastSaved(null);
         try {
             const recording = captureRecordingHandoff?.();
-            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin } : submittedPayload;
+            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin, ...(draftTargetGeneration && { targetGeneration: draftTargetGeneration }) } : submittedPayload;
             const captureScope = prepareNoteDraftCapture(uid, noteId, backup, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,
@@ -351,6 +354,7 @@ export function useNoteAutoSave({
                 ...(referenceEvidence && { referenceEvidence }),
                 updates,
                 expectedRevision: revisionRef.current,
+                ...(expectedGeneration && { expectedGeneration }),
                 // WHAT THIS TEXT WAS BUILT FROM. Not a fresh read: the service used
                 // to fingerprint the document it had just fetched, which compares the
                 // server with itself, always agrees, and let a stale save through.
@@ -480,7 +484,7 @@ export function useNoteAutoSave({
                 // was NOT written — and it was NOT lost either: the durable draft
                 // already holds it and the inputs still show it. Stop hammering the
                 // server and hand the decision to the person.
-                onConflict();
+                onConflict(e);
                 setSaveError(null);
                 return;
             }
@@ -497,7 +501,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, draftOrigin, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

@@ -12,7 +12,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteReferenceComparison, readStudyNoteTypeComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
@@ -112,9 +112,6 @@ function fieldComparison(entry: Waiting, t: (key: string) => string, locale: Ret
       const name = (value: boolean | undefined) => t(value === undefined ? 'comment.automaticKind' : value ? 'comment.kind.paragraph' : 'comment.kind.comment');
       return { identity: kind.identity, title: t('comment.kind.label'), valueKind: 'field', mine: name(kind.mine), stored: name(kind.stored) };
     }
-    const comparison = readStudyNoteTypeComparison(entry.records[0].checkpoint);
-    if (comparison) return { identity: comparison.identity, title: fieldLabel(t, 'type'), valueKind: 'field',
-      mine: t('studiesWorkspace.type.' + comparison.mine), stored: t('studiesWorkspace.type.' + comparison.stored) };
   }
   if (entry.resource.collection === 'studyNotes' || entry.resource.collection === 'prayerRequests') {
     const comparison = readDocumentTagComparison(entry.records[0].checkpoint);
@@ -559,17 +556,24 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
     const sourceNotes = entry.records.length === 1 ? readSourceNoteLinkComparison(checkpoint) : undefined;
     const referenceReview = entry.records.length === 1 ? readStudyNoteReferenceComparison(checkpoint) : undefined;
+    const noteFields = entry.resource.collection === 'studyNotes' && entry.records.length === 1 ? readStudyNoteFieldsComparison(checkpoint) : undefined;
     if (!referenceReview && waitsForStudyNoteReferenceReview(checkpoint)) {
       return notice(<div role="status" className={NOTICE_BOX}>
         <p className={NOTICE_BODY}>{t('dataSync.referenceComparisonUnavailable')}</p>
         {mine && <button type="button" className={SECONDARY_BUTTON} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>}
       </div>);
     }
-    const comparingField = Boolean(comparison || sourceNotes || referenceReview);
+    const comparingField = Boolean(comparison || sourceNotes || referenceReview || noteFields);
     return notice(
       <>
         {comparingField && <section aria-label={t('dataSync.versionComparison')} className="mb-3">
-          {sourceNotes ? <SourceNoteConflict comparison={sourceNotes} /> : comparison && <FieldComparison comparison={comparison} />}
+          {sourceNotes ? <SourceNoteConflict comparison={sourceNotes} /> : noteFields
+            ? noteFields.map(({ field, mine, stored }) => <FieldComparison key={field} comparison={{
+                title: fieldLabel(t, field), valueKind: 'field',
+                mine: field === 'type' ? t('studiesWorkspace.type.' + mine) : mine || t('dataSync.emptyField'),
+                stored: field === 'type' ? t('studiesWorkspace.type.' + stored) : stored || t('dataSync.emptyField'),
+              }} />)
+            : comparison && <FieldComparison comparison={comparison} />}
           {referenceReview && <div className="space-y-2">
             {referenceReview.rows.length > 0 && <FieldComparison comparison={studyNoteReferenceComparison(referenceReview.rows, t, resolveAppLocale(interfaceLanguage))} />}
             {referenceReview.fields.map(({ path, mine, theirs }) => <FieldComparison key={path[0]} comparison={{
@@ -582,12 +586,12 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
         <SaveConflictBanner
           entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
           pendingText={comparingField ? undefined : mine || undefined}
-          description={comparingField ? t(referenceReview?.fields.length ? 'dataSync.noteFieldsChanged' : 'dataSync.fieldVersionChanged') : undefined}
+          description={comparingField ? t((referenceReview?.fields.length || (noteFields?.length ?? 0) > 1) ? 'dataSync.noteFieldsChanged' : 'dataSync.fieldVersionChanged') : undefined}
           keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint))); }}
-          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean(referenceReview?.fields.length && referenceReview.rows.length)); }}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint) || noteFields)); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean((referenceReview?.fields.length && referenceReview.rows.length) || (noteFields?.length ?? 0) > 1)); }}
           busy={busy}
           className="mb-3"
         />

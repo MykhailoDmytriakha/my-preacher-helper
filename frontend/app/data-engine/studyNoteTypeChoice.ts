@@ -1,4 +1,4 @@
-import { isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
+import { isOrdinaryStudyNote, isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
 
 import { readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
@@ -20,17 +20,52 @@ function comparedType(basis: ResourceSnapshot, draft: DocumentData | null, store
   return { mine, stored: saved };
 }
 
-export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) {
-  const comparison = comparedType(checkpoint.confirmed, checkpoint.draft, checkpoint.remoteCandidate, checkpoint.conflicts);
-  return comparison && { ...comparison, identity: JSON.stringify([checkpoint.editGeneration,
-    checkpoint.remoteCandidate?.metadata?.generation, checkpoint.remoteCandidate?.metadata?.revision, comparison]) };
+function comparedTitle(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
+  conflicts: readonly ConflictDetail[]) {
+  if (basis.resource.collection !== 'studyNotes' || !basis.metadata || !draft || !stored?.value
+    || basis.metadata.generation !== stored.metadata?.generation
+    || !isOrdinaryStudyNote(basis.value) || !isOrdinaryStudyNote(draft) || !isOrdinaryStudyNote(stored.value)
+    || conflicts.length !== 1 || conflicts[0].path.length !== 1 || conflicts[0].path[0] !== 'title') return;
+  const mine = draft.title ?? '', saved = stored.value.title ?? '';
+  if (typeof mine !== 'string' || typeof saved !== 'string' || mine === saved) return;
+  const shown = conflicts[0];
+  if ((shown.mine.exists ? shown.mine.value : '') !== mine || (shown.theirs.exists ? shown.theirs.value : '') !== saved) return;
+  return { mine, stored: saved };
+}
+
+type NoteComparisonField = 'title' | 'type' | 'content';
+
+function comparedStudyNoteFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
+  conflicts: readonly ConflictDetail[]) {
+  if (basis.resource.collection !== 'studyNotes' || !basis.metadata || !draft || !stored?.value
+    || basis.metadata.generation !== stored.metadata?.generation || !isOrdinaryStudyNote(basis.value)
+    || !isOrdinaryStudyNote(draft) || !isOrdinaryStudyNote(stored.value) || !conflicts.length) return;
+  const compared: { field: NoteComparisonField; mine: string; stored: string }[] = [];
+  for (const conflict of conflicts) {
+    const [field] = conflict.path;
+    if (conflict.path.length !== 1) return;
+    const values = field === 'title' ? comparedTitle(basis, draft, stored, [conflict])
+      : field === 'type' ? comparedType(basis, draft, stored, [conflict])
+        : field === 'content' && typeof draft.content === 'string' && typeof stored.value.content === 'string'
+          && conflict.mine.value === draft.content && conflict.theirs.value === stored.value.content
+          && draft.content !== stored.value.content ? { mine: draft.content, stored: stored.value.content } : undefined;
+    if (!values || (field !== 'title' && field !== 'type' && field !== 'content')) return;
+    compared.push({ field, ...values });
+  }
+  return compared.length === 1 && compared[0].field === 'content' ? undefined : compared;
+}
+
+export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) {
+  return comparedStudyNoteFields(checkpoint.confirmed, checkpoint.draft, checkpoint.remoteCandidate, checkpoint.conflicts);
 }
 
 export function keepUncontestedStudyNoteFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]): DocumentData | undefined {
-  if (!comparedType(basis, draft, stored, conflicts) || !basis.value || !draft || !stored?.value) return;
-  const retained = writeField(draft, path, readField(basis.value, path));
-  const merged = mergeDocumentFields(basis.value, retained, stored.value);
-  if (merged.conflicts.length || !merged.value.exists) throw Object.assign(new Error('The shown note type choice changed'), { code: 'decision-changed' });
+  const compared = comparedStudyNoteFields(basis, draft, stored, conflicts);
+  if (!compared || !basis.value || !draft || !stored?.value) return;
+  const opening = basis.value;
+  const retained = compared.reduce((value, { field }) => writeField(value, [field], readField(opening, [field])), draft);
+  const merged = mergeDocumentFields(opening, retained, stored.value);
+  if (merged.conflicts.length || !merged.value.exists) throw Object.assign(new Error('The shown study note choice changed'), { code: 'decision-changed' });
   return merged.value.value as DocumentData;
 }

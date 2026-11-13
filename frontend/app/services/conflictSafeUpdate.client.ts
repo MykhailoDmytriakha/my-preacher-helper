@@ -57,7 +57,9 @@ export class StaleWriteError extends Error {
      * adopt it as the new baseline (a second, deliberate press means "mine wins"), or show it
      * beside the person's own text.
      */
-    readonly serverValues: Record<string, unknown> = {}
+    readonly serverValues: Record<string, unknown> = {},
+    readonly conflictingFields: readonly string[] = [],
+    readonly generation?: string,
   ) {
     super(
       `Refused a stale write to "${aggregate}": built from revision ${expectedRevision}, server is at ${actualRevision}`

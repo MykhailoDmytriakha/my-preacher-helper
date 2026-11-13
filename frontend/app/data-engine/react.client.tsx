@@ -52,7 +52,7 @@ import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sour
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { readStudyNoteReferenceComparison as studyNoteReferenceComparison } from './studyNoteReferenceChoice';
 import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
-import { readStudyNoteTypeComparison as studyNoteTypeComparison } from './studyNoteTypeChoice';
+import { readStudyNoteFieldsComparison as studyNoteFieldsComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -96,7 +96,7 @@ export function matchesCommentPlaceScope(...args: Parameters<typeof matchesPlace
 export function replaceCommentReference(...args: Parameters<typeof replacePlaceReference>) { return replacePlaceReference(...args); }
 export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) { return studyNoteReferenceComparison(checkpoint); }
 export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) { return hasStudyNoteReferenceReview(checkpoint.conflicts); }
-export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
+export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) { return studyNoteFieldsComparison(checkpoint); }
 export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
@@ -145,7 +145,7 @@ export type { DocumentWriteReceipt } from './commitReceipt';
 
 export type DocumentAction =
   | { kind: 'create'; value: DocumentData }
-  | { kind: 'update'; update: (current: DocumentData | null) => DocumentData | null }
+  | { kind: 'update'; update: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null }
   | { kind: 'delete' };
 export type { OpenDocumentAnswer } from './openDocumentAnswers';
 /** Whether the answering document screens hold every shown request and the same words. */
@@ -591,7 +591,7 @@ export function useDocumentActions() {
           if (comparedSourceNotes || capturedByChoice) continue;
           const { checkpoint } = editor.getState();
           if (Object.keys(checkpoint.pending).length) continue;
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
             || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }

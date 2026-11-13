@@ -67,7 +67,7 @@ function makeEditor() {
       state = { ...state, durable: true, checkpoint: { ...state.checkpoint, draft: value, dirty: true, editGeneration: state.checkpoint.editGeneration + 1 } }; emit();
     }),
     commit: jest.fn(async updater => {
-      const staged = editor.edit(updater(state.checkpoint.draft));
+      const staged = editor.edit(updater(state.checkpoint.draft, state.checkpoint.confirmed));
       const saved = editor.save();
       await Promise.all([staged, saved]);
     }),
