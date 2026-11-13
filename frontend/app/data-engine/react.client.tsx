@@ -37,7 +37,7 @@ import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecove
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
-import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison } from './outlineParentChoice';
+import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
@@ -1292,12 +1292,12 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
-    acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
-    keepLocal: (compared?: SessionCheckpoint) => {
+    acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
+    keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison))
         ? actionClock.capture(owner) ?? null : undefined;
-      return run(editor => editor.keepLocal(undefined, compared, time));
+      return run(editor => editor.keepLocal(undefined, compared, time, titles));
     },
     /*
      * The draft search owns what it finds and how it fails (`useRecoveryDiscovery` says it): its
@@ -1582,6 +1582,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
         ...(action && { metadataTime: action.documentMetadata.time }) })),
     acceptRemote: () => run(form => form.resolve('remote', { expectedComparison: target?.state?.comparison })),
     discardStageAndAcceptRemote: () => run(form => form.resolve('remote', { discardStage: true, expectedComparison: target?.state?.comparison })),
+    resolveOutlineReview: (placement: 'local' | 'remote', titles: readonly OutlineTitleDecision[]) =>
+      run(form => form.resolve(placement, { expectedComparison: target?.state?.comparison, titles })),
     retry: () => run(form => form.retry()),
     listRecoverable: async () => {
       // Over a copy for reading there is no form storage to search; the app-wide notice says why.

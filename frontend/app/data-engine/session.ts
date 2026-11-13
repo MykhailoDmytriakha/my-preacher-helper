@@ -20,12 +20,12 @@ import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './gro
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
-import { projectOutlineParentChoice } from './outlineParentChoice';
+import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
+import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -533,7 +533,7 @@ export class DataSession {
   }
 
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
-  keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint): void {
+  keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {
@@ -567,7 +567,7 @@ export class DataSession {
         path.slice(0, Math.min(path.length, removed.length)).every((part, index) => part === removed[index])))) {
         throw Object.assign(new Error('The removed point contains other changes that need review'), { code: 'other-changes-first' });
       }
-      const parentChoice = projectOutlineParentChoice(this.state.confirmed, this.state.draft, candidate, this.state.conflicts, 'local');
+      const parentChoice = projectOutlineParentChoice(this.state.confirmed, this.state.draft, candidate, this.state.conflicts, 'local', titles);
       const chosen = parentChoice ?? chooseLocalPlacement(this.state.confirmed.resource.collection,
         outline.basis, outline.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
@@ -602,11 +602,16 @@ export class DataSession {
       this.retainOutlineTitleActions(titleSource);
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
+      this.stageOutlineReviewTitles(titles, choiceTime);
     }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
     this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
+  }
+
+  stageOutlineReviewTitles(titles: readonly OutlineTitleDecision[] = [], time: ActionTime | null = null): void {
+    stageReviewedOutlineTitleIds(this.state, titles.filter(title => title.side === 'local').map(title => title.id), time);
   }
 
   retainOutlineTitleActions(source: SessionCheckpoint): void {

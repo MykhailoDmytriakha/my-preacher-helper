@@ -5351,6 +5351,31 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  it.each([['sermons', 'outline'], ['planTemplates', 'structure']] as const)(
+    'retains independent title chronology alongside the competing subpoint positions in %s', async (collection, field) => {
+      const now = Date.now();
+      const base = { protocol: 1, owner: 'owner-1', resource: { collection, id: 'mixed-outline' }, dependsOn: [] } as const;
+      const outline = (parent: string, title: string) => ({ introduction: [], conclusion: [], main: ['a', 'b', 'c'].map(id => ({ id,
+        text: id === 'c' ? title : id, subPoints: id === parent ? [{ id: 'subpoint', text: 'Subpoint', position: 0 }] : [] })) });
+      const opening = outline('a', 'Original title');
+      const value = { userId: base.owner, createdAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString(), [field]: opening,
+        ...(collection === 'sermons' ? { title: 'Sermon', verse: 'John 3:16', date: '2026-11-13', thoughts: [] } : { name: 'Template' }) };
+      expect(await processCommand(base.owner, { ...base, dependsOn: [], kind: 'create', operationId: 'seed', generation: null, value }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const update = (id: string, parent: string, title: string, offset: number) => processCommand(base.owner, {
+        ...base, dependsOn: [], kind: 'update', operationId: id, generation: 'seed',
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: outline(parent, title) } }],
+        outlineTitleActions: [{ rowId: 'c', rowCreatedAt: 'c', before: 'Original title', after: title, observedRevision: 1,
+          time: { earliestMs: now + offset - 10, latestMs: now + offset } }],
+      });
+      expect(await update('desktop', 'c', 'Later desktop title', -1000)).toMatchObject({ kind: 'acknowledged' });
+      expect(await update('phone', 'b', 'Earlier offline title', -5000)).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([
+        { path: [field], base: expect.any(Object), mine: expect.any(Object), theirs: expect.any(Object) },
+        { path: [field, 'main', 'id:c', 'text'], code: 'outline-title-settled', base: { exists: true, value: 'Original title' },
+          mine: { exists: true, value: 'Earlier offline title' }, theirs: { exists: true, value: 'Later desktop title' } },
+      ]) });
+    });
+
   describe.each([['sermons', 'outline'], ['planTemplates', 'structure']] as const)('title returns in %s', (collection, field) => {
     async function seed(kind: 'point' | 'subpoint', rowId: string = kind) {
       const resource = { collection, id: 'outline-title-return' };

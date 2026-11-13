@@ -1,16 +1,16 @@
 import { moveSubPoint } from '@/utils/outlineDnd';
 
-import { projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
+import { projectExactManualChoice, projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
 import { manualComparison } from '../manualComparison';
-import { projectOutlineParentChoice } from '../outlineParentChoice';
+import { projectOutlineParentChoice, readOutlineParentComparison } from '../outlineParentChoice';
 import { replaceResourceOutline } from '../outlinePlacementResource';
 import { mergeDocumentFields } from '../protocol';
 import { validateRecoveryRecord } from '../recovery.client';
 import { keepUncontestedSermonFields, readSermonPlanModeComparison } from '../sermonFieldChoice';
+import { DataSession, type SessionCheckpoint } from '../session';
 
 import type { CommitRequest } from '../commits';
 import type { ManualScope } from '../manualScope';
-import type { SessionCheckpoint } from '../session';
 import type { DocumentData, ResourceSnapshot } from '../types';
 import type { SermonOutline } from '@/models/models';
 
@@ -53,8 +53,62 @@ it.each(['remote', 'local', 'new-local-parent', 'new-saved-parent', 'later-indep
   const live = laterOutline ? { ...stored, metadata: { ...stored.metadata!, revision: 3 },
     value: replaceResourceOutline('sermons', stored.value!, laterOutline) } : stored;
   if (scenario === 'competing-words') {
-    for (const choice of ['local', 'remote'] as const) {
-      expect(() => projectOutlineParentChoice(basis, draft, live, conflicts, choice)).toThrow('other changes need review');
+    expect(() => projectOutlineParentChoice(basis, draft, live, conflicts, 'remote')).toThrow('other changes need review');
+    const reviewed = { id: 'desktop', mine: 'Independent phone point title', stored: 'Competing saved title' };
+    const root = conflicts[0];
+    const serverTitle = (value: typeof root.base) => ({ ...value, value: { ...(value.value as DocumentData),
+      main: ((value.value as DocumentData).main as DocumentData[]).map(point => point.id === reviewed.id ? { ...point, text: reviewed.stored } : point) } });
+    const ordered = [{ ...root, base: serverTitle(root.base), mine: serverTitle(root.mine) }, ...conflicts.slice(1), {
+      path: ['outline', 'main', 'id:desktop', 'text'], code: 'outline-title-settled',
+      base: { exists: true, value: 'Desktop destination' }, mine: { exists: true, value: reviewed.mine },
+      theirs: { exists: true, value: reviewed.stored },
+    }];
+    expect(readOutlineParentComparison({ confirmed: basis, draft, remoteCandidate: live, conflicts: ordered })?.titles).toEqual([]);
+    const returned = { ...live, value: replaceResourceOutline('sermons', live.value!, { ...desktopOutline,
+      main: desktopOutline.main.map(point => point.id === reviewed.id ? { ...point, text: 'Desktop destination' } : point) }) };
+    const returnedTitle = { ...reviewed, stored: 'Desktop destination' };
+    const stillReview = [...conflicts, { ...ordered.at(-1)!, code: 'outline-title-review', theirs: { exists: true, value: returnedTitle.stored } }];
+    expect(readOutlineParentComparison({ confirmed: basis, draft, remoteCandidate: returned, conflicts: stillReview })?.titles).toEqual([returnedTitle]);
+    expect(projectOutlineParentChoice(basis, draft, returned, stillReview, 'remote', [{ ...returnedTitle, side: 'remote' }])?.outline)
+      .toMatchObject({ main: [{ id: 'opening' }, { id: 'phone' }, { id: 'desktop', text: returnedTitle.stored, subPoints: [{ id: 'child' }] }] });
+    expect(projectOutlineParentChoice(basis, draft, live, ordered, 'local')?.outline).toMatchObject({
+      main: [{ id: 'opening' }, { id: 'phone', subPoints: [{ id: 'child' }] }, { id: 'desktop', text: reviewed.stored }],
+    });
+
+    const queued = ordered.map(conflict => conflict.code === 'outline-title-settled' ? { ...conflict, code: 'outline-title-queued' } : conflict);
+    const originalTime = { earliestMs: 1_800_000_000_001, latestMs: 1_800_000_000_006 };
+    const action = { rowId: 'desktop', rowCreatedAt: 'desktop', before: 'Desktop destination', after: reviewed.mine,
+      observedRevision: 1, time: originalTime };
+    const request: CommitRequest = { id: 'queued-save', owner: 'owner', editorId: 'outline', editGeneration: 1, predecessor: null,
+      baseline: basis, value: draft, revision: 1, initialized: true, working: basis, intended: draft, command: null, submitted: draft,
+      sequence: 0, state: 'conflict', unfinalized: [], outlineTitleActions: [action],
+      result: { kind: 'conflict', operationId: 'queued-save', snapshot: live, conflicts: queued } };
+    const checkpoint: SessionCheckpoint = { confirmed: basis, draft, remoteCandidate: live, conflicts: queued, dirty: true,
+      editGeneration: 1, pending: { [request.id]: { generation: 1, value: draft } } };
+    const exact = projectExactManualChoice({ owner: 'owner', editorId: 'document', checkpoint, prepared: null, unfinalized: [] },
+      { choice: 'remote', request, value: draft, stored: live, selection: [['outline'], ['thoughts']] }, [request])[0].checkpoint;
+    expect(exact.outlineTitleDrafts?.desktop?.action).toEqual(action);
+    const working = { ...basis, metadata: { ...basis.metadata!, revision: 2 }, value: { ...basis.value!,
+      outline: { ...outline, main: outline.main.map(point => point.id === 'desktop' ? { ...point, text: 'Previously reviewed title' } : point) } as unknown as DocumentData } };
+    expect(projectOutlineParentChoice(working, draft, live, queued, 'remote')?.outline).toEqual(exact.draft?.outline);
+    expect(exact.draft?.outline).toMatchObject({ main: [{ id: 'opening' }, { id: 'phone' },
+      { id: 'desktop', text: reviewed.mine, subPoints: [{ id: 'child' }] }] });
+    expect(() => projectOutlineParentChoice(basis, draft, live, conflicts, 'remote', [{ ...reviewed, mine: 'Stale title', side: 'local' }]))
+      .toThrow('other changes need review');
+    const session = DataSession.restore({ confirmed: basis, draft, remoteCandidate: live, conflicts, dirty: true, editGeneration: 1, pending: {} });
+    session.keepLocal(undefined, null, undefined, [{ ...reviewed, side: 'local' }]);
+    expect(session.checkpoint().outlineTitleDrafts?.desktop?.action).toMatchObject({ rowId: 'desktop',
+      observedRevision: live.metadata?.revision, before: reviewed.stored, after: reviewed.mine });
+    for (const placement of ['local', 'remote'] as const) {
+      for (const words of ['local', 'remote'] as const) {
+        const selected = projectOutlineParentChoice(basis, draft, live, conflicts, placement, [{ ...reviewed, side: words }]);
+        const destination = placement === 'local' ? 'phone' : 'desktop';
+        const outline = selected?.outline as unknown as SermonOutline;
+        expect(outline.main.filter(point => point.subPoints?.some(sub => sub.id === 'child')).map(point => point.id)).toEqual([destination]);
+        expect(outline.main.find(point => point.id === 'desktop')?.text).toBe(words === 'local' ? reviewed.mine : reviewed.stored);
+        expect(outline.main.find(point => point.id === 'opening')?.text).toBe('Independent desktop point title');
+        expect(selected?.thoughts).toMatchObject([{ id: 'one', text: 'Independent phone words', outlinePointId: destination }]);
+      }
     }
     return;
   }

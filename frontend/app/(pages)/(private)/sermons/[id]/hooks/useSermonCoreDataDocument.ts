@@ -134,7 +134,8 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   };
   const fieldDecision = recoveredDecision('title') ?? recoveredDecision('verse') ?? preparationFields.decision;
   const checkpoint = !fieldDecision && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
-  const comparison = checkpoint && sermonConflictComparison(checkpoint, t, language);
+  const comparison = checkpoint && sermonConflictComparison(checkpoint, t, language, (side, titles) =>
+    side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles));
   return {
     ...document,
     ...(fieldDecision ? { syncSubject: fieldDecision.subject, status: fieldDecision.status, error: fieldDecision.error,

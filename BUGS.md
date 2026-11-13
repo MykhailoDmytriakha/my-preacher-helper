@@ -43,15 +43,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261113-subpoint-placement-and-title-need-separate-review · Subpoint placement cannot be chosen when the same title also has competing edits
-**P2.** In Sermon → Structure editor, move a subpoint to B and edit a separate point's title on an offline device. On another device, move the same subpoint to C and edit the same title differently. After reconnecting, the placement comparison cannot finish until the competing title is also reviewed. Reproduced at `frontend/app/data-engine/__tests__/sermonFieldChoice.test.ts` (`competing-words`). Browser reproduction remains pending.
-
-| Location | Status | Cause |
-|---|---|---|
-| `frontend/app/data-engine/outlineParentChoice.ts` | open | Both placement choices stop at the remaining title conflict. Expose the title comparison and apply both decisions against the same saved revision. |
-| `frontend/app/components/plan-editor/outlinePointPlacementWords.ts` | open | The comparison shows both parents. It needs a way to review the competing title. Check Classic, Scratch, and structure templates. |
-
-
 ### BUG-20261107-marks-same-verse-offline-conflict · Пометки, сделанные без сети в стихе, где уже были пометки, после подключения дают конфликт, хотя на других устройствах этот стих не трогали
 **Severity.** P2 — вопрос посреди работы там, где спорить не о чем, и любой ответ теряет часть пометок: «Оставить моё» заменяет слой стиха с устройства целиком (прежние пометки этого стиха пропадают), «Взять их» — теряет новые штрихи.
 **Найден.** 2026-11-07 · отзыв владельца из приложения (письмо «New Feedback (bug)», 11:13, iPad, установленное приложение, версия `eef2679`, `/bible`, 2 Кор 4:6): «Правки были сделаны в оффлайн, а при синхронизации почему-то были конфликты, хотя на других устройствах правок не было». Воспроизведено агентом на движке (настоящие слияние и разбор команды, подменён только транспорт).

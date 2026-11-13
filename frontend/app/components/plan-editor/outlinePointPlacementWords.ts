@@ -2,7 +2,7 @@ import { readOutlineParentComparison, readOutlinePointPlacementComparison } from
 import { outlinePointText } from '@/utils/outlineDnd';
 import { getSectionLabel } from '@lib/sections';
 
-import type { TextComparison } from '@/data-engine/DataSyncStatus';
+import type { ApplyOutlineReview, TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { SermonOutline } from '@/models/models';
 import type { OutlinePointGap } from '@/utils/outlineDnd';
@@ -20,7 +20,7 @@ export function outlinePointPlacementWords(gap: OutlinePointGap | undefined, out
 }
 
 export function outlineParentPlacementWords(parent: NonNullable<ReturnType<typeof readOutlineParentComparison>>,
-  identity: string, t: Translate): TextComparison {
+  identity: string, t: Translate, apply?: ApplyOutlineReview): TextComparison {
   const position = t('planEditor.pointPlacement.position');
   const names = parent.moves.map(({ child }) => outlinePointText(parent.opening, child.id)).join(', ');
   const words = (side: 'local' | 'remote') => parent.moves.map(move => {
@@ -34,13 +34,15 @@ export function outlineParentPlacementWords(parent: NonNullable<ReturnType<typeo
     if (next) return t('planEditor.pointPlacement.before', { section: label, point: outlinePointText(outline, next.id) });
     return previous ? t('planEditor.pointPlacement.after', { section: label, point: outlinePointText(outline, previous.id) }) : label;
   }).join('\n');
+  const titles = parent.titles.map(version => ({ ...version, label: [t('dataSync.outlinePointTitle'),
+    outlinePointText(parent.opening, version.id)].filter(Boolean).join(' · ') }));
   return { identity, title: position + ' · ' + names, valueKind: 'field', scopedChoice: true,
-    mine: words('local'), stored: words('remote') };
+    mine: words('local'), stored: words('remote'), ...(apply && titles.length > 0 && { outlineReview: { titles, apply } }) };
 }
 
-export function outlinePointConflictComparison(checkpoint: SessionCheckpoint, t: Translate): TextComparison | undefined {
+export function outlinePointConflictComparison(checkpoint: SessionCheckpoint, t: Translate, apply?: ApplyOutlineReview): TextComparison | undefined {
   const parent = readOutlineParentComparison(checkpoint);
-  if (parent) return outlineParentPlacementWords(parent, JSON.stringify([parent.root, checkpoint.remoteCandidate?.metadata, checkpoint.editGeneration]), t);
+  if (parent) return outlineParentPlacementWords(parent, JSON.stringify([parent.root, checkpoint.remoteCandidate?.metadata, checkpoint.editGeneration]), t, apply);
   const point = readOutlinePointPlacementComparison(checkpoint);
   if (!point) return undefined;
   const name = outlinePointText(point.outline, point.pointId);

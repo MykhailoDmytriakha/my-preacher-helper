@@ -155,15 +155,18 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
 
 /** A title choice sees the exact saved revision, even when it contains a repeated title. */
 export function stageReviewedOutlineTitles(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[], time: ActionTime | null): void {
+  const collection = checkpoint.confirmed.resource.collection;
+  stageReviewedOutlineTitleIds(checkpoint, conflicts.flatMap(({ path }) => outlineTitleId(path, collection) ?? []), time);
+}
+
+export function stageReviewedOutlineTitleIds(checkpoint: SessionCheckpoint, ids: readonly string[], time: ActionTime | null): void {
   const { confirmed, draft } = checkpoint;
   const metadata = confirmed.metadata;
   if (!metadata || metadata.deleted || !draft) return;
   const collection = confirmed.resource.collection;
   const target = targetsFor(collection).find(item => item.stamp === 'outline-title');
   if (!target) return;
-  for (const { path } of conflicts) {
-    const rowId = outlineTitleId(path, collection);
-    if (!rowId) continue;
+  for (const rowId of ids) {
     const before = fieldAt(confirmed.value, rowId, target), after = fieldAt(draft, rowId, target);
     const rowCreatedAt = birthAt(confirmed.value, rowId, target);
     if (typeof before !== 'string' || typeof after !== 'string' || before === after || rowCreatedAt === undefined

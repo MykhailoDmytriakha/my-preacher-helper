@@ -5,13 +5,13 @@ import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 
-import type { TextComparison } from '@/data-engine/DataSyncStatus';
+import type { ApplyOutlineReview, TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { Json } from '@/data-engine/types';
 import type { TFunction } from 'i18next';
 
-export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string): TextComparison | undefined {
-  const placement = outlinePointConflictComparison(checkpoint, t);
+export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string, apply?: ApplyOutlineReview): TextComparison | undefined {
+  const placement = outlinePointConflictComparison(checkpoint, t, apply);
   if (placement) return placement;
   const title = outlineTitleComparison(checkpoint, t);
   if (title) return title;

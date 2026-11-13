@@ -44,6 +44,7 @@ import { retainedHomileticMoveHistory } from './homileticPlacement.server';
 import { homileticComparisonList, homileticHistoryCollection, homileticLists, homileticTitlePolicy, HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW, type HomileticHistoryChange, type HomileticHistoryPage, type HomileticList } from './homileticPlan';
 import { boundHomileticMetadata, homileticTitleSnapshot, metadataAfterHomileticPlans, orderHomileticPlans } from './homileticPlanOrder.server';
 import { metadataAfterOutlineMoves } from './outlineMoveProof.server';
+import { hasOutlineParentChoice } from './outlineParentChoice';
 import { metadataAfterOutlinePointPlacement, OUTLINE_POINT_PLACEMENT_HISTORY, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
 import { OUTLINE_TITLE_HISTORY, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_REVIEW, OUTLINE_TITLE_SETTLED, outlineTitlePolicy, type OutlineTitleCollection, type OutlineTitleHistoryPage } from './outlineTitleAction';
 import { boundOutlineTitleMetadata, orderOutlineTitles, outlineTitleProofPolicy } from './outlineTitleOrder.server';
@@ -503,7 +504,11 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
         const id = thoughtPlacementConflictId(parent.path);
         return (parent.code !== HOMILETIC_POSITION_REVIEW && parent.code !== HOMILETIC_POSITION_PROJECTION && contains(parent, item)) || (id !== undefined && isThoughtPlacementPart(item.path, id));
       })) continue;
-      for (const child of uncertain) if (contains(item, child)) conflicts.delete(JSON.stringify(child.path));
+      for (const child of uncertain) {
+        if (!contains(item, child)) continue;
+        const outlineTitle = child.code === OUTLINE_TITLE_REVIEW || child.code === OUTLINE_TITLE_SETTLED || child.code === OUTLINE_TITLE_QUEUED;
+        if (!outlineTitle || !hasOutlineParentChoice(current.resource.collection, [item])) conflicts.delete(JSON.stringify(child.path));
+      }
       const path = JSON.stringify(item.path);
       const existing = conflicts.get(path);
       if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED && !homileticComparisonList(existing))) conflicts.set(path, item);

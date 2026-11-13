@@ -60,7 +60,8 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
       }),
       recover: document.recover });
     const checkpoint = document.state?.checkpoint;
-    const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t) ?? outlineTitleComparison(checkpoint, t));
+    const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t, (side, titles) =>
+    side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)) ?? outlineTitleComparison(checkpoint, t));
     const compared = comparison ? checkpoint : undefined;
     const generation = document.confirmed?.metadata?.generation;
     const owner = document.confirmed?.value?.userId;

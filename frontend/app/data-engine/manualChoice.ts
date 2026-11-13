@@ -13,11 +13,11 @@ import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacement
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { projectOutlineParentChoice } from './outlineParentChoice';
+import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { restoreSavedRowFieldDrafts } from './rowFieldAutosave';
+import { carryOutlineTitleActions, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -82,6 +82,7 @@ export function exactManualWords(stage: ManualStage, request: CommitRequest): Do
 
 export interface ExactManualChoice {
   choice: 'local' | 'remote';
+  titles?: readonly OutlineTitleDecision[];
   request: CommitRequest;
   stored: ResourceSnapshot;
   value: DocumentData;
@@ -92,6 +93,12 @@ export interface ExactManualChoice {
 function afterChoice(confirmed: ResourceSnapshot, draft: DocumentData | null, generation: number): SessionCheckpoint {
   return { confirmed, draft, dirty: !equalValues(draft, confirmed.value), editGeneration: generation,
     pending: {}, conflicts: [], remoteCandidate: null };
+}
+
+export function manualChoiceFrames(request: CommitRequest, value: DocumentData, stored: ResourceSnapshot) {
+  const prepared = request.initialized && request.command;
+  return { basis: prepared ? request.working : request.baseline,
+    reviewed: prepared ? replaySavedChoiceDelta(stored.resource, request.value, value, request.intended) : value };
 }
 
 /** The comparison decides its one Save. Later branches remain separate drafts until explicitly recovered. */
@@ -110,13 +117,12 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const { request, stored } = decision;
   let draft = stored.value;
   const prepared = request.initialized && request.command;
-  const basis = prepared ? request.working : request.baseline;
-  const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
+  const { basis, reviewed } = manualChoiceFrames(request, decision.value, stored);
   const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
   const meeting = request.result?.kind === 'conflict' && decision.selection.some(path => equalValues(path, ['meetingDates']))
     && firstGroupMeetingReview(request.result.conflicts);
   const outline = request.result?.kind === 'conflict'
-    ? projectOutlineParentChoice(basis, reviewed, stored, request.result.conflicts, decision.choice) : undefined;
+    ? projectOutlineParentChoice(basis, reviewed, stored, request.result.conflicts, decision.choice, decision.titles) : undefined;
   if (outline && stored.value) {
     draft = projectManualSelection(stored.value, outline, decision.selection);
   } else if (meeting && stored.value) {
@@ -144,7 +150,14 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     const retained = keepUncontestedSermonFields(basis, reviewed, stored, request.result.conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }
-  const decided = { ...record, checkpoint: afterChoice(decision.stored, draft, checkpoint.editGeneration + 1),
+  const resolved = afterChoice(decision.stored, draft, checkpoint.editGeneration + 1);
+  if (outline && request.result?.kind === 'conflict') {
+    const held = checkpoint.pending[request.id];
+    carryOutlineTitleActions({ ...checkpoint, confirmed: basis, conflicts: request.result.conflicts,
+      pending: { [request.id]: { ...held, outlineTitleActions: request.outlineTitleActions ?? held.outlineTitleActions } } }, resolved);
+  }
+  if (decision.titles) stageReviewedOutlineTitleIds(resolved, decision.titles.filter(title => title.side === 'local').map(title => title.id), null);
+  const decided = { ...record, checkpoint: resolved,
     completedCommits: [...new Set([...(record.completedCommits ?? []), ...ids])] };
   return [decided, ...projectSavedChoiceDependents(record.owner, decision.request, decision.stored, draft, retired,
     decision.choice === 'local' ? record.editorId : undefined, decision.privateStage)];

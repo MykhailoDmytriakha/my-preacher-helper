@@ -31,6 +31,44 @@ const confirmDiscardDialog = async () => {
 };
 
 describe('DataSyncStatus', () => {
+  it('requires separate placement and title choices and sends them together once', async () => {
+    const apply = jest.fn();
+    const keep = jest.fn(), accept = jest.fn();
+    const title = { id: 'point', mine: 'Words on this device', stored: 'Words on the other device', label: 'Point title' };
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    render(<DataSyncStatus subject="outline" status={conflict} onKeepLocal={keep} onAcceptRemote={accept}
+      comparison={{ identity: 'shown-revision', title: 'Subpoint position', mine: 'Left parent', stored: 'Right parent',
+        outlineReview: { titles: [title], apply } }} />);
+    const position = screen.getByRole('group', { name: 'Subpoint position' });
+    const titleGroup = screen.getByRole('group', { name: 'Point title' });
+    const submit = screen.getByRole('button', { name: en.dataSync.applyReviewedVersions });
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(position).getByRole('radio', { name: new RegExp('Right parent') }));
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(titleGroup).getByRole('radio', { name: new RegExp(title.mine) }));
+    fireEvent.click(submit);
+    await waitFor(() => expect(apply).toHaveBeenCalledWith('remote', [{ id: title.id, mine: title.mine, stored: title.stored, side: 'local' }]));
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(keep).not.toHaveBeenCalled();
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it('withholds unavailable placement directions and resets choices when a different revision is shown', () => {
+    const apply = jest.fn();
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: false });
+    const field = { id: 'point', mine: 'Local words', stored: 'Saved words', label: 'Point title' };
+    const view = (identity: string) => <DataSyncStatus subject="outline" status={conflict} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()}
+      comparison={{ identity, title: 'Subpoint position', mine: 'Left parent', stored: 'Right parent', outlineReview: { titles: [field], apply } }} />;
+    const { rerender } = render(view('old'));
+    expect(screen.getByRole('radio', { name: /Right parent/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: /Left parent/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Saved words/ }));
+    expect(screen.getByRole('button', { name: en.dataSync.applyReviewedVersions })).toBeEnabled();
+    rerender(view('new'));
+    expect(screen.getByRole('button', { name: en.dataSync.applyReviewedVersions })).toBeDisabled();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it.each(['conflict', 'refused'] as const)('names a %s deletion honestly and keeps the record without discarding text', async phase => {
     const keep = jest.fn(), accept = jest.fn();
     const deletion = { ...status(phase, { canKeepLocal: true, canAcceptRemote: true }), deleting: true };

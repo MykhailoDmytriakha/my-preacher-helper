@@ -15,7 +15,8 @@ export function PlanModeStatus({ document }: { document: SermonDocument }) {
   const { t } = useTranslation();
   if (document.readOnly) return null;
   const checkpoint = document.state?.checkpoint;
-  const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t) ?? planModeComparison(checkpoint, t));
+  const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t, (side, titles) =>
+    side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)) ?? planModeComparison(checkpoint, t));
   return <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity}
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}

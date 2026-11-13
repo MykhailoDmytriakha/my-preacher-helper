@@ -154,7 +154,8 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     identity: conflict.identity, title: t('structure.thoughtLockState'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.mine)).join('\n'),
     stored: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.stored)).join('\n'),
-  } : placementComparison ?? tagComparison ?? (checkpoint && sermonConflictComparison(checkpoint, t, language));
+  } : placementComparison ?? tagComparison ?? (checkpoint && sermonConflictComparison(checkpoint, t, language, (side, titles) =>
+    side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)));
   const canChangeThoughtHistory = document.state?.durable && PHASES_TAKING_CHANGES.has(document.status?.phase ?? '');
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,

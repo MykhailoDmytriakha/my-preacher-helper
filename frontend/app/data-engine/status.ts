@@ -43,7 +43,7 @@ export interface SyncStatus {
 }
 
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
-export function describeManualSync(form: (ReturnType<ManualScope['getState']> & { exactChoice?: true; documentChoiceRequired?: true }) | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
+export function describeManualSync(form: (ReturnType<ManualScope['getState']> & { exactChoice?: true; documentChoiceRequired?: true; comparison?: { outlineParent?: { titles: readonly unknown[] } } }) | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
   // A form resolves only its own fields, so dropping a refused change of the whole document is not its
   // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
   // from elsewhere is still offered, as it always was.
@@ -52,7 +52,8 @@ export function describeManualSync(form: (ReturnType<ManualScope['getState']> & 
   if (parent?.deleting) parent = { ...parent, deleting: false };
   if (form?.exactChoice && editor && parent) {
     const ready = form.durable && !form.capturing && !form.captureFailed;
-    return { ...parent, canSave: false, canRemove: false, canAcceptRemote: ready && !form.dirty,
+    const retainsEditedTitles = Boolean(form.comparison?.outlineParent?.titles.length);
+    return { ...parent, canSave: false, canRemove: false, canAcceptRemote: ready && (!form.dirty || retainsEditedTitles),
       canKeepLocal: ready && !manualObservation(form, editor, presence).deleted };
   }
   if (form?.documentChoiceRequired && parent) parent = { ...parent, canAcceptRemote: false, canKeepLocal: false };

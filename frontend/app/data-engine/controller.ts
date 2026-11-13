@@ -30,7 +30,7 @@ import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactMan
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
-import { projectOutlineParentChoice, readOutlineParentComparison } from './outlineParentChoice';
+import { projectOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -432,7 +432,7 @@ export class EditorController {
   }
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
-  acceptRemote(selection?: readonly ManualPath[], expected?: EditorRecord): Promise<void> {
+  acceptRemote(selection?: readonly ManualPath[], expected?: EditorRecord, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     // The draft as the person chose; typing that lands before this queued choice runs is kept.
     const atChoice = this.session.checkpoint().draft;
@@ -451,9 +451,12 @@ export class EditorController {
       }
       const cancelled = Object.keys(this.session.checkpoint().pending);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
-        await this.resolveCommitChoice('remote', captures, selection, expected, undefined, { draft: atChoice, refused: refusedWork });
+        await this.resolveCommitChoice('remote', captures, selection, expected, undefined, { draft: atChoice, refused: refusedWork }, undefined, titles);
         return;
       }
+      const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote', titles)
+        ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+          ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
@@ -461,15 +464,13 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.pendingCaptures.retire(captures);
-      const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote')
-        ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
-          ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
       this.session.acceptRemote(atChoice);
       if (retained) {
         const accepted = this.session.checkpoint();
         const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
         if (merged.value.exists) this.session.edit(merged.value.value as DocumentData);
         this.session.retainOutlineTitleActions(before);
+        this.session.stageOutlineReviewTitles(titles);
       }
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
@@ -479,7 +480,7 @@ export class EditorController {
   }
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
-  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord, choiceTime?: ActionTime | null): Promise<void> {
+  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueueChoice(async () => {
@@ -508,13 +509,13 @@ export class EditorController {
       assertCouncilTopicChoice(this.result);
       requireFreshGeneration(this.result, submittedGeneration, checkpoint.remoteCandidate);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
-        await this.resolveCommitChoice('local', captures, selection, expected, correction, undefined, choiceTime);
+        await this.resolveCommitChoice('local', captures, selection, expected, correction, undefined, choiceTime, titles);
         return;
       }
       // Validate recovery before retiring its only durable terminal receipt.
       const preview = DataSession.restore(checkpoint);
       if (this.prepared) preview.release(this.prepared.operationId);
-      preview.keepLocal(undefined, choiceTime);
+      preview.keepLocal(undefined, choiceTime, undefined, titles);
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.assertCurrent();
@@ -524,7 +525,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
       this.pendingCaptures.retire(captures);
-      this.session.keepLocal(undefined, choiceTime);
+      this.session.keepLocal(undefined, choiceTime, undefined, titles);
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
         const current = this.session.checkpoint();
@@ -825,7 +826,7 @@ export class EditorController {
   private async resolveCommitChoice(choice: 'local' | 'remote', captures: ReadonlySet<object>,
     selection?: readonly ManualPath[], expected?: EditorRecord,
     correction?: { base: DocumentData; value: DocumentData },
-    remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null): Promise<void> {
+    remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
@@ -1073,7 +1074,7 @@ export class EditorController {
           }
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
-          session.keepLocal(statusActions, choiceTime, decided);
+          session.keepLocal(statusActions, choiceTime, decided, titles);
           if (groupText) {
             const reviewed = writeGroupFlowTextChoice(session.checkpoint().draft, groupText, 'mine');
             if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
@@ -1111,7 +1112,7 @@ export class EditorController {
           const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
           const retainedMeeting = meeting && decided.remoteCandidate?.value
             ? projectFirstGroupMeetingChoice(decided.remoteCandidate.value, meeting, 'remote') : undefined;
-          const retainedOutline = projectOutlineParentChoice(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote');
+          const retainedOutline = projectOutlineParentChoice(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote', titles);
           const retained = retainedMeeting ?? retainedOutline ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1126,6 +1127,7 @@ export class EditorController {
             const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
             if (merged.value.exists) session.edit(merged.value.value as DocumentData);
             session.retainOutlineTitleActions(decided);
+            session.stageOutlineReviewTitles(titles);
             if (groupRemainder) session.retainUnreviewedAutosaveActions(decided);
           }
           if (remoteChoice?.refused && !decided.remoteCandidate) {

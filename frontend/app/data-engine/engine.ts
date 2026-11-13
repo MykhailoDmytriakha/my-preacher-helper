@@ -34,7 +34,7 @@ import { describeActionDelivery, describeMembershipDelivery, type MembershipDeli
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
-import { hasOutlineParentChoice, readOutlineParentComparison } from './outlineParentChoice';
+import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
@@ -112,7 +112,7 @@ export interface ManagedManualForm {
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison;
-    updater?: (current: DocumentData) => DocumentData; metadataTime?: ActionTime | null }): Promise<void>;
+    updater?: (current: DocumentData) => DocumentData; metadataTime?: ActionTime | null; titles?: readonly OutlineTitleDecision[] }): Promise<void>;
   listRecoverable(): Promise<StoredManualScope[]>;
   recover(sourceScopeId: string): Promise<void>;
   discardRecovery(source: StoredManualScope): Promise<void>;
@@ -151,8 +151,8 @@ export interface ManagedEditor {
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
-  acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint): Promise<void>;
-  keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null): Promise<void>;
+  acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): Promise<void>;
+  keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   dispose(): void;
   /**
    * Leave the editor. With `flush`, a draft that could be saved — typed inside the autosave
@@ -2155,7 +2155,7 @@ export class DataEngine {
         if (!receipt) throw new Error('Write capture did not return its receipt');
         return receipt;
       };
-      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null) => {
+      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]) => {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         const current = controller.getState().checkpoint;
@@ -2165,7 +2165,7 @@ export class DataEngine {
         if (compared && !equalValues(current, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
-        await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime);
+        await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
       };
       const managed: ManagedEditor = {
@@ -2295,8 +2295,8 @@ export class DataEngine {
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
-        acceptRemote: (expected, compared) => choose('remote', expected, compared),
-        keepLocal: (expected, compared, choiceTime) => choose('local', expected, compared, choiceTime),
+        acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
+        keepLocal: (expected, compared, choiceTime, titles) => choose('local', expected, compared, choiceTime, titles),
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -2438,7 +2438,7 @@ export class DataEngine {
     await controller.observe(snapshot, 'server'); this.assertCurrent(owner, generation);
   }
 
-  private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord, choiceTime?: ActionTime | null): Promise<void> {
+  private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     const controller = parent.controller!;
     const checkpoint = controller.getState().checkpoint;
     const about = copy(checkpoint.confirmed.resource);
@@ -2454,14 +2454,14 @@ export class DataEngine {
     let failure: unknown;
     try {
       if (choice === 'remote') {
-        await controller.acceptRemote(undefined, expected);
+        await controller.acceptRemote(undefined, expected, titles);
         const resolved = controller.getState().checkpoint;
         if ((preference || meeting || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       } else {
-        await controller.keepLocal(undefined, undefined, expected, choiceTime);
+        await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
         if (affected.length || meeting || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
@@ -2649,7 +2649,7 @@ export class DataEngine {
     const exactRequest = (stage: ReturnType<ManualScope['getState']> | undefined, checkpoint: SessionCheckpoint) =>
       exactManualRequest(stage, checkpoint, this.commitRecords);
     const finishExactChoice = async (choice: 'local' | 'remote', scope: ManualScope, request: CommitRequest,
-      updating: Promise<void> | undefined, assertComparison: () => void, action?: EditorCommitAction) => {
+      updating: Promise<void> | undefined, assertComparison: () => void, action?: EditorCommitAction, titles?: readonly OutlineTitleDecision[]) => {
         await updating; active(); assertComparison();
         const controller = parent.controller!;
         const shown = scope.getState();
@@ -2659,7 +2659,7 @@ export class DataEngine {
         const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
           ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
           : undefined;
-        await controller.resolveExactManualChoice({ choice, request, stored, value: exactManualWords(shown, request), selection, privateStage }, () => {
+        await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage }, () => {
           active(); assertComparison();
           const current = scope.getState();
           const reviewed = exactRequest(current, controller.getState().checkpoint);
@@ -2688,7 +2688,7 @@ export class DataEngine {
     // Admission and capture stay above; this continuation owns the queued parent decision.
     const finishChoice = async (choice: 'local' | 'remote', scope: ManualScope | null,
       staged: ReturnType<ManualScope['getState']> | undefined, updating: Promise<void> | undefined,
-      assertComparison: () => void, checked: boolean, action?: EditorCommitAction) => {
+      assertComparison: () => void, checked: boolean, action?: EditorCommitAction, titles?: readonly OutlineTitleDecision[]) => {
         const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
         parent.controller!.assertManualResolution(selection);
         // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
@@ -2700,14 +2700,14 @@ export class DataEngine {
           const controller = parent.controller!;
           const shown = controller.getState().checkpoint;
           const meeting = shown.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(shown.conflicts);
-          await controller.acceptRemote(selection, expectedParent); active();
+          await controller.acceptRemote(selection, expectedParent, titles); active();
           if ((meeting || readOutlineParentComparison(shown)) && controller.getState().checkpoint.dirty) {
             await controller.save(undefined, selection); active();
             this.prepareCommitsInBackground(); this.backgroundDrain();
           }
           if (amendment && scope) await scope.cancel();
         } else {
-          await parent.controller!.keepLocal(selection, amendment, expectedParent); active();
+          await parent.controller!.keepLocal(selection, amendment, expectedParent, undefined, titles); active();
           await parent.controller!.save(undefined, selection, undefined, undefined, action); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();
@@ -2791,10 +2791,12 @@ export class DataEngine {
         const staged = scope?.getState();
         const failed = hasFailedDelivery();
         const discardStage = choice === 'remote' && options?.discardStage && Boolean(state.form.getState()?.comparison);
-        assertManualChoiceInput(staged, choice, failed, Boolean(discardStage));
+        const retainsReviewedStage = exact && Boolean(options?.titles?.length) && Boolean(expected?.outlineParent);
+        if (!retainsReviewedStage) assertManualChoiceInput(staged, choice, failed, Boolean(discardStage));
         // The parent already made its decision. Taking those words now discards only this
         // remaining stage; it must not cancel a newer parent request or repeat its decision.
         if (choice === 'remote' && staged?.choiceRequired && scope) {
+          if (options?.titles?.length) throw Object.assign(new Error('Finish the saved outline review first'), { code: 'other-changes-first' });
           await scope.suspend(); active(); assertComparison();
           await this.observeManualChoice(parent, owner, generation, staged.record.predecessor!.id); active(); assertComparison();
           await scope.cancel(); active();
@@ -2803,8 +2805,8 @@ export class DataEngine {
         }
         const time = options?.metadataTime;
         const action = choice === 'local' && time !== undefined ? { kind: 'document-metadata', time } as const : undefined;
-        if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison, action);
-        else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected), action);
+        if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison, action, options?.titles);
+        else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected), action, options?.titles);
       }),
       listRecoverable: async () => {
         active();

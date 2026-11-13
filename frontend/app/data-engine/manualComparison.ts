@@ -2,7 +2,7 @@ import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
-import { exactManualWords, replaySavedChoiceDelta } from './manualChoice';
+import { exactManualWords, manualChoiceFrames, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
 import { readOutlineParentComparison } from './outlineParentChoice';
 import { equalValues, mergeDocumentFields } from './protocol';
@@ -65,9 +65,11 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));
       const exactList = conflicts.some(({ code, path }) => isAuthoredListComparison(code)
         && form.record.selection.some(selected => equalValues(selected, path)) && !sameManualSelection(mine, stored.value, path));
-      const outlineParent = form.record.selection.some(path => equalValues(path, ['outline'])) && readOutlineParentComparison({
-        confirmed: request.baseline, conflicts, draft: mine, remoteCandidate: stored,
-      });
+      const outlineFrames = form.record.selection.some(path => equalValues(path, ['outline']))
+        ? exact ? manualChoiceFrames(request, authored, stored) : { basis: parent.confirmed, reviewed: parent.draft }
+        : undefined;
+      const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
+        conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
       if (changed || exactVerse || exactList || outlineParent) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
