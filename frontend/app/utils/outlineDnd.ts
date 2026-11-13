@@ -19,6 +19,7 @@ import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 export type SectionKey = 'introduction' | 'main' | 'conclusion';
 
 export type OutlinePointGap = { section: SectionKey; previous: string | null; next: string | null };
+export type OutlineSubpointGap = { parentId: string; previous: string | null; next: string | null };
 export type OutlinePointOrder = Record<SectionKey, { id: string }[]>;
 
 export const SECTION_KEYS: SectionKey[] = ['introduction', 'main', 'conclusion'];
@@ -140,6 +141,26 @@ export function hasOutlinePointOrder(value: unknown, expected: OutlinePointOrder
     return Array.isArray(points) && points.length === expected[section].length && points.every((point, index) =>
       point !== null && typeof point === 'object' && 'id' in point && point.id === expected[section][index].id);
   });
+}
+
+export function outlineSubpointGap(outline: SermonOutline, subPointId: string): OutlineSubpointGap | undefined {
+  const home = findSubPointParent(outline, subPointId);
+  if (!home) return undefined;
+  const siblings = home.point.subPoints ?? [];
+  return { parentId: home.point.id, previous: siblings[home.index - 1]?.id ?? null, next: siblings[home.index + 1]?.id ?? null };
+}
+
+/** A missing anchor or parent leaves the gesture unresolved. */
+export function projectOutlineSubpoint(outline: SermonOutline, subPointId: string, gap: OutlineSubpointGap): SermonOutline | undefined {
+  const home = findSubPointParent(outline, subPointId);
+  const section = findPointSection(outline, gap.parentId);
+  if (!home || !section || gap.previous === subPointId || gap.next === subPointId) return undefined;
+  const siblings = listOf(outline, section).find(point => point.id === gap.parentId)?.subPoints ?? [];
+  const previous = gap.previous === null ? -1 : siblings.findIndex(row => row.id === gap.previous);
+  const next = gap.next === null ? siblings.length : siblings.findIndex(row => row.id === gap.next);
+  if ((gap.previous !== null && previous < 0) || next < 0 || previous >= next) return undefined;
+  if (home.point.id === gap.parentId && home.index > previous && home.index < next) return outline;
+  return moveSubPoint(outline, subPointId, gap.parentId, gap.next === null ? previous + 1 : next);
 }
 
 /** The section and adjacent points visible when the person placed this point. */

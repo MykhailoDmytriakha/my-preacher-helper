@@ -113,7 +113,7 @@ function projectBoard(change: FieldChange | undefined, field: typeof boardFields
 }
 
 /** Compute the automatic portion of an outline Save against the tree and thoughts that will be merged. */
-export function prepareOutlinePlacementRepair(command: DataCommand, current: ResourceSnapshot) {
+export function prepareOutlinePlacementRepair(command: DataCommand, current: ResourceSnapshot, authoredCommand = command) {
   const repairs = new Map<string, Repair>();
   const uncertain: ConflictDetail[] = [];
   const unchanged = { command, repairs, uncertain };
@@ -127,11 +127,15 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
   const merged = mergeFields(outline.before, outline.after, readField(live, ['outline']), ['outline']);
   if (merged.conflicts.length || !outlineValue(merged.value.value)) return unchanged;
 
-  const openingOutline = outline.before.value, proposedOutline = outline.after.value, mergedOutline = merged.value.value;
+  const authoredOutline = authoredCommand.kind === 'update' && authoredCommand.changes.find(change =>
+    change.path.length === 1 && change.path[0] === 'outline');
+  const openingOutline = authoredOutline && outlineValue(authoredOutline.before.value) ? authoredOutline.before.value : outline.before.value;
+  const proposedOutline = authoredOutline && outlineValue(authoredOutline.after.value) ? authoredOutline.after.value : outline.after.value;
+  const mergedOutline = merged.value.value;
   const openingRows = thoughtRows(thought?.before.value) ? thought.before.value : [];
   const proposedRows = thoughtRows(thought?.after.value) ? thought.after.value : [];
   const localAfter = byId(proposedRows);
-  const canonicalLocal = byId(canonicalRepair({ ...live, outline: outline.before.value, thoughts: openingRows }, outline.after.value).thoughts as Row[]);
+  const canonicalLocal = byId(canonicalRepair({ ...live, outline: openingOutline, thoughts: openingRows }, proposedOutline).thoughts as Row[]);
   const repaired = equalValues(live.outline, merged.value.value) ? live : canonicalRepair(live, merged.value.value);
   const liveAfter = byId(repaired.thoughts as Row[]);
   const localBefore = byId(openingRows);
@@ -150,7 +154,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
     const projected = changedLinks(row, materialized);
     const legacyDuplicate = action && equalValues(action.before, action.after) && projected && equalValues(projected.after, action.after);
     if (action && !legacyDuplicate && equalValues(action.before, action.after) && isThoughtLocation(action.after)
-      && couldBeLegacyCleanup(outline.before.value, outline.after.value, action.after)) {
+      && couldBeLegacyCleanup(openingOutline, proposedOutline, action.after)) {
       // This old envelope lost its opening link. Do not rank its timestamp against a surviving placement.
       duplicateStamps.add(row.id);
       const currentLocation = readThoughtLocation(row);

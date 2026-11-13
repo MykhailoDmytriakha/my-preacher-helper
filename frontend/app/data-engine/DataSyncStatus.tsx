@@ -45,7 +45,7 @@ export interface TextComparison {
   scopedChoice?: true;
   keepMineDisabled?: boolean;
   completeReview?: true;
-  outlineReview?: { titles: readonly (OutlineTitleVersion & { label: string })[]; apply: ApplyOutlineReview };
+  outlineReview?: { titles: readonly (OutlineTitleVersion & { label: string })[]; apply: ApplyOutlineReview; placementSettled?: true };
   actions?: { local: string; stored: string; confirmStored?: DiscardQuestionKey };
 }
 export interface DataSyncStatusProps {
@@ -106,11 +106,14 @@ function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, 
   const { t } = useTranslation();
   const id = useId();
   const [placement, setPlacement] = useState<'local' | 'remote'>();
+  const chosenPlacement = comparison.outlineReview.placementSettled
+    ? (remoteAllowed ? 'remote' : localAllowed ? 'local' : undefined) : placement;
   const [titles, setTitles] = useState<Record<string, 'local' | 'remote'>>({});
-  const fields = [{ id: null, label: comparison.title, mine: comparison.mine, stored: comparison.stored }, ...comparison.outlineReview.titles];
+  const fields = [...(comparison.outlineReview.placementSettled ? [] :
+    [{ id: null, label: comparison.title, mine: comparison.mine, stored: comparison.stored }]), ...comparison.outlineReview.titles];
   const placementAllowed = (side: 'local' | 'remote') => side === 'local' ? localAllowed : remoteAllowed;
-  const decisions = comparison.outlineReview.titles.flatMap(({ id, mine, stored }) =>
-    Object.prototype.hasOwnProperty.call(titles, id) ? [{ id, mine, stored, side: titles[id] }] : []);
+  const decisions = comparison.outlineReview.titles.flatMap(({ id, mine, stored, field }) =>
+    Object.prototype.hasOwnProperty.call(titles, id) ? [{ id, mine, stored, ...(field && { field }), side: titles[id] }] : []);
   return <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-800 dark:bg-rose-950/20">
     {fields.map(({ id: fieldId, label, mine, stored }, index) => <fieldset key={fieldId ?? 'placement'} disabled={busy} className="min-w-0 space-y-2">
       <legend className="font-medium">{label}</legend>
@@ -124,8 +127,8 @@ function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, 
       </div>
     </fieldset>)}
     <button type="button" className="rounded-md bg-rose-700 px-3 py-2 font-medium text-white disabled:opacity-50"
-      disabled={busy || !placement || !placementAllowed(placement) || decisions.length !== comparison.outlineReview.titles.length}
-      onClick={() => { if (placement) void apply(placement, decisions); }}>{t('dataSync.applyReviewedVersions')}</button>
+      disabled={busy || !chosenPlacement || !placementAllowed(chosenPlacement) || decisions.length !== comparison.outlineReview.titles.length}
+      onClick={() => { if (chosenPlacement) void apply(chosenPlacement, decisions); }}>{t('dataSync.applyReviewedVersions')}</button>
   </div>;
 }
 

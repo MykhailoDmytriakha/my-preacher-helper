@@ -1,8 +1,9 @@
-import { findPointSection, findSubPointParent, moveSubPoint, outlinePointGap, SECTION_KEYS } from '@/utils/outlineDnd';
-import { outlineTitleConflictTarget, outlineTitleField, withOutlineTitleText } from '@/utils/sermonNoteText';
+import { findPointSection, findSubPointParent, moveSubPoint, outlinePointGap, outlineSubpointGap, SECTION_KEYS } from '@/utils/outlineDnd';
+import { outlineTitleConflictTarget, outlineTitleField, sermonNoteConflictTarget, withOutlineNoteText, withOutlineTitleText } from '@/utils/sermonNoteText';
 
 import { equalValues, readField, writeField } from './fieldValues';
 import { outlinePlacementField, replaceResourceOutline } from './outlinePlacementResource';
+import { OUTLINE_SUBPOINT_REVIEW } from './outlineSubpointMove';
 import { OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_REVIEW, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { outlineTitleChoiceFrames } from './outlineTitleEdit';
 import { mergeDocumentFields } from './protocol';
@@ -22,7 +23,10 @@ function readParentChoice(collection: string, conflicts: readonly ConflictDetail
   if (!opening || !mine || !stored) return undefined;
   const children = SECTION_KEYS.flatMap(section => opening[section].flatMap(point => (point.subPoints ?? []).filter(child => {
     const local = findSubPointParent(mine, child.id), remote = findSubPointParent(stored, child.id);
-    return local && remote && local.point.id !== remote.point.id && local.point.id !== point.id && remote.point.id !== point.id;
+    if (!local || !remote) return false;
+    return root.code === OUTLINE_SUBPOINT_REVIEW
+      ? root.outlineSubpointIds?.includes(child.id) && !equalValues(outlineSubpointGap(mine, child.id), outlineSubpointGap(stored, child.id))
+      : local.point.id !== remote.point.id && local.point.id !== point.id && remote.point.id !== point.id;
   })));
   return children.length ? { field, root, opening, children } : undefined;
 }
@@ -38,6 +42,16 @@ function currentFrames(choice: NonNullable<ReturnType<typeof readParentChoice>>,
   return moves.length === choice.children.length ? { mine, stored, moves } : undefined;
 }
 
+function currentOrderedSide(choice: NonNullable<ReturnType<typeof readParentChoice>>, id: string,
+  mine: SermonOutline, stored: SermonOutline) {
+  const ordered = choice.root.orderedOutlineSubpoints?.find(item => item.id === id);
+  if (!ordered) return undefined;
+  const reviewedMine = readOutline(choice.root.mine.value), reviewedStored = readOutline(choice.root.theirs.value);
+  return reviewedMine && reviewedStored
+    && equalValues(outlineSubpointGap(reviewedMine, id), outlineSubpointGap(mine, id))
+    && equalValues(outlineSubpointGap(reviewedStored, id), outlineSubpointGap(stored, id)) ? ordered.side : undefined;
+}
+
 export function hasOutlineParentChoice(collection: string, conflicts: readonly ConflictDetail[]): boolean {
   return Boolean(readParentChoice(collection, conflicts));
 }
@@ -46,6 +60,7 @@ export interface OutlineTitleVersion {
   id: string;
   mine: string;
   stored: string;
+  field?: 'note';
 }
 
 export interface OutlineTitleDecision extends OutlineTitleVersion {
@@ -58,11 +73,12 @@ export function readOutlineParentComparison({ confirmed, conflicts, draft, remot
   const choice = readParentChoice(confirmed.resource.collection, conflicts);
   const current = choice && currentFrames(choice, draft, remoteCandidate?.value ?? null);
   if (!choice || !current) return undefined;
+  const unresolvedMoves = current.moves.filter(({ child }) => !currentOrderedSide(choice, child.id, current.mine, current.stored));
   let frames: ReturnType<typeof parentChoiceMerge>;
   try { frames = parentChoiceMerge(confirmed, draft, remoteCandidate, conflicts, choice, 'remote'); }
-  catch { return { ...choice, ...current, titles: [] }; }
+  catch { return { ...choice, ...current, unresolvedMoves, titles: [] }; }
   const titles = frames ? comparedTitles(frames, conflicts, choice.field) : [];
-  return { ...choice, ...current, opening: readOutline(confirmed.value?.[choice.field]) ?? choice.opening, titles: titles.map(({ version }) => version) };
+  return { ...choice, ...current, unresolvedMoves, opening: readOutline(confirmed.value?.[choice.field]) ?? choice.opening, titles: titles.map(({ version }) => version) };
 }
 
 type SubpointHome = NonNullable<ReturnType<typeof findSubPointParent>>;
@@ -118,11 +134,14 @@ function parentChoiceMerge(basis: ResourceSnapshot, draft: DocumentData | null, 
   const { moves } = current;
   const project = (value: DocumentData, outline: SermonOutline): DocumentData => {
     let next = outline;
-    for (const { child, [side]: target } of moves) {
+    for (const move of moves) {
+      const { child } = move;
+      const selected = currentOrderedSide(choice, child.id, current.mine, current.stored) ?? side;
+      const target = move[selected];
       const parentId = target.point.id;
       if (!findPointSection(next, parentId)) {
         if (findPointSection(choice.opening, parentId) || findSubPointParent(next, parentId)) throw changed();
-        next = withNewParent(next, side === 'local' ? current.mine : current.stored, target);
+        next = withNewParent(next, selected === 'local' ? current.mine : current.stored, target);
       }
       const section = findPointSection(next, parentId)!;
       const children = next[section].find(point => point.id === parentId)?.subPoints ?? [];
@@ -135,17 +154,27 @@ function parentChoiceMerge(basis: ResourceSnapshot, draft: DocumentData | null, 
     return replaceResourceOutline(basis.resource.collection, value, next);
   };
   const ancestor = project(aligned.basis, opening);
-  const mine = side === 'local' ? aligned.draft : project(aligned.draft, current.mine);
-  const theirs = side === 'remote' ? stored.value : project(stored.value, current.stored);
+  const mine = project(aligned.draft, current.mine);
+  const theirs = project(stored.value, current.stored);
   const authored = writeField(mine, ['updatedAt'], readField(stored.value, ['updatedAt']));
   return { merged: mergeDocumentFields(ancestor, authored, theirs), current };
 }
 
-function outlineTitleComparisons(conflicts: readonly ConflictDetail[], field: 'outline' | 'structure') {
+function outlineTitleComparisons(conflicts: readonly ConflictDetail[], field: 'outline' | 'structure'):
+  { target: { kind: 'point' | 'subpoint'; id: string }; version: OutlineTitleVersion; note?: { mine?: string; stored?: string } }[] {
   return conflicts.flatMap(({ path, mine, theirs }) => {
-    const target = path[0] === field && outlineTitleConflictTarget(path);
-    return target && typeof mine.value === 'string' && typeof theirs.value === 'string'
-      ? [{ target, version: { id: target.id, mine: mine.value, stored: theirs.value } }] : [];
+    if (path[0] !== field) return [];
+    const title = outlineTitleConflictTarget(path);
+    if (title && typeof mine.value === 'string' && typeof theirs.value === 'string') {
+      return [{ target: title, version: { id: title.id, mine: mine.value, stored: theirs.value } }];
+    }
+    const target = sermonNoteConflictTarget(field === 'structure' ? ['outline', ...path.slice(1)] : path);
+    if (!target || target.kind === 'scratch'
+      || (mine.exists && typeof mine.value !== 'string') || (theirs.exists && typeof theirs.value !== 'string')) return [];
+    const local = typeof mine.value === 'string' ? mine.value : undefined;
+    const stored = typeof theirs.value === 'string' ? theirs.value : undefined;
+    return [{ target, version: { id: 'note:' + target.id, field: 'note', mine: local ?? '', stored: stored ?? '' },
+      note: { mine: local, stored } }];
   });
 }
 
@@ -180,10 +209,12 @@ export function projectOutlineParentChoice(basis: ResourceSnapshot, draft: Docum
   if (!titles.length) return value;
   let outline = readOutline(value[choice.field]);
   if (!outline) throw changed();
-  for (const { target, version } of titles) {
+  for (const { target, version, note } of titles) {
     const selected = decisions.filter(({ id, mine, stored }) => id === version.id && mine === version.mine && stored === version.stored);
     if (selected.length !== 1) throw changed();
-    outline = withOutlineTitleText(outline, target, selected[0].side === 'local' ? version.mine : version.stored);
+    const local = selected[0].side === 'local';
+    outline = note ? withOutlineNoteText(outline, target, local ? note.mine : note.stored)
+      : withOutlineTitleText(outline, target, local ? version.mine : version.stored);
     if (!outline) throw changed();
   }
   return { ...value, [choice.field]: outline as unknown as DocumentData };

@@ -23,9 +23,10 @@ const json = (sermon: Sermon) => deepCleanUndefined(sermon) as unknown as Docume
 const sections = ['introduction', 'main', 'conclusion'] as const;
 
 /** Proposal UI transforms only its pinned stage. Apply belongs to the parent form. */
-export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, onChange }: {
+export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, onChange, onSubPointPlacement }: {
   sermonId: string; sermon: Sermon; form: ReturnType<typeof useDataForm>; readOnly: boolean; valid: boolean;
   onChange: (outline: SermonOutline) => void;
+  onSubPointPlacement: (outline: SermonOutline, subPointId: string) => void;
 }) {
   const { t } = useTranslation();
   const { aiBlocked, refresh } = useAiUsage();
@@ -74,7 +75,7 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
   return <div className="space-y-4">
     <p className="text-sm text-gray-600 dark:text-gray-300">{t('scratch.board.proposalHelp')}</p>
     {notice && <p role="status">{notice.unplaced ? t('scratch.board.composeUnplaced', { count: notice.unplaced }) : t('scratch.board.proposalReady')}</p>}
-    <OutlineBoard value={sermon.outline ?? { introduction: [], main: [], conclusion: [] }} onChange={onChange}
+    <OutlineBoard value={sermon.outline ?? { introduction: [], main: [], conclusion: [] }} onChange={onChange} onSubPointPlacement={onSubPointPlacement}
       directText showNotes isReadOnly={readOnly}
       getPointThoughtCount={id => sermon.thoughts.filter(thought => thought.outlinePointId === id).length}
       getSubPointThoughtCount={id => sermon.thoughts.filter(thought => thought.subPointId === id).length}

@@ -7,6 +7,7 @@ export interface OutlineInputSequence {
   noteOpening?: OutlineNoteOpening;
   titleOpening?: OutlineTitleOpening;
   titleChoice?: OutlineTitleOpening;
+  subPointMove?: OutlinePointMove;
   apply<T>(base: SermonOutline | null, input: SermonOutline, edit: (base: SermonOutline | null) => T): T;
 }
 
@@ -18,6 +19,7 @@ interface OutlineInput {
   outline: SermonOutline;
   base: SermonOutline | null;
   pointMove?: OutlinePointMove;
+  subPointMove?: OutlinePointMove;
   noteOpening?: OutlineNoteOpening;
   titleOpening?: OutlineTitleOpening;
   titleChoice?: OutlineTitleOpening;
@@ -56,8 +58,8 @@ export class OutlineCapture {
     const handlers = input.begin();
     const viewAtRequest = this.viewGeneration;
     let writing: Promise<SermonOutline | null>;
-    const sequence = input.noteOpening || input.titleOpening || input.titleChoice
-      ? { ...this.sequence, noteOpening: input.noteOpening, titleOpening: input.titleOpening, titleChoice: input.titleChoice }
+    const sequence = input.noteOpening || input.titleOpening || input.titleChoice || input.subPointMove
+      ? { ...this.sequence, noteOpening: input.noteOpening, titleOpening: input.titleOpening, titleChoice: input.titleChoice, ...(input.subPointMove && { subPointMove: input.subPointMove }) }
       : this.sequence;
     try {
       writing = this.writer.updateSermonOutline(this.id, input.outline, input.base, this.collision, sequence,

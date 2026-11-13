@@ -156,7 +156,7 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     carryOutlineTitleActions({ ...checkpoint, confirmed: basis, conflicts: request.result.conflicts,
       pending: { [request.id]: { ...held, outlineTitleActions: request.outlineTitleActions ?? held.outlineTitleActions } } }, resolved);
   }
-  if (decision.titles) stageReviewedOutlineTitleIds(resolved, decision.titles.filter(title => title.side === 'local').map(title => title.id), null);
+  if (decision.titles) stageReviewedOutlineTitleIds(resolved, decision.titles.filter(title => title.side === 'local' && !title.field).map(title => title.id), null);
   const decided = { ...record, checkpoint: resolved,
     completedCommits: [...new Set([...(record.completedCommits ?? []), ...ids])] };
   return [decided, ...projectSavedChoiceDependents(record.owner, decision.request, decision.stored, draft, retired,

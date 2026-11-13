@@ -14,6 +14,52 @@ import type { ManualScope } from '../manualScope';
 import type { DocumentData, ResourceSnapshot } from '../types';
 import type { SermonOutline } from '@/models/models';
 
+it.each(['local', 'remote'] as const)('keeps the ordered return while choosing the %s notes', side => {
+  const original: SermonOutline = { introduction: [], conclusion: [], main: [
+    { id: 'opening', text: 'Opening point', subPoints: [{ id: 'child', text: 'Subpoint', note: 'Opening notes', position: 0 }] },
+    { id: 'desktop', text: 'Desktop destination', subPoints: [] },
+  ] };
+  const notes = (outline: SermonOutline, note: string): SermonOutline => ({ ...outline,
+    main: outline.main.map(point => ({ ...point, subPoints: point.subPoints?.map(child => ({ ...child, note })) })),
+  });
+  const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' },
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false },
+    value: { userId: 'owner', thoughts: [], outline: original as unknown as DocumentData } };
+  const draft = replaceResourceOutline('sermons', basis.value!, notes(original, 'Phone notes'));
+  const stored = { ...basis, metadata: { ...basis.metadata!, revision: 2 },
+    value: replaceResourceOutline('sermons', basis.value!, notes(moveSubPoint(original, 'child', 'desktop', 0), 'Desktop notes')) };
+  const conflicts = [{ path: ['outline'], code: 'outline-subpoint-review', outlineSubpointIds: ['child'],
+    orderedOutlineSubpoints: [{ id: 'child', side: 'local' as const }],
+    base: { exists: true, value: basis.value!.outline }, mine: { exists: true, value: draft.outline },
+    theirs: { exists: true, value: stored.value.outline } }];
+  const comparison = readOutlineParentComparison({ confirmed: basis, draft, remoteCandidate: stored, conflicts });
+  const note = { id: 'note:child', field: 'note' as const, mine: 'Phone notes', stored: 'Desktop notes' };
+  expect(comparison?.unresolvedMoves).toEqual([]);
+  expect(comparison?.titles).toEqual([note]);
+  expect(projectOutlineParentChoice(basis, draft, stored, conflicts, 'remote', [{ ...note, side }])?.outline)
+    .toEqual(notes(original, side === 'local' ? 'Phone notes' : 'Desktop notes'));
+});
+
+it('chooses the disputed subpoints without discarding a move made on only one device', () => {
+  const point = (id: string, child?: string) => ({ id, text: id, subPoints: child ? [{ id: child, text: child, position: 0 }] : [] });
+  const opening: SermonOutline = { introduction: [], conclusion: [],
+    main: [point('a', 'first'), point('b'), point('c'), point('d', 'second'), point('e'), point('f'), point('g', 'independent'), point('h')] };
+  const mine = moveSubPoint(moveSubPoint(moveSubPoint(opening, 'first', 'b', 0), 'second', 'e', 0), 'independent', 'h', 0);
+  const saved = moveSubPoint(moveSubPoint(opening, 'first', 'c', 0), 'second', 'f', 0);
+  const value = (outline: SermonOutline): DocumentData => ({ structure: outline as unknown as DocumentData });
+  const basis: ResourceSnapshot = { resource: { collection: 'planTemplates', id: 'outline' }, value: value(opening),
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } };
+  const stored = { ...basis, value: value(saved), metadata: { ...basis.metadata!, revision: 2 } };
+  const field = (outline: SermonOutline) => ({ exists: true, value: value(outline).structure });
+  const conflicts = [{ path: ['structure'], code: 'outline-subpoint-review', outlineSubpointIds: ['first', 'second'],
+    base: field(opening), mine: field(mine), theirs: field(saved) }];
+  const comparison = readOutlineParentComparison({ confirmed: basis, draft: value(mine), remoteCandidate: stored, conflicts });
+  expect(comparison?.unresolvedMoves.map(({ child }) => child.id)).toEqual(['first', 'second']);
+  expect(projectOutlineParentChoice(basis, value(mine), stored, conflicts, 'remote')?.structure)
+    .toEqual(moveSubPoint(saved, 'independent', 'h', 0));
+  expect(projectOutlineParentChoice(basis, value(mine), stored, conflicts, 'local')?.structure).toEqual(mine);
+});
+
 it.each(['remote', 'local', 'new-local-parent', 'new-saved-parent', 'later-independent-words', 'later-same-parent', 'later-same-parent-different-slot', 'later-opening-parent', 'competing-words'] as const)(
   'keeps independent words and linked thoughts when resolving %s subpoint placement', scenario => {
   const differentSlot = scenario === 'later-same-parent-different-slot';

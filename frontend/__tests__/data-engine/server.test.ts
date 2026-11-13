@@ -5376,6 +5376,152 @@ describe('transactional DataEngine server', () => {
       ]) });
     });
 
+  describe.each([['sermons', 'outline'], ['planTemplates', 'structure']] as const)('subpoint placement chronology in %s', (collection, field) => {
+    async function fixture() {
+      const owner = 'owner-1';
+      const base = { protocol: 1 as const, owner, resource: { collection, id: 'subpoint-placement' }, dependsOn: [] };
+      const date = '2026-11-13T00:00:00.000Z';
+      const outline = (parent: string, childText = 'Opening words') => ({
+        introduction: [], conclusion: [],
+        main: ['a', 'b', 'c'].map(id => ({ id, text: id, subPoints: [
+          { id: id + '-anchor', text: 'Existing neighbor', position: 0 },
+          ...(id === parent ? [{ id: 'child', text: childText, note: 'Keep the reminder', position: 1 }] : []),
+        ] })),
+      });
+      const opening = outline('a');
+      const value = { userId: owner, createdAt: date, updatedAt: date, [field]: opening, ...(collection === 'sermons'
+        ? { title: 'Sermon', verse: 'John 3:16', date, thoughts: [] } : { name: 'Template' }) };
+      expect(await processCommand(owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const gap = (parentId: string) => ({ parentId, previous: parentId + '-anchor', next: null });
+      const move = (operationId: string, parent: string, at: number | null, words?: string) => ({
+        ...base, kind: 'update' as const, operationId, generation: 'seed',
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: outline(parent, words) } }],
+        outlineSubpointMoves: [{ subPointId: 'child', opening: gap('a'), destination: gap(parent), observedRevision: 1,
+          time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at } }],
+      });
+      return { base, outline, move };
+    }
+
+    it.each([false, true])('uses the later gesture and retains independent words (offline gesture later: %s)', async phoneLater => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 60))).toMatchObject({ kind: 'acknowledged' });
+      const queued = move('phone', 'b', phoneLater ? 100 : 20, 'Words saved independently with the move');
+      const expected = outline(phoneLater ? 'b' : 'c', 'Words saved independently with the move');
+      const accepted = await processCommand(base.owner, queued);
+      expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: expected } } });
+      expect((await readDocument(base.owner, base.resource))?.value?.[field]).toEqual(expected);
+      expect(await processCommand(base.owner, queued)).toEqual(accepted);
+      const history = collection === 'sermons'
+        ? await listOutlinePointPlacementHistory(base.owner, base.resource.id, 'seed')
+        : await listPlanTemplatePointPlacementHistory(base.owner, base.resource.id, 'seed');
+      expect(history.entries).toMatchObject([{ subpoint: true, pointId: 'child',
+        earlier: { parentId: phoneLater ? 'c' : 'b' }, kept: { parentId: phoneLater ? 'b' : 'c' } }]);
+    });
+
+    it('counts a later return to the original parent as an action even with no net outline edit', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 60))).toMatchObject({ kind: 'acknowledged' });
+      const away = move('phone', 'b', 70);
+      const back = move('phone', 'a', 100);
+      const delivered = { ...back, changes: [{ ...back.changes[0], after: back.changes[0].before }],
+        outlineSubpointMoves: [away.outlineSubpointMoves[0], { ...back.outlineSubpointMoves[0], opening: away.outlineSubpointMoves[0].destination }] };
+      expect(await processCommand(base.owner, delivered)).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { [field]: outline('a') } },
+      });
+    });
+
+    it('asks about an explicit offline return with no comparable time', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 60))).toMatchObject({ kind: 'acknowledged' });
+      const away = move('phone', 'b', 70);
+      const back = move('phone', 'a', null);
+      const delivered = { ...back, changes: [{ ...back.changes[0], after: back.changes[0].before }],
+        outlineSubpointMoves: [away.outlineSubpointMoves[0], { ...back.outlineSubpointMoves[0], opening: away.outlineSubpointMoves[0].destination }] };
+      expect(await processCommand(base.owner, delivered)).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: [field], code: 'outline-subpoint-review' }],
+        snapshot: { value: { [field]: outline('c') } },
+      });
+    });
+
+    it('replays two gestures into the same parent within one Save', async () => {
+      const { base, move, outline } = await fixture();
+      const first = move('batch', 'b', 60);
+      const local = outline('b');
+      const [a, b, c] = local.main;
+      const sibling = { ...a.subPoints[0], position: 2 };
+      const next = { ...local, main: [{ ...a, subPoints: [] }, { ...b, subPoints: [...b.subPoints, sibling] }, c] };
+      const second = { subPointId: 'a-anchor', opening: { parentId: 'a', previous: null, next: null },
+        destination: { parentId: 'b', previous: 'child', next: null }, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 } };
+      expect(await processCommand(base.owner, { ...first, outlineSubpointMoves: [...first.outlineSubpointMoves, second],
+        changes: [{ ...first.changes[0], after: { exists: true, value: next } }],
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: next } } });
+    });
+
+    it('does not use an older proof after an uncertain action chose the same place', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 20))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, move('same-place', 'c', null))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, move('other-place', 'b', 100))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: [field], outlineSubpointIds: ['child'] }], snapshot: { value: { [field]: outline('c') } },
+      });
+    });
+
+    it('recognizes exactly which prior gesture the second offline move followed', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('first', 'b', null))).toMatchObject({ kind: 'acknowledged' });
+      const second = move('second', 'c', null);
+      const staged = { ...second, dependsOn: ['first'], changes: [{ ...second.changes[0], before: { exists: true, value: outline('b') } }],
+        outlineSubpointMoves: [{ ...second.outlineSubpointMoves[0], opening: { parentId: 'b', previous: 'b-anchor', next: null },
+          predecessorOperationId: 'first' }] };
+      expect(await processCommand(base.owner, staged)).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { [field]: outline('c') } },
+      });
+    });
+
+    it('preserves the placement comparison during a separate dispute about the note', async () => {
+      const { base, move } = await fixture();
+      const desktop = move('desktop', 'c', 60);
+      const withNote = (root: ReturnType<typeof move>['changes'][number]['after'], note: string) => ({
+        ...root, value: { ...root.value, main: root.value.main.map(point => ({
+          ...point, subPoints: point.subPoints.map(child => child.id === 'child' ? { ...child, note } : child),
+        })) },
+      });
+      expect(await processCommand(base.owner, { ...desktop, changes: [{ ...desktop.changes[0], after: withNote(desktop.changes[0].after, 'Desktop notes') }] }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const away = move('phone', 'b', 70);
+      const back = move('phone', 'a', 100);
+      expect(await processCommand(base.owner, {
+        ...back, changes: [{ ...back.changes[0], after: withNote(back.changes[0].before, 'Phone notes') }],
+        outlineSubpointMoves: [away.outlineSubpointMoves[0], { ...back.outlineSubpointMoves[0], opening: away.outlineSubpointMoves[0].destination }],
+      })).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([expect.objectContaining({ path: [field],
+        code: 'outline-subpoint-review', outlineSubpointIds: ['child'], orderedOutlineSubpoints: [{ id: 'child', side: 'local' }] })]) });
+    });
+
+    it('does not recreate a removed destination when a timed gesture arrives', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 60))).toMatchObject({ kind: 'acknowledged' });
+      const stored = outline('c');
+      const withoutParent = { ...stored, main: stored.main.filter(point => point.id !== 'b') };
+      expect(await processCommand(base.owner, { ...base, operationId: 'delete-destination', kind: 'update', generation: 'seed',
+        changes: [{ path: [field], before: { exists: true, value: stored }, after: { exists: true, value: withoutParent } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, move('phone', 'b', 100))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { [field]: withoutParent } },
+      });
+      expect((await readDocument(base.owner, base.resource))?.value?.[field]).toEqual(withoutParent);
+    });
+
+    it('keeps a real choice when the offline gesture has no comparable time', async () => {
+      const { base, outline, move } = await fixture();
+      expect(await processCommand(base.owner, move('desktop', 'c', 60))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(base.owner, move('phone', 'b', null))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: [field] }], snapshot: { value: { [field]: outline('c') } },
+      });
+    });
+  });
+
   describe.each([['sermons', 'outline'], ['planTemplates', 'structure']] as const)('title returns in %s', (collection, field) => {
     async function seed(kind: 'point' | 'subpoint', rowId: string = kind) {
       const resource = { collection, id: 'outline-title-return' };

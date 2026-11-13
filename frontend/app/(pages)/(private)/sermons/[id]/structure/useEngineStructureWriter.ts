@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
-import { useDataDocument, useDocumentActions, type DocumentUpdateOptions } from '@/data-engine/react.client';
+import { captureOutlineSubpointMove, useDataDocument, useDocumentActions, type DocumentUpdateOptions } from '@/data-engine/react.client';
 import { isOutlineCollisionError, OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
 import { serializeContent } from '@/utils/contentFingerprint';
@@ -20,7 +20,7 @@ import { captureAiReview } from './captureAiReview';
 import type { OutlinePlacementVersion, StructureWriter } from '@/components/sermon/structureWriter';
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
-import type { DocumentData, OutlinePointPlacementCapture } from '@/data-engine/types';
+import type { DocumentData, OutlinePointPlacementCapture, OutlineSubpointMove } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { OutlineNoteOpening, OutlineTitleOpening } from '@/utils/sermonNoteText';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
@@ -29,6 +29,7 @@ type SermonDocument = ReturnType<typeof useDataDocument>;
 type DocumentUpdater = Parameters<SermonDocument['update']>[0];
 type StructureDocument = Pick<SermonDocument, 'update'> & Partial<Pick<SermonDocument, 'captureSermonNoteText'>> & {
   outlineTitleVersion?: StructureWriter['outlineTitleVersion'];
+  commitSubpointMove?: (fn: DocumentUpdater, move: OutlineSubpointMove) => Promise<void>;
   outlinePlacementVersion?: (shown?: SermonOutline) => OutlinePlacementVersion | undefined;
   commitOutlineMove?: (updater: DocumentUpdater, move: OutlinePointPlacementCapture) => Promise<void>;
   captureActionTime?: () => ActionTime | undefined;
@@ -206,9 +207,15 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
           return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply();
         });
       }
+      const gesture = inputSequence?.subPointMove;
+      const liveVersion = gesture && document.outlinePlacementVersion?.();
+      if (gesture && liveVersion && liveVersion.generation !== gesture.version.generation) throw unavailable();
+      const move = gesture && document.commitSubpointMove && captureOutlineSubpointMove(gesture.before, outline,
+        gesture.pointId, gesture.version.observedRevision, document.captureActionTime?.() ?? null);
+      const target = move ? { update: (fn: DocumentUpdater) => document.commitSubpointMove!(fn, move) } : document;
       const titleOpening = inputSequence?.titleOpening;
       try {
-        return await editEngineSermon(document, owner, current => {
+        return await editEngineSermon(target, owner, current => {
           const apply = (base: SermonOutline | null) => {
             const live = current.outline ?? null;
             const selectedTitle = inputSequence?.titleChoice;
@@ -293,6 +300,7 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
     },
     captureActionTime: () => opening.captureActionTime(),
     commitOutlineMove: (fn, move) => opening.document.commit(fn, { kind: 'outline-point-placement', move }),
+    commitSubpointMove: (fn, move) => opening.document.commit(fn, { kind: 'outline-subpoint-placement', move }),
     captureReview: (selected, fn) => captureAiReview(opening.document, opening.captureActionTime(), selected, fn),
   }), [opening]);
   const writer = useMemo(() => createEngineStructureWriter(writeTarget, owner, recovery.retain),

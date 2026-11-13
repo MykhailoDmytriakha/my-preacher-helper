@@ -25,7 +25,7 @@ import { listReadState } from '@/utils/listReadState';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineTextChoice } from '@/utils/outlineChoice';
-import { outlinePointGap, projectOutlinePoint } from '@/utils/outlineDnd';
+import { outlinePointGap, outlineSubpointGap, projectOutlinePoint, projectOutlineSubpoint } from '@/utils/outlineDnd';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { withOutlineTitleText, readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
 import { EMERALD_ACTION } from '@/utils/themeColors';
@@ -44,13 +44,17 @@ const CANCEL_KEY = 'common.cancel';
 // Bounded undo/redo history ("a few steps", no unbounded growth). One entry per
 // completed action (add/delete/edit/move point, apply template, clear).
 const MAX_HISTORY = 30;
-type OutlineHistoryEntry = { outline: SermonOutline; pointId?: string };
+type OutlineHistoryEntry = { outline: SermonOutline; pointId?: string; subPointId?: string };
 const capPush = (stack: OutlineHistoryEntry[], item: OutlineHistoryEntry): OutlineHistoryEntry[] => {
   const next = [...stack, item];
   return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
 };
 
 function historyOutline(current: SermonOutline, entry: OutlineHistoryEntry): SermonOutline | undefined {
+  if (entry.subPointId) {
+    const gap = outlineSubpointGap(entry.outline, entry.subPointId);
+    return gap && projectOutlineSubpoint(current, entry.subPointId, gap);
+  }
   if (!entry.pointId) return entry.outline;
   const gap = outlinePointGap(entry.outline, entry.pointId);
   return gap && projectOutlinePoint(current, entry.pointId, gap);
@@ -281,7 +285,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const generationRef = useRef(0);
 
   const persist = useCallback(
-    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline }; noteOpening?: OutlineNoteOpening; titleOpening?: OutlineTitleOpening }) => {
+    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline }; subPointMove?: { pointId: string; before: SermonOutline }; noteOpening?: OutlineNoteOpening; titleOpening?: OutlineTitleOpening }) => {
       if (isReadOnly || !sermon.id || !conflictReady) return;
       const pending = getConflict();
       if (pending && pending.payload.resolution !== 'local' && !options?.force) {
@@ -298,6 +302,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         titleOpening: options?.titleOpening,
         titleChoice: pending?.payload.titleChoice,
         ...(options?.pointMove && placementVersion.current && { pointMove: { ...options.pointMove, version: placementVersion.current } }),
+        ...(options?.subPointMove && placementVersion.current && { subPointMove: { ...options.subPointMove, version: placementVersion.current } }),
         begin: () => {
           const waiting = getConflict();
           return {
@@ -358,16 +363,25 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     [outline, persist]
   );
 
+  const handleSubPointPlacement = useCallback((next: SermonOutline, pointId: string) => {
+    setUndoStack(stack => capPush(stack, { outline, subPointId: pointId }));
+    setRedoStack([]);
+    generationRef.current += 1;
+    setOutline(next);
+    return persist(next, { subPointMove: { pointId, before: outline } });
+  }, [outline, persist]);
+
   const undo = useCallback(() => {
     if (undoStack.length === 0) return;
     const entry = undoStack[undoStack.length - 1];
     const previous = historyOutline(outline, entry);
     if (!previous) { toast.error(t('planEditor.pointPlacement.restoreFailed')); return; }
     setUndoStack(undoStack.slice(0, -1));
-    setRedoStack((r) => capPush(r, { outline, pointId: entry.pointId }));
+    setRedoStack((r) => capPush(r, { ...entry, outline }));
     generationRef.current += 1;
     setOutline(previous);
-    persist(previous, entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
+    persist(previous, entry.subPointId ? { subPointMove: { pointId: entry.subPointId, before: outline } }
+      : entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
   }, [undoStack, outline, persist, t]);
 
   const redo = useCallback(() => {
@@ -376,10 +390,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const next = historyOutline(outline, entry);
     if (!next) { toast.error(t('planEditor.pointPlacement.restoreFailed')); return; }
     setRedoStack(redoStack.slice(0, -1));
-    setUndoStack((s) => capPush(s, { outline, pointId: entry.pointId }));
+    setUndoStack((s) => capPush(s, { ...entry, outline }));
     generationRef.current += 1;
     setOutline(next);
-    persist(next, entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
+    persist(next, entry.subPointId ? { subPointMove: { pointId: entry.subPointId, before: outline } }
+      : entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
   }, [redoStack, outline, persist, t]);
 
   const clearPlan = () => {
@@ -709,10 +724,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
         <div className="flex-1 overflow-y-auto p-3 sm:p-4">
           {placementVersion.current?.generation && !isReadOnly && <OutlinePointPlacementHistory
-            key={placementVersion.current.generation} owner={sermon.userId} sermonId={sermon.id}
+            key={placementVersion.current.generation} owner={sermon.userId} id={sermon.id} collection="sermons"
             generation={placementVersion.current.generation} outline={outline}
             disabled={!conflictReady || Boolean(collision || unreviewedRefusal)}
-            restore={async (next, pointId) => handleChange(next, pointId)} />}
+            restore={async (next, pointId, subpoint) => subpoint ? handleSubPointPlacement(next, pointId) : handleChange(next, pointId)} />}
           {placementVersion.current?.generation && !isReadOnly && <OutlineTitleHistory
             key={'titles:' + placementVersion.current.generation} owner={sermon.userId} collection="sermons" id={sermon.id}
             generation={placementVersion.current.generation} outline={outline}
@@ -733,6 +748,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             value={outline}
             onChange={handleChange}
             onPointMove={handleChange}
+            onSubPointPlacement={handleSubPointPlacement}
             onTitleChange={(next, opening) => handleChange(next, undefined, undefined, opening)}
             onNoteChange={(next, opening) => handleChange(next, undefined, opening)?.then(() => undefined, error => {
               // The modal's durable outline comparison now owns this proposal.

@@ -28,7 +28,7 @@ import type { SourceNoteLinkAction } from './sourceNoteLinkAction';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { OutlinePointGap, OutlinePointOrder } from '@/utils/outlineDnd';
+import type { OutlinePointGap, OutlinePointOrder, OutlineSubpointGap } from '@/utils/outlineDnd';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 import type { SermonNoteOpening } from '@/utils/sermonNoteText';
 
@@ -84,6 +84,7 @@ export type EditorCommitAction =
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
   | { kind: 'service-order-step-placement'; move: ServiceOrderStepPlacementCapture }
   | { kind: 'outline-point-placement'; move: OutlinePointPlacementCapture }
+  | { kind: 'outline-subpoint-placement'; move: OutlineSubpointMove }
   | { kind: 'group-flow-step-placement'; move: GroupFlowStepPlacementCapture }
   | { kind: 'council-topic-placement'; move: CouncilTopicPlacementCapture }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
@@ -116,6 +117,15 @@ export type OutlinePointPlacement = {
   predecessorOperationId?: string;
 };
 
+export type OutlineSubpointMove = {
+  subPointId: string;
+  opening: OutlineSubpointGap;
+  destination: OutlineSubpointGap;
+  observedRevision: number;
+  time: ActionTime | null;
+  predecessorOperationId?: string;
+};
+
 export type OutlinePointPlacementCapture = {
   generation: string | null;
   before: OutlinePointOrder;
@@ -127,7 +137,10 @@ export type OutlinePointPlacementHistoryPage = {
   owner: string;
   sermonId: string;
   generation: string;
-  entries: { id: string; pointId: string; earlier: OutlinePointGap; kept: OutlinePointGap; acceptedAt: string }[];
+  entries: ({
+    id: string; pointId: string; acceptedAt: string;
+  } & ({ subpoint?: false; earlier: OutlinePointGap; kept: OutlinePointGap }
+    | { subpoint: true; earlier: OutlineSubpointGap; kept: OutlineSubpointGap }))[];
   nextCursor: string | null;
 };
 
@@ -261,6 +274,7 @@ export type DataCommand = CommandBase & (
       groupFlowRetirements?: DocumentData[];
       councilTopicPlacement?: ServiceOrderStepPlacement;
       outlinePointPlacement?: OutlinePointPlacement;
+      outlineSubpointMoves?: OutlineSubpointMove[];
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
@@ -333,6 +347,10 @@ export interface ResourceSnapshot {
 export interface ConflictDetail {
   path: string[];
   code?: string;
+  /** Exact subpoints whose competing positions need a decision. */
+  outlineSubpointIds?: string[];
+  /** Placement decisions already proved while another part of this save needs review. */
+  orderedOutlineSubpoints?: { id: string; side: 'local' | 'remote' }[];
   /** Exact list submitted by the editor before the server remapped reference identities. */
   studyNoteReferenceOpening?: FieldValue;
   base: FieldValue;

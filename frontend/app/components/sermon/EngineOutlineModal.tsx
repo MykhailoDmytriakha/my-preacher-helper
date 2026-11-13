@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
 import { outlineParentPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { ScratchProposalBoard } from '@/components/sermon/scratch/ScratchProposalBoard';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
@@ -32,10 +33,10 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
   const readOnly = loading || !form.active || form.busy || !sermon || form.status?.phase === 'deleted';
   const valid = sections.every(section => (outline[section] ?? []).every(point => point.text.trim()
     && (point.subPoints ?? []).every(sub => sub.text.trim())));
-  const change = (next: SermonOutline) => {
+  const change = (next: SermonOutline, subPointId?: string) => {
     if (readOnly) return;
-    void form.update(current => deepCleanUndefined(replaceSermonOutline(current as unknown as Sermon, next)) as unknown as DocumentData)
-      .catch(() => undefined);
+    return form.update(current => deepCleanUndefined(replaceSermonOutline(current as unknown as Sermon, next)) as unknown as DocumentData,
+      subPointId ? form.captureOutlineSubpoint(subPointId) : undefined);
   };
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
@@ -60,8 +61,13 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
         onKeepLocal={valid ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : undefined} onAcceptRemote={comparison?.outlineReview && !valid ? undefined : form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
+      {sermon && form.openingGeneration && <OutlinePointPlacementHistory owner={sermon.userId} id={sermonId}
+        collection="sermons" generation={form.openingGeneration} outline={outline} disabled={readOnly || Boolean(comparison)}
+        restore={async (next, pointId, subpoint) => change(next, subpoint ? pointId : undefined)} />}
       {withScratch && sermon ? <ScratchProposalBoard sermonId={sermonId} sermon={sermon} form={form} readOnly={readOnly}
-        valid={valid} onChange={change} /> : <OutlineBoard value={outline} onChange={change} directText showNotes isReadOnly={readOnly}
+        valid={valid} onChange={next => { void change(next)?.catch(() => undefined); }}
+        onSubPointPlacement={(next, id) => { void change(next, id)?.catch(() => undefined); }} /> : <OutlineBoard value={outline} onChange={next => { void change(next)?.catch(() => undefined); }}
+        onSubPointPlacement={(next, id) => { void change(next, id)?.catch(() => undefined); }} directText showNotes isReadOnly={readOnly}
         getPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.outlinePointId === id).length ?? 0}
         getSubPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.subPointId === id).length ?? 0} />}
     </div>

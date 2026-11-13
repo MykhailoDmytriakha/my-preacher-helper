@@ -3,12 +3,13 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
 import { outlinePointConflictComparison, outlinePointPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
 import { OutlineTitleDraftNotices } from '@/components/plan-editor/OutlineTitleDrafts';
 import { OutlineTitleHistory } from '@/components/plan-editor/OutlineTitleHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureOutlinePointPlacement, captureOutlineSubpointMove, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { outlinePointText } from '@/utils/outlineDnd';
 import { outlinePointGridClass } from '@/utils/structureBoardLayout';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
@@ -72,11 +73,21 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
       const move = captureOutlinePointPlacement(before, after, pointId, document.confirmed?.metadata?.generation ?? null,
         document.confirmed?.metadata?.revision ?? 0, actions.captureActionTime() ?? null);
       if (!move) return;
-      void document.commit(current => {
+      return document.commit(current => {
         const next = projectResourceOutlinePoint('planTemplates', current, move, true);
         if (!next) throw Object.assign(new Error('The shown template outline changed'), { code: 'decision-changed' });
         return next;
-      }, { kind: 'outline-point-placement', move }).catch(() => undefined);
+      }, { kind: 'outline-point-placement', move });
+    };
+    const moveSubpoint = (structure: SermonOutline, subPointId: string) => {
+      const revision = document.confirmed?.metadata?.revision;
+      const move = revision !== undefined && captureOutlineSubpointMove(outline, structure, subPointId,
+        revision, actions.captureActionTime() ?? null);
+      const update = (current: typeof document.data) => {
+        if (!current || current.structure === undefined) throw new Error('The shown template outline changed');
+        return { ...current, structure: structure as never };
+      };
+      return move ? document.commit(update, { kind: 'outline-subpoint-placement', move }) : document.update(update);
     };
     return <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
@@ -86,13 +97,17 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
         onDiscardRecovery={recovery.discard} />
       <OutlineTitleDraftNotices />
+      {generation && typeof owner === 'string' && outline && <OutlinePointPlacementHistory owner={owner} id={templateId}
+        collection="planTemplates" generation={generation} outline={outline} disabled={disabled || document.readOnly || Boolean(comparison)}
+        restore={async (next, pointId, subpoint) => subpoint ? moveSubpoint(next, pointId) : movePoint(next, pointId)} />}
       {generation && typeof owner === 'string' && outline && <OutlineTitleHistory key={generation}
         owner={owner} collection="planTemplates" id={templateId} generation={generation} outline={outline}
         disabled={disabled || document.readOnly || Boolean(comparison)}
         restore={(opening, title) => document.captureTemplateTitle(opening)(title)} />}
       {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
-          isReadOnly={disabled || document.readOnly} onPointMove={movePoint} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
+          isReadOnly={disabled || document.readOnly} onPointMove={(next, id) => { void movePoint(next, id)?.catch(() => undefined); }}
+          onSubPointPlacement={(next, id) => { void moveSubpoint(next, id).catch(() => undefined); }} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
           onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
     </fieldset>;
   }

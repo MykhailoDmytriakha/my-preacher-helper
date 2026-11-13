@@ -183,6 +183,17 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const ancestor = record.commentTextOpening && projectedAncestor
       ? writeField(projectedAncestor, ['content'], record.commentTextOpening) : projectedAncestor;
     const sameGeneration = snapshot.metadata?.generation === record.baseline.metadata?.generation;
+    if (sameGeneration && record.outlineSubpointMoves?.length && ancestor && record.value && snapshot.value
+      && outlinePlacementField(snapshot.resource.collection)) {
+      // The prior ACK may already show the desired placement through a different
+      // gesture. Preserve the actual authored frames for the server's comparison.
+      const predecessorId = predecessor.result.committed?.operationId ?? predecessor.result.operationId;
+      const last = new Map(predecessor.outlineSubpointMoves?.map(move => [move.subPointId, move.destination]));
+      const following = record.outlineSubpointMoves.filter(move => equalValues(last.get(move.subPointId), move.opening))
+        .map(move => move.subPointId);
+      return { ...record, initialized: true, working: { ...snapshot, value: ancestor }, intended: record.value,
+        ...(following.length && { outlineSubpointPredecessor: { operationId: predecessorId, childIds: following } }) };
+    }
     const preachingChoices = sameGeneration ? preachDateRebaseChoices(snapshot, ancestor, record.preachDateFieldActions) : [];
     const replacement = GROUP_MEETING_FIELDS.flatMap(field => {
       const action = record.groupMeetingFieldActions?.[field];

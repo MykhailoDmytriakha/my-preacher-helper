@@ -611,7 +611,7 @@ export class DataSession {
   }
 
   stageOutlineReviewTitles(titles: readonly OutlineTitleDecision[] = [], time: ActionTime | null = null): void {
-    stageReviewedOutlineTitleIds(this.state, titles.filter(title => title.side === 'local').map(title => title.id), time);
+    stageReviewedOutlineTitleIds(this.state, titles.filter(title => title.side === 'local' && !title.field).map(title => title.id), time);
   }
 
   retainOutlineTitleActions(source: SessionCheckpoint): void {

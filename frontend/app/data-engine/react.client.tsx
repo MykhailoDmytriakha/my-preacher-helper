@@ -39,6 +39,7 @@ import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
+import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
@@ -102,6 +103,7 @@ export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof reb
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export const captureOutlinePointPlacement = captureOutlinePlacement;
+export const captureOutlineSubpointMove = captureSubpointMove;
 export const projectResourceOutlinePoint = projectOutlinePlacement;
 export function waitsForOutlineParentReview(checkpoint: SessionCheckpoint) {
   return hasOutlineParentChoice(checkpoint.confirmed.resource.collection, checkpoint.conflicts);
@@ -1252,7 +1254,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement' || action?.kind === 'council-topic-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
@@ -1552,6 +1554,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     },
     update: (updater: (draft: DocumentData) => DocumentData, fieldInput?: ManualFieldInput) =>
       run(form => form.update(updater, fieldInput), false),
+    captureOutlineSubpoint: (subPointId: string) => ({ outlineSubpoint: { subPointId,
+      time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
     captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined => {
       const time = owner && current() && actionClock.capture(owner);
       return time ? { field, rowId, time } : undefined;

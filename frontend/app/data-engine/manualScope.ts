@@ -3,6 +3,7 @@ import { datedRowTarget, stagedMeetingDate, stageMeetingDate } from './datedRowA
 import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
 import { MAX_HOMILETIC_MOVES, stageHomileticMove } from './homileticPlanMoves';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
+import { captureOutlineSubpointMove, MAX_OUTLINE_SUBPOINT_MOVES, type OutlineSubpointInput } from './outlineSubpointMove';
 import { stagePreachDateField } from './preachDateFieldAction';
 import { capturePreachStatusOpening, type PreachStatusCapture, type PreachStatusSave } from './preachStatusAction';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
@@ -18,7 +19,7 @@ import type { GroupMeetingFieldCaptures, GroupMeetingFieldInput } from './groupM
 import type { HomileticMoveGesture, HomileticMoveInput } from './homileticPlan';
 import type { PreachDateFieldDraft, PreachDateFieldInput, PreachDateFieldSave } from './preachDateFieldAction';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, FieldValue, Json, OutlineSubpointMove, ResourceRef, ResourceSnapshot } from './types';
 
 export type ManualPath = readonly (string | { id: string })[];
 export interface ManualSavedIntent {
@@ -51,6 +52,7 @@ export interface ManualScopeRecord {
   meetingDateCapture?: MeetingDateCapture;
   preachDateFieldDraft?: PreachDateFieldDraft;
   homileticMoves?: HomileticMoveGesture[];
+  outlineSubpointMoves?: { editGeneration: number; move: OutlineSubpointMove }[];
   /** Immutable per opening; older saved records may lack this evidence. */
   openingSelection?: FieldValue[];
   /** Bounds canonical Save identities belonging to this opening, including retired capture returns. */
@@ -63,10 +65,10 @@ export interface ManualScopeRecord {
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
   recoverySavedRequestId?: string;
 }
-export type ManualFieldInput = MeetingDateInput | GroupMeetingFieldInput | PreachDateFieldInput | HomileticMoveInput;
+export type ManualFieldInput = MeetingDateInput | GroupMeetingFieldInput | PreachDateFieldInput | HomileticMoveInput | OutlineSubpointInput;
 type ManualThoughtMetadata = { thoughtPlacementIds?: readonly string[]; thoughtTagId?: string };
 export type ManualDocumentMetadataSave = { documentMetadata: ManualThoughtMetadata & { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
-export type ManualSaveOptions = ManualThoughtMetadata & { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; homileticMoves?: readonly HomileticMoveGesture[] };
+export type ManualSaveOptions = ManualThoughtMetadata & { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; homileticMoves?: readonly HomileticMoveGesture[]; outlineSubpointMoves?: readonly OutlineSubpointMove[] };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -173,13 +175,17 @@ export class ManualScope {
     return scope;
   }
 
+  private hasChanges() {
+    return !equalValues(this.record.stage, this.record.savedSelection) || Boolean(this.record.outlineSubpointMoves?.length);
+  }
+
   getState() {
     this.assertCurrent();
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
-    const choiceRequired = !equalValues(this.record.stage, this.record.savedSelection)
+    const choiceRequired = this.hasChanges()
       && Boolean(this.record.predecessor && this.options.port.isCancelled?.(this.record.predecessor.id));
     const basis = this.record.predecessor?.value ?? this.record.baseline.value!;
-    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: this.hasChanges(), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void> {
@@ -200,6 +206,13 @@ export class ManualScope {
     if (this.record.resource.collection === 'sermons' && fieldInput && 'homileticMove' in fieldInput) {
       const gesture = stageHomileticMove(current, selectedOnly, fieldInput.homileticMove);
       if (gesture) this.record.homileticMoves = [...(this.record.homileticMoves ?? []), gesture].slice(-MAX_HOMILETIC_MOVES);
+    }
+    if (this.record.resource.collection === 'sermons' && fieldInput && 'outlineSubpoint' in fieldInput) {
+      const { subPointId, time } = fieldInput.outlineSubpoint;
+      const move = captureOutlineSubpointMove(current.outline, selectedOnly.outline, subPointId,
+        this.record.baseline.metadata?.revision ?? 0, time);
+      if (move) this.record.outlineSubpointMoves = [...(this.record.outlineSubpointMoves ?? []),
+        { editGeneration: this.record.generation + 1, move }].slice(-MAX_OUTLINE_SUBPOINT_MOVES);
     }
     this.record.stage = stage;
     this.record.generation += 1;
@@ -230,7 +243,9 @@ export class ManualScope {
     const captured = copy(this.record);
     const running = this.saves.get(captured.generation);
     if (running) return running;
-    if (equalValues(captured.stage, this.tail?.stage ?? captured.savedSelection)) return this.settled().then(() => null);
+    const stagedAfterLastSave = captured.outlineSubpointMoves?.some(entry =>
+      entry.editGeneration > (this.tail?.generation ?? captured.savedGeneration ?? -1));
+    if (!stagedAfterLastSave && equalValues(captured.stage, this.tail?.stage ?? captured.savedSelection)) return this.settled().then(() => null);
     const frozenValue = project(captured.predecessor?.value ?? captured.baseline.value!, captured.selection, captured.stage);
     const frozen: SessionCheckpoint = { confirmed: captured.baseline, draft: frozenValue, dirty: true,
       editGeneration: captured.generation, remoteCandidate: null, conflicts: [], pending: {} };
@@ -273,11 +288,13 @@ export class ManualScope {
       const dateAction = explicitDate ?? (meetingDate && { rowId: meetingDate.rowId, after: meetingDate.after, time: meetingDate.time });
       const checkpoint: SessionCheckpoint = { confirmed: baseline, draft: value, dirty: true, editGeneration: captured.generation,
         remoteCandidate: null, conflicts: [], pending: {} };
+      const subpointMoves = captured.outlineSubpointMoves?.filter(entry => entry.editGeneration > (this.record.savedGeneration ?? -1));
       const options: ManualSaveOptions = {
         predecessorId: predecessor?.id ?? null,
         ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
         ...(captured.homileticMoves?.length && { homileticMoves: captured.homileticMoves }),
+        ...(subpointMoves?.length && { outlineSubpointMoves: subpointMoves.map(entry => entry.move) }),
         ...(preachDateFieldSave && { preachDateFieldSave }),
         ...(preachStatusCapture && { preachStatusCapture }),
         ...(documentMetadataTime !== undefined && { documentMetadataTime }),
@@ -295,6 +312,7 @@ export class ManualScope {
       if (captured.recoveryOrigins?.length) this.record.recoverySavedRequestId = request.id;
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
+      this.record.outlineSubpointMoves = this.record.outlineSubpointMoves?.filter(entry => entry.editGeneration > captured.generation);
       const moves = captured.homileticMoves;
       if (moves && equalValues(this.record.homileticMoves?.slice(0, moves.length), moves)) {
         this.record.homileticMoves = this.record.homileticMoves!.slice(moves.length);
@@ -339,6 +357,7 @@ export class ManualScope {
       this.record.stage = copy(this.record.savedSelection);
       delete this.record.meetingDateCapture;
       delete this.record.homileticMoves;
+      delete this.record.outlineSubpointMoves;
       delete this.record.groupMeetingFieldCaptures;
       delete this.record.preachDateFieldDraft;
       await this.writeLocal();
@@ -350,7 +369,7 @@ export class ManualScope {
     this.assertCurrent();
     const capture = copy(captured);
     return this.enqueue(async () => {
-      if (!this.record.active || this.captures.pending || !equalValues(this.record.stage, this.record.savedSelection)) return;
+      if (!this.record.active || this.captures.pending || this.hasChanges()) return;
       const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
       const following = captureRecord(options, this.record.generation + 1);
       const saved = this.record.recoverySavedRequestId;
@@ -365,7 +384,7 @@ export class ManualScope {
   /** A completed form can start a fresh pinned stage without resetting its save identity. */
   restart(): Promise<void> {
     this.assertCurrent();
-    if (!equalValues(this.record.stage, this.record.savedSelection)) throw Object.assign(new Error('Resolve the unsaved manual stage before reopening'), { code: 'unsent-form-first' });
+    if (this.hasChanges()) throw Object.assign(new Error('Resolve the unsaved manual stage before reopening'), { code: 'unsent-form-first' });
     if (this.record.predecessor && !this.options.port.isSettled?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not settled');
     this.record = { ...captureRecord(this.options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}), ...(this.record.recoveryOrigins ? { recoveryOrigins: this.record.recoveryOrigins } : {}) };
     this.tail = null;
@@ -397,13 +416,13 @@ export class ManualScope {
       if (!baseline.value && (!predecessor || baseline.metadata !== null)) return;
       const ancestor = validateAncestor(baseline, predecessor, this.options);
       const selected = before.selection.map(path => readSelection(ancestor, path));
-      const dirty = !equalValues(before.stage, before.savedSelection);
+      const dirty = this.hasChanges();
       const draftMatches = before.selection.every((path, index) => equalValues(readSelection(capture.checkpoint.draft, path), selected[index]));
       // A cached copy from before this saved intent cannot prove the remaining stage was accepted.
       const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
       if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
         this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
-          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage, meetingDateCapture: before.meetingDateCapture } : {}) };
+          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage, meetingDateCapture: before.meetingDateCapture, outlineSubpointMoves: before.outlineSubpointMoves } : {}) };
       } else {
         // Keep the real saved ancestor for the remaining stage. In particular, returning to the
         // original sentence is still an edit against that ancestor. Its retired request remains
@@ -606,6 +625,7 @@ export function reconcileManualCaptures(record: ManualScopeRecord, requests: rea
   // A queued Cancel discarded only unsent words. The durable Save still owns its captured value.
   const cancelledStage = !record.active && equalValues(record.stage, record.savedSelection);
   return { ...copy(record), baseline: copy(captured.baseline), predecessor: saved, savedSelection: selected,
+    outlineSubpointMoves: record.outlineSubpointMoves?.filter(entry => entry.editGeneration > captured.editGeneration),
     savedGeneration: captured.editGeneration, ...(record.recoveryOrigins?.length ? { recoverySavedRequestId: captured.id } : {}), stage: cancelledStage ? copy(selected) : copy(record.stage) };
 }
 

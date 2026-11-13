@@ -110,6 +110,7 @@ interface OutlineBoardProps {
   onNoteChange?: (next: SermonOutline, opening: OutlineNoteOpening) => void | Promise<void>;
   captureTitleEdit?: (opening: OutlineTitleOpening) => (title: string) => Promise<void>;
   onPointMove?: (next: SermonOutline, pointId: string) => void;
+  onSubPointPlacement?: (next: SermonOutline, subPointId: string) => void;
   isReadOnly?: boolean;
   /** Optional: count of thoughts attached to a sub-point, for the delete warning. */
   getSubPointThoughtCount?: (subPointId: string) => number;
@@ -151,6 +152,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   value,
   onChange,
   onPointMove,
+  onSubPointPlacement,
   onNoteChange,
   onTitleChange,
   captureTitleEdit,
@@ -468,6 +470,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
     const remainsAPoint = subject.kind === 'point' && findPointSection(next, subject.id);
     if (remainsAPoint && onPointMove) onPointMove(next, subject.id);
+    else if (subPointMove && onSubPointPlacement) onSubPointPlacement(next, subject.id);
     else onChange(next);
     // Re-file the notes whose address the move invalidated (pure remap above).
     placementChanges.forEach(({ noteId, placement }) => scratch?.onPlace(noteId, placement));

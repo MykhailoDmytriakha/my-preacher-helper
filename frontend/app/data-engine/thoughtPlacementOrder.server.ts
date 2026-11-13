@@ -85,8 +85,9 @@ function withoutDisputedLocations(command: DataCommand, conflicts: readonly Conf
 }
 
 /** Move-related board order follows the winning assignment, while other rows and words still merge normally. */
-export function orderThoughtPlacement(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
-  const { command: prepared, repairs, uncertain } = prepareOutlinePlacementRepair(command, current);
+export function orderThoughtPlacement(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number,
+  authoredCommand = command) {
+  const { command: prepared, repairs, uncertain } = prepareOutlinePlacementRepair(command, current, authoredCommand);
   const positioned = repairThoughtDestinations(prepared, current, raw, serverMs);
   const rowOrder = orderRowDetails(positioned, current, raw, serverMs, THOUGHT_PLACEMENT_POLICY);
   const order = { ...rowOrder, uncertain: [...rowOrder.uncertain, ...uncertain] };

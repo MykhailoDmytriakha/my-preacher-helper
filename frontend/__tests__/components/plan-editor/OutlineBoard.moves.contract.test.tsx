@@ -54,6 +54,25 @@ it.each(['into-point:target', 'subgap:target:0'])('nests a point with its childr
   expect(result.onOutlinePointMoved).not.toHaveBeenCalled();
 });
 
+it('reports the exact subpoint gesture to the placement writer', () => {
+  const value = outline();
+  const onChange = jest.fn();
+  const onSubPointPlacement = jest.fn();
+  render(<OutlineBoard value={value} onChange={onChange} onSubPointPlacement={onSubPointPlacement} />);
+
+  drop('sub:child', 'subgap:target:0');
+
+  expect(onSubPointPlacement).toHaveBeenCalledWith({
+    introduction: [{ ...value.introduction[0], subPoints: [] }],
+    main: [{ ...value.main[0], subPoints: [
+      value.introduction[0].subPoints![0],
+      { ...value.main[0].subPoints![0], position: 1 },
+    ] }],
+    conclusion: [],
+  }, 'child');
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 it('promotes a subpoint and keeps its note/reminder and section notification', () => {
   const result = setup();
   drop('sub:child', 'gap:conclusion:0');

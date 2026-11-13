@@ -21,6 +21,32 @@ function fixture(selection: readonly ManualPath[] = [['title']], base = snapshot
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 
 describe('manual form scope', () => {
+  it('restores both gestures when the subpoint returns before the manual Save', async () => {
+    const opening = { introduction: [], main: [
+      { id: 'a', text: 'A', subPoints: [{ id: 'child', text: 'Child', position: 0 }] },
+      { id: 'b', text: 'B', subPoints: [] },
+    ], conclusion: [] };
+    const moved = { ...opening, main: [
+      { ...opening.main[0], subPoints: [] }, { ...opening.main[1], subPoints: opening.main[0].subPoints },
+    ] };
+    const base = snapshot();
+    const test = fixture([['outline']], { ...base, value: { ...base.value!, outline: opening } });
+    const scope = ManualScope.begin(test.options);
+    const first = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 };
+    const second = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    await scope.update(value => ({ ...value, outline: moved }), { outlineSubpoint: { subPointId: 'child', time: first } });
+    await scope.update(value => ({ ...value, outline: opening }), { outlineSubpoint: { subPointId: 'child', time: second } });
+    const restored = ManualScope.restore(test.options, test.disk());
+    expect(restored.getState()).toMatchObject({ dirty: true, durable: true });
+    expect(test.save).not.toHaveBeenCalled();
+    await restored.save();
+    expect(test.save.mock.calls[0][2]).toMatchObject({ outlineSubpointMoves: [
+      { subPointId: 'child', time: first, destination: { parentId: 'b' } },
+      { subPointId: 'child', time: second, destination: { parentId: 'a' } },
+    ] });
+    expect(restored.getState().dirty).toBe(false);
+  });
+
   it('recognizes a meeting correction as durable when no field-action evidence is available', async () => {
     const meeting = { id: 'meeting', date: '2026-12-13', location: 'Hall', createdAt: '2026-11-08' };
     const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },

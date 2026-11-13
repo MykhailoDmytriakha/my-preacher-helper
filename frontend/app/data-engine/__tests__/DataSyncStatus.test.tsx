@@ -53,6 +53,21 @@ describe('DataSyncStatus', () => {
     expect(accept).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('asks only about words after settled placement (can accept remote: %s)', async canAcceptRemote => {
+    const apply = jest.fn();
+    const note = { id: 'note:child', field: 'note' as const, mine: 'Phone notes', stored: 'Desktop notes' };
+    render(<DataSyncStatus subject="outline" status={status('conflict', { canKeepLocal: true, canAcceptRemote })}
+      onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()}
+      comparison={{ identity: 'settled-position', title: 'Subpoint position', mine: '', stored: '',
+        outlineReview: { titles: [{ ...note, label: 'Point note' }], apply, placementSettled: true } }} />);
+    expect(screen.queryByRole('group', { name: 'Subpoint position' })).not.toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: en.dataSync.applyReviewedVersions });
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Point note' })).getByRole('radio', { name: /Phone notes/ }));
+    fireEvent.click(submit);
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(canAcceptRemote ? 'remote' : 'local', [{ ...note, side: 'local' }]));
+  });
+
   it('withholds unavailable placement directions and resets choices when a different revision is shown', () => {
     const apply = jest.fn();
     const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: false });

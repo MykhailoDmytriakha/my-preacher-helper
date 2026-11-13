@@ -1,6 +1,6 @@
 import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
-import { outlinePointGap, SECTION_KEYS, type OutlinePointGap } from '@/utils/outlineDnd';
+import { outlinePointGap, SECTION_KEYS, type OutlinePointGap, type OutlineSubpointGap } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { repeatedWordsPath } from '@/utils/preparationFieldValues';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
@@ -19,6 +19,7 @@ import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFi
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
+import { MAX_OUTLINE_SUBPOINT_MOVES } from './outlineSubpointMove';
 import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -34,7 +35,7 @@ export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisResha
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
-  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap, StudyNoteReferenceAlias,
+  FieldValue, Json, OutlineSubpointMove, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap, StudyNoteReferenceAlias,
 } from './types';
 import type { ScriptureReference } from '@/models/models';
 
@@ -197,6 +198,12 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     }
     if (command.councilTopicPlacement !== undefined && !validCouncilTopicPlacement(command)) fail('Invalid council topic placement');
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
+    if (command.outlineSubpointMoves !== undefined && (!outlinePlacementField(command.resource.collection)
+      || command.outlinePointPlacement || !paths.some(path => path[0] === outlinePlacementField(command.resource.collection))
+      || !Array.isArray(command.outlineSubpointMoves) || !command.outlineSubpointMoves.length
+      || command.outlineSubpointMoves.length > MAX_OUTLINE_SUBPOINT_MOVES
+      || !command.outlineSubpointMoves.every(move => validOutlineSubpointMove(move)
+        && (!move.predecessorOperationId || command.dependsOn.includes(move.predecessorOperationId))))) fail('Invalid outline subpoint placement');
     if (command.sourceNoteLinkAction !== undefined && (command.resource.collection !== 'sermons'
       || !validSourceNoteLinkAction(command.sourceNoteLinkAction, sourceNoteLinkChange(command.changes), isValidIdentifier))) fail('Invalid source note selection');
     if (command.commentPlaceAction !== undefined && (command.resource.collection !== 'studyNotes'
@@ -216,6 +223,19 @@ export function validOutlinePointGap(value: unknown, pointId: string): value is 
   if (!object(value) || Object.keys(value).length !== 3 || !SECTION_KEYS.some(section => section === value.section)) return false;
   const anchor = (id: unknown) => id === null || (isValidIdentifier(id) && id !== pointId);
   return anchor(value.previous) && anchor(value.next) && (value.previous === null || value.previous !== value.next);
+}
+
+export function validOutlineSubpointMove(value: unknown, allowUnchanged = false): value is OutlineSubpointMove {
+  if (!object(value) || !isValidIdentifier(value.subPointId) || !Number.isSafeInteger(value.observedRevision)
+    || Number(value.observedRevision) < 0 || (value.time !== null && !boundedActionTime(value.time))
+    || (value.predecessorOperationId !== undefined && !isValidIdentifier(value.predecessorOperationId))) return false;
+  const gap = (position: unknown): position is OutlineSubpointGap => {
+    if (!object(position) || Object.keys(position).length !== 3 || !isValidIdentifier(position.parentId)
+      || position.parentId === value.subPointId) return false;
+    const anchor = (id: unknown) => id === null || (isValidIdentifier(id) && id !== value.subPointId && id !== position.parentId);
+    return anchor(position.previous) && anchor(position.next) && (position.previous === null || position.previous !== position.next);
+  };
+  return gap(value.opening) && gap(value.destination) && (allowUnchanged || !equalValues(value.opening, value.destination));
 }
 
 function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {

@@ -68,7 +68,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture, StudyNoteReferenceEvidence } from './types';
+import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, OutlineSubpointMove, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture, StudyNoteReferenceEvidence } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
@@ -116,6 +116,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderPlacement?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacement?: ServiceOrderStepPlacementCapture;
   outlinePointPlacement?: OutlinePointPlacementCapture;
+  outlineSubpointMoves?: OutlineSubpointMove[];
+  outlineSubpointPredecessor?: { operationId: string; childIds: string[] };
   groupFlowStepPlacement?: GroupFlowStepPlacementCapture;
   councilTopicPlacement?: CouncilTopicPlacementCapture;
   groupFlowPlacementLegacyRevision?: number;
@@ -297,6 +299,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.homileticTitleActions ?? null, incoming.homileticTitleActions ?? null)
     || !equalValues(current.homileticMoveActions ?? null, incoming.homileticMoveActions ?? null)
+    || !equalValues(current.outlineSubpointMoves ?? null, incoming.outlineSubpointMoves ?? null)
     || !equalValues(current.homileticPositionReviews ?? null, incoming.homileticPositionReviews ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
@@ -390,6 +393,7 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   preachStatusCapture?: PreachStatusCapture;
   documentMetadataTime?: import('./actionClock').ActionTime | null;
   homileticMoves?: readonly HomileticMoveGesture[];
+  outlineSubpointMoves?: readonly OutlineSubpointMove[];
   thoughtPlacementIds?: readonly string[];
   thoughtTagId?: string;
   action?: EditorCommitAction;
@@ -428,7 +432,7 @@ function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -441,6 +445,7 @@ function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOp
     preachStatusCapture: options.preachStatusCapture && clone(options.preachStatusCapture),
     documentMetadataTime: options.documentMetadataTime && clone(options.documentMetadataTime),
     homileticMoves: options.homileticMoves && clone(options.homileticMoves),
+    outlineSubpointMoves: options.outlineSubpointMoves && clone(options.outlineSubpointMoves),
     action: options.action && clone(options.action) };
 }
 
@@ -680,7 +685,7 @@ export class CommitQueue {
           : editorAction?.kind === 'service-order-step-scripture-review' ? { field: 'scriptureReview' as const, changes: editorAction.scriptures } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -775,6 +780,7 @@ export class CommitQueue {
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
     const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);
+    const outlineSubpointMoves = editorAction?.kind === 'outline-subpoint-placement' ? [editorAction.move] : frozenOptions?.outlineSubpointMoves;
     const homileticPositionReviews = editorAction?.kind === 'document-metadata' && editorAction.homileticPositionReview && baseline.metadata
       ? { [editorAction.homileticPositionReview]: baseline.metadata.revision } : undefined;
     const autosaveFields = groupMove || councilMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records);
@@ -825,6 +831,7 @@ export class CommitQueue {
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
       ...(homileticTitleActions && { homileticTitleActions }),
       ...(homileticMoveActions && { homileticMoveActions }),
+      ...(outlineSubpointMoves?.length && { outlineSubpointMoves: clone([...outlineSubpointMoves]) }),
       ...(homileticPositionReviews && { homileticPositionReviews }),
       ...autosaveFields,
       ...rowFields,
@@ -1385,6 +1392,8 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    const subpointMoves = record.sequence === 0 ? record.outlineSubpointMoves : undefined;
+    if (subpointMoves?.length && outlineField) retainedRoots.push(outlineField);
     const noteOpening = record.sequence === 0 ? record.sermonNoteText : undefined;
     if (noteOpening) {
       const original = matchesSermonNoteOpening(source, noteOpening) && withSermonNoteText(source.value, noteOpening.target, noteOpening.text);
@@ -1480,6 +1489,14 @@ export class CommitQueue {
       if (homileticTitles) command.homileticTitleActions = homileticTitles;
       const homileticMoves = matchingHomileticMoves(command.changes, record.homileticMoveActions);
       if (homileticMoves) command.homileticMoveActions = homileticMoves;
+      const outlineField = outlinePlacementField(command.resource.collection);
+      if (record.outlineSubpointMoves?.length && outlineField && command.changes.some(change => change.path[0] === outlineField)) {
+        const preceding = record.outlineSubpointPredecessor;
+        command.outlineSubpointMoves = record.outlineSubpointMoves.map(move => preceding?.childIds.includes(move.subPointId)
+          ? { ...clone(move), predecessorOperationId: preceding.operationId } : clone(move));
+        command.dependsOn = [...new Set([...command.dependsOn, ...command.outlineSubpointMoves.flatMap(move =>
+          move.predecessorOperationId ? [move.predecessorOperationId] : [])])];
+      }
       const homileticReviews = matchingHomileticPositionReviews(command.changes, record);
       if (homileticReviews) command.homileticPositionReviews = homileticReviews;
       const tags = thoughtTagCommandActions(command.changes, record.thoughtTagActions);
