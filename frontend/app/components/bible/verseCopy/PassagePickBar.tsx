@@ -32,7 +32,7 @@ export function PassagePickBar({ copy, wide, onOpen, action, icon, cancelLabel, 
   const place = copy.placeOf(copy.picked);
   const count = t('bible.verseCount', { count: copy.picked.length });
   const clear = (
-    <button type="button" disabled={busy} onClick={copy.clear} aria-label={cancelLabel} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+    <button type="button" disabled={busy} onClick={copy.cancelSelection} aria-label={cancelLabel} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
       <XMarkIcon className="h-5 w-5" aria-hidden="true" />
     </button>
   );

@@ -27,7 +27,7 @@ describe('the verses of a comment, chosen again', () => {
     ['a door with no window yet', undefined, [1, 2, 3, 4, 5, 6]],
   ])('keep the paragraphs\' rule only for what is one: %s', (_, asParagraph, expected) => {
     const { result } = picker();
-    act(() => result.current.startPassage(v(1), v(2), 'comment', asParagraph as boolean | undefined));
+    act(() => result.current.startPassage(v(1), { to: v(2), purpose: 'comment', asParagraph: asParagraph as boolean | undefined }));
     act(() => result.current.toggle(v(4)));
     expect(chosen(result.current.picked)).toEqual(expected);
   });

@@ -25,7 +25,7 @@ afterEach(() => jest.restoreAllMocks());
 const picker = () => renderHook(() => useVerseCopy({ textRef: { current: document.createElement('article') }, text: book, bible: 'rst', bookId: 'Ruth', enabled: true }));
 function pulledToSix() {
   const view = picker();
-  act(() => view.result.current.startPassage(v(3), undefined, 'comment'));
+  act(() => view.result.current.startPassage(v(3), { purpose: 'comment' }));
   now += 10;
   act(() => view.result.current.pullStarted());
   act(() => view.result.current.moveEnd('last', v(5)));
@@ -55,7 +55,7 @@ describe('the click a grip\'s pull sends after the lift', () => {
     act(() => result.current.forgetPullClick());
     expect(result.current.takesPullClick(true, now)).toBe(false);
     const again = pulledToSix().result;
-    act(() => again.current.startPassage(v(3), undefined, 'comment'));
+    act(() => again.current.startPassage(v(3), { purpose: 'comment' }));
     expect(again.current.takesPullClick(true, now)).toBe(false);
     const late = pulledToSix().result;
     now += 600;
@@ -64,7 +64,7 @@ describe('the click a grip\'s pull sends after the lift', () => {
 
   it('is not awaited when the text was pressed while the grip was held: that press clicks after the lift itself', () => {
     const view = picker();
-    act(() => view.result.current.startPassage(v(3), undefined, 'comment'));
+    act(() => view.result.current.startPassage(v(3), { purpose: 'comment' }));
     now += 10;
     act(() => view.result.current.pullStarted());
     act(() => view.result.current.moveEnd('last', v(6)));
@@ -76,7 +76,7 @@ describe('the click a grip\'s pull sends after the lift', () => {
 
   it('waits for no click after a pull the browser broke off', () => {
     const view = picker();
-    act(() => view.result.current.startPassage(v(3), undefined, 'comment'));
+    act(() => view.result.current.startPassage(v(3), { purpose: 'comment' }));
     act(() => view.result.current.pullStarted());
     act(() => view.result.current.moveEnd('last', v(6)));
     act(() => view.result.current.pullEnded(null));

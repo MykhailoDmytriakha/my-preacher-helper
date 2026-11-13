@@ -95,7 +95,7 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   }, []);
   const editVerses = (id: string | null, passage: PickedPassage) => {
     onOpening(null);
-    copy.startPassage({ chapter: passage.chapter, verse: passage.fromVerse }, { chapter: passage.toChapter, verse: passage.toVerse });
+    copy.startPassage({ chapter: passage.chapter, verse: passage.fromVerse }, { to: { chapter: passage.toChapter, verse: passage.toVerse } });
     setReshaping(id);
   };
   const open = async (passage: PickedPassage) => {

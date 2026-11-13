@@ -106,7 +106,7 @@ export function VerseCopyBar({ copy, wide, text, onWrite, onAnalyse }: {
   const writing = passage ? <WriteActions passage={passage} wide={wide} onWrite={onWrite} onAnalyse={onAnalyse} /> : null;
   const notInRow = writes && !passage ? <span className="text-xs text-gray-500 dark:text-gray-400" data-copy-not-in-row="">{t('bible.copy.onlyInRow')}</span> : null;
   const clear = (
-    <button type="button" onClick={copy.clear} aria-label={t('bible.copy.clear')} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+    <button type="button" onClick={copy.cancelSelection} aria-label={t('bible.copy.clear')} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
       <XMarkIcon className="h-5 w-5" aria-hidden="true" />
     </button>
   );

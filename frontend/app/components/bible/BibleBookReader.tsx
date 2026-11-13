@@ -481,7 +481,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   // A verse's «Абзац» with none starting there chooses its verses from it first, under the paragraphs' rule; its bar's
   // «Написать абзац» opens the window (the owner, 2026-11-12). A hold still starts the choice of verses (06.11).
   const startPassage = verseCopy.startPassage;
-  const chooseParagraph = useCallback((chapter: number, verse: number) => startPassage({ chapter, verse }, undefined, 'comment', true), [startPassage]);
+  const chooseParagraph = useCallback((chapter: number, verse: number, returnToVerse?: boolean) => {
+    startPassage({ chapter, verse }, { purpose: 'comment', asParagraph: true, returnToVerse });
+  }, [startPassage]);
   const writeOnVerses = useWriteOnVerses({ setCommenting, bookId, bible, laid: mine.commentLaid, bodyOf: mine.commentBody, clear: verseCopy.clear });
   // The verse just chosen never hides under the bar of the verses chosen, and a comment just written stands in sight
   // (`readerSight.ts`, visual pass 2026-11-07).

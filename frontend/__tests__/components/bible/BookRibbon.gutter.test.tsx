@@ -15,12 +15,12 @@ describe('BookRibbon menu space', () => {
     expect(container.querySelectorAll('[data-verse-menu]')).toHaveLength(enabled ? 2 : 0);
   });
 
-  it('retains the exact verse and row when the menu button is pressed', () => {
+  it.each([0, 1])('retains the verse, row and activation method for click detail %s', (detail) => {
     const open = jest.fn();
     const { container } = render(<BookRibbon text={text} lang="en" chapterWord={chapterWord}
       verseMenu={{ enabled: true, label: (chapter, verse) => `Menu ${chapter}:${verse}`, open }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Menu 1:2' }));
-    expect(open).toHaveBeenCalledWith(1, 2, container.querySelector('[data-verse="1:2"]'));
+    fireEvent.click(screen.getByRole('button', { name: 'Menu 1:2' }), { detail });
+    expect(open).toHaveBeenCalledWith(1, 2, container.querySelector('[data-verse="1:2"]'), detail === 0);
   });
 
   it('leaves a ribbon without the capability free of a menu and gutter', () => {

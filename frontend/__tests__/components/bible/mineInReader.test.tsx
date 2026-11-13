@@ -526,6 +526,39 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     }));
   });
 
+  it.each([
+    { action: 'comment.verseMenuParagraph', label: 'comment.pick.cancel', key: '{Enter}' },
+    { action: 'comment.verseMenuParagraph', label: 'comment.pick.cancel', key: '{Escape}' },
+    { action: 'analysis.verseMenu', label: 'analysis.pick.cancel', key: '{Enter}' },
+    { action: 'analysis.verseMenu', label: 'analysis.pick.cancel', key: '{Escape}' },
+    { action: 'bible.copy.several', label: 'bible.copy.clear', key: '{Enter}' },
+    { action: 'bible.copy.several', label: 'bible.copy.clear', key: '{Escape}' },
+  ])('returns to the verse when $key cancels $action from the selection bar', async ({ action, label, key }) => {
+    const user = userEvent.setup();
+    mockRows = { studyNotes: [] };
+    renderRuth();
+    await waitFor(() => expect(rowOf('1:16')).toBeTruthy());
+    const opener = within(rowOf('1:16')).getByRole('button', { name: 'bible.copy.menu' });
+    opener.focus();
+    await user.keyboard('{Enter}');
+    const menu = await screen.findByRole('menu');
+    const item = within(menu).getByRole('menuitem', { name: action });
+    for (const _ of within(menu).getAllByRole('menuitem')) {
+      if (document.activeElement === item) break;
+      await user.keyboard('{ArrowDown}');
+    }
+    expect(item).toHaveFocus();
+    await user.keyboard('{Enter}');
+    const bar = await screen.findByRole('region', { name: 'Руф 1:16' });
+    const cancel = within(bar).getByRole('button', { name: label });
+    cancel.focus();
+    expect(cancel).toHaveFocus();
+    await user.keyboard(key);
+    expect(bar).not.toBeInTheDocument();
+    expect(rowOf('1:16')).not.toHaveAttribute('data-verse-chosen');
+    expect(opener).toHaveFocus();
+  });
+
   // Each kind has its own door: a verse where a comment and a paragraph both start says so twice, and each opens its own.
   it('says «Изменить комментарий» and «Изменить абзац» at a verse where both start, each opening its own', async () => {
     mockRows = { studyNotes: [

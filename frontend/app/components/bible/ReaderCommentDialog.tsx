@@ -121,7 +121,9 @@ export function ReaderCommentDialog(props: {
     if (!run || !key) return;
     const offered = { chapter: run.chapter, fromVerse: run.fromVerse!, toChapter: run.toChapter, toVerse: run.toVerse ?? run.fromVerse! };
     setChoosing({ key, id: here.id, offered, moveTo });
-    copy.startPassage({ chapter: offered.chapter, verse: offered.fromVerse }, { chapter: offered.toChapter, verse: offered.toVerse }, 'comment', asParagraph);
+    copy.startPassage({ chapter: offered.chapter, verse: offered.fromVerse }, {
+      to: { chapter: offered.toChapter, verse: offered.toVerse }, purpose: 'comment', asParagraph,
+    });
   };
   const editing = commenting?.kind === 'edit' ? commenting.id : undefined;
   // Every projected piece follows the destination book's same rule — the paragraphs' rule, a paragraph's alone: a comment
@@ -273,24 +275,24 @@ export function useCommentDoors({ ready, commentOn, commentPassage, setCommentin
   bookId: string;
   bible: BibleId;
   /** A new paragraph's verses chosen from this verse (`useVerseCopy().startPassage` for a paragraph); none — its window at once. */
-  chooseParagraph?: (chapter: number, verse: number) => void;
+  chooseParagraph?: (chapter: number, verse: number, returnToVerse?: boolean) => void;
 }): { verse?: VerseComment; paragraph?: VerseComment; chapter?: RibbonChapterComment } {
   const { t } = useTranslation();
-  const open = useCallback((chapter: number, verse: number | null, kind: CommentDoorKind | undefined, opener?: HTMLElement | null) => {
+  const open = useCallback((chapter: number, verse: number | null, kind: CommentDoorKind | undefined, opener?: HTMLElement | null, returnToVerse?: boolean) => {
     const id = commentOn(chapter, verse, kind);
     if (id) { setCommenting(editingComment(id, bookId, bible, commentPassage(id, { chapter, verse }), opener)); return; }
-    if (kind === 'paragraph' && verse !== null && chooseParagraph) { chooseParagraph(chapter, verse); return; }
+    if (kind === 'paragraph' && verse !== null && chooseParagraph) { chooseParagraph(chapter, verse, returnToVerse); return; }
     const reference: ScriptureReference = { id: newClientId(), bible, book: bookId, chapter, ...(verse !== null ? { fromVerse: verse } : {}) };
     setCommenting({ kind: 'new', reference, ...(kind ? { paragraph: kind === 'paragraph' } : {}), ...(opener ? { opener } : {}) });
   }, [commentOn, commentPassage, setCommenting, bible, bookId, chooseParagraph]);
   return useMemo(() => (!ready ? {} : {
     verse: {
       labelOf: ({ chapter, verse }) => t(commentOn(chapter, verse, 'comment') ? 'comment.verseMenuEdit' : 'comment.verseMenu'),
-      open: ({ chapter, verse }, opener) => open(chapter, verse, 'comment', opener),
+      open: ({ chapter, verse }, entry) => open(chapter, verse, 'comment', entry?.opener),
     },
     paragraph: {
       labelOf: ({ chapter, verse }) => t(commentOn(chapter, verse, 'paragraph') ? 'comment.verseMenuEditParagraph' : 'comment.verseMenuParagraph'),
-      open: ({ chapter, verse }, opener) => open(chapter, verse, 'paragraph', opener),
+      open: ({ chapter, verse }, entry) => open(chapter, verse, 'paragraph', entry?.opener, entry?.keyboard),
     },
     chapter: {
       labelOf: (chapter) => t(commentOn(chapter, null) ? 'comment.chapterMenuEdit' : 'comment.chapterMenu'),

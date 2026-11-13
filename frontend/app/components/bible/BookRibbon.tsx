@@ -151,7 +151,7 @@ export type RibbonParagraphs = {
  * A chapter heading's door to a comment on the whole chapter (case 2026-10-12-block-diagram, 3.2): pressed, the
  * heading opens the chapter's comment window — a new one, or the one already written to it.
  */
-export type RibbonVerseMenu = { enabled: boolean; label: (chapter: number, verse: number) => string; open: (chapter: number, verse: number, row: HTMLElement) => void };
+export type RibbonVerseMenu = { enabled: boolean; label: (chapter: number, verse: number) => string; open: (chapter: number, verse: number, row: HTMLElement, keyboard: boolean) => void };
 
 export type RibbonChapterComment = { labelOf: (chapter: number) => string; open: (chapter: number) => void };
 
@@ -341,7 +341,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
           aria-expanded={false}
           onClick={(event) => {
             const row = event.currentTarget.closest<HTMLElement>('[data-verse]');
-            if (row) verseMenu.open(chapter, verse, row);
+            if (row) verseMenu.open(chapter, verse, row, event.detail === 0);
           }}
           className="pointer-events-none absolute right-0 top-0 rounded-md bg-white p-1.5 text-gray-600 opacity-0 shadow-sm focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:bg-gray-800 dark:text-gray-200"
         >

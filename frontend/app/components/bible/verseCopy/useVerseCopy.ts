@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 
@@ -11,6 +11,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { copyPlainText } from '@/utils/clipboard';
+import { isAvailableFocusTarget } from '@/utils/focusableElements';
 import { isTypingIn } from '@/utils/typingTarget';
 import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 import { useTranslation } from '@locales/useTranslation';
@@ -26,7 +27,7 @@ import type { TFunction } from 'i18next';
  * Where the verse's menu was asked for: the press, the row as it stood, whether a finger asked, and whether a hold
  * opened it — the click that ends a hold may land on the menu.
  */
-export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held: boolean; opener?: HTMLElement | null; row: { top: number; left: number; width: number; height: number } };
+export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held: boolean; keyboard: boolean; opener?: HTMLElement | null; row: { top: number; left: number; width: number; height: number } };
 
 /**
  * The book named in the Bible's own language, whatever the interface speaks: the words copied are that Bible's. The Bible
@@ -51,6 +52,7 @@ const PASSAGE_LIMIT = 'passage-limit';
 
 /** What a passage is chosen for: an analysis, or a comment — a paragraph when it runs over more than one verse. */
 export type PassagePurpose = 'analysis' | 'comment';
+type PassageStart = { to?: VerseAt; purpose?: PassagePurpose; asParagraph?: boolean; returnToVerse?: boolean };
 const PASSAGE_HINTS: Record<PassagePurpose, string> = { analysis: 'analysis.pick.hint', comment: 'comment.pick.hint' };
 /** A paragraph's verses are chosen up to its last one. */
 const PARAGRAPH_HINT = 'comment.pick.paragraphHint';
@@ -137,7 +139,13 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const pullStartedAt = useRef(Number.NEGATIVE_INFINITY);
   const textPressedAt = useRef(Number.NEGATIVE_INFINITY);
   const forgetPull = useCallback(() => { pulling.current = null; pullClick.current = null; }, []);
+  // The chapter window can replace a verse's button while its selection bar stays open.
+  const selectionOrigin = useRef<{ at: VerseAt; bible: BibleId; bookId: string } | null>(null);
+  const rememberSelectionOrigin = useCallback((at: VerseAt, returnToVerse: boolean) => {
+    selectionOrigin.current = returnToVerse ? { at, bible, bookId } : null;
+  }, [bible, bookId]);
   const clear = useCallback(() => {
+    selectionOrigin.current = null;
     // The hint for choosing a passage goes with that choice: it must not stand over the analysis screen.
     if (purposeRef.current !== 'copy') toast.dismiss(PASSAGE_HINT);
     forgetPull();
@@ -146,16 +154,23 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setPurpose('copy');
     setAsParagraph(undefined);
   }, [forgetPull]);
+  const cancelSelection = useCallback(() => {
+    const origin = selectionOrigin.current;
+    clear();
+    if (!origin || origin.bookId !== bookId || origin.bible !== bible) return;
+    const opener = textRef.current?.querySelector<HTMLElement>(`[data-verse="${verseKey(origin.at)}"] > [data-verse-menu]`);
+    if (opener?.isConnected && isAvailableFocusTarget(opener)) opener.focus();
+  }, [bible, bookId, clear, textRef]);
   const actedRef = useRef(onActed);
   actedRef.current = onActed;
   const acted = useCallback((verses: VerseAt[]) => actedRef.current?.(verses), []);
   // Pointer and keyboard doors share the same row snapshot and menu state.
-  const openMenu = useCallback((at: VerseAt, row: HTMLElement, pointer?: Pick<VerseMenuAt, 'x' | 'y' | 'touch' | 'held'>) => {
+  const openMenu = useCallback((at: VerseAt, row: HTMLElement, pointer?: Pick<VerseMenuAt, 'x' | 'y' | 'touch' | 'held'>, keyboard = false) => {
     if (!enabled) return;
     const box = row.getBoundingClientRect();
     const position = pointer ?? { x: box.left + Math.min(24, box.width / 2), y: box.top + Math.min(24, box.height / 2), touch: false, held: false };
     const opener = row.querySelector<HTMLElement>('[data-verse-menu]') ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    setMenu({ chapter: at.chapter, verse: at.verse, ...position, opener, row: { top: box.top, left: box.left, width: box.width, height: box.height } });
+    setMenu({ chapter: at.chapter, verse: at.verse, ...position, keyboard, opener, row: { top: box.top, left: box.left, width: box.width, height: box.height } });
     acted([{ chapter: at.chapter, verse: at.verse }]);
   }, [acted, enabled]);
   const done = useCallback(() => {
@@ -183,7 +198,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const ribbonMenu = useMemo<RibbonVerseMenu>(() => ({
     enabled,
     label: (chapter, verse) => t('bible.copy.menu', { place: labelOf({ chapter, verse }) }),
-    open: (chapter, verse, row) => openMenu({ chapter, verse }, row),
+    open: (chapter, verse, row, keyboard) => openMenu({ chapter, verse }, row, undefined, keyboard),
   }), [enabled, labelOf, openMenu, t]);
 
   // The choice as it is now: a copy or a send that answers late lets go only the choice it was made from.
@@ -228,7 +243,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   // bar, under the place, while one verse is chosen (`byTouch` picks the words): a toast said it at every hold, over the
   // phone's header and the verse just chosen, and stayed over the window opened from the bar (visual pass, 2026-11-07).
   const [byTouch, setByTouch] = useState(false);
-  const startPicking = useCallback((at: VerseAt, touch: boolean) => {
+  const startPicking = useCallback((at: VerseAt, touch: boolean, returnToVerse = false) => {
+    rememberSelectionOrigin(at, returnToVerse);
     setMenu(null);
     setPicked([at]);
     setFormat(null);
@@ -236,7 +252,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setAsParagraph(undefined);
     setByTouch(touch);
     acted([{ chapter: at.chapter, verse: at.verse }]);
-  }, [acted]);
+  }, [acted, rememberSelectionOrigin]);
   const limitRef = useRef(limitComment);
   limitRef.current = limitComment;
   // What the comment whose verses are chosen is, as its window says now — handed to the paragraphs' rule, which is a
@@ -247,7 +263,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
    * Verses for an analysis or a comment, starting with this one (the verse menu's «Разобрать отрывок», «Комментарий»), or
    * all of an analysis's or a comment's own to change its ends.
    */
-  const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis', asParagraph?: boolean) => {
+  const startPassage = useCallback((at: VerseAt, { to, purpose: forWhat = 'analysis', asParagraph, returnToVerse = false }: PassageStart = {}) => {
+    rememberSelectionOrigin(at, returnToVerse);
     forgetPull();
     commentKindRef.current = asParagraph;
     setAsParagraph(forWhat === 'comment' ? asParagraph : undefined);
@@ -256,7 +273,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setFormat(null);
     setPurpose(forWhat);
     toast(t(forWhat === 'comment' && asParagraph ? PARAGRAPH_HINT : PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
-  }, [forgetPull, t, text]);
+  }, [forgetPull, rememberSelectionOrigin, t, text]);
   /**
    * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
    * own; a pull the browser broke off sends none.
@@ -368,14 +385,23 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
 
   // Escape lets the choice go, unless a window above it takes the key.
   const choosing = picked !== null;
+  useLayoutEffect(() => {
+    if (!choosing) selectionOrigin.current = null;
+  }, [choosing]);
   useEffect(() => {
     if (!choosing) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !hasOpenLayer()) clear();
+      if (event.key !== 'Escape' || event.defaultPrevented || hasOpenLayer()) return;
+      const active = document.activeElement;
+      if (active === document.body || textRef.current?.contains(active) || active?.closest('[data-verse-bar]')) {
+        cancelSelection();
+      } else {
+        clear();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [choosing, clear]);
+  }, [cancelSelection, choosing, clear, textRef]);
 
   // A selection copied by the system (⌘C, Ctrl+C, the browser's Copy): the words without the numbers and chips
   // drawn among them, with the place and the Bible.
@@ -407,7 +433,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     ribbonMenu,
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
-    picked, picking: choosing, byTouch, startPicking, toggle, rangeTo, clear,
+    picked, picking: choosing, byTouch, startPicking, toggle, rangeTo, clear, cancelSelection,
     purpose, asParagraph, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,

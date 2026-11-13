@@ -16,7 +16,7 @@ import type { VerseCopy, VerseMenuAt } from './useVerseCopy';
 /** A verse's door to one kind of comment: «Комментарий» or «Абзац», «Изменить …» where one of that kind starts at the verse. */
 export type VerseComment = {
   labelOf: (verse: { chapter: number; verse: number }) => string;
-  open: (verse: { chapter: number; verse: number }, opener?: HTMLElement | null) => void;
+  open: (verse: { chapter: number; verse: number }, entry?: { opener?: HTMLElement | null; keyboard: boolean }) => void;
 };
 
 /** «Разобрать отрывок» carries its mark in the app's blue, as on the canvas «Разбор структуры» (the owner, 2026-10-29). */
@@ -121,7 +121,10 @@ function OpenVerseMenu({ copy, at, comment, paragraph, analysis }: { copy: Verse
   const label = copy.labelOf(verse);
   const shown = spot ? 'visible' : 'hidden';
   const divider = <div aria-hidden="true" className={at.touch ? 'h-2 bg-gray-100 dark:bg-black/30' : 'mx-1.5 my-1 h-px bg-gray-100 dark:bg-gray-700'} />;
-  const door = (kind: VerseComment) => choose(() => { closeMenu(); if (at.opener) kind.open(verse, at.opener); else kind.open(verse); });
+  const door = (kind: VerseComment) => choose(() => {
+    closeMenu();
+    kind.open(verse, at);
+  });
   return createPortal(
     // No system selection or callout over the menu: the lifted verse stands outside the text's card, and the owner's iPad put its
     // selection handle on it (31.10).
@@ -165,7 +168,7 @@ function OpenVerseMenu({ copy, at, comment, paragraph, analysis }: { copy: Verse
         <MenuItem icon={DocumentDuplicateIcon} label={t('bible.copy.copy')} strong touch={at.touch} onSelect={choose(() => { void copy.copy([verse], 'quote'); })} />
         {copy.canShare ? <MenuItem icon={ArrowUpOnSquareIcon} label={t('bible.copy.share')} touch={at.touch} onSelect={choose(() => { void copy.share([verse], 'quote'); })} /> : null}
         {divider}
-        <MenuItem icon={CheckCircleIcon} label={t('bible.copy.several')} touch={at.touch} onSelect={choose(() => copy.startPicking(verse, at.touch))} />
+        <MenuItem icon={CheckCircleIcon} label={t('bible.copy.several')} touch={at.touch} onSelect={choose(() => copy.startPicking(verse, at.touch, at.keyboard))} />
         {links !== null ? (
           <MenuItem
             icon={ArrowsRightLeftIcon}
@@ -179,7 +182,7 @@ function OpenVerseMenu({ copy, at, comment, paragraph, analysis }: { copy: Verse
         {comment ? <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={door(comment)} /> : null}
         {paragraph ? <MenuItem icon={ParagraphIcon} label={paragraph.labelOf(verse)} touch={at.touch} onSelect={door(paragraph)} /> : null}
         {analysis ? (
-          <MenuItem icon={AnalysisMenuIcon} label={t('analysis.verseMenu')} touch={at.touch} onSelect={choose(() => copy.startPassage(verse))} />
+          <MenuItem icon={AnalysisMenuIcon} label={t('analysis.verseMenu')} touch={at.touch} onSelect={choose(() => copy.startPassage(verse, { returnToVerse: at.keyboard }))} />
         ) : null}
       </div>
     </div>,
