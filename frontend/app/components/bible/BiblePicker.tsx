@@ -9,13 +9,14 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
-import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { verseWords, type BookText } from '@/utils/bibleText';
 import { panelVerticalRooms } from '@/utils/panelPlacement';
 import { chapterCount, verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
 import { booksOf } from './bookOrder';
 import { BibleSearch } from './search/BibleSearch';
+import { useBookTexts } from './useBookTexts';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -317,6 +318,13 @@ function PlaceSteps(props: PlaceStepsProps) {
   return props.chapter === null ? <ChapterStep {...props} /> : <VerseStep {...props} chapter={props.chapter} />;
 }
 
+/** Preview text can arrive while the same chapter or verse grid is still open. */
+function PickerPlaceSteps(props: PlaceStepsProps) {
+  const { bible, bookId, text } = props;
+  const texts = useBookTexts(text ? [] : [bookId], bible);
+  return <PlaceSteps {...props} text={text ?? texts.get(bookId) ?? null} />;
+}
+
 /** The chapters: a press shows the verses of one, a hold opens it at its first verse. */
 function ChapterStep({ bookId, bible, text, locale, wide, here, onChapter, onBooks, onOpen, choosing }: PlaceStepsProps) {
   const { t, chapterLabel, countLabel } = usePickerWords();
@@ -575,8 +583,8 @@ export type NavigatorProps = {
 export function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, text, locale, wide, anchorRef, onClose, onOpen, choosing, layerClassName, label: booksLabel, actionLabel, centered }: NavigatorProps) {
   const { t } = useTranslation();
   const firstChapter = (book: string) => (chapterCount(bible, book) === 1 ? 1 : null);
-  const [step, setStep] = useState<{ bookId: string; text: BookText | null; chapter: number | null } | null>(
-    start === 'chapters' ? { bookId, text, chapter: firstChapter(bookId) } : null
+  const [step, setStep] = useState<{ bookId: string; chapter: number | null } | null>(
+    start === 'chapters' ? { bookId, chapter: firstChapter(bookId) } : null
   );
 
   const pickBook = (chosen: string) => {
@@ -585,13 +593,7 @@ export function BookNavigator({ start, bookId, bible, currentChapter, currentVer
       onOpen(chosen, { chapter: 1, verse: 1 });
       return;
     }
-    setStep({ bookId: chosen, text: chosen === bookId ? text : null, chapter: firstChapter(chosen) });
-    if (chosen === bookId && text) return;
-    // How each chapter begins and what a verse says: the book is on the device once the reader has warmed it.
-    void fetchBookText(chosen, bible).then(
-      (loaded) => setStep((now) => (now?.bookId === chosen ? { ...now, text: loaded } : now)),
-      () => undefined
-    );
+    setStep({ bookId: chosen, chapter: firstChapter(chosen) });
   };
 
   const label = step ? t(stepLabel(step.chapter)) : booksLabel ?? t('bible.chooseBook');
@@ -609,11 +611,11 @@ export function BookNavigator({ start, bookId, bible, currentChapter, currentVer
       >
         <div className="mt-4">
           {step ? (
-            <PlaceSteps
+            <PickerPlaceSteps
               key={step.bookId}
               bookId={step.bookId}
               bible={bible}
-              text={step.text}
+              text={step.bookId === bookId ? text : null}
               locale={locale}
               wide={wide}
               here={step.bookId === bookId ? { chapter: currentChapter, verse: currentVerse } : undefined}
@@ -656,7 +658,6 @@ export function BookOnList({ bookId, bible, locale, wide, here, onOpen }: {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [chapter, setChapter] = useState<number | null>(null);
-  const [text, setText] = useState<BookText | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const oneChapter = chapterCount(bible, bookId) === 1;
   const columns = Math.min(PER_ROW, chapter === null ? chapterCount(bible, bookId) : verseCount(bible, bookId, chapter));
@@ -664,8 +665,6 @@ export function BookOnList({ bookId, bible, locale, wide, here, onOpen }: {
   const show = () => {
     setChapter(oneChapter ? 1 : null);
     setOpen(true);
-    // How each chapter begins and what a verse says: the book is on the device once the reader has warmed it.
-    void fetchBookText(bookId, bible).then(setText, () => undefined);
   };
   const close = () => {
     setOpen(false);
@@ -690,17 +689,17 @@ export function BookOnList({ bookId, bible, locale, wide, here, onOpen }: {
         <span className={heldText(state)}>{getLocalizedBookName(bookId, locale)}</span>
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="start" width={open && wide ? gridWindowWidth(columns) : undefined} wide={wide} label={t(stepLabel(chapter))}>
-        <PlaceSteps
+        {open && <PickerPlaceSteps
           bookId={bookId}
           bible={bible}
-          text={text}
+          text={null}
           locale={locale}
           wide={wide}
           here={here}
           chapter={chapter}
           onChapter={setChapter}
           onOpen={(place) => { close(); onOpen(bookId, place); }}
-        />
+        />}
       </PickerWindow>
     </>
   );

@@ -8992,3 +8992,14 @@ The reader, passage window, other-translation marks and cross-reference texts no
 On `rcDZRpoledqs-6KYtbDMu`, installed headless Chrome used an active service worker and local Auth and Firestore. Each of the three matched scenarios recovered in the same screen with exactly one extra file request at 390 or 1280 px. Both Ruth layouts restored the correct verse. The other-translation window displayed the Russian text with the original orange mark. I inspected the final screenshots. All owned Chrome profiles and nine listeners closed. The three regressions turned green. Independent review, 234 related tests, scoped ESLint, TypeScript and the production build passed. Full Jest passed 15,078 tests in 1,193 suites, with 17 tests and three suites skipped. Evidence is at `artifacts/bible-visible-reconnect-20261112`.
 
 The tracker stays open for Bible search, background download and the book picker. After authorized deployment, check the released build with a cold book in a test session. Open the book, a reference from a note, and a verse marked in a different translation. Verify the text, verse and mark remain correct when the server becomes reachable. Use localhost for the controlled response interruption and request counts.
+
+
+## BUG-20261112-bible-file-reads-left-outside-reconnect · Picker previews
+
+In Bible → Ruth and Bible → Genesis → choose another book → Ruth, an interrupted book response left both chapter and verse previews empty. On baseline `a682f53b` / `rcDZRpoledqs-6KYtbDMu`, the number grids remained usable and opened Ruth 1:2. The two click handlers loaded text once and discarded the error. Two regressions failed at the missing connection report.
+
+Both picker routes now reuse the visible book loader. The chapter and verse selection stays independent of text availability. The grid can update its preview while the same place stays pointed to. The current reader's supplied text still takes precedence, and a closed picker has no pending preview UI to update.
+
+Final build `p4aQau2WI2o_5NI58ykIH` passed both paths at 1280 px in installed headless Chrome with the active worker and local emulators. I inspected the original absence, restored chapter wording and restored verse wording. Both paths still opened Ruth 1:2. No page errors and all temporary resources closed. Both regressions turned green, 153 focused tests and 15,080 full Jest tests passed. Scoped ESLint, TypeScript, production build and independent review passed. Evidence is at `artifacts/bible-picker-recovery-20261112`.
+
+After authorized deployment, verify the released build. In a disposable wide browser session choose an uncached book from the list and from the reader. Leave the picker open as the connection returns. Hover a chapter and a verse and confirm the excerpts and navigation. The controlled truncated response remains a localhost check. Bible search and background download are still open in the tracker.
