@@ -2,7 +2,7 @@ import { defaultCache, PAGES_CACHE_NAME } from "@serwist/next/worker";
 import { CacheFirst, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
-import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
+import { BIBLE_TEXT_CACHE, BIBLE_TEXT_NETWORK_FAILURE_HEADER, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
 import { createOfflinePageStorage } from "./utils/offlinePageStorage";
 import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, OFFLINE_RSC_MAX_ENTRIES, WARM_DOCUMENT_DEADLINE_MS, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 import { isPreachingShellDocument, resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
@@ -88,7 +88,9 @@ const runtimeCaching: RuntimeCaching[] = [
           const data: unknown = await response.clone().json().catch(() => null);
           return isBookShaped(data) ? response : null;
         },
-        handlerDidError: async ({ request }) => fetch(request).catch(() => new Response(null, { status: 503 })),
+        handlerDidError: async ({ request }) => fetch(request).catch(() => new Response(null, {
+          status: 503, headers: { [BIBLE_TEXT_NETWORK_FAILURE_HEADER]: '1' },
+        })),
       }],
     }),
   },

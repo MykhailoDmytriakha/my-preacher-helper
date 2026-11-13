@@ -3,10 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { fetchBookText, type BookText } from '@/utils/bibleText';
+import { BIBLE_TEXT_NETWORK_FAILURE_HEADER } from '@/utils/bibleTextCache';
+import { beginConnectivityRequest, getConnectivityStatus, reportServerUnreachable, subscribeToConnectivity } from '@/utils/connectivity';
 
 import type { BibleId } from '@/utils/bibles';
 
 const NO_TEXTS: ReadonlyMap<string, BookText> = new Map();
+
+type BookRequest = { promise: Promise<BookText>; recovery: number };
 
 /**
  * The texts of other books a reading screen quotes — a verse's links, the places of the trail — fetched
@@ -22,7 +26,9 @@ const NO_TEXTS: ReadonlyMap<string, BookText> = new Map();
 export function useBookTexts(books: readonly string[], bible: BibleId): ReadonlyMap<string, BookText> {
   const [kept, setKept] = useState<{ bible: BibleId; texts: ReadonlyMap<string, BookText> }>({ bible, texts: NO_TEXTS });
   const texts = kept.bible === bible ? kept.texts : NO_TEXTS;
-  const requests = useRef(new Map<string, Promise<BookText>>());
+  const requests = useRef(new Map<string, BookRequest>());
+  const recovery = useRef(0);
+  const reportedFailures = useRef(new Set<string>());
   const wanted = Array.from(new Set(books)).sort().join('|');
   useEffect(() => {
     let alive = true;
@@ -38,27 +44,80 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
         return { bible, texts: next };
       });
     };
-    for (const book of wanted ? wanted.split('|') : []) {
-      if (texts.has(book)) continue;
+    const missing = new Set((wanted ? wanted.split('|') : []).filter(book => !texts.has(book)));
+    const listening = new Set<string>();
+    const retried = new Set<string>();
+    const retries = new Set<ReturnType<typeof setTimeout>>();
+    const load = (book: string) => {
+      if (!alive || !missing.has(book) || listening.has(book)) return;
       const key = `${bible}:${book}`;
       let request = requests.current.get(key);
       if (!request) {
-        request = fetchBookText(book, bible);
-        requests.current.set(key, request);
-        // A failed fetch may be tried again by the next set; a kept one is read from `texts`.
-        request.catch(() => requests.current.delete(key));
+        const fetchMissing: typeof fetch = async (...args) => {
+          const started = beginConnectivityRequest();
+          // Cache hits cannot confirm connectivity. A missed network request can
+          // ask for one shared health check before the next confirmed recovery.
+          const reportFailure = () => {
+            if (reportedFailures.current.has(key)) return;
+            reportedFailures.current.add(key);
+            reportServerUnreachable(started);
+          };
+          try {
+            const response = await fetch(...args);
+            if (response.headers?.get(BIBLE_TEXT_NETWORK_FAILURE_HEADER) === '1') reportFailure();
+            return response;
+          } catch (error) {
+            reportFailure();
+            throw error;
+          }
+        };
+        const current = { promise: fetchBookText(book, bible, { fetchFn: fetchMissing }), recovery: recovery.current };
+        request = current;
+        requests.current.set(key, current);
+        void current.promise.then(
+          () => { reportedFailures.current.delete(key); },
+          () => { if (requests.current.get(key) === current) requests.current.delete(key); },
+        );
       }
-      request.then(
+      const started = request.recovery;
+      listening.add(book);
+      void request.promise.then(
         (text) => {
+          listening.delete(book);
           if (!alive) return;
+          missing.delete(book);
           arrived.set(book, text);
           if (!frame) frame = window.requestAnimationFrame(draw);
         },
-        () => undefined,
+        () => {
+          listening.delete(book);
+          if (!alive || !getConnectivityStatus()) return;
+          // A request started before reconnection can still fail after the health check.
+          if (started !== recovery.current) load(book);
+          else if (!retried.has(book)) {
+            retried.add(book);
+            const timer = setTimeout(() => {
+              retries.delete(timer);
+              if (getConnectivityStatus()) load(book);
+            }, 500);
+            retries.add(timer);
+          }
+        },
       );
-    }
+    };
+    const unsubscribe = subscribeToConnectivity(() => {
+      retries.forEach(timer => clearTimeout(timer));
+      retries.clear();
+      if (!getConnectivityStatus()) return;
+      recovery.current++;
+      retried.clear();
+      missing.forEach(load);
+    });
+    missing.forEach(load);
     return () => {
       alive = false;
+      unsubscribe();
+      retries.forEach(timer => clearTimeout(timer));
       if (frame) window.cancelAnimationFrame(frame);
     };
     // `texts` is read to skip books already here; refetching on its change would loop.

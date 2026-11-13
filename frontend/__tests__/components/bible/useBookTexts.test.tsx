@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { useBookTexts } from '@/components/bible/useBookTexts';
+import { BIBLE_TEXT_NETWORK_FAILURE_HEADER } from '@/utils/bibleTextCache';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 import type { BibleId } from '@/utils/bibles';
 
@@ -23,6 +25,7 @@ let calls: string[] = [];
 let release: Array<() => void> = [];
 
 beforeEach(() => {
+  __resetConnectivityForTests();
   calls = [];
   release = [];
   // Every answer waits until the test lets it go, as a slow network does.
@@ -35,6 +38,94 @@ beforeEach(() => {
 const letThemGo = () => act(async () => { release.splice(0).forEach((go) => go()); });
 
 describe('useBookTexts', () => {
+  it('loads a missing book after confirmed reconnection without refetching the book already shown', async () => {
+    reportServerUnreachable();
+    let available = false;
+    const fetchBook = jest.fn(async (url: string) => {
+      if (url === RST_ESTHER && !available) throw new TypeError('offline');
+      return answer(publicFile(url.slice(1)));
+    });
+    global.fetch = fetchBook as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookTexts(['Ruth', 'Esther'], 'rst'));
+    await waitFor(() => expect(result.current.has('Ruth')).toBe(true));
+    expect(result.current.has('Esther')).toBe(false);
+    expect(fetchBook.mock.calls.map(([url]) => url)).toEqual([RST_ESTHER, RST_RUTH]);
+
+    available = true;
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    expect(fetchBook.mock.calls).toHaveLength(2);
+    act(() => { reportServerReachable(); });
+
+    await waitFor(() => expect(result.current.get('Esther')?.chapters[0][0]).toBe(firstVerse(RST_ESTHER)));
+    expect(fetchBook.mock.calls.map(([url]) => url)).toEqual([RST_ESTHER, RST_RUTH, RST_ESTHER]);
+  });
+
+  it.each(['browser', 'service worker'])('recovers on Wi-Fi from a network failure reported by the %s', async source => {
+    expect(navigator.onLine).toBe(true);
+    const fetchBook = jest.fn();
+    if (source === 'browser') fetchBook.mockRejectedValueOnce(new TypeError('unreachable'));
+    else fetchBook.mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers({ [BIBLE_TEXT_NETWORK_FAILURE_HEADER]: '1' }) });
+    fetchBook.mockResolvedValueOnce(answer(publicFile(RST_RUTH.slice(1))));
+    global.fetch = fetchBook as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookTexts(['Ruth'], 'rst'));
+    await waitFor(() => expect(getConnectivityStatus()).toBe(false));
+    expect(navigator.onLine).toBe(true);
+    expect(fetchBook).toHaveBeenCalledTimes(1);
+    act(() => { reportServerReachable(); });
+    await waitFor(() => expect(result.current.get('Ruth')?.chapters[0][0]).toBe(firstVerse(RST_RUTH)));
+    expect(fetchBook).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries an older request after reconnection even if the list grew while it was pending', async () => {
+    reportServerUnreachable();
+    let rejectOffline!: (error: Error) => void;
+    const offline = new Promise<Response>((_resolve, reject) => { rejectOffline = reject; });
+    let ruthCalls = 0;
+    const fetchBook = jest.fn(async (url: string) => {
+      if (url !== RST_RUTH) return answer(publicFile(url.slice(1)));
+      ruthCalls++;
+      if (ruthCalls === 1) return offline;
+      if (ruthCalls === 2) return { ok: false, status: 503 };
+      return answer(publicFile(url.slice(1)));
+    });
+    global.fetch = fetchBook as unknown as typeof fetch;
+    const { result, rerender } = renderHook(({ books }) => useBookTexts(books, 'rst'), { initialProps: { books: ['Ruth'] } });
+    await waitFor(() => expect(ruthCalls).toBe(1));
+    act(() => { reportServerReachable(); });
+    rerender({ books: ['Ruth', 'Esther'] });
+    await waitFor(() => expect(result.current.has('Esther')).toBe(true));
+    expect(ruthCalls).toBe(1);
+    await act(async () => { rejectOffline(new TypeError('offline')); });
+    expect(ruthCalls).toBe(2);
+    await waitFor(() => expect(result.current.get('Ruth')?.chapters[0][0]).toBe(firstVerse(RST_RUTH)));
+    expect(ruthCalls).toBe(3);
+  });
+
+  it('limits repeated failures while connected and stops on unmount', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchBook = jest.fn().mockResolvedValue({ ok: false, status: 503 });
+      global.fetch = fetchBook as unknown as typeof fetch;
+      const { unmount } = renderHook(() => useBookTexts(['Ruth'], 'rst'));
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(fetchBook).toHaveBeenCalledTimes(1);
+      await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+      act(() => { reportServerUnreachable(); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+      await act(async () => { reportServerReachable(); });
+      expect(fetchBook).toHaveBeenCalledTimes(2);
+      await act(async () => { await jest.advanceTimersByTimeAsync(2000); });
+      expect(fetchBook).toHaveBeenCalledTimes(3);
+      await act(async () => { reportServerUnreachable(); reportServerReachable(); });
+      expect(fetchBook).toHaveBeenCalledTimes(4);
+      unmount();
+      await act(async () => { await jest.advanceTimersByTimeAsync(2000); });
+      expect(fetchBook).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('fetches a book once while it is on its way, however often and however late the list names it', async () => {
     const { result, rerender } = renderHook(({ books }) => useBookTexts(books, 'rst'), { initialProps: { books: ['Ruth'] } });
     rerender({ books: ['Ruth', 'Ruth'] });
