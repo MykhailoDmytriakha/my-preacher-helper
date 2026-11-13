@@ -60,6 +60,9 @@ function retainAtomicParticipants(requests: readonly CommitRequest[], references
   } while (expanded);
 }
 
+/** Leave payload collection to an existing maintenance pass; keep all reference mutations immediate. */
+export const deferCollection: typeof collectCommitRows = (_store, _read, _owner, finish) => finish();
+
 /** Run in the same transaction as checkpoint/manual mutations: no recovery read can
  * introduce a dangling reference after this transaction has removed its payload. */
 export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owner: string, done: () => void): void {

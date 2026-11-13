@@ -1,6 +1,7 @@
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { createCommitCollectionWindow } from '../retention.client';
 import { DataSession } from '../session';
 import { installStorageHarness } from './storageHarness';
 
@@ -205,6 +206,10 @@ describe('native captured creation transfer', () => {
     const settledSourceCheckpoint: EditorRecord = { ...heldSourceCheckpoint!,
       checkpoint: { ...heldSourceCheckpoint!.checkpoint, pending: {} }, completedCommits: [source.id] };
     await checkpoints.put(settledSourceCheckpoint);
+    expect((await checkpoints.read('owner', source.editorId))?.checkpoint.draft).toEqual(sourceValue);
+    expect((await commits.list('owner')).find(record => record.id === source.id)).toEqual(finalizedSource);
+    // Projection is immediate; payload collection waits for the existing delivery-window end.
+    await createCommitCollectionWindow().begin('owner')();
     expect((await checkpoints.read('owner', source.editorId))?.checkpoint.draft).toEqual(sourceValue);
     expect((await commits.list('owner')).some(record => record.id === source.id)).toBe(false);
 

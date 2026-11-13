@@ -19,15 +19,12 @@ describe('S7: Old work on other documents should not multiply the work of one ke
     const list = await device.openList('sermons'); await world.settle();
     const opening = { ...device.storage.counts };
     expect(list.documents).toBeDefined();
+    expect(typing).toEqual({ transactions: 1, getAll: 0, rowsReturned: 0 });
     if (size) {
-      // GAP: A keystroke on this document scans old requests and closed checkpoints from other documents.
-      // IDEAL: expect(typing).toEqual({ transactions: 1, getAll: 9, rowsReturned: 1 });
-      expect(typing).toEqual({ transactions: 1, getAll: 9, rowsReturned: 2 * size + 1 });
       // GAP: Opening a list also scans the owner's historical request payloads outside the displayed document.
       // IDEAL: expect(opening).toEqual({ transactions: 3, getAll: 7, rowsReturned: 1 });
       expect(opening).toEqual({ transactions: 3, getAll: 7, rowsReturned: size + 1 });
     } else {
-      expect(typing).toEqual({ transactions: 1, getAll: 9, rowsReturned: 1 });
       expect(opening).toEqual({ transactions: 3, getAll: 7, rowsReturned: 1 });
     }
   });

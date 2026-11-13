@@ -7,15 +7,12 @@ import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCo
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { writeManualChoiceRecoveries } from './manualScopes.client';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
-import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
-/** No retention sweep in this transaction: the next delivery pass collects what it leaves (retention.client.ts). */
-const deferCollection: typeof collectCommitRows = (_store, _read, _owner, finish) => finish();
-
 /** Older collectors honor reference rows even when they cannot read a new request format. */
 function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
   const key = commitDependencyKey(request.owner, request.id);

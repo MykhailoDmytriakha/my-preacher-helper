@@ -4,8 +4,9 @@ const clone = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON
 
 /** Transactional fake: native commit and the application's completion callback are separate boundaries. */
 export function installStorageHarness() {
+  const freshCounts = () => ({ transactions: 0, enumerations: 0, rows: 0, gets: 0, puts: 0, deletes: 0 });
   const completionCallbacks: Array<() => void> = [];
-  const harness = { rows: new Map<string, unknown>(), holdCommit: false, finishCommit: undefined as (() => void) | undefined,
+  const harness = { counts: freshCounts(), resetCounts: () => { harness.counts = freshCounts(); }, rows: new Map<string, unknown>(), holdCommit: false, finishCommit: undefined as (() => void) | undefined,
     readFailure: false, writeFailure: false,
     onEnumeration: undefined as ((keys: boolean, count: number, wholeStore: boolean) => void) | undefined,
     writeFailureFor: undefined as ((key: unknown, value: unknown) => boolean) | undefined,
@@ -16,6 +17,7 @@ export function installStorageHarness() {
   let queue: Promise<unknown> = Promise.resolve();
   const useStore: ReturnType<typeof createStore> = (mode, action) => {
     const beginning = queue.catch(() => undefined).then(() => {
+      harness.counts.transactions += 1;
       const draft = new Map(harness.rows); let pending = 0, aborted = false, completed = false;
       let releaseNative!: () => void;
       const finished = new Promise<void>(resolve => { releaseNative = resolve; });
@@ -69,23 +71,27 @@ export function installStorageHarness() {
       });
       const store = {
         transaction: tx,
-        get: (key: unknown) => read(draft.get(JSON.stringify(key))),
+        get: (key: unknown) => { harness.counts.gets += 1; return read(draft.get(JSON.stringify(key))); },
         put: (value: unknown, key: unknown) => {
+          harness.counts.puts += 1;
           if (harness.writeFailure || harness.writeFailureFor?.(key, value)) throw new Error('disk full');
           draft.set(JSON.stringify(key), clone(value));
         },
         delete: (key: unknown) => {
+          harness.counts.deletes += 1;
           if (harness.writeFailureFor?.(key, undefined)) throw new Error('disk full');
           draft.delete(JSON.stringify(key));
         },
         getAll: (range?: KeyRange) => {
           const rows = inRange(range).map(([, value]) => value);
+          harness.counts.enumerations += 1; harness.counts.rows += rows.length;
           harness.onFullRead?.(range?.lower[0], mode, rows.length);
           harness.onEnumeration?.(false, rows.length, !range);
           return read(rows);
         },
         getAllKeys: (range?: KeyRange) => {
           const keys = inRange(range).map(([key]) => JSON.parse(key));
+          harness.counts.enumerations += 1; harness.counts.rows += keys.length;
           harness.onEnumeration?.(true, keys.length, !range);
           return read(keys);
         },

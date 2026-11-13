@@ -268,8 +268,8 @@ it('captures a leaving Save with its checkpoint and no retention sweep, while an
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'last words on leaving' }); await settle();
     sweeps = 0; fullReads = 0;
     editor.close({ flush: true }); await settle();
-    // The ordinary Save is measured as it was before the leaving capture stopped sweeping: unchanged.
-    expect({ ordinary, leaving: { sweeps, fullReads } }).toEqual({ ordinary: { sweeps: 2, fullReads: 45 }, leaving: { sweeps: 0, fullReads: 0 } });
+    // Ordinary native Save still sweeps; its surrounding checkpoint puts no longer add three sweeps.
+    expect({ ordinary, leaving: { sweeps, fullReads } }).toEqual({ ordinary: { sweeps: 2, fullReads: 18 }, leaving: { sweeps: 0, fullReads: 0 } });
     // The request and the checkpoint that pins it were written together.
     const closed = [...s.storage.rows.values()].filter((value): value is EditorRecord => Boolean((value as EditorRecord).checkpoint));
     expect(closed).toHaveLength(1);

@@ -5,7 +5,7 @@ import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
-import { checkpointCommitReferences, collectCommitRows, commitProjectionKey } from './retention.client';
+import { checkpointCommitReferences, collectCommitRows, commitProjectionKey, deferCollection } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
@@ -19,7 +19,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
   const write = (record: EditorRecord, creating: boolean) => {
     const frozen = validateRecoveryRecord(record, record.owner, record.editorId);
     return transaction<void>('readwrite', (store, read, done) => {
-      writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), collect);
+      writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), creating ? collect : deferCollection);
     });
   };
   const list = (owner: string, resource: ResourceRef | undefined, range: IDBKeyRange) => transaction<RecoveryCheckpoint[]>('readonly', (store, read, done) => {
@@ -49,6 +49,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
     read: (owner, editorId) => transaction('readonly', (store, read, done) => {
       read(store.get(checkpointKey(owner, editorId)), (record: EditorRecord | undefined) => done(record === undefined ? undefined : clone(record)));
     }),
+    // Typing persists immediately; existing delivery/maintenance passes collect released payloads.
     put: record => write(record, false),
     settleClosed: (owner, entries) => {
       const frozen = clone(entries);
