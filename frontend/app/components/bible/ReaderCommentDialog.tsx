@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
-import { CommentIcon } from '@/components/Icons';
+import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { passageWords, type BookText } from '@/utils/bibleText';
 import { newClientId } from '@/utils/clientId';
@@ -13,7 +13,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { paragraphName, paragraphPlaceRefusal, sayFit, type BookCommentLayout } from './commentParagraphPlacement';
 import { fitCommentPassage, isParagraph, paragraphRefusal, versePosition, type LaidParagraph } from './commentParagraphs';
-import { passageLabel, type MinePlace } from './useBookUsage';
+import { passageLabel, type CommentDoorKind, type MinePlace } from './useBookUsage';
 import { PassagePickBar } from './verseCopy/PassagePickBar';
 
 import type { RibbonChapterComment } from './BookRibbon';
@@ -61,9 +61,10 @@ export function referenceOf(passage: PickedPassage, book: string, bible: BibleId
 /**
  * THE COMMENT'S WINDOW OPENED FROM THE READER (case 2026-10-12-block-diagram, 3.2): names it by its place as the reader
  * numbers it — «Ис 40:31», «Ис 40–41» — and shows the verse's own words over the editor, or that it is on whole chapters.
- * And its verses (phase 9): a new comment's are chosen in the text first — the bar's «Написать комментарий» opens the
- * window on them, one verse or a paragraph; a written one's are chosen again from its window («Изменить стихи»), the window
- * stepping aside meanwhile with everything typed in it, the bar's «Готово» bringing it back with the new place.
+ * And its verses: a new comment opens on its verse at once, a new paragraph's are chosen in the text first — the bar's
+ * «Написать абзац» opens the window on them (the verse menu, 2026-11-12); verses chosen by a hold are written on from their
+ * bar; a written one's are chosen again from its window («Изменить стихи»), the window stepping aside meanwhile with
+ * everything typed in it, the bar's «Готово» bringing it back with the new place.
  */
 export function ReaderCommentDialog(props: {
   commenting: ReaderCommenting | null;
@@ -80,8 +81,10 @@ export function ReaderCommentDialog(props: {
   wide: boolean;
   /** Cached owned comments projected into the destination book; null means the collection is not known yet. */
   paragraphsForBook: (bookId: string) => BookCommentLayout | null;
+  /** Writing on the verses just chosen (`useWriteOnVerses`): a new paragraph's, chosen from the verse menu's «Абзац». */
+  onWrite?: (kind: VerseWriting, passage: PickedPassage) => void;
 }) {
-  const { commenting, setCommenting, text, bookId, bible, copy, wide, paragraphsForBook } = props;
+  const { commenting, setCommenting, text, bookId, bible, copy, wide, paragraphsForBook, onWrite } = props;
   const { t } = useTranslation();
   const key = commenting ? (commenting.kind === 'new' ? commenting.reference.id : commenting.id) : null;
   // The window whose verses are being chosen again — its key, the verses it offered, how it takes new ones; a choice let
@@ -92,15 +95,20 @@ export function ReaderCommentDialog(props: {
   useEffect(() => {
     if (choosing && choosing.key !== key) { setChoosing(null); clearChoice(); }
   }, [choosing, key, clearChoice]);
+  // A new one's verses chosen first are a paragraph's (the verse menu's «Абзац»): written through the bar's check of the
+  // paragraphs' rule, which keeps the verses chosen when it says no.
+  const newParagraph = !choosing && copy.asParagraph === true;
   const chosen = (passage: PickedPassage) => {
-    copy.clear();
     if (choosing) {
+      copy.clear();
       // The verses it offered, taken back as they were: its place stays as written — in its own Bible, every piece of it.
       if (!samePassage(passage, choosing.offered)) choosing.moveTo(referenceOf(passage, bookId, bible, choosing.id));
       setChoosing(null);
       return;
     }
-    setCommenting({ kind: 'new', reference: referenceOf(passage, bookId, bible, newClientId()) });
+    if (onWrite) { onWrite(newParagraph ? 'paragraph' : 'comment', passage); return; }
+    copy.clear();
+    setCommenting({ kind: 'new', reference: referenceOf(passage, bookId, bible, newClientId()), paragraph: newParagraph });
   };
   const runHere = (here: ScriptureReference) => choosableRun(here, bookId, bible);
   // Said where «Изменить стихи» would stand: the comment's own Bible, where its verses are one run again.
@@ -123,7 +131,12 @@ export function ReaderCommentDialog(props: {
   return (
     <>
       {copy.purpose === 'comment' && text ? (
-        <PassagePickBar copy={copy} wide={wide} onOpen={chosen} action={t(choosing ? 'common.done' : 'comment.pick.write')} icon={<CommentIcon className="h-5 w-5" />} cancelLabel={t('comment.pick.cancel')} />
+        <PassagePickBar
+          copy={copy} wide={wide} onOpen={chosen}
+          action={t(choosing ? 'common.done' : newParagraph ? 'comment.pick.writeParagraph' : 'comment.pick.write')}
+          icon={newParagraph ? <ParagraphIcon className="h-5 w-5" /> : <CommentIcon className="h-5 w-5" />}
+          cancelLabel={t('comment.pick.cancel')}
+        />
       ) : null}
       {commenting && text && key ? (
         <OpenReaderCommentDialog key={key} {...props} commenting={commenting} text={text} away={choosing?.key === key} onChooseVerses={chooseVerses} versesRefusal={versesRefusal} placeRefusal={placeRefusal} />
@@ -244,48 +257,46 @@ export function useCommentHoldsReader(commenting: ReaderCommenting | null, bring
 }
 
 /**
- * THE READER'S DOORS TO A COMMENT — the verse menu's «Комментарий» and a chapter heading's: each opens the comment
- * written to that verse (starting there) or that whole chapter, else a new one numbered in the Bible being read.
+ * THE READER'S DOORS TO A COMMENT — the verse menu's «Комментарий» and «Абзац», and a chapter heading's. Three things the
+ * person does, three ways in (the owner, 2026-11-12: «три разных действия и, соответственно, три разных механики»):
+ * «Комментарий» opens its window at once on the verse; «Абзац» chooses its verses from this one first — a paragraph runs
+ * along verses, and the paragraphs' rule is kept while they are chosen — and «Написать абзац» opens its window; a chapter
+ * heading's opens the comment on that whole chapter. Where one of that kind is written — starting at the verse, as the
+ * reader draws it — the door opens it and says so: «Изменить комментарий», «Изменить абзац».
  */
-export function useCommentDoors({ ready, commentOn, commentPassage, setCommenting, bookId, bible, choosePassage, passageOf }: {
+export function useCommentDoors({ ready, commentOn, commentPassage, setCommenting, bookId, bible, chooseParagraph }: {
   /** The comments are known (`useBookUsage().commentsReady`): before, a door would not see the one written there. */
   ready: boolean;
-  commentOn: (chapter: number, verse: number | null) => string | undefined;
+  commentOn: (chapter: number, verse: number | null, kind?: CommentDoorKind) => string | undefined;
   commentPassage: (id: string, at: MinePlace) => Passage | undefined;
   setCommenting: (commenting: ReaderCommenting) => void;
   bookId: string;
   bible: BibleId;
-  /**
-   * A verse with no comment of its own (phase 9): its verses are chosen first — the bar's «Написать комментарий» right
-   * away writes on that verse, as before; a verse pressed below or above makes the comment a paragraph.
-   */
-  choosePassage?: (chapter: number, verse: number) => void;
-  /** Where a written comment stands: the verse's item says «абзац» for one on a run of verses. */
-  passageOf?: (id: string) => Passage | undefined;
-}): { verse?: VerseComment; chapter?: RibbonChapterComment } {
+  /** A new paragraph's verses chosen from this verse (`useVerseCopy().startPassage` for a paragraph); none — its window at once. */
+  chooseParagraph?: (chapter: number, verse: number) => void;
+}): { verse?: VerseComment; paragraph?: VerseComment; chapter?: RibbonChapterComment } {
   const { t } = useTranslation();
-  const open = useCallback((chapter: number, verse: number | null, opener?: HTMLElement | null) => {
-    const id = commentOn(chapter, verse);
-    if (!id && verse !== null && choosePassage) { choosePassage(chapter, verse); return; }
+  const open = useCallback((chapter: number, verse: number | null, kind: CommentDoorKind | undefined, opener?: HTMLElement | null) => {
+    const id = commentOn(chapter, verse, kind);
+    if (id) { setCommenting(editingComment(id, bookId, bible, commentPassage(id, { chapter, verse }), opener)); return; }
+    if (kind === 'paragraph' && verse !== null && chooseParagraph) { chooseParagraph(chapter, verse); return; }
     const reference: ScriptureReference = { id: newClientId(), bible, book: bookId, chapter, ...(verse !== null ? { fromVerse: verse } : {}) };
-    setCommenting(id ? editingComment(id, bookId, bible, commentPassage(id, { chapter, verse }), opener) : { kind: 'new', reference, ...(opener ? { opener } : {}) });
-  }, [commentOn, commentPassage, setCommenting, bible, bookId, choosePassage]);
+    setCommenting({ kind: 'new', reference, ...(kind ? { paragraph: kind === 'paragraph' } : {}), ...(opener ? { opener } : {}) });
+  }, [commentOn, commentPassage, setCommenting, bible, bookId, chooseParagraph]);
   return useMemo(() => (!ready ? {} : {
     verse: {
-      // «Комментарий или абзац» writes either (phase 9; the owner, 01.11); written there, it says which it opens.
-      labelOf: ({ chapter, verse }) => {
-        const id = commentOn(chapter, verse);
-        if (!id) return t('comment.verseMenu');
-        const passage = passageOf?.(id);
-        return t(passage && isParagraph(passage) ? 'comment.verseMenuEditParagraph' : 'comment.verseMenuEdit');
-      },
-      open: ({ chapter, verse }, opener) => open(chapter, verse, opener),
+      labelOf: ({ chapter, verse }) => t(commentOn(chapter, verse, 'comment') ? 'comment.verseMenuEdit' : 'comment.verseMenu'),
+      open: ({ chapter, verse }, opener) => open(chapter, verse, 'comment', opener),
+    },
+    paragraph: {
+      labelOf: ({ chapter, verse }) => t(commentOn(chapter, verse, 'paragraph') ? 'comment.verseMenuEditParagraph' : 'comment.verseMenuParagraph'),
+      open: ({ chapter, verse }, opener) => open(chapter, verse, 'paragraph', opener),
     },
     chapter: {
       labelOf: (chapter) => t(commentOn(chapter, null) ? 'comment.chapterMenuEdit' : 'comment.chapterMenu'),
-      open: (chapter) => open(chapter, null),
+      open: (chapter) => open(chapter, null, undefined),
     },
-  }), [ready, commentOn, open, t, passageOf]);
+  }), [ready, commentOn, open, t]);
 }
 
 /**

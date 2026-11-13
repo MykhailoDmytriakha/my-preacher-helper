@@ -478,16 +478,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: ribbonCrossRefs, enabled: !marks.toolInHand, onActed: actOn, limitComment });
   // Another book or Bible is a new reader: an open comment's window comes back first and asks (`useCommentHoldsReader`).
   const commentHolds = useCommentHoldsReader(commenting, verseCopy.clear);
-  // A verse's «Комментарий» with none written there starts the choice of verses, as a hold does: the bar's «Комментарий» or
-  // «Абзац» writes on them (the owner, 2026-11-06: «сначала выбирать стихи, а потом что с ними делать»).
-  const startPicking = verseCopy.startPicking;
-  const choosePassage = useCallback((chapter: number, verse: number) => startPicking({ chapter, verse }, false), [startPicking]);
+  // A verse's «Абзац» with none starting there chooses its verses from it first, under the paragraphs' rule; its bar's
+  // «Написать абзац» opens the window (the owner, 2026-11-12). A hold still starts the choice of verses (06.11).
+  const startPassage = verseCopy.startPassage;
+  const chooseParagraph = useCallback((chapter: number, verse: number) => startPassage({ chapter, verse }, undefined, 'comment', true), [startPassage]);
   const writeOnVerses = useWriteOnVerses({ setCommenting, bookId, bible, laid: mine.commentLaid, bodyOf: mine.commentBody, clear: verseCopy.clear });
   // The verse just chosen never hides under the bar of the verses chosen, and a comment just written stands in sight
   // (`readerSight.ts`, visual pass 2026-11-07).
   useChosenVerseInSight({ picked: verseCopy.picked, textRef, surfaceRef, readingInsetRef });
   const revealWritten = useRevealWritten({ textRef, surfaceRef, readingInsetRef });
-  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, commentPassage, setCommenting, bookId, bible, choosePassage, passageOf: commentPassage });
+  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, commentPassage, setCommenting, bookId, bible, chooseParagraph });
   // The links' chips and the signs of marks shape a chapter's height: those measured before are doubted.
   const doubtHeights = chapterWindow.doubt;
   useEffect(() => {
@@ -1146,7 +1146,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onEditComment={(id, passage) => { mine.close(); editComment(id, passage); }}
         onOpenAnalysis={(id) => { mine.close(); setAnalysing({ kind: 'open', id }); }}
       />
-      <ReaderCommentDialog commenting={commenting} setCommenting={setCommenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} onSaved={revealWritten} copy={verseCopy} wide={wide} paragraphsForBook={mine.paragraphsForBook} />
+      <ReaderCommentDialog commenting={commenting} setCommenting={setCommenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} onSaved={revealWritten} copy={verseCopy} wide={wide} paragraphsForBook={mine.paragraphsForBook} onWrite={writeOnVerses} />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
         bookId={bookId}
@@ -1155,7 +1155,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      <VerseMenu copy={verseCopy} comment={commentDoors.verse} analysis />
+      <VerseMenu copy={verseCopy} comment={commentDoors.verse} paragraph={commentDoors.paragraph} analysis />
       <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} onOpenScreen={goToScreen} onUseBible={changeBible} onWrite={writeOnVerses} />
       {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
       {verseCopy.picking ? null : wide ? (
