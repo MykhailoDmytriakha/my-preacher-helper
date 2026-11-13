@@ -1,4 +1,4 @@
-when: npm run lint · lint:full · lint:unused · lint fails after moving files · import/order · There should be at least one empty line between import groups · import should occur before import of · Cognitive Complexity · sonarjs/cognitive-complexity · Refactor this function to reduce its Cognitive Complexity · no-duplicate-string · Define a constant instead of duplicating this literal · no-explicit-any · unused-imports · workbox-*.js lint errors · public/sw.js linted · swe-worker · eslint.config.mjs · линтер · ошибки линта · линт падает · порядок импортов · когнитивная сложность · дублирующаяся строка · неиспользуемые импорты
+when: npm run lint · lint:full · lint:unused · lint fails after moving files · import/order · There should be at least one empty line between import groups · import should occur before import of · Cognitive Complexity · sonarjs/cognitive-complexity · Refactor this function to reduce its Cognitive Complexity · no-duplicate-string · Define a constant instead of duplicating this literal · no-explicit-any · unused-imports · workbox-*.js lint errors · public/sw.js linted · swe-worker · eslint.config.mjs · линтер · ошибки линта · линт падает · порядок импортов · когнитивная сложность · дублирующаяся строка · неиспользуемые импорты · tens of thousands of lint problems · 61985 problems · errors in .next-note-fix-build · lint walks into build output · .next-* folders · линтер ругается на сборочные папки · тысячи ошибок eslint
 
 # Fix lint errors
 
@@ -6,6 +6,7 @@ when: npm run lint · lint:full · lint:unused · lint fails after moving files 
 
 ## How
 
+- Tens of thousands of problems, all under `frontend/.next-<name>/`: that is build output of a second dev server or an isolated build left on the disk (git ignores `/frontend/.next-*/`), not source. `eslint.config.mjs` ignores `**/.next-*/**` since 2026-11-12 (before that only `.next` and `.next-typecheck`: 61 985 problems, 9 519 errors, none in a tracked file). A new build folder takes a name of that shape, so lint never reads it.
 - `import/order` (error): groups go builtin → external → internal (`@/...` aliases) → parent → sibling (`./...`) → index → object → type, with a blank line between groups and alphabetical order inside each. After moving page-local constants or types into sibling files, keep a blank line between the `@/...` imports and the `./...` imports, and put `import type` lines in their own last group. `npx eslint --fix <file>` reorders them for you.
 - `sonarjs/cognitive-complexity` (warning above 20): move state and effects into a custom hook, rendering into a sub-component, and nested ternaries into a content component with early returns or a map/object lookup.
 - `sonarjs/no-duplicate-string` (warning at 3 identical literals): extract a constant.
