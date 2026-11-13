@@ -13,7 +13,7 @@ type TemplateOutline = DocumentData & Record<SectionKey, Row[]>;
 type MergeResult = { value: FieldValue; conflicts: ConflictDetail[] };
 type Merge = (base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[]) => MergeResult;
 
-function templateOutline(value: unknown): TemplateOutline | undefined {
+export function templateOutline(value: unknown): TemplateOutline | undefined {
   if (!object(value)) return undefined;
   const ids = new Set<string>();
   const row = (entry: unknown): entry is Row => {

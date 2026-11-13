@@ -144,7 +144,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     || (errorWords && recordReadSummary.words === errorWords)));
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
   const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown && !claimedRead;
-  const review = recoveryChoices.length === 1 && recoveryChoices[0].id === reviewRecoveryId ? recoveryChoices[0] : undefined;
+  const reviewable = recoveryChoices.find(choice => choice.id === reviewRecoveryId);
+  const review = recoveryChoices.length === 1 ? reviewable : undefined;
   const selected = review ?? recoveryChoices.find(choice => choice.id === selectedId);
   const selectedCopy = useRef(selected);
   useLayoutEffect(() => {
@@ -244,6 +245,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
       {selected?.preview && <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{selected.preview}</p>}
       <p className="text-xs text-gray-500 dark:text-gray-400">{t('dataSync.recoveryHint')}</p>
       <div className="flex flex-wrap gap-2">
+        {reviewable && !review && onRecover && <button type="button" className={buttonClass} disabled={busy || recoveryLoading}
+          onClick={() => run(() => onRecover(reviewable.id))}>{t('dataSync.reviewSavedChange')}</button>}
         {onRecover && <button type="button" className={buttonClass} disabled={!selected || busy || recoveryLoading} onClick={() => { if (selected) run(() => onRecover(selected.id)); }}>{t(review ? 'dataSync.reviewSavedChange' : 'dataSync.recover')}</button>}
         {selected?.discard && onDiscardRecovery && <button type="button" className={buttonClass} disabled={busy || recoveryLoading}
           onClick={() => run(() => askBeforeDiscard(true, () => onDiscardRecovery(selected.discard!),

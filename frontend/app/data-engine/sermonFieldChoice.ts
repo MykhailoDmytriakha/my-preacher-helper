@@ -5,6 +5,7 @@ import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/u
 import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
+import { projectOutlineParentChoice } from './outlineParentChoice';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { mergeDocumentFields } from './protocol';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
@@ -111,6 +112,8 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
   if (conflicts.length === 1 && outlineTitleConflictTarget(conflicts[0].path)) {
     return keepUncontestedOutlineTitle(basis, draft, stored, conflicts);
   }
+  const outline = projectOutlineParentChoice(basis, draft, stored, conflicts, 'remote');
+  if (outline) return outline;
   const lockIds = conflicts.flatMap(({ path }) => thoughtLockConflictId(path) ?? []);
   const locksOnly = lockIds.length === conflicts.length;
   const placementsOnly = conflicts.every(({ path }) => thoughtPlacementConflictId(path));

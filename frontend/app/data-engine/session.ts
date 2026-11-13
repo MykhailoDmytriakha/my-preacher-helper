@@ -20,6 +20,7 @@ import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './gro
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
+import { projectOutlineParentChoice } from './outlineParentChoice';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -566,7 +567,8 @@ export class DataSession {
         path.slice(0, Math.min(path.length, removed.length)).every((part, index) => part === removed[index])))) {
         throw Object.assign(new Error('The removed point contains other changes that need review'), { code: 'other-changes-first' });
       }
-      const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
+      const parentChoice = projectOutlineParentChoice(this.state.confirmed, this.state.draft, candidate, this.state.conflicts, 'local');
+      const chosen = parentChoice ?? chooseLocalPlacement(this.state.confirmed.resource.collection,
         outline.basis, outline.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));

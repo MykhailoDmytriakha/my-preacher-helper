@@ -30,6 +30,7 @@ import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactMan
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { projectOutlineParentChoice, readOutlineParentComparison } from './outlineParentChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -460,8 +461,9 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.pendingCaptures.retire(captures);
-      const retained = !selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
-        ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts));
+      const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote')
+        ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+          ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
       this.session.acceptRemote(atChoice);
       if (retained) {
         const accepted = this.session.checkpoint();
@@ -881,7 +883,7 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint) || readGroupFlowTextChoice(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readOutlineParentComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint) || readGroupFlowTextChoice(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
@@ -1109,7 +1111,8 @@ export class EditorController {
           const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
           const retainedMeeting = meeting && decided.remoteCandidate?.value
             ? projectFirstGroupMeetingChoice(decided.remoteCandidate.value, meeting, 'remote') : undefined;
-          const retained = retainedMeeting ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+          const retainedOutline = projectOutlineParentChoice(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote');
+          const retained = retainedMeeting ?? retainedOutline ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { outlineParentPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { ScratchProposalBoard } from '@/components/sermon/scratch/ScratchProposalBoard';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -47,13 +48,15 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try { await form.save(undefined, form.captureDocumentMetadataAction()); onClose(); } catch { /* The shared form retains and reports the failure. */ }
   };
+  const versions = form.comparison;
+  const comparison = versions?.outlineParent && outlineParentPlacementWords(versions.outlineParent, versions.identity, t);
   return <FormDialog title={t('planEditor.title')} size="wide" onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={form.dirty} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
         submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}
         submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
     <div className="space-y-4">
-      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
+      <DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={valid ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />

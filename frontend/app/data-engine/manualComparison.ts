@@ -4,6 +4,7 @@ import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './group
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { exactManualWords, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
+import { readOutlineParentComparison } from './outlineParentChoice';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -12,7 +13,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; kind?: 'first-group-meeting' }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; kind?: 'first-group-meeting'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -64,11 +65,15 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));
       const exactList = conflicts.some(({ code, path }) => isAuthoredListComparison(code)
         && form.record.selection.some(selected => equalValues(selected, path)) && !sameManualSelection(mine, stored.value, path));
-      if (changed || exactVerse || exactList) {
+      const outlineParent = form.record.selection.some(path => equalValues(path, ['outline'])) && readOutlineParentComparison({
+        confirmed: request.baseline, conflicts, draft: mine, remoteCandidate: stored,
+      });
+      if (changed || exactVerse || exactList || outlineParent) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
-          conflictPaths: [...conflicts, ...observedConflicts].map(conflict => conflict.path), mine, stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
+          conflictPaths: [...conflicts, ...observedConflicts].map(conflict => conflict.path), mine,
+          ...(outlineParent && { outlineParent }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }
     id = exact ? undefined : request.predecessor ?? undefined;

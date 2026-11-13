@@ -1,4 +1,4 @@
-import { readOutlinePointPlacementComparison } from '@/data-engine/react.client';
+import { readOutlineParentComparison, readOutlinePointPlacementComparison } from '@/data-engine/react.client';
 import { outlinePointText } from '@/utils/outlineDnd';
 import { getSectionLabel } from '@lib/sections';
 
@@ -19,7 +19,28 @@ export function outlinePointPlacementWords(gap: OutlinePointGap | undefined, out
   return section;
 }
 
+export function outlineParentPlacementWords(parent: NonNullable<ReturnType<typeof readOutlineParentComparison>>,
+  identity: string, t: Translate): TextComparison {
+  const position = t('planEditor.pointPlacement.position');
+  const names = parent.moves.map(({ child }) => outlinePointText(parent.opening, child.id)).join(', ');
+  const words = (side: 'local' | 'remote') => parent.moves.map(move => {
+    const target = move[side];
+    const outline = side === 'local' ? parent.mine : parent.stored;
+    const label = [getSectionLabel(t, target.section), outlinePointText(outline, target.point.id)].join(' · ');
+    if (move.local.point.id !== move.remote.point.id) return label;
+    const siblings = target.point.subPoints ?? [];
+    const next = siblings[target.index + 1];
+    const previous = siblings[target.index - 1];
+    if (next) return t('planEditor.pointPlacement.before', { section: label, point: outlinePointText(outline, next.id) });
+    return previous ? t('planEditor.pointPlacement.after', { section: label, point: outlinePointText(outline, previous.id) }) : label;
+  }).join('\n');
+  return { identity, title: position + ' · ' + names, valueKind: 'field', scopedChoice: true,
+    mine: words('local'), stored: words('remote') };
+}
+
 export function outlinePointConflictComparison(checkpoint: SessionCheckpoint, t: Translate): TextComparison | undefined {
+  const parent = readOutlineParentComparison(checkpoint);
+  if (parent) return outlineParentPlacementWords(parent, JSON.stringify([parent.root, checkpoint.remoteCandidate?.metadata, checkpoint.editGeneration]), t);
   const point = readOutlinePointPlacementComparison(checkpoint);
   if (!point) return undefined;
   const name = outlinePointText(point.outline, point.pointId);

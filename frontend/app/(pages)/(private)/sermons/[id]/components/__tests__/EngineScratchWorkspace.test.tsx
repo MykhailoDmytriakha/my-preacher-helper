@@ -15,6 +15,7 @@ jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal:
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: jest.fn(),
+  waitsForOutlineParentReview: jest.requireActual('@/data-engine/react.client').waitsForOutlineParentReview,
   useRecoveryDiscovery: jest.requireActual('@/data-engine/useRecoveryDiscovery').useRecoveryDiscovery,
 }));
 jest.mock('../../hooks/useScratchDataDocument', () => ({ useScratchDataDocument: jest.fn() }));
@@ -146,6 +147,24 @@ describe('EngineScratchWorkspace', () => {
     await act(async () => { await statusProps().onRecover?.('source'); });
     expect(scratch.recover).toHaveBeenCalledWith('source');
     expect(statusProps().recoveryChoices).toEqual([]);
+  });
+
+  it('offers direct review for the saved subpoint comparison without hiding another draft', async () => {
+    const outline = (parent: string) => ({ introduction: [], main: ['a', 'b', 'c'].map(id => ({ id, text: id,
+      subPoints: id === parent ? [{ id: 'child', text: 'Subpoint', position: 0 }] : [] })), conclusion: [] });
+    const source = recovered('answered');
+    source.answer = 'conflict';
+    source.record.checkpoint.conflicts = [{ path: ['outline'], base: { exists: true, value: outline('a') },
+      mine: { exists: true, value: outline('b') }, theirs: { exists: true, value: outline('c') } }];
+    const scratch = setup();
+    jest.mocked(scratch.listRecoverable).mockResolvedValue([source, recovered('unfinished')]);
+    render(<EngineScratchWorkspace sermonId="sermon" />);
+    await act(async () => {});
+    expect(statusProps().reviewRecoveryId).toBe('answered');
+    expect(statusProps().recoveryChoices?.map(({ id }) => id)).toEqual(['answered', 'unfinished']);
+    expect(scratch.recover).not.toHaveBeenCalled();
+    await act(async () => { await statusProps().onRecover?.('answered'); });
+    expect(scratch.recover).toHaveBeenCalledWith('answered');
   });
 
   it('waits for the owner, the loaded document and a status before listing, and re-lists when phase or revision changes', async () => {

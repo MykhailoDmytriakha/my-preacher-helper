@@ -34,6 +34,7 @@ import { describeActionDelivery, describeMembershipDelivery, type MembershipDeli
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { hasOutlineParentChoice, readOutlineParentComparison } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
@@ -1347,6 +1348,9 @@ export class DataEngine {
     if (answered.some(request => request.result?.kind === 'conflict' && hasStudyNoteReferenceReview(request.result.conflicts))) {
       throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
     }
+    if (answered.some(request => request.result?.kind === 'conflict' && hasOutlineParentChoice(resource.collection, request.result.conflicts))) {
+      throw Object.assign(new Error('Review the subpoint placement in its editor before deciding'), { code: 'decision-changed' });
+    }
     if (answered.length) {
       const sources = await this.manualChoices(owner, resource, requests);
       this.assertCurrent(owner, generation);
@@ -2452,7 +2456,7 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
         const resolved = controller.getState().checkpoint;
-        if ((preference || meeting || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((preference || meeting || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
@@ -2460,7 +2464,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }
@@ -2697,7 +2701,7 @@ export class DataEngine {
           const shown = controller.getState().checkpoint;
           const meeting = shown.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(shown.conflicts);
           await controller.acceptRemote(selection, expectedParent); active();
-          if (meeting && controller.getState().checkpoint.dirty) {
+          if ((meeting || readOutlineParentComparison(shown)) && controller.getState().checkpoint.dirty) {
             await controller.save(undefined, selection); active();
             this.prepareCommitsInBackground(); this.backgroundDrain();
           }

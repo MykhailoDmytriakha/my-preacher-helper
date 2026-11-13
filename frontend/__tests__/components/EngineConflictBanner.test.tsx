@@ -490,6 +490,24 @@ describe('a late answer to a one-shot change of a sermon', () => {
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
   });
 
+  it('opens the sermon to compare subpoint placement rather than dropping the whole saved change', async () => {
+    const outline = (parent: string, title = 'Third point') => ({ introduction: [], conclusion: [], main: [
+      { id: 'a', text: 'Original point' }, { id: 'b', text: 'Second point' }, { id: 'c', text: title },
+    ].map(point => ({ ...point, subPoints: point.id === parent ? [{ id: 'subpoint', text: 'Keep these words', position: 0 }] : [] })) });
+    const value = { ...storedSermon, outline: outline('a') };
+    const harness = setupSermon(value);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    const editor = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'subpoint-choice'));
+    harness.silentRemote({ outline: outline('c') });
+    await act(async () => { await editor.edit({ ...value, outline: outline('b', 'Independent local point title') });
+      await editor.save(); await settleEngine(); await settleEngine(); editor.close({ flush: false }); });
+    await waitFor(() => expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toHaveAttribute('href', '/sermons/sermon-1'));
+    expect(screen.queryByRole('button', { name: 'dataSync.acceptRemote' })).not.toBeInTheDocument();
+    await expect(harness.engine.takeStoredVersion(sermon)).rejects.toMatchObject({ code: 'decision-changed' });
+    expect((await harness.engine.listRecoverable(sermon)).map(({ record }) => record.checkpoint.draft?.outline))
+      .toContainEqual(outline('b', 'Independent local point title'));
+  });
+
   /** BUG-20261013-screen-draft-notice-offers-no-choice: the notice stood on every page with nothing to decide. */
   it('takes the stored version from any page, and the refused draft does not come back', async () => {
     const harness = setupSermon();

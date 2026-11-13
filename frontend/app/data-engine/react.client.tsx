@@ -37,6 +37,7 @@ import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecove
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
+import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison } from './outlineParentChoice';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
@@ -102,6 +103,11 @@ export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export const captureOutlinePointPlacement = captureOutlinePlacement;
 export const projectResourceOutlinePoint = projectOutlinePlacement;
+export function waitsForOutlineParentReview(checkpoint: SessionCheckpoint) {
+  return hasOutlineParentChoice(checkpoint.confirmed.resource.collection, checkpoint.conflicts);
+}
+
+export function readOutlineParentComparison(checkpoint: SessionCheckpoint) { return outlineParentComparison(checkpoint); }
 export function readOutlinePointPlacementComparison(checkpoint: SessionCheckpoint) { return outlinePointPlacementComparison(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
 export function previewReviewedListChoice(checkpoint: SessionCheckpoint) {

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDataEngine, useRecoveryDiscovery, waitsForOutlineParentReview } from '@/data-engine/react.client';
 import { useTranslation } from '@locales/useTranslation';
 
 import { useScratchDataDocument } from '../hooks/useScratchDataDocument';
@@ -40,10 +40,12 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       const title = draft?.title ?? record.checkpoint.confirmed.value?.title;
       const notes = Array.isArray(draft?.scratch) ? draft.scratch : [];
       const preview = notes.flatMap(note => note && typeof note === 'object' && !Array.isArray(note) && typeof note.text === 'string' ? [note.text] : []).join('\n').slice(0, 500);
-      return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}),
+      return { id, ...(waitsForOutlineParentReview(record.checkpoint) && { reviewSubpoint: true }), title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}),
         discard: () => latest.current.discardRecovery(source) };
     }),
     recover: id => latest.current.recover(id) });
+  const reviewable = recovery.choices.filter(choice => choice.reviewSubpoint);
+  const reviewRecoveryId = reviewable.length === 1 ? reviewable[0].id : undefined;
   const emitted = useRef<{ identity: object; fingerprint: string } | null>(null);
   const confirmed = scratch.confirmed;
   const fingerprint = JSON.stringify(confirmed);
@@ -67,7 +69,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
         failure, the choice in a conflict. This block offers only what is the workspace's own — drafts
         of notes left unfinished. */}
     <DataSyncStatus subject={scratch.recoveryIdentity} status={null} error={null}
-      recoveryChoices={recovery.choices} onRecover={recovery.recover}
+      recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}

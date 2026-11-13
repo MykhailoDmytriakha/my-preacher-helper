@@ -13,6 +13,7 @@ import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacement
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
+import { projectOutlineParentChoice } from './outlineParentChoice';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
@@ -114,7 +115,11 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
   const meeting = request.result?.kind === 'conflict' && decision.selection.some(path => equalValues(path, ['meetingDates']))
     && firstGroupMeetingReview(request.result.conflicts);
-  if (meeting && stored.value) {
+  const outline = request.result?.kind === 'conflict'
+    ? projectOutlineParentChoice(basis, reviewed, stored, request.result.conflicts, decision.choice) : undefined;
+  if (outline && stored.value) {
+    draft = projectManualSelection(stored.value, outline, decision.selection);
+  } else if (meeting && stored.value) {
     const amendment = decision.choice === 'local' ? { before: request.value, after: decision.value } : undefined;
     const chosen = projectFirstGroupMeetingChoice(stored.value, meeting, decision.choice, amendment);
     if (!chosen) throw Object.assign(new Error('The first meeting comparison changed'), { code: 'decision-changed' });
