@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
-import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
-import { fetchBookText, type BookText } from '@/utils/bibleText';
+
+import { useVisibleBookText } from './useVisibleBookText';
 
 import type { BibleId } from '@/utils/bibles';
+import type { BookText } from '@/utils/bibleText';
 
 const NO_TEXTS: ReadonlyMap<string, BookText> = new Map();
 
@@ -31,7 +32,7 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
   const [kept, setKept] = useState<{ bible: BibleId; texts: ReadonlyMap<string, BookText> }>({ bible, texts: NO_TEXTS });
   const texts = kept.bible === bible ? kept.texts : NO_TEXTS;
   const requests = useRef(new Map<string, Promise<BookText>>());
-  const reportedFailures = useRef(new Set<string>());
+  const readText = useVisibleBookText();
   const wanted = Array.from(new Set(books)).sort().join('|');
   const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
   /** The list on screen now: the death of a request for a book that has left it is nobody's wait any more. */
@@ -61,20 +62,17 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
         // request is no reason to ask for it a third time), or the server is out of reach again.
         if (!due(key)) continue;
         const mark = asking(key);
-        const fetchMissing = bibleAssetFetch(() => {
+        const stillWanted = () => {
           const now = onScreen.current;
-          if (now.bible !== bible || !now.wanted.split('|').includes(book) || reportedFailures.current.has(key)) return false;
-          reportedFailures.current.add(key);
-          return true;
-        });
-        request = fetchBookText(book, bible, { fetchFn: fetchMissing });
+          return now.bible === bible && now.wanted.split('|').includes(book);
+        };
+        request = readText(book, bible, stillWanted);
         requests.current.set(key, request);
         // A book that did not come is forgotten, to be asked for by the next list or when the server is
         // back in reach; one that came is read from `texts`.
-        request.then(() => { reportedFailures.current.delete(key); }, (error: unknown) => {
+        void request.catch((error: unknown) => {
           requests.current.delete(key);
-          const now = onScreen.current;
-          if (now.bible === bible && now.wanted.split('|').includes(book)) failed(mark, key, error);
+          if (stillWanted()) failed(mark, key, error);
         });
       }
       request.then(
@@ -92,6 +90,6 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
     };
     // `texts` is read to skip books already here; refetching on its change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bible, wanted, round, begin, due, asking, failed]);
+  }, [bible, wanted, round, begin, due, asking, failed, readText]);
   return texts;
 }

@@ -8,7 +8,6 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { verseEndChapter } from '@/utils/scriptureReferenceNumbering';
 import { BIBLE_READER_COLORS } from '@/utils/themeColors';
@@ -25,8 +24,10 @@ import { readTranslation } from './translation';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { usePassageRest } from './usePassageRest';
+import { useVisibleBookText } from './useVisibleBookText';
 import { passageAway, passageKeys, type PassageBox, type SheetReference } from './verseSheetGeometry';
 
+import type { BookText } from '@/utils/bibleText';
 import type { CrossReference } from '@/utils/crossReferences';
 
 export type { SheetReference } from './verseSheetGeometry';
@@ -109,6 +110,7 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
+  const readText = useVisibleBookText();
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [away, setAway] = useState<'up' | 'down' | null>(null);
   const [showRelated, setShowRelated] = useState(false);
@@ -153,16 +155,16 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
     let alive = true;
     setState({ status: 'loading' });
     const mark = asking();
-    fetchBookText(reference.book, reading).then(
+    void readText(reference.book, reading, () => alive).then(
       (text) => { if (alive) setState({ status: 'ready', text }); },
-      () => {
+      (error: unknown) => {
         if (!alive) return;
         setState({ status: 'error' });
-        failed(mark);
+        failed(mark, undefined, error);
       },
     );
     return () => { alive = false; };
-  }, [reference.book, reading, attempt, round, begin, due, asking, failed]);
+  }, [reference.book, reading, attempt, round, begin, due, asking, failed, readText]);
 
   // The window lies between what must stay in sight, measured again whenever those bars change size
   // (a turned phone, a timer that grows a line). With too little room left — a phone on its side

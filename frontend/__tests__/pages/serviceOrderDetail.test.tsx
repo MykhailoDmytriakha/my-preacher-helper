@@ -1623,6 +1623,6 @@ it('reads an ambiguous reference in the language of the retained local words', a
   } });
   view.rerender(<ServiceOrderPage />);
   fireEvent.click(screen.getByRole('button', { name: '1Цар 3:9' }));
-  await waitFor(() => expect(fetchBookText).toHaveBeenCalledWith('1 Kings', expect.any(String)));
+  await waitFor(() => expect(fetchBookText).toHaveBeenCalledWith('1 Kings', expect.any(String), expect.objectContaining({ fetchFn: expect.any(Function) })));
   expect(mockPush).not.toHaveBeenCalled();
 });

@@ -6,10 +6,11 @@ import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { marksOnWord, type MarkColor, type MarkedElsewhere, type VerseMarks } from '@/utils/bibleMarks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { verseWords, type BookText } from '@/utils/bibleText';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ReaderSheet, SheetCloseButton } from '../ReaderSheet';
+import { useVisibleBookText } from '../useVisibleBookText';
 
 import { MARK_FILL_CLASS, MARK_RUN_CLASS, wordPaintClass } from './markPaint';
 
@@ -46,6 +47,7 @@ function useOtherTexts(bookId: string, bibles: readonly BibleId[]): OtherTexts {
   const onScreen = useRef(wanted);
   onScreen.current = wanted;
   const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
+  const readText = useVisibleBookText();
   useEffect(() => {
     begin(`${bookId}:${wanted}`);
     // An answer for a book the window has left is dropped.
@@ -59,21 +61,22 @@ function useOtherTexts(bookId: string, bibles: readonly BibleId[]): OtherTexts {
       if ((here && here !== 'failed') || onTheWay.current.has(key) || !due(key)) continue;
       const mark = asking(key);
       onTheWay.current.add(key);
-      fetchBookText(bookId, bible).then(
+      const stillWanted = () => shownBook.current === bookId && onScreen.current.split('|').includes(bible);
+      void readText(bookId, bible, stillWanted).then(
         (text) => {
           onTheWay.current.delete(key);
           put(bible, text);
         },
-        () => {
+        (error: unknown) => {
           onTheWay.current.delete(key);
           put(bible, 'failed');
-          if (shownBook.current === bookId && onScreen.current.split('|').includes(bible)) failed(mark, key);
+          if (stillWanted()) failed(mark, key, error);
         },
       );
     }
     // `texts` is read to skip what is here already; reading again on its change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, wanted, round, begin, due, asking, failed]);
+  }, [bookId, wanted, round, begin, due, asking, failed, readText]);
   return texts;
 }
 

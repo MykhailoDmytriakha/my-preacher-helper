@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { useBookOpening } from '@/components/bible/useBookOpening';
-import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
+import { BIBLE_ASSET_NETWORK_FAILURE_HEADER } from '@/utils/bibleAssetResponse';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 /*
  * The text of the book being read, on the real file of Ruth. BUG-20261112-link-texts-stay-dots-after-reconnect,
@@ -49,6 +50,22 @@ const openRuth = () => {
 };
 
 describe('useBookOpening', () => {
+  it('reports an isolated worker failure and opens the book when health answers', async () => {
+    const book = publicFile(RST_RUTH.slice(1));
+    const fetchBook = jest.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503, headers: { [BIBLE_ASSET_NETWORK_FAILURE_HEADER]: '1' } }))
+      .mockResolvedValueOnce(answer(book));
+    global.fetch = fetchBook as unknown as typeof fetch;
+
+    const { result } = openRuth();
+    await waitFor(() => expect(result.current.status).toBe('error'));
+    expect(navigator.onLine).toBe(true);
+    expect(getConnectivityStatus()).toBe(false);
+    act(() => reportServerReachable());
+    await waitFor(() => expect(result.current.text).toEqual(book));
+    expect(fetchBook).toHaveBeenCalledTimes(2);
+  });
+
   it('opens a book the network did not give by itself when the server answers again', async () => {
     down = true;
     const { result } = openRuth();
@@ -64,8 +81,13 @@ describe('useBookOpening', () => {
     expect(calls).toEqual([RST_RUTH, RST_RUTH]);
   });
 
-  it('opens it by itself when the person comes back to the page', async () => {
-    down = true;
+  it('retries an unmarked refusal when the person comes back to the page', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn((url: RequestInfo | URL, options?: RequestInit) => {
+      if (calls.length > 0) return originalFetch(url, options);
+      calls.push(String(url));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
     const { result } = openRuth();
     await waitFor(() => expect(result.current.status).toBe('error'));
     act(() => showPage(false));

@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 
 import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
-import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { initialOfflineWorkerReady } from '@/utils/offlineWorkerStartup';
 
+import { useVisibleBookText } from './useVisibleBookText';
+
 import type { BibleId } from '@/utils/bibles';
+import type { BookText } from '@/utils/bibleText';
 
 type LoadState = { status: 'loading' | 'error' } | { status: 'ready'; text: BookText };
 export type BookOpeningStatus = LoadState['status'] | 'waiting-for-offline';
@@ -19,6 +21,7 @@ export function useBookOpening(bookId: string, bible: BibleId, attempt: number) 
   // person pressing "Retry"; a book that has opened is never read again
   // (`useReadAgainWhenReachable`, BUG-20261112-link-texts-stay-dots-after-reconnect).
   const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
+  const readText = useVisibleBookText();
   useEffect(() => {
     begin(`${bible}:${bookId}:${attempt}`);
     // Not due: a pass the server's return began, with the server out of reach again — the card stays.
@@ -26,16 +29,16 @@ export function useBookOpening(bookId: string, bible: BibleId, attempt: number) 
     let cancelled = false;
     setState({ status: 'loading' });
     const mark = asking();
-    fetchBookText(bookId, bible).then(
+    void readText(bookId, bible, () => !cancelled).then(
       (text) => { if (!cancelled) setState({ status: 'ready', text }); },
-      () => {
+      (error: unknown) => {
         if (cancelled) return;
         setState({ status: 'error' });
-        failed(mark);
+        failed(mark, undefined, error);
       },
     );
     return () => { cancelled = true; };
-  }, [bible, bookId, attempt, round, begin, due, asking, failed]);
+  }, [bible, bookId, attempt, round, begin, due, asking, failed, readText]);
 
   useEffect(() => {
     const ready = initialOfflineWorkerReady();

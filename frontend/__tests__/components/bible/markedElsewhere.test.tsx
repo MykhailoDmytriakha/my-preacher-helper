@@ -5,7 +5,8 @@ import { BookRibbon, type RibbonSigns } from '@/components/bible/BookRibbon';
 import { MarkedElsewhereSheet } from '@/components/bible/marks/MarkedElsewhereSheet';
 import { markedElsewhere, versesElsewhere } from '@/utils/bibleMarks';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
-import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
+import { BIBLE_ASSET_NETWORK_FAILURE_HEADER } from '@/utils/bibleAssetResponse';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 jest.mock('@/utils/bibleText', () => ({
   ...jest.requireActual('@/utils/bibleText'),
@@ -65,13 +66,34 @@ describe('a verse marked in another Bible', () => {
     expect(band('Господь')).toContain('bg-[var(--mark-fill-red)]');
     expect(band('Господь')).toContain('rounded');
     expect(painted('Господь')).toContain('decoration-[#8b8f98]');
-    expect(fetchBookText).toHaveBeenCalledWith('Isaiah', 'rst');
+    expect(fetchBookText).toHaveBeenCalledWith('Isaiah', 'rst', expect.objectContaining({ fetchFn: expect.any(Function) }));
     fireEvent.click(within(there).getByRole('button', { name: 'bible.marks.openThere' }));
     expect(onOpenBible).toHaveBeenCalledWith('rst');
   });
 
   // BUG-20261112-link-texts-stay-dots-after-reconnect, the same illness here: the words that did not come
   // are read again when the server is back in reach, while the window stays open.
+  it('reports an isolated worker failure and shows the marked translation when health answers', async () => {
+    jest.mocked(fetchBookText).mockImplementation(jest.requireActual('@/utils/bibleText').fetchBookText);
+    const fetchBook = jest.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503, headers: { [BIBLE_ASSET_NETWORK_FAILURE_HEADER]: '1' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...synodal, chapters: Array.from({ length: 66 }, () => synodal.chapters[3]) }), { status: 200 }));
+    const originalFetch = global.fetch;
+    global.fetch = fetchBook as unknown as typeof fetch;
+    try {
+      const elsewhere = markedElsewhere('kjv', 'Isaiah', [{ bible: 'rst', marks: { '4:1': { m: [[0, 3, 'orange']] } } }]);
+      render(<MarkedElsewhereSheet at={{ chapter: 4, verse: 1 }} bookId="Isaiah" locale="ru" entries={versesElsewhere(elsewhere, '4:1')} onClose={jest.fn()} onOpenBible={jest.fn()} />);
+      const there = screen.getByTestId('marked-in-rst');
+      await within(there).findByText('bible.marks.elsewhereNoText');
+      expect(getConnectivityStatus()).toBe(false);
+      act(() => reportServerReachable());
+      expect(await within(there).findByText('Уповайте')).toBeInTheDocument();
+      expect(fetchBook).toHaveBeenCalledTimes(2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('says the words could not be read, and shows them by itself when the server answers again', async () => {
     jest.mocked(fetchBookText).mockRejectedValueOnce(new Error('offline'));
     const elsewhere = markedElsewhere('kjv', 'Isaiah', [{ bible: 'rst', marks: { '4:1': { m: [[0, 3, 'orange']] } } }]);

@@ -7,7 +7,8 @@ import { VerseSheet } from '@/components/bible/VerseSheet';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 import { fetchBookText } from '@/utils/bibleText';
-import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
+import { BIBLE_ASSET_NETWORK_FAILURE_HEADER } from '@/utils/bibleAssetResponse';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 import { verseCount } from '@/utils/versification';
 
@@ -35,7 +36,7 @@ describe('VerseSheet — the passage over the screen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:2-3' });
     await waitFor(() => expect(lit(dialog)).toEqual(['1:2', '1:3']));
     expect(within(dialog).getByText('bible.translations.rst.name')).toBeInTheDocument();
-    expect(fetchBookText).toHaveBeenCalledWith('Ruth', 'rst');
+    expect(fetchBookText).toHaveBeenCalledWith('Ruth', 'rst', expect.objectContaining({ fetchFn: expect.any(Function) }));
   });
 
   it('keeps both endpoint chapters in the verse window', async () => {
@@ -81,7 +82,7 @@ describe('VerseSheet — the passage over the screen', () => {
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(lit(dialog)[0]).toBe(firstVerse));
     expect(lit(dialog)).toHaveLength(wholeChapter ? 6 : 1);
-    expect(fetchBookText).toHaveBeenCalledWith('Psalms', reading);
+    expect(fetchBookText).toHaveBeenCalledWith('Psalms', reading, expect.objectContaining({ fetchFn: expect.any(Function) }));
     expect(dialog).toHaveAccessibleName(title);
     expect(within(dialog).getByRole('heading', { name: title })).toBeVisible();
     fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
@@ -99,7 +100,7 @@ describe('VerseSheet — the passage over the screen', () => {
     expect(dialog.querySelector('h2')).toHaveTextContent('Ps.22');
     expect(within(dialog).getByText('bible.translations.rst.name')).toBeInTheDocument();
     await waitFor(() => expect(lit(dialog)[0]).toBe('22:1'));
-    expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'rst');
+    expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'rst', expect.objectContaining({ fetchFn: expect.any(Function) }));
   });
 
   // A big book is drawn around the passage, as in the reader: a psalm in a meeting does not build the
@@ -259,6 +260,26 @@ describe('VerseSheet — the passage over the screen', () => {
 
   // BUG-20261112-link-texts-stay-dots-after-reconnect, the same illness in the passage window: the text that
   // did not come is read again when the server is back in reach, without the person pressing the button.
+  it('reports an isolated worker failure and fills the open passage when health answers', async () => {
+    jest.mocked(fetchBookText).mockImplementation(jest.requireActual('@/utils/bibleText').fetchBookText);
+    const fetchBook = jest.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503, headers: { [BIBLE_ASSET_NETWORK_FAILURE_HEADER]: '1' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(ruth), { status: 200 }));
+    const originalFetch = global.fetch;
+    global.fetch = fetchBook as unknown as typeof fetch;
+    try {
+      render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+      const dialog = await screen.findByRole('dialog', { name: 'Ruth.1:1' });
+      await within(dialog).findByRole('button', { name: 'bible.retry' });
+      expect(getConnectivityStatus()).toBe(false);
+      act(() => reportServerReachable());
+      await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
+      expect(fetchBook.mock.calls.filter(([url]) => url === '/bible-text/rst/v1/ruth.json')).toHaveLength(2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('reads the text again by itself when the server answers again', async () => {
     jest.mocked(fetchBookText).mockRejectedValueOnce(new Error('offline'));
     render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
