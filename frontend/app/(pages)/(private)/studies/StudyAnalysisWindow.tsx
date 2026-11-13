@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { analysisPassageHref, forgetListArrival, leaveAnalysisAddress, readAnalysisAddress, readListArrival } from '@/components/bible/analysis/analysisAddress';
+import { analysisPassageHref, forgetListArrival, leaveAnalysisAddress, openAnalysisStep, readAnalysisAddress, readListArrival, writeAnalysisAddress } from '@/components/bible/analysis/analysisAddress';
 import { AnalysisEditor } from '@/components/bible/analysis/AnalysisEditor';
 import { useAnalysisBookMarks } from '@/components/bible/analysis/useAnalysisBookMarks';
 import { BibleIcon } from '@/components/bible/BibleIcon';
@@ -16,6 +16,7 @@ import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleForLocale, isBibleId, type BibleId } from '@/utils/bibles';
 import { canRetryBibleAsset } from '@/utils/fetchBibleJson';
+import { browserMoved, historyStepHere, restoreHistoryStep } from '@/utils/historyStep';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { StudyNote } from '@/models/models';
@@ -38,12 +39,10 @@ export function analysisBible(note: Pick<StudyNote, 'analysis' | 'scriptureRefs'
  * Its verses are changed in the Bible, where they are chosen on the text, so this screen offers no «Изменить стихи».
  * Its door «В Библии» leads to its passage there, lit, and the reader's way back — and Back — return to it open over the
  * list (the owner, 03.11: «был в изучении и открыл разбор, я хочу перейти к Библии»).
- * A book that cannot be read (no connection and not kept on the device) is said, and nothing opens; one that takes more
- * than a moment to come says it is being read, with Cancel, or the press looks like it did nothing (Codex UX, 04.11). One
- * kept on the device opens at once, and nothing is said.
+ * The requested visit exists while its book is loading. The notice can retry or cancel that visit.
  */
-export function StudyAnalysisWindow({ note, editing, onClose, listTab }: {
-  note: StudyNote; editing: boolean; onClose: () => void; listTab?: string;
+export function StudyAnalysisWindow({ note, editing, onClose, beforeReady }: {
+  note: StudyNote; editing: boolean; onClose: () => void; beforeReady?: () => void;
 }) {
   const { t, language } = useTranslation();
   const router = useRouter();
@@ -64,6 +63,8 @@ export function StudyAnalysisWindow({ note, editing, onClose, listTab }: {
   // The book is read for the analysis's Bible and book only: a new close or a new language's words do not read it again.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const beforeReadyRef = useRef(beforeReady);
+  beforeReadyRef.current = beforeReady;
   const tRef = useRef(t);
   tRef.current = t;
   const cancel = useCallback(() => {
@@ -72,12 +73,6 @@ export function StudyAnalysisWindow({ note, editing, onClose, listTab }: {
     setNotice(null);
     closeRef.current();
   }, []);
-  const previousTab = useRef(listTab);
-  useLayoutEffect(() => {
-    if (previousTab.current !== listTab && !text) cancel();
-    previousTab.current = listTab;
-  }, [cancel, listTab, text]);
-
   useEffect(() => {
     begin(`${bookKey}:${attempt}`);
     if (cancelled.current || !due()) return undefined;
@@ -95,6 +90,7 @@ export function StudyAnalysisWindow({ note, editing, onClose, listTab }: {
         if (!wanted()) return;
         reading.current = false;
         setNotice(null);
+        beforeReadyRef.current?.();
         setLoaded({ key: bookKey, text: book });
       },
       (error: unknown) => {
@@ -172,6 +168,9 @@ export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: bo
   const { t } = useTranslation();
   const [open, setOpen] = useState<{ id: string; editing: boolean; visit?: number } | null>(null);
   const visit = useRef(0);
+  const step = useRef<string | null>(null);
+  // While Back is in flight, a new click belongs to the list that will receive it.
+  const leaving = useRef<{ destination: string; next?: () => void } | null>(null);
   const note = open ? notes.find((entry) => entry.id === open.id && entry.type === 'analysis') : undefined;
   const holds = useCallback((id: string) => notes.some((entry) => entry.id === id && entry.type === 'analysis'), [notes]);
   const addressRead = useRef(false);
@@ -181,6 +180,7 @@ export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: bo
     const named = readAnalysisAddress();
     if (!named) return;
     if (holds(named.id)) {
+      step.current = historyStepHere();
       setOpen({ id: named.id, editing: named.mode === 'edit' });
       return;
     }
@@ -198,7 +198,15 @@ export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: bo
     let after: ReturnType<typeof setTimeout> | undefined;
     const moved = () => {
       clearTimeout(after);
+      const next = leaving.current;
+      leaving.current = null;
+      step.current = historyStepHere();
       const named = readAnalysisAddress();
+      if (next && !named && location.pathname === next.destination) {
+        setOpen(null);
+        next.next?.();
+        return;
+      }
       const landed = named && holdsNow.current(named.id) ? { id: named.id, editing: named.mode === 'edit' } : null;
       setOpen((was) => (was && landed && was.id === landed.id && was.editing === landed.editing ? was : null));
       if (landed) after = setTimeout(() => setOpen((was) => was ?? landed), 0);
@@ -207,13 +215,50 @@ export function useStudyAnalysisOpening(notes: readonly StudyNote[], loading: bo
     return () => { window.removeEventListener('popstate', moved); clearTimeout(after); };
   }, []);
   const openAnalysis = useCallback((target: StudyNote, editing: boolean) => {
-    setOpen({ id: target.id, editing, visit: ++visit.current });
+    const request = () => {
+      const address = { id: target.id, mode: editing ? 'edit' : 'view' } as const;
+      if (readAnalysisAddress()) writeAnalysisAddress(address);
+      else step.current = openAnalysisStep(address);
+      setOpen({ id: target.id, editing, visit: ++visit.current });
+    };
+    if (leaving.current) leaving.current.next = request;
+    else request();
   }, []);
-  const close = useCallback(() => {
-    leaveAnalysisAddress(open?.id ?? null);
+
+  const restoreStep = useCallback(() => {
+    // The list's query updates can replace history.state while keeping the analysis address.
+    if (step.current && open && readAnalysisAddress()?.id === open.id && !historyStepHere()) {
+      restoreHistoryStep(step.current);
+    }
+  }, [open]);
+  const closeVisit = useCallback((next?: () => void) => {
+    if (leaving.current) {
+      if (next) leaving.current.next = next;
+      return;
+    }
+    if (!open) {
+      next?.();
+      return;
+    }
+    if (!browserMoved()) {
+      restoreStep();
+      if (readAnalysisAddress()?.id === open.id && step.current && historyStepHere() === step.current) {
+        leaving.current = { destination: location.pathname, next };
+        leaveAnalysisAddress(open.id, step.current);
+        setOpen(null);
+        return;
+      }
+    }
+    leaveAnalysisAddress(open.id);
     setOpen(null);
-  }, [open?.id]);
-  return { opened: note && open ? { note, editing: open.editing, visit: open.visit } : null, open: openAnalysis, close };
+    next?.();
+  }, [open, restoreStep]);
+  const close = useCallback(() => closeVisit(), [closeVisit]);
+  const selectListTab = (alreadySelected: boolean, select: () => void) => {
+    if (!alreadySelected || leaving.current) closeVisit(select);
+  };
+  return { opened: note && open ? { note, editing: open.editing, visit: open.visit } : null,
+    open: openAnalysis, close, leaveForList: closeVisit, selectListTab, restoreStep };
 }
 
 /** How long the card the list was opened at stays lit. */

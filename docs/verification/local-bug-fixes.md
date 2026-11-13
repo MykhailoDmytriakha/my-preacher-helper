@@ -9051,3 +9051,16 @@ Installed headless Chrome with local Auth and Firestore passed direct opening, t
 The resize and keyboard cases went red to green. All 97 focused tests, independent review, TypeScript, the local production-mode build and scoped ESLint passed. Full Jest passed 15,097 tests across 1,194 suites, with 17 tests and three suites skipped. ESLint reported zero errors and one existing Studies page complexity warning. Evidence is at `artifacts/studies-tab-position-20261112/report.md`.
 
 After authorized deployment, confirm the released revision. In a disposable test profile follow a saved Studies Analyses URL or the Bible's All analyses link at phone width. Confirm the whole selected label is visible after reload and rotation. Scroll the row horizontally and select another tab. On desktop, tab to a different label without selecting it and narrow the window to check keyboard focus. This check needs no writes.
+
+
+## BUG-20261112-studies-analysis-back-while-loading · Give a pending Studies analysis its Back step
+
+On `474a5f91` / `2OHRC6eoiQ2JAS9XgJ8I4`, Dashboard → Studies → Analyses → Romans 1:19 left the list's URL and history unchanged while the Bible text was unavailable. Chrome Back went to Dashboard. The red regression waited for the actual browser history event and reproduced that destination.
+
+Opening a card now creates its existing analysis history step before the book read. The editor adopts the same step when the text arrives. Back can cancel the pending opening, and Forward can reopen it. Search, tab changes and navigation to another note apply from the list after the pending step closes. An action taken while that transition is underway supersedes the earlier destination. Direct analysis URLs retain their established navigation behavior. The change is client navigation only.
+
+On `97xC8sMVYjdV0KWze2Axx`, installed headless Chrome with an active service worker and local Auth and Firestore passed five scenarios. Back → Forward → Back worked at 390 and 1280 CSS px with the originally cold book. A search entered during loading stayed visible through Back and Forward, a tab change stayed on Notes, and Back from a regular note returned to All without reopening the pending analysis. I inspected the returned lists, restored verse and retained search. The browser issued no writes to the analysis. All six fixture deletions were acknowledged and all owned processes and listeners closed. The baseline screenshot after Back preceded the Dashboard paint, so the navigation receipt records that destination.
+
+The original regression went red to green. The 62 focused tests, TypeScript, production-mode build and independent review passed. Full Jest passed 15,102 tests across 1,194 suites, with 17 tests and three suites skipped. Scoped ESLint reported zero errors and one existing Studies page complexity warning. Evidence is at `artifacts/studies-analysis-history-20261112/report.md`.
+
+After authorized deployment, confirm the released version. In one disposable test profile go from Dashboard to Studies, open a saved analysis while its Bible file is held, and press Back. Confirm Studies remains open, then restore the connection and press Forward. Check the original verse and mode, and verify that one more Back returns to the list. Repeat with the list's search and a regular note. This navigation check needs no edits.

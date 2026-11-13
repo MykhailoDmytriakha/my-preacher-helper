@@ -86,7 +86,7 @@ export default function StudiesPage() {
   }, [tagData.customTags, tagData.requiredTags]);
 
   // Query persistence and instant clear/input behavior are shared with the sermon list.
-  const { value: search, setValue: applySearch, inputRef: searchInputRef } = useSearchInputQuery('search');
+  const { value: search, setValue: setSearch, inputRef: searchInputRef } = useSearchInputQuery('search');
   const [tagFilter, setTagFilter] = useQueryState('tag', { defaultValue: '' });
   const [bookFilter, setBookFilter] = useQueryState('book', { defaultValue: '' });
 
@@ -114,14 +114,18 @@ export default function StudiesPage() {
   // A passage's analysis opens over the list in the Bible's own analysis screen (`StudyAnalysisWindow`); any other note
   // on its page.
   const analysis = useStudyAnalysisOpening(notes, notesLoading);
+  const applySearch = (value: string) => analysis.leaveForList(() => setSearch(value));
+  const applyBook = (value: string) => analysis.leaveForList(() => { void setBookFilter(value); });
+  const applyTag = (value: string) => analysis.leaveForList(() => { void setTagFilter(value); });
   // Opened at an analysis from the Bible («Все разборы»): its card in sight, lit for a moment.
   const arrivedAt = useListArrival(notes);
   const tabRow = useSlidingRow<HTMLDivElement>();
   useScrollSelection(tabRow.rowRef, 'horizontal', '[aria-current="true"]', activeTab);
-  const openAnalysis = analysis.open;
-  const openNote = useCallback((note: StudyNote, editing: boolean) => (
-    note.type === 'analysis' ? openAnalysis(note, editing) : router.push(`/studies/${note.id}${window.location.search}`)
-  ), [openAnalysis, router]);
+  const { open: openAnalysis, leaveForList } = analysis;
+  const openNote = useCallback((note: StudyNote, editing: boolean) => {
+    if (note.type === 'analysis') openAnalysis(note, editing);
+    else leaveForList(() => router.push(`/studies/${note.id}${window.location.search}`));
+  }, [leaveForList, openAnalysis, router]);
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
@@ -255,7 +259,7 @@ export default function StudiesPage() {
     });
   }, []);
 
-  const handleAddNote = () => {
+  const handleAddNote = () => leaveForList(() => {
     // In the comments' tab the main button writes a comment, in its window, not a note on its page.
     if (activeTab === 'comments') {
       setCommentWindow({ kind: 'new', reference: null });
@@ -268,7 +272,7 @@ export default function StudiesPage() {
       return;
     }
     router.push('/studies/new');
-  };
+  });
 
 
   const handleShareNote = useCallback((note: StudyNote) => {
@@ -302,11 +306,11 @@ export default function StudiesPage() {
     [visibleNotes, bibleLocale, expandedNoteIds, arrivedAt, handleToggleNoteExpanded, openNote, searchQuery, handleShareNote, shareLinksByNoteId]
   );
 
-  const clearFilters = () => {
-    applySearch('');
-    setTagFilter('');
-    setBookFilter('');
-  };
+  const clearFilters = () => analysis.leaveForList(() => {
+    setSearch('');
+    void setTagFilter('');
+    void setBookFilter('');
+  });
 
   const hasActiveFilters = search || tagFilter || bookFilter;
 
@@ -334,6 +338,10 @@ export default function StudiesPage() {
           <div className="flex w-full flex-col sm:flex-row gap-2 md:w-auto md:items-center">
             <Link
               href="/studies/share-links"
+              onNavigate={event => {
+                event.preventDefault();
+                leaveForList(() => router.push('/studies/share-links'));
+              }}
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto"
             >
               <LinkIcon className="h-4 w-4" />
@@ -380,7 +388,7 @@ export default function StudiesPage() {
             {STUDY_NOTE_TABS.map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => analysis.selectListTab(tab === activeTab, () => { void setActiveTab(tab); })}
                 aria-current={activeTab === tab ? 'true' : undefined}
                 className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
                   ${activeTab === tab
@@ -449,7 +457,7 @@ export default function StudiesPage() {
               size="md"
               accent="emerald"
               value={bookFilter || ''}
-              onChange={(e) => setBookFilter(e.target.value)}
+              onChange={(e) => applyBook(e.target.value)}
               wrapperClassName="w-full sm:w-52"
               aria-label={t('studiesWorkspace.filterByBook')}
             >
@@ -465,7 +473,7 @@ export default function StudiesPage() {
               size="md"
               accent="emerald"
               value={tagFilter || ''}
-              onChange={(e) => setTagFilter(e.target.value)}
+              onChange={(e) => applyTag(e.target.value)}
               wrapperClassName="w-full sm:w-52"
               aria-label={t('studiesWorkspace.filterByTag')}
             >
@@ -556,7 +564,10 @@ export default function StudiesPage() {
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-500"><CommentIcon className="h-5 w-5 text-white" /></span>
           <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{t('studiesWorkspace.commentsEmptyTitle')}</p>
           <p className="max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-400">{t('studiesWorkspace.commentsEmptyHint')}</p>
-          <Link href="/bible" className="mt-2 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+          <Link href="/bible" onNavigate={event => {
+            event.preventDefault();
+            leaveForList(() => router.push('/bible'));
+          }} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
             <BibleIcon className="h-4 w-4" aria-hidden="true" />
             {t('studiesWorkspace.openBible')}
           </Link>
@@ -622,7 +633,7 @@ export default function StudiesPage() {
       })() : null}
 
       {analysis.opened ? (
-        <StudyAnalysisWindow key={`${analysis.opened.note.id}:${analysis.opened.visit ?? 0}`} note={analysis.opened.note} editing={analysis.opened.editing} onClose={analysis.close} listTab={activeTab} />
+        <StudyAnalysisWindow key={`${analysis.opened.note.id}:${analysis.opened.visit ?? 0}`} note={analysis.opened.note} editing={analysis.opened.editing} onClose={analysis.close} beforeReady={analysis.restoreStep} />
       ) : null}
 
       <ShareNoteModal

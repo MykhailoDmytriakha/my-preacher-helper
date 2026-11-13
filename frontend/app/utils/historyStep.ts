@@ -34,6 +34,11 @@ export function stepStateOnly(): Record<string, string> | null {
   return step ? { [STEP]: step } : null;
 }
 
+/** Restore an owned marker after an address-only replacement dropped custom history state. */
+export function restoreHistoryStep(step: string): void {
+  window.history.replaceState({ ...window.history.state, [STEP]: step }, '');
+}
+
 /** A new entry at `url` (path, query and hash) for a screen opened over the page; its id. `remember` — what the screen
  *  needs to open again on that entry when its address cannot say it (a new analysis with no note yet). */
 export function pushHistoryStep(url: string, remember?: Record<string, unknown>): string {

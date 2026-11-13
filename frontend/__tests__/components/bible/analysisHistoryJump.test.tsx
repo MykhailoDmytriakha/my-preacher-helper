@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
 import { ReaderAnalysis } from '@/components/bible/analysis/ReaderAnalysis';
@@ -68,14 +68,124 @@ function ReaderHost() {
 }
 
 function StudiesWindowHost({ notes }: { notes: StudyNote[] }) {
-  const { opened, close } = useStudyAnalysisOpening(notes, false);
-  return opened ? <StudyAnalysisWindow key={opened.note.id} note={opened.note} editing={opened.editing} onClose={close} /> : null;
+  const { opened, open, close, leaveForList, restoreStep } = useStudyAnalysisOpening(notes, false);
+  return (
+    <>
+      {opened ? <StudyAnalysisWindow key={`${opened.note.id}:${opened.visit ?? 0}`} note={opened.note}
+        editing={opened.editing} onClose={close} beforeReady={restoreStep} /> : null}
+      <button type="button" onClick={() => open(notes[0], false)}>Open A</button>
+      {notes[1] && <button type="button" onClick={() => open(notes[1], true)}>Open B</button>}
+      <button type="button" onClick={close}>Cancel opening</button>
+      <label>Search <input onChange={event => {
+        const search = event.target.value;
+        leaveForList(() => window.history.replaceState(null, '', '/studies?tab=analyses&search=' + search));
+      }} /></label>
+      {['notes', 'questions'].map(tab => <button key={tab} type="button" onClick={() => leaveForList(() => {
+        window.history.replaceState(null, '', '/studies?tab=' + tab);
+      })}>{tab}</button>)}
+    </>
+  );
 }
 
 const withPassage = (id: string) => ({ ...analysis(id), scriptureRefs: [{ id: 'r', book: 'Ephesians', chapter: 1, fromVerse: 1, toVerse: 2 }] } as StudyNote);
 const BOOK = { id: 'Ephesians', chapters: [['Павел']] };
 
 describe('a jump in history from one analysis\'s step to another\'s', () => {
+  it('Back cancels an analysis requested from the list before the book arrives, and Forward restores it once', async () => {
+    let arrive!: (book: BookText) => void;
+    jest.mocked(fetchBookText).mockImplementationOnce(() => new Promise(resolve => { arrive = resolve; }))
+      .mockResolvedValueOnce(BOOK);
+    const list = '/studies?tab=analyses';
+    window.history.pushState(null, '', '/dashboard');
+    window.history.pushState(null, '', list);
+    render(<StudiesWindowHost notes={[withPassage('a')]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+    expect(fetchBookText).toHaveBeenCalled();
+    const moved = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await act(async () => { window.history.back(); await moved; });
+    expect(here()).toBe(list);
+    await act(async () => arrive(BOOK));
+    expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+
+    act(() => window.history.forward());
+    expect(await screen.findByTestId('screen')).toHaveAttribute('data-mode', 'view');
+    expect(here()).toBe(list + '&analysis=a&mode=view');
+    act(() => window.history.back());
+    await waitFor(() => expect(here()).toBe(list));
+    expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+  });
+
+  it('honors a newer card click during cancellation of a pending opening', async () => {
+    let arrive!: (book: BookText) => void;
+    jest.mocked(fetchBookText).mockImplementationOnce(() => new Promise(resolve => { arrive = resolve; }))
+      .mockResolvedValueOnce(BOOK);
+    const list = '/studies?tab=analyses';
+    window.history.pushState(null, '', list);
+    render(<StudiesWindowHost notes={[withPassage('a'), withPassage('b')]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+    const moved = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await act(async () => {
+      screen.getByRole('button', { name: 'Cancel opening' }).click();
+      screen.getByRole('button', { name: 'Open B' }).click();
+      await moved;
+    });
+    expect(await screen.findByTestId('screen')).toHaveAttribute('data-id', 'b');
+    await act(async () => arrive(BOOK));
+    expect(here()).toBe(list + '&analysis=b&mode=edit');
+    act(() => window.history.back());
+    await waitFor(() => expect(here()).toBe(list));
+  });
+
+  it('keeps the latest tab selection after closing the pending analysis step', async () => {
+    jest.mocked(fetchBookText).mockReturnValueOnce(new Promise(() => {}));
+    window.history.pushState(null, '', '/studies?tab=analyses');
+    render(<StudiesWindowHost notes={[withPassage('a')]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+    const moved = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await act(async () => {
+      screen.getByRole('button', { name: 'notes' }).click();
+      screen.getByRole('button', { name: 'questions' }).click();
+      await moved;
+    });
+    expect(here()).toBe('/studies?tab=questions');
+    expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+  });
+
+  it('keeps the search on the list when the person starts it during a pending opening', async () => {
+    jest.mocked(fetchBookText).mockReturnValueOnce(new Promise(() => {}));
+    const list = '/studies?tab=analyses';
+    window.history.pushState(null, '', '/dashboard');
+    window.history.pushState(null, '', list);
+    render(<StudiesWindowHost notes={[withPassage('a')]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+    const moved = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), { target: { value: 'Romans' } });
+      await moved;
+    });
+    expect(here()).toBe(list + '&search=Romans');
+    expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+    act(() => window.history.back());
+    await waitFor(() => expect(here()).toBe('/dashboard'));
+  });
+
+  it('returns to the list entry when a pending query update replaced the analysis history marker', async () => {
+    jest.mocked(fetchBookText).mockReturnValueOnce(new Promise(() => {}));
+    const list = '/studies?tab=analyses';
+    window.history.pushState(null, '', '/dashboard');
+    window.history.pushState(null, '', list);
+    render(<StudiesWindowHost notes={[withPassage('a')]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open A' }));
+    window.history.replaceState(null, '', here() + '&search=Romans');
+    expect(historyStepHere()).toBeNull();
+
+    const moved = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await act(async () => { screen.getByRole('button', { name: 'Cancel opening' }).click(); await moved; });
+    expect(here()).toBe(list);
+    act(() => window.history.back());
+    await waitFor(() => expect(here()).toBe('/dashboard'));
+  });
+
   it('while an analysis\'s book comes in the same moment as Back, nothing opens over where Back led', async () => {
     // Codex, 04.11 (round 4): the book resolved between Back and the host's look; the screen mounted and wrote its address
     // again, and the host kept it.
