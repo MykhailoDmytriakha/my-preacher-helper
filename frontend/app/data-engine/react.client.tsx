@@ -12,6 +12,7 @@ import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSe
 import { useTranslation } from '@locales/useTranslation';
 
 import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
+import { boundedActionTime } from './actionClock';
 import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { keepReviewedAuthoredLists } from './authoredListChoice';
@@ -284,6 +285,11 @@ export function discoverLegacyRecovery(owner: string, options?: Parameters<typeo
 /** Export exactly the reviewed original, fenced to its owner. */
 export function exportLegacyRecovery(source: LegacyRecoverySource, owner: string): string {
   return exportLegacyOriginal(source, owner);
+}
+
+/** A persisted field action keeps an exact calibrated interval, or explicitly unknown time. */
+export function isValidRecoveryActionTime(value: unknown): boolean {
+  return value === null || boundedActionTime(value) !== undefined;
 }
 
 /** Admit only the supplied recovery fields; a partial backup never proves a whole document. */

@@ -80,7 +80,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -91,6 +91,7 @@ export function useNoteAutoSave({
     draftWriterId?: string;
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
+    draftOrigin?: NoteDraftPayload['origin'];
     titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
     typeEditRef?: React.MutableRefObject<NoteTypeEdit | null>;
     submittedTypeRef?: React.MutableRefObject<SubmittedNoteType | null>;
@@ -339,7 +340,8 @@ export function useNoteAutoSave({
         setLastSaved(null);
         try {
             const recording = captureRecordingHandoff?.();
-            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt);
+            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin } : submittedPayload;
+            const captureScope = prepareNoteDraftCapture(uid, noteId, backup, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,
                 captureScope,
@@ -426,7 +428,7 @@ export function useNoteAutoSave({
                 else if (replacedTitle !== undefined) onSaved?.(acceptedPayload, replacedTitle);
                 else onSaved?.(acceptedPayload);
             };
-            afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured, draftEditedAt);
+            afterCanonicalCapture(submission, backup, noteId, onCaptured, draftEditedAt);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
@@ -495,7 +497,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, draftOrigin, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

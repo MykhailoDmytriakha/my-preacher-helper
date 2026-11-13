@@ -1,5 +1,5 @@
 import { draftKey, isDraftStorageRefusedFor, readDraft, saveDraft } from '@/utils/durableDraft';
-import { canResumeNewNoteDraft, findNewNoteDrafts, findNoteDraftCopies, newNoteCreationId, newNoteDraftHref, newNoteDraftId, readNewNoteDraft, validNewNoteDraftId } from '@/utils/newNoteDrafts';
+import { canResumeNewNoteDraft, findNewNoteDrafts, findNoteDraftCopies, findUnreadableNoteDraftCopies, newNoteCreationId, newNoteDraftHref, newNoteDraftId, readNewNoteDraft, validNewNoteDraftId } from '@/utils/newNoteDrafts';
 
 import type { NoteDraftPayload } from '@/models/studyNoteDraft';
 
@@ -137,4 +137,21 @@ it('sorts a current note and its carried precreate source by edit time, not stor
   expect(findNoteDraftCopies('owner', 'A', 'note').map(copy => copy.value.content))
     .toEqual(['Later precreate edit', 'Earlier current-address edit']);
   clock.mockRestore();
+});
+
+
+it.each([
+  {},
+  { fields: null },
+  { fields: { title: '' }, title: {} },
+  { fields: { title: '' }, title: { seen: { title: '', generation: 'g', revision: 1 }, time: { earliestMs: 200, latestMs: 100 } } },
+  { fields: { tags: 3 } },
+  { fields: { owner: 'other' } },
+])('keeps an invalid recovery origin readable as an exact raw backup (%j)', origin => {
+  const key = draftKey('owner', 'existing-note', 'note');
+  saveDraft(key, { ...value('Words that must stay available'), origin });
+  const raw = localStorage.getItem(key);
+  expect(findNoteDraftCopies('owner', 'existing-note', 'note')).toEqual([]);
+  expect(findUnreadableNoteDraftCopies('owner', 'existing-note')).toHaveLength(1);
+  expect(localStorage.getItem(key)).toBe(raw);
 });

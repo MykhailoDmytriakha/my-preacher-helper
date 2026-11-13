@@ -9113,3 +9113,17 @@ Installed headless Chrome at widths 390 and 1280 used isolated local Auth and Fi
 Three regressions changed from red to green, including the return to the original date while a prior Save awaits its receipt. The focused run passed 106 tests. Full Jest passed 15,128 tests in 1,195 suites, with 17 tests and three suites skipped. TypeScript and the production-mode build passed. Scoped ESLint reported zero errors and 11 warnings.
 
 After authorized deployment, confirm the served revision and exercise offline date changes across two devices on a disposable group. Check the newer date, the separately saved room, and that clearing the date leaves both meetings and the group visible after reload. Reserve the controlled interruption for isolated local QA.
+
+## BUG-20261112-recovered-note-title-overwrites-later-edit · Restore the edits a note draft actually contains
+
+Studies → note → Edit. The original build let a restored offline title overwrite a later saved title. A restored Question choice likewise replaced a later return to Note. Restoring a title-only draft also put the original body back over a newer paragraph. The phone backup held the whole displayed form without its original editing basis.
+
+An existing note's draft now keeps the original values of its changed fields and the captured title or type action. Restore starts with the saved note and applies the edited fields. The ordinary writer sends the original field observation and interval through the existing ordering path. An equal title or type can still represent an unfinished action. The exact backup follows the request through durable capture. A malformed origin remains available as a raw backup, and an unpublished IME alternative keeps its body.
+
+Installed headless Chrome at widths 390 and 1280, with isolated Auth and Firestore, passed five scenarios on production-mode build `KnZ-dUBo-hDfR_cUO0gsg`: both title orders, the later return to Note, preserving a computer paragraph while restoring a phone title, and delivery of a later action whose title already matched the stored words. The title scenarios were checked after reload. I inspected the before screenshot and the final title, body and type screenshots. The controlled phone interruption held autosave and suppressed departure events only after the local copy landed. In the type run, the note and preview had identical headings. The retry scoped the selector to the note heading, using the same build. All owned profiles and listeners closed. Evidence is at `artifacts/note-title-recovery-20261112/report.md`.
+
+Three tests failed on the original behavior. The focused final run passed 304 tests. Full Jest passed 15,139 tests in 1,195 suites, with 17 tests and three suites skipped. The architecture boundary and recovery reader passed their 33-test run. TypeScript and the production-mode build passed. Scoped ESLint reported zero errors and 14 warnings.
+
+A legacy backup without editing provenance is still offered explicitly. The note-level comparison when title or type chronology is unknown remains tracked in `BUG-20261112-recovered-note-conflict-chooses-whole-note`.
+
+After authorized deployment, pin the served revision and repeat both title orders, the return to Note and the independent body on a disposable note across two devices. Verify the persisted title, type and paragraph on reload. Keep injected timing and malformed-backup probes on local emulators.

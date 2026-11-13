@@ -78,7 +78,7 @@ import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
-import { type NoteDraftPayload } from './noteDraft';
+import { hasUnsubmittedNoteField, holdNoteDraftText, noteDraftOrigin, restoreNoteDraft, sameNoteDraft, type NoteDraftPayload } from './noteDraft';
 import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { currentNoteReference, openingReferenceDraft, updateNoteReferenceDraft } from './noteReferenceDraft';
@@ -161,14 +161,9 @@ function writesNow(asked: boolean, waiting: NoteDraftPayload | null): boolean {
     return asked && waiting === null;
 }
 
-/** Value equality for the complete draft payload. */
-function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
-    return serializeContent(a) === serializeContent(b);
-}
-
 /** The unsaved words from last time still to be answered, or null: words equal to the page's are settled as taken. */
 function useNoteDraftOffer(recovered: NoteDraftPayload | null, shown: NoteDraftPayload, ready: boolean, settle: () => void, sourceKey: string | null): NoteDraftPayload | null {
-    const same = recovered !== null && sameNoteDraft(recovered, shown);
+    const same = recovered !== null && !hasUnsubmittedNoteField(recovered) && sameNoteDraft(recovered, shown);
     useSettleShownDraft(ready && same, settle, sourceKey);
     return recovered && !same ? recovered : null;
 }
@@ -916,10 +911,25 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     // Everything the editor owns, in one value — this is what the durable draft
     // stores and what a successful save confirms.
-    const draftPayload: NoteDraftPayload = useMemo(
+    const authoredDraft: NoteDraftPayload = useMemo(
         () => ({ title, content, tags, scriptureRefs, type, ...(referenceRecovery && { referenceRecovery }), ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) }),
         [title, content, tags, scriptureRefs, type, referenceRecovery, dictationSourceIds, recordingSourceIds]
     );
+    // A queue receipt advances the editor's baseline without changing the person's draft.
+    // Keep the original proof until an authored value changes, including during the exact outbox handoff.
+    const draftSnapshot = useRef<{ authored: NoteDraftPayload; payload: NoteDraftPayload; owner?: string } | null>(null);
+    if (draftSnapshot.current?.authored !== authoredDraft || draftSnapshot.current.owner !== uid) {
+        const titleEdit = titleEditRef.current;
+        const typeEdit = typeEditRef.current;
+        const titleCapture = titleEdit?.owner === uid && titleEdit?.id === noteId && titleEdit.value === title
+            ? titleEdit.capture : undefined;
+        const typeCapture = typeEdit?.owner === uid && typeEdit?.id === noteId && typeEdit.value === type
+            ? typeEdit.capture : undefined;
+        const opening = !isNew && confirmedDraft && baselineRef.current;
+        const origin = opening && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture);
+        draftSnapshot.current = { authored: authoredDraft, payload: origin ? { ...authoredDraft, origin } : authoredDraft, owner: uid };
+    }
+    const draftPayload = draftSnapshot.current.payload;
 
     const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
@@ -965,6 +975,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         saveAtOnceRef,
         saveBlocked: saveConflict || Boolean(referenceReview) || unavailable || draftHeld,
         onConflict: () => setSaveConflict(true),
+        draftOrigin: draftPayload.origin,
         onCaptured: markCaptured,
         referenceEdits: referenceDraft.edits,
         onReferenceAcknowledged: (submitted, accepted, aliases, revision, engineRevision) => {
@@ -990,8 +1001,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     // A matching first copy must not hide a different unfinished version.
     useEffect(() => {
-        if (!recoveredDraft || !sameNoteDraft(recoveredDraft, draftPayload)) return;
-        const alternative = recoveries.find(copy => !sameNoteDraft(withNoteReferenceBibles(copy.value, bibleLocale), draftPayload));
+        if (!recoveredDraft || hasUnsubmittedNoteField(recoveredDraft) || !sameNoteDraft(recoveredDraft, draftPayload)) return;
+        const alternative = recoveries.find(copy => hasUnsubmittedNoteField(copy.value) || !sameNoteDraft(withNoteReferenceBibles(copy.value, bibleLocale), draftPayload));
         if (alternative) selectRecovered(alternative.key);
     }, [recoveredDraft, draftPayload, recoveries, bibleLocale, selectRecovered]);
 
@@ -1046,27 +1057,37 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
-        setTitle(unsavedRecovery.title);
-        setContent(unsavedRecovery.content);
-        setTags(unsavedRecovery.tags);
-        const recovery = unsavedRecovery.referenceRecovery;
+        const opening = baselineRef.current;
+        const restored = !isNew && opening ? restoreNoteDraft(unsavedRecovery, opening) : unsavedRecovery;
+        const origin = !isNew && opening ? restored.origin : undefined;
+        setTitle(restored.title);
+        setContent(restored.content);
+        setTags(restored.tags);
+        setType(restored.type);
+        if (origin && opening) {
+            // The same displayed value can still have an unfinished action from this device.
+            draftSnapshot.current = null;
+            baselineRef.current = { ...opening, ...origin.fields };
+            if (uid && origin.title) titleEditRef.current = { owner: uid, id: noteId, value: restored.title, capture: origin.title };
+            if (uid && origin.type && isOrdinaryStudyNoteType(restored.type)) {
+                typeEditRef.current = { owner: uid, id: noteId, value: restored.type, capture: origin.type };
+            }
+        }
+        const recovery = restored.referenceRecovery;
         if (recovery) {
             const observed = existingNote && noteIsAccepted && presence?.kind === 'present' && presence.source === 'server'
                 ? { references: existingNote.scriptureRefs, revision: existingNote.rev?.[NOTE_AGGREGATE],
                     engineRevision: presence.snapshot.metadata?.revision,
                     aliases: presence.snapshot.metadata?.studyNoteReferenceAliases ?? [] }
                 : undefined;
-            dispatchReferences({ type: 'restore', references: unsavedRecovery.scriptureRefs, recovery, observed });
-        } else dispatchReferences({ type: 'adopt', references: unsavedRecovery.scriptureRefs });
-        setType(unsavedRecovery.type);
-        setDictationSourceIds(unsavedRecovery.dictationSourceIds ?? []);
-        setRecordingSourceIds(unsavedRecovery.recordingSourceIds ?? unsavedRecovery.dictationSourceIds ?? []);
-        // Hide the offer but KEEP the stored copy: this text is still unconfirmed
-        // until a save lands. Deleting it here would leave a window with no durable
-        // copy at all.
-        acceptRecovered(recovery ? { transferToWriter: true } : undefined);
+            dispatchReferences({ type: 'restore', references: restored.scriptureRefs, recovery, observed });
+        } else dispatchReferences({ type: 'adopt', references: restored.scriptureRefs });
+        setDictationSourceIds(restored.dictationSourceIds ?? []);
+        setRecordingSourceIds(restored.recordingSourceIds ?? restored.dictationSourceIds ?? []);
+        // Keep the selected source until the current writer or outbox durably takes over.
+        acceptRecovered(recovery || origin ? { transferToWriter: true } : undefined);
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1638,7 +1659,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             <RichMarkdownEditor
                                 value={content}
                                 onChange={setContent}
-                                onHoldText={typed => holdAlternative({ ...draftPayload, content: typed })}
+                                onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"
                                 stickyToolbarTop={scrollLayout.toolbarTop}

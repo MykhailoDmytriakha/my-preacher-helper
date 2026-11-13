@@ -21,7 +21,7 @@ export function unassignedStudyRecordingFilter(notes: readonly AudioNote[], draf
 
 export function isRecordingOnlyNoteDraft(value: NoteDraftPayload): boolean {
   return value.type === 'note' && !value.title.trim() && !value.content.trim() && value.tags.length === 0 && value.scriptureRefs.length === 0
-    && !value.referenceRecovery && !value.dictationSourceIds?.length && Boolean(value.recordingSourceIds?.length);
+    && !value.origin && !value.referenceRecovery && !value.dictationSourceIds?.length && Boolean(value.recordingSourceIds?.length);
 }
 
 /** Explicit recovery copies a take; an old source acknowledgement cannot retire its new copy. */

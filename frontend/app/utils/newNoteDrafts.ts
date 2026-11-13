@@ -1,6 +1,7 @@
-import { discoverLegacyRecovery, isValidRecoveryPatch, type LegacyRecoverySource } from '@/data-engine/react.client';
+import { discoverLegacyRecovery, isValidRecoveryActionTime, isValidRecoveryPatch, type LegacyRecoverySource } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { compareDraftCopies, findDraftCopies, findDraftDocIds, type DurableDraftCopy } from '@/utils/durableDraft';
+import { isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -52,12 +53,43 @@ export function readNewNoteDraft(uid: string, docId: string, selectedKey?: strin
   return (selectedKey ? copies.find(copy => copy.key === selectedKey) : copies[0]) ?? null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isNoteFieldCapture(value: unknown, field: 'title' | 'type'): boolean {
+  if (!isRecord(value) || !isRecord(value.seen)) return false;
+  const { seen, time } = value;
+  const revision = seen.revision;
+  const shown = field === 'title' ? typeof seen.title === 'string' : isOrdinaryStudyNoteType(seen.type);
+  return shown && typeof seen.generation === 'string' && Boolean(seen.generation)
+    && typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0
+    && (seen.requestId === undefined || (typeof seen.requestId === 'string' && Boolean(seen.requestId)))
+    && (seen.missing === undefined || (seen.missing === true && seen.requestId === undefined))
+    && isValidRecoveryActionTime(time);
+}
+
+function isNoteDraftOrigin(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.fields)) return false;
+  const { fields } = value;
+  const allowed = new Set(['title', 'content', 'tags', 'scriptureRefs', 'type']);
+  return Object.keys(value).every(key => key === 'fields' || key === 'title' || key === 'type')
+    && Object.keys(fields).length > 0 && Object.keys(fields).every(field => allowed.has(field))
+    && (fields.title === undefined || typeof fields.title === 'string')
+    && (fields.content === undefined || typeof fields.content === 'string')
+    && (fields.type === undefined || isOrdinaryStudyNoteType(fields.type))
+    && isValidRecoveryPatch('studyNotes', Object.fromEntries(Object.entries(fields)
+      .filter(([field]) => field === 'tags' || field === 'scriptureRefs')) as DocumentData)
+    && (value.title === undefined || (fields.title !== undefined && isNoteFieldCapture(value.title, 'title')))
+    && (value.type === undefined || (fields.type !== undefined && isNoteFieldCapture(value.type, 'type')));
+}
+
 function isNotePayload(value: unknown): value is NoteDraftPayload {
   if (!value || typeof value !== 'object') return false;
   const note = value as NoteDraftPayload;
   if (typeof note.title !== 'string' || typeof note.content !== 'string'
     || !Array.isArray(note.tags) || !Array.isArray(note.scriptureRefs)
-    || (note.type !== 'note' && note.type !== 'question')) return false;
+    || !isOrdinaryStudyNoteType(note.type) || (note.origin !== undefined && !isNoteDraftOrigin(note.origin))) return false;
   // Reuse the canonical field rules without treating partial backup text as a
   // complete document or applying server storage limits to its authored body.
   const fields = ['tags', 'scriptureRefs', 'dictationSourceIds', 'recordingSourceIds']

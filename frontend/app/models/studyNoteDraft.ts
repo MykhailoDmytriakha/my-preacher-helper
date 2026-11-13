@@ -1,3 +1,4 @@
+import type { StudyNoteTitleCapture, StudyNoteTypeCapture } from '@/data-engine/documentFieldAction';
 import type { ScriptureReference, StudyNoteType } from '@/models/models';
 
 /** The compared saved reference list and its scoped alternative for an unanswered choice. */
@@ -8,8 +9,15 @@ export interface NoteReferenceRecovery {
     stored: ScriptureReference[];
 }
 
+/** The fields actually changed by an existing note's unfinished edit. */
+export interface NoteDraftOrigin {
+    fields: Partial<Pick<NoteDraftPayload, 'title' | 'content' | 'tags' | 'scriptureRefs' | 'type'>>;
+    title?: StudyNoteTitleCapture;
+    type?: StudyNoteTypeCapture;
+}
+
 /**
- * Exactly the fields the note editor owns. The durable draft stores this shape, so a
+ * The editable fields the note editor owns. The durable draft stores this shape, so a
  * recovered draft can be compared against, and applied to, the editor state without
  * dragging along server-owned fields (ids, timestamps, materialIds).
  *
@@ -23,5 +31,6 @@ export interface NoteDraftPayload {
     tags: string[];
     scriptureRefs: ScriptureReference[];
     referenceRecovery?: NoteReferenceRecovery;
+    origin?: NoteDraftOrigin;
     type: StudyNoteType;
 }

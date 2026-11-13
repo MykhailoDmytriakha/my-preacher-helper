@@ -123,11 +123,12 @@ jest.mock('../../components/SermonsBuiltOnNote', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    RichMarkdownEditor: ({ value, onChange, onHoldText, placeholder }: any) => (
         <textarea
             data-testid="rich-markdown-editor"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onCompositionEnd={event => onHoldText?.(event.data)}
             placeholder={placeholder}
         />
     ),
@@ -1075,6 +1076,193 @@ describe('StudyNoteEditorPage Pagination', () => {
             expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Waiting for a real acknowledgement');
             expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
         } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('saves a recovered title with the original action time and the opening seen before closing', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const phoneTitle = 'Title typed on the phone before the page closed';
+        const computerTitle = 'Title saved from the computer';
+        const editedBody = 'New paragraph typed after restoring';
+        const opening = { title: original.title!, generation: 'generation', revision: 1 };
+        const time = { earliestMs: 100, latestMs: 110 };
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(() => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-title' }), persistence, result: persistence,
+            capture: Promise.resolve({ kind: 'submitted', requestId: 'local-title', persistence }),
+        }));
+        const configure = (note: StudyNote, revision: number) => {
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1', notes: [note], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+                observeTitle: (_id: string, title: string) => ({ title, generation: opening.generation, revision }),
+                captureActionTime: () => revision === 1 ? time : { earliestMs: 400, latestMs: 410 },
+            });
+        };
+        configure(original, 1);
+        const phone = render(<StudyNoteEditorPage />);
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const titleField = () => screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            fireEvent.change(titleField(), { target: { value: phoneTitle } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(300); });
+            expect(updateNote).not.toHaveBeenCalled();
+            const copies = findDraftCopies<{ title: string }>('user-1', original.id, 'note');
+            expect(copies.some(copy => copy.value.title === phoneTitle)).toBe(true);
+            phone.unmount();
+
+            configure({ ...original, title: computerTitle, rev: { note: 2 } }, 2);
+            render(<StudyNoteEditorPage />);
+            expect(screen.getByText(computerTitle)).toBeInTheDocument();
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            if (!screen.queryByPlaceholderText('studiesWorkspace.titlePlaceholder')) fireEvent.click(screen.getByTitle('common.edit'));
+            expect(titleField()).toHaveValue(phoneTitle);
+            fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: editedBody } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+                updates: expect.objectContaining({ title: phoneTitle, content: editedBody }),
+                titleCapture: { time, seen: opening },
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('can hand off a recovered title action when its words already match the saved note', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const title = 'Same words from another device';
+        const time = { earliestMs: 100, latestMs: 110 };
+        const opening = { title: original.title!, generation: 'generation', revision: 1 };
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(() => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-title' }), persistence, result: persistence,
+            capture: Promise.resolve({ kind: 'submitted', requestId: 'local-title', persistence }),
+        }));
+        const key = draftKey('user-1', original.id, 'note', 'phone');
+        localStorage.setItem(key, JSON.stringify({ savedAt: 1, value: {
+            title, content: original.content, tags: original.tags, scriptureRefs: original.scriptureRefs, type: 'note',
+            origin: { fields: { title: original.title }, title: { seen: opening, time } },
+        } }));
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [{ ...original, title, rev: { note: 2 } }], loading: false, updateNote,
+            createNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+                updates: { title },
+                titleCapture: { time, seen: opening },
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('keeps the saved body when restoring a draft that edited only the title', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const phoneTitle = 'Only the title was typed before closing';
+        const computerBody = 'The other device wrote this body later';
+        const time = { earliestMs: 100, latestMs: 110 };
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(() => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-title' }), persistence, result: persistence,
+            capture: Promise.resolve({ kind: 'submitted', requestId: 'local-title', persistence }),
+        }));
+        const configure = (note: StudyNote, revision: number) => {
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1', notes: [note], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+                observeTitle: (_id: string, title: string) => ({ title, generation: 'generation', revision }),
+                captureActionTime: () => time,
+            });
+        };
+        configure(original, 1);
+        const phone = render(<StudyNoteEditorPage />);
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder'), { target: { value: phoneTitle } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(300); });
+            expect(updateNote).not.toHaveBeenCalled();
+            phone.unmount();
+
+            configure({ ...original, content: computerBody, rev: { note: 2 } }, 2);
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            if (!screen.queryByTestId('rich-markdown-editor')) fireEvent.click(screen.getByTitle('common.edit'));
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { title: phoneTitle } }));
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(computerBody);
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('restores a held composition body even when only the title had reached the form', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const typedTitle = 'Typed title with held body';
+        const typedBody = 'Held composition words';
+        const configure = (note: StudyNote) => (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [note], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        configure(original);
+        const opening = render(<StudyNoteEditorPage />);
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder'), { target: { value: typedTitle } });
+            fireEvent.compositionEnd(screen.getByTestId('rich-markdown-editor'), { data: typedBody });
+            const held = findDraftCopies<{ content: string }>('user-1', original.id, 'note').find(copy => copy.value.content === typedBody);
+            expect(held).toBeDefined();
+            opening.unmount();
+            (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams({ draftCopy: held!.key }));
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            enterNoteEditing(typedBody);
+            expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(typedTitle);
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('saves a recovered note type with the original action time after interruption before capture', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const time = { earliestMs: 100, latestMs: 110 };
+        const opening = { type: 'note', generation: 'generation', revision: 1 };
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(() => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-type' }), persistence, result: persistence,
+            capture: Promise.resolve({ kind: 'submitted', requestId: 'local-type', persistence }),
+        }));
+        const configure = (revision: number) => {
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1', notes: [{ ...original, rev: { note: revision } }], loading: false,
+                createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+                observeType: () => ({ ...opening, revision }),
+                captureActionTime: () => revision === 1 ? time : { earliestMs: 400, latestMs: 410 },
+            });
+        };
+        configure(1);
+        const phone = render(<StudyNoteEditorPage />);
+        const realTimeout = globalThis.setTimeout;
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const timer = jest.spyOn(globalThis, 'setTimeout').mockImplementation((fn, ms, ...args) => realTimeout(fn, ms === 0 ? 10000 : ms, ...args));
+            fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.type.question' }));
+            await act(async () => { await jest.advanceTimersByTimeAsync(300); });
+            expect(updateNote).not.toHaveBeenCalled();
+            expect(findDraftCopies<{ type: string }>('user-1', original.id, 'note').some(copy => copy.value.type === 'question')).toBe(true);
+            phone.unmount();
+            timer.mockRestore();
+
+            configure(3);
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+                updates: { type: 'question' },
+                typeCapture: { time, seen: opening },
+            }));
+        } finally { jest.restoreAllMocks(); jest.clearAllTimers(); jest.useRealTimers(); }
     });
 
     it('keeps an explicit return to the opening title while a different local title is queued', async () => {
