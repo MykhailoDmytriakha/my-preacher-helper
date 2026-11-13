@@ -37,6 +37,7 @@ import type { ActionTime } from './actionClock';
 import type { CommentPlaceObservation } from './commentPlaceAction';
 import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
+import type { GroupTextDecision } from './groupTextReview';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
@@ -51,6 +52,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   remoteCandidate: ResourceSnapshot | null;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   conflicts: ConflictDetail[];
+  groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
@@ -210,6 +212,7 @@ export class DataSession {
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
       const held = this.state.pending[request.id];
+      if (this.state.groupTextReview?.requestId === request.id) delete this.state.groupTextReview;
       // The whole action already rebased its dependent Saves. Their separately authored words
       // stay in the draft when their obsolete request identity is released.
       if (request.cancelledByAction && held && !isRetiredActionDependent(request)) this.rollbackAction(request);
@@ -231,6 +234,21 @@ export class DataSession {
       delete this.state.serviceOrderStepPlacementRetry;
     }
     const outlineRetry = this.state.outlinePointPlacementRetry;
+    if (request.state === 'conflict' && request.groupTextReview && this.state.pending[request.id]) {
+      const stage = request.groupTextReview;
+      const previous = this.state.groupTextReview;
+      if (!previous || previous.requestId !== request.id || previous.revision < request.revision) {
+        const held = this.state.pending[request.id];
+        const staged = copy(stage.checkpoint);
+        const remote = this.state.remoteCandidate;
+        if (remote && canReplaceSnapshot(staged.remoteCandidate ?? undefined, remote)) staged.remoteCandidate = copy(remote);
+        const pristine = !previous && this.state.editGeneration <= held.generation;
+        const canFollow = pristine || equalValues(this.state.draft, staged.draft);
+        if (canFollow) this.state = staged;
+        this.state.groupTextReview = { requestId: request.id, revision: request.revision,
+          decisions: copy(stage.decisions), ...(!canFollow && { separateDraft: true as const }) };
+      }
+    }
     const templateMove = request.baseline.resource.collection === 'planTemplates' && request.outlinePointPlacement;
     const capturedTemplateRetry = templateMove && outlineRetry && sameOutlinePointGesture(templateMove, outlineRetry);
     if (request.outlinePointPlacement && (equalValues(request.outlinePointPlacement, outlineRetry) || capturedTemplateRetry)) {
@@ -593,8 +611,10 @@ export class DataSession {
     carryOutlineTitleActions(source, this.state);
   }
 
-  retainUnreviewedAutosaveActions(source: SessionCheckpoint): void {
-    carryAnchoredDraftChronology(source, this.state, source.conflicts);
+  clearGroupTextReview(): void { delete this.state.groupTextReview; }
+
+  retainUnreviewedAutosaveActions(source: SessionCheckpoint, reviewed: readonly { path: string[] }[] = source.conflicts): void {
+    carryAnchoredDraftChronology(source, this.state, reviewed);
     this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 

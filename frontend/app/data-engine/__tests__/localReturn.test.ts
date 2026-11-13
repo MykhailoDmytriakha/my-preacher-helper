@@ -546,7 +546,7 @@ it('rejects a field choice if another ordinary continuation lands during retirem
   } finally { a.dispose(); b.dispose(); }
 });
 
-it.each(['independent', 'competing', 'converged', 'timed'] as const)('keeps %s later group words outside a block content choice', async variant => {
+it.each(['independent', 'converged', 'timed'] as const)('keeps %s later group words outside a block content choice', async variant => {
   const block = { id: 'template', type: 'custom', title: 'Block', status: 'filled', content: 'Opening words',
     createdAt: 'now', updatedAt: 'now' };
   const value = { ...original, description: 'Opening description', templates: [block],
@@ -569,27 +569,168 @@ it.each(['independent', 'competing', 'converged', 'timed'] as const)('keeps %s l
       ...(variant === 'timed' ? { title: 'Later group title' } : {}),
     }, undefined, variant === 'timed' ? { field: 'title', time } : undefined);
     expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(1);
-    if (variant === 'competing') {
-      await h.remote({ description: 'Different desktop description' });
-      await waitFor(() => expect(editor.getState().checkpoint.remoteCandidate?.value?.description).toBe('Different desktop description'));
-      const compared = editor.getState().checkpoint;
-      await expect(editor.keepLocal(undefined, compared)).rejects.toMatchObject({ code: 'decision-changed' });
-      await expect(editor.acceptRemote(undefined, compared)).rejects.toMatchObject({ code: 'decision-changed' });
-      expect(editor.getState().checkpoint.draft?.description).toBe('Later unsent description');
-      expect(h.server.value?.description).toBe('Different desktop description');
-      expect((await h.commits.list('owner'))[0]?.state).toBe('conflict');
-    } else {
-      await editor.acceptRemote();
-      expect(editor.getState().checkpoint.draft).toMatchObject({
-        description: 'Later unsent description', templates: [{ ...block, content: 'Desktop words' }],
+    await editor.acceptRemote();
+    expect(editor.getState().checkpoint.draft).toMatchObject({
+      description: 'Later unsent description', templates: [{ ...block, content: 'Desktop words' }],
+    });
+    await waitFor(() => expect(h.server.value?.description).toBe('Later unsent description'));
+    if (variant === 'timed') {
+      expect(h.server.value?.title).toBe('Later group title');
+      expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        groupTitleAction: expect.objectContaining({ before: original.title, after: 'Later group title', time }),
+      }));
+    }
+  } finally { engine.dispose(); }
+});
+
+it.each([
+  ['local', 'normal opening', false],
+  ['remote', 'explicit recovery', false],
+  ['local', 'normal opening after a newer saved block edit', true],
+  ['local', 'normal opening with independent typing after the first choice', false],
+  ['local', 'normal opening after descriptions converge', false],
+  ['local', 'normal opening after the stored block is removed', false],
+  ['local', 'normal opening with a private draft in another tab', false],
+  ['local', 'normal opening with typing during the final choice', false],
+  ['local', 'normal opening after local removal would race the review', false],
+] as const)('reopens the second group text comparison after choosing %s for the first: %s', async (firstChoice, reopening, moved) => {
+  const block = { id: 'template', type: 'custom', title: 'Block', status: 'filled', content: 'Opening words',
+    createdAt: 'now', updatedAt: 'now' };
+  const flow = [{ id: 'step', templateId: block.id, order: 1 }];
+  const value = { ...original, description: 'Opening description', templates: [block], flow };
+  const h = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  const engine = h.createBrowser().engine;
+  engine.setOwner('owner'); engine.setOnline(false);
+  const phoneWords = 'Phone block words', desktopWords = 'Desktop block words';
+  const phoneDescription = 'Phone description', desktopDescription = 'Desktop description';
+  try {
+    const editor = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'group', 'first-opening'));
+    await editor.commit(current => ({ ...current!, templates: [{ ...block, content: phoneWords }] }));
+    h.silentRemote({ templates: [{ ...block, content: desktopWords }] });
+    engine.setOnline(true); await engine.retry();
+    await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+    await editor.edit({ ...editor.getState().checkpoint.draft!, description: phoneDescription });
+    await h.remote({ description: desktopDescription, title: 'Unrelated desktop title' });
+    await waitFor(() => expect(editor.getState().checkpoint.remoteCandidate?.value?.description).toBe(desktopDescription));
+    const other = reopening.includes('another tab')
+      ? await engine.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'other-draft')) : undefined;
+    if (other) {
+      await other.edit({ ...other.getState().checkpoint.draft!, title: 'Private title in the other tab' });
+    }
+    const compared = editor.getState().checkpoint;
+    expect(readGroupFlowFieldConflict(compared)).toMatchObject({ field: 'content', mine: phoneWords, stored: desktopWords });
+    if (firstChoice === 'local') await editor.keepLocal(undefined, compared);
+    else await editor.acceptRemote(undefined, compared);
+    expect((await h.commits.list('owner'))[0]?.state).toBe('conflict');
+    expect(h.server.value).toMatchObject({ description: desktopDescription, templates: [{ ...block, content: desktopWords }] });
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+
+    if (other) {
+      await waitFor(() => expect(other.getState().checkpoint.groupTextReview?.separateDraft).toBe(true));
+      await expect(other.acceptRemote(undefined, other.getState().checkpoint)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(other.getState().checkpoint.draft?.title).toBe('Private title in the other tab');
+    }
+    if (reopening.includes('local removal')) {
+      const previous = editor.getState().checkpoint;
+      await expect(async () => editor.commit(current => ({ ...current!, flow: [], templates: [] })))
+        .rejects.toMatchObject({ code: 'resolve-version-first' });
+      expect(editor.getState().checkpoint.draft).toEqual(previous.draft);
+    }
+    const later = reopening.includes('independent typing');
+    const actionTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    if (later) {
+      await editor.edit({ ...editor.getState().checkpoint.draft!, status: 'active' },
+        undefined, { field: 'status', time: actionTime });
+    }
+    if (moved) {
+      await h.remote({ templates: [{ ...block, content: 'Desktop block changed again' }] });
+      await waitFor(() => expect(readGroupFlowFieldConflict(editor.getState().checkpoint))
+        .toMatchObject({ field: 'content', mine: phoneWords, stored: 'Desktop block changed again' }));
+    }
+    const converged = reopening.includes('converge');
+    const removed = reopening.includes('block is removed');
+    if (converged) {
+      await h.remote({ description: phoneDescription });
+      await waitFor(() => expect(readGroupFlowFieldConflict(editor.getState().checkpoint))
+        .toMatchObject({ field: 'complete' }));
+    }
+    if (removed) {
+      await h.remote({ templates: [], flow: [] });
+      await waitFor(() => expect(readGroupFlowFieldConflict(editor.getState().checkpoint))
+        .toMatchObject({ field: 'removedContent', mine: phoneWords, stored: null }));
+    }
+    editor.close({ flush: false }); await settleEngine();
+    await expect(engine.takeStoredVersion(resource)).rejects.toMatchObject({ code: 'decision-changed' });
+    const openingId = editorIdentity('tab-A', resource, 'group', 'new-opening');
+    const reopened = reopening === 'explicit recovery'
+      ? await engine.recoverEditor(resource, recoveryEditorIdentity(openingId, 'reviewed-copy'),
+        (await engine.listRecoverable(resource)).find(item => item.record.checkpoint.groupTextReview)!.id)
+      : await engine.openEditor(resource, openingId);
+    if (moved) {
+      await waitFor(() => expect(readGroupFlowFieldConflict(reopened.getState().checkpoint))
+        .toMatchObject({ field: 'content', mine: phoneWords, stored: 'Desktop block changed again' }));
+      await reopened.keepLocal(undefined, reopened.getState().checkpoint);
+    }
+    if (removed) {
+      await waitFor(() => expect(readGroupFlowFieldConflict(reopened.getState().checkpoint))
+        .toMatchObject({ field: 'removedContent' }));
+      await reopened.acceptRemote(undefined, reopened.getState().checkpoint);
+    }
+    if (converged) {
+      await waitFor(() => expect(readGroupFlowFieldConflict(reopened.getState().checkpoint)).toMatchObject({ field: 'complete' }));
+      await reopened.keepLocal(undefined, reopened.getState().checkpoint);
+      await waitFor(() => expect(h.server.value).toMatchObject({
+        description: phoneDescription, templates: [{ ...block, content: phoneWords }],
+      }));
+      expect(h.transport.send).toHaveBeenCalledTimes(2);
+      return;
+    }
+    await waitFor(() => expect(readGroupFlowFieldConflict(reopened.getState().checkpoint)).toMatchObject({
+      field: 'description', mine: phoneDescription, stored: desktopDescription,
+    }));
+    const remaining = reopened.getState().checkpoint;
+    if (removed) {
+      await reopened.keepLocal(undefined, remaining);
+      await waitFor(() => expect(h.server.value).toMatchObject({ description: phoneDescription, templates: [], flow: [] }));
+      expect(h.transport.send).toHaveBeenCalledTimes(2);
+      return;
+    }
+    const during = reopening.includes('during the final choice');
+    let lateEdit: Promise<void> | undefined;
+    if (during) {
+      const compareAndSet = h.commits.compareAndSetWithCheckpoint!.bind(h.commits);
+      jest.spyOn(h.commits, 'compareAndSetWithCheckpoint').mockImplementationOnce(async (...args) => {
+        const saved = await compareAndSet(...args);
+        lateEdit = reopened.edit({ ...reopened.getState().checkpoint.draft!, status: 'active' },
+          undefined, { field: 'status', time: actionTime });
+        return saved;
       });
-      await waitFor(() => expect(h.server.value?.description).toBe('Later unsent description'));
-      if (variant === 'timed') {
-        expect(h.server.value?.title).toBe('Later group title');
-        expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
-          groupTitleAction: expect.objectContaining({ before: original.title, after: 'Later group title', time }),
-        }));
-      }
+    }
+    if (firstChoice === 'local') await reopened.acceptRemote(undefined, remaining);
+    else await reopened.keepLocal(undefined, remaining);
+    await lateEdit;
+
+    await waitFor(() => expect(h.server.value).toMatchObject({
+      templates: [{ ...block, content: firstChoice === 'local' ? phoneWords : desktopWords }],
+      description: firstChoice === 'local' ? desktopDescription : phoneDescription,
+      title: 'Unrelated desktop title', flow,
+    }));
+    if (later) {
+      expect(h.server.value?.status).toBe('active');
+      expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        groupStatusAction: expect.objectContaining({ before: 'draft', after: 'active', time: actionTime }),
+      }));
+    }
+    if (during) {
+      expect(h.server.value?.status).toBe('draft');
+      expect(reopened.getState().checkpoint.draft?.status).toBe('active');
+      await reopened.save();
+      await waitFor(() => expect(h.server.value?.status).toBe('active'));
+      expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        groupStatusAction: expect.objectContaining({ before: 'draft', after: 'active', time: actionTime }),
+      }));
+    } else {
+      expect(h.transport.send).toHaveBeenCalledTimes(2);
     }
   } finally { engine.dispose(); }
 });

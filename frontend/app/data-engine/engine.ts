@@ -20,6 +20,7 @@ import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRe
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
+import { readGroupFlowTextChoice } from './groupTextReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
 import { submittedEditorCheckpoint } from './liveSubmittedWork';
@@ -38,7 +39,6 @@ import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
-import { readGroupFlowTextChoice } from './rowConflictDetails';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields } from './sermonFieldChoice';
 import { DataSession } from './session';
@@ -1893,7 +1893,8 @@ export class DataEngine {
       // The answer opens on its capture basis. Do not block opening a saved draft on a second
       // IndexedDB store, but a newly opened branched choice must wait for the known stored copy.
       const checkpoint = controller.getState().checkpoint;
-      let loadingBranchAnswer = Boolean(submittedCheckpoint && hasBranchedOrdinaryAnswer(Object.keys(checkpoint.pending), requests));
+      let loadingBranchAnswer = Boolean(checkpoint.groupTextReview
+        || (submittedCheckpoint && hasBranchedOrdinaryAnswer(Object.keys(checkpoint.pending), requests)));
       if (loadingBranchAnswer || (submittedCheckpoint && ordinaryAnswerCoverage(checkpoint, requests).councilRefusal)) {
         const observing = this.cachedSnapshotWithAcknowledgements(owner, generation, frozen).then(cached => {
           if (entry.closed || !this.current(owner, generation) || !cached) return;
@@ -1974,6 +1975,8 @@ export class DataEngine {
       const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
         const checkpoint = controller.getState().checkpoint;
+        if (checkpoint.groupTextReview) throw Object.assign(
+          new Error('Finish comparing the group fields before saving another action'), { code: 'resolve-version-first' });
         const rowVersion = action?.kind === 'service-order-flag' || action?.kind === 'council-assembly' ? action.flag
           : action?.kind === 'service-order-step-title' ? action.title
             : action?.kind === 'service-order-step-scripture' ? action.scripture
@@ -2151,7 +2154,11 @@ export class DataEngine {
       const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null) => {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
-        if (compared && !equalValues(controller.getState().checkpoint, compared)) {
+        const current = controller.getState().checkpoint;
+        if (current.groupTextReview && !compared) {
+          throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
+        }
+        if (compared && !equalValues(current, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime);
@@ -2445,15 +2452,15 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
         const resolved = controller.getState().checkpoint;
-        if ((preference || meeting || groupText || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
-          && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
+        if ((preference || meeting || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+          && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       } else {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (groupText && resolved.dirty) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

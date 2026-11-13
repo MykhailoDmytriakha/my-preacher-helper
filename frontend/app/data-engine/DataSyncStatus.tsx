@@ -41,6 +41,7 @@ export interface TextComparison {
   valueKind?: 'field' | 'removed-row';
   scopedChoice?: true;
   keepMineDisabled?: boolean;
+  completeReview?: true;
   actions?: { local: string; stored: string; confirmStored?: DiscardQuestionKey };
 }
 export interface DataSyncStatusProps {
@@ -186,7 +187,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const chooseStored = (callback: () => void | Promise<void>) => askBeforeDiscard(true, callback,
     () => currentSubject.current === subject && currentComparison.current === comparisonIdentity,
     conflictPresentation?.actions?.confirmStored ?? (comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined));
-  const conflictBanner = !deleting && status?.phase === 'conflict' && keep && accept;
+  const completeReview = comparison?.completeReview && status?.phase === 'conflict' && keep;
+  const conflictBanner = !completeReview && !deleting && status?.phase === 'conflict' && keep && accept;
   const repeatDeletion = () => {
     if (!keep) return;
     keepChecked(async () => {
@@ -204,15 +206,16 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
   const pendingDeletion = Boolean(status?.deleting && !trouble);
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
-  const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !(comparison && conflictBanner))));
+  const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !completeReview && !(comparison && conflictBanner))));
   const said = [pendingDeletion, showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (!said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   const content = <>
   <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
-    {comparison && <FieldComparison comparison={comparison} />}
-    {conflictBanner ? <SaveConflictBanner description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
+    {comparison && !completeReview && <FieldComparison comparison={comparison} />}
+    {completeReview ? <button type="button" className={buttonClass} disabled={busy}
+      onClick={() => keepChecked(completeReview)}>{t('dataSync.applyReviewedVersions')}</button> : conflictBanner ? <SaveConflictBanner description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
       keepMineLabel={conflictPresentation?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
       keepMineDisabled={comparison?.keepMineDisabled}
       takeTheirsLabel={conflictPresentation?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
@@ -225,9 +228,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {/* A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained). */}
     <OutdatedTabNotice refused={status?.phase === 'refused'} />
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
-    {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
-      {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
-      {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => chooseStored(accept))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
+    {((!completeReview && !conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
+      {!completeReview && !conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
+      {!completeReview && !conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => chooseStored(accept))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
       {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
     </div>}
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}

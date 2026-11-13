@@ -85,6 +85,11 @@ const recordSchema = z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(z.object({ path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema })).default([]),
+    groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(), decisions: z.array(z.object({
+      path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.null()]), stored: z.union([z.string(), z.number(), z.null()]),
+      side: z.enum(['local', 'remote']), row: z.record(z.string(), z.unknown()).optional(), removedBy: z.enum(['local', 'remote']).optional(),
+      linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
+    })), separateDraft: z.literal(true).optional() }).optional(),
     sourceNoteLinkRetry: sourceNoteLinkCapture.optional(),
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
@@ -123,6 +128,10 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];
   if (sourceLinks.some(links => links && (ref.collection !== 'sermons' || links.opening.sermonId !== ref.id
     || links.action.observedRevision !== links.opening.revision))) throw new Error('Source note checkpoint identity mismatch');
+  const groupTextReview = record.checkpoint.groupTextReview;
+  if (groupTextReview && (ref.collection !== 'groups' || !record.checkpoint.pending[groupTextReview.requestId])) {
+    throw new Error('Group text review checkpoint identity mismatch');
+  }
   if (ref.collection !== 'groups' && (record.retainedManualChoice?.groupStepPlacement
     || record.retainedManualChoice?.groupFieldsGeneration !== undefined || record.checkpoint.groupFlowStepPlacementRetry
     || record.checkpoint.groupTitleDraft || record.checkpoint.groupStatusDraft || record.checkpoint.groupBlockTitleDrafts
@@ -163,8 +172,13 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const retainedManualChoice = record.retainedManualChoice && {
     ...record.retainedManualChoice, base: ownedDocument(record.retainedManualChoice.base),
   };
+  const groupReview = groupTextReview && { ...groupTextReview, decisions: groupTextReview.decisions.map(decision => ({
+    ...decision, row: decision.row ? document(decision.row)! : undefined,
+    linkedSteps: decision.linkedSteps?.map(step => document(step)!),
+  })) };
   return clone({ ...record, retainedManualChoice, prepared,
-    checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts } });
+    checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent),
+      pending, conflicts, groupTextReview: groupReview } });
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {

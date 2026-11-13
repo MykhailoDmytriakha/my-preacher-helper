@@ -54,6 +54,7 @@ import type { CouncilFieldActions } from './councilFieldAction';
 import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation, SermonPlanModeObservation, SermonThesisObservations } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
+import type { GroupTextReviewStage } from './groupTextReview';
 import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservations } from './prayerStatusAction';
@@ -93,6 +94,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   retainedAfterChoice?: true;
   /** Confirmed order chosen for a refused placement, also needed by other and closed editors. */
   placementChoiceStored?: ResourceSnapshot;
+  groupTextReview?: GroupTextReviewStage;
   owner: string;
   editorId: string;
   editGeneration: number;
@@ -951,7 +953,7 @@ export class CommitQueue {
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
     project: (saved: CommitRequest[]) => ChoiceCheckpoint,
-    review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string>; placementChoice?: ReadonlyMap<string, ResourceSnapshot> }
+    review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string>; placementChoice?: ReadonlyMap<string, ResourceSnapshot>; groupTextReview?: true }
       | { assertScope: (requests: readonly CommitRequest[]) => void }): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
@@ -961,6 +963,9 @@ export class CommitQueue {
       || !records.some(record => record.id === root.id && record.revision === root.revision
         && ['conflict', 'refused'].includes(record.state))))) {
       throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
+    }
+    if (records.some(record => record.groupTextReview) && !reviewed?.groupTextReview) {
+      throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
     }
     const selectedManual = records.filter(record => chosen.has(record.id) && readManualScopeIdentity(record.editorId));
     if (!reviewed && selectedManual.some(root => {
@@ -991,6 +996,23 @@ export class CommitQueue {
     this.requested = true;
     const projected = placementByRequest.size ? orderCommitRequests(saved) : saved;
     projected.forEach(request => this.emit(request));
+  }
+
+  async stageGroupTextReview(root: CommitRequest, stage: GroupTextReviewStage,
+    project: (saved: CommitRequest) => EditorRecord): Promise<void> {
+    if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
+    const { owner, generation, records } = await this.planCancellation('', [root.id], false);
+    if (records.length !== 1 || records[0].id !== root.id || records[0].revision !== root.revision
+      || root.state !== 'conflict' || root.baseline.resource.collection !== 'groups') {
+      throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
+    }
+    const [saved] = await this.options.store.compareAndSetWithCheckpoint(
+      [{ previous: root, next: { ...root, groupTextReview: stage } }], ([request]) => {
+        this.assertCurrent(owner, generation);
+        return project(request);
+      }, [root.id]);
+    this.assertCurrent(owner, generation);
+    this.emit(saved);
   }
 
   /** Only the action owner may retire a relation and its dependent local work. */
@@ -1050,6 +1072,9 @@ export class CommitQueue {
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, wholeAction);
     if (onlyThoseRequests && records.some(record => !additionalRequestIds.includes(record.id))) {
       throw Object.assign(new Error('A later Save depends on this assignment'), { code: 'membership-stage-changed' });
+    }
+    if (records.some(record => record.groupTextReview && record.state === 'conflict')) {
+      throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
     }
     this.requested = true;
     if (wholeAction) return cancelActionCommits(orderCommitRequests(records), additionalRequestIds, this.atomicContext(owner, generation));

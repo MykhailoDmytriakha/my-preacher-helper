@@ -545,7 +545,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
         <button type="button" className={`mt-3 ${SECONDARY_BUTTON}`} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
       </div>);
   }
-  if (entry.actionResolutionRequired) {
+  if (entry.actionResolutionRequired || entry.records.some(({ checkpoint }) => checkpoint.groupTextReview)) {
     return notice(<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} />);
   }
   if (entry.screen) {

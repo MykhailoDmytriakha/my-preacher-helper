@@ -23,6 +23,7 @@ import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } fro
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { retryGroupStepPlacement } from './groupStepPlacement';
+import { groupTextDecision, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, writeGroupFlowTextChoice } from './groupTextReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -35,7 +36,6 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
-import { readGroupFlowTextChoice, writeGroupFlowTextChoice } from './rowConflictDetails';
 import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
@@ -301,7 +301,7 @@ export class EditorController {
     this.session.edit(value, shown, autosaveStamp);
     this.durable = false;
     this.emit();
-    return this.enqueue(() => this.persist());
+    return this.enqueue(() => this.persistGroupTextEdit());
   }
 
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<void> {
@@ -619,6 +619,36 @@ export class EditorController {
       ...(this.recoveryOrigins.length ? { recoveryOrigins: this.recoveryOrigins.map(source => ({ ...source })) } : {}) };
   }
 
+  private async persistGroupTextEdit(): Promise<void> {
+    const record = this.record();
+    const { groupTextReview: review, ...checkpoint } = record.checkpoint;
+    if (!review || review.separateDraft || this.pendingCaptures.capturing) return this.persist();
+    const root = (await this.options.commits?.list())?.find(request => request.id === review.requestId);
+    this.assertCurrent();
+    if (root?.state !== 'conflict' || root.revision !== review.revision) return this.persist();
+    if (equalValues(root.groupTextReview?.checkpoint.draft, checkpoint.draft)) return this.persist();
+    let projected: EditorRecord | undefined;
+    try {
+      await this.options.commits!.stageGroupTextReview(root, { checkpoint, decisions: review.decisions }, saved => {
+        this.assertCurrent();
+        projected = { ...record, checkpoint: { ...checkpoint, groupTextReview: { ...review, revision: saved.revision } } };
+        return projected;
+      });
+    } catch (error) {
+      if (!['commit-changed', 'decision-changed'].includes(failureCode(error) ?? '')) throw error;
+      return this.persist();
+    }
+    if (!projected) throw new Error('Group text review checkpoint was not captured');
+    const current = this.session.checkpoint();
+    this.session = DataSession.restore({ ...current, groupTextReview: projected.checkpoint.groupTextReview });
+    if (current.editGeneration !== checkpoint.editGeneration) return this.persistGroupTextEdit();
+    this.held = true;
+    this.durable = true;
+    this.error = null;
+    this.errorCode = null;
+    this.emit();
+  }
+
   private async persist(): Promise<void> {
     if (this.pendingCaptures.capturing) return;
     const record = this.record();
@@ -799,6 +829,32 @@ export class EditorController {
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
     const shown = this.record();
     const ordinary = !selection && !correction ? await this.ordinaryAnswerFor(cancelled) : undefined;
+    const groupReview = ordinary && readGroupTextReview(shown.checkpoint);
+    const reviewingGroup = Boolean(groupReview && (shown.checkpoint.groupTextReview || groupReview.remaining.length > 1));
+    if (reviewingGroup || shown.checkpoint.groupTextReview) {
+      if (!expected || !ordinary || ordinary.scope.length !== 1 || !groupReview || (shown.checkpoint.groupTextReview
+        && (ordinary.first.id !== shown.checkpoint.groupTextReview.requestId || ordinary.first.revision !== shown.checkpoint.groupTextReview.revision))) {
+        throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
+      }
+      if (groupReview.remaining.length > 1) {
+        const { groupTextReview: _review, ...checkpoint } = shown.checkpoint;
+        const decisions = [...groupReview.decisions, groupTextDecision(groupReview.remaining[0], choice)];
+        let projected: EditorRecord | undefined;
+        await this.options.commits!.stageGroupTextReview(ordinary.first, { checkpoint, decisions }, saved => {
+          this.assertCurrent();
+          this.assertRecoveryChoice(expected);
+          if ([...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
+            throw Object.assign(new Error('Finish the later Save before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
+          }
+          projected = { ...shown, checkpoint: { ...checkpoint, groupTextReview: { requestId: saved.id, revision: saved.revision, decisions } } };
+          return projected;
+        });
+        if (!projected) throw new Error('Group text review checkpoint was not captured');
+        await this.applyChoiceProjection(shown.checkpoint, projected, captures, undefined, true);
+        await this.persistGroupTextEdit();
+        return;
+      }
+    }
     const sourceNoteComparison = readSourceNoteLinkComparison(shown.checkpoint);
     const sourceNoteTail = !selection && !correction && sourceNoteComparison && ordinary
       ? sourceNoteChoiceTail(ordinary, shown.checkpoint.remoteCandidate) : undefined;
@@ -849,7 +905,7 @@ export class EditorController {
         const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
-        const groupText = !selection && readGroupFlowTextChoice(decided, local);
+        const groupText = !reviewingGroup && !selection && readGroupFlowTextChoice(decided, local);
         const groupDraft = groupText && writeGroupFlowTextChoice(local, groupText, 'before');
         const groupRemainder = groupDraft && decided.confirmed.value && decided.remoteCandidate?.value
           ? mergeDocumentFields(decided.confirmed.value, groupDraft, decided.remoteCandidate.value) : undefined;
@@ -864,6 +920,24 @@ export class EditorController {
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
+        if (reviewingGroup) {
+          const review = readGroupTextReview(decided);
+          if (!review || review.remaining.length > 1 || !ordinary?.first.groupTextReview) {
+            throw Object.assign(new Error('The shown group text changed'), { code: 'decision-changed' });
+          }
+          const decisions = review.remaining.length
+            ? [...review.decisions, groupTextDecision(review.remaining[0], choice)] : review.decisions;
+          const chosen = projectGroupTextDecisions(review, decisions);
+          if (!chosen) throw Object.assign(new Error('The reviewed group field changed'), { code: 'decision-changed' });
+          session.acceptRemote();
+          session.clearGroupTextReview();
+          session.edit(chosen);
+          session.retainUnreviewedAutosaveActions(decided, review.fields);
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint());
+          if (replacement) session.applyCommit(replacement);
+          projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
+          return { editorRecords: [projected], manualRecoveries: [], replacements: replacement ? [replacement] : [] };
+        }
         const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
           && source!.pending[request.id] && request.serviceOrderStepPlacement);
         const selectedStepMove = stepRequest?.serviceOrderStepPlacement;
@@ -1108,10 +1182,10 @@ export class EditorController {
         const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined);
         return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedPlacementTail ? [retainedPlacementTail] : []], replacements };
-      }, ordinary ? { roots: [ordinary.first], ...((sourceNoteTail || placeTail) && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }) }
+      }, ordinary ? { roots: [ordinary.first], ...((sourceNoteTail || placeTail) && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }), ...(reviewingGroup && { groupTextReview: true as const }) }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
-    await this.applyChoiceProjection(source, projected, captures, anchoredChoice);
+    await this.applyChoiceProjection(source, projected, captures, reviewingGroup ? ordinary?.first.id : anchoredChoice);
     await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);
   }
 
@@ -1131,7 +1205,7 @@ export class EditorController {
   }
 
   private async applyChoiceProjection(source: SessionCheckpoint, projected: EditorRecord, captures: ReadonlySet<object>,
-    anchoredChoice?: string): Promise<void> {
+    anchoredChoice?: string, preserveAnswer = false): Promise<void> {
     this.assertCurrent();
     const current = this.session.checkpoint();
     const laterTyping = current.editGeneration !== source.editGeneration;
@@ -1147,18 +1221,19 @@ export class EditorController {
         source.draft, current.draft, projected.checkpoint.draft,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
       session.retainCouncilTopicReview(merged.conflicts);
+      if (preserveAnswer) session.retainUnreviewedAutosaveActions(current, []);
     }
     this.session = session;
     this.completedCommits = projected.completedCommits ?? [];
     this.pendingCaptures.retire(captures);
-    this.result = null;
+    if (!preserveAnswer) this.result = null;
     this.held = isRecoverableCheckpoint(projected);
     this.clearedCommits = this.completedCommits.length;
     this.durable = !laterTyping;
     this.error = null;
     this.errorCode = null;
     this.emit();
-    if (laterTyping) await this.persist();
+    if (laterTyping && !preserveAnswer) await this.persist();
   }
 
   private async retainTypingDuringPlacementChoice(requestId: string, base: DocumentData, source: SessionCheckpoint,

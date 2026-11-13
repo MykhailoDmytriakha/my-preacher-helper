@@ -12,14 +12,22 @@ const fields = {
   duration: 'groupFlow.editor.durationLabel',
   content: 'groupFlow.editor.contentLabel',
   notes: 'groupFlow.editor.notesLabel',
+  description: 'workspaces.groups.form.description',
+  title: 'workspaces.groups.form.title',
+  groupStatus: 'workspaces.series.form.status',
+  removedContent: 'groupFlow.editor.contentLabel',
+  removedNotes: 'groupFlow.editor.notesLabel',
 };
 
 type Translate = (key: string, values?: Record<string, string>) => string;
 
 export function groupFlowFieldText(t: Translate, field: keyof typeof fields, value: string | number | null): string {
   if (field === 'duration') return String(storedFieldValue(t, 'groups.flow', 'durationMin', value));
+  if (field === 'groupStatus') return t('workspaces.series.form.statuses.' + value);
   if (field === 'status') return t('groupFlow.status.' + value);
-  if (field === 'content' || field === 'notes') return typeof value === 'string' && value ? value : t('dataSync.emptyField');
+  if (['content', 'notes', 'description', 'title', 'removedContent', 'removedNotes'].includes(field)) {
+    return typeof value === 'string' && value ? value : t('dataSync.emptyField');
+  }
   return typeof value === 'string' && value ? value : t(field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName');
 }
 
@@ -36,6 +44,15 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   // A common answer with queued descendants must use the document choice, which retains those saves.
   if (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length)) return undefined;
   const { field, mine, stored, identity } = comparison;
-  return { identity, title: t(fields[field]), mine: groupFlowFieldText(t, field, mine), stored: groupFlowFieldText(t, field, stored),
-    valueKind: 'field', scopedChoice: true };
+  if (field === 'complete') return { identity, mine: '', stored: '', completeReview: true };
+  const removedBy = 'removedBy' in comparison ? comparison.removedBy : undefined;
+  const label = t(fields[field]);
+  const row = 'rowTitle' in comparison && (comparison.rowTitle || comparison.rowId);
+  const title = row ? (comparison.rowPosition ? comparison.rowPosition + '. ' : '') + row + ' · ' + label : label;
+  return { identity, title,
+    mine: removedBy === 'local' ? t('dataSync.groupRowRemovedLocally') : groupFlowFieldText(t, field, mine),
+    stored: removedBy === 'remote' ? t('dataSync.groupRowRemoved') : groupFlowFieldText(t, field, stored),
+    valueKind: 'field', scopedChoice: true, keepMineDisabled: removedBy === 'remote',
+    ...(removedBy === 'remote' && { actions: { local: t('dataSync.useLocalVersion'), stored: t('dataSync.useStoredVersion'),
+      confirmStored: 'dataSync.confirmStoredGroupRowRemoval' as const } }) };
 }

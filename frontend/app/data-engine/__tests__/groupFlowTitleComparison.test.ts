@@ -1,3 +1,4 @@
+import { groupTextDecision, projectGroupTextDecisions, readGroupTextReview } from '../groupTextReview';
 import { readGroupFlowFieldConflict } from '../rowConflictDetails';
 import { DataSession } from '../session';
 
@@ -42,6 +43,38 @@ describe('group flow title comparison', () => {
     });
     checkpoint.draft.description = 'Separate local edit';
     expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ mine: 'Phone words', stored: 'Desktop words' });
+  });
+
+  it.each(['local', 'remote'] as const)('keeps the template and its last step together when choosing %s', side => {
+    const other = { ...template, id: 'other', title: template.title };
+    const otherStep = { ...step, id: 'other-step', templateId: other.id, order: 2 };
+    const last = { ...template, id: 'last' };
+    const lastStep = { ...step, id: 'last-step', templateId: last.id, order: 3 };
+    const initial = { ...value, templates: [template, other, last], flow: [step, otherStep, lastStep] };
+    const checkpoint = new DataSession({ ...opening, value: initial }).checkpoint();
+    const local = { ...initial, templates: [{ ...template, content: 'Local block' }, last], flow: [step, { ...lastStep, order: 2 }] };
+    const remoteOther = { ...other, content: 'Stored other block' };
+    checkpoint.draft = local;
+    checkpoint.pending.save = { generation: 1, value: local };
+    checkpoint.remoteCandidate = { ...opening, metadata: { ...metadata, revision: 2 },
+      value: { ...initial, templates: [{ ...template, content: 'Stored block' }, remoteOther, last] } };
+    checkpoint.conflicts = [{
+      path: ['templates', 'id:block', 'content'], base: { exists: true, value: template.content },
+      mine: { exists: true, value: 'Local block' }, theirs: { exists: true, value: 'Stored block' },
+    }];
+    const first = readGroupTextReview(checkpoint)!;
+    expect(first.remaining).toHaveLength(2);
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ rowTitle: template.title, rowPosition: 1 });
+    const selected = groupTextDecision(first.remaining[0], 'local');
+    checkpoint.groupTextReview = { requestId: 'save', revision: 1, decisions: [selected] };
+    const next = readGroupTextReview(checkpoint)!;
+    expect(next.remaining[0]).toMatchObject({ removedBy: 'local', stored: 'Stored other block' });
+
+    const projected = projectGroupTextDecisions(next, [selected, groupTextDecision(next.remaining[0], side)]);
+    expect(projected).toMatchObject({
+      templates: [{ ...template, content: 'Local block' }, ...(side === 'remote' ? [remoteOther] : []), last],
+      flow: [step, ...(side === 'remote' ? [otherStep, lastStep] : [{ ...lastStep, order: 2 }])],
+    });
   });
 
   it('keeps an explicit step clear visible and declines a replacement row', () => {

@@ -224,6 +224,9 @@
     "readerNotices": "Save notices",
     "emptyField": "No text",
     "versionComparison": "Compare field versions",
+    "applyReviewedVersions": "Apply reviewed versions",
+    "groupRowRemoved": "This block or step was removed on your other device.",
+    "groupRowRemovedLocally": "This block or step was removed on this device.",
     "fieldVersionChanged": "This field has another version saved from your other device. Compare the versions above and choose which to keep.",
     "noteFieldsChanged": "Other versions of these fields were saved from your other device. Compare the versions above and choose which to keep.",
     "referenceComparisonUnavailable": "The versions have changed. Your draft is kept on this device while the app checks what can be compared.",
@@ -261,6 +264,12 @@
       "title": "Remove this point?",
       "description": "The saved version removes this point. Your other changes are kept.",
       "confirm": "Remove point",
+      "keep": "Keep reviewing"
+    },
+    "confirmStoredGroupRowRemoval": {
+      "title": "Keep this block or step removed?",
+      "description": "This removes the row, including the changes shown here. Other choices and unrelated edits are kept.",
+      "confirm": "Keep removed",
       "keep": "Keep reviewing"
     },
     "confirmStoredField": {

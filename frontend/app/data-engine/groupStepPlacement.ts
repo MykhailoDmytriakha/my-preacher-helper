@@ -88,7 +88,7 @@ export function mergeEditsAfterAnchoredPlacement(source: SessionCheckpoint, base
 }
 
 export function carryAnchoredDraftChronology(source: SessionCheckpoint, target: SessionCheckpoint,
-  reviewed: readonly ConflictDetail[] = []): void {
+  reviewed: readonly Pick<ConflictDetail, 'path'>[] = []): void {
   const keep = (path: readonly string[]) => !reviewed.some(conflict =>
     conflict.path.slice(0, path.length).every((part, index) => part === path[index]));
   carryAutosaveFieldDrafts(source, target, keep);
