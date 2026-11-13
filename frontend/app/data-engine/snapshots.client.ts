@@ -1,8 +1,10 @@
 'use client';
 
-import { entries, get } from 'idb-keyval';
+import { get } from 'idb-keyval';
 
 import { watchedStore } from '@/utils/deviceStorage';
+import { TechnicalFailure } from '@/utils/failureCode';
+import { createStorageTransaction } from '@/utils/storageTransaction';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
 
@@ -48,13 +50,30 @@ export function createIndexedDbSnapshots(): CollectionSnapshotStore {
       return value === undefined ? undefined : validate(owner, resource, value);
     },
     async list(owner, collection) {
-      const rows = await entries<string, unknown>(database());
+      // Every canonical key starts with this exact encoded owner/collection and a comma.
+      // The next code unit after ',' is '-': the exclusive bound includes every ID suffix.
+      const prefix = JSON.stringify([owner, collection]).slice(0, -1) + ',';
+      const range = IDBKeyRange.bound(prefix, prefix.slice(0, -1) + '-', false, true);
+      // List answers only on transaction completion; an abort after the last request answer rejects.
+      // Issue both reads up front: no request callback continues the transaction across a page freeze.
+      const rows = await createStorageTransaction(database)<Array<[IDBValidKey, unknown]>>('readonly', (store, read, done) => {
+        let keys: IDBValidKey[] | undefined, values: unknown[] | undefined;
+        const pair = () => {
+          if (!keys || !values) return;
+          if (keys.length !== values.length) throw new TechnicalFailure('Snapshot storage returned mismatched keys and values');
+          done(keys.map((key, index) => [key, values![index]]));
+        };
+        read(store.getAllKeys(range), result => { keys = result; pair(); });
+        read(store.getAll(range), result => { values = result; pair(); });
+      });
       const snapshots: ResourceSnapshot[] = [];
       for (const [storedKey, value] of rows) {
+        if (typeof storedKey !== 'string') continue;
         let identity: unknown;
         try { identity = JSON.parse(storedKey); } catch { continue; }
         if (!Array.isArray(identity) || identity.length !== 3
-          || identity[0] !== owner || identity[1] !== collection || typeof identity[2] !== 'string') continue;
+          || identity[0] !== owner || identity[1] !== collection || typeof identity[2] !== 'string'
+          || JSON.stringify(identity) !== storedKey) continue;
         snapshots.push(validate(owner, { collection, id: identity[2] }, value));
       }
       return snapshots;
