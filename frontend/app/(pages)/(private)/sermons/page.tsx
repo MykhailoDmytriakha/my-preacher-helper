@@ -86,16 +86,8 @@ export default function SermonsPage() {
     try { return localStorage.getItem(LS_IN_TAGS) !== "false"; } catch { return true; }
   });
 
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-
-  // Auto-expand search if there's a pre-filled query on load
-  useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      setIsSearchExpanded(true);
-    }
-    // Only run on init to handle search queries coming from URL
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const isSearchExpanded = isSearchFocused || Boolean(searchQuery.trim());
 
   // Persist preferences to localStorage
   useEffect(() => { try { localStorage.setItem(LS_SORT, sortOption); } catch { } }, [sortOption]);
@@ -241,11 +233,9 @@ export default function SermonsPage() {
           <div className="flex items-center gap-2">
             {/* Collapsible Search */}
             <div className="relative group/search"
-              onFocus={() => setIsSearchExpanded(true)}
+              onFocus={() => setIsSearchFocused(true)}
               onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node) && !searchQuery.trim()) {
-                  setIsSearchExpanded(false);
-                }
+                if (!e.currentTarget.contains(e.relatedTarget)) setIsSearchFocused(false);
               }}
             >
               <form
@@ -262,10 +252,7 @@ export default function SermonsPage() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSearchExpanded(true);
-                    document.getElementById('dashboard-search-input')?.focus();
-                  }}
+                  onClick={() => searchInputRef.current?.focus()}
                   className={`flex-shrink-0 w-10 h-10 flex items-center justify-center transition-colors 
                     ${isSearchExpanded ? 'text-blue-500' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl'}`}
                   aria-label={searchSermonsLabel}
@@ -289,7 +276,10 @@ export default function SermonsPage() {
                   {searchQuery && (
                     <button
                       type="button"
-                      onClick={() => setSearchQuery("")}
+                      onClick={() => {
+                        searchInputRef.current?.focus();
+                        setSearchQuery('');
+                      }}
                       aria-label={t('dashboard.clearSearch')}
                       className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >

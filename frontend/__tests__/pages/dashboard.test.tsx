@@ -462,6 +462,24 @@ describe('Sermons Page', () => {
       }
     });
 
+    it('shows the restored search when Back returns to a filtered list', async () => {
+      render(<SermonsPage />);
+      const input = screen.getByRole('searchbox', { name: 'Search sermons...' });
+      expect(input).toHaveAttribute('tabindex', '-1');
+
+      window.history.replaceState(null, '', '/sermons?q=faith');
+      fireEvent.popState(window);
+      await waitFor(() => expect(screen.queryByTestId('sermon-card-3')).not.toBeInTheDocument());
+      expect(input).toHaveValue('faith');
+      expect(input).toHaveAttribute('tabindex', '0');
+      expect(screen.getByRole('button', { name: 'dashboard.clearSearch' })).toBeInTheDocument();
+
+      window.history.replaceState(null, '', '/sermons?tab=all');
+      fireEvent.popState(window);
+      expect(input).toHaveValue('');
+      expect(input).toHaveAttribute('tabindex', '-1');
+    });
+
     it('keeps the authored search in the URL and clears only its query parameter', () => {
       window.history.replaceState(null, '', '/sermons?tab=all#saved-position');
       mockUseSearchParams.mockReturnValue(new URLSearchParams(window.location.search));
