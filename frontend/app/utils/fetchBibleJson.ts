@@ -23,7 +23,13 @@ export async function fetchBibleJson(fetchFn: typeof fetch, url: string, deadlin
     return await Promise.race([
       (async () => {
         const response = await fetchFn(url, controller ? { signal: controller.signal } : undefined);
-        const data: unknown = response.ok ? await response.clone().json().catch(() => undefined) : undefined;
+        if (!response.ok) return { response, data: undefined };
+        const data: unknown = await response.clone().json().catch((error: unknown) => {
+          if (!(error instanceof TypeError)) return undefined;
+          // Headers arrived, but the stream failed. Use the original request's connectivity report.
+          controller?.abort(error);
+          throw error;
+        });
         return { response, data };
       })(),
       deadline,

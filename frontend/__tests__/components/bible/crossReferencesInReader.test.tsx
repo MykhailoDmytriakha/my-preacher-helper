@@ -144,6 +144,20 @@ describe('cross references in the Bible reader', () => {
     expect(fetchIndex).toHaveBeenCalledTimes(2);
   });
 
+  it('reports an interrupted response body and recovers the reference index', async () => {
+    const interrupted = { ...answer(ruthSet), json: async () => { throw new TypeError('Response body terminated'); } };
+    const fetchIndex = jest.fn().mockResolvedValueOnce(interrupted).mockResolvedValueOnce(answer(ruthSet));
+    global.fetch = fetchIndex as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+    await waitFor(() => expect(fetchIndex).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getConnectivityStatus()).toBe(false));
+    expect(navigator.onLine).toBe(true);
+
+    act(() => reportServerReachable());
+    await waitFor(() => expect(result.current.set).toEqual(ruthSet));
+    expect(fetchIndex).toHaveBeenCalledTimes(2);
+  });
+
   it('retries a body deadline after a newer success leaves health continuously true', async () => {
     jest.useFakeTimers();
     try {

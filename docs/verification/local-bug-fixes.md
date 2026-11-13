@@ -8970,3 +8970,14 @@ Both branches changed the loaders for the same reports. The shared retry gate no
 The final build `nhGnGgte7AJNM3a06o4Nt` passed five localhost scenarios in installed headless Chrome with local Auth and Firestore. Genesis 2:25's open sheet filled all 17 initially missing texts at 390 and 1280 px. The badge returned in the reader at both widths and in a verse window opened from a study note. Both layouts were inspected. All owned profiles and listening ports closed. Three late-failure tests failed before the final retry correction and pass now. The focused run passed 62 tests. Full Jest passed 15,074 tests in 1,193 suites, with 17 tests and three suites skipped. TypeScript, the production build and scoped ESLint passed. Full source lint found zero errors and 209 warnings. Evidence is at `artifacts/main-bible-recovery-20261112`.
 
 The new tracker entry `BUG-20261112-bible-file-reads-left-outside-reconnect` follows other asset consumers and an interrupted response body. The production smoke tests for the link list and the badge are recorded in their earlier entries.
+
+
+## BUG-20261112-bible-file-reads-left-outside-reconnect · Interrupted response body
+
+In Bible → Genesis 2:25, a local proxy passed the index's HTTP 200 and first bytes, then closed that response. The reader kept showing Genesis. On baseline `nhGnGgte7AJNM3a06o4Nt` the reference badge stayed absent while Chrome remained online. The regression failed because the app still considered the server reachable after the body stream failed.
+
+The shared JSON loader now distinguishes a body transport rejection from invalid JSON. It reports the interruption with the original request's connection sequence and leaves the partial response out of the cache. The established health check and retry reopen the file in the same page. Invalid JSON continues through the existing invalid-content path.
+
+Installed Chrome on `iP8feZLUl3KPPqc5VwTsa` passed the matched proxy scenario at 390 and 1280 px with an active worker and local Auth and Firestore. Each interrupted response was followed by health HTTP 204 and a successful index request. The badge opened all 19 links without a reload. I inspected the original and final screenshots. The four profiles and all nine listeners closed. All 107 related tests, scoped ESLint, TypeScript, the production build and independent review passed. Full Jest passed 15,075 tests in 1,193 suites, with 17 tests and three suites skipped. Evidence is at `artifacts/bible-body-recovery-20261112`.
+
+This closes the interrupted-body row in the tracker. The other Bible file consumers remain open. After authorized deployment, confirm the released build and open Genesis 2:25 in a session without its cached index. Check that the badge appears and opens the list. Keep the controlled HTTP 200 interruption and timing proof on localhost.
