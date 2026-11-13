@@ -474,8 +474,12 @@ function indexed(values: Json[]): Map<string, Json> | null {
 
 function mergedOrder(base: Map<string, Json>, mine: Map<string, Json>, theirs: Map<string, Json>, keys: string[], mineMoved: boolean): string[] | null {
   const surviving = new Set(keys);
-  const preferred = [...(mineMoved ? mine.keys() : theirs.keys())].filter(key => surviving.has(key));
-  for (const key of keys) if (!preferred.includes(key)) preferred.push(key);
+  const mineKeys = [...mine.keys()], theirKeys = [...theirs.keys()];
+  const preferred = (mineMoved ? mineKeys : theirKeys).filter(key => surviving.has(key));
+  // The same ID sequence already satisfies both sides; no ordering graph is needed.
+  if (equalValues(mineKeys, theirKeys)) return preferred;
+  const preferredKeys = new Set(preferred);
+  for (const key of keys) if (!preferredKeys.has(key)) { preferred.push(key); preferredKeys.add(key); }
   const edges = new Map(preferred.map(key => [key, new Set<string>()]));
   const constrain = (sequence: string[], insertionsOnly: boolean) => {
     const kept = sequence.filter(key => surviving.has(key));
@@ -697,8 +701,9 @@ function mergeArrays(base: Json[], mine: Json[], theirs: Json[], path: string[])
   const b = indexed(base), m = indexed(mine), t = indexed(theirs);
   if (!b || !m || !t) return null;
   const retained = [...b.keys()].filter(key => m.has(key) && t.has(key));
-  const mineOrder = [...m.keys()].filter(key => retained.includes(key));
-  const theirOrder = [...t.keys()].filter(key => retained.includes(key));
+  const retainedKeys = new Set(retained);
+  const mineOrder = [...m.keys()].filter(key => retainedKeys.has(key));
+  const theirOrder = [...t.keys()].filter(key => retainedKeys.has(key));
   const mineMoved = !equalValues(mineOrder, retained), theirsMoved = !equalValues(theirOrder, retained);
   if (mineMoved && theirsMoved && !equalValues(mineOrder, theirOrder)) return null;
   const order = [...new Set([...(mineMoved ? m.keys() : t.keys()), ...m.keys(), ...t.keys()])];
