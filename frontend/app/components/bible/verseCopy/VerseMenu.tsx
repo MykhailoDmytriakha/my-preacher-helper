@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Compone
 import { createPortal } from 'react-dom';
 
 
-import { AnalysisIcon, CommentIcon } from '@/components/Icons';
+import { AnalysisIcon, CommentIcon, ParagraphIcon } from '@/components/Icons';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -13,7 +13,7 @@ import { VERSE_TEXT_STYLE } from '../BookRibbon';
 
 import type { VerseCopy, VerseMenuAt } from './useVerseCopy';
 
-/** The verse's comment door (case 2026-10-12-block-diagram, 3.2): «Комментарий», or «Изменить комментарий» where one stands. */
+/** A verse's door to one kind of comment: «Комментарий» or «Абзац», «Изменить …» where one of that kind starts at the verse. */
 export type VerseComment = {
   labelOf: (verse: { chapter: number; verse: number }) => string;
   open: (verse: { chapter: number; verse: number }, opener?: HTMLElement | null) => void;
@@ -75,7 +75,7 @@ function placeMenu(at: VerseMenuAt, menu: DOMRect, card: DOMRect | null): Spot {
   return { menuTop, menuLeft, cardTop, cardLeft, cardWidth };
 }
 
-function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: VerseMenuAt; comment?: VerseComment; analysis: boolean }) {
+function OpenVerseMenu({ copy, at, comment, paragraph, analysis }: { copy: VerseCopy; at: VerseMenuAt; comment?: VerseComment; paragraph?: VerseComment; analysis: boolean }) {
   const { t } = useTranslation();
   const { closeMenu } = copy;
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -120,6 +120,8 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
   const links = copy.linksOf(verse);
   const label = copy.labelOf(verse);
   const shown = spot ? 'visible' : 'hidden';
+  const divider = <div aria-hidden="true" className={at.touch ? 'h-2 bg-gray-100 dark:bg-black/30' : 'mx-1.5 my-1 h-px bg-gray-100 dark:bg-gray-700'} />;
+  const door = (kind: VerseComment) => choose(() => { closeMenu(); if (at.opener) kind.open(verse, at.opener); else kind.open(verse); });
   return createPortal(
     // No system selection or callout over the menu: the lifted verse stands outside the text's card, and the owner's iPad put its
     // selection handle on it (31.10).
@@ -149,7 +151,7 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
         role="menu"
         aria-label={t('bible.copy.menu', { place: label })}
         onKeyDown={arrows}
-        className={`fixed overflow-hidden shadow-2xl ring-1 ring-gray-900/10 dark:ring-white/10 ${at.touch
+        className={`fixed max-h-[calc(100dvh-16px)] overflow-y-auto shadow-2xl ring-1 ring-gray-900/10 dark:ring-white/10 ${at.touch
           ? 'w-64 rounded-2xl bg-white/95 dark:bg-gray-800/95'
           : 'w-72 rounded-xl bg-white p-1.5 dark:bg-gray-800'}`}
         style={{ top: spot?.menuTop ?? at.y, left: spot?.menuLeft ?? at.x, visibility: shown }}
@@ -162,7 +164,7 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
         )}
         <MenuItem icon={DocumentDuplicateIcon} label={t('bible.copy.copy')} strong touch={at.touch} onSelect={choose(() => { void copy.copy([verse], 'quote'); })} />
         {copy.canShare ? <MenuItem icon={ArrowUpOnSquareIcon} label={t('bible.copy.share')} touch={at.touch} onSelect={choose(() => { void copy.share([verse], 'quote'); })} /> : null}
-        <div aria-hidden="true" className={at.touch ? 'h-2 bg-gray-100 dark:bg-black/30' : 'mx-1.5 my-1 h-px bg-gray-100 dark:bg-gray-700'} />
+        {divider}
         <MenuItem icon={CheckCircleIcon} label={t('bible.copy.several')} touch={at.touch} onSelect={choose(() => copy.startPicking(verse, at.touch))} />
         {links !== null ? (
           <MenuItem
@@ -172,9 +174,10 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
             onSelect={choose(() => copy.openLinks(verse))}
           />
         ) : null}
-        {comment ? (
-          <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={choose(() => { closeMenu(); if (at.opener) comment.open(verse, at.opener); else comment.open(verse); })} />
-        ) : null}
+        {/* What is written on the verse — three things the person does, each its own way in (the owner, 2026-11-12). */}
+        {comment || paragraph || analysis ? divider : null}
+        {comment ? <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={door(comment)} /> : null}
+        {paragraph ? <MenuItem icon={ParagraphIcon} label={paragraph.labelOf(verse)} touch={at.touch} onSelect={door(paragraph)} /> : null}
         {analysis ? (
           <MenuItem icon={AnalysisMenuIcon} label={t('analysis.verseMenu')} touch={at.touch} onSelect={choose(() => copy.startPassage(verse))} />
         ) : null}
@@ -188,10 +191,10 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
  * THE MENU OF ONE VERSE — opened by a hold, or by a computer's right button (`VerseHoldSurface`). Under a finger
  * the verse lifts over the dimmed page and the menu stands under it, as the phone's own menus do; under a mouse
  * the menu opens at the pointer with the verse named at its top. Copy · Send (where the device can) · Choose
- * several · the verse's links · its comment.
+ * several · the verse's links · its comment · its paragraph · the passage's analysis.
  */
-export function VerseMenu({ copy, comment, analysis = false }: { copy: VerseCopy; comment?: VerseComment; analysis?: boolean }) {
+export function VerseMenu({ copy, comment, paragraph, analysis = false }: { copy: VerseCopy; comment?: VerseComment; paragraph?: VerseComment; analysis?: boolean }) {
   if (!copy.menu || typeof document === 'undefined') return null;
   const at = copy.menu;
-  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} comment={comment} analysis={analysis} />;
+  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} comment={comment} paragraph={paragraph} analysis={analysis} />;
 }

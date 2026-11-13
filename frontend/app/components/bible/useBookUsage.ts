@@ -12,6 +12,7 @@ import { verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
 import { commentLayoutOf, type BookCommentLayout } from './commentParagraphPlacement';
+import { isParagraphComment } from './commentParagraphs';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
@@ -121,6 +122,9 @@ export function analysedVerses(entries: readonly BookUsageEntry[], bible: BibleI
  * changes), and the text shows first instead of waiting for it. Comments (a study note's short kind) stand as
  * their own grey words under the verse or the chapter heading, or as badges, as the person chose in Settings.
  */
+/** Which kind of comment a verse's door opens: a comment under its verses, or a paragraph over them. */
+export type CommentDoorKind = 'comment' | 'paragraph';
+
 export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, ready: boolean, onEditComment?: (id: string, passage: Passage) => void) {
   const { t } = useTranslation();
   const { uid } = useResolvedUid();
@@ -262,12 +266,16 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   }, [openAt, shown, emptied]);
   const open = shown && !emptied ? openAt : null;
   // Where a comment stands, for its window's title; and which comment a door opens — the one written to this verse
-  // (starting there) or to this whole chapter. Nothing there: the door writes a new one.
+  // (starting there) or to this whole chapter. Nothing there: the door writes a new one. A verse's door is one kind's —
+  // a comment or a paragraph, as its window opens it (`isParagraphComment`: as the person chose it, else by length): a
+  // verse where both start has a door for each (the owner, 2026-11-12: «три разных действия»). Not as it is drawn — a
+  // paragraph that breaks the paragraphs' rule stands as a comment, yet is a paragraph in its window (Codex review).
   const commentPassage = useCallback((id: string, at?: MinePlace) => entries.find((entry) => entry.kind === 'comment' && entry.id === id
     && (!at || (at.verse === null ? wholeChapterOf(entry, at.chapter) : passageCovers(entry.passage, at.chapter, at.verse))))?.passage, [entries]);
-  const commentOn = useCallback((chapter: number, verse: number | null) => entries.find((entry) => entry.kind === 'comment' && (verse === null
+  const commentOn = useCallback((chapter: number, verse: number | null, kind?: CommentDoorKind) => entries.find((entry) => entry.kind === 'comment' && (verse === null
     ? wholeChapterOf(entry, chapter)
-    : entry.passage.chapter === chapter && entry.passage.fromVerse === verse))?.id, [entries]);
+    : entry.passage.chapter === chapter && entry.passage.fromVerse === verse
+      && (kind === undefined || isParagraphComment(entry.passage, entry.paragraph) === (kind === 'paragraph'))))?.id, [entries]);
   // A door may open only once ALL the comments are known — the whole list read, no failure, not a copy for reading: on a
   // part of it, a comment missing there would be taken for none and a second written (Codex review, 2026-10-28; the same
   // rule as a mark's creation, `marks/markStore.ts`). Meanwhile a written comment still opens from its own words.

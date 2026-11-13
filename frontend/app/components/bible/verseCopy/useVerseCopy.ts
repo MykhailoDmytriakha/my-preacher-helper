@@ -52,6 +52,8 @@ const PASSAGE_LIMIT = 'passage-limit';
 /** What a passage is chosen for: an analysis, or a comment — a paragraph when it runs over more than one verse. */
 export type PassagePurpose = 'analysis' | 'comment';
 const PASSAGE_HINTS: Record<PassagePurpose, string> = { analysis: 'analysis.pick.hint', comment: 'comment.pick.hint' };
+/** A paragraph's verses are chosen up to its last one. */
+const PARAGRAPH_HINT = 'comment.pick.paragraphHint';
 /**
  * A rule a passage keeps beside running on (`commentParagraphs.ts` for a comment): given the verses a press made and the
  * end it moved, the verses allowed and, when they differ, what to say.
@@ -121,6 +123,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const [purpose, setPurpose] = useState<'copy' | PassagePurpose>('copy');
   const [format, setFormat] = useState<CopyFormat | null>(null);
   const [held, setHeld] = useState<VerseAt | null>(null);
+  // What the comment whose verses are chosen is: a paragraph, a comment, or not said (an analysis, a copy).
+  const [asParagraph, setAsParagraph] = useState<boolean | undefined>(undefined);
 
   const purposeRef = useRef(purpose);
   purposeRef.current = purpose;
@@ -140,6 +144,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setPicked(null);
     setFormat(null);
     setPurpose('copy');
+    setAsParagraph(undefined);
   }, [forgetPull]);
   const actedRef = useRef(onActed);
   actedRef.current = onActed;
@@ -228,6 +233,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setPicked([at]);
     setFormat(null);
     setPurpose('copy');
+    setAsParagraph(undefined);
     setByTouch(touch);
     acted([{ chapter: at.chapter, verse: at.verse }]);
   }, [acted]);
@@ -244,11 +250,12 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis', asParagraph?: boolean) => {
     forgetPull();
     commentKindRef.current = asParagraph;
+    setAsParagraph(forWhat === 'comment' ? asParagraph : undefined);
     setMenu(null);
     setPicked(to && text ? versesBetween(text, at, to) : [at]);
     setFormat(null);
     setPurpose(forWhat);
-    toast(t(PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
+    toast(t(forWhat === 'comment' && asParagraph ? PARAGRAPH_HINT : PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
   }, [forgetPull, t, text]);
   /**
    * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
@@ -398,7 +405,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, byTouch, startPicking, toggle, rangeTo, clear,
-    purpose, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
+    purpose, asParagraph, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,

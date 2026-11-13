@@ -452,7 +452,7 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     renderRuth();
     await waitFor(() => expect(verseText('1:16')).toBeTruthy());
     fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'bible.copy.several' }));
     expect(await screen.findByRole('region', { name: 'Руф 1:16' })).toBeInTheDocument();
     expect(screen.queryByTestId('passage-grips')).not.toBeInTheDocument();
     // Not in a row: a copy may take them, a comment, a paragraph and an analysis wait.
@@ -470,6 +470,80 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({
       type: 'comment', paragraph: true, scriptureRefs: [expect.objectContaining({ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16, toVerse: 20 })],
     }));
+  });
+
+  // The owner, 2026-11-12: «три разных действия и, соответственно, три разных механики» — the verse's menu offers a comment,
+  // a paragraph and an analysis apart, and «Комментарий» opens its window at once: no bar of chosen verses on the way.
+  it('offers a comment, a paragraph and an analysis apart, and «Комментарий» opens its window at once on the verse', async () => {
+    mockRows = { studyNotes: [] };
+    renderRuth();
+    await waitFor(() => expect(verseText('1:16')).toBeTruthy());
+    fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent).slice(-3)).toEqual(['comment.verseMenu', 'comment.verseMenuParagraph', 'analysis.verseMenu']);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'comment.verseMenu' }));
+    expect(await screen.findByRole('button', { name: 'comment.kind.comment' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('region', { name: 'Руф 1:16' })).not.toBeInTheDocument();
+    await userEvent.type(await screen.findByLabelText('comment-editor'), 'Куда ты пойдёшь');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'comment', paragraph: false, scriptureRefs: [expect.objectContaining({ chapter: 1, fromVerse: 16 })],
+    }));
+    const [written] = (mockCreateNote.mock.calls.at(-1)?.[0] as { scriptureRefs: Array<Record<string, unknown>> }).scriptureRefs;
+    expect(written.toVerse).toBeUndefined();
+  });
+
+  // A paragraph runs along verses: they are chosen from the verse first, under the paragraphs' rule, and the bar writes it.
+  it('«Абзац» chooses the paragraph\'s verses from the verse first, and its bar writes a paragraph on them', async () => {
+    mockRows = { studyNotes: [] };
+    renderRuth();
+    await waitFor(() => expect(verseText('1:16')).toBeTruthy());
+    fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenuParagraph' }));
+    expect(screen.queryByLabelText('comment-editor')).not.toBeInTheDocument();
+    fireEvent.click(verseText('1:20'), { detail: 1 });
+    const bar = await screen.findByRole('region', { name: 'Руф 1:16–20' });
+    // The bar is the paragraph's: no copy, no other writing on the way.
+    expect(within(bar).queryByRole('button', { name: 'bible.copy.copy' })).not.toBeInTheDocument();
+    await userEvent.click(within(bar).getByRole('button', { name: 'comment.pick.writeParagraph' }));
+    expect(await screen.findByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.type(await screen.findByLabelText('comment-editor'), 'Верность');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'comment', paragraph: true, scriptureRefs: [expect.objectContaining({ chapter: 1, fromVerse: 16, toVerse: 20 })],
+    }));
+  });
+
+  // Each kind has its own door: a verse where a comment and a paragraph both start says so twice, and each opens its own.
+  it('says «Изменить комментарий» and «Изменить абзац» at a verse where both start, each opening its own', async () => {
+    mockRows = { studyNotes: [
+      comment('par', 'Верность Руфи', { chapter: 1, fromVerse: 16, toVerse: 18 }),
+      comment('one', 'Куда ты пойдёшь', { chapter: 1, fromVerse: 16 }),
+    ] };
+    renderRuth();
+    await screen.findByText('Верность Руфи');
+    fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'comment.verseMenuEdit' })).toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'comment.verseMenuEditParagraph' }));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('Верность Руфи');
+  });
+
+  // Codex review, 2026-11-12: a paragraph that breaks the paragraphs' rule is drawn as a comment, yet its window opens it as
+  // a paragraph — the menu names it as its window does, not as it is drawn.
+  it('names a paragraph drawn as a comment as its window opens it: «Изменить абзац»', async () => {
+    mockRows = { studyNotes: [
+      comment('first', 'Путь Ноемини', { chapter: 1, fromVerse: 10, toVerse: 17 }),
+      comment('crossing', 'Слово Руфи', { chapter: 1, fromVerse: 16, toVerse: 20 }),
+    ] };
+    renderRuth();
+    await screen.findByText('Слово Руфи');
+    fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByRole('menuitem', { name: 'comment.verseMenuEdit' })).not.toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'comment.verseMenuEditParagraph' }));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('Слово Руфи');
+    expect(screen.getByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   // BUG-20261107-jump-hides-paragraph-heading, measured on the stand: a jump put the verse on the reading line and the headings
@@ -605,7 +679,6 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     await screen.findByText('Обещание Руфи');
     fireEvent.contextMenu(verseText('1:17'), { clientX: 200, clientY: 300 });
     await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
-    await userEvent.click(within(await screen.findByRole('region', { name: 'Руф 1:17' })).getByRole('button', { name: 'bible.copy.writeComment' }));
     await userEvent.type(await screen.findByLabelText('comment-editor'), 'Слово клятвы');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
     expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({ paragraph: false, scriptureRefs: [expect.objectContaining({ chapter: 1, fromVerse: 17 })] }));
