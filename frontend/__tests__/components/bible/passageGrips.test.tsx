@@ -82,17 +82,18 @@ describe('the grips of a chosen passage', () => {
     expect(copy.moveEnd).not.toHaveBeenCalled();
     fireEvent.pointerDown(grip('last'), { pointerId: 1, clientY: 46 });
     fireEvent.pointerMove(grip('last'), { pointerId: 1, clientY: 75 });
-    fireEvent.pointerUp(grip('last'), { pointerId: 1, clientY: 75 });
+    const lift = new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientY: 75 });
+    fireEvent(grip('last'), lift);
     expect(copy.moveEnd).toHaveBeenLastCalledWith('last', { chapter: 1, verse: 2 });
     expect(frames.size).toBe(0);
     // The click the browser may send after the lift is the pull's: the picker hears that the pull ended (owner, 01.11, iPad).
     expect(copy.pullEnded).toHaveBeenCalledTimes(2);
-    expect(copy.pullEnded).toHaveBeenLastCalledWith(true);
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(lift.timeStamp);
     expect(copy.pullStarted).toHaveBeenCalledTimes(2);
     // A pull the browser broke off sends no click after it.
     fireEvent.pointerDown(grip('last'), { pointerId: 4, clientY: 46 });
     fireEvent.pointerCancel(grip('last'), { pointerId: 4, clientY: 46 });
-    expect(copy.pullEnded).toHaveBeenLastCalledWith(false);
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(null);
   });
 
   it('ends a pull when the choice is let go: the next choice moves only under a new press', () => {

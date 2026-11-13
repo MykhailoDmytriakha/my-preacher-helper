@@ -127,7 +127,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   // A grip's pull under way — the run as it found it and as it is now — and the click its pointer may send after the lift
   // (the owner, 01.11, iPad: the finger lifted from the last grip, and Safari's click took the first verse off).
   const pulling = useRef<{ end: 'first' | 'last'; from: VerseAt[]; now: VerseAt[] } | null>(null);
-  const pullClick = useRef<{ at: number } | null>(null);
+  const pullClick = useRef<{ liftTime: number; handledAt: number } | null>(null);
   // When the grip was taken, and when the text was last pressed or keyed: a press made while the grip was held (a second
   // finger) clicks after the lift itself, so that pull waits for no click of its own (Codex review, 01.11).
   const pullStartedAt = useRef(Number.NEGATIVE_INFINITY);
@@ -254,11 +254,13 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
    * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
    * own; a pull the browser broke off sends none.
    */
-  const pullEnded = useCallback((clickMayFollow: boolean) => {
+  const pullEnded = useCallback((liftTime: number | null) => {
     const pull = pulling.current;
     pulling.current = null;
     if (pull && text) recordPick(text, `pull-${pull.end}`, pull.from, pull.now, Number.POSITIVE_INFINITY);
-    pullClick.current = clickMayFollow && textPressedAt.current < pullStartedAt.current ? { at: performance.now() } : null;
+    pullClick.current = liftTime !== null && textPressedAt.current < pullStartedAt.current
+      ? { liftTime, handledAt: performance.now() }
+      : null;
   }, [text]);
   /** A grip taken: the pull starts. */
   const pullStarted = useCallback(() => { pullStartedAt.current = performance.now(); }, []);
@@ -269,14 +271,15 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   }, []);
   /**
    * Whether this click is the one a grip's pull sends after the lift: the first click on the text since the pull was let
-   * go, before any new press or key there (each ends the wait — `forgetPullClick`); it then presses nothing. Nothing about
-   * the click itself is asked: Safari on the owner's iPad sent it 39 ms after the Pencil's lift naming another pointer
+   * go, before any new press or key there (each ends the wait — `forgetPullClick`); it then presses nothing. Use the time
+   * the event occurred, without matching pointer IDs: Safari on the owner's iPad sent it 39 ms after the lift naming another pointer
    * (technical report, 01.11), and a click a browser makes up need not count its clicks either.
    */
-  const takesPullClick = useCallback((onVerse: boolean) => {
+  const takesPullClick = useCallback((onVerse: boolean, clickTime: number) => {
     const pending = pullClick.current;
     if (!pending) return false;
-    const since = performance.now() - pending.at;
+    const since = clickTime - pending.liftTime;
+    if (since < 0) return false;
     pullClick.current = null;
     if (since > PULL_CLICK_MS) return false;
     if (onVerse) recordDiagnostic('verse-pick', { source: 'click', result: 'taken-by-pull', elapsedMs: since });
@@ -291,7 +294,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
     const kept = limit ? limit(verses, end, before, commentKindRef.current) : { verses };
     if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
-    recordPick(text, by, before, kept.verses, pullClick.current ? performance.now() - pullClick.current.at : Number.POSITIVE_INFINITY);
+    recordPick(text, by, before, kept.verses, pullClick.current ? performance.now() - pullClick.current.handledAt : Number.POSITIVE_INFINITY);
     setPicked(kept.verses);
   }, [text]);
   /** A grip on the chosen run pulled to a verse, or moved by an arrow: that end moves, the passage's rule kept. */

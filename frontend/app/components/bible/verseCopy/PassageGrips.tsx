@@ -155,7 +155,7 @@ export function PassageGrips({ root, copy, text, drawn }: {
       if (frame.current !== null) { now.clientY = released.clientY; follow(now); }
       // The click the browser may send after the lift is this pull's, not a press on a verse (`useVerseCopy().pullEnded`);
       // a pull the browser broke off sends none.
-      live.current.copy.pullEnded(released.type === 'pointerup');
+      live.current.copy.pullEnded(released.type === 'pointerup' ? released.timeStamp : null);
       stop();
     };
     window.addEventListener('pointermove', move);

@@ -194,7 +194,7 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     const at = row ? verseOfRow(row) : null;
     // The click a grip's pull sends after the lift is the pull's — on the grip, or on a verse (Safari on iPad, 01.11, took
     // the first verse off with it): it presses nothing (`useVerseCopy().takesPullClick`).
-    if (copy.takesPullClick(Boolean(at))) {
+    if (copy.takesPullClick(Boolean(at), event.timeStamp)) {
       event.preventDefault();
       event.stopPropagation();
       return;

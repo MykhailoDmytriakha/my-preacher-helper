@@ -22,7 +22,7 @@ type LongPressHandlers = {
   onClick: (event: MouseEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
-  onPointerUp?: (event?: PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
   onPointerLeave?: (event?: PointerEvent<HTMLElement>) => void;
   onPointerCancel?: (event?: PointerEvent<HTMLElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
@@ -59,7 +59,7 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
   const confirm = useRef<(() => boolean) | null>(null);
   /** The press was given up — moved away or left the button: the click that may follow it does nothing. */
   const abandoned = useRef(false);
-  const heldUntil = useRef(0);
+  const heldLiftTime = useRef<number | null>(null);
   // The pointer the press is held by: another finger lifted or moved meanwhile is not this press's end (Codex review, 01.11:
   // a grip let go over the text completed a hold a second finger had armed on another verse).
   const pointer = useRef<number | null>(null);
@@ -101,7 +101,8 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
         // Enter or Space clicks with no pointer behind it (`detail` 0): always a press, whatever a pointer did
         // before — a press dragged off the button sends no click, and its mark must not eat a key's (Codex review).
         const byPointer = event.detail > 0;
-        const ignored = byPointer && (abandoned.current || performance.now() < heldUntil.current);
+        const sinceLift = heldLiftTime.current === null ? Infinity : event.timeStamp - heldLiftTime.current;
+        const ignored = byPointer && (abandoned.current || (sinceLift >= 0 && sinceLift < CLICK_AFTER_HOLD_MS));
         abandoned.current = false;
         if (ignored) {
           event.preventDefault();
@@ -112,7 +113,7 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
       onPointerDown: (event) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         // A new press owns its own click; only the previous hold's trailing click is ignored.
-        heldUntil.current = 0;
+        heldLiftTime.current = null;
         stopTimer();
         armed.current = false;
         confirm.current = null;
@@ -142,7 +143,7 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
       onPointerUp: (event) => {
         if (stranger(event)) return;
         if (armed.current && confirm.current) {
-          if (event && movedBeyondHold(event)) return;
+          if (movedBeyondHold(event)) return;
           if (!confirm.current()) {
             refuse('arm');
             return;
@@ -151,8 +152,8 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
         const held = armed.current;
         reset();
         if (!held) return;
-        // A duration on the page's own clock, which never jumps with the wall clock.
-        heldUntil.current = performance.now() + CLICK_AFTER_HOLD_MS;
+        // The browser can dispatch the lift's click after the page was busy. Compare when the events occurred.
+        heldLiftTime.current = event.timeStamp;
         onLongPress();
       },
       // A touch leaves its button right after the lift, before the click: only a press still held is given up.

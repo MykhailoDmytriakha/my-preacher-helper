@@ -161,9 +161,11 @@ describe('useLongPress', () => {
 
     press(tile);
     act(() => { jest.advanceTimersByTime(LONG_PRESS_MS); });
-    fireEvent.pointerUp(tile);
-    act(() => { jest.advanceTimersByTime(1000); });
-    click(tile);
+    const lift = new MouseEvent('pointerup', { bubbles: true });
+    fireEvent(tile, lift);
+    const later = new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+    Object.defineProperty(later, 'timeStamp', { value: lift.timeStamp + 1000 });
+    fireEvent(tile, later);
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });

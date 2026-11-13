@@ -243,19 +243,34 @@ describe('taking verses out of the reader', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  // Codex review, 2026-10-27: only the click a hold ends with is not a choice.
-  it('the click that ends a hold takes nothing back; the next press chooses', async () => {
+  // A delayed browser click still belongs to the lift that generated it.
+  it('keeps the held verse when the lift’s click is processed late, then adds a new press', async () => {
     await renderRuth();
-    pointer(verseText('1:16'), 'pointerdown');
-    await wait(LONG_PRESS_MS + 30);
-    pointer(verseText('1:16'), 'pointerup');
-    fireEvent.click(verseText('1:16'), { detail: 1 });
-    expect(row('1:16')).toHaveAttribute('data-verse-chosen');
-    await wait(460);
-    pointer(verseText('1:17'), 'pointerdown');
-    pointer(verseText('1:17'), 'pointerup');
-    fireEvent.click(verseText('1:17'), { detail: 1 });
-    expect(screen.getByRole('region', { name: 'Руф 1:16–17' })).toBeInTheDocument();
+    jest.useFakeTimers();
+    try {
+      const first = verseText('1:16');
+      pointer(first, 'pointerdown');
+      act(() => jest.advanceTimersByTime(LONG_PRESS_MS));
+      expect(row('1:16')).toHaveAttribute('data-verse-held');
+
+      const lift = new MouseEvent('pointerup', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 });
+      Object.defineProperty(lift, 'pointerId', { value: 1 });
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+      Object.defineProperty(click, 'timeStamp', { value: lift.timeStamp });
+      fireEvent(first, lift);
+      expect(row('1:16')).toHaveAttribute('data-verse-chosen');
+      act(() => jest.advanceTimersByTime(650));
+      fireEvent(first, click);
+      expect(row('1:16')).toHaveAttribute('data-verse-chosen');
+
+      const second = verseText('1:17');
+      pointer(second, 'pointerdown');
+      pointer(second, 'pointerup');
+      fireEvent.click(second, { detail: 1 });
+      expect(screen.getByRole('region', { name: 'Руф 1:16–17' })).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   // Codex review r2: the lift's click may go to the verse (its press's target); a press begun in the bar is a choice.
