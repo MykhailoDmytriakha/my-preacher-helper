@@ -1544,6 +1544,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { field, rowId, time } : undefined;
     },
+    captureMeetingDateInput: () => ({ meetingDate: { time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
     captureDateAction: (rowId: string, after: string): DatedRowActionCapture | undefined => {
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;

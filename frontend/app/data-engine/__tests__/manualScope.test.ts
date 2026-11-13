@@ -33,6 +33,68 @@ describe('manual form scope', () => {
     expect(test.save).not.toHaveBeenCalled();
   });
 
+  it.each(['2026-12-24', ''])('sends the original time of a recovered meeting date %j', async date => {
+    const meeting = { id: 'meeting', date: '2026-12-13', location: 'Hall', createdAt: '2026-11-08' };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] } });
+    const scope = ManualScope.begin(test.options);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const locationTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+    await scope.update(value => ({ ...value, meetingDates: [{ ...meeting, date }] }), { meetingDate: { time } });
+    const restored = ManualScope.restore(test.options, test.disk());
+    await restored.update(value => ({ ...value, meetingDates: [{ ...meeting, date, location: 'Side room' }] }),
+      { field: 'location', rowId: meeting.id, time: locationTime });
+    expect(test.save).not.toHaveBeenCalled();
+    await restored.save();
+    expect(test.save.mock.calls[0][2]).toMatchObject({
+      meetingDateAction: { rowId: meeting.id, after: date, time },
+      groupMeetingFieldCaptures: { location: { rowId: meeting.id, after: 'Side room', time: locationTime } },
+    });
+  });
+
+  it('retains the time of returning to the opening meeting date while the first Save waits', async () => {
+    const meeting = { id: 'meeting', date: '2026-12-13', createdAt: '2026-11-08' };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] } });
+    const held = deferred<void>();
+    test.save.mockImplementationOnce(async (_scope, checkpoint) => {
+      await held.promise;
+      return { ...saved('first-date', checkpoint.draft!), resource: test.options.resource };
+    });
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const secondTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+    const scope = ManualScope.begin(test.options);
+    await scope.update(value => ({ ...value, meetingDates: [{ ...meeting, date: '2026-12-24' }] }), { meetingDate: { time: firstTime } });
+    const first = scope.save();
+    const change = scope.update(value => ({ ...value, meetingDates: [meeting] }), { meetingDate: { time: secondTime } });
+    const second = scope.save();
+    held.resolve();
+    await Promise.all([first, change, second]);
+    expect(test.save.mock.calls[1][2]).toMatchObject({
+      predecessorId: 'first-date', meetingDateAction: { rowId: meeting.id, after: meeting.date, time: secondTime },
+    });
+  });
+
+  it.each(['unknown time', 'unfinished date', 'replaced meeting'])('does not borrow a prior clock after %s', async reason => {
+    const meeting = { id: 'meeting', date: '2026-12-13', createdAt: '2026-11-08' };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] } });
+    const scope = ManualScope.begin(test.options);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const changed = { ...meeting, date: '2026-12-24' };
+    await scope.update(value => ({ ...value, meetingDates: [changed] }), { meetingDate: { time } });
+    const replacement = reason === 'replaced meeting' ? { ...changed, createdAt: '2026-11-09' }
+      : { ...changed, date: reason === 'unknown time' ? '2026-12-25' : '2026-12-' };
+    await scope.update(value => ({ ...value, meetingDates: [replacement] }), { meetingDate: { time: null } });
+    if (reason === 'unfinished date') {
+      expect(test.disk().meetingDateCapture).toBeUndefined();
+      return;
+    }
+    const restored = ManualScope.restore(test.options, test.disk());
+    await restored.save();
+    expect(test.save.mock.calls[0][2]).not.toHaveProperty('meetingDateAction');
+  });
+
   it('recognizes a new preaching date with an audience as durable before there is a dated row to compare', async () => {
     const date = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned',
       church: { id: 'church', name: 'Church', city: 'Town' } };

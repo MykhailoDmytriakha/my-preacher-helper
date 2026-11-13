@@ -6,7 +6,6 @@ import { fillRequiredFieldError } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { editFirstGroupMeeting, firstGroupMeetingIdentity, groupMeetingDay, isOrderedMeetingFieldValue, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
 
-import type { DatedRowActionCapture } from '@/data-engine/datedRowAction';
 import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupMeetingDate } from '@/models/models';
@@ -25,7 +24,6 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   const form = useDataForm({ collection: 'groups', id: groupId }, 'group-meeting', [['meetingDates']]);
   const [opened, setOpened] = useState(false);
   const latest = useRef(form); latest.current = form;
-  const dateAction = useRef<{ scope: object; action: DatedRowActionCapture | undefined }>(undefined);
   const { active, loading, begin, cancel } = form;
   // Save closes its stage before local cleanup settles. Reopening during that gap
   // retires the same form whose promise is still reporting the saved action.
@@ -44,9 +42,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
     const current = latest.current;
     // A browser pagehide may precede React's next render. Save reads the engine-owned stage,
     // never the render's possibly older active/dirty flags. Partial input cancels this schedule.
-    const capture = dateAction.current;
-    const action = capture?.scope === current.recoveryIdentity ? capture.action : undefined;
-    void (action ? current.save(normalize, action) : current.save(normalize)).catch(() => undefined);
+    void current.save(normalize).catch(() => undefined);
   }, { delay: 750 });
   useLayoutEffect(() => () => { debouncedSave.flush(); }, [debouncedSave]);
   useEffect(() => {
@@ -69,16 +65,12 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   const field = (key: 'date' | 'location' | 'audience'): Dispatch<SetStateAction<string>> => next => {
     if (!form.active || needsRefresh) return;
     const identity = firstGroupMeetingIdentity(form.initialData) ?? { id: newClientId(), createdAt: new Date().toISOString() };
-    const input = key !== 'date' ? form.captureMeetingField(key, first?.id ?? identity.id) : undefined;
+    const input = key === 'date' ? form.captureMeetingDateInput() : form.captureMeetingField(key, first?.id ?? identity.id);
     let ready = false;
     void form.update(current => {
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
       const edited = editFirstGroupMeeting(previous, { [key]: typeof next === 'function' ? next(value) : next }, identity);
       ready = canSave({ meetingDates: edited } as unknown as DocumentData, form.initialData);
-      if (key === 'date' && edited[0]?.date !== previous[0]?.date) {
-        const action = ready && edited[0] ? form.captureDateAction(edited[0].id, edited[0].date.trim()) : undefined;
-        dateAction.current = { scope: form.recoveryIdentity, action };
-      }
       return { ...current, meetingDates: edited } as unknown as DocumentData;
     }, input).catch(() => undefined);
     if (ready) debouncedSave();

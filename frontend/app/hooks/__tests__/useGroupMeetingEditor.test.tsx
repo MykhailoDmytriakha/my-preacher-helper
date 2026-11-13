@@ -31,20 +31,21 @@ it('flushes the engine-owned stage even before React publishes its dirty state',
 it('captures the cleared date before autosave and leaves that action intact when the location changes', async () => {
   let stage = { meetingDates: [{ ...meeting }] };
   const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
-  const captureDateAction = jest.fn((rowId: string, after: string) => ({ rowId, after, time }));
+  const captureMeetingDateInput = jest.fn(() => ({ meetingDate: { time } }));
   const locationTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_030 };
   const captureMeetingField = jest.fn((field: string, rowId: string) => ({ field, rowId, time: locationTime }));
   const update = jest.fn(async (updater: (value: typeof stage) => typeof stage, _action?: unknown) => { stage = updater(stage); });
   const save = jest.fn(async (updater: (value: typeof stage) => typeof stage) => { stage = updater(stage); });
   jest.mocked(useDataForm).mockReturnValue({
-    active: true, loading: false, dirty: false, data: { meetingDates: [{ ...meeting }] }, captureDateAction, captureMeetingField,
+    active: true, loading: false, dirty: false, data: { meetingDates: [{ ...meeting }] }, captureMeetingDateInput, captureMeetingField,
     begin: jest.fn(), cancel: jest.fn(), save,
     update,
     listRecoverable: jest.fn(async () => []), recover: jest.fn(), discardRecovery: jest.fn(async () => undefined), recoveryIdentity: {}, status: null,
   } as unknown as ReturnType<typeof useDataForm>);
   const hook = renderHook(() => useGroupMeetingEditor('group', [meeting], false));
   act(() => hook.result.current.field('date')(''));
-  expect(captureDateAction).toHaveBeenCalledWith(meeting.id, '');
+  expect(captureMeetingDateInput).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenLastCalledWith(expect.any(Function), { meetingDate: { time } });
   expect(save).not.toHaveBeenCalled();
   act(() => {
     hook.result.current.field('location')('Side room');
@@ -53,7 +54,7 @@ it('captures the cleared date before autosave and leaves that action intact when
   await act(async () => { await Promise.resolve(); });
   expect(captureMeetingField).toHaveBeenCalledWith('location', meeting.id);
   expect(update).toHaveBeenLastCalledWith(expect.any(Function), { field: 'location', rowId: meeting.id, time: locationTime });
-  expect(save).toHaveBeenCalledWith(expect.any(Function), { rowId: meeting.id, after: '', time });
+  expect(save).toHaveBeenCalledWith(expect.any(Function));
   expect(stage.meetingDates).toEqual([{ ...meeting, date: '', location: 'Side room' }]);
   hook.unmount();
 });
