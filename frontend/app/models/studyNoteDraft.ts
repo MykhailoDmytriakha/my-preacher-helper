@@ -35,6 +35,6 @@ export interface NoteDraftPayload {
     /** This copy still needs explicit review because its original opening is unknown. */
     reviewLegacyFields?: true;
     /** Generation of the original saved note when the draft is tied to it. */
-    targetGeneration?: string;
+    targetGeneration?: string | null;
     type: StudyNoteType;
 }

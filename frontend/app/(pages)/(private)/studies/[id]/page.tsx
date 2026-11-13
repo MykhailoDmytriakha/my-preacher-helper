@@ -93,7 +93,11 @@ import { useNoteScrollPosition } from './useNoteScrollPosition';
 import type { SheetReference } from '@/components/bible/VerseSheet';
 import type { DocumentTagBasis } from '@/data-engine/documentTagCapture';
 import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
+import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { AppLocale } from '@/utils/appLocale';
+
+const missingRecoveryFields = (snapshot: RecordPresence | undefined) => snapshot?.kind === 'present' && snapshot.snapshot.value
+        ? ['title', 'type'].filter(field => !Object.prototype.hasOwnProperty.call(snapshot.snapshot.value, field)) : [];
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
 
@@ -836,9 +840,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const [saveConflict, setSaveConflict] = useState<StaleWriteError | null>(null);
     const restoringDraft = useRef(false);
     const reviewingLegacyDraft = useRef(false);
-    const restoredGeneration = useRef<string | undefined>(undefined);
+    const restoredGeneration = useRef<string | null | undefined>(undefined);
     const currentGeneration = presence?.kind === 'present' ? presence.snapshot.metadata?.generation : undefined;
-    const replacedDraftTarget = Boolean(restoredGeneration.current && currentGeneration && restoredGeneration.current !== currentGeneration);
+    // A real legacy row has no generation until its first write. Only a server read
+    // can distinguish it from an incomplete cache opening.
+    const currentEngineRevision = presence?.kind === 'present' ? presence.snapshot.metadata?.revision : undefined;
+    const recoveryGeneration = currentGeneration ?? (presence?.kind === 'present' && presence.source === 'server' ? null : undefined);
+    const waitingForLegacyOpening = Boolean(reviewingLegacyDraft.current && recoveryGeneration === undefined);
+    const replacedDraftTarget = restoredGeneration.current !== undefined && recoveryGeneration !== undefined
+        && restoredGeneration.current !== recoveryGeneration;
     /**
      * Bumped when the person insists on their text after a refusal. Without it the
      * banner would close and nothing would be sent until the next keystroke — the
@@ -934,7 +944,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             ? typeEdit.capture : undefined;
         const opening = !isNew && confirmedDraft && baselineRef.current;
         const origin = opening && !reviewingLegacyDraft.current && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture);
-        const recoveryMeta = restoredGeneration.current && { targetGeneration: restoredGeneration.current };
+        const recoveryMeta = restoredGeneration.current !== undefined && { targetGeneration: restoredGeneration.current };
         const payload = reviewingLegacyDraft.current ? { ...authoredDraft, ...recoveryMeta, reviewLegacyFields: true as const }
             : origin ? { ...authoredDraft, ...recoveryMeta, origin } : authoredDraft;
         draftSnapshot.current = { authored: authoredDraft, payload, owner: uid };
@@ -983,7 +993,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         deliberateOverwriteRef,
         resaveNonce,
         saveAtOnceRef,
-        saveBlocked: Boolean(saveConflict || referenceReview || unavailable || draftHeld || replacedDraftTarget),
+        saveBlocked: Boolean(saveConflict || referenceReview || unavailable || draftHeld || replacedDraftTarget || waitingForLegacyOpening),
         expectedGeneration: restoredGeneration.current,
         onConflict: setSaveConflict,
         draftOrigin: draftPayload.origin,
@@ -995,6 +1005,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             dispatchReferences({ type: 'acknowledge', submitted, accepted, aliases, revision, engineRevision });
         },
         onSaved: (saved, replacedTitle, replacedTags, replacedType) => {
+            if (restoredGeneration.current === null) restoredGeneration.current = undefined;
             const pendingTitle = titleEditRef.current;
             if (replacedTitle !== undefined && (pendingTitle?.id !== noteId || pendingTitle.owner !== uid)) {
                 setTitleState(current => current === replacedTitle ? saved.title : current);
@@ -1077,16 +1088,17 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setTags(restored.tags);
         setType(restored.type);
         restoringDraft.current = Boolean(!isNew && opening);
-        reviewingLegacyDraft.current = Boolean(!isNew && opening && !origin && !restored.referenceRecovery && (currentGeneration || restored.reviewLegacyFields));
+        reviewingLegacyDraft.current = Boolean(!isNew && opening && !origin && !restored.referenceRecovery && (presence !== undefined || restored.reviewLegacyFields));
         if (reviewingLegacyDraft.current && opening) {
             draftSnapshot.current = null;
             const differing = differingNoteDraftFields(restored, opening);
-            if (differing.length) {
+            if (differing.length && recoveryGeneration !== undefined) {
                 const revision = existingNote?.rev?.[NOTE_AGGREGATE] ?? 0;
-                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, revision, revision, { ...opening }, differing, currentGeneration));
-            } else reviewingLegacyDraft.current = false;
+                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, revision, revision, { ...opening }, differing, currentGeneration, currentEngineRevision, missingRecoveryFields(presence)));
+            } else if (!differing.length) reviewingLegacyDraft.current = false;
         }
-        restoredGeneration.current = restored.targetGeneration ?? origin?.title?.seen.generation ?? origin?.type?.seen.generation ?? currentGeneration;
+        restoredGeneration.current = restored.targetGeneration !== undefined
+            ? restored.targetGeneration : origin?.title?.seen.generation ?? origin?.type?.seen.generation ?? recoveryGeneration;
         if (origin && opening) {
             // The same displayed value can still have an unfinished action from this device.
             draftSnapshot.current = null;
@@ -1110,7 +1122,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // Keep the selected source until the current writer or outbox durably takes over.
         acceptRecovered(recovery || origin || reviewingLegacyDraft.current ? { transferToWriter: true } : undefined);
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid, currentGeneration]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid, currentGeneration, currentEngineRevision, recoveryGeneration]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1233,31 +1245,52 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             return current.uid === uid && current.noteId === noteId && current.recoveredKey === shownKey && JSON.stringify(current.recovered) === shown;
         });
     };
+    useEffect(() => {
+        if (!reviewingLegacyDraft.current || saveConflict || !rowPayload || recoveryGeneration === undefined || replacedDraftTarget) return;
+        if (restoredGeneration.current === undefined) restoredGeneration.current = recoveryGeneration;
+        const fields = differingNoteDraftFields(draftPayload, rowPayload);
+        baselineRef.current = rowPayload;
+        draftSnapshot.current = null;
+        if (fields.length) {
+            const revision = existingNote?.rev?.[NOTE_AGGREGATE] ?? 0;
+            setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, revision, revision, { ...rowPayload }, fields, currentGeneration, currentEngineRevision, missingRecoveryFields(presence)));
+        } else {
+            reviewingLegacyDraft.current = false;
+            setResaveNonce(value => value + 1);
+        }
+    }, [saveConflict, rowPayload, recoveryGeneration, replacedDraftTarget, draftPayload, existingNote, presence, currentGeneration, currentEngineRevision]);
     const fieldChoice = saveConflict && restoringDraft.current ? noteDraftFieldChoice(saveConflict, draftPayload) : undefined;
     const unresolvedFields = saveConflict?.conflictingFields ?? [];
     const scopedRefusal = Boolean(saveConflict && restoringDraft.current && unresolvedFields.length
         && unresolvedFields.every(field => editableNoteDraftFields.some(editable => editable === field)));
     useEffect(() => {
         if (!scopedRefusal || fieldChoice || replacedDraftTarget || !saveConflict || !rowPayload) return;
-        if (unresolvedFields.some(field => {
-            const key = editableNoteDraftFields.find(editable => editable === field)!;
-            return serializeContent(draftPayload[key]) !== serializeContent(rowPayload[key]);
-        })) return;
+        const remaining = editableNoteDraftFields.filter(field => unresolvedFields.includes(field)
+            && serializeContent(draftPayload[field]) !== serializeContent(rowPayload[field]));
+        if (remaining.length) {
+            const revision = existingNote?.rev?.[NOTE_AGGREGATE] ?? 0;
+            if (revision <= saveConflict.actualRevision && (currentEngineRevision ?? 0) <= (saveConflict.engineRevision ?? 0)) return;
+            setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.actualRevision, revision,
+                { ...rowPayload }, remaining, currentGeneration, currentEngineRevision, missingRecoveryFields(presence)));
+            return;
+        }
         reviewingLegacyDraft.current = false;
         draftSnapshot.current = null;
         setSaveConflict(null);
         setResaveNonce(value => value + 1);
-    }, [scopedRefusal, fieldChoice, replacedDraftTarget, saveConflict, rowPayload, unresolvedFields, draftPayload]);
+    }, [scopedRefusal, fieldChoice, replacedDraftTarget, saveConflict, rowPayload, unresolvedFields, draftPayload,
+        existingNote, currentGeneration, currentEngineRevision, presence]);
     const answerFieldChoice = (side: 'local' | 'stored') => {
         const opening = baselineRef.current;
         if (!fieldChoice || !opening || !saveConflict || currentConflictChoice.current !== conflictChoice) return;
         if (replacedDraftTarget || (saveConflict.generation && currentGeneration && saveConflict.generation !== currentGeneration)) return;
-        restoredGeneration.current ??= saveConflict.generation;
+        if (restoredGeneration.current === undefined) restoredGeneration.current = saveConflict.generation;
         const latestRevision = existingNote?.rev?.[NOTE_AGGREGATE];
-        if (latestRevision !== undefined && latestRevision > saveConflict.actualRevision) {
+        if ((latestRevision !== undefined && latestRevision > saveConflict.actualRevision)
+            || (currentEngineRevision !== undefined && saveConflict.engineRevision !== undefined && currentEngineRevision > saveConflict.engineRevision)) {
             if (reviewingLegacyDraft.current && rowPayload) {
-                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.actualRevision, latestRevision,
-                    { ...rowPayload }, differingNoteDraftFields(draftPayload, rowPayload), currentGeneration));
+                setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.actualRevision, latestRevision ?? saveConflict.actualRevision,
+                    { ...rowPayload }, differingNoteDraftFields(draftPayload, rowPayload), currentGeneration, currentEngineRevision, missingRecoveryFields(presence)));
                 return;
             }
             // The refusal predates this row. Ask the ordinary writer to compare the new version
@@ -1271,9 +1304,27 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         draftSnapshot.current = null;
         const { field, mine, stored } = fieldChoice;
         baselineRef.current = { ...opening, [field]: stored };
+        // A choice approves the version on the screen. A later click does not
+        // order it ahead of a value the user never saw.
+        const { generation, engineRevision } = saveConflict;
+        const reviewed = side === 'local' && uid && generation && engineRevision
+            ? { generation, revision: engineRevision } : undefined;
         switch (field) {
-            case 'title': setTitle(side === 'stored' ? stored : mine); break;
-            case 'type': setType(side === 'stored' ? stored : mine); break;
+            case 'title':
+                setTitle(side === 'stored' ? stored : mine);
+                if (reviewed && uid) titleEditRef.current = { owner: uid, id: noteId, value: mine, capture: {
+                    seen: { ...reviewed, title: stored, ...((saveConflict.serverValues.title === null || saveConflict.missingFields?.includes('title')) && { missing: true }) },
+                    time: null,
+                } };
+                break;
+            case 'type':
+                setType(side === 'stored' ? stored : mine);
+                if (reviewed && uid && isOrdinaryStudyNoteType(mine) && isOrdinaryStudyNoteType(stored)) {
+                    typeEditRef.current = { owner: uid, id: noteId, value: mine, capture: {
+                        seen: { ...reviewed, type: stored, ...(saveConflict.missingFields?.includes('type') && { missing: true }) }, time: null,
+                    } };
+                }
+                break;
             case 'content': setContent(side === 'stored' ? stored : mine); break;
             case 'tags': setTags(side === 'stored' ? stored : mine); break;
             case 'scriptureRefs':
@@ -1284,7 +1335,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             const remaining = saveConflict.conflictingFields.filter(key => key !== field);
             if (remaining.length) {
                 setSaveConflict(new StaleWriteError(NOTE_AGGREGATE, saveConflict.expectedRevision, saveConflict.actualRevision,
-                    saveConflict.serverValues, remaining, saveConflict.generation));
+                    saveConflict.serverValues, remaining, saveConflict.generation, saveConflict.engineRevision, saveConflict.missingFields));
                 return;
             }
             reviewingLegacyDraft.current = false;
@@ -1612,7 +1663,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         />
                     </section>
                 )}
-                {replacedDraftTarget && <p role="status" className="mb-2 text-sm">{t('dataSync.referenceComparisonUnavailable')}</p>}
+                {(replacedDraftTarget || waitingForLegacyOpening) && <p role="status" className="mb-2 text-sm">{t('dataSync.referenceComparisonUnavailable')}</p>}
                 {scopedRefusal && !fieldChoice && !replacedDraftTarget && <p role="status" className="mb-2 text-sm">{t('dataSync.referenceComparisonUnavailable')}</p>}
                 {fieldChoice && (
                     <section aria-label={t('dataSync.versionComparison')} className="mb-2 space-y-2">

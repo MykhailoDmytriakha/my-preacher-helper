@@ -60,6 +60,8 @@ export class StaleWriteError extends Error {
     readonly serverValues: Record<string, unknown> = {},
     readonly conflictingFields: readonly string[] = [],
     readonly generation?: string,
+    readonly engineRevision?: number,
+    readonly missingFields: readonly string[] = [],
   ) {
     super(
       `Refused a stale write to "${aggregate}": built from revision ${expectedRevision}, server is at ${actualRevision}`

@@ -92,8 +92,8 @@ export function useNoteAutoSave({
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
     draftOrigin?: NoteDraftPayload['origin'];
-    draftTargetGeneration?: string;
-    expectedGeneration?: string;
+    draftTargetGeneration?: string | null;
+    expectedGeneration?: string | null;
     titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
     typeEditRef?: React.MutableRefObject<NoteTypeEdit | null>;
     submittedTypeRef?: React.MutableRefObject<SubmittedNoteType | null>;
@@ -110,7 +110,7 @@ export function useNoteAutoSave({
         tagMembership?: readonly DocumentTagIntent[];
         referenceEvidence?: StudyNoteReferenceEvidence;
         expectedRevision?: number | null;
-        expectedGeneration?: string;
+        expectedGeneration?: string | null;
         expectedBaseline?: Record<string, unknown> | null;
     }) => StudyNoteSubmission & { result: Promise<SavedStudyNote> };
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }) =>
@@ -343,7 +343,7 @@ export function useNoteAutoSave({
         setLastSaved(null);
         try {
             const recording = captureRecordingHandoff?.();
-            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin, ...(draftTargetGeneration && { targetGeneration: draftTargetGeneration }) } : submittedPayload;
+            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin, ...(draftTargetGeneration !== undefined && { targetGeneration: draftTargetGeneration }) } : submittedPayload;
             const captureScope = prepareNoteDraftCapture(uid, noteId, backup, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,
@@ -354,7 +354,7 @@ export function useNoteAutoSave({
                 ...(referenceEvidence && { referenceEvidence }),
                 updates,
                 expectedRevision: revisionRef.current,
-                ...(expectedGeneration && { expectedGeneration }),
+                ...(expectedGeneration !== undefined && { expectedGeneration }),
                 // WHAT THIS TEXT WAS BUILT FROM. Not a fresh read: the service used
                 // to fingerprint the document it had just fetched, which compares the
                 // server with itself, always agrees, and let a stale save through.

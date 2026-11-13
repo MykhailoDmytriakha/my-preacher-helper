@@ -84,7 +84,7 @@ type NoteUpdate = {
   updates: Partial<StudyNote>;
   captureScope?: string;
   expectedRevision?: number | null;
-  expectedGeneration?: string;
+  expectedGeneration?: string | null;
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
   typeCapture?: StudyNoteTypeCapture;
@@ -297,7 +297,7 @@ export function useStudyNotesEngine(enabled: boolean) {
         let staleTimedField: StaleWriteError | undefined;
         try {
           return await actions.submit(resource(id), { kind: 'update', update: (current, confirmed) => {
-            if (expectedGeneration && expectedGeneration !== confirmed?.metadata?.generation) {
+            if (expectedGeneration !== undefined && expectedGeneration !== (confirmed?.metadata?.generation ?? null)) {
               throw Object.assign(new Error('The note was replaced'), { code: 'study-note-generation-changed' });
             }
             if (!current) throw new Error('Study note not found');
@@ -331,7 +331,8 @@ export function useStudyNotesEngine(enabled: boolean) {
               // A refusal reports every compared field so the editor can adopt the complete server version.
               const stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries([...new Set([...compared, ...(commentKindSave || place ? ['type', 'paragraph', 'scriptureRefs'] : [])])]
-                  .map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])), changedElsewhere, confirmed?.metadata?.generation);
+                  .map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])), changedElsewhere, confirmed?.metadata?.generation, confirmed?.metadata?.revision,
+                compared.filter(field => !Object.prototype.hasOwnProperty.call(current, field)));
               const ordered = (field: string) => field === 'title' ? Boolean(title && (title.time || title.seen.requestId))
                 : field === 'scriptureRefs' ? Boolean(place)
                   : field === 'paragraph' ? Boolean(kind && (kind.time || kind.seen.requestId))

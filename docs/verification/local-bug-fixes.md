@@ -9139,3 +9139,14 @@ Headless installed Chrome at 390 and 1280 px used isolated local Auth and Firest
 Regression tests cover both answers for title and type, a mixed title/body answer, replacement of the note under an open choice, a newer revision, legacy preflight, unfinished legacy review after reload, and retaining independent queued fields. Full Jest passed 15,150 tests across 1,196 suites, with 17 tests and three suites skipped. Scoped ESLint had zero errors. TypeScript and the production-mode build passed. Replacement is covered at the integration-test level. A legacy copy opened before an existing note has a confirmed identity remains an open case.
 
 After authorized deployment, confirm the served revision, open a disposable note on two devices, and confirm that taking the saved title retains a separately edited paragraph. Repeat a mixed choice and check the saved values after reloading. Keep deliberate interruption, stripped clock challenges and legacy-draft construction on the emulator.
+
+
+### Follow-up · Wait for the saved note and bind the answer to what was shown
+
+Studies → note → Restore. With a genuine pre-engine Firestore note cached offline, the original editor queued an old backup and overwrote the computer title at reconnect. The editor now waits for a confirmed record identity. An existing record without an engine generation is explicitly confirmed, and the choice preserves that identity through recovery and the first write. A saved title and a recovered paragraph persisted after reload.
+
+In a second run, the phone chose its own title and the computer changed its title and returned to the one shown in the comparison before the phone request reached the server. The original request overwrote the computer title. The explicit choice now carries the revision of the displayed comparison. The server raised a title conflict, and the saved title and recovered paragraph persisted after the second answer and reload.
+
+Installed headless Chrome on build `6yYq6g9v5uGYVs7grVrbb` completed both runs with isolated Auth and Firestore. I inspected both final reload screenshots. All owned listeners and browser profiles closed. The red tests became green. Full Jest passed 15,151 tests in 1,196 suites, with 17 tests and three suites skipped. The final page suite passed 27 tests including the additional regression. TypeScript and the production-mode build passed. Scoped ESLint reported zero errors and nine warnings. Evidence is at `artifacts/note-choice-cache-return-20261113/report.md`.
+
+After authorized deployment, verify the served revision and use a disposable note from two sessions. Make a phone draft containing a title and paragraph, change the saved title from the computer, and verify the comparison and the saved paragraph after reload. Check that an updated comparison shows the latest title before accepting. Keep pre-engine fixtures and forced delivery timing on the local emulators.
