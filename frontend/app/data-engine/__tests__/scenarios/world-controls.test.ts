@@ -36,4 +36,14 @@ describe('DeviceWorld control boundaries', () => {
     await world.advance(24 * 60 * 60_000 + 1); expect(phone.clock.capture('owner')).toBeUndefined();
     await expect(phone.transport.read('owner', sermonRef)).rejects.toMatchObject({ code: 'unavailable' });
   });
+
+  it('flushes a last autosave on leaving and bounds a nonquiet settle', async () => {
+    world = new DeviceWorld(); await world.seed(sermonRef, sermonValue());
+    const phone = await world.device('phone'); await phone.open(sermonRef); phone.goOffline();
+    await phone.update(sermonRef, current => ({ ...current, date: '2026-12-01' }));
+    await phone.leave(sermonRef); await phone.reload(); await phone.goOnline();
+    expect((await world.snapshot(sermonRef)).value?.date).toBe('2026-12-01');
+    await expect(world.settle(1)).rejects.toThrow('World did not settle');
+    expect(await world.questions()).toEqual([]);
+  });
 });

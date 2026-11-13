@@ -13,6 +13,8 @@ import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferen
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
+/** No retention sweep in this transaction: the next delivery pass collects what it leaves (retention.client.ts). */
+const deferCollection: typeof collectCommitRows = (_store, _read, _owner, finish) => finish();
 
 /** Older collectors honor reference rows even when they cannot read a new request format. */
 function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
@@ -160,11 +162,11 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
       });
     }),
     create: request => createBatch([request]).then(records => records[0]),
-    createWithCheckpoint: (request, project) => {
+    createWithCheckpoint: (request, project, options) => {
       const frozen = clone(request);
       return transaction('readwrite', (store, read, done) => {
         createRecord(store, read, frozen, saved => {
-          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved), collect);
+          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved), options?.deferRetention ? deferCollection : collect);
         });
       });
     },
@@ -246,7 +248,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
               const project = (requests: CommitRequest[]) => {
                 const frozen = validateRecoveryRecord(record, owner, request.editorId, request.baseline.resource);
                 writeCheckpointRecord(store, read, reconcileRecoveryRecord(frozen, requests), false,
-                  () => projectNext(index + 1), (_store, _read, _owner, finish) => finish());
+                  () => projectNext(index + 1), deferCollection);
               };
               if (ordered) project(ordered);
               else readCommitRows(store, read, owner, requests => { ordered = orderCommitRequests(requests); project(ordered); });

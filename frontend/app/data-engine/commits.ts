@@ -160,8 +160,12 @@ export interface CommitStore {
   readChainStep?(owner: string, knownIds: ReadonlySet<string>, ids: readonly string[]): Promise<CommitRequest[] | null>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */
   create(request: CommitRequest): Promise<CommitRequest>;
-  /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
-  createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest>;
+  /**
+   * Native adapters capture the exact checkpoint and canonical request in one transaction. `deferRetention`
+   * leaves the sweep of retained rows to the next pass, so a page being left writes only what it must keep.
+   */
+  createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
+    options?: { deferRetention?: true }): Promise<CommitRequest>;
   /** Exact replacement capture and refused-source retirement share one native transaction. */
   createWithTransfer?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
     sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
@@ -334,6 +338,8 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   thoughtTagId?: string;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
+  /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
+  deferRetention?: true;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
 function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke | undefined {
@@ -523,7 +529,7 @@ export class CommitQueue {
     }
     const capture = async (record: CommitRequest): Promise<CaptureTransferResult> => frozenOptions?.transfer
       ? this.options.store.createWithTransfer!(record, frozenOptions.checkpoint!, frozenOptions.transfer.sources)
-      : { request: await this.captureRequest(record, frozenOptions?.checkpoint), retired: [] };
+      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention), retired: [] };
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
@@ -663,8 +669,10 @@ export class CommitQueue {
     return clone(result.request);
   }
 
-  private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest> {
-    if (checkpoint && this.options.store.createWithCheckpoint) return this.options.store.createWithCheckpoint(record, checkpoint);
+  private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord, deferRetention?: true): Promise<CommitRequest> {
+    if (checkpoint && this.options.store.createWithCheckpoint) {
+      return this.options.store.createWithCheckpoint(record, checkpoint, ...(deferRetention ? [{ deferRetention }] as const : []));
+    }
     // Custom document-only ports project afterward, without native atomicity.
     return this.options.store.create(record);
   }

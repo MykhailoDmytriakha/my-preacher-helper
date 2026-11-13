@@ -2139,15 +2139,17 @@ export class DataEngine {
           const current = this.current(owner, generation);
           const leaving = flush && current ? this.leavingIntent(controller) : null;
           const moves = flush && current ? [...outlineSaves.values()].flat() : [];
+          const record = leaving || moves.length ? this.closingRecord(controller) : null;
+          const closingRequests: CommitRequest[] = [];
           // Register before closing. The local handoff outlives the controller and gates only
           // another opening of this resource, even if no checkpoint discovery has to read the queue.
           const saving = moves.length
-            ? this.keepClosingOutlineSaves(owner, generation, editorId, controller.settled(), moves, leaving?.checkpoint)
-            : leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, leaving.predecessorId) : undefined;
+            ? this.keepClosingOutlineSaves(owner, generation, editorId, controller.settled(), moves, record, closingRequests, leaving?.checkpoint)
+            : leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, record, closingRequests, leaving.predecessorId) : undefined;
           // With no request taking the last words along, retain the unwritten checkpoint.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
           const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
-            Promise.allSettled([controller.settled(), saving]), frozen) : undefined;
+            Promise.allSettled([controller.settled(), saving]), frozen, closingRequests) : undefined;
           this.close(entry, keeping ?? saving);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
         },
@@ -2177,16 +2179,33 @@ export class DataEngine {
     return { checkpoint: JSON.parse(JSON.stringify(checkpoint)) as SessionCheckpoint, ...(predecessorId ? { predecessorId } : {}) };
   }
 
-  private keepClosingSave(owner: string, generation: number, editorId: string, checkpoint: SessionCheckpoint, predecessorId?: string): Promise<void> {
+  /**
+   * The record a closing Save pins in its checkpoint, guarded like `leavingIntent`: a controller retired a
+   * moment ago has none to give, and its Save still goes — only without pinning the closed copy.
+   */
+  private closingRecord(controller: EditorController): EditorRecord | null {
+    try { return controller.captureRecoveryChoice(); } catch { return null; }
+  }
+
+  /** A page being left writes its request and checkpoint and nothing more; the retention sweep waits for the next pass. */
+  private keepClosingSave(owner: string, generation: number, editorId: string, checkpoint: SessionCheckpoint, record: EditorRecord | null,
+    closingRequests: CommitRequest[], predecessorId?: string): Promise<void> {
     const capture = this.commits.admitSave(editorId, checkpoint);
+    const project = record && ((request: CommitRequest) => reconcileRecoveryRecord(record, [request]));
     const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: checkpoint.confirmed.resource },
-      persist: async () => { await capture(predecessorId ? { predecessorId } : undefined); } }, generation);
+      persist: async () => {
+        const request = await capture({ ...(predecessorId && { predecessorId }), ...(project && { checkpoint: project }), deferRetention: true });
+        if (request) {
+          closingRequests.push(request);
+          if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));
+        }
+      } }, generation);
     void pending.then(() => { if (this.current(owner, generation)) this.backgroundDrain(); }, () => undefined);
     return pending;
   }
 
   private keepClosingOutlineSaves(owner: string, generation: number, editorId: string, settled: Promise<void>,
-    moves: readonly ClosingSaveIntent[], trailing?: SessionCheckpoint): Promise<void> {
+    moves: readonly ClosingSaveIntent[], record: EditorRecord | null, closingRequests: CommitRequest[], trailing?: SessionCheckpoint): Promise<void> {
     const intents = new Map<number, ClosingSaveIntent>();
     for (const intent of moves) {
       const edit = intent.checkpoint.editGeneration;
@@ -2196,15 +2215,20 @@ export class DataEngine {
     const ordered = [...intents.values()].sort((a, b) => a.checkpoint.editGeneration - b.checkpoint.editGeneration);
     const captures = ordered.map(({ checkpoint, action }) => {
       const predecessor = Object.entries(checkpoint.pending).sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
-      return { capture: this.commits.admitSave(editorId, checkpoint), action, predecessor };
+      return { capture: this.commits.admitSave(editorId, checkpoint), checkpoint, action, predecessor };
     });
     const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: ordered[0].checkpoint.confirmed.resource },
       persist: async () => {
         await settled.catch(() => undefined);
         let previous: string | undefined;
-        for (const { capture, action, predecessor } of captures) {
-          const request = await capture({ predecessorId: previous ?? predecessor ?? null, ...(action && { action }) });
-          if (request) previous = request.id;
+        for (const { capture, checkpoint, action, predecessor } of captures) {
+          const project = record && ((request: CommitRequest) => reconcileRecoveryRecord({ ...record, checkpoint }, [...closingRequests, request]));
+          const request = await capture({ predecessorId: previous ?? predecessor ?? null, ...(action && { action }),
+            ...(project && { checkpoint: project }), deferRetention: true });
+          if (request) {
+            previous = request.id; closingRequests.push(request);
+            if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));
+          }
         }
       } }, generation);
     void pending.then(() => { if (this.current(owner, generation)) this.backgroundDrain(); }, () => undefined);
@@ -2217,9 +2241,9 @@ export class DataEngine {
   }
 
   /** The old queue finishes before its immutable last checkpoint can repair the same identity. */
-  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress): Promise<void> {
+  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress, closingRequests: readonly CommitRequest[] = []): Promise<void> {
     return this.retainLocal({ address: { owner, kind: 'checkpoint', id: record.editorId, resource: record.checkpoint.confirmed.resource },
-      persist: async () => { await pending.catch(() => undefined); await this.options.checkpoints.put(record); } }, generation, about);
+      persist: async () => { await pending.catch(() => undefined); await this.options.checkpoints.put(closingRequests.length ? reconcileRecoveryRecord(record, closingRequests) : record); } }, generation, about);
   }
 
   private retainLocal(handoff: LocalWriteHandoff, generation: number, failureAddress?: FailureAddress): Promise<void> {

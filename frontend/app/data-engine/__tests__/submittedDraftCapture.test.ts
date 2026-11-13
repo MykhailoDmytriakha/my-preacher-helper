@@ -1,10 +1,12 @@
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { EditorController } from '../controller';
 import { editorIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { createIndexedDbManualScopes } from '../manualScopes.client';
 import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
+import { collectCommitRows } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { installStorageHarness } from './storageHarness';
 
@@ -22,7 +24,7 @@ const initial: ResourceSnapshot = {
 };
 const settle = async () => { for (let i = 0; i < 600; i += 1) await Promise.resolve(); };
 
-function fixture() {
+function fixture(collect?: typeof collectCommitRows) {
   const storage = installStorageHarness();
   const cache = new Map([[JSON.stringify(resource), copy(initial)]]);
   const journal = new Map<string, JournalEntry>();
@@ -42,7 +44,7 @@ function fixture() {
       remove: async (_owner, id) => { journal.delete(id); },
     } });
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
-    const engine = new DataEngine({ runtime, observer, transport, commits: createIndexedDbCommitStore(),
+    const engine = new DataEngine({ runtime, observer, transport, commits: createIndexedDbCommitStore(collect),
       checkpoints: createIndexedDbCheckpoints(), manualScopes: createIndexedDbManualScopes(), snapshots: {
         read: async (_owner, ref) => { const row = cache.get(JSON.stringify(ref)); return row && copy(row); },
         put: async (_owner, row) => { cache.set(JSON.stringify(row.resource), copy(row)); },
@@ -212,4 +214,84 @@ describe('submitted draft ownership across a restart', () => {
       expect(s.transport.send).not.toHaveBeenCalled();
     } finally { after.dispose(); }
   });
+});
+
+it('pins a closing Save in its native checkpoint until its exact ACK settles the closed copy', async () => {
+  const s = fixture(), before = s.makeEngine();
+  let after: DataEngine | undefined;
+  try {
+    const editor = await s.open(before);
+    await editor.edit({ ...initial.value, content: 'last words on leaving' });
+    editor.close({ flush: true }); await settle();
+    const checkpoints = [...s.storage.rows.values()].filter((value): value is EditorRecord => Boolean((value as EditorRecord).checkpoint));
+    expect(checkpoints).toHaveLength(1);
+    expect(Object.keys(checkpoints[0].checkpoint.pending)).toHaveLength(1);
+    before.dispose(); after = s.makeEngine();
+    after.setOnline(true); await after.retry(); await settle();
+    expect(s.server().value?.content).toBe('last words on leaving');
+    expect(await after.listRecoverable(resource)).toEqual([]);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+  } finally { before.dispose(); after?.dispose(); }
+});
+
+it('keeps later private words recoverable when leaving without flush while an earlier Save is delivered', async () => {
+  const s = fixture(), before = s.makeEngine();
+  let after: DataEngine | undefined;
+  try {
+    const editor = await s.open(before);
+    await editor.commit(current => ({ ...current, content: 'submitted words' }));
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'later private words' });
+    editor.close({ flush: false }); await settle();
+    before.dispose(); after = s.makeEngine();
+    after.setOnline(true); await after.retry(); await settle();
+    expect(s.server().value?.content).toBe('submitted words');
+    const copies = await after.listRecoverable(resource);
+    expect(copies).toHaveLength(1);
+    expect(copies[0].record.checkpoint.draft?.content).toBe('later private words');
+    expect(copies[0].record.checkpoint.pending).toEqual({});
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+  } finally { before.dispose(); after?.dispose(); }
+});
+
+it('captures a leaving Save with its checkpoint and no retention sweep, while an ordinary Save still sweeps', async () => {
+  let sweeps = 0, fullReads = 0;
+  const s = fixture((store, read, owner, done) => { sweeps += 1; collectCommitRows(store, read, owner, done); });
+  // One retention sweep reads nine row kinds in full (six request kinds, checkpoints, manual and reference rows).
+  s.storage.onFullRead = (_kind, mode) => { if (mode === 'readwrite') fullReads += 1; };
+  const engine = s.makeEngine();
+  try {
+    const editor = await s.open(engine);
+    await editor.edit({ ...initial.value, content: 'ordinary words' }); await settle();
+    sweeps = 0; fullReads = 0;
+    await editor.save(); await settle();
+    const ordinary = { sweeps, fullReads };
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'last words on leaving' }); await settle();
+    sweeps = 0; fullReads = 0;
+    editor.close({ flush: true }); await settle();
+    // The ordinary Save is measured as it was before the leaving capture stopped sweeping: unchanged.
+    expect({ ordinary, leaving: { sweeps, fullReads } }).toEqual({ ordinary: { sweeps: 2, fullReads: 45 }, leaving: { sweeps: 0, fullReads: 0 } });
+    // The request and the checkpoint that pins it were written together.
+    const closed = [...s.storage.rows.values()].filter((value): value is EditorRecord => Boolean((value as EditorRecord).checkpoint));
+    expect(closed).toHaveLength(1);
+    expect(closed[0].checkpoint.draft?.content).toBe('last words on leaving');
+    expect(Object.keys(closed[0].checkpoint.pending)).toHaveLength(2);
+  } finally { engine.dispose(); }
+});
+
+it('still captures the leaving Save when the closing record cannot be taken from the editor', async () => {
+  const s = fixture(), before = s.makeEngine();
+  let after: DataEngine | undefined;
+  const capture = jest.spyOn(EditorController.prototype, 'captureRecoveryChoice').mockImplementation(() => {
+    throw new Error('The editor was retired a moment ago');
+  });
+  try {
+    const editor = await s.open(before);
+    await editor.edit({ ...initial.value, content: 'words kept without a closing record' });
+    expect(() => editor.close({ flush: true })).not.toThrow();
+    await settle();
+    capture.mockRestore();
+    before.dispose(); after = s.makeEngine();
+    after.setOnline(true); await after.retry(); await settle();
+    expect(s.server().value?.content).toBe('words kept without a closing record');
+  } finally { capture.mockRestore(); before.dispose(); after?.dispose(); }
 });
