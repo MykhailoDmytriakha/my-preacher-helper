@@ -1,8 +1,9 @@
-import { fetchWithTimeout } from '@/utils/fetchWithTimeout';
+import { BibleAssetDeadlineError, BibleAssetHttpError, fetchBibleJson } from '@/utils/fetchBibleJson';
+import { reachableAgainCount } from '@/utils/reachableAgain';
 
 import { isWordFormData, WORD_FORMS_CACHE, wordFormDataUrl, type WordFormData, type WordFormLanguage } from './wordFormAssets';
 
-type Sources = { cacheStorage?: CacheStorage; timeoutMs?: number };
+type Sources = { cacheStorage?: CacheStorage; timeoutMs?: number; fetchFn?: typeof fetch; canRetry?: () => boolean };
 const deviceCache = (): CacheStorage | undefined => typeof caches === 'undefined' ? undefined : caches;
 
 async function openCache(storage: CacheStorage | undefined): Promise<Cache | undefined> {
@@ -20,7 +21,7 @@ async function read(response: Response): Promise<unknown> {
 
 /** Read for an actual search or the background Bible preparation. The device copy needs no controlling worker. */
 export async function fetchWordFormData(language: WordFormLanguage,
-  { cacheStorage = deviceCache(), timeoutMs = 10000 }: Sources = {}): Promise<WordFormData> {
+  { cacheStorage = deviceCache(), timeoutMs = 10000, fetchFn = fetch, canRetry }: Sources = {}): Promise<WordFormData> {
   const url = wordFormDataUrl(language), cache = await openCache(cacheStorage);
   const kept = await keptResponse(cache, url);
   if (kept) {
@@ -28,9 +29,20 @@ export async function fetchWordFormData(language: WordFormLanguage,
     if (isWordFormData(value, language)) return value;
     try { await cache?.delete(url); } catch { /* The invalid copy is still never used. */ }
   }
-  const response = await fetchWithTimeout(url, { timeout: timeoutMs });
-  if (!response.ok) throw new Error(`Word forms for ${language}: HTTP ${response.status}`);
-  const value: unknown = await response.clone().json();
+  const load = async () => {
+    const result = await fetchBibleJson(fetchFn, url, timeoutMs, timeoutMs);
+    if (!result.response.ok) throw new BibleAssetHttpError(`Word forms for ${language}: HTTP ${result.response.status}`, result.response);
+    return result;
+  };
+  const { response, data: value } = await load().catch(async (error: unknown) => {
+    const transient = error instanceof TypeError || error instanceof BibleAssetDeadlineError ||
+      (error instanceof BibleAssetHttpError && error.networkFailure);
+    if (!transient || !canRetry?.()) throw error;
+    const mark = reachableAgainCount();
+    await new Promise(resolve => setTimeout(resolve, 500));
+    if (reachableAgainCount() !== mark || !canRetry()) throw error;
+    return load();
+  });
   if (!isWordFormData(value, language)) throw new Error(`Word forms for ${language}: invalid language payload`);
   try { await cache?.put(url, response); } catch { /* A refused cache keeps this search usable, but cannot promise an offline copy. */ }
   return value;

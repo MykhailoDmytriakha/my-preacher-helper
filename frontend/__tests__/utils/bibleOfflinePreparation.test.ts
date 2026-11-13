@@ -1,5 +1,7 @@
 /** @jest-environment node */
 import { warmBibleTextOnce, bookTextUrl } from '@/utils/bibleText';
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
+import { getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 import { BIBLE_TEXT_CACHE } from '@/utils/bibleTextCache';
 import { type BibleId } from '@/utils/bibles';
 import { fetchWordFormData } from '@/utils/bibleSearch/wordFormData';
@@ -92,4 +94,46 @@ it('reports dictionary storage refusal while the same online search remains usab
   expect(forms.rows.size).toBe(0);
   expect((await fetchWordFormData('ru', { cacheStorage: storage })).language).toBe('ru');
   expect(forms.rows.size).toBe(0);
+});
+
+
+it('reports a dictionary-only failure during background preparation and leaves existing text available', async () => {
+  reportServerReachable();
+  const { books, forms, storage } = device();
+  books.rows.set(bookTextUrl('Jude', 'rst'), json(jude));
+  fetchMock.mockRejectedValueOnce(new TypeError('Network connection lost'));
+  const options = {
+    bible: 'rst' as const, bookIds: ['Jude'], cacheStorage: storage,
+    wordFormFetchFn: bibleAssetFetch(() => true),
+  };
+  await expect(warmBibleTextOnce(options)).resolves.toEqual({ onDevice: 1, total: 1, storageFailed: false });
+  expect(forms.rows.size).toBe(0);
+  expect(getConnectivityStatus()).toBe(false);
+  reportServerReachable();
+  fetchMock.mockResolvedValueOnce(json(payloads.ru));
+  await warmBibleTextOnce(options);
+  expect(forms.rows.has(wordFormDataUrl('ru'))).toBe(true);
+  expect(fetchMock.mock.calls.map(call => call[0])).toEqual([wordFormDataUrl('ru'), wordFormDataUrl('ru')]);
+});
+
+
+it('does not start the dictionary stage once the background translation is no longer current', async () => {
+  const { forms, storage } = device();
+  let current = true;
+  let deliver: (response: Response) => void = () => undefined;
+  fetchMock.mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }));
+  const options = { bible: 'rst' as const, bookIds: ['Jude'], cacheStorage: storage, canContinue: () => current };
+  const first = warmBibleTextOnce(options);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  current = false;
+  deliver(json(jude));
+  await first;
+  expect(fetchMock.mock.calls.map(call => call[0])).toEqual([bookTextUrl('Jude', 'rst')]);
+  expect(forms.rows.size).toBe(0);
+
+  current = true;
+  fetchMock.mockResolvedValueOnce(json(payloads.ru));
+  await warmBibleTextOnce(options);
+  expect(forms.rows.has(wordFormDataUrl('ru'))).toBe(true);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });

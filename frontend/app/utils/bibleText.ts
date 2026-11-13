@@ -246,7 +246,7 @@ export async function warmBibleText({
   return { onDevice, total, storageFailed };
 }
 
-type WarmRequest = WarmOptions & { canContinue?: () => boolean };
+type WarmRequest = WarmOptions & { canContinue?: () => boolean; wordFormFetchFn?: typeof fetch };
 type WarmRun = { promise: Promise<WarmResult>; next: WarmRequest | null };
 const warmInFlight = new Map<BibleId, WarmRun>();
 
@@ -264,8 +264,8 @@ export function warmBibleTextOnce(options: WarmRequest): Promise<WarmResult> {
   }
   const warm = async (request: WarmRequest): Promise<WarmResult> => {
     const text = await warmBibleText(request), language = BIBLES[bible].language;
-    if (language === 'en') return text;
-    const forms = await warmWordFormData(language, { cacheStorage: request.cacheStorage, timeoutMs: request.deadlineMs });
+    if (language === 'en' || (request.canContinue && !request.canContinue())) return text;
+    const forms = await warmWordFormData(language, { cacheStorage: request.cacheStorage, timeoutMs: request.deadlineMs, fetchFn: request.wordFormFetchFn, canRetry: request.canContinue });
     return forms.storageFailed ? { ...text, storageFailed: true } : text;
   };
   const run = async (): Promise<WarmResult> => {

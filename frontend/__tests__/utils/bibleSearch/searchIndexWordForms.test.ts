@@ -1,11 +1,12 @@
-import { waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { SYNODAL_BOOKS } from '@/components/bible/bookOrder';
 import { answeringOf } from '@/utils/bibleSearch/lineChoice';
 import { readLine } from '@/utils/bibleSearch/query';
-import { loadSearchIndex, resetSearchIndexesForTests, searchIndexState } from '@/utils/bibleSearch/searchIndexStore';
+import { loadSearchIndex, resetSearchIndexesForTests, searchIndexState, useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
 import { resetWordFormLexiconsForTests, wordFormLexiconReady } from '@/utils/bibleSearch/wordFormLexicon';
 import { fetchBookText, keptBookText } from '@/utils/bibleText';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 import { readWordFormFixture } from '../../../test-utils/bibleWordForms';
 
@@ -18,6 +19,7 @@ const fetchMock = fetch as jest.MockedFunction<typeof fetch>;
 const dictionary = () => new Response(JSON.stringify(readWordFormFixture('ru')), { headers: { 'content-type': 'application/json' } });
 
 beforeEach(() => {
+  __resetConnectivityForTests();
   resetSearchIndexesForTests(); resetWordFormLexiconsForTests(); fetchMock.mockReset();
   (keptBookText as jest.Mock).mockResolvedValue(john);
   (fetchBookText as jest.Mock).mockRejectedValue(new Error('No network text'));
@@ -101,5 +103,66 @@ it('honors a reconnect requested before a failed lexical request settles', async
   await first; await online;
   await waitFor(() => expect(searchIndexState('rst', order).wordFormsReady).toBe(true));
   expect(searchIndexState('rst', order).wordFormsError).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+
+it.each([['rst', 'ru'], ['ubio', 'uk']] as const)('recovers the %s search after its dictionary alone fails', async (bible, language) => {
+  await loadSearchIndex(bible, order, false);
+  expect(searchIndexState(bible, order).index.has('John')).toBe(true);
+  fetchMock.mockRejectedValueOnce(new TypeError('Network connection lost'))
+    .mockResolvedValueOnce(new Response(JSON.stringify(readWordFormFixture(language))));
+  const { result } = renderHook(() => useSearchIndex(bible, order, true));
+  await waitFor(() => expect(result.current.wordFormsError).toBeTruthy());
+  expect(getConnectivityStatus()).toBe(false);
+  expect(fetchBookText).not.toHaveBeenCalled();
+  act(() => reportServerReachable());
+  await waitFor(() => expect(result.current.wordFormsReady).toBe(true));
+  expect(result.current.wordFormsError).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+
+it('retries once when an older dictionary request fails after a newer successful health check', async () => {
+  await loadSearchIndex('rst', order, false);
+  let refuse: (reason: Error) => void = () => undefined;
+  fetchMock.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }))
+    .mockResolvedValueOnce(dictionary());
+  const { result } = renderHook(() => useSearchIndex('rst', order, true));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  act(() => reportServerReachable());
+  await act(async () => refuse(new TypeError('Old connection lost')));
+  expect(getConnectivityStatus()).toBe(true);
+  await waitFor(() => expect(result.current.wordFormsReady).toBe(true));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+
+it('does not retry an abandoned dictionary when the search field stays focused', async () => {
+  await loadSearchIndex('rst', order, false);
+  let refuse: (reason: Error) => void = () => undefined;
+  fetchMock.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }));
+  const { rerender } = renderHook(({ needsWords }) => useSearchIndex('rst', order, true, needsWords),
+    { initialProps: { needsWords: true } });
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  rerender({ needsWords: false });
+  await act(async () => refuse(new TypeError('Abandoned request failed')));
+  expect(getConnectivityStatus()).toBe(true);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+
+it('lets a newer reachable period own the retry that was still waiting on a timer', async () => {
+  await loadSearchIndex('rst', order, false);
+  let refuse: (reason: Error) => void = () => undefined;
+  fetchMock.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }))
+    .mockResolvedValueOnce(new Response(null, { status: 404 }));
+  const { result } = renderHook(() => useSearchIndex('rst', order, true));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  act(() => reportServerReachable());
+  await act(async () => refuse(new TypeError('Old connection lost')));
+  await act(async () => { reportServerUnreachable(); reportServerReachable(); });
+  await waitFor(() => expect(result.current.wordFormsError?.message).toContain('404'));
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });

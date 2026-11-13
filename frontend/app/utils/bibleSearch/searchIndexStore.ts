@@ -7,6 +7,7 @@ import { fetchBookText, keptBookText } from '@/utils/bibleText';
 import { serverInReach, subscribeToReachableAgain } from '@/utils/reachableAgain';
 
 import { BibleSearchIndex } from './searchIndex';
+import { fetchWordFormData } from './wordFormData';
 import { loadWordFormLexicon, wordFormLexiconReady } from './wordFormLexicon';
 
 /** One index per Bible; text arrivals and lexical readiness are independent parts of the same search state. */
@@ -29,9 +30,11 @@ type Entry = {
   booksAgain: Replay | null;
   wordFormsRunning: Promise<void> | null;
   wordFormsAgain: Replay | null;
+  reportedWordFormsFailure: boolean;
   failed: Set<string>;
   reportedFailures: Set<string>;
   active: number;
+  activeWordForms: number;
   listeners: Set<() => void>;
 };
 
@@ -49,8 +52,8 @@ function entryFor(bible: BibleId, order: readonly string[]): Entry {
     entry = {
       state: { index: new BibleSearchIndex(order), indexed: 0, total: BIBLE_BOOKS_DATA.length,
         loading: false, missing: 0, version: 0, wordFormsReady: lexicalReady(bible), wordFormsError: null },
-      booksRunning: null, booksAgain: null, wordFormsRunning: null, wordFormsAgain: null,
-      failed: new Set(), reportedFailures: new Set(), active: 0, listeners: new Set(),
+      booksRunning: null, booksAgain: null, wordFormsRunning: null, wordFormsAgain: null, reportedWordFormsFailure: false,
+      failed: new Set(), reportedFailures: new Set(), active: 0, activeWordForms: 0, listeners: new Set(),
     };
     entries.set(bible, entry);
   }
@@ -66,8 +69,8 @@ function queueReplay(previous: Replay | null, automatic: boolean): Replay {
   return { manual: Boolean(previous?.manual || !automatic), auto: Boolean(previous?.auto || automatic) };
 }
 
-function shouldReplay(replay: Replay | null, entry: Entry): boolean {
-  return Boolean(replay?.manual || (replay?.auto && entry.active > 0 && serverInReach()));
+function shouldReplay(replay: Replay | null, active: number): boolean {
+  return Boolean(replay?.manual || (replay?.auto && active > 0 && serverInReach()));
 }
 
 /** One language request is shared by its consumers; a reconnect during a refusal earns one later attempt. */
@@ -81,7 +84,14 @@ function loadWordForms(bible: BibleId, entry: Entry, automatic: boolean): Promis
     entry.wordFormsAgain = queueReplay(entry.wordFormsAgain, automatic);
     return entry.wordFormsRunning;
   }
-  entry.wordFormsRunning = loadWordFormLexicon(language).then(() => {
+  const fetchFn = bibleAssetFetch(() => {
+    if (!entry.activeWordForms || entry.reportedWordFormsFailure) return false;
+    entry.reportedWordFormsFailure = true;
+    return true;
+  });
+  const canRetry = () => entry.activeWordForms > 0 && serverInReach();
+  entry.wordFormsRunning = loadWordFormLexicon(language, current => fetchWordFormData(current, { fetchFn, canRetry })).then(() => {
+    entry.reportedWordFormsFailure = false;
     entry.wordFormsRunning = null;
     entry.wordFormsAgain = null;
     publish(entry, { wordFormsReady: true, wordFormsError: null });
@@ -90,7 +100,7 @@ function loadWordForms(bible: BibleId, entry: Entry, automatic: boolean): Promis
     const again = entry.wordFormsAgain;
     entry.wordFormsAgain = null;
     publish(entry, { wordFormsReady: false, wordFormsError: error instanceof Error ? error : new Error(String(error)) });
-    if (shouldReplay(again, entry)) void loadWordForms(bible, entry, !again?.manual);
+    if (shouldReplay(again, entry.activeWordForms)) void loadWordForms(bible, entry, !again?.manual);
   });
   publish(entry, { wordFormsReady: false, wordFormsError: null });
   return entry.wordFormsRunning;
@@ -139,7 +149,7 @@ function loadBooks(bible: BibleId, order: readonly string[], entry: Entry, autom
     publish(entry, { missing: entry.failed.size });
     const again = entry.booksAgain;
     entry.booksAgain = null;
-    if (shouldReplay(again, entry)) void loadBooks(bible, order, entry, !again?.manual);
+    if (shouldReplay(again, entry.active)) void loadBooks(bible, order, entry, !again?.manual);
   });
   publish(entry, { missing: 0 });
   return entry.booksRunning;
@@ -166,6 +176,7 @@ export function useSearchIndex(bible: BibleId, order: readonly string[], active:
   useEffect(() => {
     if (!active) return undefined;
     entry.active += 1;
+    if (withWordForms) entry.activeWordForms += 1;
     let alive = true;
     const stop = subscribeToReachableAgain(() => {
       queueMicrotask(() => {
@@ -176,6 +187,7 @@ export function useSearchIndex(bible: BibleId, order: readonly string[], active:
     return () => {
       alive = false;
       entry.active -= 1;
+      if (withWordForms) entry.activeWordForms -= 1;
       stop();
     };
   }, [active, bible, entry, order, withWordForms]);

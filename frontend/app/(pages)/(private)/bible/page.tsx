@@ -60,10 +60,16 @@ export default function BiblePage() {
       reportedFailure = true;
       return true;
     });
+    let reportedWordFormsFailure = false;
+    const wordFormFetchFn = bibleAssetFetch(() => {
+      if (!alive || reportedWordFormsFailure) return false;
+      reportedWordFormsFailure = true;
+      return true;
+    });
     const canContinue = () => alive && serverInReach();
     const run = () => {
       if (!canContinue()) return;
-      void warmBibleTextOnce({ bible, fetchFn, canContinue }).then((result) => {
+      void warmBibleTextOnce({ bible, fetchFn, wordFormFetchFn, canContinue }).then((result) => {
         if (!alive) return;
         if (result.onDevice === result.total) reportedFailure = false;
         setStorageFailed(result.storageFailed);
