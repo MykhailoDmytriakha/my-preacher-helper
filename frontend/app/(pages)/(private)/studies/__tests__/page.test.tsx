@@ -28,6 +28,18 @@ jest.mock('../StudyAnalysisWindow', () => ({
     </div>
   ),
 }));
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ href, onNavigate, children, ...props }: {
+    href: string; onNavigate?: (event: { preventDefault: () => void }) => void; children: React.ReactNode;
+  }) => <a href={href} {...props} onClick={event => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    let prevented = false;
+    onNavigate?.({ preventDefault: () => { prevented = true; } });
+    if (!prevented) mockPush(href);
+  }}>{children}</a>,
+}));
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
@@ -182,6 +194,36 @@ describe('StudiesPage', () => {
       removeCustomTag: jest.fn(),
       updateTag: jest.fn(), observeColor: jest.fn(), captureActionTime: jest.fn(),
     });
+  });
+
+  it('leaves a pending analysis before continuing a local draft', async () => {
+    const list = '/studies?tab=analyses';
+    window.history.replaceState(null, '', '/dashboard');
+    window.history.pushState(null, '', list);
+    mockQueryState.tab = 'analyses';
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [
+      createMockNote({ id: 'analysis-a', title: 'Pending analysis', type: 'analysis' }),
+    ] });
+    const key = draftKey('mock-user', 'new~draft-a', 'note');
+    const raw = JSON.stringify({ savedAt: 1, creationTargetId: 'draft-a',
+      value: { title: 'Draft to continue', content: 'Words in the draft', tags: [], scriptureRefs: [], type: 'note' } });
+    localStorage.setItem(key, raw);
+    const view = render(<StudiesPage />);
+    try {
+      fireEvent.click(screen.getByText('Pending analysis'));
+      expect(window.location.search).toContain('analysis=analysis-a');
+      let from = '';
+      mockPush.mockImplementationOnce(() => { from = window.location.pathname + window.location.search; });
+      fireEvent.click(screen.getByRole('link', { name: /Draft to continue/ }));
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('/studies/new?draft=new~draft-a')));
+      expect(from).toBe(list);
+      expect(screen.queryByTestId('analysis-window')).not.toBeInTheDocument();
+      expect(localStorage.getItem(key)).toBe(raw);
+    } finally {
+      view.unmount();
+      localStorage.removeItem(key);
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   it('shows each unfinished note with its own continue link after the list opens', () => {

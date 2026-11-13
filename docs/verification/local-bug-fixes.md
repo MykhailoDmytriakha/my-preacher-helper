@@ -9064,3 +9064,16 @@ On `97xC8sMVYjdV0KWze2Axx`, installed headless Chrome with an active service wor
 The original regression went red to green. The 62 focused tests, TypeScript, production-mode build and independent review passed. Full Jest passed 15,102 tests across 1,194 suites, with 17 tests and three suites skipped. Scoped ESLint reported zero errors and one existing Studies page complexity warning. Evidence is at `artifacts/studies-analysis-history-20261112/report.md`.
 
 After authorized deployment, confirm the released version. In one disposable test profile go from Dashboard to Studies, open a saved analysis while its Bible file is held, and press Back. Confirm Studies remains open, then restore the connection and press Forward. Check the original verse and mode, and verify that one more Back returns to the list. Repeat with the list's search and a regular note. This navigation check needs no edits.
+
+
+## BUG-20261112-studies-draft-back-reopens-analysis · Return from recovery to the Studies list
+
+On `14262cfc` / `97xC8sMVYjdV0KWze2Axx`, opening an existing local draft from Studies while an analysis waited for its Bible book left that pending history entry under the draft. Back reopened Romans 1:19 once the file was available. The regression caught the draft navigation starting from the analysis address.
+
+Text draft links and copies of saved recordings now use the existing Studies list departure before navigation. Native modified-link behavior stays available. A completed recording copy refreshes the unfinished draft list. If another opening superseded it or an editor became active, the copy stays on the device without taking over the screen. The original recording remains in storage.
+
+Installed headless Chrome on `WItqbiRgFqrPNnp_fmHi3` passed the text draft at 390 and 1280 CSS px and a synthetic recording at 390 with local Auth and Firestore. Back returned to the list in all three cases. I inspected the saved draft words, the recording recovery panel and the returned lists. The source and copied recording had the same bytes and distinct identities in IndexedDB. No playback or transcription was tested. The analysis was unchanged, exact fixture deletions were acknowledged, and owned profiles and listeners closed. Evidence is at `artifacts/studies-draft-back-20261112/report.md`.
+
+The original regression went red to green. All 71 targeted tests, TypeScript, the local production-mode build and independent review passed. Full Jest passed 15,107 tests across 1,194 suites, with 17 tests and three suites skipped. Scoped ESLint reported zero errors and one existing Studies page complexity warning.
+
+After authorized deployment, confirm the released revision. In a disposable profile with a local text draft or a synthetic recording, open Studies → Analyses while its Bible file is held. Continue the draft or open a copy of the recording. Use browser Back and verify the list and original source. Avoid submitting the draft or sending the recording to a provider.

@@ -357,7 +357,7 @@ export default function StudiesPage() {
           </div>
         </div>
 
-        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={canDescribeNotes} />
+        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={canDescribeNotes} beforeNavigate={leaveForList} />
 
         {/* Stats bar */}
         {canDescribeNotes && <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">

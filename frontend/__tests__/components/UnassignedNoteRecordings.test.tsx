@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import UnfinishedNoteDrafts from '../../app/(pages)/(private)/studies/components/UnfinishedNoteDrafts';
+import { hasModalLayers } from '@/utils/modalLayerRegistry';
 import { copyRecordingIntoNewNote } from '@/utils/studyNoteAudioRecovery';
 
 import type { RecordingDraft } from '@/utils/recordingDraftStore';
@@ -9,6 +10,10 @@ const mockPush = jest.fn();
 let mockOwner: string | undefined = 'alice';
 let mockDrafts: RecordingDraft[] = [];
 const mockRemove = jest.fn();
+jest.mock('@/utils/modalLayerRegistry', () => ({
+  ...jest.requireActual('@/utils/modalLayerRegistry'),
+  hasModalLayers: jest.fn(() => false),
+}));
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: mockOwner ? { uid: mockOwner } : null, loading: false }) }));
 jest.mock('@/hooks/useRecordingDrafts', () => ({ useRecordingDrafts: () => ({ drafts: mockDrafts, loading: false, ownerId: mockOwner, removeDraft: mockRemove, refresh: jest.fn() }) }));
@@ -65,4 +70,52 @@ it('fences navigation after the active account changes while the copy waits', as
   mockOwner = 'bob'; view.rerender(<UnfinishedNoteDrafts uid="bob" notes={[]} />);
   await act(async () => { finish('/studies/new?draft=new~alice-copy&draftOwner=alice'); });
   expect(mockPush).not.toHaveBeenCalled(); expect(mockRemove).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('waits for the list before navigating to copied audio (modal opened: %s)', async (modalOpened) => {
+  const href = '/studies/new?draft=new~copy&draftOwner=alice';
+  jest.mocked(copyRecordingIntoNewNote).mockResolvedValue(href);
+  let navigate: (() => void) | undefined;
+  const beforeNavigate = jest.fn((next: () => void) => { navigate = next; });
+  render(<UnfinishedNoteDrafts uid="alice" notes={[]} beforeNavigate={beforeNavigate} />);
+  fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.unassignedAudio.copy', hidden: true }));
+  await waitFor(() => expect(beforeNavigate).toHaveBeenCalledTimes(1));
+  expect(mockPush).not.toHaveBeenCalled();
+  jest.mocked(hasModalLayers).mockReturnValueOnce(modalOpened);
+  act(() => navigate?.());
+  if (modalOpened) expect(mockPush).not.toHaveBeenCalled();
+  else expect(mockPush).toHaveBeenCalledWith(href);
+  expect(mockRemove).not.toHaveBeenCalled();
+});
+
+it('shows the kept copy when the list changed while copying', async () => {
+  let finish!: (href: string) => void;
+  jest.mocked(copyRecordingIntoNewNote).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const oldNavigation = jest.fn();
+  const newNavigation = jest.fn();
+  const view = render(<UnfinishedNoteDrafts uid="alice" notes={[]} beforeNavigate={oldNavigation} />);
+  fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.unassignedAudio.copy', hidden: true }));
+  view.rerender(<UnfinishedNoteDrafts uid="alice" notes={[]} beforeNavigate={newNavigation} />);
+  localStorage.setItem('draft:v1:alice:new~copy:note', JSON.stringify({ savedAt: 1, creationTargetId: 'copy',
+    value: { title: 'Kept audio copy', content: '', tags: [], scriptureRefs: [], type: 'note', recordingSourceIds: ['old-audio'] } }));
+  await act(async () => finish('/studies/new?draft=new~copy&draftOwner=alice'));
+  expect(screen.getByRole('link', { name: /Kept audio copy/ })).toBeInTheDocument();
+  expect(oldNavigation).not.toHaveBeenCalled();
+  expect(newNavigation).not.toHaveBeenCalled();
+  expect(mockPush).not.toHaveBeenCalled();
+});
+
+it('keeps a newly opened editor in place when the audio copy finishes', async () => {
+  let finish!: (href: string) => void;
+  jest.mocked(copyRecordingIntoNewNote).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const beforeNavigate = jest.fn();
+  render(<UnfinishedNoteDrafts uid="alice" notes={[]} beforeNavigate={beforeNavigate} />);
+  fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.unassignedAudio.copy', hidden: true }));
+  localStorage.setItem('draft:v1:alice:new~copy:note', JSON.stringify({ savedAt: 1, creationTargetId: 'copy',
+    value: { title: 'Audio kept for later', content: '', tags: [], scriptureRefs: [], type: 'note', recordingSourceIds: ['old-audio'] } }));
+  jest.mocked(hasModalLayers).mockReturnValueOnce(true);
+  await act(async () => finish('/studies/new?draft=new~copy&draftOwner=alice'));
+  expect(screen.getByRole('link', { name: /Audio kept for later/ })).toBeInTheDocument();
+  expect(beforeNavigate).not.toHaveBeenCalled();
+  expect(mockPush).not.toHaveBeenCalled();
 });
