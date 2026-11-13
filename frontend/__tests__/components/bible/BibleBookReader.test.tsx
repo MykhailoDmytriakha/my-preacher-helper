@@ -504,8 +504,8 @@ describe('BibleBookReader', () => {
 
   it('names the place on the phone header button as a reference names it', async () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
-    await screen.findByText('Итак прежде всего');
-    expect(screen.getByRole('button', { name: 'bible.navigate' })).toHaveTextContent('1:2');
+    // The shell publishes its header separately from the reader's text.
+    await waitFor(() => expect(readerPlaceButton()).toHaveTextContent('Ruth 1:2'));
   });
 
   it('lights a URL passage across chapters without lighting either neighbour', async () => {
