@@ -23,7 +23,7 @@ export default function ShowVersionToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, readOnly, updateShowAppVersion, updatingShowAppVersion } = useUserSettings(user?.uid);
+  const { settings, loading, updateShowAppVersion, updatingShowAppVersion } = useUserSettings(user?.uid);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -36,7 +36,7 @@ export default function ShowVersionToggle() {
   }, [user?.uid, settings, loading]);
 
   const handleToggle = async () => {
-    // Ignore clicks while a write is in flight to avoid optimistic desync.
+    // The editor only waits for durable local capture, so the switch can work offline.
     if (!user?.uid || updatingShowAppVersion) return;
 
     const newValue = !enabled;
@@ -65,7 +65,7 @@ export default function ShowVersionToggle() {
         defaultValue: 'Display the deployed build version in Settings (handy for confirming an update went live).',
       })}
       enabled={enabled}
-      disabled={readOnly}
+      disabled={updatingShowAppVersion}
       onToggle={handleToggle}
       loading={loading && !hasLoaded}
       testId="show-version"

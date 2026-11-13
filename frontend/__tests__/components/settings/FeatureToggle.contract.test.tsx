@@ -16,6 +16,7 @@ jest.mock('@/hooks/useUserSettings', () => ({
     updateAudioGenerationAccess: mockWrite,
     updateShowAppVersion: mockWrite,
     updatingShowAppVersion: mockUpdating,
+    updatingAudioGeneration: mockUpdating,
   }),
 }));
 jest.mock('react-i18next', () => ({
@@ -69,6 +70,24 @@ describe.each([
     });
     expect(mockWrite).toHaveBeenCalledWith(!enabled);
     expect(mockWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an unavailable switch until local capture finishes and accepts the next click afterward', async () => {
+    mockSettings = { [field]: true };
+    mockUpdating = true;
+    const { rerender } = render(<Component />);
+    const toggle = screen.getByRole('switch');
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    mockUpdating = false;
+    rerender(<Component />);
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    expect(mockWrite).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
   it('resets on logout and never submits without an owner', () => {

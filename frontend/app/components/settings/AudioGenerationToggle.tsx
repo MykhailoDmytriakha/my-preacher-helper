@@ -17,7 +17,7 @@ export default function AudioGenerationToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, readOnly, updateAudioGenerationAccess } = useUserSettings(user?.uid);
+  const { settings, loading, updateAudioGenerationAccess, updatingAudioGeneration } = useUserSettings(user?.uid);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -30,7 +30,7 @@ export default function AudioGenerationToggle() {
   }, [user?.uid, settings, loading]);
 
   const handleToggle = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || updatingAudioGeneration) return;
 
     // A settings write is accepted by the durable queue at once, so a REFUSAL
     // always arrives LATE. A no-op there would swallow it: the switch stays
@@ -56,7 +56,7 @@ export default function AudioGenerationToggle() {
       title={t('settings.audioGeneration.title', { defaultValue: 'Sermon Audio Generation (Beta)' })}
       description={t('settings.audioGeneration.description', { defaultValue: 'Enable experimental audio generation for sermons' })}
       enabled={enabled}
-      disabled={readOnly}
+      disabled={updatingAudioGeneration}
       onToggle={handleToggle}
       loading={loading && !hasLoaded}
       testId="audio-generation"
