@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { serviceOrderPlacementWords } from '@/components/care/serviceOrderPlacementWords';
@@ -12,9 +12,10 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
+import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
@@ -34,6 +35,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
+import type { SessionCheckpoint } from '@/data-engine/session';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
 /**
@@ -267,6 +269,22 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
   return wasRefused ? 'refused' : 'conflict';
 }
 
+interface SettingsAnswer {
+  scope: OpenDocumentAnswer;
+  remote: NonNullable<SessionCheckpoint['remoteCandidate']>;
+}
+
+function coveredBySettingsAnswer({ record, actionResolutionRequired, answer }: RecoveryCheckpoint, settings: SettingsAnswer | null): boolean {
+  if (!settings || actionResolutionRequired || answer !== 'conflict') return false;
+  const { pending, remoteCandidate } = record.checkpoint;
+  const revision = remoteCandidate?.metadata;
+  const shown = settings.remote.metadata;
+  return !record.prepared && !record.unfinalized.length
+    && Object.keys(pending).length === settings.scope.operationIds.length
+    && Boolean(revision && shown && revision.generation === shown.generation && revision.revision === shown.revision)
+    && isRecoveryHeldOpen([record], [settings.scope]);
+}
+
 /**
  * One entry per document whose change waits for the person, in any engine collection — a one-shot
  * change first, then a screen's draft.
@@ -281,7 +299,7 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
  * decided, the draft stops waiting (`reconcileRecoveryRecord`) and the entry goes
  * (BUG-20260813-late-refusal-silent-after-navigation).
  */
-function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue): Waiting[] {
+function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue, settings: SettingsAnswer | null): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
   for (const { record, answer } of records) if (answer === 'refused') Object.keys(record.checkpoint.pending).forEach(id => refused.add(id));
   const movedCommentKinds = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === 'comment-kind-place-changed'
@@ -293,7 +311,8 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
   // A conflict in an unsent screen draft has no submitted request to settle here.
   const decided = records.filter(({ record, answer }) => isCollectionOnEngine(record.checkpoint.confirmed.resource.collection)
     && waitsForDecision(record, journal, answer) && (isOneShotRecord(record) || Boolean(answer)
-      || Object.keys(record.checkpoint.pending).some(id => answered.has(id))));
+      || Object.keys(record.checkpoint.pending).some(id => answered.has(id))))
+    .filter(source => !coveredBySettingsAnswer(source, settings));
   const documents: Waiting[] = [];
   for (const screen of [false, true]) {
     for (const entry of decided.filter(({ record }) => isOneShotRecord(record) !== screen)) {
@@ -341,16 +360,35 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
  * full for copying and the one choice is the stored version. App-wide, like the legacy
  * OutboxConflictBanner.
  */
-export function EngineConflictBanner({ pollMs = 5_000, search }: { pollMs?: number; search?: string }) {
-  return isDataEngineEnabled() ? <EngineConflicts pollMs={pollMs} search={search} /> : null;
+export function EngineConflictBanner({ pollMs = 5_000, search, withSettingsNotice = false }: {
+  pollMs?: number; search?: string; withSettingsNotice?: boolean;
+}) {
+  return isDataEngineEnabled() ? <EngineConflicts pollMs={pollMs} search={search} withSettingsNotice={withSettingsNotice} /> : null;
 }
 
-function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }) {
+function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: number; search?: string; withSettingsNotice: boolean }) {
   const { t, language: interfaceLanguage } = useTranslation();
   const { browser, owner } = useDataEngine();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const { confirm, confirmDialog, withdraw: withdrawDelete } = useConfirm();
   const openAnswers = useOpenDocumentAnswerScopes();
+  const settings = useSettingsEngine();
+  const checkpoint = settings?.document.state?.checkpoint;
+  const canAnswerSettings = withSettingsNotice && settings?.owner === owner && settings?.document.status?.phase === 'conflict'
+    && settings.document.status.canAcceptRemote && settings.document.status.canKeepLocal;
+  const settingsAnswer = useMemo<SettingsAnswer | null>(() => {
+    if (!canAnswerSettings || !owner || !checkpoint?.remoteCandidate || !readAccountPreferenceComparison(checkpoint)) return null;
+    const operationIds = Object.keys(checkpoint.pending);
+    return operationIds.length ? { remote: checkpoint.remoteCandidate,
+      scope: { owner, resource: checkpoint.confirmed.resource, draft: checkpoint.draft, operationIds } } : null;
+  }, [canAnswerSettings, checkpoint, owner]);
+  const settingsAnswerKey = settingsAnswer ? JSON.stringify([
+    settingsAnswer.scope.owner, settingsAnswer.scope.resource, [...settingsAnswer.scope.operationIds].sort(),
+    settingsAnswer.scope.draft, settingsAnswer.remote.metadata,
+  ]) : null;
+  const settingsAnswerRef = useRef(settingsAnswer);
+  settingsAnswerRef.current = settingsAnswer;
+  const previousSettingsAnswerKey = useRef(settingsAnswerKey);
   const actions = useDocumentActions();
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
@@ -390,7 +428,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     }
     try {
       const [records, journal] = await Promise.all([browser.engine.listRecoverable(), browser.engine.listPending()]);
-      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async entry => (
+      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current, settingsAnswerRef.current).map(async entry => (
         entry.screen ? { ...entry, formWork: await browser.engine.formWorkPending(entry.resource),
           decidable: await browser.engine.screenDecides(entry.resource) } : entry)));
       // A form's answer is resolved by its form, as it always was; it is not said here.
@@ -412,7 +450,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     if (!targetBrowser || !targetOwner || browserRef.current !== targetBrowser || ownerRef.current !== targetOwner) return null;
     try {
       const [records, journal] = await Promise.all([targetBrowser.engine.listRecoverable(), targetBrowser.engine.listPending()]);
-      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async candidate => (
+      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current, settingsAnswerRef.current).map(async candidate => (
         candidate.screen ? { ...candidate, formWork: await targetBrowser.engine.formWorkPending(candidate.resource),
           decidable: await targetBrowser.engine.screenDecides(candidate.resource) } : candidate)));
       if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner) return null;
@@ -433,6 +471,13 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, pollMs);
     return () => { stop(); window.clearInterval(timer); sequence.current += 1; withdraw(); };
   }, [browser, refresh, pollMs, interfaceLanguage, withdraw]);
+
+  // Settings is mounted across routes. An equivalent checkpoint refresh is not a new notice.
+  useEffect(() => {
+    if (previousSettingsAnswerKey.current === settingsAnswerKey) return;
+    previousSettingsAnswerKey.current = settingsAnswerKey;
+    void refresh();
+  }, [refresh, settingsAnswerKey]);
 
   // One question for the same held work, regardless of which editor originally captured it.
   // Other requests or unseen draft words keep their global notice.

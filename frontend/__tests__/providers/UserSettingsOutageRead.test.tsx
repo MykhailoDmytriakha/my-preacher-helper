@@ -2,12 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 import { ServerUnavailableNoticeProvider } from '@/providers/ServerUnavailableNoticeProvider';
 import { ConnectionProvider } from '@/providers/ConnectionProvider';
 import { failureWords } from '@/utils/actionFailureMessage';
 import { createBrowserDataEngine, type BrowserDataEngine } from '@/data-engine/browser.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import type { CollectionState } from '@/data-engine/collections';
 import type { SyncStatus } from '@/data-engine/status';
@@ -107,6 +109,56 @@ it.each([
 });
 
 const profileHarness = () => documentEngineHarness({ resource: { collection: 'users', id: 'owner' }, value: { language: 'en' }, metadata: { protocol: 1, generation: 'profile-generation', revision: 1, deleted: false } });
+
+it.each(['duplicate', 'independent-draft', 'no-detailed-notice'] as const)(
+  'routes a saved settings answer to the available notice (%s)', async scenario => {
+    const resource = { collection: 'users', id: 'owner' };
+    const original = { firstDayOfWeek: 'monday' };
+    const harness = documentEngineHarness({ resource, value: original,
+      metadata: { protocol: 1, generation: 'profile-generation', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const detailed = scenario !== 'no-detailed-notice';
+    function SettingsEditor() {
+      settings = useSettingsEngine()?.document;
+      return detailed ? <UserSettingsSyncStatus /> : null;
+    }
+    render(<><SettingsEditor /><EngineConflictBanner pollMs={50} withSettingsNotice={detailed} /></>, { wrapper });
+    await waitFor(() => expect(settings?.data).toEqual(original));
+    harness.silentRemote(original);
+    jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: harness.server,
+      conflicts: [{ path: ['firstDayOfWeek'], base: { exists: true, value: 'monday' },
+        mine: { exists: true, value: 'sunday' }, theirs: { exists: true, value: 'monday' } }],
+    }));
+    await act(async () => {
+      await settings!.commit(current => ({ ...current!, firstDayOfWeek: 'sunday' }),
+        { kind: 'account-preference', fields: ['firstDayOfWeek'] });
+      await settleEngine(); await settleEngine();
+    });
+    if (detailed) {
+      const comparison = await screen.findByRole('region', { name: en.dataSync.versionComparison });
+      expect(comparison).toHaveTextContent('Sunday');
+      expect(comparison).toHaveTextContent('Monday');
+    }
+    const [request] = await harness.commits.list('owner');
+    const checkpoint = await harness.checkpoints.read('owner', request.editorId);
+    expect(checkpoint).toBeDefined();
+    await act(async () => {
+      const copy = checkpoint!.checkpoint;
+      await harness.checkpoints.put({ ...checkpoint!,
+        editorId: editorIdentity('previous-tab', resource, 'default', 'previous-settings'),
+        checkpoint: scenario === 'independent-draft' ? { ...copy, draft: { ...copy.draft, language: 'ru' } } : copy,
+      });
+      jest.advanceTimersByTime(100);
+      await settleEngine();
+    });
+    await waitFor(async () => expect(await harness.engine.listRecoverable(resource)).toHaveLength(1));
+    await act(async () => { jest.advanceTimersByTime(100); await settleEngine(); });
+    const globalLink = screen.queryByRole('link', { name: en.dataSync.openToDecide });
+    if (scenario === 'duplicate') expect(globalLink).not.toBeInTheDocument();
+    else expect(globalLink).toHaveAttribute('href', '/settings');
+  },
+);
 
 it('keeps the actual refusal of a settings action visible during the same outage', async () => {
   const harness = profileHarness();

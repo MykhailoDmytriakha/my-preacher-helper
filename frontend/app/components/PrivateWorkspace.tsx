@@ -57,7 +57,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       new URLSearchParams(search).get('planView') === 'preaching'
   );
 
-  const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} /></>;
+  const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} withSettingsNotice /></>;
   const recovery = <><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></>;
   return (
     // The page root itself moves under a swipe or a pull, so the gestures render it.
