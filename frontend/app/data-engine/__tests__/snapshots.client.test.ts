@@ -1,14 +1,38 @@
-import { createStore, entries, get, update } from 'idb-keyval';
+import { createStore, get, update } from 'idb-keyval';
 import { createIndexedDbSnapshots, subscribeSnapshotChanges } from '../snapshots.client';
 import type { ResourceSnapshot } from '../types';
 
-jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'snapshots'), entries: jest.fn(), get: jest.fn(), update: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'snapshots'), get: jest.fn(), update: jest.fn() }));
 // The watch is proven in deviceStorage.test.ts; here the store contract is what matters.
 jest.mock('@/utils/deviceStorage', () => ({ watchedStore: (database: string, store: string) => jest.requireMock('idb-keyval').createStore(database, store) }));
 jest.mock('@/services/ownerHttpTransport.client', () => ({ requestOwnerJson: jest.fn() }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: jest.fn() }));
 const resource = { collection: 'studyNotes', id: 'note' };
 const snapshot = (revision: number): ResourceSnapshot => ({ resource, value: { userId: 'owner', content: String(revision) }, metadata: { protocol: 1, generation: 'g', revision, deleted: false } });
+
+const originalKeyRange = Object.getOwnPropertyDescriptor(globalThis, 'IDBKeyRange');
+afterEach(() => {
+  if (originalKeyRange) Object.defineProperty(globalThis, 'IDBKeyRange', originalKeyRange);
+  else Reflect.deleteProperty(globalThis, 'IDBKeyRange');
+});
+
+/** Deliver request answers asynchronously, then let the test decide when the transaction ends. */
+function installListRead(rows: Array<[IDBValidKey, unknown]>, valuesFirst = false) {
+  const request = (result: unknown) => ({ result, onsuccess: null as (() => void) | null, onerror: null });
+  const keys = request(rows.map(([key]) => key)), values = request(rows.map(([, value]) => value));
+  const transaction = { oncomplete: null as (() => void) | null, onabort: null as (() => void) | null,
+    onerror: null, error: null, abort: jest.fn() };
+  const getAllKeys = jest.fn(() => keys), getAll = jest.fn(() => values);
+  const database = jest.fn((_mode, action) => {
+    const result = action({ transaction, getAllKeys, getAll });
+    void Promise.resolve().then(() => {
+      for (const answer of valuesFirst ? [values, keys] : [keys, values]) answer.onsuccess?.();
+    });
+    return result;
+  });
+  jest.mocked(createStore).mockReturnValueOnce(database as ReturnType<typeof createStore>);
+  return { transaction, keys, values, getAllKeys, getAll, database };
+}
 
 describe('Confirmed snapshot cache', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -54,17 +78,32 @@ describe('Confirmed snapshot cache', () => {
 });
 
   it('lists only the requested owner collection, retaining tombstones and validating matching rows', async () => {
+    const range = { lower: '["owner","studyNotes",', upper: '["owner","studyNotes"-', lowerOpen: false, upperOpen: true };
+    Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { bound: jest.fn(() => range) } });
     const store = createIndexedDbSnapshots();
     const deleted = { ...snapshot(3), value: null, metadata: { ...snapshot(3).metadata!, deleted: true } };
-    jest.mocked(entries).mockResolvedValueOnce([
+    const read = installListRead([
       ['["owner","studyNotes","note"]', deleted],
       ['["other","studyNotes","note"]', { invalid: true }],
       ['["owner","sermons","note"]', { invalid: true }],
       ['invalid-json', {}], ['null', {}], ['["owner","studyNotes",42]', {}],
+      ['["owner","studyNotes","note","extra"]', {}],
+      ['["owner","studyNotes", "note"]', {}], [42, {}],
     ]);
-    expect(await store.list('owner', 'studyNotes')).toEqual([deleted]);
-    jest.mocked(entries).mockResolvedValueOnce([['["owner","studyNotes","note"]', { ...snapshot(1), value: { userId: 'other' } }]]);
-    await expect(store.list('owner', 'studyNotes')).rejects.toThrow('identity mismatch');
+    const listing = store.list('owner', 'studyNotes');
+    expect(IDBKeyRange.bound).toHaveBeenCalledWith('["owner","studyNotes",', '["owner","studyNotes"-', false, true);
+    expect(read.database).toHaveBeenCalledWith('readonly', expect.any(Function));
+    expect(read.getAllKeys).toHaveBeenCalledWith(range);
+    expect(read.getAll).toHaveBeenCalledWith(range);
+    expect(read.getAllKeys).toHaveBeenCalledTimes(1);
+    expect(read.getAll).toHaveBeenCalledTimes(1);
+    await Promise.resolve(); read.transaction.oncomplete!();
+    expect(await listing).toEqual([deleted]);
+    read.values.result = [{ ...snapshot(1), value: { userId: 'other' } }];
+    read.keys.result = ['["owner","studyNotes","note"]'];
+    const invalid = store.list('owner', 'studyNotes');
+    await Promise.resolve(); read.transaction.oncomplete!();
+    await expect(invalid).rejects.toThrow('identity mismatch');
   });
 
   it('checks derived share-link ownerId instead of accepting an unrelated userId', async () => {
@@ -133,4 +172,27 @@ describe('Confirmed snapshot cache', () => {
       await createIndexedDbSnapshots().put('owner', snapshot(1));
       expect(notify).toHaveBeenCalledWith(resource);
     } finally { stopNew(); }
+  });
+
+  it.each([false, true])('rejects unequal key/value counts with valuesFirst=%s', async valuesFirst => {
+    Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { bound: jest.fn(() => ({})) } });
+    const read = installListRead([['["owner","studyNotes","note"]', snapshot(1)]], valuesFirst);
+    // Either side of an inconsistent pairing must reject rather than publish a partial list.
+    if (valuesFirst) read.keys.result = [];
+    else read.values.result = [];
+    await expect(createIndexedDbSnapshots().list('owner', 'studyNotes')).rejects.toThrow('mismatched keys and values');
+    expect(read.transaction.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits after both request answers and rejects an abort before completion', async () => {
+    Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { bound: jest.fn(() => ({})) } });
+    const read = installListRead([['["owner","studyNotes","note"]', snapshot(1)]], true);
+    let answered = false;
+    const listing = createIndexedDbSnapshots().list('owner', 'studyNotes');
+    const checked = expect(listing).rejects.toThrow('Data storage aborted');
+    void listing.then(() => { answered = true; }, () => undefined);
+    await Promise.resolve(); await Promise.resolve();
+    expect(answered).toBe(false);
+    read.transaction.onabort!();
+    await checked;
   });
