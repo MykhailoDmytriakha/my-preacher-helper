@@ -1,109 +1,14 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
-
-import { getClientDb } from '@/config/firebaseClientDb';
-import { ScratchNote, StudyNote } from '@/models/models';
-import { readOwnerList } from '@/services/ownerListRead.client';
+import { ScratchNote } from '@/models/models';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
 import { aiResultErrorCode, beginAiResultAttempt } from '@/utils/aiResultAttempt.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { resolveOwnerUid } from '@/utils/queryKeys';
-import { verseEndChapter } from '@/utils/scriptureReferenceNumbering';
-import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 // Study notes are written only through the data engine (engineOwnedCollections.ts). What stays
-// here is the note list read the sermon side still uses and the AI cut routes.
+// here is the AI cut routes.
 /** The note body is one editable unit; server-side links (materialIds) are not. */
 export const NOTE_AGGREGATE = 'note';
-
-const NOTES_COLLECTION = 'studyNotes';
-
-type NoteFilters = Partial<{
-  q: string;
-  tag: string;
-  book: string;
-  chapter: number;
-  draftOnly: boolean;
-}>;
-
-// --- helpers mirroring studies.repository.ts + the GET route's filterNotes ---
-
-// The one draft rule of the server and the device (`utils/studyNoteDraft.ts`): a comment is never a draft.
-const computeDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>): boolean => isStudyNoteDraft(note);
-
-function normalizeNote(data: StudyNote): StudyNote {
-  return {
-    // `rev` rides along with the note itself. Taking the revision ONLY from the
-    // freshness listener was not enough: a save that happened before the first
-    // server snapshot went out with no revision at all, so the guard never ran and
-    // a stale tab overwrote a newer one — reproduced with two tabs.
-    ...data,
-    scriptureRefs: data.scriptureRefs || [],
-    tags: data.tags || [],
-    materialIds: data.materialIds || [],
-    isDraft: computeDraft(data),
-  };
-}
-
-
-function filterNotesClient(notes: StudyNote[], filters: NoteFilters): StudyNote[] {
-  let result = [...notes];
-  const search = (filters.q || '').toLowerCase().trim();
-
-  if (filters.draftOnly) {
-    result = result.filter((note) => note.isDraft);
-  }
-  if (filters.tag) {
-    result = result.filter((note) => note.tags?.includes(filters.tag as string));
-  }
-  if (filters.book) {
-    const book = (filters.book as string).toLowerCase();
-    result = result.filter((note) =>
-      note.scriptureRefs?.some((ref) => ref.book.toLowerCase() === book)
-    );
-  }
-  if (filters.chapter !== undefined && !Number.isNaN(Number(filters.chapter))) {
-    const chapterNum = Number(filters.chapter);
-    result = result.filter((note) =>
-      note.scriptureRefs?.some((ref) => Number(ref.chapter) === chapterNum)
-    );
-  }
-  if (search) {
-    result = result.filter((note) => {
-      const text = `${note.title || ''} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-        ?.map((ref) => {
-          const ending = verseEndChapter(ref);
-          return `${ref.book} ${ref.chapter}:${ref.fromVerse}${ending !== undefined && ending !== ref.chapter ? `-${ending}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`;
-        })
-        .join(' ')}`.toLowerCase();
-      return text.includes(search);
-    });
-  }
-
-  return result.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-}
-
-// --- client-SDK read/write paths ---
-
-/** The same shaping for both roads. */
-const shapeNotes = (documents: Record<string, unknown>[]): StudyNote[] =>
-  documents.map((data) => normalizeNote(data as unknown as StudyNote));
-
-async function readNotesViaSdk(userId: string): Promise<StudyNote[]> {
-  const db = getClientDb();
-  const snap = await getDocs(query(collection(db, NOTES_COLLECTION), where('userId', '==', userId)));
-  return shapeNotes(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
-}
-
-/* Same class as series and groups: one road, no deadline — see `series.service.ts`. */
-async function getStudyNotesViaClient(userId: string, filters: NoteFilters): Promise<StudyNote[]> {
-  const notes = await readOwnerList(NOTES_COLLECTION, userId, readNotesViaSdk(userId), shapeNotes);
-  return filterNotesClient(notes, filters);
-}
-
-export async function getStudyNotes(userId: string, filters: NoteFilters = {}): Promise<StudyNote[]> {
-  return getStudyNotesViaClient(userId, filters);
-}
 
 export interface CutStudyNoteResponse {
   acknowledge: () => void;

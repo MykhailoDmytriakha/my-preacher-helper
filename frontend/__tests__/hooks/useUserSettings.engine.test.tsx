@@ -8,20 +8,13 @@ import { useUserSettings, useUserSettingsQuery } from '@/hooks/useUserSettings';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useAuth } from '@/providers/AuthProvider';
 import { UserSettingsProvider } from '@/providers/UserSettingsProvider';
-import * as service from '@/services/userSettings.service';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/services/userSettings.service', () => ({
-  getUserSettings: jest.fn(), setLanguageCookie: jest.fn(),
-  updateAudioGenerationAccess: jest.fn(),
-  updateShowAppVersion: jest.fn(),
-  updateFirstDayOfWeek: jest.fn(), updateModelPreference: jest.fn(),
-  updateFunctionModelPreference: jest.fn(),
-}));
+jest.mock('@/services/userSettings.service', () => ({ setLanguageCookie: jest.fn() }));
 
 const resource = { collection: 'users', id: 'owner' };
 const initial = { userId: 'owner', language: 'en', firstDayOfWeek: 'sunday',
@@ -55,7 +48,6 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
   process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
   owner('owner');
-  jest.mocked(service.getUserSettings).mockImplementation(() => new Promise(() => undefined));
 });
 afterEach(() => {
   clients.splice(0).forEach(client => client.clear());
@@ -76,7 +68,6 @@ describe('settings through the shared real DataEngine', () => {
     await waitFor(() => expect(current.result.current.settings.settings?.firstDayOfWeek).toBe('monday'));
     expect(current.result.current.feature.data?.firstDayOfWeek).toBe('monday');
     expect(current.result.current.source?.document.confirmed?.metadata?.revision).toBe(2);
-    expect(service.getUserSettings).not.toHaveBeenCalled();
     await waitFor(() => expect(context.harness.transport.read).toHaveBeenCalled());
     expect(context.openings.flatMap(open => open.mock.calls).filter(([ref]) => ref.collection === 'users')).toHaveLength(1);
   });
@@ -98,7 +89,6 @@ describe('settings through the shared real DataEngine', () => {
     expect(hook.result.current.second.settings?.showAppVersion).toBe(true);
     await waitFor(() => expect(context.harness.server.value?.showAppVersion).toBe(true));
     expect(context.openings.flatMap(open => open.mock.calls).filter(([ref]) => ref.collection === 'users')).toHaveLength(1);
-    expect(service.updateShowAppVersion).not.toHaveBeenCalled();
   });
 
   it('keeps an accepted offline change after closing and reopening the entire workspace', async () => {

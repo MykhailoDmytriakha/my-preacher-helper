@@ -112,8 +112,7 @@ Object.defineProperty(window, 'localStorage', {
 jest.mock('@/hooks/useTags', () => ({
   useTags: () => ({ allTags: [] }),
 }));
-// useSeries now reads via the client Firestore SDK (Phase 5: series.service is
-// client-only). getClientDb() can't initialize in jsdom, so mock the hook the same
+// useSeries reads the series collection through the data engine. Mock the hook the same
 // way useSermon/useTags are mocked — the page only needs an (empty) series list.
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => ({ series: [] }),

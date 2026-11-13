@@ -5,7 +5,7 @@ import { useDataCollection, useShareCapabilityActions } from '@/data-engine/reac
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
-import { createStudyNoteShareLink, deleteStudyNoteShareLink, getStudyNoteShareLinks } from '@services/studyNoteShareLinks.service';
+import { getStudyNoteShareLinks } from '@services/studyNoteShareLinks.service';
 
 import { useStudyNoteShareLinks } from '../useStudyNoteShareLinks';
 
@@ -22,7 +22,7 @@ jest.mock('@/hooks/useAppLocale', () => ({ useAppLocale: jest.fn() }));
 jest.mock('@/hooks/useServerUnavailableNotice', () => ({ useServerUnavailableNotice: jest.fn() }));
 jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@services/studyNoteShareLinks.service', () => ({
-  getStudyNoteShareLinks: jest.fn(), createStudyNoteShareLink: jest.fn(), deleteStudyNoteShareLink: jest.fn(),
+  getStudyNoteShareLinks: jest.fn(),
 }));
 
 const mockUseDataCollection = useDataCollection as jest.Mock;
@@ -31,8 +31,6 @@ const mockUseUid = useResolvedUid as jest.Mock;
 const mockUseLocale = useAppLocale as jest.Mock;
 const mockUseServerNotice = useServerUnavailableNotice as jest.Mock;
 const mockGetLinks = getStudyNoteShareLinks as jest.Mock;
-const mockCreateLegacy = createStudyNoteShareLink as jest.Mock;
-const mockDeleteLegacy = deleteStudyNoteShareLink as jest.Mock;
 
 type Action = { id: string; kind: 'create' | 'revoke'; targetId: string; code?: string; state: 'pending' | 'refused' | 'conflict' | 'unknown' };
 type Capability = {
@@ -117,8 +115,6 @@ describe('useStudyNoteShareLinks', () => {
     expect(capability.create).toHaveBeenCalledWith('note-1', 'ru', observedNote('note-1'), undefined);
     expect(capability.revoke).toHaveBeenCalledTimes(1);
     expect(capability.revoke).toHaveBeenCalledWith('link-9');
-    expect(mockCreateLegacy).not.toHaveBeenCalled();
-    expect(mockDeleteLegacy).not.toHaveBeenCalled();
     expect(mockGetLinks).not.toHaveBeenCalled();
   });
 

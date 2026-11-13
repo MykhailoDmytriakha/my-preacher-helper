@@ -7,19 +7,13 @@ import { DataEngineProvider, useDataDocument } from '@/data-engine/react.client'
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { UserSettingsEngineContext } from '@/hooks/userSettingsEngineContext';
 import { useAuth } from '@/providers/AuthProvider';
-import * as service from '@/services/userSettings.service';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/services/userSettings.service', () => ({
-  getUserSettings: jest.fn(), setLanguageCookie: jest.fn(),
-  updateAudioGenerationAccess: jest.fn(), updateShowAppVersion: jest.fn(),
-  updateFirstDayOfWeek: jest.fn(), updateModelPreference: jest.fn(),
-  updateFunctionModelPreference: jest.fn(),
-}));
+jest.mock('@/services/userSettings.service', () => ({ setLanguageCookie: jest.fn() }));
 
 const owner = 'owner';
 const resource = { collection: 'users', id: owner };
@@ -54,14 +48,6 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
   delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
   jest.mocked(useAuth).mockReturnValue({ user: { uid: owner }, loading: false, isAuthenticated: true } as ReturnType<typeof useAuth>);
-  jest.mocked(service.getUserSettings).mockImplementation(() => new Promise(() => undefined));
-  for (const write of [
-    service.updateAudioGenerationAccess,
-    service.updateFirstDayOfWeek,
-    service.updateShowAppVersion,
-    service.updateModelPreference,
-    service.updateFunctionModelPreference,
-  ]) jest.mocked(write).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -92,20 +78,6 @@ test.each([
     await settleEngine();
   });
 
-  expect({
-    audioGeneration: jest.mocked(service.updateAudioGenerationAccess).mock.calls.length,
-    firstDayOfWeek: jest.mocked(service.updateFirstDayOfWeek).mock.calls.length,
-    showAppVersion: jest.mocked(service.updateShowAppVersion).mock.calls.length,
-    modelPreference: jest.mocked(service.updateModelPreference).mock.calls.length,
-    functionModelPreference: jest.mocked(service.updateFunctionModelPreference).mock.calls.length,
-  }).toEqual({
-    audioGeneration: 0,
-    firstDayOfWeek: 0,
-    showAppVersion: 0,
-    modelPreference: 0,
-    functionModelPreference: 0,
-  });
-
   await waitFor(() => expect(context.harness.server.value).toMatchObject({
     enableAudioGeneration: true,
     firstDayOfWeek: 'monday',
@@ -115,10 +87,5 @@ test.each([
     preferredTts: { providerId: 'openai', modelId: 'gpt-4o-mini-tts' },
   }));
   expect(context.harness.transport.send).toHaveBeenCalledTimes(5);
-  expect(service.updateAudioGenerationAccess).not.toHaveBeenCalled();
-  expect(service.updateFirstDayOfWeek).not.toHaveBeenCalled();
-  expect(service.updateShowAppVersion).not.toHaveBeenCalled();
-  expect(service.updateModelPreference).not.toHaveBeenCalled();
-  expect(service.updateFunctionModelPreference).not.toHaveBeenCalled();
   hook.unmount();
 });

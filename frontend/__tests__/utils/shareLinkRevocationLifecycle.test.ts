@@ -1,12 +1,11 @@
 import { QueryClient, hydrate } from '@tanstack/react-query';
 
-import { createStudyNoteShareLink, deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { apiClient } from '@/utils/apiClient';
 import { registerOfflineMutationDefaults, SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
 
-jest.mock('@/services/studyNoteShareLinks.service', () => ({
-  createStudyNoteShareLink: jest.fn(),
-  deleteStudyNoteShareLink: jest.fn(),
-}));
+// The old writers reached the server through `apiClient` (via `requestOwnerJson`). A replay that
+// calls `apiClient` or `fetch` issues HTTP, whatever error the mutation ends with.
+jest.mock('@/utils/apiClient', () => ({ ...jest.requireActual('@/utils/apiClient'), apiClient: jest.fn() }));
 
 /** Old mutation payloads are evidence for migration, never new capability commands. */
 describe('retired share link mutation replay', () => {
@@ -30,8 +29,8 @@ describe('retired share link mutation replay', () => {
       expect(restored.state.error).toMatchObject({ code: 'data-engine-required' });
       expect(restored.state.variables).toEqual(variables);
       expect(restored.state.submittedAt).toBe(123);
-      expect(createStudyNoteShareLink).not.toHaveBeenCalled();
-      expect(deleteStudyNoteShareLink).not.toHaveBeenCalled();
+      expect(apiClient).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
     } finally { client.clear(); }
   });
 });

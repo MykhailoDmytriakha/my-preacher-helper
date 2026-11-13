@@ -47,7 +47,6 @@ jest.mock('@/data-engine/react.client', () => ({
   }),
 }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => <div data-testid="engine-sync-status" /> }));
-jest.mock('@/services/tag.service', () => ({ getTags: jest.fn().mockResolvedValue({ requiredTags: [], customTags: [] }) }));
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-1' }, loading: false }) }));
 jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub() }));

@@ -60,14 +60,14 @@ While storage is silent `document.readOnly` is true and every write is refused. 
 
 These compatibility readers are not templates for new features. `readOwnerList` and `readOwnerDocument` live in `frontend/app/services/ownerListRead.client.ts`.
 
-- Shape: `readOwnerList(collection, owner, viaSdk, hydrate)`. The caller keeps its own SDK query and its own shaping of raw documents (`hydrate`), e.g. `getAllSeriesViaClient` in `frontend/app/services/series.service.ts`.
+- Shape: `readOwnerList(collection, owner, viaSdk, hydrate)`. The caller keeps its own SDK query and its own shaping of raw documents (`hydrate`). No screen calls it any more: its last callers, the series, groups, sermon and study-note list reads, were removed once those collections moved to the engine; `frontend/app/services/__tests__/ownerListRead.client.test.ts` holds its contract.
 - Online: the SDK gets 2.5 s. If it times out or fails with a "no answer" code (`isSilentReadError`: unavailable, deadline-exceeded, internal, unknown, cancelled), the HTTPS read starts and both race — the first answer wins; the SDK read is overtaken, not abandoned. It fails only when both fail, and the whole read is bounded at 9 s.
 - A refusal such as permission-denied is an answer: it is thrown, not asked again of the other road.
 - Offline: SDK only (it answers from the local replica), 8 s deadline.
 - Whose list is decided by who asked: if the signed-in account changes during the read, it throws `accountChangedError()` rather than file one account's documents under another's cache key.
 - The route serves ONLY collections in `OWNER_COLLECTIONS` (sermons, prayerRequests, planTemplates, serviceOrders, councils, series, groups, studyNotes); any other answers 400 "Unknown collection", which means that collection has no second road at all. It follows every page to the end (a half list is never returned; past 5000 documents it refuses with 507) and skips engine tombstones.
 - One document has no route of its own on purpose: `readOwnerDocument` takes it out of the owner list rather than opening a second door to guard. Sermons are the exception: `readSermonFromServer` (`frontend/app/services/sermonReadFallback.client.ts`) uses the existing `/api/sermons/[id]`.
-- Not yet wired: tags (`getTagsViaClient` in `frontend/app/services/tag.service.ts` is a bare `getDocs`).
+- Tags have no legacy reader: they are engine-owned and read through `useDataCollection` (`frontend/app/hooks/useTags.ts`).
 
 ## Why
 

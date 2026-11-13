@@ -27,9 +27,6 @@ jest.mock('react-i18next', () => ({
 jest.mock('@/services/firebaseAuth.service', () => ({
   auth: { currentUser: { uid: 'test-user-id' } }
 }));
-jest.mock('@/services/sermon.service', () => ({
-  createSermon: jest.fn().mockResolvedValue({ id: '1', title: 't', verse: 'v', thoughts: [], userId: 'test-user-id', date: new Date().toISOString() })
-}));
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: jest.fn() })
 }));

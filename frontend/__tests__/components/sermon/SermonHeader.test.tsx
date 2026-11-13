@@ -508,14 +508,6 @@ describe('SermonHeader Component', () => {
       }
     ];
 
-    beforeEach(() => {
-      // Mock series service functions
-      jest.mock('@/services/series.service', () => ({
-        addSermonToSeries: jest.fn(),
-        removeSermonFromSeries: jest.fn()
-      }));
-    });
-
     it('shows series badge when sermon has seriesId', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
       mount(sermonWithSeries, mockSeries);

@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { apiClient } from '@/utils/apiClient';
 import {
   DASHBOARD_SERMON_MUTATION_KEYS,
   GROUP_MUTATION_KEYS,
@@ -11,19 +12,10 @@ import {
   SETTINGS_MUTATION_KEYS,
   TAG_MUTATION_KEYS,
 } from '@/utils/mutationDefaults';
-import * as shareLinksService from '@/services/studyNoteShareLinks.service';
-import * as settingsService from '@/services/userSettings.service';
 
-jest.mock('@/services/userSettings.service', () => ({
-  updateAudioGenerationAccess: jest.fn(), updateFirstDayOfWeek: jest.fn(),
-  updateShowAppVersion: jest.fn(), updateModelPreference: jest.fn(),
-  updateFunctionModelPreference: jest.fn(),
-}));
-jest.mock('@/services/studyNoteShareLinks.service', () => ({
-  getStudyNoteShareLinks: jest.fn(),
-  createStudyNoteShareLink: jest.fn(),
-  deleteStudyNoteShareLink: jest.fn(),
-}));
+// The old writers reached the server through `apiClient` (via `requestOwnerJson`). A replay that
+// calls `apiClient` or `fetch` issues HTTP, whatever error the mutation ends with.
+jest.mock('@/utils/apiClient', () => ({ ...jest.requireActual('@/utils/apiClient'), apiClient: jest.fn() }));
 
 describe('registerOfflineMutationDefaults', () => {
   // A paused write the previous version left for an engine-owned collection is replayed after
@@ -69,11 +61,8 @@ describe('registerOfflineMutationDefaults', () => {
         await expect(mutation.execute(payload)).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
         expect(mutation.state.variables).toEqual(payload);
       }
-      expect(settingsService.updateAudioGenerationAccess).not.toHaveBeenCalled();
-      expect(settingsService.updateFirstDayOfWeek).not.toHaveBeenCalled();
-      expect(settingsService.updateShowAppVersion).not.toHaveBeenCalled();
-      expect(settingsService.updateModelPreference).not.toHaveBeenCalled();
-      expect(settingsService.updateFunctionModelPreference).not.toHaveBeenCalled();
+      expect(apiClient).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
       queryClient.clear();
     } finally {
       if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
@@ -94,7 +83,7 @@ describe('registerOfflineMutationDefaults', () => {
 
     await expect(mutation.execute(variables)).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(mutation.state.variables).toEqual(variables);
-    expect(shareLinksService.createStudyNoteShareLink).not.toHaveBeenCalled();
-    expect(shareLinksService.deleteStudyNoteShareLink).not.toHaveBeenCalled();
+    expect(apiClient).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -18,13 +18,6 @@ beforeEach(() => {
 });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; online(true); });
 
-it('reads settings without loading browser Firestore', async () => {
-  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'en' });
-  await expect(service.getUserSettings('')).resolves.toBeNull();
-  await expect(service.getUserSettings('owner')).resolves.toEqual({ id: 'owner', userId: 'owner', language: 'en' });
-  expect(request).toHaveBeenCalledTimes(1);
-});
-
 it('uses cookie immediately for guests and offline language reads', async () => {
   service.setLanguageCookie('uk');
   await expect(service.getUserLanguage('')).resolves.toBe('uk');
@@ -97,19 +90,4 @@ it('sends language and profile when the phone says offline but the server answer
   expect(request).toHaveBeenCalledWith('owner', { operation: 'language', patch: { language: 'ru' } });
   expect(request).toHaveBeenCalledWith('owner', { operation: 'bootstrap', patch: { email: 'name@example.com' } });
   expect(request).toHaveBeenCalledWith('owner', { operation: 'bootstrap', patch: { language: 'uk' } });
-});
-
-it.each([undefined, 'false'])('refuses every old settings writer with activation %s', async enabled => {
-  if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
-  else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
-  const actions = [
-    () => service.updateAudioGenerationAccess('owner', true),
-    () => service.updateShowAppVersion('owner', true),
-    () => service.updateGroupsAccess('owner', true),
-    () => service.updateFirstDayOfWeek('owner', 'monday'),
-    () => service.updateModelPreference('owner', { preferredProviderId: 'openai', preferredModelId: 'model' }),
-    () => service.updateFunctionModelPreference('owner', { preferredText: { providerId: 'openai', modelId: 'model' } }),
-  ];
-  for (const action of actions) await expect(action()).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
-  expect(request).not.toHaveBeenCalled();
 });

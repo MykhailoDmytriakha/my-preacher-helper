@@ -6,7 +6,6 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
-import { getStudyNotes } from '@services/studies.service';
 // These relative imports match the destination frontend/app/hooks/__tests__ location.
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
@@ -19,12 +18,10 @@ let mockOnline = true;
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mockOnline }));
 jest.mock('@services/studies.service', () => ({
   NOTE_AGGREGATE: 'note',
-  getStudyNotes: jest.fn(),
 }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
-const mockGetStudyNotes = jest.mocked(getStudyNotes);
 const noteResource = (id: string) => ({ collection: 'studyNotes', id });
 const noteSnapshot = (id: string, title: string, revision = 1): ResourceSnapshot => ({
   resource: noteResource(id),
@@ -43,7 +40,6 @@ const sermon = (sourceNoteIds: string[]): Pick<Sermon, 'sourceNoteIds'> => ({ so
 
 function setup(initial: ResourceSnapshot[], online: boolean) {
   mockOnline = online;
-  mockGetStudyNotes.mockResolvedValue([]); // Independent legacy catalogue is deliberately stale-empty.
   const harness = membershipEngineHarness(initial);
   jest.mocked(createBrowserDataEngine).mockImplementation(() => {
     const browser = harness.createBrowser();
@@ -76,7 +72,6 @@ describe('useSourceNotes reads the public study-note engine collection', () => {
       ['n1', 'First', 'Content for n1', 'analysis'],
     ]);
     expect(result.current.sources.missingIds).toEqual([]);
-    expect(mockGetStudyNotes).not.toHaveBeenCalled();
     expect(harness.collectionTransport.list).not.toHaveBeenCalled();
     unmount();
   });
@@ -107,7 +102,6 @@ describe('useSourceNotes reads the public study-note engine collection', () => {
     });
     expect(result.current.sources.missingIds).toEqual([]);
     expect(harness.transport.send).not.toHaveBeenCalled();
-    expect(mockGetStudyNotes).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -176,7 +170,6 @@ describe('useSourceNotes reads the public study-note engine collection', () => {
     expect(result.current).toEqual({ notes: [], missingIds: [], loading: false });
     await settleEngine();
     expect(harness.collectionTransport.list).not.toHaveBeenCalled();
-    expect(mockGetStudyNotes).not.toHaveBeenCalled();
     unmount();
   });
 });

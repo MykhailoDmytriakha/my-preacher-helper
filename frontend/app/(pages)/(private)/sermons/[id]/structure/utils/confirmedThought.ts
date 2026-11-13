@@ -6,8 +6,8 @@ import type { Dispatch, SetStateAction } from 'react';
  *
  * Not bookkeeping — it is the screen's half of the freshness comparison. The banner that says
  * "edited on another device" compares the sermon the screen holds with the sermon the server
- * sent, and `sermon.thoughts` IS that held copy (see `sermonFreshnessProjection`, which
- * fingerprints each thought whole). A path that writes a thought and does not mirror the
+ * sent, and `sermon.thoughts` IS that held copy (the comparison fingerprints each thought
+ * whole). A path that writes a thought and does not mirror the
  * result leaves the screen holding the pre-write version, so the server's answer differs for a
  * reason the screen itself caused — and the preacher, alone in one tab, is told his own move
  * was somebody else's edit. It never clears on its own, because nothing re-syncs that copy.

@@ -122,10 +122,8 @@ jest.mock('@/hooks/useFeedback', () => ({
 }));
 
 
-// Mock hasGroupsAccess service
-jest.mock('@/services/userSettings.service', () => ({
-  hasGroupsAccess: jest.fn().mockResolvedValue(true)
-}));
+// The settings service stays an empty module in this render.
+jest.mock('@/services/userSettings.service', () => ({}));
 
 // Mock localStorage
 const localStorageMock = {

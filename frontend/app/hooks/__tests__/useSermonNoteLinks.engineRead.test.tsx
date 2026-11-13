@@ -6,17 +6,14 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
-import { getSermons } from '@/services/sermon.service';
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
-import type { Sermon } from '@/models/models';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
 let mockOnline = true;
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mockOnline }));
-jest.mock('@/services/sermon.service', () => ({ getSermons: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
@@ -29,7 +26,6 @@ const snapshot: ResourceSnapshot = {
 function setup() {
   const engine = membershipEngineHarness([snapshot]);
   jest.mocked(createBrowserDataEngine).mockImplementation(engine.createBrowser);
-  jest.mocked(getSermons).mockResolvedValue([{ ...snapshot.value, id: resource.id } as unknown as Sermon]);
   const wrapper = () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -67,7 +63,6 @@ it('reopens the stored list without network and without a restored React Query c
     browser.engine.setOnline(false);
     return browser;
   });
-  jest.mocked(getSermons).mockRejectedValue(new Error('offline'));
   const reopened = renderHook(() => useSermonsBuiltOnNote('note'), { wrapper: wrapper() });
   await waitFor(() => expect(reopened.result.current.sermons[0]?.title).toBe('Opening title'));
   expect(reopened.result.current.loading).toBe(false);
@@ -79,6 +74,5 @@ it('shares one collection read across the note page consumers', async () => {
   const view = renderHook(() => ({ page: useSermonsDataCollection(), first: useSermonsBuiltOnNote('note'), second: useSermonsBuiltOnNote('note') }), { wrapper: wrapper() });
   await waitFor(() => expect(view.result.current.second.sermons).toHaveLength(1));
   expect(engine.collectionTransport.list).toHaveBeenCalledTimes(1);
-  expect(getSermons).not.toHaveBeenCalled();
   view.unmount();
 });

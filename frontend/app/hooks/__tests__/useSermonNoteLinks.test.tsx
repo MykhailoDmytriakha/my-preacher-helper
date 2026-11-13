@@ -5,8 +5,6 @@ import { toast } from 'sonner';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { getSermons } from '@services/sermon.service';
-import { getStudyNotes } from '@services/studies.service';
 import { useAuth } from '@/providers/AuthProvider';
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
@@ -32,8 +30,6 @@ import type { Sermon, StudyNote } from '@/models/models';
  */
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
-jest.mock('@services/studies.service', () => ({ getStudyNotes: jest.fn() }));
-jest.mock('@services/sermon.service', () => ({ getSermons: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), message: jest.fn() } }));
@@ -42,8 +38,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockGetSermons = getSermons as jest.MockedFunction<typeof getSermons>;
-const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
 
 /** Wrapper plus the client itself: the reverse side reads this cache, so tests can inspect it. */
 const harness = () => {
@@ -144,18 +138,14 @@ describe('useSourceNotes — what the sermon screen shows', () => {
 
     await waitFor(() => expect(result.current.notes).toHaveLength(1));
     expect(result.current.missingIds).toEqual([]);
-    expect(mockGetStudyNotes).not.toHaveBeenCalled();
   });
 
-  it('does not read the note collection at all for a sermon with no links', async () => {
+  it('shows no notes and is not loading for a sermon that was never linked', async () => {
     const { wrapper: Wrapper } = sourceReader([]);
     const { result } = renderHook(() => useSourceNotes(sermon('s1')), { wrapper: Wrapper });
 
     expect(result.current.notes).toEqual([]);
     expect(result.current.loading).toBe(false);
-    // A note document carries its whole text: fetching every one of them to render nothing is
-    // a real cost on a screen that only sometimes has links.
-    await waitFor(() => expect(mockGetStudyNotes).not.toHaveBeenCalled());
   });
 });
 
@@ -181,7 +171,6 @@ describe('useSermonsBuiltOnNote - the engine-backed reverse reader', () => {
     const { result } = renderHook(() => useSermonsBuiltOnNote('n1'), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.sermons).toHaveLength(2));
     expect(result.current.sermons.map((s) => s.id)).toEqual(['s1', 's2']);
-    expect(mockGetSermons).not.toHaveBeenCalled();
   });
 
   it('does not read either collection path for a note that does not exist yet', async () => {
@@ -190,7 +179,6 @@ describe('useSermonsBuiltOnNote - the engine-backed reverse reader', () => {
     await act(async () => { await settleEngine(); });
     expect(result.current.sermons).toEqual([]);
     expect(engine.collectionTransport.list).not.toHaveBeenCalled();
-    expect(mockGetSermons).not.toHaveBeenCalled();
   });
 });
 

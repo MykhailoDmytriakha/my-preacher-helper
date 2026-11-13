@@ -9,7 +9,6 @@ import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('@/hooks/useStickyOffsets', () => ({
@@ -97,11 +96,6 @@ jest.mock('@/hooks/useUserSettings', () => ({
 
 jest.mock('react-day-picker/dist/style.css', () => ({}));
 
-jest.mock('@/services/userSettings.service', () => ({
-  ...jest.requireActual('@/services/userSettings.service'),
-  hasGroupsAccess: jest.fn(),
-}));
-
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue || key,
@@ -130,7 +124,6 @@ jest.mock('@/components/ui/ConfirmModal', () => {
 
 const mockUseSeries = useSeries as jest.MockedFunction<typeof useSeries>;
 const mockUseAuth = jest.mocked(useAuth);
-const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
 
 // The membership sweep exposes stable spies (see the jest.mock factory above).
@@ -196,7 +189,6 @@ describe('GroupDetailPage', () => {
     jest.clearAllMocks();
     jest.useRealTimers();
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
-    mockHasGroupsAccess.mockResolvedValue(false);
     mockUseParams.mockReturnValue({ id: 'group-1' });
     mockUseSeries.mockReturnValue({ series: DEFAULT_SERIES } as any);
   });
@@ -363,7 +355,6 @@ describe('GroupDetailPage', () => {
 
       expect(await screen.findByRole('button', { name: 'Delete group' })).toBeInTheDocument();
       expect(mockUseSeries).toHaveBeenCalledWith('user-1');
-      expect(mockHasGroupsAccess).not.toHaveBeenCalled();
       expect(screen.queryByText('Groups workspace is disabled')).not.toBeInTheDocument();
       view.unmount();
     } finally {

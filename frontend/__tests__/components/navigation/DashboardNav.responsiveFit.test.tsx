@@ -3,7 +3,6 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { TestProviders } from '../../../test-utils/test-providers';
 
 /**
@@ -69,11 +68,6 @@ jest.mock('@/components/navigation/ModeToggle', () => ({
   default: () => <div data-testid="mode-toggle" />,
 }));
 
-jest.mock('@/services/userSettings.service', () => ({
-  ...jest.requireActual('@/services/userSettings.service'),
-  hasGroupsAccess: jest.fn(),
-}));
-
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => ({
@@ -91,8 +85,6 @@ jest.mock('react-i18next', () => ({
     } as Record<string, string>)[key] ?? options?.defaultValue ?? key,
   }),
 }));
-
-const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
 const observerCallbacks: ResizeObserverCallback[] = [];
 
@@ -164,7 +156,6 @@ describe('DashboardNav fitting the width it actually has', () => {
     jest.clearAllMocks();
     observerCallbacks.length = 0;
     globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
-    mockHasGroupsAccess.mockResolvedValue(true);
 
     render(
       <TestProviders>

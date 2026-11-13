@@ -11,4 +11,3 @@
  */
 export const PRAYER_CORE_AGGREGATE = 'core';
 export const PRAYER_STATUS_AGGREGATE = 'status';
-export const PRAYER_UPDATES_AGGREGATE = 'updates';

@@ -1,10 +1,7 @@
-import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { UserSettings } from '@/models/models';
 import { requestUserSettings } from '@/services/userSettingsTransport.client';
 import { isKnownOffline } from '@/utils/connectivity';
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@locales/constants';
-
-import type { FirstDayOfWeek } from '@/utils/weekStart';
 
 export interface ModelPreference {
   preferredProviderId: NonNullable<UserSettings['preferredProviderId']>;
@@ -15,12 +12,6 @@ export type FunctionModelPreference = Pick<
   UserSettings,
   'preferredTranscription' | 'preferredText' | 'preferredTts'
 >;
-
-// Old persisted query mutations must never become a second writer after activation.
-async function updateUserSettingsViaClient(userId: string, updates: Record<string, unknown>): Promise<void> {
-  assertLegacyClientWriteAllowed('users');
-  await requestUserSettings(userId, { operation: 'legacy', patch: updates });
-}
 
 /**
  * Get user language preference - optimized approach
@@ -127,52 +118,6 @@ export async function updateUserProfile(
 }
 
 /**
- * Update user's preferred first day of week for app-controlled calendars.
- * @param userId The user ID
- * @param firstDayOfWeek Whether calendars should start on Sunday or Monday
- */
-export async function updateFirstDayOfWeek(
-  userId: string,
-  firstDayOfWeek: FirstDayOfWeek
-): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { firstDayOfWeek });
-  } catch (error) {
-    console.error('Error updating first day of week:', error);
-    throw error;
-  }
-}
-
-/** Persist a text-model preference; entitlement remains server-controlled. */
-export async function updateModelPreference(
-  userId: string,
-  preference: ModelPreference
-): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { ...preference });
-  } catch (error) {
-    console.error('Error updating model preference:', error);
-    throw error;
-  }
-}
-
-/** Persist one or more per-function model preferences; entitlement is still server-controlled. */
-export async function updateFunctionModelPreference(
-  userId: string,
-  preference: FunctionModelPreference
-): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, preference);
-  } catch (error) {
-    console.error('Error updating function model preference:', error);
-    throw error;
-  }
-}
-
-/**
  * Initialize user settings with default language
  * @param userId The user ID
  * @param language The language code (optional, defaults to system default)
@@ -226,76 +171,4 @@ export function setLanguageCookie(language: string): void {
   if (typeof document !== 'undefined') {
     document.cookie = `${COOKIE_LANG_KEY}=${language}; path=/; max-age=${COOKIE_MAX_AGE}`;
   }
-}
-
-/**
- * Get user settings
- * @param userId The user ID
- * @returns The user settings or null if not found
- */
-export async function getUserSettings(userId: string): Promise<UserSettings | null> {
-  try {
-    if (!userId) {
-      return null;
-    }
-    return requestUserSettings(userId);
-  } catch (error) {
-    console.error('Error getting user settings:', error);
-    throw error;
-  }
-}
-
-/**
- * Update user's audio generation feature flag
- * @param userId The user ID
- * @param enabled Whether audio generation should be enabled
- */
-export async function updateAudioGenerationAccess(userId: string, enabled: boolean): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { enableAudioGeneration: enabled });
-  } catch (error) {
-    console.error('Error updating audio generation access:', error);
-    throw error;
-  }
-}
-
-/**
- * Update user's "show app version" display flag
- * @param userId The user ID
- * @param enabled Whether the deployed app version should be shown in Settings
- */
-export async function updateShowAppVersion(userId: string, enabled: boolean): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { showAppVersion: enabled });
-  } catch (error) {
-    console.error('Error updating show app version:', error);
-    throw error;
-  }
-}
-
-/**
- * Update user's groups workspace feature flag
- * @param userId The user ID
- * @param enabled Whether groups workspace should be enabled
- */
-export async function updateGroupsAccess(userId: string, enabled: boolean): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { enableGroups: enabled });
-  } catch (error) {
-    console.error('Error updating groups access:', error);
-    throw error;
-  }
-}
-
-/**
- * Check if user has access to groups workspace
- * @param userId The user ID
- * @returns Boolean indicating if user has groups workspace access
- */
-export async function hasGroupsAccess(userId: string): Promise<boolean> {
-  // Keep the legacy helper compatible without requiring the retired beta preference.
-  return Boolean(userId);
 }

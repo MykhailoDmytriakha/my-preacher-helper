@@ -1,21 +1,10 @@
 import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from 'firebase/firestore';
-
-import { getClientDb } from '@/config/firebaseClientDb';
-import {
-  Sermon,
   SermonOutline,
 } from '@/models/models';
 import {
   isStaleWriteError,
 } from '@/services/conflictSafeUpdate.client';
-import { readOwnerList } from '@/services/ownerListRead.client';
 import { listOutbox } from '@/services/writeOutbox.client';
-import { hydrateSermon, sortSermons } from '@/utils/sermonDocument';
 export { hydrateSermon } from '@/utils/sermonDocument';
 
 // Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
@@ -27,29 +16,6 @@ export { hydrateSermon } from '@/utils/sermonDocument';
 // playlist sweep (useSeriesMembership). The Phase 5 cleanup removed the last
 // consumer of the old NEXT_PUBLIC_USE_CLIENT_SERMONS strangler-fig flag, so the
 // client path is no longer gated.
-
-const SERMONS_COLLECTION = 'sermons';
-
-function db() {
-  return getClientDb();
-}
-
-// --- READS ---
-
-/** The same shaping for both roads: the browser's own read and the server's answer. */
-const shapeSermons = (documents: Record<string, unknown>[]): Sermon[] =>
-  sortSermons(documents.map((data) => hydrateSermon(data as unknown as Sermon)));
-
-async function readSermonsViaSdk(userId: string): Promise<Sermon[]> {
-  const snap = await getDocs(
-    query(collection(db(), SERMONS_COLLECTION), where('userId', '==', userId))
-  );
-  return shapeSermons(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
-}
-
-export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
-  return readOwnerList(SERMONS_COLLECTION, userId, readSermonsViaSdk(userId), shapeSermons);
-}
 
 /** Aggregate name for the sermon's own fields (title/verse/isPreached/preparation). */
 export const SERMON_CORE_AGGREGATE = 'core';

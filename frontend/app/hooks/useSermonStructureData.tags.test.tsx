@@ -4,7 +4,6 @@ import React from 'react';
 import type { TFunction } from 'i18next';
 
 import type { Sermon, Tag, ThoughtsBySection } from '@/models/models';
-import { getTags } from '@/services/tag.service';
 import { useSermonStructureData, type StructureEngineSource } from '@/hooks/useSermonStructureData';
 
 let mockCanonicalCatalog: { requiredTags: Tag[]; customTags: Tag[] } = { requiredTags: [], customTags: [] };
@@ -19,10 +18,8 @@ const mockUseTags = jest.fn((_owner: string | null | undefined) => ({
 }));
 
 jest.mock('@/hooks/useTags', () => ({ useTags: (...args: [string | null | undefined]) => mockUseTags(...args) }));
-jest.mock('@/services/tag.service');
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 
-const mockGetTags = getTags as jest.Mock;
 const translation = ((key: string) => key) as unknown as TFunction;
 const structure: ThoughtsBySection = { introduction: ['thought-a'], main: [], conclusion: [], ambiguous: [] };
 const sermonFor = (owner: string): Sermon => ({
@@ -46,8 +43,6 @@ const boardTag = (board: ReturnType<typeof useSermonStructureData>) => board.con
 
 beforeEach(() => {
   mockUseTags.mockClear();
-  mockGetTags.mockReset();
-  mockGetTags.mockResolvedValue({ requiredTags: [], customTags: [] });
   mockCanonicalCatalog = { requiredTags: [], customTags: [catalogTag('#dc2626')] };
 });
 

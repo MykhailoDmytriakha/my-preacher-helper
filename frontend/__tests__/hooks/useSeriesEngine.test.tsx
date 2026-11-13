@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { getDocs } from 'firebase/firestore';
 import type { ReactNode } from 'react';
 import { useDataCollection } from '@/data-engine/react.client';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
-import { getAllSeries } from '@/services/series.service';
+import { apiClient } from '@/utils/apiClient';
 
 jest.mock('@/data-engine/react.client', () => ({
   useDataCollection: jest.fn(),
@@ -12,7 +13,9 @@ jest.mock('@/data-engine/react.client', () => ({
 }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => false }));
-jest.mock('@/services/series.service', () => ({ getAllSeries: jest.fn() }));
+// The old series list read the SDK (`getDocs`) and the server (`apiClient` -> `fetch`); the engine is
+// mocked here, so any of the three being called is a legacy read.
+jest.mock('@/utils/apiClient', () => ({ ...jest.requireActual('@/utils/apiClient'), apiClient: jest.fn() }));
 const row = (title: string) => ({ resource: { collection: 'series', id: 's' }, value: { userId: 'owner', title, sermonIds: ['sermon'] }, metadata: null });
 function setup() {
   const refresh = jest.fn(async () => undefined);
@@ -34,7 +37,9 @@ it('uses the public collection overlay and refresh even offline, with no legacy 
   expect(result.current.series[0]).toMatchObject({ title: 'Queued title', items: [{ type: 'sermon', refId: 'sermon' }] });
   await act(async () => { await result.current.refreshSeries(); }); expect(t.refresh).toHaveBeenCalledTimes(1);
   expect(t.client.getMutationCache().getAll()).toHaveLength(0);
-  expect(getAllSeries).not.toHaveBeenCalled();
+  expect(getDocs).not.toHaveBeenCalled();
+  expect(apiClient).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
   t.client.clear();
 });
 it('does not expose another owner and respects an empty overlay over stale cached snapshots', () => {

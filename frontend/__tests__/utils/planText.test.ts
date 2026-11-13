@@ -8,7 +8,6 @@ import {
   mergeStoredPlanText,
   mergeStoredSavedFlags,
 } from '@/utils/planText';
-import { planFreshnessProjection } from '@/utils/sermonFreshnessProjection';
 
 import type { Sermon } from '@/models/models';
 
@@ -208,61 +207,6 @@ describe('a half-moved sermon shows everything', () => {
 
   it('still reports the sermon as having a plan', () => {
     expect(hasWrittenPlan(halfMoved)).toBe(true);
-  });
-});
-
-/**
- * FRESHNESS COMPARES THE READABLE PLAN, NOT ITS TRANSITIONAL STORAGE SHAPE.
- *
- * A migrated document can hold the same text twice: legacy `outlinePoints` plus the new
- * `planText` map. The screen can also materialize the merged old+new map while Firestore
- * keeps only the leaf keys written so far. Comparing raw `planText` therefore reports a
- * storage migration or an optimistic mirror as a foreign edit even though the readable
- * text is identical. `readPlanText` is the canonical form both sides already render from.
- */
-describe('freshness projection: effective plan text', () => {
-  const base = {
-    outline: { introduction: [{ id: 'p1', text: 'A point' }], main: [], conclusion: [] },
-    thoughts: [],
-    plan: { introduction: { outline: '' }, main: { outline: '' }, conclusion: { outline: '' } },
-  };
-
-  it('notices a change made only in the new field', () => {
-    const before = planFreshnessProjection({ ...base, planText: { p1: 'First' } });
-    const after = planFreshnessProjection({ ...base, planText: { p1: 'Second' } });
-    expect(after.planText).not.toBe(before.planText);
-  });
-
-  it('still notices a change in the old fields', () => {
-    const before = planFreshnessProjection(base);
-    const after = planFreshnessProjection({
-      ...base,
-      plan: { ...base.plan, introduction: { outline: 'changed', outlinePoints: { p1: 'x' } } },
-    });
-    expect(after.plan).not.toBe(before.plan);
-  });
-
-  it('stays quiet when nothing moved', () => {
-    const a = planFreshnessProjection({ ...base, planText: { p1: 'Same' } });
-    const b = planFreshnessProjection({ ...base, planText: { p1: 'Same' } });
-    expect(a.planText).toBe(b.planText);
-  });
-
-  it('stays quiet when migration only copies the same legacy text into planText', () => {
-    const legacy = {
-      ...base,
-      plan: {
-        ...base.plan,
-        introduction: { outline: '', outlinePoints: { p1: 'Same readable paragraph' } },
-      },
-    };
-    const before = planFreshnessProjection(legacy);
-    const after = planFreshnessProjection({
-      ...legacy,
-      planText: { p1: 'Same readable paragraph' },
-    });
-
-    expect(after.planText).toBe(before.planText);
   });
 });
 
