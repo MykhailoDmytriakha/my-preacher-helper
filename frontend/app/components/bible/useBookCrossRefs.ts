@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { verseWords, type BookText } from '@/utils/bibleText';
-import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
-import { countCrossReferences, loadCrossRefs, type CrossRefsBook } from '@/utils/crossReferences';
+import { countCrossReferences, readCrossRefs, type CrossRefsBook } from '@/utils/crossReferences';
 import { useTranslation } from '@locales/useTranslation';
 
 import { useCrossReferencePrefs } from './crossReferencePrefs';
@@ -29,52 +28,22 @@ export function useBookCrossRefs(bookId: string, bible: BibleId, text: BookText 
 
   // The text first: links mean nothing without it, and on a weak network it must not wait behind them.
   const textReady = Boolean(text);
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
   useEffect(() => {
-    if (!shown || !textReady) return undefined;
+    begin(`${bookId}:${shown}:${textReady}`);
+    // Not due: a pass the server's return began, with the server out of reach again.
+    if (!shown || !textReady || !due()) return undefined;
     let alive = true;
-    let pending = false;
-    let ready = false;
-    let reportedFailure = false;
-    let retried = false;
-    let recovery = 0;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const fetchMissing = bibleAssetFetch(() => {
-      if (!alive || reportedFailure) return false;
-      reportedFailure = true;
-      return true;
-    });
-    const load = () => {
-      if (!alive || pending || ready) return;
-      pending = true;
-      const started = recovery;
-      void loadCrossRefs(bookId, fetchMissing).then(loaded => {
-        if (!alive) return;
-        ready = true;
-        setSet(loaded);
-      }, () => {
-        pending = false;
-        if (!alive || !getConnectivityStatus()) return;
-        if (started !== recovery) load();
-        else if (!retried) {
-          retried = true;
-          retry = setTimeout(() => { if (getConnectivityStatus()) load(); }, 500);
-        }
-      });
-    };
-    const unsubscribe = subscribeToConnectivity(() => {
-      clearTimeout(retry);
-      if (!getConnectivityStatus()) return;
-      recovery++;
-      retried = false;
-      load();
-    });
-    load();
-    return () => {
-      alive = false;
-      clearTimeout(retry);
-      unsubscribe();
-    };
-  }, [bookId, shown, textReady]);
+    asking();
+    const { result, mark } = readCrossRefs(bookId);
+    void result.then(
+      (loaded) => { if (alive) setSet(loaded); },
+      // No set (offline before the first visit): the text reads as always, without chips — and the set is
+      // asked for again when the server is back in reach (BUG-20261112-link-texts-stay-dots-after-reconnect).
+      (error: unknown) => { if (alive) failed(mark, undefined, error); },
+    );
+    return () => { alive = false; };
+  }, [bookId, shown, textReady, round, begin, due, asking, failed]);
 
   const counts = useMemo(
     () => (set && set.id === bookId && text ? countCrossReferences(set, bible, text.chapters) : null),

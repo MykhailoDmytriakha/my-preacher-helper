@@ -1,3 +1,14 @@
+export class BibleAssetHttpError extends Error {
+  readonly retryWhileReachable: boolean;
+
+  constructor(message: string, response: Response) {
+    super(message);
+    this.retryWhileReachable = response.status === 503;
+  }
+}
+
+export class BibleAssetDeadlineError extends Error {}
+
 /** The whole answer — headers and body — within the deadline, or an error; a silent network never hangs the reader. */
 export async function fetchBibleJson(fetchFn: typeof fetch, url: string, deadlineMs: number): Promise<{ response: Response; data: unknown }> {
   const controller = typeof AbortController === 'undefined' ? undefined : new AbortController();
@@ -5,7 +16,7 @@ export async function fetchBibleJson(fetchFn: typeof fetch, url: string, deadlin
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller?.abort();
-      reject(new Error(`No answer within ${deadlineMs} ms: ${url}`));
+      reject(new BibleAssetDeadlineError(`No answer within ${deadlineMs} ms: ${url}`));
     }, deadlineMs);
   });
   try {

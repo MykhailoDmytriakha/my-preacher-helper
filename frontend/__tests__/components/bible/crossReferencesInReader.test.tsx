@@ -124,6 +124,46 @@ describe('cross references in the Bible reader', () => {
     }
   });
 
+  it('retries a shared reference index when its original reader has closed', async () => {
+    saveCrossReferencePrefs({ inWindow: true });
+    reportServerUnreachable();
+    let rejectOlder!: (error: Error) => void;
+    const older = new Promise<Response>((_resolve, reject) => { rejectOlder = reject; });
+    const fetchIndex = jest.fn().mockReturnValueOnce(older).mockResolvedValueOnce(answer(ruthSet));
+    global.fetch = fetchIndex as unknown as typeof fetch;
+
+    const reader = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+    await waitFor(() => expect(fetchIndex).toHaveBeenCalledTimes(1));
+    act(() => reportServerReachable());
+    const window = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'window'));
+    expect(fetchIndex).toHaveBeenCalledTimes(1);
+    reader.unmount();
+    await act(async () => rejectOlder(new TypeError('old connection')));
+
+    await waitFor(() => expect(window.result.current.set).toEqual(ruthSet));
+    expect(fetchIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a body deadline after a newer success leaves health continuously true', async () => {
+    jest.useFakeTimers();
+    try {
+      const stalled = { ...answer(ruthSet), json: () => new Promise(() => undefined) };
+      const fetchIndex = jest.fn().mockResolvedValueOnce(stalled).mockResolvedValueOnce(answer(ruthSet));
+      global.fetch = fetchIndex as unknown as typeof fetch;
+      const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(fetchIndex).toHaveBeenCalledTimes(1);
+      act(() => reportServerReachable());
+      await act(async () => { await jest.advanceTimersByTimeAsync(15000); });
+      expect(getConnectivityStatus()).toBe(true);
+      await act(async () => { await jest.advanceTimersByTimeAsync(550); });
+      expect(fetchIndex).toHaveBeenCalledTimes(2);
+      expect(result.current.set).toEqual(ruthSet);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('recognizes a body timeout as a network failure while the device stays connected', async () => {
     jest.useFakeTimers();
     try {
@@ -529,6 +569,70 @@ describe('cross references in the Bible reader', () => {
     act(() => saveCrossReferencePrefs({ inWindow: true }));
     rerender();
     await waitFor(() => expect(result.current.ribbon?.counts.get(key)).toEqual({ main: subject.main.length, total: subject.all.length }));
+  });
+
+  // BUG-20261112-link-texts-stay-dots-after-reconnect, the same illness in the book's set: a book opened
+  // without a network read without badges, and they did not come when the network was back.
+  it('a set the network did not give is asked for again when the server answers again, and the badges come', async () => {
+    let down = true;
+    global.fetch = jest.fn(async (url: string) => {
+      if (url.startsWith('/bible-crossrefs/')) {
+        setRequests.push(url);
+        if (down) throw new TypeError('Failed to fetch');
+      }
+      return answer(publicFile(url.slice(1)));
+    }) as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+    await waitFor(() => expect(setRequests).toHaveLength(1));
+    act(() => reportServerUnreachable());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(result.current.ribbon).toBeUndefined();
+
+    down = false;
+    act(() => reportServerReachable());
+    await waitFor(() => expect(result.current.ribbon?.counts.get(key)).toEqual({ main: subject.main.length, total: subject.all.length }));
+    expect(setRequests).toHaveLength(2);
+  });
+
+  // Codex review, round 2, 2026-11-12: a return of the server lost again before the screen acted on it.
+  it('a set the network did not give is not asked for when the server comes back and at once goes out of reach again', async () => {
+    global.fetch = jest.fn(async (url: string) => {
+      if (url.startsWith('/bible-crossrefs/')) {
+        setRequests.push(url);
+        throw new TypeError('Failed to fetch');
+      }
+      return answer(publicFile(url.slice(1)));
+    }) as unknown as typeof fetch;
+    renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+    await waitFor(() => expect(setRequests).toHaveLength(1));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    act(() => { reportServerUnreachable(); reportServerReachable(); reportServerUnreachable(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(setRequests).toHaveLength(1);
+  });
+
+  it('a set still on its way when the server comes back is waited for — and asked for again at once when that request then dies', async () => {
+    // A request that hangs until the test fails it, as one on a dead connection does.
+    const hung: Array<() => void> = [];
+    let down = true;
+    global.fetch = jest.fn((url: string) => {
+      if (url.startsWith('/bible-crossrefs/')) {
+        setRequests.push(url);
+        if (down) return new Promise((_, reject) => { hung.push(() => reject(new TypeError('Failed to fetch'))); });
+      }
+      return Promise.resolve(answer(publicFile(url.slice(1))));
+    }) as unknown as typeof fetch;
+    const { result } = renderHook(() => useBookCrossRefs('Ruth', 'rst', ruthText, 'reader'));
+    await waitFor(() => expect(setRequests).toHaveLength(1));
+    act(() => reportServerUnreachable());
+    act(() => reportServerReachable());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(setRequests).toHaveLength(1);
+
+    down = false;
+    await act(async () => { hung.splice(0).forEach((fail) => fail()); });
+    await waitFor(() => expect(result.current.ribbon?.counts.get(key)).toEqual({ main: subject.main.length, total: subject.all.length }));
+    expect(setRequests).toHaveLength(2);
   });
 });
 

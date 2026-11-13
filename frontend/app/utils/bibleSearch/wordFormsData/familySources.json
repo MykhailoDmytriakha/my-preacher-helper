@@ -103,6 +103,6 @@
   "sha256": "63a556225246a955d73544ab389fb11d2305e0492c7f2323c0425232d697989f",
   "tokenizers": {
     "app/utils/bibleSearch/words.ts": "e37e50c9b93bf5dbb03f5b8e46e5b42b10aad95a134fd8612b4693be7355f38b",
-    "app/utils/bibleText.ts": "371ac5fb4456ca7eb49488ee3352d774d363b03c2fa1448111524f194d8174c8"
+    "app/utils/bibleText.ts": "2cc987454a644b553c5bc10a72e978409b1abaa34482b2f808bf19d43638b585"
   }
 }

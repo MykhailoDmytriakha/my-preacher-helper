@@ -2,7 +2,7 @@ import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { warmWordFormData } from '@/utils/bibleSearch/wordFormData';
 import { BIBLE_TEXT_CACHE, isBookShaped } from '@/utils/bibleTextCache';
-import { fetchBibleJson } from '@/utils/fetchBibleJson';
+import { BibleAssetHttpError, fetchBibleJson } from '@/utils/fetchBibleJson';
 import { chapterCount } from '@/utils/versification';
 
 /**
@@ -164,7 +164,7 @@ export async function fetchBookText(
     await forget(cache, url);
   }
   const { response, data } = await fetchBibleJson(fetchFn, url, deadlineMs);
-  if (!response.ok) throw new Error(`Bible text for ${bookId}: HTTP ${response.status}`);
+  if (!response.ok) throw new BibleAssetHttpError(`Bible text for ${bookId}: HTTP ${response.status}`, response);
   if (!isBookText(data, bookId, bible)) {
     // The worker may have stored this answer on its way through: it must not stay.
     await forget(cache, url);

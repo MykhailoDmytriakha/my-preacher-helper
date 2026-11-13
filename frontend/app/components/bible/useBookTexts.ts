@@ -2,15 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { useReadAgainWhenReachable } from '@/hooks/useReadAgainWhenReachable';
 import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
-import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 
 import type { BibleId } from '@/utils/bibles';
 
 const NO_TEXTS: ReadonlyMap<string, BookText> = new Map();
-
-type BookRequest = { promise: Promise<BookText>; recovery: number };
 
 /**
  * The texts of other books a reading screen quotes — a verse's links, the places of the trail — fetched
@@ -22,17 +20,27 @@ type BookRequest = { promise: Promise<BookText>; recovery: number };
  * a text of the one left must not stand under the new one's places (Codex review, 2026-10-26). The books
  * asked for are a set — a trail names a book once per place — and a book still on its way is waited
  * for, not fetched again, when the set grows.
+ *
+ * A book that did not come is asked for again when the server is back in reach
+ * (`useReadAgainWhenReachable`), once for one return of the server: a list opened without a network kept
+ * "…" in place of the text until it was closed and opened again
+ * (BUG-20261112-link-texts-stay-dots-after-reconnect). A list the person changes asks for every book it
+ * lacks, as before.
  */
 export function useBookTexts(books: readonly string[], bible: BibleId): ReadonlyMap<string, BookText> {
   const [kept, setKept] = useState<{ bible: BibleId; texts: ReadonlyMap<string, BookText> }>({ bible, texts: NO_TEXTS });
   const texts = kept.bible === bible ? kept.texts : NO_TEXTS;
-  const requests = useRef(new Map<string, BookRequest>());
-  const recovery = useRef(0);
+  const requests = useRef(new Map<string, Promise<BookText>>());
   const reportedFailures = useRef(new Set<string>());
   const wanted = Array.from(new Set(books)).sort().join('|');
+  const { round, begin, due, asking, failed } = useReadAgainWhenReachable();
+  /** The list on screen now: the death of a request for a book that has left it is nobody's wait any more. */
+  const onScreen = useRef({ bible, wanted });
+  onScreen.current = { bible, wanted };
   useEffect(() => {
     let alive = true;
     let frame = 0;
+    begin(`${bible}:${wanted}`);
     const arrived = new Map<string, BookText>();
     const draw = () => {
       frame = 0;
@@ -44,71 +52,46 @@ export function useBookTexts(books: readonly string[], bible: BibleId): Readonly
         return { bible, texts: next };
       });
     };
-    const missing = new Set((wanted ? wanted.split('|') : []).filter(book => !texts.has(book)));
-    const listening = new Set<string>();
-    const retried = new Set<string>();
-    const retries = new Set<ReturnType<typeof setTimeout>>();
-    const load = (book: string) => {
-      if (!alive || !missing.has(book) || listening.has(book)) return;
+    for (const book of wanted ? wanted.split('|') : []) {
+      if (texts.has(book)) continue;
       const key = `${bible}:${book}`;
       let request = requests.current.get(key);
       if (!request) {
+        // Not due: asked for and refused since the server's last return (the late death of a neighbour's
+        // request is no reason to ask for it a third time), or the server is out of reach again.
+        if (!due(key)) continue;
+        const mark = asking(key);
         const fetchMissing = bibleAssetFetch(() => {
-          if (reportedFailures.current.has(key)) return false;
+          const now = onScreen.current;
+          if (now.bible !== bible || !now.wanted.split('|').includes(book) || reportedFailures.current.has(key)) return false;
           reportedFailures.current.add(key);
           return true;
         });
-        const current = { promise: fetchBookText(book, bible, { fetchFn: fetchMissing }), recovery: recovery.current };
-        request = current;
-        requests.current.set(key, current);
-        void current.promise.then(
-          () => { reportedFailures.current.delete(key); },
-          () => { if (requests.current.get(key) === current) requests.current.delete(key); },
-        );
+        request = fetchBookText(book, bible, { fetchFn: fetchMissing });
+        requests.current.set(key, request);
+        // A book that did not come is forgotten, to be asked for by the next list or when the server is
+        // back in reach; one that came is read from `texts`.
+        request.then(() => { reportedFailures.current.delete(key); }, (error: unknown) => {
+          requests.current.delete(key);
+          const now = onScreen.current;
+          if (now.bible === bible && now.wanted.split('|').includes(book)) failed(mark, key, error);
+        });
       }
-      const started = request.recovery;
-      listening.add(book);
-      void request.promise.then(
+      request.then(
         (text) => {
-          listening.delete(book);
           if (!alive) return;
-          missing.delete(book);
           arrived.set(book, text);
           if (!frame) frame = window.requestAnimationFrame(draw);
         },
-        () => {
-          listening.delete(book);
-          if (!alive || !getConnectivityStatus()) return;
-          // A request started before reconnection can still fail after the health check.
-          if (started !== recovery.current) load(book);
-          else if (!retried.has(book)) {
-            retried.add(book);
-            const timer = setTimeout(() => {
-              retries.delete(timer);
-              if (getConnectivityStatus()) load(book);
-            }, 500);
-            retries.add(timer);
-          }
-        },
+        () => undefined,
       );
-    };
-    const unsubscribe = subscribeToConnectivity(() => {
-      retries.forEach(timer => clearTimeout(timer));
-      retries.clear();
-      if (!getConnectivityStatus()) return;
-      recovery.current++;
-      retried.clear();
-      missing.forEach(load);
-    });
-    missing.forEach(load);
+    }
     return () => {
       alive = false;
-      unsubscribe();
-      retries.forEach(timer => clearTimeout(timer));
       if (frame) window.cancelAnimationFrame(frame);
     };
     // `texts` is read to skip books already here; refetching on its change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bible, wanted]);
+  }, [bible, wanted, round, begin, due, asking, failed]);
   return texts;
 }

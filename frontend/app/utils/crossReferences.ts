@@ -1,7 +1,9 @@
+import { bibleAssetFetch } from '@/utils/bibleAssetFetch';
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLE_CROSSREFS_CACHE, bibleCrossRefsBase, isCrossRefsShaped, NUMBERS_PER_LINK } from '@/utils/bibleCrossRefsCache';
 import { BOOK_TEXT_DEADLINE_MS, bookSlug } from '@/utils/bibleText';
-import { fetchBibleJson } from '@/utils/fetchBibleJson';
+import { BibleAssetHttpError, fetchBibleJson } from '@/utils/fetchBibleJson';
+import { reachableAgainCount } from '@/utils/reachableAgain';
 import { placesIn, verseCount, type VersePlace } from '@/utils/versification';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -40,7 +42,9 @@ export const crossRefsUrl = (bookId: string): string => `${bibleCrossRefsBase}/$
 
 export const isMainReference = (reference: CrossReference): boolean => reference.weight >= MAIN_REFERENCE_WEIGHT;
 
-const loaded = new Map<string, Promise<CrossRefsBook>>();
+type CrossRefsRead = { result: Promise<CrossRefsBook>; mark: number };
+const loaded = new Map<string, CrossRefsRead>();
+const reportedFailures = new Set<string>();
 
 const isBookSet = (data: unknown, bookId: string): data is CrossRefsBook =>
   isCrossRefsShaped(data) && data.id === bookId;
@@ -61,7 +65,7 @@ async function readBookSet(bookId: string, fetchFn: typeof fetch): Promise<Cross
   }
 
   const { response, data } = await fetchBibleJson(fetchFn, url, BOOK_TEXT_DEADLINE_MS);
-  if (!response.ok) throw new Error(`Cross references of ${bookId}: ${response.status}`);
+  if (!response.ok) throw new BibleAssetHttpError(`Cross references of ${bookId}: ${response.status}`, response);
   if (!isBookSet(data, bookId)) throw new Error(`Cross references of ${bookId}: not the book's set`);
   try {
     // Make the first visible set durable even when the worker is still writing or has no control.
@@ -73,18 +77,31 @@ async function readBookSet(bookId: string, fetchFn: typeof fetch): Promise<Cross
 }
 
 /** Share a book's device or network read while the page lives. A failed read can be tried again. */
-export function loadCrossRefs(bookId: string, fetchFn: typeof fetch = fetch): Promise<CrossRefsBook> {
+export function readCrossRefs(bookId: string, fetchFn?: typeof fetch): CrossRefsRead {
   const known = loaded.get(bookId);
   if (known) return known;
-  const pending = readBookSet(bookId, fetchFn);
+  const fetchMissing = fetchFn ?? bibleAssetFetch(() => {
+    if (reportedFailures.has(bookId)) return false;
+    reportedFailures.add(bookId);
+    return true;
+  });
+  const pending = { mark: reachableAgainCount(), result: readBookSet(bookId, fetchMissing) };
   loaded.set(bookId, pending);
-  void pending.catch(() => { if (loaded.get(bookId) === pending) loaded.delete(bookId); });
+  void pending.result.then(
+    () => { reportedFailures.delete(bookId); },
+    () => { if (loaded.get(bookId) === pending) loaded.delete(bookId); },
+  );
   return pending;
+}
+
+export function loadCrossRefs(bookId: string, fetchFn?: typeof fetch): Promise<CrossRefsBook> {
+  return readCrossRefs(bookId, fetchFn).result;
 }
 
 /** Forgets what was fetched — for tests. */
 export function forgetLoadedCrossRefs(): void {
   loaded.clear();
+  reportedFailures.clear();
 }
 
 /**

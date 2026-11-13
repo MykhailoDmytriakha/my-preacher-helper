@@ -8,6 +8,7 @@ import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
 import { arriveOnTrail, changeTranslationOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import { verseCount } from '@/utils/versification';
 
 const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
@@ -750,6 +751,20 @@ describe('BibleBookReader', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('bible.loadError');
     await userEvent.click(screen.getByRole('button', { name: 'bible.retry' }));
     expect(await screen.findByText('Павел, Апостол')).toBeInTheDocument();
+  });
+
+  // BUG-20261112-link-texts-stay-dots-after-reconnect, the same illness in the reader: the card gives way to the
+  // book when the server is back in reach, without the person pressing "Retry".
+  it('opens the book by itself when the server answers again after the text could not be opened', async () => {
+    __resetConnectivityForTests();
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('bible.loadError');
+    act(() => reportServerUnreachable());
+    act(() => reportServerReachable());
+    expect(await screen.findByText('Павел, Апостол')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('keeps the place when the person opens another book from the middle of this one, and puts it on the trail as the way back', async () => {

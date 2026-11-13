@@ -84,9 +84,9 @@ export const reportServerReachable = (requestId = beginConnectivityRequest()) =>
 };
 
 /** A request did not reach: network error, refused, dropped, or our own timeout. */
-export const reportServerUnreachable = (requestId = beginConnectivityRequest()) => {
+export const reportServerUnreachable = (requestId = beginConnectivityRequest(), shouldReport = () => true) => {
   anchor();
-  if (requestId < lastSuccessSequence) return;
+  if (requestId < lastSuccessSequence || !shouldReport()) return;
   set(false, 'not reached');
 };
 
