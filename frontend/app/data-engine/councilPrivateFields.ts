@@ -1,15 +1,19 @@
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
+import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow, incompatibleCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
+import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
-import { equalValues, readField, writeField } from './fieldValues';
+import { equalValues, object, readField, writeField } from './fieldValues';
 import { readPrivateFieldReview } from './privateFieldReview';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 
-import type { PrivateFieldDecision } from './privateFieldReview';
+import type { FieldSelection } from './privateFieldReview';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue } from './types';
 
-type CouncilPrivateField = { path: string[]; mine: string | null; stored: string | null } & (
-  { field: 'title' | 'date' | 'heldAt' } | { field: 'topic-title'; birth: string }
+type CouncilPrivateField = { path: string[] } & (
+  { field: 'title' | 'date' | 'heldAt'; mine: string | null; stored: string | null }
+  | { field: 'topic-title'; birth: string; mine: string; stored: string }
+  | { field: 'outcome'; birth: string; mine: CouncilOutcome; stored: CouncilOutcome; localAvailable?: false }
 );
 function words(value: FieldValue | undefined) {
   return !value ? undefined : !value.exists ? null : typeof value.value === 'string' ? value.value : undefined;
@@ -19,6 +23,16 @@ function readCouncilField(checkpoint: SessionCheckpoint, path: string[]): Counci
   const { confirmed, draft, remoteCandidate } = checkpoint;
   const saved = remoteCandidate?.value;
   if (!confirmed.value || !draft || !saved) return undefined;
+  const outcome = councilOutcomeRow(path);
+  if (outcome) {
+    const opening = existingRowField(confirmed.value.topics, outcome, COUNCIL_TOPIC_KIND);
+    if (!opening || opening !== existingRowField(draft.topics, outcome, COUNCIL_TOPIC_KIND)
+      || opening !== existingRowField(saved.topics, outcome, COUNCIL_TOPIC_KIND)) return undefined;
+    const mine = existingRowField(draft.topics, outcome, COUNCIL_OUTCOME);
+    const stored = existingRowField(saved.topics, outcome, COUNCIL_OUTCOME);
+    return mine && stored && !incompatibleCouncilOutcome(mine) && !incompatibleCouncilOutcome(stored)
+      ? { field: 'outcome', path, birth: outcome, mine, stored } : undefined;
+  }
   const topic = councilTopicTitleRow(path);
   if (topic) {
     const opening = existingRowField(confirmed.value.topics, topic, COUNCIL_TOPIC_TITLE);
@@ -37,8 +51,27 @@ function readCouncilField(checkpoint: SessionCheckpoint, path: string[]): Counci
 
 export function readPrivateCouncilReview(checkpoint: SessionCheckpoint) {
   if (checkpoint.confirmed.resource.collection !== 'councils') return undefined;
-  return readPrivateFieldReview(checkpoint, readCouncilField, path =>
-    path.length === 1 && path[0] === 'status' ? ['heldAt'] : path);
+  const review = readPrivateFieldReview(checkpoint, readCouncilField, (path, conflict) => {
+    if (conflict?.code === 'council-option-gone' && path.length === 2 && path[0] === 'topics') return [...path, 'outcome'];
+    if (path.length === 1 && path[0] === 'status') return ['heldAt'];
+    if (path[0] === 'topics' && path.length === 3 && COUNCIL_OUTCOME_FIELDS.some(field => path[2] === field)) {
+      return [path[0], path[1], 'outcome'];
+    }
+    return path;
+  });
+  if (!review) return undefined;
+  const topics = review.merged.value.exists && object(review.merged.value.value) && review.merged.value.value.topics;
+  const fields = review.fields.map((field): CouncilPrivateField => {
+    if (field.field !== 'outcome' || !field.mine.acceptedOptionId) return field;
+    const topic = Array.isArray(topics) ? topics.find(row => object(row) && row.id === field.birth) : undefined;
+    const options = object(topic) && topic.options;
+    return Array.isArray(options) && options.some(option => object(option) && option.id === field.mine.acceptedOptionId)
+      ? field : { ...field, localAvailable: false };
+  });
+  const decisions = review.decisions.filter(decision => decision.side === 'remote' || !fields.some(field =>
+    field.field === 'outcome' && field.localAvailable === false && equalValues(field.path, decision.path)));
+  const remaining = fields.filter(field => !decisions.some(decision => equalValues(decision.path, field.path)));
+  return { ...review, fields, decisions, remaining };
 }
 
 export function readPrivateCouncilComparison(checkpoint: SessionCheckpoint) {
@@ -49,19 +82,22 @@ export function readPrivateCouncilComparison(checkpoint: SessionCheckpoint) {
 }
 
 export function projectCouncilPrivateFields(review: NonNullable<ReturnType<typeof readPrivateCouncilReview>>,
-  decisions: readonly PrivateFieldDecision[]): DocumentData | undefined {
+  decisions: readonly FieldSelection[]): DocumentData | undefined {
   if (!review.merged.value.exists) return undefined;
   let value = review.merged.value.value as DocumentData;
   for (const field of review.fields) {
     const decision = decisions.find(item => equalValues(item.path, field.path));
-    if (!decision) return undefined;
-    const selected = decision.side === 'local' ? field.mine : field.stored;
-    if (field.field === 'topic-title') {
-      const topics = selected === null ? undefined : replaceExistingRowField(value.topics, field.birth, selected, COUNCIL_TOPIC_TITLE);
+    if (!decision || (field.field === 'outcome' && field.localAvailable === false && decision.side === 'local')) return undefined;
+    const selected = decision.side === 'local' ? 'mine' : 'stored';
+    if (field.field === 'topic-title' || field.field === 'outcome') {
+      const topics = field.field === 'topic-title'
+        ? replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_TOPIC_TITLE)
+        : replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_OUTCOME);
       if (!topics) return undefined;
       value = { ...value, topics };
     } else {
-      const entry: FieldValue = selected === null ? { exists: false } : { exists: true, value: selected };
+      const words = field[selected];
+      const entry: FieldValue = words === null ? { exists: false } : { exists: true, value: words };
       value = field.field === 'heldAt' ? withCouncilLifecycle(value, entry) : writeField(value, field.path, entry);
     }
   }

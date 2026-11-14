@@ -7,6 +7,7 @@ import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
+import { isCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
 import { autosaveFieldTargets } from './documentFieldAction';
 import { readManualScopeIdentity } from './editorIdentity';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -113,6 +114,11 @@ const groupTextDecision = z.object({
   linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
+const privateFieldDecision = groupTextDecision.omit({ row: true, removedBy: true, linkedSteps: true }).extend({
+  mine: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
+  stored: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
+});
+
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
@@ -137,7 +143,7 @@ const recordSchema = z.object({
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
-      decisions: z.array(groupTextDecision.omit({ row: true, removedBy: true, linkedSteps: true })) }).optional(),
+      decisions: z.array(privateFieldDecision) }).optional(),
     groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(),
       decisions: z.array(groupTextDecision), separateDraft: z.literal(true).optional() }).optional(),
     sourceNoteLinkRetry: sourceNoteLinkCapture.optional(),

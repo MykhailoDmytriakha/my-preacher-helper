@@ -2,16 +2,20 @@ import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
 
+import type { CouncilOutcome } from './councilOutcomeAction';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail } from './types';
+
+type PrivateValue = string | number | CouncilOutcome | null;
 
 export type PrivateFieldDecision = {
   path: string[];
   birth: string | null;
-  mine: string | number | null;
-  stored: string | number | null;
+  mine: PrivateValue;
+  stored: PrivateValue;
   side: 'local' | 'remote';
 };
+export type FieldSelection = Pick<PrivateFieldDecision, 'path' | 'side'>;
 export type PrivateField = Omit<PrivateFieldDecision, 'side' | 'birth'> & { birth?: string };
 
 export function isUnreadableField(conflict: ConflictDetail): boolean {
@@ -23,14 +27,15 @@ export function privateFieldDecision(field: PrivateField, side: PrivateFieldDeci
 }
 
 export function readPrivateFieldReview<Field extends PrivateField>(checkpoint: SessionCheckpoint,
-  read: (checkpoint: SessionCheckpoint, path: string[]) => Field | undefined, normalizePath = (path: string[]) => path) {
+  read: (checkpoint: SessionCheckpoint, path: string[]) => Field | undefined,
+  normalizePath = (path: string[], _conflict?: ConflictDetail) => path) {
   const { confirmed, draft, remoteCandidate, conflicts, pending, privateFieldReview } = checkpoint;
   if (!confirmed.value || !draft || !remoteCandidate?.value || !confirmed.metadata
     || confirmed.metadata.generation !== remoteCandidate.metadata?.generation || Object.keys(pending).length
     || !conflicts.some(isUnreadableField) || conflicts.some(conflict => conflict.code && !isUnreadableField(conflict))) return undefined;
   const merged = mergeDocumentFields(confirmed.value, draft, remoteCandidate.value);
-  const paths = new Map([...conflicts, ...merged.conflicts].map(({ path }) => {
-    const normalized = normalizePath(path);
+  const paths = new Map([...conflicts, ...merged.conflicts].map(conflict => {
+    const normalized = normalizePath(conflict.path, conflict);
     return [JSON.stringify(normalized), normalized];
   }));
   const fields = [...paths.values()].map(path => read(checkpoint, path));

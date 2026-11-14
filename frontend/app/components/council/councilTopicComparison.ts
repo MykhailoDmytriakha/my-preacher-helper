@@ -11,6 +11,12 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
   const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
   if (placement) return placement;
   const privateField = checkpoint && readPrivateCouncilComparison(checkpoint);
+  if (privateField?.field === 'outcome') {
+    const topic = topics?.find(item => item.id === privateField.birth);
+    return { identity: privateField.identity, title: t('council.topic.atCouncil'), valueKind: 'field', scopedChoice: true,
+      ...(privateField.localAvailable === false && { keepMineDisabled: true, description: t('council.topic.optionGone') }),
+      mine: councilOutcomeWords(privateField.mine, topic, t), stored: councilOutcomeWords(privateField.stored, topic, t) };
+  }
   if (privateField?.field === 'topic-title') {
     const untitled = t('council.topicTitleHistory.untitled');
     return { identity: privateField.identity, title: t('council.detail.newTopicPlaceholder'), valueKind: 'field', scopedChoice: true,

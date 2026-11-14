@@ -596,6 +596,9 @@ export class DataSession {
     const review = readPrivateDocumentReview(this.state);
     const next = review?.remaining[0];
     if (!review || !next) return false;
+    if (side === 'local' && 'localAvailable' in next && next.localAvailable === false) {
+      throw Object.assign(new Error('The selected council option is unavailable'), { code: 'council-option-gone' });
+    }
     const decisions = [...review.decisions, privateFieldDecision(next, side)];
     if (review.remaining.length > 1) {
       this.state.privateFieldReview = { revision: review.revision, decisions };

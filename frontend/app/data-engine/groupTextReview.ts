@@ -9,6 +9,7 @@ import { readPrivateFieldReview } from './privateFieldReview';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 
+import type { FieldSelection } from './privateFieldReview';
 import type { RowFieldTarget } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData } from './types';
@@ -273,8 +274,8 @@ export function readGroupTextReview(checkpoint: SessionCheckpoint) {
   return { fields: differing, decisions, remaining, merged, stored: remoteCandidate.value };
 }
 
-export function projectGroupTextDecisions(review: NonNullable<ReturnType<typeof readGroupTextReview>>,
-  decisions: readonly GroupTextDecision[]): DocumentData | undefined {
+export function projectGroupTextDecisions(review: Pick<NonNullable<ReturnType<typeof readGroupTextReview>>, 'fields' | 'merged' | 'stored'>,
+  decisions: readonly FieldSelection[]): DocumentData | undefined {
   if (!review.merged.value.exists) return undefined;
   let value = review.merged.value.value as DocumentData;
   for (const field of review.fields) {

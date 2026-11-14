@@ -6,6 +6,7 @@ import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue, createMemoryCommitStore, type CommitRequest } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { COUNCIL_OUTCOME_POLICY } from '../councilOutcomeAction';
+import { readPrivateCouncilComparison } from '../councilPrivateFields';
 import { COUNCIL_TOPIC_TITLE_POLICY } from '../councilTopicTitleAction';
 import { GROUP_BLOCK_STATUS_POLICY } from '../groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowTitleAction';
@@ -387,6 +388,52 @@ const ROWS = [
     { outlinePointId: null, subPointId: null }, { outlinePointId: 'p1', subPointId: null }, { outlinePointId: 'p2', subPointId: null }],
 ] as unknown as Array<[string, string, RowDetailPolicy<string, RowValue>, string, RowValue, RowValue, RowValue]>;
 
+
+it.each(['local', 'remote'] as const)('compares a whole recovered council outcome alongside its title (%s outcome)', async side => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'councils', id: 'council-private-outcome' };
+  const topic = { id: 'topic', title: 'Section', questions: [], options: [], kind: 'decision' };
+  const value = { userId: 'owner', title: 'Stored title', status: 'preparing', topics: [topic] };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const checkpoint = new DataSession({ resource, value, metadata }).checkpoint();
+  const stored = { ...value, topics: [{ ...topic, resolution: 'postponed' }] };
+  const local = { ...topic, decision: 'Private decision', discussed: true };
+  checkpoint.draft = { ...value, title: 'Private title', topics: [local] };
+  checkpoint.unreadableScalarProof = ['title'];
+  checkpoint.unreadableRowProofs = [{ field: 'councilOutcomeDrafts', rowId: topic.id, birth: topic.id, generation: 'g' }];
+  checkpoint.remoteCandidate = { resource, value: stored, metadata: { ...metadata, revision: 3 } };
+  db.documents.set('councils/' + resource.id, { ...stored, _dataEngine: checkpoint.remoteCandidate.metadata });
+  const recovered = DataSession.restore(checkpoint);
+  expect(recovered.choosePrivateFields('local', null)).toBe(true);
+  expect(readPrivateCouncilComparison(recovered.checkpoint())).toMatchObject({
+    field: 'outcome', mine: { decision: 'Private decision', discussed: true },
+    stored: { resolution: 'postponed' },
+  });
+  expect(recovered.choosePrivateFields(side, null)).toBe(true);
+  const complete = recovered.checkpoint();
+  expect(complete.conflicts).toEqual([]);
+  expect(complete.draft?.topics).toEqual(side === 'local' ? [local] : stored.topics);
+  expect((await save(complete)).kind).toBe('acknowledged');
+  expect((await readDocument('owner', resource)).value?.topics).toEqual(complete.draft?.topics);
+});
+
+it('keeps the stored outcome choice available when the draft selected an option removed elsewhere', () => {
+  const resource = { collection: 'councils', id: 'removed-option-recovery' };
+  const topic = { id: 'topic', title: 'Section', questions: [], options: [{ id: 'option', text: 'An option' }] };
+  const value = { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic] };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const checkpoint = new DataSession({ resource, value, metadata }).checkpoint();
+  checkpoint.draft = { ...value, topics: [{ ...topic, acceptedOptionId: 'option', discussed: true }] };
+  checkpoint.unreadableRowProofs = [{ field: 'councilOutcomeDrafts', rowId: topic.id, birth: topic.id, generation: 'g' }];
+  const stored = { ...value, topics: [{ ...topic, options: [] }] };
+  checkpoint.remoteCandidate = { resource, value: stored, metadata: { ...metadata, revision: 2 } };
+  const recovered = DataSession.restore(checkpoint);
+  expect(readPrivateCouncilComparison(recovered.checkpoint())).toMatchObject({ field: 'outcome', localAvailable: false });
+  expect(() => recovered.choosePrivateFields('local', null)).toThrow('The selected council option is unavailable');
+  expect(recovered.checkpoint().draft).toEqual(checkpoint.draft);
+  expect(recovered.choosePrivateFields('remote', null)).toBe(true);
+  expect(recovered.checkpoint()).toMatchObject({ draft: stored, dirty: false, conflicts: [] });
+});
 
 it.each(['local', 'remote'] as const)('chooses council lifecycle and topic title independently (%s lifecycle)', side => {
   const resource = { collection: 'councils', id: 'council-lifecycle-and-topic-recovery' };
