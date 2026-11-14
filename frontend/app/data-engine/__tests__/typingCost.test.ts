@@ -54,6 +54,43 @@ it.each([0, 100, 1000])('keeps an open editor independent of %i unrelated unfini
   } finally { browser.dispose(); }
 });
 
+it.each([0, 100, 1000])('publishes only the requested collection with %i unrelated requests in memory', async size => {
+  const baseline = request().baseline;
+  const h = documentEngineHarness(baseline), browser = h.createBrowser({ withCollections: true });
+  const engine = browser.engine;
+  const local = request('own note words');
+  seedRequest(h.storage, local);
+  for (let index = 0; index < size; index++) {
+    const saved = request('unrelated-' + index, 'unrelated-editor-' + index);
+    const other = { ...baseline, resource: { collection: 'groups', id: saved.id } };
+    seedRequest(h.storage, { ...saved, baseline: other, working: other, state: 'refused' });
+  }
+  engine.setOnline(false); engine.setOwner('owner');
+  const first = await engine.readCollection('studyNotes');
+  const remembered = (engine as unknown as { commitRecords: Map<string, CommitRequest> }).commitRecords;
+  expect(remembered.size).toBe(size + 1);
+  let unrelated = 0;
+  const all = remembered.values.bind(remembered);
+  const visit = jest.spyOn(remembered, 'values').mockImplementation(function* (): Generator<CommitRequest, undefined> {
+    for (const saved of all()) {
+      if (saved.baseline.resource.collection !== 'studyNotes') unrelated++;
+      yield saved;
+    }
+    return undefined;
+  });
+  const updates = jest.fn();
+  const stop = engine.watchCollection('studyNotes', updates);
+  try {
+    await settleEngine();
+    const expected = [expect.objectContaining({ resource: baseline.resource,
+      value: { userId: 'owner', content: 'own note words' }, pending: true, needsAttention: false })];
+    expect(first.documents).toEqual(expected);
+    expect(updates).toHaveBeenLastCalledWith(expect.objectContaining({ documents: expected }));
+    expect((await engine.readCollection('studyNotes')).documents).toEqual(expected);
+    expect(unrelated).toBe(0);
+  } finally { stop(); visit.mockRestore(); browser.dispose(); }
+});
+
 it('retains all participants and dependent requests required for a choice across documents', () => {
   const answered = { ...request('answered'), state: 'refused' as const };
   const atomic = { id: 'atomic-root', participants: ['atomic-root', 'atomic-other'], kind: 'analysis-reshape' as const };

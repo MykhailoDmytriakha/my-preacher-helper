@@ -584,7 +584,8 @@ export class DataEngine {
 
   private projectCollection(owner: string, collection: string, state: CollectionState): CollectionState {
     return { ...state,
-      documents: collectionDocumentViews(owner, collection, state.snapshots, [...this.commitRecords.values()], this.pending) };
+      documents: collectionDocumentViews(owner, collection, state.snapshots, this.editorRequests.forCollection(owner, collection),
+        collection === 'studyNoteShareLinks' ? this.pendingByOperation.forShareLinks(owner) : []) };
   }
 
   readCollection(collection: string): Promise<CollectionState> {
