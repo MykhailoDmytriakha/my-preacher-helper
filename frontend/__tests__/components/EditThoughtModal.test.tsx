@@ -1,5 +1,5 @@
-import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import EditThoughtModal from '@/components/EditThoughtModal';
@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
+
+import type { useTextDictation } from '@/hooks/useTextDictation';
 
 // Mock react-dom createPortal
 let mockRealEditor = false;
@@ -82,6 +84,15 @@ jest.mock('@/utils/transcriptionRetryClient', () => ({
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn() },
 }));
+
+let mockDictationOptions: Parameters<typeof useTextDictation>[0];
+jest.mock('@/hooks/useTextDictation', () => {
+  const actual = jest.requireActual<typeof import('@/hooks/useTextDictation')>('@/hooks/useTextDictation');
+  return { ...actual, useTextDictation: (options: Parameters<typeof useTextDictation>[0]) => {
+    mockDictationOptions = options;
+    return actual.useTextDictation(options);
+  } };
+});
 
 const mockTranscribeAudioWithRetry = jest.mocked(transcribeAudioWithRetry);
 
@@ -610,6 +621,26 @@ describe('EditThoughtModal Component', () => {
     const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
     fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('keeps two dictated paragraphs batched with native typing and submits all the words', async () => {
+    mockRealEditor = true;
+    try {
+      const onSave = jest.fn(async (_text: string) => undefined);
+      const view = render(<EditThoughtModal {...mockProps} initialText="Opening." onSave={onSave} />);
+      const editor = mountedEditor(view.container);
+      await act(async () => {
+        editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Typed.');
+        await mockDictationOptions.onText('Dictated.');
+        await mockDictationOptions.onText('Second.');
+      });
+      const expected = 'Opening. Typed.\n\nDictated.\n\nSecond.';
+      expect(markdown(editor)).toBe(expected);
+      typeAtEnd(editor, ' Later.');
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(onSave.mock.calls[0]?.[0]).toBe(expected + ' Later.'));
+      view.unmount();
+    } finally { mockRealEditor = false; }
   });
 
   test('regression pin: keeps a recorded passage insertion undoable in the mounted legacy thought editor', async () => {

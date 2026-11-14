@@ -744,7 +744,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, []);
-    const { value: content, observe: setContent, act: setOwnContent, isUserAction: contentIsUserAction } = useEditorValue('');
+    const { value: content, observe: setContent, act: setOwnContent, append: appendContent, appended: contentAppend, isUserAction: contentIsUserAction } = useEditorValue('');
     const contentOpeningRef = useRef<Omit<StudyNoteContentCapture, 'time'> | undefined>(undefined);
     const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture } | null>(null);
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
@@ -896,19 +896,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setOwnContent(value);
     };
     const appendDictation = (text: string, recovered: boolean) => {
-        const next = content ? `${content}\n\n${text}` : text;
-        if (recovered) {
-            // Restoring a recording from this note is a fresh choice on the shown words.
-            const opening = baselineRef.current?.content;
-            const observed = opening === undefined ? undefined : observeContent?.(noteId, opening);
-            if (uid && observed) {
-                contentOpeningRef.current = observed;
-                contentEditRef.current = { owner: uid, id: noteId, value: next, capture: { ...observed, time: null } };
-                setOwnContent(next);
-                return;
-            }
+        const next = appendContent(previous => previous ? `${previous}\n\n${text}` : text);
+        if (!recovered) return;
+        // Restoring a recording from this note is a fresh choice on the shown words.
+        const opening = baselineRef.current?.content;
+        const observed = opening === undefined ? undefined : observeContent?.(noteId, opening);
+        if (uid && observed) {
+            contentOpeningRef.current = observed;
+            contentEditRef.current = { owner: uid, id: noteId, value: next, capture: { ...observed, time: null } };
         }
-        setOwnContent(next);
     };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
@@ -1885,6 +1881,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 value={content}
+                                observedAppend={contentAppend}
                                 valueIsUserAction={contentIsUserAction}
                                 onChange={changeContent}
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}

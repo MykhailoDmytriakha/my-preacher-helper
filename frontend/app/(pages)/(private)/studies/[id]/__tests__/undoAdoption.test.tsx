@@ -135,6 +135,24 @@ afterEach(() => {
   observer?.disconnect(); view?.unmount(); world?.dispose();
   localStorage.clear(); jest.restoreAllMocks();
 });
+it('shows and saves dictation batched with native typing in the note', async () => {
+  await start('Opening.');
+  const editor = mockEditor;
+  await act(async () => {
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Typed.');
+    await mockVoice.onText('Dictated.', 'source-1');
+    await mockVoice.onText('Second.', 'source-2');
+  });
+  const expected = 'Opening. Typed.\n\nDictated.\n\nSecond.';
+  expect(md()).toBe(expected);
+  act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Later.'); });
+  await settle(1600);
+  await settle(2000);
+  expect(md()).toBe(expected + ' Later.');
+  expect(await stored()).toBe(expected + ' Later.');
+  expect(laptop.errors).toEqual([]);
+});
+
 it.each([
   { name: 'earlier typing and one Undo', priorTyping: true, undos: 1, laterTyping: false },
   { name: 'earlier typing and two Undos', priorTyping: true, undos: 2, laterTyping: false },

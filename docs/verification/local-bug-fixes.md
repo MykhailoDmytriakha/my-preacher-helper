@@ -9756,3 +9756,15 @@ The shared Markdown editor now closes the history group after an explicit insert
 On local production build `-Kr0Nv3Vko2F4EGEDMpEP`, headless Chrome at 390 and 1280 px used an emulated microphone, a fixture transcription response and local Auth and Firestore. The first Undo kept the dictated paragraph and removed the later words. The next Undo removed the paragraph. Two Redo steps restored both, and the note still contained both after Done and reload. The recordings remained linked. Reports, a red assertion and visually reviewed screenshots are in `artifacts/undo-insertion-step-20261114`. Full Jest passed 15,778 tests with 17 skipped. TypeScript, scoped ESLint, production build and independent source review passed.
 
 After authorized deployment, use a disposable note in a dedicated test account. Dictate a short sentence and immediately type another. Check both Undo/Redo steps, press Done and reopen. A separately timed test covers dictation arriving in the same render as typing.
+
+## BUG-20261114-note-dictation-hidden-when-batched-with-typing · Show and save transcription with the latest typed text
+
+Studies → a note → Edit → New Recording, and the legacy Edit Thought form. Two mounted regressions supplied keyboard input and two transcription callbacks before the next React render. The old editor showed only the typed words. It then stored a later keyboard edit without the hidden paragraphs in the in-process note server, or sent it to the legacy thought Save handler without them.
+
+Each transcription now appends to the latest editor value, including input handled before the next render. The resulting value carries the exact opening that it extends, so the text buffer can accept it when it incorporates its pending input. Later keyboard input still takes priority until acknowledged. The note regression verifies both transcriptions and later typing through the real autosave and in-process engine. The legacy form verifies the same text at its Save handoff.
+
+On local production build `LpmvQoHvoxdUINwilZEAb`, headless Chrome at 390 and 1280 px used isolated Auth and Firestore and a fixture microphone/transcription. The note kept text typed while recognition waited, the resulting transcript and words typed afterwards. Undo, Redo, Done and reload preserved the intended words. Actual browser events were closely spaced. The forced same-render schedule and both transcriptions were checked in the mounted tests. Reports, red assertions, and visually reviewed screenshots are in `artifacts/batched-dictation-20261114`.
+
+After authorized deployment, use a disposable test note. Record a short sentence, type while recognition is awaiting its answer, append more words and reopen the note. The legacy thought mount and Save handoff were checked in Jest. Real-device microphone and natural same-render frequency remain distinct from the controlled local check.
+
+Full Jest passed 15,780 tests with 17 skipped. TypeScript, scoped ESLint with existing warnings, production build, and independent source review passed.

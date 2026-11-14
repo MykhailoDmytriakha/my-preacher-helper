@@ -1,19 +1,36 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import type { SetStateAction } from 'react';
 
-/** Origin travels with the value produced by ONE state update, never with a later value. */
+interface EditorValueChange<T> {
+  value: T;
+  isUserAction: boolean;
+  appended?: { before: T; after: T };
+}
+
+/** Origin travels with the value produced by one action. */
 export function useEditorValue<T>(initial: T) {
-  const [change, setChange] = useState({ value: initial, isUserAction: false });
-  const apply = useCallback((next: SetStateAction<T>, isUserAction: boolean) => {
-    setChange(previous => {
-      const value = typeof next === 'function' ? (next as (value: T) => T)(previous.value) : next;
-      return Object.is(value, previous.value) ? previous : { value, isUserAction };
-    });
+  const [change, setChange] = useState<EditorValueChange<T>>({ value: initial, isUserAction: false });
+  // Another action may arrive before React has shown the first one.
+  const latest = useRef(change);
+  const apply = useCallback((next: SetStateAction<T>, origin: 'observed' | 'action' | 'append') => {
+    const previous = latest.current;
+    const value = typeof next === 'function' ? (next as (value: T) => T)(previous.value) : next;
+    if (!Object.is(value, previous.value)) {
+      const updated = {
+        value,
+        isUserAction: origin !== 'observed',
+        appended: origin === 'append' ? { before: previous.appended?.before ?? previous.value, after: value } : undefined,
+      };
+      latest.current = updated;
+      setChange(updated);
+    }
+    return value;
   }, []);
-  const observe = useCallback((next: SetStateAction<T>) => apply(next, false), [apply]);
-  const act = useCallback((next: SetStateAction<T>) => apply(next, true), [apply]);
-  return { ...change, observe, act };
+  const observe = useCallback((next: SetStateAction<T>) => { apply(next, 'observed'); }, [apply]);
+  const act = useCallback((next: SetStateAction<T>) => { apply(next, 'action'); }, [apply]);
+  const append = useCallback((extend: (previous: T) => T) => apply(extend, 'append'), [apply]);
+  return { ...change, observe, act, append };
 }
 
 /** Per-cell origins let one remote cell arrive in the same render as an unrelated own edit. */
