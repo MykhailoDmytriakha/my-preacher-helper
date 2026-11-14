@@ -1,4 +1,4 @@
-import { refusalWords, sayFailure } from '@/utils/actionFailureMessage';
+import { refusalKey, refusalWords, sayFailure } from '@/utils/actionFailureMessage';
 
 import en from '../../locales/en/translation.json';
 import ru from '../../locales/ru/translation.json';
@@ -72,4 +72,14 @@ it.each([['en', en], ['ru', ru], ['uk', uk]])('explains a changed saved decision
   const translate = (key: string) => key.split('.').reduce<unknown>((value, part) =>
     (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
   expect(sayFailure(words, translate)).not.toBe('dataSync.failure.savedWorkChanged');
+});
+
+it.each([['en', en], ['ru', ru], ['uk', uk]])('says in %s that a text too large for one save stays as a draft', (_name, locale) => {
+  const error = Object.assign(new Error('Command exceeds the size limit'), { code: 'resource-exhausted' });
+  const translate = (key: string) => key.split('.').reduce<unknown>((value, part) =>
+    (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
+  const sentence = (locale.dataSync.failure as Record<string, string>).tooLargeToSave;
+  expect(sentence).toBeTruthy();
+  expect(refusalKey('resource-exhausted')).toBe('dataSync.failure.tooLargeToSave');
+  expect(sayFailure(refusalWords(error, 'common.saveError'), translate)).toBe(sentence);
 });

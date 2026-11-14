@@ -166,6 +166,13 @@ describe('Shared synchronization status', () => {
     s.result = { kind: 'refused', operationId: 'mine', code: 'denied' };
     expect(describeSync(s, observation, [pending('refused')]).phase).toBe('refused');
   });
+  it('carries the code of a refused save so the screen can say why', () => {
+    const s = state(); s.checkpoint.dirty = true; s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };
+    s.result = { kind: 'refused', operationId: 'mine', code: 'resource-exhausted' };
+    expect(describeSync(s, observation, [pending('refused')])).toMatchObject({ phase: 'refused', refusalCode: 'resource-exhausted' });
+    s.result = { kind: 'conflict', operationId: 'mine', snapshot, conflicts: [] };
+    expect(describeSync(s, observation, [pending('conflict')])).not.toHaveProperty('refusalCode');
+  });
   it('shows clean confirmed deletion and unresolved rebased conflicts', () => {
     const s = state(); s.checkpoint.confirmed = { ...snapshot, value: null, metadata: { ...snapshot.metadata!, deleted: true } };
     expect(describeSync(s, observation, []).phase).toBe('deleted');

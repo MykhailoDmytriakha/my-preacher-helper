@@ -18,7 +18,7 @@ import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { useShellPathname } from '@/hooks/useShellPathname';
-import { refusalMessage } from '@/utils/actionFailureMessage';
+import { refusalKey, refusalMessage } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleMarksRecoveryValue } from '@/utils/bibleMarksRecovery';
 import { isBibleId } from '@/utils/bibles';
@@ -54,12 +54,18 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  */
 interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
-  refused?: boolean; commentKindPlaceChanged?: boolean; tagNameExists?: boolean; retainedCommentText?: RecoveryCheckpoint }
+  refused?: boolean; refusalCodes?: readonly string[]; retainedCommentText?: RecoveryCheckpoint }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
 /** The kinds the server answered with a refusal, which an outdated tab may have caused. */
 const REFUSAL_KINDS = new Set<Kind>(['refused', 'refusedCreate', 'refusedDelete']);
+/** Refusal reasons a one-shot refused change says: the moved comment passage (as before) and the size limit. */
+const ONE_SHOT_REFUSAL_REASONS: ReadonlySet<string> = new Set(['comment-kind-place-changed', 'resource-exhausted']);
+/** Every other refused draft says only the size limit. */
+const SIZE_REFUSAL_REASON: ReadonlySet<string> = new Set(['resource-exhausted']);
+const refusalReason = (codes: readonly string[] | undefined, shown: ReadonlySet<string>): string | undefined =>
+  refusalKey(codes?.find(code => shown.has(code)));
 const CONFLICT_TITLE = 'freshness.conflictTitle';
 const COPY_ACTION = 'freshness.copyTextAction';
 const ACCEPT_REMOTE = 'dataSync.acceptRemote';
@@ -302,10 +308,9 @@ function coveredBySettingsAnswer({ record, actionResolutionRequired, answer }: R
 function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue, settings: SettingsAnswer | null): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
   for (const { record, answer } of records) if (answer === 'refused') Object.keys(record.checkpoint.pending).forEach(id => refused.add(id));
-  const movedCommentKinds = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === 'comment-kind-place-changed'
-    ? [entry.command.operationId] : []));
-  const existingTagNames = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === TAG_NAME_EXISTS
-    ? [entry.command.operationId] : []));
+  // Why a draft was refused: each notice says only the reasons it lists (`ONE_SHOT_REFUSAL_REASONS`, `SIZE_REFUSAL_REASON`).
+  const refusalCodes = new Map(journal.flatMap(entry =>
+    entry.result?.kind === 'refused' ? [[entry.command.operationId, entry.result.code] as const] : []));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
   // A screen is listed for an answered saved request, including a local policy refusal.
   // A conflict in an unsent screen draft has no submitted request to settle here.
@@ -330,8 +335,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const sameScreen = screenValues.every(value => documentScreenHref(resource, value) === documentScreenHref(resource, screenValue));
       documents.push({ resource, kind: kindOf(drafts.map(draft => draft.record), refused), screen, screenValue: sameScreen ? screenValue : null,
         refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
-        commentKindPlaceChanged: scope.operationIds.some(id => movedCommentKinds.has(id)),
-        tagNameExists: scope.operationIds.some(id => existingTagNames.has(id)),
+        refusalCodes: scope.operationIds.flatMap(id => refusalCodes.get(id) ?? []),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(previewReviewedListChoice(draft.checkpoint), draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
@@ -645,21 +649,27 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
     );
   }
 
+  const sayReason = (shown: ReadonlySet<string>): string | null => {
+    const key = refusalReason(entry.refusalCodes, shown);
+    return key ? t(key) : null;
+  };
   const heading: Record<Exclude<Kind, 'conflict'>, [string, string | null]> = {
-    refused: [t(REFUSED_TITLE), entry.commentKindPlaceChanged ? t('comment.kindPlaceChanged') : null],
-    refusedCreate: [t(REFUSED_TITLE), entry.tagNameExists ? t('settings.tagNameExists') : null],
+    refused: [t(REFUSED_TITLE), sayReason(ONE_SHOT_REFUSAL_REASONS)],
+    refusedCreate: [t(REFUSED_TITLE), entry.refusalCodes?.includes(TAG_NAME_EXISTS) ? t('settings.tagNameExists') : sayReason(SIZE_REFUSAL_REASON)],
     deletedThere: [t('freshness.deletedElsewhereTitle'), t('freshness.deletedElsewhereBody')],
     deletedHere: [t('dataSync.deleteConflictTitle'), t('dataSync.deleteConflictBody')],
     refusedDelete: [t('dataSync.deleteRefusedTitle'), t('dataSync.deleteRefusedBody')],
     several: [t(CONFLICT_TITLE), t('dataSync.severalDrafts')],
   };
   const [title, body] = heading[entry.kind];
+  const severalReason = entry.kind === 'several' ? sayReason(SIZE_REFUSAL_REASON) : null;
   const deletion = entry.kind === 'deletedHere' || entry.kind === 'refusedDelete';
   const shown = deletion ? entry.theirs : mine;
   return notice(
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       {body && <p className={NOTICE_BODY}>{body}</p>}
+      {severalReason && <p className={NOTICE_BODY}>{severalReason}</p>}
       {shown && (
         <pre className={NOTICE_TEXT}>{shown}</pre>
       )}
@@ -691,6 +701,13 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
  * every page with nothing to decide in it was all the person saw. `takeStoredVersion` settles every
  * copy of the draft, the screen open in another tab included.
  */
+/** A screen's draft refused as too large says why, in the notice's own secondary text; nothing else changes. */
+function SizeRefusalLine({ entry }: { entry: Waiting }) {
+  const { t } = useTranslation();
+  const key = refusalReason(entry.refusalCodes, SIZE_REFUSAL_REASON);
+  return key ? <p className={NOTICE_BODY}>{t(key)}</p> : null;
+}
+
 function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
   entry: Waiting; mine: string; busy: boolean; onCopy: () => void; onTakeStored?: () => void;
 }) {
@@ -702,6 +719,7 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       <p className={NOTICE_BODY}>{t(entry.actionResolutionRequired ? 'dataSync.wholeActionDraftBody' : 'dataSync.screenDraftBody')}</p>
+      <SizeRefusalLine entry={entry} />
       {mine && (
         <pre className={NOTICE_TEXT}>{mine}</pre>
       )}
@@ -733,6 +751,7 @@ function UndecidableScreenDrafts({ entry, mine, busy, onCopy, onTakeStored }: {
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       <p className={NOTICE_BODY}>{t('dataSync.screenDraftsUndecidable')}</p>
+      <SizeRefusalLine entry={entry} />
       {mine && <pre className={NOTICE_TEXT}>{mine}</pre>}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={busy || !mine} onClick={onCopy} className={PRIMARY_BUTTON}>{t(COPY_ACTION)}</button>
