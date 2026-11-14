@@ -1,3 +1,4 @@
+import { FieldPath } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
 
 import { isClosedToLegacyWriters } from './activation';
@@ -172,6 +173,14 @@ export async function mutateLegacyResource(resource: { collection: string; id: s
 export async function listOwnedDocuments(owner: string, collection: string): Promise<{ id: string; data: DocumentData }[]> {
   const { adminDb } = await import('@/config/firebaseAdminConfig');
   const snapshot = await adminDb.collection(collection).where('userId', '==', owner).get();
+  return snapshot.docs.map(document => ({ id: document.id, data: document.data() }));
+}
+
+export async function listOwnedDocumentPage(owner: string, collection: string, limit: number, after: string | null) {
+  const { adminDb } = await import('@/config/firebaseAdminConfig');
+  let query = adminDb.collection(collection).where('userId', '==', owner).orderBy(FieldPath.documentId()).limit(limit);
+  if (after !== null) query = query.startAfter(after);
+  const snapshot = await query.get();
   return snapshot.docs.map(document => ({ id: document.id, data: document.data() }));
 }
 

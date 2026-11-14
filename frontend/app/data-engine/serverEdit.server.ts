@@ -8,6 +8,7 @@ import { isClosedToLegacyWriters, isCollectionServed } from './activation';
 import { assertLegacyWritable, DATA_ENGINE_REQUIRED, isDataEngineRequired, LEGACY_REFUSAL_STATUS, listOwnedDocuments, mutateLegacyResource, updateLegacyResource, upsertLegacySettings } from './legacyBoundary.server';
 import { diffFields, personFields } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
+import { withoutSermonTag } from './tagCleanupChange';
 
 import type { TagCleanupGuard } from './server';
 import type { DocumentData, ResourceRef } from './types';
@@ -205,8 +206,6 @@ export function serverEditResponse(error: unknown): NextResponse | null {
 const carriesTag = (thoughts: unknown, name: string): boolean =>
   Array.isArray(thoughts) && thoughts.some(thought => Boolean(thought) && Array.isArray((thought as { tags?: unknown }).tags)
     && ((thought as { tags: unknown[] }).tags).includes(name));
-const withoutTag = (thoughts: DocumentData[], name: string): DocumentData[] => thoughts.map(thought => Array.isArray(thought.tags) && thought.tags.includes(name)
-  ? { ...thought, tags: thought.tags.filter(tag => tag !== name) } : thought);
 
 /**
  * Remove an absent tag name from thoughts, one sermon at a time.
@@ -216,27 +215,44 @@ const withoutTag = (thoughts: DocumentData[], name: string): DocumentData[] => t
  * transaction keeps the cascade independent of the number of affected sermons.
  */
 export async function removeTagFromSermons(owner: string, name: string,
-  sermons?: { id: string; data: DocumentData }[]): Promise<{ changed: number; failed: number }> {
+  sermons?: { id: string; data: DocumentData }[], progress?: {
+    beforeDocument(): void;
+    documentFinished(id: string): void;
+    nameRestored(): void;
+  }): Promise<{ changed: number; failed: number }> {
   let changed = 0, failed = 0;
   for (const { id, data } of sermons ?? await listOwnedDocuments(owner, 'sermons')) {
-    if (!carriesTag(data.thoughts, name)) continue;
-    // One sermon that refuses must not strand the rest: each is its own write.
+    progress?.beforeDocument();
+    if (!carriesTag(data.thoughts, name)) {
+      progress?.documentFinished(id);
+      continue;
+    }
+    // A durable cursor stops before the first failed write and resumes from there.
     try {
       const resource = { collection: 'sermons', id };
       await writeOwnedDocument({
         owner, resource, tagCleanup: { absentTagName: name },
         legacy: () => mutateLegacyResource(resource, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
-          ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts', async transaction => {
+          ? { thoughts: withoutSermonTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts', async transaction => {
             const { tagNameStillAbsent } = await import('./server');
             if (!await tagNameStillAbsent(transaction, owner, name)) throw new ServerEditError(TAG_NAME_EXISTS, 409);
           }),
-        engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutTag(current.thoughts as DocumentData[], name) } : current,
+        engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutSermonTag(current.thoughts as DocumentData[], name) } : current,
       });
       changed += 1;
+      progress?.documentFinished(id);
     } catch (error) {
-      if (error instanceof ServerEditError && error.code === TAG_NAME_EXISTS) break;
+      if (error instanceof ServerEditError && error.code === TAG_NAME_EXISTS) {
+        progress?.nameRestored();
+        break;
+      }
+      if (error instanceof ServerEditError && error.status === 404 && progress) {
+        progress.documentFinished(id);
+        continue;
+      }
       failed += 1;
       console.error(`A deleted tag could not leave sermon ${id}`, error);
+      if (progress) break;
     }
   }
   return { changed, failed };

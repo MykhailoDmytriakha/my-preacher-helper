@@ -309,6 +309,116 @@ describe('custom tag name ownership', () => {
     expect(documents.get('sermons/sermon-1')?.thoughts).toEqual([{ ...thought, tags: ['Keep'] }]);
     expect(documents.get('tags/foreign')?.name).toBe('Prayer');
   });
+
+  it('resumes a partially completed deletion on exact replay before acknowledging it', async () => {
+    const name = 'Prayer';
+    const card = tag(name);
+    const thought = { id: 'saved-thought', text: 'Keep the written words', date: '2026-11-10', tags: [name, 'Keep'] };
+    const saved = create('first-sermon');
+    if (saved.kind !== 'create') throw new Error('Expected a create command');
+    documents.set('tags/blue', card);
+    for (const id of ['a-story', 'b-story']) {
+      expect(await processCommand(owner, { ...saved, operationId: id, resource: { collection: 'sermons', id },
+        value: { ...saved.value, thoughts: [thought] } })).toMatchObject({ kind: 'acknowledged' });
+    }
+    const transactions = jest.mocked(adminDb.runTransaction).getMockImplementation()!;
+    let failing = true;
+    jest.mocked(adminDb.runTransaction).mockImplementation((run, options) => transactions(transaction => {
+      const get = transaction.get.bind(transaction);
+      Object.defineProperty(transaction, 'get', { value: (reference: { path?: string }) => {
+        if (failing && reference.path === 'sermons/b-story') throw new Error('Transient write failure');
+        return get(reference as never);
+      } });
+      return run(transaction);
+    }, options));
+    const deletion = remove('blue', card);
+    const original = await processCommand(owner, deletion).then(result => ({ result: result.kind }),
+      (error: unknown) => error instanceof DataEngineServerError ? { status: error.status, code: error.code } : { error });
+    expect(documents.get('tags/blue')?._dataEngine).toMatchObject({ deleted: true, revision: 1 });
+    expect(documents.get('sermons/a-story')?.thoughts).toEqual([{ ...thought, tags: ['Keep'] }]);
+    expect(documents.get('sermons/b-story')?.thoughts).toEqual([thought]);
+    failing = false;
+    if (deletion.kind !== 'delete') throw new Error('Expected a delete command');
+    expect(await processCommand(owner, { ...deletion, baseline: { ...deletion.baseline, color: '#ffffff' } }))
+      .toMatchObject({ kind: 'refused', code: 'operation-id-reused' });
+    expect(documents.get('sermons/b-story')?.thoughts).toEqual([thought]);
+    expect(await processCommand(owner, deletion)).toMatchObject({ kind: 'acknowledged', operationId: deletion.operationId });
+    expect(documents.get('sermons/b-story')?.thoughts).toEqual([{ ...thought, tags: ['Keep'] }]);
+    expect(original).toEqual({ status: 503, code: 'tag-cleanup-pending' });
+    for (const id of ['a-story', 'b-story']) expect(documents.get('sermons/' + id)?._dataEngine).toMatchObject({ revision: 2 });
+  });
+
+  it('checkpoints completed pages without scanning them again or leaving another owner’s tags', async () => {
+    const name = 'Prayer', card = tag(name);
+    documents.set('tags/blue', card);
+    const thought = { id: 'saved-thought', text: 'Keep my words', date: '2026-11-10', tags: [name, 'Keep'] };
+    for (let index = 0; index <= 32; index += 1) {
+      const id = 'page-' + String(index).padStart(2, '0');
+      documents.set('sermons/' + id, { userId: owner, title: id, verse: 'John 1:1', date: '2026-01-01',
+        thoughts: index === 32 ? [thought] : [], _dataEngine: { protocol: 1, generation: id, revision: 1, deleted: false } });
+    }
+    documents.set('sermons/foreign', { userId: 'another-owner', thoughts: [thought] });
+    const pages: string[][] = [];
+    let failing = true;
+    jest.mocked(adminDb.collection).mockImplementation(collection => {
+      const query = queryFor(collection), get = query.get;
+      query.get = async () => {
+        const result = await get();
+        if (collection === 'sermons') {
+          pages.push(result.docs.map(document => document.id));
+          if (failing && result.docs.some(document => document.id === 'page-32')) throw new Error('Page temporarily unavailable');
+        }
+        return result;
+      };
+      return query as never;
+    });
+    const deletion = remove('blue', card);
+    await expect(processCommand(owner, deletion)).rejects.toMatchObject({ status: 503, code: 'tag-cleanup-pending' });
+    const stored = () => documents.get(receiptPath(owner, deletion.operationId));
+    expect(stored()?.tagCleanup).toEqual({ name, after: 'page-31', completed: false });
+    failing = false;
+    await expect(processCommand(owner, deletion)).resolves.toMatchObject({ kind: 'acknowledged' });
+    expect(pages.map(page => page.length)).toEqual([32, 1, 1]);
+    expect(documents.get('sermons/page-32')?.thoughts).toEqual([{ ...thought, tags: ['Keep'] }]);
+    expect(documents.get('sermons/foreign')?.thoughts).toEqual([thought]);
+    expect(stored()?.tagCleanup).toEqual({ name, after: 'page-32', completed: true });
+    await expect(processCommand(owner, deletion)).resolves.toMatchObject({ kind: 'acknowledged' });
+    expect(pages).toHaveLength(3);
+  });
+
+  it('never resumes a cleanup for a name that does not match the original delete', async () => {
+    const original = tag('Prayer');
+    documents.set('tags/blue', original);
+    const deletion = remove('blue', original);
+    await expect(processCommand(owner, deletion)).resolves.toMatchObject({ kind: 'acknowledged' });
+    const receipt = documents.get(receiptPath(owner, deletion.operationId))!;
+    receipt.tagCleanup = { name: 'Keep', after: null, completed: false };
+    const unrelated = { id: 'thought', text: 'Keep the original text', date: '2026-11-10', tags: ['Keep'] };
+    const saved = create('unrelated-tag');
+    if (saved.kind !== 'create') throw new Error('Expected a create command');
+    await expect(processCommand(owner, { ...saved, value: { ...saved.value, thoughts: [unrelated] } }))
+      .resolves.toMatchObject({ kind: 'acknowledged' });
+    const before = documents.get('sermons/sermon-1');
+    await expect(processCommand(owner, deletion)).rejects.toMatchObject({ status: 503, code: 'tag-cleanup-pending' });
+    expect(documents.get('sermons/sermon-1')).toEqual(before);
+  });
+
+  it('finishes an older delete receipt whose server never recorded cleanup progress', async () => {
+    const original = tag('Prayer');
+    documents.set('tags/blue', original);
+    const deletion = remove('blue', original);
+    await expect(processCommand(owner, deletion)).resolves.toMatchObject({ kind: 'acknowledged' });
+    const receiptPathForDelete = receiptPath(owner, deletion.operationId);
+    delete documents.get(receiptPathForDelete)?.tagCleanup;
+    const saved = create('legacy-lingering-tag');
+    if (saved.kind !== 'create') throw new Error('Expected a create command');
+    const thought = { id: 'thought', text: 'Keep these words', date: '2026-11-10', tags: ['Prayer', 'Other'] };
+    await expect(processCommand(owner, { ...saved, value: { ...saved.value, thoughts: [thought] } }))
+      .resolves.toMatchObject({ kind: 'acknowledged' });
+    await expect(processCommand(owner, deletion)).resolves.toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/sermon-1')?.thoughts).toEqual([{ ...thought, tags: ['Other'] }]);
+    expect(documents.get(receiptPathForDelete)?.tagCleanup).toMatchObject({ name: 'Prayer', completed: true });
+  });
 });
 
 describe('saved sermon source-note selection chronology', () => {

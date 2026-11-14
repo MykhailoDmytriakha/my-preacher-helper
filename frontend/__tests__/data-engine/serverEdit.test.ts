@@ -22,12 +22,17 @@ let interleave: (() => void) | undefined;
 const snapshot = (path: string) => ({ ref: { path }, exists: documents.has(path), data: () => documents.get(path), id: path.split('/').at(-1)! });
 function collection(name: string) {
   const conditions: Array<[string, unknown]> = [];
+  let maximum = Infinity;
+  let after = '';
   const query = {
     doc: (id: string) => ({ path: `${name}/${id}`, get: async () => snapshot(`${name}/${id}`), collection: (child: string) => collection(`${name}/${id}/${child}`) }),
     where: (field: string, _operator: string, value: unknown) => { conditions.push([field, value]); return query; },
-    orderBy: () => query, limit: () => query, startAfter: () => query,
+    orderBy: () => query,
+    limit: (count: number) => { maximum = count; return query; },
+    startAfter: (id: string) => { after = id; return query; },
     get: async () => ({ docs: [...documents.keys()].filter(key => key.startsWith(`${name}/`) && !key.slice(name.length + 1).includes('/')
-      && conditions.every(([field, value]) => documents.get(key)![field] === value)).map(snapshot) }),
+      && key.slice(name.length + 1) > after && conditions.every(([field, value]) => documents.get(key)![field] === value))
+      .sort().slice(0, maximum).map(snapshot) }),
   };
   return query;
 }
@@ -182,19 +187,24 @@ describe('a tag deleted through the engine', () => {
     expect((documents.get('sermons/plain-7')!.thoughts as DocumentData[])[0].tags).toEqual(['Other']);
   });
 
-  it('skips a sermon that refuses and still cleans the ones after it', async () => {
+  it('removes just the deleted tag from an old thought without rewriting its missing date or its neighbors', async () => {
     const { processCommand } = await import('@/data-engine/server');
-    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     documents.set('tags/t1', { ...tagValue, _dataEngine: tagMarker });
-    // An old thought without a date: the engine refuses any rewrite of this sermon's thoughts.
-    documents.set('sermons/broken', { ...base, thoughts: [{ id: 'old', text: 'Old', tags: ['Topic'] }], _dataEngine: marker });
+    const old = { id: 'old', text: 'Old', tags: ['Topic', 'Keep'] };
+    const copy = { id: 'neighbor', text: 'Other old words' };
+    documents.set('sermons/broken', { ...base, thoughts: [old, copy], _dataEngine: marker });
     documents.set('sermons/later', { ...base, thoughts: [tagged('c', ['Topic'])] });
-    const result = await processCommand('owner-1', { protocol: 1, operationId: 'delete-tag-2', owner: 'owner-1',
-      resource: { collection: 'tags', id: 't1' }, generation: 'gt', dependsOn: [], kind: 'delete', baseline: tagValue });
-    expect(result.kind).toBe('acknowledged');
+    const command = { protocol: 1, operationId: 'delete-tag-2', owner: 'owner-1',
+      resource: { collection: 'tags', id: 't1' }, generation: 'gt', dependsOn: [], kind: 'delete', baseline: tagValue };
+    const ordinaryEdit = { protocol: 1, operationId: 'ordinary-untrusted', owner: 'owner-1',
+      resource: { collection: 'sermons', id: 'broken' }, generation: marker.generation, dependsOn: [], kind: 'update',
+      changes: [{ path: ['thoughts'], before: { exists: true, value: [old, copy] },
+        after: { exists: true, value: [{ ...old, text: 'Changed words', tags: ['Keep'] }, copy] } }] };
+    await expect(processCommand('owner-1', ordinaryEdit)).resolves.toMatchObject({ kind: 'refused', code: 'invalid-document' });
+    await expect(processCommand('owner-1', command)).resolves.toMatchObject({ kind: 'acknowledged' });
     expect((documents.get('sermons/later')!.thoughts as DocumentData[])[0].tags).toEqual([]);
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining('sermon broken'), expect.anything());
-    errors.mockRestore();
+    expect(documents.get('sermons/broken')!.thoughts).toEqual([{ ...old, tags: ['Keep'] }, copy]);
+    expect(documents.get('sermons/broken')!._dataEngine).toMatchObject({ revision: 5 });
   });
 });
 

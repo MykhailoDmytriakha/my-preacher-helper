@@ -38,6 +38,7 @@ type SeriesMembershipReader = {
   readDeletion(location: MembershipLocation): Promise<number | undefined>;
 };
 export interface RelationReader {
+  guardedTagCleanupName?: string;
   orderStudyNoteReference?: StudyNoteReferenceOrder;
   serviceOrderPlacement?: { rawMetadata: unknown; serverMs: number | undefined };
   seriesMembershipOrder?: SeriesMembershipReader;
@@ -795,7 +796,7 @@ class RelationPlanner {
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
     const verifyCopy = effective.kind === 'update' && effective.groupFlowCopySources
       ? verifyGroupCopySource(this.reader.serviceOrderPlacement?.rawMetadata, this.primary.metadata?.generation) : undefined;
-    const result = applyCommand(effective, this.primary, verifyCopy, this.reader.orderStudyNoteReference);
+    const result = applyCommand(effective, this.primary, verifyCopy, this.reader.orderStudyNoteReference, this.reader.guardedTagCleanupName);
     if (result.kind !== 'acknowledged') return result;
     if (command.resource.collection === 'tags') {
       const name = result.snapshot.value?.name;

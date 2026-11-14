@@ -71,6 +71,7 @@ import { hasStudyNoteReferenceReview, isOrdinaryReferenceDocument, studyNoteRefe
 import { metadataAfterStudyNoteReferences, planStudyNoteReferenceOrder, retainedStudyNoteReferenceHistory,
   readSplitStudyNoteReferenceHistory, REFERENCE_HISTORY_PARTS, splitLargeStudyNoteReferenceHistory,
   STUDY_NOTE_REFERENCE_HISTORY, type StudyNoteReferenceHistoryEntry } from './studyNoteReferenceOrder.server';
+import { readTagCleanup, resumeTagCleanup, TAG_CLEANUP_PENDING, type TagCleanupProgress } from './tagCleanup.server';
 import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY, type ThoughtLockHistoryPage } from './thoughtLockAction';
 import { isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY, thoughtPlacementConflictId, type ThoughtPlacementHistoryPage } from './thoughtPlacementAction';
@@ -228,6 +229,20 @@ function preserveStoredTypes(previous: unknown, next: Json): unknown {
 function receiptRef(owner: string, operationId: string) {
   const id = createHash('sha256').update(JSON.stringify([owner, operationId])).digest('hex');
   return adminDb.collection(RECEIPTS).doc(id);
+}
+
+const tagCleanupPending = () => new DataEngineServerError(TAG_CLEANUP_PENDING, 503);
+
+async function saveTagCleanupProgress(reference: DocumentReference, owner: string, commandHash: string,
+  expected: TagCleanupProgress, next: TagCleanupProgress): Promise<TagCleanupProgress> {
+  return adminDb.runTransaction(async transaction => {
+    const stored = (await transaction.get(reference)).data();
+    const current = readTagCleanup(stored, expected.name);
+    if (!current || !stored || stored.owner !== owner || stored.commandHash !== commandHash) throw tagCleanupPending();
+    if (current.completed || current.after !== expected.after) return current;
+    transaction.set(reference, { ...stored, tagCleanup: next });
+    return next;
+  });
 }
 
 type Acknowledgement = Extract<CommandResult, { kind: 'acknowledged' }>;
@@ -974,18 +989,33 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
   const commandReceiptRef = receiptRef(owner, command.operationId);
   const documentRef = adminDb.collection(command.resource.collection).doc(command.resource.id);
   const refusal = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
-  // A deleted tag leaves the thoughts after its own commit, one sermon at a time (removeTagFromSermons).
-  let deletedTag: string | null = null;
+  // The exact delete receipt keeps the original write admitted until the guarded cleanup finishes.
+  let cleanup: TagCleanupProgress | undefined;
 
   const outcome = await adminDb.runTransaction(async transaction => {
-    deletedTag = null;
+    cleanup = undefined;
     // Rights and receipts are read in the same transaction as the eventual effect.
     const [stored, existingReceipt] = await Promise.all([transaction.get(documentRef), transaction.get(commandReceiptRef)]);
     const raw = stored.exists ? stored.data() : undefined;
-    const previous = existingReceipt.exists ? readReceipt(existingReceipt.data()) : undefined;
+    const storedReceipt = existingReceipt.exists ? existingReceipt.data() : undefined;
+    const previous = readReceipt(storedReceipt);
     const replay = await previousCommandResult(previous, command, commandHash, raw,
       manifest => readReceiptParts(transaction, commandReceiptRef, manifest, command));
-    if (replay) return replay.kind === 'acknowledged' ? relatedAcknowledgement(transaction, owner, replay) : replay;
+    if (replay) {
+      if (replay.kind !== 'acknowledged') return replay;
+      const reply = await relatedAcknowledgement(transaction, owner, replay);
+      if (command.kind === 'delete' && command.resource.collection === 'tags' && replay.snapshot.metadata?.deleted) {
+        const name = command.baseline.name;
+        try { cleanup = readTagCleanup(storedReceipt, name); }
+        catch { throw tagCleanupPending(); }
+        if (!cleanup && storedReceipt && typeof name === 'string' && name) {
+          // Old receipts predate the cursor. Repeating their owner-scoped cleanup is safe.
+          cleanup = { name, after: null, completed: false };
+          transaction.set(commandReceiptRef, { ...storedReceipt, tagCleanup: cleanup });
+        }
+      }
+      return reply;
+    }
 
     const dependencies = await Promise.all(command.dependsOn.map(id => transaction.get(receiptRef(owner, id))));
     const blocked = command.dependsOn.filter((id, index) => {
@@ -1072,6 +1102,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const orderedCommand = outlineTitleOrder?.command ?? homileticOrder.command;
       studyNoteReferenceOrder = planStudyNoteReferenceOrder(orderedCommand, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(orderedCommand, current, {
+        guardedTagCleanupName: tagCleanup?.absentTagName,
         orderStudyNoteReference: studyNoteReferenceOrder?.order,
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
         seriesPlacementMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
@@ -1135,7 +1166,10 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     }
     const receipt = prepareReceipt(owner, command, commandHash, result);
     result = receipt.result;
-    if (result.kind === 'acknowledged') deletedTag = detachedTagName ?? null;
+    if (result.kind === 'acknowledged' && command.kind === 'delete' && command.resource.collection === 'tags'
+      && typeof command.baseline.name === 'string' && command.baseline.name) {
+      cleanup = { name: command.baseline.name, after: null, completed: !detachedTagName };
+    }
     if (result.kind === 'acknowledged') {
       await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
@@ -1156,21 +1190,17 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       }
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
-    transaction.set(commandReceiptRef, receipt.stored);
+    transaction.set(commandReceiptRef, cleanup ? { ...receipt.stored, tagCleanup: cleanup } : receipt.stored);
     if (receipt.parts) {
       const { collection, values } = receipt.parts;
       values.forEach((json, index) => transaction.set(receiptPartRef(commandReceiptRef, collection, index), { json }));
     }
     return result;
   });
-  const tag = deletedTag as string | null;
-  if (tag) {
-    // After the commit and outside it: the tag is gone whatever happens here, and a partial
-    // cleanup leaves only a harmless label that the next pass removes.
-    try {
-      const { removeTagFromSermons } = await import('./serverEdit.server');
-      await removeTagFromSermons(owner, tag);
-    } catch (error) { console.error('Deleted tag could not leave every thought', error); }
+  const progress = cleanup as TagCleanupProgress | undefined;
+  if (outcome.kind === 'acknowledged' && progress && !progress.completed) {
+    try { await resumeTagCleanup(owner, progress, (expected, next) => saveTagCleanupProgress(commandReceiptRef, owner, commandHash, expected, next)); }
+    catch { throw tagCleanupPending(); }
   }
   return outcome;
 }

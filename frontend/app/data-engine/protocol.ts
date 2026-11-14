@@ -29,6 +29,7 @@ import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { alignStudyNoteReferenceChange, coalesceStudyNoteReferences, isOrdinaryReferenceDocument, reviewedStudyNoteReferences, studyNoteReferenceReview, studyNoteReferencesPath, type StudyNoteReferenceOrder } from './studyNoteReferenceMerge';
+import { isExactSermonTagCleanup } from './tagCleanupChange';
 import { duplicatesMergedOutlineIdentity, hasAmbiguousOutlineTextMerge, mergeOutlineContent } from './templateOutlineMerge';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
@@ -1025,7 +1026,8 @@ export function confirmedExistingDeletion(command: DataCommand, result: CommandR
 }
 
 export function applyCommand(command: DataCommand, current: ResourceSnapshot,
-  verifyGroupCopy?: (source: DocumentData) => boolean, orderStudyNoteReference?: StudyNoteReferenceOrder): CommandResult {
+  verifyGroupCopy?: (source: DocumentData) => boolean, orderStudyNoteReference?: StudyNoteReferenceOrder,
+  guardedTagCleanupName?: string): CommandResult {
   validateCommand(command);
   const refused = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
   if (command.kind === 'relation') return refused('relation-requires-transaction');
@@ -1075,7 +1077,10 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot,
     if (conflicts.length) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts };
   }
   const changedFields = commandFields(command, value, current.value);
-  if (!validCandidate(command, value, current.value, changedFields)) return refused('invalid-document');
+  const exactTagCleanup = guardedTagCleanupName !== undefined && command.kind === 'update' && command.resource.collection === 'sermons'
+    && changedFields.length === 1 && changedFields[0] === 'thoughts'
+    && isExactSermonTagCleanup(current.value, value, guardedTagCleanupName);
+  if (!exactTagCleanup && !validCandidate(command, value, current.value, changedFields)) return refused('invalid-document');
   const snapshot = advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId, changedFields);
   if (addedReferenceAliases.length) {
     snapshot.metadata!.studyNoteReferenceAliases = [...(snapshot.metadata!.studyNoteReferenceAliases ?? []), ...addedReferenceAliases];
