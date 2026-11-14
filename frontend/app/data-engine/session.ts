@@ -10,7 +10,7 @@ import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
-import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
@@ -21,6 +21,7 @@ import { object, readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
+import { groupTextDecision, projectGroupTextDecisions, readPrivateGroupTextReview } from './groupTextReview';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
@@ -37,6 +38,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
+import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -62,6 +64,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   unreadableScalarProof?: string[];
   unreadableRowProofs?: UnreadableRowProof[];
   unreadableExegeticalProofs?: UnreadableExegeticalProof[];
+  privateGroupTextReview?: { revision: number; decisions: GroupTextDecision[] };
   groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
@@ -75,8 +78,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
-export const UNREADABLE_ROW_PROOF = 'unreadable-row-proof';
+export { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
 const unreadablePointPlanPath = ['preparation', 'exegeticalPlan'];
 
 function returnedPlacementAncestor(request: CommitRequest, base: DocumentData, prior: DocumentData | null, draft: DocumentData,
@@ -183,6 +185,7 @@ export class DataSession {
       this.state.dirty = true;
     } else {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
+      delete this.state.privateGroupTextReview;
       delete this.state.unreadableScalarProof;
       delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
@@ -586,6 +589,39 @@ export class DataSession {
       this.state.remoteCandidate = copy(this.state.confirmed);
       this.state.dirty = true;
     }
+  }
+
+  choosePrivateGroupText(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    const review = readPrivateGroupTextReview(this.state);
+    const next = review?.remaining[0];
+    if (!review || !next) return false;
+    const decisions = [...review.decisions, groupTextDecision(next, side)];
+    if (review.remaining.length > 1) {
+      this.state.privateGroupTextReview = { revision: review.revision, decisions };
+      this.state.editGeneration = this.reserveEditGeneration();
+      return true;
+    }
+    const chosen = projectGroupTextDecisions(review, decisions);
+    const candidate = this.state.remoteCandidate;
+    if (!chosen || !candidate) return false;
+    const source = this.checkpoint();
+    this.state.confirmed = copy(candidate);
+    this.state.remoteCandidate = null;
+    this.state.conflicts = [];
+    delete this.state.privateGroupTextReview;
+    delete this.state.unreadableScalarProof;
+    delete this.state.unreadableRowProofs;
+    this.edit(chosen);
+    this.retainUnreviewedAutosaveActions(source, review.fields);
+    const kept = decisions.filter(decision => decision.side === 'local').map(decision => decision.path);
+    stageReviewedGroupFlowText(this.state, kept, time, true);
+    for (const target of GROUP_TIMED_FIELDS) {
+      if (!kept.some(path => equalValues(path, [target.field]))) continue;
+      const confirmed = { ...this.state, draft: this.state.confirmed.value };
+      const action = stageAutosaveField(confirmed, this.state.draft, undefined, target, { field: target.field, time });
+      if (action) this.state[target.draft] = action;
+    }
+    return true;
   }
 
   /** A choice about a private unreadable edit owns only its displayed fields. */

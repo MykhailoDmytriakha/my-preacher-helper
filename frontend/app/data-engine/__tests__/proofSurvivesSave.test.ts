@@ -10,6 +10,7 @@ import { COUNCIL_TOPIC_TITLE_POLICY } from '../councilTopicTitleAction';
 import { GROUP_BLOCK_STATUS_POLICY } from '../groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowTitleAction';
 import { GROUP_STEP_DURATION_POLICY } from '../groupStepDurationAction';
+import { readGroupFlowFieldConflict } from '../groupTextReview';
 import { diffFields } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { processCommand, readDocument } from '../server';
@@ -433,6 +434,49 @@ it('keeps the valid opening of a group block when a different block proof is unr
     expect(reopened.checkpoint().draft?.templates).toEqual([side === 'mine' ? localFirst : first, localSecond]);
     expect(reopened.checkpoint().groupBlockTitleDrafts?.b).toEqual(expectedProof);
   }
+});
+
+it.each(['local', 'remote'] as const)('persists a %s choice for one recovered field without deciding the next one', async firstChoice => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'two-unreadable-group-openings' };
+  const block = (id: string, title: string) => ({ id, title, createdAt: 'born-' + id, updatedAt: 'born-' + id,
+    type: 'custom', content: 'Independent words', status: 'filled' });
+  const a = block('a', 'First saved name'), b = block('b', 'Second saved name'), c = block('c', 'Third saved name');
+  const value = { userId: 'owner', title: 'Group', status: 'draft', templates: [a, b, c], flow: [], meetingDates: [] };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  const authored = (row: typeof a) => ({ ...row, title: row.title.replace('saved', 'private') });
+  const local = { ...value, templates: [authored(a), authored(b), authored(c)] };
+  for (const row of local.templates) {
+    const draft = session.checkpoint().draft!;
+    session.edit({ ...draft, templates: (draft.templates as DocumentData[]).map(item => item.id === row.id ? row : item) },
+      undefined, { field: 'group-block-title', rowId: row.id, time: null });
+  }
+  const checkpoint = session.checkpoint();
+  for (const id of ['a', 'b']) loose(checkpoint.groupBlockTitleDrafts?.[id].action).observedRevision = 'unreadable';
+  const stored = { resource, value, metadata: { ...metadata, revision: 3 } };
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint: { ...checkpoint, remoteCandidate: stored }, prepared: null, unfinalized: [] };
+  db.documents.set('groups/' + resource.id, { ...value, _dataEngine: stored.metadata });
+  const recovered = DataSession.restore((await throughDeviceStorage(record)).checkpoint);
+  takeDroppedProof('groupBlockTitleDrafts');
+  expect(recovered.choosePrivateGroupText(firstChoice, null)).toBe(true);
+  const stage = recovered.checkpoint();
+  expect(stage.draft).toEqual(local);
+  expect(stage.unreadableRowProofs).toHaveLength(2);
+  expect((await save(stage)).code).toBe('resolve-version-first');
+
+  const resumed = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: stage })).checkpoint);
+  expect(readGroupFlowFieldConflict(resumed.checkpoint())).toMatchObject({ rowId: 'b', mine: authored(b).title, stored: b.title });
+  const secondChoice = firstChoice === 'local' ? 'remote' : 'local';
+  expect(resumed.choosePrivateGroupText(secondChoice, null)).toBe(true);
+  const complete = resumed.checkpoint();
+  expect(complete.conflicts).toEqual([]);
+  expect(complete.privateGroupTextReview).toBeUndefined();
+  expect(complete.groupBlockTitleDrafts?.c?.action.observedRevision).toBe(1);
+  expect(complete.groupBlockTitleDrafts?.[firstChoice === 'local' ? 'a' : 'b']?.action.observedRevision).toBe(3);
+  expect(complete.draft?.templates).toEqual([firstChoice === 'local' ? authored(a) : a, secondChoice === 'local' ? authored(b) : b, authored(c)]);
+  expect((await save(complete)).kind).toBe('acknowledged');
+  expect((await readDocument('owner', resource)).value?.templates).toEqual(complete.draft?.templates);
 });
 
 it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row edit from acting on a %s', async situation => {

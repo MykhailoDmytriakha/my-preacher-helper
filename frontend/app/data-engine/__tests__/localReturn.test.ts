@@ -4,6 +4,7 @@ import { editorIdentity, editorSlot, manualScopeIdentity, recoveryEditorIdentity
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
 import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
 import { readGroupFlowFieldConflict } from '@/data-engine/rowConflictDetails';
+import { recoveryCheckpointId } from '@/data-engine/recovery.client';
 import { DataSession } from '@/data-engine/session';
 import { describeManualSync, describeSync } from '@/data-engine/status';
 
@@ -1748,6 +1749,30 @@ it('follows saved local work while an automatically opened form is still untouch
   } finally { a.dispose(); b.dispose(); }
 });
 
+
+it('compares a recovered group field with the fresh stored revision before the observer refreshes', async () => {
+  const { h, a, b, inA } = await setup();
+  try {
+    const source = editorIdentity('tab-A', resource, 'group', 'private-opening');
+    const checkpoint = inA.getState().checkpoint;
+    await h.checkpoints.create({ owner: 'owner', editorId: source, prepared: null, unfinalized: [], checkpoint: {
+      ...checkpoint, unreadableScalarProof: ['title'], dirty: true, editGeneration: 1,
+      draft: { ...original, title: 'Private group title' },
+    } });
+    h.silentRemote({ title: 'New saved group title' });
+    b.setVisible(false);
+    b.setOnline(true);
+    const recovered = await b.recoverEditor(resource, editorIdentity('tab-B', resource, 'group', 'recovered'),
+      recoveryCheckpointId('owner', source));
+    const compared = recovered.getState().checkpoint;
+    expect(compared.remoteCandidate?.metadata?.revision).toBe(2);
+    expect(readGroupFlowFieldConflict(compared)).toMatchObject({
+      field: 'title', mine: 'Private group title', stored: 'New saved group title',
+    });
+    expect(h.transport.read).toHaveBeenCalledWith('owner', resource, { fresh: true });
+    expect(h.transport.send).not.toHaveBeenCalled();
+  } finally { a.dispose(); b.dispose(); }
+});
 
 it('keeps a private unreadable edit on this device when a previous Save is still pending at close', async () => {
   const { h, a, b, inA } = await setup();

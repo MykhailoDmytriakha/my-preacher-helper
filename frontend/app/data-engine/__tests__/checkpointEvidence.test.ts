@@ -54,7 +54,7 @@ const evidence = {
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts,
-  groupTextReview, groupFlowStepPlacementRetry: groupPlacement, councilTopicPlacementRetry: councilPlacement, sourceNoteLinkRetry: links,
+  groupTextReview, privateGroupTextReview: { revision: 1, decisions: groupTextReview.decisions }, groupFlowStepPlacementRetry: groupPlacement, councilTopicPlacementRetry: councilPlacement, sourceNoteLinkRetry: links,
 } satisfies Record<EvidenceKey, unknown>;
 const placementRetries = {
   serviceOrderPlacementRetry: { generation: 'g', before: { exists: true, value: 1 }, rank: 2, afterRequests: ['request'], placement },

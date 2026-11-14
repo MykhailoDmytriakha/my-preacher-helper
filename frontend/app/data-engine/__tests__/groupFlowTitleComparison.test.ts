@@ -1,6 +1,6 @@
 import { groupTextDecision, projectGroupTextDecisions, readGroupTextReview } from '../groupTextReview';
 import { readGroupFlowFieldConflict } from '../rowConflictDetails';
-import { DataSession } from '../session';
+import { DataSession, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from '../session';
 
 import type { ResourceSnapshot } from '../types';
 
@@ -85,6 +85,51 @@ describe('group flow title comparison', () => {
     expect(projected).toMatchObject({
       templates: [{ ...template, content: 'Local block' }, ...(side === 'remote' ? [remoteOther] : []), last],
       flow: [step, ...(side === 'remote' ? [otherStep, lastStep] : [{ ...lastStep, order: 2 }])],
+    });
+  });
+
+  it('shows the first exact field when two private group rows have unreadable observations', () => {
+    const other = { ...template, id: 'second', title: 'Second' };
+    const initial = { ...value, templates: [template, other] };
+    const checkpoint = new DataSession({ ...opening, value: initial }).checkpoint();
+    checkpoint.draft = { ...initial, templates: [{ ...template, title: 'Mine first' }, { ...other, title: 'Mine second' }] };
+    checkpoint.remoteCandidate = { ...opening, value: initial, metadata: { ...metadata, revision: 3 } };
+    checkpoint.unreadableRowProofs = [template, other].map(row => ({
+      field: 'groupBlockTitleDrafts', rowId: row.id, birth: row.createdAt, generation: metadata.generation,
+    }));
+    checkpoint.conflicts = [template, other].map((row, index) => ({
+      code: UNREADABLE_ROW_PROOF, path: ['templates', 'id:' + row.id, 'title'],
+      base: { exists: true, value: row.title }, mine: { exists: true, value: index ? 'Mine second' : 'Mine first' },
+      theirs: { exists: true, value: row.title },
+    }));
+
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({
+      field: 'block', mine: 'Mine first', stored: 'Original', rowId: template.id,
+    });
+  });
+
+  it('keeps a saved match from hiding the remaining group field comparison', () => {
+    const original = { ...value, title: 'Group', description: 'Old description' };
+    const initial = { ...opening, value: original };
+    const checkpoint = new DataSession(initial).checkpoint();
+    checkpoint.draft = { ...original, title: 'Same new group title', description: 'Private description' };
+    checkpoint.unreadableScalarProof = ['title', 'description'];
+    checkpoint.remoteCandidate = { ...initial, metadata: { ...metadata, revision: 2 },
+      value: { ...original, title: 'Same new group title' } };
+    checkpoint.conflicts = ['title', 'description'].map(field => ({
+      code: UNREADABLE_SCALAR_PROOF, path: [field],
+      base: { exists: true, value: original[field as 'title' | 'description'] },
+      mine: { exists: true, value: checkpoint.draft![field] },
+      theirs: { exists: true, value: checkpoint.remoteCandidate!.value![field] },
+    }));
+
+    const session = DataSession.restore(checkpoint);
+    expect(readGroupFlowFieldConflict(session.checkpoint())).toMatchObject({
+      field: 'description', mine: 'Private description', stored: 'Old description',
+    });
+    expect(session.choosePrivateGroupText('local', null)).toBe(true);
+    expect(session.checkpoint()).toMatchObject({
+      conflicts: [], draft: { title: 'Same new group title', description: 'Private description' },
     });
   });
 

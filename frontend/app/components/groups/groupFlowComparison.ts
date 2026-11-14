@@ -1,5 +1,5 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
-import { readGroupFlowFieldConflict, readUnreadableScalarComparison, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
+import { readGroupFlowFieldConflict, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
@@ -35,12 +35,6 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const answers = useOpenDocumentAnswerScopes();
   const placement = checkpoint?.confirmed.resource.collection === 'groups' && anchoredStepComparison(checkpoint, 'serviceOrders.stepPosition', t);
   if (placement) return placement;
-  const unreadable = checkpoint && readUnreadableScalarComparison(checkpoint);
-  if (unreadable && (unreadable.field === 'title' || unreadable.field === 'status' || unreadable.field === 'description')) {
-    const field = unreadable.field === 'status' ? 'groupStatus' : unreadable.field;
-    return { identity: unreadable.identity, title: t(fields[field]), valueKind: 'field', scopedChoice: true,
-      mine: groupFlowFieldText(t, field, unreadable.mine), stored: groupFlowFieldText(t, field, unreadable.stored) };
-  }
   const comparison = checkpoint && readGroupFlowFieldConflict(checkpoint);
   if (!checkpoint || !comparison) return undefined;
   const { resource, value } = checkpoint.confirmed;
@@ -48,8 +42,8 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const owned = answers.filter(answer => answer.owner === value?.userId && answer.resource.collection === resource.collection
     && answer.resource.id === resource.id && answer.operationIds.includes(operationId));
   // A common answer with queued descendants must use the document choice, which retains those saves.
-  const privateRow = Boolean(checkpoint.unreadableRowProofs?.length && !Object.keys(checkpoint.pending).length);
-  if (!privateRow && (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length))) return undefined;
+  const privateFields = Boolean((checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length) && !Object.keys(checkpoint.pending).length);
+  if (!privateFields && (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length))) return undefined;
   const { field, mine, stored, identity } = comparison;
   if (field === 'complete') return { identity, mine: '', stored: '', completeReview: true };
   const removedBy = 'removedBy' in comparison ? comparison.removedBy : undefined;

@@ -106,6 +106,13 @@ const sermonNoteOpening = z.object({
 });
 // These in-memory instructions can resend a move after later typing or an undo.
 type PlacementRetry = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry';
+const groupTextDecision = z.object({
+  path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.null()]),
+  stored: z.union([z.string(), z.number(), z.null()]), side: z.enum(['local', 'remote']),
+  row: z.record(z.string(), z.unknown()).optional(), removedBy: z.enum(['local', 'remote']).optional(),
+  linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
@@ -129,11 +136,10 @@ const recordSchema = z.object({
     unreadableExegeticalProofs: z.array(unreadableExegeticalProof).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
-    groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(), decisions: z.array(z.object({
-      path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.null()]), stored: z.union([z.string(), z.number(), z.null()]),
-      side: z.enum(['local', 'remote']), row: z.record(z.string(), z.unknown()).optional(), removedBy: z.enum(['local', 'remote']).optional(),
-      linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
-    })), separateDraft: z.literal(true).optional() }).optional(),
+    privateGroupTextReview: z.object({ revision: z.number().int().safe().nonnegative(),
+      decisions: z.array(groupTextDecision.omit({ row: true, removedBy: true, linkedSteps: true })) }).optional(),
+    groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(),
+      decisions: z.array(groupTextDecision), separateDraft: z.literal(true).optional() }).optional(),
     sourceNoteLinkRetry: sourceNoteLinkCapture.optional(),
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),

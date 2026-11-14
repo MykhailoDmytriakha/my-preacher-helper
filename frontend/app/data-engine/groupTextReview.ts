@@ -7,6 +7,7 @@ import { groupPlacementSteps } from './groupFlowTopology';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
+import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
 
 import type { RowFieldTarget } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
@@ -23,8 +24,9 @@ const groupFlowFields = {
 
 function groupFlowFieldVersions(checkpoint: SessionCheckpoint, draft: DocumentData | null, path = checkpoint.conflicts[0]?.path) {
   const { confirmed, remoteCandidate, pending } = checkpoint;
+  const privateProof = checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft
-    || !path || (checkpoint.unreadableRowProofs?.length ? Object.keys(pending).length !== 0 : Object.keys(pending).length !== 1)
+    || !path || Object.keys(pending).length !== (privateProof ? 0 : 1)
     || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
   if (path.length !== 3 || !path[1].startsWith('id:')) return undefined;
   const comparisonField = (Object.keys(groupFlowFields) as Array<keyof typeof groupFlowFields>).find(field => {
@@ -53,7 +55,7 @@ function findGroupRow(rows: DocumentData[string] | undefined, id: string): Docum
 
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, remoteCandidate } = checkpoint;
-  const review = readGroupTextReview(checkpoint);
+  const review = readPrivateGroupTextReview(checkpoint) ?? readGroupTextReview(checkpoint);
   const next = review?.remaining[0];
   if (next) {
     const { field, mine, stored, path } = next;
@@ -74,7 +76,7 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
     return { field, mine, stored, rowTitle: typeof rowTitle === 'string' ? rowTitle : undefined,
       rowPosition: typeof rowPosition === 'number' ? rowPosition : undefined, rowId,
       removedBy: 'row' in next ? next.removedBy : undefined,
-      identity: JSON.stringify([checkpoint.editGeneration, checkpoint.groupTextReview,
+      identity: JSON.stringify([checkpoint.editGeneration, checkpoint.groupTextReview, checkpoint.privateGroupTextReview,
       remoteCandidate?.metadata?.generation, remoteCandidate?.metadata?.revision, path, mine, stored, 'row' in next && next.row]) };
   }
   if (review && checkpoint.groupTextReview) {
@@ -236,6 +238,30 @@ function textAt(checkpoint: SessionCheckpoint, path: string[]): GroupText | unde
 export function groupTextDecision(field: GroupText, side: GroupTextDecision['side']): GroupTextDecision {
   const { path, mine, stored } = field;
   return { path, birth: 'birth' in field ? field.birth : null, mine, stored, side, ...('row' in field && { row: field.row, removedBy: field.removedBy, ...(field.linkedSteps?.length && { linkedSteps: field.linkedSteps }) }) };
+}
+
+function isUnreadableGroupField(conflict: ConflictDetail): boolean {
+  return conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF;
+}
+
+/** An unsent recovered draft keeps its decisions in its own checkpoint. */
+export function readPrivateGroupTextReview(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, pending, privateGroupTextReview } = checkpoint;
+  if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
+    || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate.metadata?.generation
+    || Object.keys(pending).length || !conflicts.some(conflict => isUnreadableGroupField(conflict))
+    || conflicts.some(conflict => conflict.code && !isUnreadableGroupField(conflict))) return undefined;
+  const merged = mergeDocumentFields(confirmed.value, draft, remoteCandidate.value);
+  const paths = new Map([...conflicts, ...merged.conflicts].map(({ path }) => [JSON.stringify(path), path]));
+  const fields = [...paths.values()].map(path => textAt(checkpoint, path));
+  if (fields.some(field => !field)) return undefined;
+  const compared = fields.filter((field): field is GroupText => Boolean(field && field.mine !== field.stored));
+  if (!compared.length) return undefined;
+  const revision = remoteCandidate.metadata.revision;
+  const decisions = privateGroupTextReview?.revision === revision ? privateGroupTextReview.decisions.filter(decision =>
+    compared.some(field => equalValues(decision, groupTextDecision(field, decision.side)))) : [];
+  const remaining = compared.filter(field => !decisions.some(decision => equalValues(decision.path, field.path)));
+  return { fields: compared, decisions, remaining, merged, stored: remoteCandidate.value, revision };
 }
 
 export function readGroupTextReview(checkpoint: SessionCheckpoint) {

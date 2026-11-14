@@ -450,6 +450,11 @@ export class EditorController {
       this.assertChoiceAuthority();
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
+      if (expected && !selection && !this.prepared && this.session.choosePrivateGroupText('remote', null)) {
+        this.result = null;
+        await this.persist();
+        return;
+      }
       // A refusal has no other version to take: "use the server's version" drops the refused change.
       const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
         && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
@@ -500,6 +505,11 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
+      if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateGroupText('local', choiceTime ?? null)) {
+        this.result = null;
+        await this.persist();
+        return;
+      }
       if (isFirstBookMarksDraft(before.confirmed, before.draft) && !before.remoteCandidate
         && this.result?.kind === 'refused' && ['generation-mismatch', 'already-exists'].includes(this.result.code)
         && this.options.readWriteTarget) {

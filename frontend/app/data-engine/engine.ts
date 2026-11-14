@@ -21,7 +21,7 @@ import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRe
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
-import { readGroupFlowTextChoice } from './groupTextReview';
+import { readGroupFlowTextChoice, readPrivateGroupTextReview } from './groupTextReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
 import { submittedEditorCheckpoint } from './liveSubmittedWork';
@@ -1542,7 +1542,19 @@ export class DataEngine {
           const record = await store.read(uid, id); active(); storedSource = record;
           const requests = await this.commits.list(); active();
           const retained = record?.retainedManualChoice;
-          if (!retained) return record && reconcileRecoveryRecord(record, requests);
+          if (!retained) {
+            const reconciled = record && reconcileRecoveryRecord(record, requests);
+            const checkpoint = reconciled?.checkpoint;
+            if (!checkpoint || frozen.collection !== 'groups' || Object.keys(checkpoint.pending).length
+              || !(checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length)) return reconciled;
+            // The observer may still be showing a cached opening when the recovery controls become clickable.
+            const fresh = await this.readWriteTarget(frozen).catch(() => null);
+            active();
+            if (!fresh || !storesNewCopy(checkpoint.remoteCandidate ?? checkpoint.confirmed, fresh)) return reconciled;
+            const session = DataSession.restore(checkpoint);
+            session.observe(fresh, { source: 'server' });
+            return { ...reconciled!, checkpoint: session.checkpoint() };
+          }
           if (retained.decidingEditorId) {
             const deciding = await store.read(uid, retained.decidingEditorId); active();
             if ((deciding?.checkpoint.dirty && equalValues(deciding.checkpoint.draft, retained.base))
@@ -2237,7 +2249,7 @@ export class DataEngine {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         const current = controller.getState().checkpoint;
-        if (current.groupTextReview && !compared) {
+        if ((current.groupTextReview || readPrivateGroupTextReview(current)) && !compared) {
           throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
         }
         if (compared && !equalValues(current, compared)) {
@@ -2552,6 +2564,7 @@ export class DataEngine {
     const pending = checkpoint.pending;
     const preference = readAccountPreferenceComparison(checkpoint);
     const groupText = readGroupFlowTextChoice(checkpoint);
+    const finalPrivateGroupChoice = readPrivateGroupTextReview(checkpoint)?.remaining.length === 1;
     const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
     const affected = [...this.manualForms.values()].filter(item => {
       if (item.parent !== parent || !item.scope) return false;
@@ -2563,7 +2576,7 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected, titles);
         const resolved = controller.getState().checkpoint;
-        if ((preference || meeting || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((preference || meeting || finalPrivateGroupChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
@@ -2571,7 +2584,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (finalPrivateGroupChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }
