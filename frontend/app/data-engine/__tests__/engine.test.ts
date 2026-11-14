@@ -5,6 +5,7 @@ import { createMemoryCommitStore } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { installStorageHarness } from './storageHarness';
+import { editorIdentity } from '../editorIdentity';
 import { AddressedFailures, PausedReadFailure } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
@@ -892,6 +893,56 @@ describe('DataEngine composition', () => {
     await editor.acceptRemote();
     expect(s.engine.getPending()).toEqual([]); expect(editor.getDelivery()).toEqual([]);
     s.engine.dispose();
+  });
+
+  it('keeps the later unreadable point title when the earlier refused addition is retired', async () => {
+    const s = setup({ online: false, nativeChoice: true });
+    const ref = { collection: 'sermons', id: 'two-stage-refusal' };
+    const sibling = { id: 'sibling', title: 'Opening neighbor' };
+    const point = { id: 'added', title: '', children: [] };
+    const value = (nodes: DocumentData[]) => ({ userId: 'owner', title: 'Sermon', thoughts: [],
+      preparation: { exegeticalPlan: nodes, authorIntent: 'Another field' } });
+    const opening = { ...initial(), resource: ref, value: value([sibling]) };
+    const stored = { ...opening, value: value([{ ...sibling, title: 'Newer neighbor' }]),
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop' } };
+    s.cache.set(keyOf('owner', ref), opening);
+    s.server.set(keyOf('owner', ref), opening);
+    const editorId = editorIdentity('phone', ref, 'core', 'earlier');
+    try {
+      const editor = await s.engine.openEditor(ref, editorId);
+      const queued = value([sibling, point]);
+      await editor.edit(queued);
+      await editor.save();
+      const draft = value([sibling, { ...point, title: 'Written after Save' }]);
+      await editor.edit(draft, undefined, { field: 'exegetical-point', nodeId: point.id, intent: 'title', time: null });
+      const record = await s.checkpoints.read('owner', editorId);
+      expect(record).toBeDefined();
+      await s.checkpoints.put({ ...record!, checkpoint: { ...record!.checkpoint, exegeticalPointDrafts: undefined,
+        unreadableExegeticalProofs: [{ nodeId: point.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true }] } });
+      editor.dispose();
+      const send = jest.mocked(s.transport.send).getMockImplementation()!;
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+        kind: 'refused', operationId: command.operationId, code: 'decision-changed',
+      }));
+      s.engine.setOnline(true);
+      await s.engine.retry();
+      s.server.set(keyOf('owner', ref), stored);
+      const source = (await s.engine.listRecoverable(ref)).find(copy => copy.answer === 'refused' && copy.record.checkpoint.unreadableExegeticalProofs?.length);
+      expect(source).toBeDefined();
+      const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source!.id);
+      await reopened.acceptRemote();
+      const reviewed = reopened.getState().checkpoint;
+      expect(reviewed.pending).toEqual({});
+      expect(reviewed.conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:added']]);
+      expect(reviewed.draft?.preparation).toMatchObject({ exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      await reopened.keepLocal(undefined, reviewed);
+      jest.mocked(s.transport.send).mockImplementation(send);
+      await reopened.save();
+      await s.engine.retry();
+      const accepted = s.server.get(keyOf('owner', ref));
+      expect(accepted?.value?.preparation).toEqual(value([{ ...sibling, title: 'Newer neighbor' }, { ...point, title: 'Written after Save' }]).preparation);
+    } finally { s.engine.dispose(); }
   });
 
   it('keeps local conflict fields on explicit choice without sending until save is requested', async () => {

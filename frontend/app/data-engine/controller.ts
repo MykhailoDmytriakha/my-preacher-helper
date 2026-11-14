@@ -21,6 +21,7 @@ import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDel
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
+import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { retryGroupStepPlacement } from './groupStepPlacement';
@@ -44,6 +45,7 @@ import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAc
 import { placementSteps } from './serviceOrderStepPlacement';
 import { keepUncontestedServiceStepScripture, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepScriptureChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
+import { canReplaceSnapshot } from './snapshotFreshness';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
 import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
@@ -893,6 +895,17 @@ export class EditorController {
       await this.options.publishStoredChoice?.(savedOrder);
       this.assertCurrent();
     }
+    const refusedPoint = !selection && !correction && ordinary?.answer.kind === 'refused' && ordinary.scope.length === 1
+      && hasLaterPendingExegeticalTitle(shown.checkpoint, ordinary.first.id) ? ordinary.first : undefined;
+    let savedPlan: ResourceSnapshot | undefined;
+    if (refusedPoint) {
+      const live = await this.options.readWriteTarget?.(shown.checkpoint.confirmed.resource);
+      this.assertCurrent();
+      if (!live?.value || !canReplaceSnapshot(shown.checkpoint.remoteCandidate ?? shown.checkpoint.confirmed, live)) {
+        throw Object.assign(new Error('Read the current sermon before reviewing the point'), { code: 'fresh-read-required' });
+      }
+      savedPlan = live;
+    }
     let source: SessionCheckpoint | undefined;
     let projected: EditorRecord | undefined;
     let anchoredChoice: string | undefined;
@@ -966,6 +979,18 @@ export class EditorController {
           if (replacement) session.applyCommit(replacement);
           projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
           return { editorRecords: [projected], manualRecoveries: [], replacements: replacement ? [replacement] : [] };
+        }
+        if (refusedPoint && savedPlan) {
+          if (!hasLaterPendingExegeticalTitle(decided, refusedPoint.id)
+            || !canReplaceSnapshot(decided.remoteCandidate ?? decided.confirmed, savedPlan)) {
+            throw Object.assign(new Error('The later point edit changed'), { code: 'decision-changed' });
+          }
+          const retained = DataSession.restore(decided);
+          retained.observe(savedPlan, { source: 'server' });
+          const retirement = retired.find(request => request.id === refusedPoint.id)!;
+          retained.applyCommit(retirement);
+          projected = { ...record, checkpoint: retained.checkpoint(), completedCommits: [...completed] };
+          return projected;
         }
         const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
           && source!.pending[request.id] && request.serviceOrderStepPlacement);

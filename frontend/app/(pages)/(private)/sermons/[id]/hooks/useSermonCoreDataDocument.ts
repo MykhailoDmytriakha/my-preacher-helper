@@ -102,12 +102,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     && !titleForm.exactChoice && !verseForm.exactChoice;
   const recoveryReady = titleForm.recoveryReady && verseForm.recoveryReady;
   const canOfferCoreDraft = document.status?.phase === 'saved' && !isReadOnly;
+  const canOfferAfterRefusal = document.status?.phase === 'refused' && !isReadOnly;
   const recovery = useRecoveryDiscovery({
     identity: document.recoveryIdentity,
     enabled: recoveryReady,
     version: JSON.stringify([borrowed, recoveringHeader, canOfferCoreDraft, document.status?.phase, document.confirmed?.metadata?.revision]),
     list: async () => {
-      const preserved = canOfferCoreDraft ? document.listRecoverable() : document.listRecoverable({ manualChoiceCopies: 'only' });
+      const preserved = canOfferCoreDraft || canOfferAfterRefusal ? document.listRecoverable() : document.listRecoverable({ manualChoiceCopies: 'only' });
       const forms = recoveringHeader ? Object.values(headerForms).map(async form => {
         if (!form.borrowedRecoveryIds?.length) return [];
         return (await form.listRecoverable()).filter(source => form.borrowedRecoveryIds.includes(source.scopeId)).map(source => ({
@@ -120,7 +121,9 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
       return [...records.flat(), ...copies.flatMap(source => {
         const { id, record } = source;
         const { checkpoint: { draft, confirmed } } = record;
-        if (!isWorkspaceRecoveryCopy(record, canOfferCoreDraft ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
+        const laterPointTitle = canOfferAfterRefusal && source.answer === 'refused'
+          && record.checkpoint.unreadableExegeticalProofs?.some(proof => proof.pendingAddition);
+        if (!isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
         const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '') : exegeticalDraftTitlePreview(record);
         return [{ id, title: String(draft?.title ?? confirmed.value?.title ?? sermonId ?? ''), preview,
           discard: () => document.discardRecovery(source) }];

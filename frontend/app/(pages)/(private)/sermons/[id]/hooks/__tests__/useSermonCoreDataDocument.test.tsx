@@ -100,6 +100,30 @@ describe('useSermonCoreDataDocument', () => {
     expect(api.recover).toHaveBeenCalledWith(ordinary.id);
   });
 
+  it('offers an independent saved point title while the earlier point addition is refused', async () => {
+    const { api, session } = setup();
+    api.status = { phase: 'refused' } as NonNullable<typeof api.status>;
+    const { confirmed } = session.checkpoint();
+    const sibling = { id: 'existing', title: 'Saved point' };
+    const added = { id: 'new', title: '' };
+    const value = { ...confirmed.value!, preparation: { exegeticalPlan: [sibling] } };
+    const pending = { ...value, preparation: { exegeticalPlan: [sibling, added] } };
+    const draft = { ...value, preparation: { exegeticalPlan: [sibling, { ...added, title: 'Words typed after Save' }] } };
+    const source: RecoveryCheckpoint = { id: 'saved-point-draft', answer: 'refused', record: {
+      owner: 'owner', editorId: editorIdentity('previous-tab', confirmed.resource, 'core', 'draft'),
+      prepared: null, unfinalized: [], checkpoint: { ...session.checkpoint(), dirty: true, editGeneration: 2,
+        confirmed: { ...confirmed, value }, draft, pending: { addition: { value: pending, generation: 1 } },
+        unreadableExegeticalProofs: [{ nodeId: added.id, kind: 'title', generation: 'current', ancestors: [], pendingAddition: true }] },
+    } };
+    const unrelated = { ...source, id: 'unrelated', record: { ...source.record, checkpoint: {
+      ...source.record.checkpoint, unreadableExegeticalProofs: undefined,
+    } } };
+    jest.mocked(api.listRecoverable).mockImplementation(async options => options?.manualChoiceCopies === 'only' ? [] : [source, unrelated]);
+    renderHook(() => useSermonCoreDataDocument('sermon'));
+    const discovery = jest.mocked(useRecoveryDiscovery).mock.calls.at(-1)![0];
+    await expect(discovery.list()).resolves.toEqual([expect.objectContaining({ id: source.id, preview: 'Words typed after Save' })]);
+  });
+
   it('binds title and verse forms to selected fields and stages typing without a document commit', async () => {
     const s = setup(); const { result } = renderHook(() => useSermonCoreDataDocument('sermon'));
     expect(useDataForm).toHaveBeenCalledWith({ collection: 'sermons', id: 'sermon' }, 'title', [['title']]);

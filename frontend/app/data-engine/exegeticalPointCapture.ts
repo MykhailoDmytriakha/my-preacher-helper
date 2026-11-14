@@ -106,6 +106,18 @@ export function recoverExegeticalPointProofs(confirmed: ResourceSnapshot, draft:
   return { damaged, readable: [...readable.values()], held: [...held.values()] };
 }
 
+/** A refused earlier addition owns its submitted branch, but any later change still needs its own decision. */
+export function hasLaterPendingExegeticalTitle(checkpoint: SessionCheckpoint, requestId: string): boolean {
+  const pending = checkpoint.pending[requestId];
+  if (!pending || pending.generation >= checkpoint.editGeneration) return false;
+  const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
+  const submitted = exegeticalPlan(pending.value?.preparation), local = exegeticalPlan(checkpoint.draft?.preparation);
+  if (!opening || !submitted || !local) return false;
+  return checkpoint.unreadableExegeticalProofs?.some(address => address.pendingAddition && address.kind === 'title'
+    && address.generation === checkpoint.confirmed.metadata?.generation && !opening.points.entries.has(address.nodeId)
+    && addressedPoint(submitted, address) && changedExegeticalPoint(submitted, local, address.nodeId) === 'title') ?? false;
+}
+
 export const UNREADABLE_EXEGETICAL_PROOF = 'unreadable-exegetical-proof';
 
 export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, address: UnreadableExegeticalProof) {
