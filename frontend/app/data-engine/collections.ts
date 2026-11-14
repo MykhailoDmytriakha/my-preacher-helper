@@ -1,6 +1,6 @@
 import { collectionHeadRef, feedVersion } from './feed';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
-import { storesNewCopy } from './snapshotFreshness';
+import { canReplaceSnapshot, storesNewCopy } from './snapshotFreshness';
 
 import type { CollectionDocumentView } from './collectionView';
 import type { SnapshotStore } from './engine';
@@ -27,6 +27,8 @@ export interface CollectionCursorStore {
 
 export interface CollectionSnapshotStore extends SnapshotStore {
   list(owner: string, collection: string): Promise<ResourceSnapshot[]>;
+  /** Store the page atomically and return the confirmed row for each member after comparison. */
+  putPage?(owner: string, snapshots: readonly ResourceSnapshot[]): Promise<ResourceSnapshot[]>;
 }
 
 export interface CollectionState {
@@ -184,9 +186,13 @@ export class CollectionReader {
   async read(collection: string, options?: { allowIncompleteCache?: boolean }): Promise<CollectionState> {
     const entry = this.entry(collection);
     const generation = this.generation;
+    const opening = !entry.loaded;
     await this.load(entry, generation);
     this.assertCurrent(entry, generation);
-    if (!entry.cursor?.initialized && this.online && this.visible) return this.refresh(collection);
+    if (!entry.cursor?.initialized && this.online && this.visible) {
+      entry.sweepDue = true;
+      return this.requestRefresh(collection, true, opening);
+    }
     if (!options?.allowIncompleteCache) this.requireAvailableCache(entry);
     return copy(entry.state);
   }
@@ -199,13 +205,16 @@ export class CollectionReader {
     this.notify(subscription, entry.state);
     this.startHead(entry);
     const generation = this.generation;
+    const opening = !entry.loaded;
     this.background(this.load(entry, generation).then(() => {
       this.assertCurrent(entry, generation);
       if (!entry.listeners.size) return;
       if (this.cannotReadNow(entry)) return;
       // Every opening of a list asks again while legacy writers share the collection: their
       // writes never move the head, so an unchanged head proves nothing about them.
-      else if (entry.listeners.size && (this.needsRefresh(entry) || entry.legacyOpen)) return this.requestRefresh(collection, false).then(() => undefined);
+      else if (entry.listeners.size && (this.needsRefresh(entry) || entry.legacyOpen)) {
+        return this.requestRefresh(collection, false, opening).then(() => undefined);
+      }
     }), entry, generation);
     let released = false;
     return () => {
@@ -281,7 +290,7 @@ export class CollectionReader {
     return this.requestRefresh(collection, true);
   }
 
-  private requestRefresh(collection: string, explicit: boolean): Promise<CollectionState> {
+  private requestRefresh(collection: string, explicit: boolean, reuseOpeningCache = false): Promise<CollectionState> {
     const entry = this.entry(collection);
     const generation = this.generation;
     if (entry.inFlight?.generation === generation) {
@@ -294,7 +303,7 @@ export class CollectionReader {
       return Promise.resolve(copy(entry.state));
     }
     this.clearRefreshTimer(entry);
-    const operation = this.synchronize(entry, generation);
+    const operation = this.synchronize(entry, generation, reuseOpeningCache);
     const promise = operation.then(answer => answer.state);
     entry.inFlight = { generation, promise, explicit };
     const finish = (outcome: 'server' | 'skipped' | 'failed', error?: unknown) => {
@@ -382,9 +391,9 @@ export class CollectionReader {
     return !this.online || !this.visible;
   }
 
-  private async synchronize(entry: CollectionEntry, generation: number): Promise<{ state: CollectionState; fromServer: boolean }> {
+  private async synchronize(entry: CollectionEntry, generation: number, reuseOpeningCache: boolean): Promise<{ state: CollectionState; fromServer: boolean }> {
     try {
-      await this.load(entry, generation, true);
+      await this.load(entry, generation, !reuseOpeningCache);
       this.assertCurrent(entry, generation);
       if (this.cannotReadNow(entry)) return { state: copy(entry.state), fromServer: false };
       entry.state = { ...entry.state, checking: true, freshness: entry.state.snapshots.length ? 'cache' : 'unknown', error: null };
@@ -446,6 +455,7 @@ export class CollectionReader {
     // Only rows present before this read can be missing from its server view.
     // A different tab may confirm a new row after our final feed response.
     const candidates = copy(entry.state.snapshots);
+    const cached = new Map(candidates.map(snapshot => [snapshot.resource.id, snapshot]));
     if (!entry.cursor || entry.cursor.initialized) {
       await this.commitCursor(entry, generation, { version: entry.cursor?.version ?? 0, initialized: false, listedWhileClosed: false });
     }
@@ -469,9 +479,10 @@ export class CollectionReader {
       if (page.version < latestPageVersion) throw failure('Collection page moved backwards');
       anchor ??= page.version;
       latestPageVersion = page.version;
-      await this.persistPage(entry, generation, page.snapshots);
+      const persisted = await this.persistPage(entry, generation, page.snapshots, cached);
       page.snapshots.forEach(snapshot => seen.add(snapshot.resource.id));
-      await this.reloadRows(entry, generation);
+      if (persisted) this.publishPage(entry, persisted);
+      else await this.reloadRows(entry, generation);
       if (page.nextCursor === null) break;
       cursor = page.nextCursor;
       cursors.add(cursor);
@@ -485,6 +496,7 @@ export class CollectionReader {
 
   private async changes(entry: CollectionEntry, generation: number, after: number, commit: boolean,
     seen?: Set<string>, minimumVersion = after, opened?: { value: boolean }): Promise<number> {
+    const cached = new Map(entry.state.snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
     for (let pageNumber = 0; pageNumber < this.maxPages; pageNumber += 1) {
       this.assertCurrent(entry, generation, true);
       const page = await this.options.transport.changes(entry.owner, entry.collection, after, { limit: this.pageSize });
@@ -498,7 +510,8 @@ export class CollectionReader {
         await this.commitCursor(entry, generation, { version: entry.cursor.version, initialized: entry.cursor.initialized, listedWhileClosed: false });
       }
       if (page.resetRequired) throw failure('Collection change history requires a full refresh', 'feed-reset');
-      await this.persistPage(entry, generation, page.snapshots);
+      const stored = await this.persistPage(entry, generation, page.snapshots, cached);
+      stored?.forEach(snapshot => cached.set(snapshot.resource.id, snapshot));
       page.snapshots.forEach(snapshot => seen?.add(snapshot.resource.id));
       if (commit) await this.commitCursor(entry, generation, { version: page.cursor, initialized: true });
       after = page.cursor;
@@ -508,8 +521,19 @@ export class CollectionReader {
     throw failure('Collection changes exceeded their request budget');
   }
 
-  private async persistPage(entry: CollectionEntry, generation: number, snapshots: ResourceSnapshot[]): Promise<void> {
+  private async persistPage(entry: CollectionEntry, generation: number, snapshots: ResourceSnapshot[],
+    cached?: ReadonlyMap<string, ResourceSnapshot>): Promise<ResourceSnapshot[] | undefined> {
     this.validateSnapshots(entry, snapshots);
+    if (!snapshots.length) return [];
+    if (this.options.snapshots.putPage) {
+      // A row already present in the confirmed cache needs no write lock when merely read again.
+      const changed = cached ? snapshots.filter(snapshot => !equalValues(cached.get(snapshot.resource.id), snapshot)) : snapshots;
+      if (!changed.length) return [];
+      this.assertCurrent(entry, generation, true);
+      const stored = await this.options.snapshots.putPage(entry.owner, changed);
+      this.assertCurrent(entry, generation, true);
+      return stored;
+    }
     for (const snapshot of snapshots) {
       this.assertCurrent(entry, generation, true);
       const current = await this.options.snapshots.read(entry.owner, snapshot.resource);
@@ -520,16 +544,29 @@ export class CollectionReader {
   }
 
   private async reconcileAbsence(entry: CollectionEntry, generation: number, seen: Set<string>, candidates: ResourceSnapshot[]): Promise<void> {
+    const missing = candidates.filter(snapshot => !seen.has(snapshot.resource.id) && snapshot.value !== null);
+    if (!missing.length) return;
     const cached = await this.options.snapshots.list(entry.owner, entry.collection);
     this.assertCurrent(entry, generation, true);
     this.validateSnapshots(entry, cached);
     const current = new Map(cached.map(snapshot => [snapshot.resource.id, snapshot]));
-    for (const snapshot of candidates) {
-      if (seen.has(snapshot.resource.id) || snapshot.value === null
-        || !equalValues(snapshot, current.get(snapshot.resource.id))) continue;
+    for (const snapshot of missing) {
+      if (!equalValues(snapshot, current.get(snapshot.resource.id))) continue;
       if (snapshot.metadata) throw failure('A versioned document is missing its deletion tombstone');
       await this.persistPage(entry, generation, [{ resource: snapshot.resource, value: null, metadata: null }]);
     }
+  }
+
+  /** Publish the committed page while the next one loads. The final read still reconciles other tabs. */
+  private publishPage(entry: CollectionEntry, persisted: readonly ResourceSnapshot[]): void {
+    if (!persisted.length) return;
+    const rows = new Map(entry.state.snapshots.map(snapshot => [JSON.stringify(snapshot.resource.id), snapshot]));
+    for (const snapshot of persisted) {
+      const key = JSON.stringify(snapshot.resource.id);
+      if (canReplaceSnapshot(rows.get(key), snapshot)) rows.set(key, snapshot);
+    }
+    entry.state = { ...entry.state, snapshots: [...rows.keys()].sort().map(key => rows.get(key)!) };
+    this.emit(entry);
   }
 
   /** The one cursor writer: it carries listedWhileClosed forward unless the caller says otherwise. */

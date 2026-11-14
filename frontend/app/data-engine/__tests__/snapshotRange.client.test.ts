@@ -4,7 +4,7 @@ import { watchedStore, getDeviceStorageHealth, resetDeviceStorageForTests, STORA
 
 import { createStorageTransaction } from '@/utils/storageTransaction';
 
-import { CollectionReader } from '../collections';
+import { CollectionReader, type CollectionCursor } from '../collections';
 import { ResourceObserver } from '../observer';
 import { createIndexedDbSnapshots } from '../snapshots.client';
 import { installStorageHarness } from './storageHarness';
@@ -23,6 +23,27 @@ const seed = (harness: ReturnType<typeof installStorageHarness>, value: Resource
   harness.rows.set(JSON.stringify(key), value);
 };
 const settle = async () => { for (let i = 0; i < 50; i++) await Promise.resolve(); };
+
+const openTwoPages = (holdSecond?: Promise<void>) => {
+  let cursor: CollectionCursor | undefined;
+  const selected = ['a', 'b', 'c', 'd'].map(id => row('owner', 'studyNotes', id));
+  const observer = new ResourceObserver({ source: { listen: () => () => undefined }, transport: { read: jest.fn() } });
+  const reader = new CollectionReader({ snapshots: createIndexedDbSnapshots(), observer, pageSize: 2, cursors: {
+    read: async () => cursor,
+    put: async (_owner, _collection, _expected, next) => (cursor = { ...next, revision: (cursor?.revision ?? 0) + 1 }),
+  }, transport: {
+    list: async (_owner, _collection, options) => {
+      if (options?.cursor) {
+        await holdSecond;
+        return { snapshots: selected.slice(2), nextCursor: null, version: 0 };
+      }
+      return { snapshots: selected.slice(0, 2), nextCursor: 'b', version: 0 };
+    },
+    changes: async () => ({ snapshots: [], cursor: 0, version: 0, hasMore: false }),
+  } });
+  reader.setOwner('owner');
+  return { reader, selected, cursor: () => cursor, close: () => { reader.dispose(); observer.dispose(); } };
+};
 
 const originalKeyRange = Object.getOwnPropertyDescriptor(globalThis, 'IDBKeyRange');
 afterEach(() => {
@@ -127,6 +148,73 @@ it('rejects failed native reads instead of returning an empty list', async () =>
   const h = installStorageHarness(); h.readFailure = true;
   seed(h, row('owner', 'studyNotes', 'note'));
   await expect(createIndexedDbSnapshots().list('owner', 'studyNotes')).rejects.toThrow('read failed');
+});
+
+it('stores each listing page in one transaction and reads the whole collection only at the opening and final boundaries', async () => {
+  const h = installStorageHarness();
+  let releaseSecond!: () => void;
+  const held = new Promise<void>(resolve => { releaseSecond = resolve; });
+  const s = openTwoPages(held);
+  const firstPublished = jest.fn();
+  const stop = s.reader.watch('studyNotes', state => {
+    if (state.snapshots.length === 2) firstPublished(state);
+  });
+  const reading = s.reader.read('studyNotes');
+  try {
+    for (let attempt = 0; !firstPublished.mock.calls.length && attempt < 10; attempt++) await settle();
+    expect(firstPublished).toHaveBeenCalledWith(expect.objectContaining({ snapshots: s.selected.slice(0, 2), complete: false }));
+    expect(s.cursor()?.initialized).toBe(false);
+    expect(h.rows.size).toBe(2);
+    releaseSecond();
+    await expect(reading).resolves.toMatchObject({ snapshots: s.selected, complete: true, freshness: 'server' });
+    expect(h.counts).toEqual({ transactions: 4, enumerations: 4, rows: 8, gets: 4, puts: 4, deletes: 0 });
+  } finally { releaseSecond(); await reading.catch(() => undefined); stop(); s.close(); }
+});
+
+it('keeps the preceding page but aborts the whole failed page before the cursor can call it complete', async () => {
+  const h = installStorageHarness(), s = openTwoPages();
+  h.writeFailureFor = key => key === JSON.stringify(['owner', 'studyNotes', 'd']);
+  try {
+    await expect(s.reader.read('studyNotes')).rejects.toThrow('disk full');
+    expect(s.cursor()?.initialized).toBe(false);
+    expect([...h.rows.values()]).toEqual(s.selected.slice(0, 2));
+    h.writeFailureFor = undefined;
+    await expect(s.reader.refresh('studyNotes')).resolves.toMatchObject({ snapshots: s.selected, complete: true });
+  } finally { s.close(); }
+});
+
+it('opens fully cached legacy pages without a row write transaction', async () => {
+  const h = installStorageHarness(), s = openTwoPages();
+  s.selected.forEach(value => seed(h, value));
+  try {
+    await expect(s.reader.read('studyNotes')).resolves.toMatchObject({ snapshots: s.selected, complete: true });
+    expect(h.counts).toEqual({ transactions: 2, enumerations: 4, rows: 16, gets: 0, puts: 0, deletes: 0 });
+  } finally { s.close(); }
+});
+
+it('keeps newer copies from another tab and picks up its unlisted rows at the final boundary', async () => {
+  installStorageHarness();
+  let releaseSecond!: () => void;
+  const held = new Promise<void>(resolve => { releaseSecond = resolve; });
+  const s = openTwoPages(held);
+  let releaseFirst!: () => void;
+  const firstPage = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const stop = s.reader.watch('studyNotes', state => { if (state.snapshots.length === 2) releaseFirst(); });
+  const reading = s.reader.read('studyNotes');
+  try {
+    await firstPage;
+    const otherTab = createIndexedDbSnapshots();
+    const fresh = { ...s.selected[2], value: { userId: 'owner', content: 'accepted in the other tab' },
+      metadata: { protocol: 1 as const, generation: 'generation-c', revision: 3, deleted: false } };
+    const extra = row('owner', 'studyNotes', 'e');
+    await otherTab.put('owner', fresh);
+    await otherTab.put('owner', extra);
+    releaseSecond();
+    await expect(reading).resolves.toMatchObject({
+      snapshots: [...s.selected.slice(0, 2), fresh, s.selected[3], extra],
+      complete: true,
+    });
+  } finally { releaseSecond(); await reading.catch(() => undefined); stop(); s.close(); }
 });
 
 it('keeps an unanswered list pending through storage silence and accepts the late completed answer', async () => {

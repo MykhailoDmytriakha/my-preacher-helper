@@ -21,8 +21,10 @@ export function installStorageHarness() {
       const draft = new Map(harness.rows); let pending = 0, aborted = false, completed = false;
       let releaseNative!: () => void;
       const finished = new Promise<void>(resolve => { releaseNative = resolve; });
-      const tx = { oncomplete: null as (() => void) | null, onabort: null as (() => void) | null,
-        onerror: null, error: null, abort: () => { aborted = true; releaseNative(); tx.onabort?.(); } };
+      const tx = Object.assign(new EventTarget(), { oncomplete: null as (() => void) | null, onabort: null as (() => void) | null,
+        onerror: null, error: null, abort: () => {
+          aborted = true; releaseNative(); tx.onabort?.(); tx.dispatchEvent(new Event('abort'));
+        } });
       const complete = () => {
         if (aborted || completed || pending) return;
         completed = true;

@@ -8,8 +8,8 @@ import { createStorageTransaction } from '@/utils/storageTransaction';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
 
-import { canReplaceSnapshot } from './engine';
 import { equalValues } from './protocol';
+import { canReplaceSnapshot, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { snapshotSchema } from './transport.client';
 
@@ -37,6 +37,12 @@ export function subscribeSnapshotChanges(owner: string, listener: SnapshotListen
     subscriptions.delete(listener);
     if (!subscriptions.size && listeners.get(owner) === subscriptions) listeners.delete(owner);
   };
+}
+
+function notifySnapshotChange(owner: string, resource: ResourceRef): void {
+  for (const listener of [...(listeners.get(owner) ?? [])]) {
+    try { listener({ ...resource }); } catch { /* Rendering cannot fail an accepted cache write. */ }
+  }
 }
 
 /** A shared confirmed cache; editor drafts always live in the separate checkpoint store. */
@@ -88,9 +94,30 @@ export function createIndexedDbSnapshots(): CollectionSnapshotStore {
         return frozen;
       }, database());
       // Only a completed transaction is evidence. A refused/unchanged candidate wakes nobody.
-      if (changed) for (const listener of [...(listeners.get(owner) ?? [])]) {
-        try { listener({ ...frozen.resource }); } catch { /* Rendering cannot fail an accepted cache write. */ }
-      }
+      if (changed) notifySnapshotChange(owner, frozen.resource);
+    },
+    async putPage(owner, snapshots) {
+      if (!snapshots.length) return [];
+      const frozen = snapshots.map(snapshot => validate(owner, snapshot.resource, snapshot));
+      const stored = new Array<ResourceSnapshot>(frozen.length);
+      const changed: ResourceRef[] = [];
+      await createStorageTransaction(database)('readwrite', (store, read, done) => {
+        frozen.forEach((incoming, index) => {
+          const resource = incoming.resource;
+          const rowKey = key(owner, resource);
+          read(store.get(rowKey), value => {
+            const current = value === undefined ? undefined : validate(owner, resource, value);
+            if (storesNewCopy(current, incoming)) {
+              store.put(incoming, rowKey);
+              stored[index] = incoming;
+              changed.push(resource);
+            } else stored[index] = current!;
+          });
+        });
+        done(undefined);
+      });
+      changed.forEach(resource => notifySnapshotChange(owner, resource));
+      return stored;
     },
   };
 }
