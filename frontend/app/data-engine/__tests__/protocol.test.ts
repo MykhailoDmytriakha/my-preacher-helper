@@ -10,6 +10,35 @@ const update = (base: DocumentData, next: DocumentData): DataCommand => ({
 });
 const field = (value: FieldValue['value']): FieldValue => ({ exists: true, value });
 
+it('orders independent insertions without repeatedly scanning remaining edges', () => {
+  const measure = (length: number) => {
+    const base = Array.from({ length }, (_, index) => 'existing-' + index);
+    const mine = base.flatMap((id, index) => [id, 'mine-' + index]);
+    const theirs = base.flatMap((id, index) => [id, 'theirs-' + index]);
+    const order = base.flatMap((id, index) => [id, 'theirs-' + index, 'mine-' + index]);
+    const original = Object.getOwnPropertyDescriptor(Set.prototype, 'has')!;
+    let checks = 0;
+    Object.defineProperty(Set.prototype, 'has', {
+      ...original,
+      value(this: Set<unknown>, value: unknown) {
+        checks += 1;
+        return original.value.call(this, value);
+      },
+    });
+    let merged: ReturnType<typeof mergeFields>;
+    try {
+      merged = mergeFields(field(base), field(mine), field(theirs), ['orderedRows']);
+    } finally {
+      Object.defineProperty(Set.prototype, 'has', original);
+    }
+    expect(merged).toEqual({ value: field(order), conflicts: [] });
+    return checks;
+  };
+  const [small, medium, large] = [100, 200, 1_000].map(measure);
+  expect(medium / small).toBeLessThan(3);
+  expect(large / small).toBeLessThan(14);
+});
+
 describe('DataEngine command protocol', () => {
   it('allows creation only for the absent owned second participant of a council carry', () => {
     const topic = { id: 'topic', title: 'Matter', questions: [], options: [] };

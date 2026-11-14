@@ -20,6 +20,7 @@ import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroup
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { MAX_OUTLINE_SUBPOINT_MOVES } from './outlineSubpointMove';
+import { preferredTopologicalOrder } from './preferredTopologicalOrder';
 import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -581,16 +582,9 @@ function mergedOrder(base: Map<string, Json>, mine: Map<string, Json>, theirs: M
     }
   };
   constrain(preferred.filter(key => base.has(key)), false);
-  constrain([...mine.keys()], true);
-  constrain([...theirs.keys()], true);
-  const pending = new Set(preferred), ordered: string[] = [];
-  while (pending.size) {
-    const next = preferred.find(key => pending.has(key) && ![...pending].some(other => edges.get(other)!.has(key)));
-    if (next === undefined) return null;
-    ordered.push(next);
-    pending.delete(next);
-  }
-  return ordered;
+  constrain(mineKeys, true);
+  constrain(theirKeys, true);
+  return preferredTopologicalOrder(preferred, edges);
 }
 
 // A reference's Bible, location and quote describe one authored meaning.
