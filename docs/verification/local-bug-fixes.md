@@ -9804,3 +9804,13 @@ The headless Chrome check used local Auth and Firestore emulators and a controll
 After authorized deployment, use a disposable test sermon with two written subpoints and a neighboring point. Exercise both deletions from the manual plan with the timing probe scoped to the test profile. Verify the final outline after reload and confirm the neighboring point's words. If the deployed UI serializes the buttons, also verify the later click after the first operation settles. The mounted test covers the exact delayed completion after a later deletion, including when the buttons cannot reproduce that timing.
 
 Full Jest passed 15,788 tests with 17 skipped. TypeScript, scoped ESLint with warnings, local production build and independent source review passed.
+
+## BUG-20261114-plan-delete-lost-on-leaving · Keep the confirmed removal through the plan's own navigation
+
+In Sermons → a sermon → Plan → By hand, confirm removal of a written subpoint and use Back to sermon while its text transfer is still waiting. On local build `ryKzqdvSuFQgP53_MIX52`, the page left, no command reached the emulator, and reopening still showed both children. The browser's unload event was not cancelled with a clean plan.
+
+The guarded paths now wait for the current removal and a durable outline save. Back to sermon stays on the plan on local write failure. Switching plan mode and opening a passage in the Bible use the same guard. Reload and tab close use the browser's warning while the removal is still pending. The intermediate version that awaited an outline edit alone could lose the remaining structural save while retiring the editor. The fixed child removal uses the document's immediate commit and whole-point removal explicitly saves the updated outline.
+
+Headless Chrome on local build `p_bWBkboODkx7d-hrIuYJ` at 390 and 1280 px held the before-capture step, verified the unload protection, used Back to sermon, then reopened. The transfer was stored and only the selected subpoint was gone. Both scripts and screenshots were reviewed. Browser-history Back still lost the pre-capture action; global navigation needs the same guarantee and the tracker stays open. Evidence is in `artifacts/manual-plan-leave-20261114`. After authorized deployment repeat the plan's own Back flow with a disposable sermon and test profile.
+
+Full Jest passed 15,838 tests with 17 skipped. TypeScript, scoped ESLint with warnings, and the local production build passed.

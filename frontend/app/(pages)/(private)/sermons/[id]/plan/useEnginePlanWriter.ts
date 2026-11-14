@@ -23,7 +23,7 @@ type SermonDocument = ReturnType<typeof useDataDocument>;
  * another device is reported with its current text, never overwritten. The refusal leaves the
  * draft untouched and surfaces as the StaleWriteError the plan screens already handle.
  */
-export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' | 'commit' | 'captureSermonPlanMode'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
+export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' | 'commit' | 'captureSermonPlanMode' | 'save'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
   const structure = outlineWriter ?? createEngineStructureWriter(document, owner);
   const prepareMode = (sermonId: string, mode: PlanMode, initialize?: true) => {
     const capture = document.captureSermonPlanMode();
@@ -43,7 +43,8 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
   return {
     updateThought: structure.updateThought,
     updateSermonOutline: structure.updateSermonOutline,
-    removeSubPoint: (sermonId, pointId, subPointId) => editEngineSermon<Awaited<ReturnType<PlanWriter['removeSubPoint']>>>(document, owner, current => {
+    captureOutlineUpdate: () => document.save(),
+    removeSubPoint: (sermonId, pointId, subPointId) => editEngineSermon<Awaited<ReturnType<PlanWriter['removeSubPoint']>>>({ update: updater => document.commit(updater) }, owner, current => {
       if (current.id !== undefined && current.id !== sermonId) throw new Error('Sermon editor is unavailable');
       const outline = current.outline;
       const location = findOutlinePointLocation(outline, pointId);

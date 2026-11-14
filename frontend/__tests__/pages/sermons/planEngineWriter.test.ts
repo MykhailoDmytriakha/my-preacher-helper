@@ -12,7 +12,7 @@ function draft(initial: DocumentData) {
     state.edits += 1;
     state.current = updater(state.current);
   };
-  const document = { update, commit: update, captureSermonPlanMode: () => ({
+  const document = { update, commit: update, save: jest.fn().mockResolvedValue(undefined), captureSermonPlanMode: () => ({
     time: null, seen: { sermonId: 's1', generation: 'g', revision: 1, value: readField(state.current ?? {}, ['planMode']) },
   }) };
   return { state, writer: createEnginePlanWriter(document, 'owner-1') };

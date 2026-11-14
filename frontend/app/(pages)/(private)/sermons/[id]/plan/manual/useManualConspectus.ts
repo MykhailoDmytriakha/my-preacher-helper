@@ -73,6 +73,8 @@ export interface ManualConspectus {
   renameSubPoint: (pointId: string, subPointId: string, title: string) => void;
   deletePoint: (pointId: string) => Promise<void>;
   deleteSubPoint: (pointId: string, subPointId: string) => Promise<void>;
+  hasPendingDeletion: () => boolean;
+  saveBeforeLeaving: () => Promise<boolean>;
   /** Persists every cell still holding unsaved text. False means something refused. */
   saveModified: () => Promise<boolean>;
 }
@@ -91,6 +93,7 @@ export function useManualConspectus({
   const rescuingNodes = useRef(new Set<string>());
   const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
   const busyNodes = useRef<ReadonlySet<string>>(new Set());
+  const pendingDeletion = useRef<Promise<boolean> | null>(null);
   const setBusy = useCallback((ids: string[]) => {
     busyNodes.current = new Set(ids);
     setBusyNodeIds(busyNodes.current);
@@ -644,12 +647,12 @@ export function useManualConspectus({
    * the rescued words with it. This order's worst case is survivable: the sub-point stays,
    * now empty, and its words are already safe in the parent.
    */
-  const deleteSubPoint = useCallback(async (pointId: string, subPointId: string) => {
+  const removeSubPoint = useCallback(async (pointId: string, subPointId: string) => {
     const currentSermon = sermonRef.current;
-    if (!currentSermon?.outline || busyNodes.current.size) return;
+    if (!currentSermon?.outline || busyNodes.current.size) return false;
     const { id: sermonId } = currentSermon;
     const location = findOutlinePointLocation(currentSermon.outline, pointId);
-    if (!location?.outlinePoint.subPoints?.some(subPoint => subPoint.id === subPointId)) return;
+    if (!location?.outlinePoint.subPoints?.some(subPoint => subPoint.id === subPointId)) return false;
 
     const rescued = contentRef.current[subPointId] ?? "";
     const openingParent = contentRef.current[pointId] ?? "";
@@ -703,7 +706,7 @@ export function useManualConspectus({
             nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
           debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
           toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
-          return;
+          return false;
         }
         /**
          * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
@@ -715,7 +718,7 @@ export function useManualConspectus({
         rescuingNodes.current.clear();
       }
 
-      if (sermonRef.current?.id !== sermonId) return;
+      if (sermonRef.current?.id !== sermonId) return false;
       const storedAfterTransfer = readPlanText(sermonRef.current);
       if (rescuing) {
         const parent = contentRef.current[pointId] ?? "";
@@ -739,7 +742,7 @@ export function useManualConspectus({
         debugLog("Manual plan sub-point removal failed", { sermonId, subPointId, error });
         toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
       }
-      if (sermonRef.current?.id !== sermonId) return;
+      if (sermonRef.current?.id !== sermonId) return false;
       if (removal?.kind === 'removed') confirmedOutlineRef.current = removal.outline;
 
       if (removal?.kind === 'absent') {
@@ -753,7 +756,7 @@ export function useManualConspectus({
           setContentByNodeId(previous => ({ ...previous, [pointId]: stored }));
         }
         if (!modifiedRef.current[subPointId] && !liveNodeIds(removal.outline).has(subPointId)) forgetCells([subPointId]);
-        return;
+        return !liveNodeIds(removal.outline).has(subPointId);
       }
 
       const remainingChildText = contentRef.current[subPointId];
@@ -766,16 +769,17 @@ export function useManualConspectus({
         setContentByNodeId(previous => ({ ...previous, [subPointId]: stored }));
         settle({ [subPointId]: stored });
       }
+      return removal?.kind === 'removed';
     } finally {
       setBusy([]);
     }
   }, [forgetCells, planWriter, setBusy, setContentByNodeId, settle, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
-  const deletePoint = useCallback(async (pointId: string) => {
+  const removePoint = useCallback(async (pointId: string) => {
     const outline = sermonRef.current?.outline;
     const section = sectionOfPoint(pointId);
-    if (!outline || !section || busyNodes.current.size > 0) return;
+    if (!outline || !section || busyNodes.current.size > 0) return false;
 
     const point = (outline[section] ?? []).find((candidate) => candidate.id === pointId);
     const removedNodeIds = [pointId, ...((point?.subPoints ?? []).map((sub) => sub.id))];
@@ -785,7 +789,13 @@ export function useManualConspectus({
       const removed = await persistOutline(
         mapPoints(outline, (points) => points.filter((candidate) => candidate.id !== pointId))
       );
-      if (!removed) return;
+      if (!removed) return false;
+      try {
+        await planWriter.captureOutlineUpdate();
+      } catch (error) {
+        toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
+        return false;
+      }
 
       detachThoughtsFrom((thought) => thought.outlinePointId === pointId);
 
@@ -794,11 +804,34 @@ export function useManualConspectus({
         removedNodeIds.forEach((nodeId) => { delete next[nodeId]; });
         return next;
       });
+      return true;
 
     } finally {
       setBusy([]);
     }
-  }, [detachThoughtsFrom, persistOutline, sectionOfPoint, setBusy, setContentByNodeId]);
+  }, [detachThoughtsFrom, persistOutline, planWriter, sectionOfPoint, setBusy, setContentByNodeId, t]);
+
+  const confirmDeletion = useCallback(async (remove: () => Promise<boolean>) => {
+    if (pendingDeletion.current) return;
+    const result = remove();
+    pendingDeletion.current = result;
+    try {
+      await result;
+    } finally {
+      pendingDeletion.current = null;
+    }
+  }, []);
+  const deletePoint = useCallback((pointId: string) =>
+    confirmDeletion(() => removePoint(pointId)), [confirmDeletion, removePoint]);
+  const deleteSubPoint = useCallback((pointId: string, subPointId: string) =>
+    confirmDeletion(() => removeSubPoint(pointId, subPointId)), [confirmDeletion, removeSubPoint]);
+
+  const hasPendingDeletion = useCallback(() => pendingDeletion.current !== null, []);
+  const saveBeforeLeaving = useCallback(async () => {
+    const removal = pendingDeletion.current;
+    if (removal && !await removal) return false;
+    return saveModifiedRef.current!();
+  }, []);
 
   /**
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
@@ -827,6 +860,8 @@ export function useManualConspectus({
     renameSubPoint,
     deletePoint,
     deleteSubPoint,
+    hasPendingDeletion,
+    saveBeforeLeaving,
     saveModified,
   };
 }

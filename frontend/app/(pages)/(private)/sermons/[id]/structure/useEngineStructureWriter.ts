@@ -281,9 +281,10 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
   }), [owner, sermonId, document.recoveryIdentity]);
   opening.document = document;
   opening.captureActionTime = captureActionTime;
-  const writeTarget = useMemo<StructureDocument & Pick<SermonDocument, 'commit' | 'captureSermonPlanMode'>>(() => ({
+  const writeTarget = useMemo<StructureDocument & Pick<SermonDocument, 'commit' | 'captureSermonPlanMode' | 'save'>>(() => ({
     update: (fn, options) => opening.document.update(fn, options),
     commit: (fn, action) => opening.document.commit(fn, action),
+    save: () => opening.document.save(),
     captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
     captureSermonNoteText: (target, text) => opening.document.captureSermonNoteText(target, text),
     outlineTitleVersion: ({ target, text }) => {

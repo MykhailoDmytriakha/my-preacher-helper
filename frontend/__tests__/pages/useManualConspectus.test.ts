@@ -37,6 +37,7 @@ const mockPlanWriter: PlanWriter = {
   initializePlanMode: jest.fn().mockResolvedValue(undefined),
   preparePlanMode: jest.fn(() => async () => undefined),
   updateThought: (...args: Parameters<PlanWriter['updateThought']>) => mockUpdateThought(...args),
+  captureOutlineUpdate: jest.fn().mockResolvedValue(undefined),
   removeSubPoint: (...args: Parameters<PlanWriter['removeSubPoint']>) => mockRemoveSubPoint(...args),
   updateSermonOutline: (...args: Parameters<PlanWriter['updateSermonOutline']>) => mockUpdateSermonOutline(...args),
 };

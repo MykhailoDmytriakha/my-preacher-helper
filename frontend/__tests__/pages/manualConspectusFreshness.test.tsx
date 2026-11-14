@@ -36,6 +36,7 @@ import type { Sermon } from '@/models/models';
 
 let mockSermon: Sermon | null = null;
 let mockNoteMode = false;
+const mockPush = jest.fn();
 let harness: ReturnType<typeof documentEngineHarness>;
 
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
@@ -47,7 +48,7 @@ jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
   useSearchParams: () => new URLSearchParams(mockNoteMode ? 'source=note' : ''),
   usePathname: () => '/sermons/sermon-1/plan/manual',
 }));
@@ -623,6 +624,43 @@ describe('manual deletion locks', () => {
     act(() => { editor.view.dom.focus(); });
     await userEvent.type(editor.view.dom, ' Later typing', { skipClick: true });
   };
+
+  it('waits for a pending sub-point deletion when leaving through Back to sermon', async () => {
+    const { view, gate } = await begin();
+    try {
+      const warning = new Event('beforeunload', { cancelable: true });
+      fireEvent(window, warning);
+      expect(warning.defaultPrevented).toBe(true);
+      fireEvent.click(screen.getByTestId('plan-header-back'));
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => { gate.resolve(); });
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/sermon-1'));
+      await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ subPoints: [] }] }));
+      const settled = new Event('beforeunload', { cancelable: true });
+      fireEvent(window, settled);
+      expect(settled.defaultPrevented).toBe(false);
+    } finally {
+      gate.resolve();
+      view.unmount();
+    }
+  });
+
+  it('stays in the plan when a pending deletion refuses while leaving', async () => {
+    const { view, gate } = await begin();
+    try {
+      const nav = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      fireEvent(screen.getByTestId('plan-header-back'), nav);
+      expect(nav.defaultPrevented).toBe(true);
+      await act(async () => { gate.reject(new Error('Injected device write refusal')); });
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByTitle('plan.deleteSubPoint')).toBeEnabled();
+      expect(toast.error).toHaveBeenCalled();
+    } finally {
+      gate.resolve();
+      view.unmount();
+    }
+  });
 
   it('prevents orphan Discard confirmation during deletion and clears text and dirty state after refusal', async () => {
     const view = await render();

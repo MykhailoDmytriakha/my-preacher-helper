@@ -18,6 +18,7 @@ export interface PlanWriter {
   removeSubPoint(sermonId: string, pointId: string, subPointId: string): Promise<
     { kind: 'removed'; outline: SermonOutline } | { kind: 'absent'; outline: SermonOutline | null; parentText?: string }
   >;
+  captureOutlineUpdate(): Promise<void>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
   updateSermonOutline(sermonId: string, outline: SermonOutline, baseOutline?: SermonOutline | null,
     onCollision?: 'refuse' | 'preferMine'): Promise<SermonOutline | null>;
@@ -27,7 +28,7 @@ const noWriter = (): Promise<never> => Promise.reject(new Error('No plan writer:
 
 /** Outside its provider a plan screen can be drawn, but every write is refused out loud. */
 export const PlanWriterContext = createContext<PlanWriter>({
-  savePlanText: noWriter, savePlanMode: noWriter, preparePlanMode: () => noWriter, initializePlanMode: noWriter, updateThought: noWriter, updateSermonOutline: noWriter, removeSubPoint: noWriter,
+  savePlanText: noWriter, savePlanMode: noWriter, preparePlanMode: () => noWriter, initializePlanMode: noWriter, updateThought: noWriter, updateSermonOutline: noWriter, removeSubPoint: noWriter, captureOutlineUpdate: noWriter,
 });
 
 export function usePlanWriter(): PlanWriter {

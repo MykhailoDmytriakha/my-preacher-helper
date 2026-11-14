@@ -32,6 +32,7 @@ const mockPlanWriter = {
   preparePlanMode: mockPrepare,
   initializePlanMode: jest.fn(),
   updateThought: jest.fn(),
+  captureOutlineUpdate: jest.fn().mockResolvedValue(undefined),
   removeSubPoint: jest.fn(),
   updateSermonOutline: jest.fn(),
 };

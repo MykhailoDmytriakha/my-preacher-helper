@@ -403,38 +403,31 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
   const { status: overlayCopyStatus, runCopy: runOverlayCopy } = useCopyFormattedContent({ t });
   const { status: immersiveCopyStatus, runCopy: runImmersiveCopy } = useCopyFormattedContent({ t });
 
-  /**
-   * THE BROWSER'S OWN WAYS OUT — reload, Back, closing the tab.
-   *
-   * The two links below save before they travel, but they are only two doors. A reload or a
-   * tab close bypasses them entirely, and that is how an unsaved paragraph actually dies in
-   * practice. The browser will not let a page save asynchronously on the way out, so the
-   * honest move is the one it does allow: ask, and let the person decide.
-   */
+  const { modifiedNodeIds, hasPendingDeletion, saveBeforeLeaving } = conspectus;
+  const hasUnsaved = Object.values(modifiedNodeIds).some(Boolean);
   React.useEffect(() => {
     const warnIfUnsaved = (event: BeforeUnloadEvent) => {
-      if (!Object.values(conspectus.modifiedNodeIds).some(Boolean)) return;
+      if (!hasUnsaved && !hasPendingDeletion()) return;
       event.preventDefault();
-      // Browsers show their own wording; a non-empty value is what arms the prompt.
-      event.returnValue = "";
+      event.returnValue = " ";
     };
     window.addEventListener("beforeunload", warnIfUnsaved);
     return () => window.removeEventListener("beforeunload", warnIfUnsaved);
-  }, [conspectus.modifiedNodeIds]);
+  }, [hasPendingDeletion, hasUnsaved]);
 
-  /**
-   * Leaving must not cost the paragraph someone just typed. The links out are plain
-   * navigation, so they save first and travel second — and stay put if the save refuses.
-   */
+  const leaving = useRef(false);
   const guardUnsavedNavigation = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    const hasUnsaved = Object.values(conspectus.modifiedNodeIds).some(Boolean);
-    if (!hasUnsaved) return;
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!hasUnsaved && !hasPendingDeletion()) return;
 
     event.preventDefault();
+    if (leaving.current) return;
     const href = event.currentTarget.getAttribute("href");
-    void conspectus.saveModified().then((saved) => {
-      if (saved && href) router.push(href);
-    });
+    if (href === null) return;
+    leaving.current = true;
+    void saveBeforeLeaving().then(saved => {
+      if (saved) router.push(href);
+    }).finally(() => { leaving.current = false; });
   };
 
   if (!sermon) {
@@ -506,7 +499,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
           and two doors to one place is what made the row ahead of it uneven. */}
       {/* The sermon's verse and a reference in a cell open over the page; the window's way to the Bible saves the
           cells first. Editing a cell is typing: the editor shows no links. */}
-      <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} beforeSwitch={conspectus.saveModified}>
+      <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} beforeSwitch={saveBeforeLeaving}>
         <PlanPageHeader
         modeHistory={<PlanModeHistory document={source.document} sermonId={sermonId} />}
           sermon={sermon}
@@ -515,7 +508,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
           combinedPlan={combinedPlan}
           t={t}
           onLeave={guardUnsavedNavigation}
-          beforeSwitch={conspectus.saveModified}
+          beforeSwitch={saveBeforeLeaving}
           onRequestPlanOverlay={openOverlay}
           onRequestPreachingMode={openPreaching}
           onStartPreachingMode={openPreaching}

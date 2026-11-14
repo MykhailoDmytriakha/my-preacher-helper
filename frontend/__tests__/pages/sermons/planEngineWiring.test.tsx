@@ -23,6 +23,7 @@ describe('the hand-written plan on the engine', () => {
       initializePlanMode: jest.fn().mockResolvedValue(undefined),
       preparePlanMode: jest.fn(() => async () => undefined),
       updateThought: jest.fn(),
+      captureOutlineUpdate: jest.fn().mockResolvedValue(undefined),
       removeSubPoint: jest.fn(),
       updateSermonOutline: jest.fn(),
     };

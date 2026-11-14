@@ -31,6 +31,7 @@ describe("usePlanActions", () => {
     initializePlanMode: jest.fn().mockResolvedValue(undefined),
     preparePlanMode: jest.fn(() => async () => undefined),
     updateThought: jest.fn(),
+    captureOutlineUpdate: jest.fn().mockResolvedValue(undefined),
     removeSubPoint: jest.fn(),
     updateSermonOutline: jest.fn(),
   };
