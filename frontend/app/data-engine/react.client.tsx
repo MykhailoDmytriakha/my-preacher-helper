@@ -166,7 +166,7 @@ export type { DocumentWriteReceipt } from './commitReceipt';
 
 export type DocumentAction =
   | { kind: 'create'; value: DocumentData }
-  | { kind: 'update'; update: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null }
+  | { kind: 'update'; update: (current: DocumentData | null, confirmed: ResourceSnapshot, sizeRefusedDraft?: DocumentData) => DocumentData | null }
   | { kind: 'delete' };
 export type { OpenDocumentAnswer } from './openDocumentAnswers';
 /** Whether the answering document screens hold every shown request and the same words. */
@@ -509,7 +509,8 @@ export function useDocumentActions() {
     const [records, journal] = await untilStorageSilent(Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]), () => undefined, readOnlyReason(true));
     return records.filter(({ record, answer }) => waitsForDecision(record, journal, answer));
   }, [browser, readOnlyReason]);
-  const withEditor = useCallback(async <T,>(resource: ResourceRef, action: (editor: ManagedEditor) => Promise<T>, creating = false): Promise<T> => {
+  const withEditor = useCallback(async <T,>(resource: ResourceRef, action: (editor: ManagedEditor) => Promise<T>, creating = false,
+    correctRefusal?: (waiting: readonly EditorRecord[]) => Promise<T | null>): Promise<T> => {
     if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
     // A document that waits for a decision takes no further one-shot change: each attempt
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
@@ -518,7 +519,13 @@ export function useDocumentActions() {
       // Allow a Save to follow a choice already made. An unanswered conflict still blocks it.
       if (applying) await applying.catch(() => undefined);
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
-      if ((await waitingFor(resource)).length) throw decisionRequired();
+      const waiting = await waitingFor(resource);
+      if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
+      if (waiting.length) {
+        const corrected = await correctRefusal?.(waiting.map(({ record }) => record));
+        if (corrected != null) return corrected;
+        throw decisionRequired();
+      }
     }
     const editor = await openFor(resource, browser.editorId(resource, ACTION_SLOT), creating);
     try { return await action(editor); } finally { editor.close({ flush: false }); }
@@ -565,9 +572,15 @@ export function useDocumentActions() {
     },
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
-    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction; noteContent?: StudyNoteContentCapture | null }) => withEditor(resource, editor => action.kind === 'delete'
-      ? editor.removeWithReceipt(options)
-      : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create'),
+    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction; noteContent?: StudyNoteContentCapture | null }) => {
+      const scope = options?.captureScope;
+      const correction = action.kind === 'update' && resource.collection === 'studyNotes' && scope && !options?.action && browser
+        ? (waiting: readonly EditorRecord[]) => browser.engine.shortenRefusedNote(resource, browser.editorId(resource, ACTION_SLOT),
+          scope, waiting, action.update, options?.noteContent) : undefined;
+      return withEditor(resource, editor => action.kind === 'delete'
+        ? editor.removeWithReceipt(options)
+        : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create', correction);
+    },
     /**
      * Settle the answer the server gave to a document no screen has open — a conflict or a
      * refusal — without ever choosing for the person. "Mine" is allowed only when exactly one

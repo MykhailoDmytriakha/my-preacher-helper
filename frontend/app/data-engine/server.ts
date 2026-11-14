@@ -15,6 +15,7 @@ import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activ
 import { metadataAfterAuthoredListRemovals, orderAuthoredListAdditions } from './authoredListOrder.server';
 import { isAuthoredListComparison } from './authoredStringList';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
+import { MAX_COMMAND_BYTES } from './commandSize';
 import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
 import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
@@ -104,7 +105,7 @@ export function readActionClockChallenge(collection: string, headers: Headers, d
   return isClockChallenge(challenge) ? challenge : undefined;
 }
 
-export const MAX_COMMAND_BYTES = 1024 * 1024;
+export { MAX_COMMAND_BYTES } from './commandSize';
 const MAX_RECEIPT_BYTES = 1_000_000;
 const MAX_EXACT_RECEIPT_PARTS = 20;
 const MAX_EFFECT_BYTES = 8 * 1024 * 1024;

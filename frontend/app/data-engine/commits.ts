@@ -1,4 +1,5 @@
 import { newClientId } from '@/utils/clientId';
+import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { hasOutlinePointOrder } from '@/utils/outlineDnd';
 import { matchesSermonNoteOpening, withSermonNoteText, type SermonNoteOpening } from '@/utils/sermonNoteText';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
@@ -7,6 +8,7 @@ import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
+import { MAX_COMMAND_BYTES } from './commandSize';
 import { captureCommentKind, matchesCommentKindRequest, type CommentKindObservation } from './commentKindAction';
 import { commentOpeningPredecessor } from './commentOpening';
 import { captureCommentPlace, matchesCommentPlaceDestination, matchesCommentPlaceRequest, matchesCommentPlaceScope, type CommentPlaceObservation } from './commentPlaceAction';
@@ -34,6 +36,7 @@ import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, 
 import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
+import { noteCorrectionOpening, oversizedNoteOpening, shortenedNoteContent } from './oversizedNoteCorrection';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentAfterAcknowledgement, MAX_RELATION_RESOURCES } from './protocol';
@@ -597,6 +600,39 @@ export class CommitQueue {
     return this.captureSaved(owner, editorId, captured, options, () => this.assertCurrent(owner, generation), saved => {
       this.emit(saved); this.requested = true;
     });
+  }
+
+  /** Replace an exact terminal size refusal and capture the corrected draft in one transaction. */
+  async replaceOversizedNote(source: CommitRequest, editorId: string, captureScope: string, corrected: SessionCheckpoint,
+    project: (saved: CommitRequest) => EditorRecord, content?: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
+    const owner = this.owner, generation = this.generation;
+    const store = this.options.store;
+    if (!owner || owner !== source.owner || !oversizedNoteOpening(source) || !store.compareAndSetWithCheckpoint
+      || !corrected.draft || !equalValues(corrected.confirmed, source.working) || !shortenedNoteContent(source.value, corrected.draft)) return null;
+    const replacement = this.buildRequest(owner, editorId, corrected, [], undefined, {
+      retentionScope: captureScope, noteContent: noteCorrectionOpening(source, content),
+    });
+    if (!replacement) return null;
+    const prepared = this.prepareIndependentUpdate({ ...replacement, initialized: true }, owner);
+    if (!prepared || getUtf8ByteLength(JSON.stringify(prepared.command)) > MAX_COMMAND_BYTES) return null;
+    const scope = await this.planCancellation('', [source.id], false);
+    this.assertCurrent(owner, generation);
+    const [previous] = scope.records;
+    if (scope.records.length !== 1 || previous.id !== source.id || previous.revision !== source.revision || !oversizedNoteOpening(previous)) return null;
+
+    const { receipt } = await this.receipts.capture(owner, editorId, corrected, async () => {
+      const saved = await store.compareAndSetWithCheckpoint!([
+        { previous, next: this.cancelledRequest(previous, scope.chosen) },
+      ], () => {
+        this.assertCurrent(owner, generation);
+        return { editorRecords: [project(prepared)], manualRecoveries: [], replacements: [prepared] };
+      }, [previous.id]);
+      this.assertCurrent(owner, generation);
+      saved.forEach(request => this.emit(request));
+      this.requested = true;
+      return saved.find(request => request.id === prepared.id)!;
+    });
+    return receipt;
   }
 
   /** Admit exactly these immutable words now; later retirement may finish only their local capture. */

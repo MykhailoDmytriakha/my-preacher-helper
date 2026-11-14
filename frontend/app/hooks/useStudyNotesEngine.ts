@@ -308,7 +308,7 @@ export function useStudyNotesEngine(enabled: boolean) {
         setUpdating(count => count + 1);
         let staleTimedField: StaleWriteError | undefined;
         try {
-          return await actions.submit(resource(id), { kind: 'update', update: (current, confirmed) => {
+          return await actions.submit(resource(id), { kind: 'update', update: (current, confirmed, sizeRefusedDraft) => {
             if (expectedGeneration !== undefined && expectedGeneration !== (confirmed?.metadata?.generation ?? null)) {
               throw Object.assign(new Error('The note was replaced'), { code: 'study-note-generation-changed' });
             }
@@ -340,6 +340,9 @@ export function useStudyNotesEngine(enabled: boolean) {
               || (place && !matchesCommentPlaceScope(current, place.seen.reference, place.seen.paragraph));
             const compared = expectedBaseline ? Object.keys(patch).filter(field => field !== 'dictationSourceIds' && field !== 'recordingSourceIds' && field in expectedBaseline) : [];
             const changedElsewhere = compared.filter(field => expectedBaseline && !(field === 'tags' && timedTags)
+              // The editor may use the exact captured text as its typing baseline while its
+              // Save is in flight. A definitive size refusal left the server opening intact.
+              && !(field === 'content' && sizeRefusedDraft && same(sizeRefusedDraft.content, expectedBaseline.content))
               && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
               && !storedAs(field, patch[field]));
             if (placeChanged || changedElsewhere.length) {

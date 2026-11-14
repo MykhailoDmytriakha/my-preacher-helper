@@ -1,4 +1,5 @@
 import { isConnectionFailure } from '@/utils/connectionFailure';
+import { noteCaptureWriter } from '@/utils/draftCaptureRecovery.client';
 
 import { readAccountPreferenceComparison } from './accountPreference';
 import { analysisCreationScope } from './analysisCreation';
@@ -16,7 +17,7 @@ import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
-import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -36,6 +37,7 @@ import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } fr
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
+import { oversizedNoteOpening } from './oversizedNoteCorrection';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -1333,6 +1335,43 @@ export class DataEngine {
     for (const listener of this.openAnswerListeners) {
       try { listener(); } catch { /* Rendering never changes editor ownership. */ }
     }
+  }
+
+  /** The same note draft may correct its sole definitive body-size refusal. */
+  async shortenRefusedNote(resource: ResourceRef, editorId: string, captureScope: string,
+    waiting: readonly EditorRecord[], update: (opening: DocumentData | null, confirmed: ResourceSnapshot, sizeRefusedDraft: DocumentData) => DocumentData | null,
+    content?: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    const writer = noteCaptureWriter(captureScope, owner, resource);
+    const [record] = waiting;
+    if (!writer || !isResourceActionEditor(editorId, resource) || waiting.length !== 1
+      || record.owner !== owner || !sameResource(record.checkpoint.confirmed.resource, resource) || !isResourceActionEditor(record.editorId, resource)
+      || record.checkpoint.conflicts.length || record.checkpoint.remoteCandidate) return null;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    const unsettled = requests.filter(request => request.owner === owner && sameResource(request.baseline.resource, resource)
+      && request.state !== 'cancelled' && request.state !== 'acknowledged');
+    const [source] = unsettled;
+    if (unsettled.length !== 1 || !oversizedNoteOpening(source) || source.editorId !== record.editorId
+      || noteCaptureWriter(source.retentionScope, owner, resource) !== writer) return null;
+    const held = record.checkpoint.pending[source.id];
+    if (Object.keys(record.checkpoint.pending).length !== 1 || !held || held.generation !== source.editGeneration
+      || !equalValues(held.value, source.value) || !equalValues(record.checkpoint.draft, source.value)) return null;
+    const known = await this.knownSnapshot(owner, generation, resource);
+    if (known && (!known.value || known.metadata?.generation !== source.working.metadata?.generation)) return null;
+
+    const corrected = update(source.working.value, source.working, source.value);
+    if (!corrected) return null;
+    const session = new DataSession(source.working);
+    session.edit(corrected);
+    const receipt = await this.commits.replaceOversizedNote(source, editorId, captureScope, session.checkpoint(), request => {
+      session.applyCommit(request);
+      return { owner, editorId, checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+    }, content);
+    this.assertCurrent(owner, generation);
+    if (receipt) { this.prepareCommitsInBackground(); this.backgroundDrain(); }
+    return receipt;
   }
 
   /**

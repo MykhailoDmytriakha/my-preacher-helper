@@ -49,6 +49,14 @@ function readScope(scope: string): DraftCaptureScope | null {
   } catch { return null; }
 }
 
+/** Capture tokens identify text; the scoped draft address identifies its writer across edits. */
+export function noteCaptureWriter(scope: string | undefined, owner: string, resource: DraftCaptureScope['resource']): string | undefined {
+  const capture = scope && readScope(scope);
+  if (!capture || resource.collection !== 'studyNotes' || !sameResource(capture.resource, resource)) return;
+  const address = readDraftAddress(capture.sourceKey);
+  if (address?.owner === owner && address.aggregate === 'note' && address.documentId === resource.id) return address.writerId;
+}
+
 /** Immediate autosave can beat the typing debounce; bind the exact submitted words. */
 export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string, editedAt?: number): string | undefined {
   if (!owner) return undefined;

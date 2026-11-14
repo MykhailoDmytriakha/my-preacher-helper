@@ -3,6 +3,7 @@ import React from 'react';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
+import { prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 import { collectionDocumentViews } from '../collectionView';
@@ -282,6 +283,51 @@ describe('one action on a document no screen has open', () => {
       expect(await harness.engine.listWriteCaptures('public-capture:')).toEqual([]);
       expect((await harness.commits.list('owner')).some(row => row.id === receipt.requestId)).toBe(true);
     } finally { unmount(); }
+  });
+
+  it('sends a shortened note from the same editor after its content request was refused for size', async () => {
+    const target = { collection: 'studyNotes', id: 'size-refused-note' };
+    const opening = { userId: 'owner', title: 'Note', content: 'Original text', type: 'note',
+      scriptureRefs: [], tags: [], isDraft: true, createdAt: '2026-11-14', updatedAt: '2026-11-14' };
+    const initial: ResourceSnapshot = { resource: target, value: opening,
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
+    const { harness, result } = setup(initial, {
+      apply: (command, current) => command.kind === 'update' && command.changes.some(change => change.after.value === 'Very large refused text')
+        ? { kind: 'refused', operationId: command.operationId, code: 'resource-exhausted' }
+        : applyCommand(command, current),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const save = (content: string, writer = 'note-writer', previous = opening.content) => result.current.submit(target,
+      { kind: 'update', update: (current, _confirmed, sizeRefusedDraft) => {
+        if (current?.content !== previous && sizeRefusedDraft?.content !== previous) throw new Error('Opening changed');
+        return { ...current!, content };
+      } }, {
+        captureScope: prepareNoteDraftCapture('owner', target.id, { ...opening, content }, writer),
+        noteContent: { generation: 'g1', observedRevision: 1, opening: opening.content, time: null },
+      });
+    const refused = await save('Very large refused text');
+    await expect(refused.persistence).rejects.toMatchObject({ code: 'resource-exhausted' });
+    const original = jest.mocked(harness.transport.send).mock.calls[0][0];
+    const failed = (await harness.commits.list('owner')).find(request => request.id === refused.requestId)!;
+    await expect(save('Words in a different draft', 'different-writer')).rejects.toMatchObject({ code: 'decision-required' });
+    await expect(save('Very large refused text', 'note-writer', 'Very large refused text')).rejects.toMatchObject({ code: 'decision-required' });
+    harness.storage.writeFailureFor = (key, value) => Array.isArray(key) && key[0] === 'checkpoint' && value !== undefined;
+    try {
+      await expect(save('Short text', 'note-writer', 'Very large refused text')).rejects.toThrow('disk full');
+      expect((await harness.commits.list('owner')).find(request => request.id === refused.requestId)).toEqual(failed);
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    } finally {
+      harness.storage.writeFailureFor = undefined;
+    }
+    const corrected = await save('Short text', 'note-writer', 'Very large refused text');
+    expect(corrected.requestId).not.toBe(refused.requestId);
+    await expect(corrected.persistence).resolves.toMatchObject({ value: { content: 'Short text' }, metadata: { revision: 2 } });
+    const sent = jest.mocked(harness.transport.send).mock.calls.map(([command]) => command);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toEqual(original);
+    expect(sent[1]).toMatchObject({ kind: 'update', generation: 'g1', studyNoteContentAction: { observedRevision: 1, time: null }, changes: [{
+      path: ['content'], before: { exists: true, value: 'Original text' }, after: { exists: true, value: 'Short text' },
+    }] });
   });
 
   it('accepts the exact captured write delivered by another worker through the shared durable queue', async () => {
