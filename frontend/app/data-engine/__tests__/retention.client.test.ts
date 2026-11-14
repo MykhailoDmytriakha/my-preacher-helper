@@ -155,6 +155,49 @@ it('keeps one generation watermark for thousands of saves in one editor', async 
   expect([...storage.rows]).toEqual([['["generation","owner","editor"]', { through: 1000 }]]);
 }, 15000);
 
+it('retires a closed ordinary editor watermark while preserving its saved work', async () => {
+  const commits = createIndexedDbCommitStore();
+  const editorId = JSON.stringify(['retirable-v1:tab', 'studyNotes', 'note', 'default', 'opening']);
+  const key = JSON.stringify(['generation', 'owner', editorId]);
+  await commits.activateOrdinaryEditor?.('owner', editorId);
+  const first = await commits.create(request('first', editorId));
+  await commits.compareAndSet(first, acknowledge(first));
+  await commits.releaseProjection!('owner', [first.id]);
+  expect(storage.rows.get(key)).toEqual({ through: 1 });
+  await expect(commits.create(request('replay', editorId))).rejects.toMatchObject({ code: 'commit-generation-complete' });
+
+  const second = await commits.create(request('second', editorId, 2));
+  await commits.retireOrdinaryEditor?.('owner', editorId);
+  expect(await commits.list('owner')).toEqual([second]);
+  expect(storage.rows.has(key)).toBe(false);
+
+  await commits.compareAndSet(second, acknowledge(second));
+  await commits.releaseProjection!('owner', [second.id]);
+  expect(storage.rows.has(key)).toBe(false);
+  await expect(commits.create(request('late replay', editorId, 2))).rejects.toMatchObject({ code: 'commit-editor-closed' });
+});
+
+it('clears markers written by an older collection pass for retired recovery openings', async () => {
+  const editorId = JSON.stringify(['retirable-v1:tab', 'studyNotes', 'note', 'default', 'opening']) + ':recovery:new';
+  const commits = createIndexedDbCommitStore();
+  await commits.activateOrdinaryEditor?.('owner', editorId);
+  const captured = await commits.create(request('recovered', editorId));
+  await commits.retireOrdinaryEditor?.('owner', editorId);
+  expect(await commits.list('owner')).toEqual([captured]);
+  await commits.compareAndSet(captured, acknowledge(captured));
+  await commits.releaseProjection!('owner', [captured.id]);
+  const key = JSON.stringify(['generation', 'owner', editorId]);
+  const oldKey = JSON.stringify(['generation', 'owner', 'legacy-opening']);
+  const collection = createCommitCollectionWindow();
+  await collection.begin('owner')();
+  // An older collector may finish after this page's first pass.
+  storage.rows.set(key, { through: 1 });
+  storage.rows.set(oldKey, { through: 9 });
+  await collection.begin('owner')();
+  expect(storage.rows.has(key)).toBe(false);
+  expect(storage.rows.get(oldKey)).toEqual({ through: 9 });
+});
+
 it('retains an ACK closed before projection, a pending checkpoint, and a staged manual predecessor', async () => {
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints(), transaction = createEngineStorageTransaction();
   const created = await commits.create(request()); const accepted = await commits.compareAndSet(created, acknowledge(created));

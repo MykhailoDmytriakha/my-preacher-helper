@@ -9768,3 +9768,15 @@ On local production build `LpmvQoHvoxdUINwilZEAb`, headless Chrome at 390 and 12
 After authorized deployment, use a disposable test note. Record a short sentence, type while recognition is awaiting its answer, append more words and reopen the note. The legacy thought mount and Save handoff were checked in Jest. Real-device microphone and natural same-render frequency remain distinct from the controlled local check.
 
 Full Jest passed 15,780 tests with 17 skipped. TypeScript, scoped ESLint with existing warnings, production build, and independent source review passed.
+
+## BUG-20261113-generation-watermarks-never-collected · Retire a finished screen editor's replay guard
+
+The previous build `LpmvQoHvoxdUINwilZEAb`, using local Auth and Firestore, saved and reopened a test note three times. IndexedDB showed one, two and three retained generation markers, even though the commands were confirmed and their request and checkpoint rows were already collected. A regression in the browser storage adapter also distinguishes an active editor's retry protection from a retired editor's old marker.
+
+New ordinary screen editors have a fresh identity recognized by the native request store. The store revokes that identity's future captures and removes its completed generation marker in one transaction after admitted local closing work can complete. The already captured requests keep their original identities and normal retry path. The bounded maintenance pass also reclaims markers recreated by an older collector for already retired ordinary openings. The capture store keeps generation protection while the editor is active. The regression with a refused first disk write verifies that the last words make it to the server before the guard is collected. Legacy requests, recovery forks and retained request rows have separate tests.
+
+On local build `jbPhssRACZpvHMKCWKJi6`, headless Chrome at 390 and 1280 px navigated to Sermons → a sermon → Plan → By hand, saved three separate edits, left each editor through Back to sermon, and reopened the plan. Each open editor kept one watermark until exit. Each exit left zero watermarks, active openings or request rows for the test plan. The text, child paragraph and neighboring point remained visible. Reports and screenshots are in `artifacts/editor-watermark-retirement-20261114`.
+
+After authorized deployment, use a disposable sermon and a dedicated profile. Save and reopen the manual plan three times, check the final words and inspect the owner-scoped IndexedDB keys before and after each exit. A browser terminated before recording retirement can leave an active opening and its marker. Historical IDs, one-shot actions and manual scopes require separate treatment and stay in BUGS.md.
+
+Full Jest passed 15,782 tests with 17 skipped. TypeScript, scoped ESLint (warnings only), the production build and independent review passed.

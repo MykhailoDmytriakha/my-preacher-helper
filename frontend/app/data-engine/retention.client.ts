@@ -1,5 +1,6 @@
 'use client';
 
+import { isRetirableOrdinaryEditor, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
 import type { CommitRequest } from './commits';
@@ -21,6 +22,7 @@ function commitRowKind(request: CommitRow): typeof COMMIT_ROW_KINDS[number] {
 }
 export const commitRowKey = (request: CommitRow, kind: string = commitRowKind(request)): IDBValidKey =>
   [kind, request.owner, request.editorId, request.editGeneration];
+export const activeOrdinaryEditorKey = (owner: string, editorId: string): IDBValidKey => ['ordinary-editor', owner, editorId];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
 /** Separate from editor projection: even older checkpoint writers must retain uncached ACKs. */
@@ -110,11 +112,17 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
     if (!pending) { done(); return; }
     for (const [editorId, through] of watermarks) {
       const key = commitGenerationKey({ owner, editorId });
-      read(store.get(key), (previous: { through: number } | undefined) => {
+      const collected = () => { if (!--pending) done(); };
+      const protect = () => read(store.get(key), (previous: { through: number } | undefined) => {
         store.put({ through: Math.max(previous?.through ?? 0, through) }, key);
-        pending -= 1;
-        if (!pending) done();
+        collected();
       });
+      if (isRetirableOrdinaryEditor(editorId)) {
+        read(store.get(activeOrdinaryEditorKey(owner, editorId)), active => {
+          if (active) protect();
+          else { store.delete(key); collected(); }
+        });
+      } else protect();
     }
   };
   readCommitRows(store, read, owner, values => { requests = values; finish(); });
@@ -157,7 +165,20 @@ export function createCommitCollectionWindow() {
       if (pass.count) return;
       passes.delete(owner);
       await transaction<void>('readwrite', (store, read, done) => {
-        collectCommitRows(store, read, owner, () => done(undefined));
+        const compact = () => collectCommitRows(store, read, owner, () => done(undefined));
+        // An older page may have swept a request after its editor retired.
+        const scope = ['generation', owner];
+        const range = IDBKeyRange.bound([...scope, RETIRABLE_EDITOR_PREFIX], [...scope, RETIRABLE_EDITOR_PREFIX + '\uffff']);
+        read(store.getAllKeys(range), keys => {
+          const editors = keys.flatMap(key => Array.isArray(key) && typeof key[2] === 'string'
+            && isRetirableOrdinaryEditor(key[2]) ? [key[2]] : []);
+          let remaining = editors.length;
+          if (!remaining) { compact(); return; }
+          for (const editorId of editors) read(store.get(activeOrdinaryEditorKey(owner, editorId)), active => {
+            if (!active) store.delete(commitGenerationKey({ owner, editorId }));
+            if (!--remaining) compact();
+          });
+        });
       });
     };
   };

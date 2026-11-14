@@ -213,6 +213,10 @@ export type ChoiceCheckpoint = EditorRecord | EditorRecord[] | {
 
 export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
+  /** Register an ordinary editor allocated for this opening. A retired ID is never reused. */
+  activateOrdinaryEditor?(owner: string, editorId: string): Promise<void>;
+  /** Revoke future captures after the last admitted local write completes. */
+  retireOrdinaryEditor?(owner: string, editorId: string): Promise<void>;
   listForCollection?(owner: string, collection: string): Promise<CommitRequest[]>;
   /** Full cancellation evidence is needed only if this owner has an analysis action. */
   listForAnalysisRecovery?(owner: string): Promise<CommitRequest[]>;

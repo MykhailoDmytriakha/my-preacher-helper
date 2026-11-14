@@ -6,9 +6,10 @@ import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './
 import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
+import { isRetirableOrdinaryEditor } from './editorIdentity';
 import { writeManualChoiceRecoveries } from './manualScopes.client';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
-import { COMMIT_ROW_KINDS, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 
@@ -43,7 +44,7 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
   if (frozen.transferredFrom && !transferring) throw new Error('A replacement proof requires atomic source transfer');
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
-    checkOwnershipFormat(store, read, frozen, () => {
+    const capture = () => checkOwnershipFormat(store, read, frozen, () => {
       read(store.get(commitGenerationKey(frozen)), (completed: { through: number } | undefined) => {
         if (completed && completed.through >= frozen.editGeneration) throw Object.assign(new Error('This saved generation is already complete'), { code: 'commit-generation-complete' });
         const identity = ['identity', frozen.owner, frozen.id];
@@ -60,6 +61,12 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
         });
       });
     });
+    if (isRetirableOrdinaryEditor(frozen.editorId)) {
+      read(store.get(activeOrdinaryEditorKey(frozen.owner, frozen.editorId)), active => {
+        if (!active) throw Object.assign(new Error('The editor has already closed'), { code: 'commit-editor-closed' });
+        capture();
+      });
+    } else capture();
   });
 }
 
@@ -177,6 +184,23 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
           done(requests.size === ids.length ? ids.map(id => requests.get(id)!) : null);
         });
       });
+    }),
+    activateOrdinaryEditor: (owner, editorId) => transaction('readwrite', (store, read, done) => {
+      if (!isRetirableOrdinaryEditor(editorId)) throw new Error('Expected a fresh ordinary editor');
+      const key = activeOrdinaryEditorKey(owner, editorId);
+      read(store.get(key), active => {
+        if (active) throw new Error('This editor identity is already open');
+        store.put(true, key);
+        done(undefined);
+      });
+    }),
+    retireOrdinaryEditor: (owner, editorId) => transaction('readwrite', (store, _read, done) => {
+      if (isRetirableOrdinaryEditor(editorId)) {
+        // The admission row and replay guard retire together. Existing requests own their identities.
+        store.delete(activeOrdinaryEditorKey(owner, editorId));
+        store.delete(commitGenerationKey({ owner, editorId }));
+      }
+      done(undefined);
     }),
     create: request => createBatch([request]).then(records => records[0]),
     createWithCheckpoint: (request, project, options) => {

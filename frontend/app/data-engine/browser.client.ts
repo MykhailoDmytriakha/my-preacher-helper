@@ -13,7 +13,7 @@ import { createIndexedDbCollectionCursors } from './collectionCursors.client';
 import { CollectionReader } from './collections';
 import { createIndexedDbCommitStore } from './commits.client';
 import { watchEditQueue } from './editDiagnostics.client';
-import { editorIdentity } from './editorIdentity';
+import { ACTION_SLOT, editorIdentity, retirableEditorIdentity } from './editorIdentity';
 import { DataEngine } from './engine';
 import { createIndexedDbJournal } from './journal.client';
 import { LocalWriteback } from './localWriteback';
@@ -155,5 +155,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   // A clean checkpoint is compacted after ACK. Reusing its editor ID would restart
   // editGeneration at zero behind the durable dedupe watermark. Every page opening
   // therefore gets a new identity; DataDocumentProvider shares it within that page.
-  return { engine, dispose, editorId: (resource, slot = 'default') => editorIdentity(tabId, resource, slot, newClientId()) };
+  return { engine, dispose, editorId: (resource, slot = 'default') => slot === ACTION_SLOT
+    ? editorIdentity(tabId, resource, slot, newClientId())
+    : retirableEditorIdentity(tabId, resource, slot, newClientId()) };
 }

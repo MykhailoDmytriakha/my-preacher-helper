@@ -18,7 +18,7 @@ import { readCouncilSummaryChoice } from './councilPrivateFields';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
-import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -176,6 +176,7 @@ export interface EditorOpenOptions {
 }
 
 interface EditorEntry {
+  retirement?: { owner: string; generation: number; editorId: string; resource: ResourceRef };
   manualChoices?: ManualChoiceSources;
   presence: RecoveryPresenceLease;
   initializing: Promise<ManagedEditor> | null;
@@ -2432,10 +2433,18 @@ export class DataEngine {
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
           const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
             Promise.allSettled([controller.settled(), saving]), frozen, closingRequests) : undefined;
-          this.close(entry, keeping ?? saving);
+          const writing = saving && keeping ? Promise.all([saving, keeping]) : keeping ?? saving;
+          this.close(entry, writing);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
         },
       };
+      if (isRetirableOrdinaryEditor(editorId) && this.options.commits.activateOrdinaryEditor
+        && this.options.commits.retireOrdinaryEditor) {
+        await this.options.commits.activateOrdinaryEditor(owner, editorId);
+        entry.retirement = { owner, generation, editorId, resource: frozen };
+        if (entry.closed) this.retireOrdinaryEditor(entry, Promise.resolve());
+        assertOpening();
+      }
       this.backgroundDrain();
       return managed;
     } catch (error) {
@@ -3103,9 +3112,31 @@ export class DataEngine {
     return operation;
   }
 
+  private retireOrdinaryEditor(entry: EditorEntry, settled: Promise<unknown>, writeback?: Promise<unknown>): void {
+    const retirement = entry.retirement;
+    if (!retirement) return;
+    entry.retirement = undefined;
+    const { owner, generation, editorId, resource } = retirement;
+    // A failed closing write remains retryable. Retire only after its original owner can finish it.
+    const completed = writeback?.then(() => true, () => false);
+    void settled.then(() => this.retainLocal({
+      address: { owner, kind: 'editor-retirement', id: editorId, resource },
+      persist: async () => {
+        if (completed && !await completed) {
+          await this.localWriteback.retry(owner, address => address.id === editorId
+            && (address.kind === 'checkpoint' || address.kind === 'closing-save'));
+        }
+        await this.options.commits.retireOrdinaryEditor!(owner, editorId);
+      },
+    }, generation)).catch(() => undefined);
+  }
+
   private close(entry: EditorEntry, writeback?: Promise<unknown>): void {
+    if (entry.closed) return;
     entry.closed = true;
-    entry.presence.releaseAfter(Promise.allSettled([entry.initializing, entry.controller?.settled(), writeback]));
+    const settled = Promise.allSettled([entry.initializing, entry.controller?.settled()]);
+    entry.presence.releaseAfter(Promise.allSettled([settled, writeback]));
+    this.retireOrdinaryEditor(entry, settled, writeback);
     for (const [key, manual] of this.manualForms) if (manual.parent === entry) {
       this.retireManual(manual, this.generation, this.owner !== null);
       this.manualForms.delete(key);

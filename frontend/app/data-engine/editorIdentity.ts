@@ -12,6 +12,25 @@ export function editorIdentity(tabId: string, resource: ResourceRef, slot: strin
   return JSON.stringify([tabId, resource.collection, resource.id, slot, suffix]);
 }
 
+const RETIRABLE_TAB = 'retirable-v1:';
+export const RETIRABLE_EDITOR_PREFIX = JSON.stringify([RETIRABLE_TAB]).slice(0, -2);
+
+export function retirableEditorIdentity(tabId: string, resource: ResourceRef, slot: string, suffix: string): string {
+  return editorIdentity(RETIRABLE_TAB + tabId, resource, slot, suffix);
+}
+
+/** Keep the five-part identity readable by older bundles. Recovery forks have their own IDs. */
+export function isRetirableOrdinaryEditor(editorId: string): boolean {
+  try {
+    const parts: unknown = JSON.parse(openingEditorId(editorId));
+    return Array.isArray(parts) && parts.length === 5
+      && parts.every(part => typeof part === 'string' && part.length > 0)
+      && parts[3] !== ACTION_SLOT && parts[0].startsWith(RETIRABLE_TAB);
+  } catch {
+    return false;
+  }
+}
+
 /** The screen slot is the same for a fresh opening and its recovery forks. */
 export function editorSlot(editorId: string): string | null {
   try {

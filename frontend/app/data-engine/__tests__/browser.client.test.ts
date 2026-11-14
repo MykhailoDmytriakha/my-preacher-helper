@@ -146,7 +146,12 @@ describe('Browser DataEngine lifecycle composition', () => {
   });
 
   it('can save again after navigating away from an acknowledged and compacted editor', async () => {
-    const s = setup(); installStorageHarness();
+    const s = setup(); const storage = installStorageHarness();
+    const previousLocks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+      request: (_name: string, callback: () => Promise<void>) => callback(),
+      query: async () => ({ held: [] }),
+    } });
     jest.mocked(createIndexedDbCommitStore).mockReturnValue(jest.requireActual('../commits.client').createIndexedDbCommitStore());
     jest.mocked(createIndexedDbCheckpoints).mockReturnValue(jest.requireActual('../checkpoint.client').createIndexedDbCheckpoints());
     let server = copy(snapshot);
@@ -156,19 +161,39 @@ describe('Browser DataEngine lifecycle composition', () => {
       if (result.kind === 'acknowledged') server = copy(result.snapshot);
       return result;
     });
-    const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
-    const first = await browser.engine.openEditor(resource, browser.editorId(resource));
-    await first.commit(value => ({ ...value, content: 'first visit' }));
-    await browser.engine.retry(); await settle();
-    expect(first.getState().checkpoint.dirty).toBe(false);
-    expect(await createIndexedDbCommitStore().list('owner')).toEqual([]);
-    first.close({ flush: true });
-    const second = await browser.engine.openEditor(resource, browser.editorId(resource));
-    await second.commit(value => ({ ...value, content: 'second visit' }));
-    await browser.engine.retry(); await settle();
-    expect(server.value?.content).toBe('second visit');
-    expect(second.getState()).toMatchObject({ durable: true, error: null, checkpoint: { dirty: false } });
-    browser.dispose();
+    const browser = createBrowserDataEngine();
+    try {
+      s.authCallbacks[0].next(user('owner')); await settle();
+      const editorId = browser.editorId(resource);
+      const first = await browser.engine.openEditor(resource, editorId);
+      const watermark = JSON.stringify(['generation', 'owner', editorId]);
+      const activeOpening = JSON.stringify(['ordinary-editor', 'owner', editorId]);
+      await first.commit(value => ({ ...value, content: 'first visit' }));
+      await browser.engine.retry(); await settle();
+      expect(first.getState().checkpoint.dirty).toBe(false);
+      expect(await createIndexedDbCommitStore().list('owner')).toEqual([]);
+      expect(storage.rows.has(watermark)).toBe(true);
+      // The last draft of this opening is saved by close, even if its first disk attempt fails.
+      await first.edit({ ...first.getState().checkpoint.draft!, content: 'Last words before leaving' });
+      storage.writeFailureFor = key => Array.isArray(key) && key[0] === 'request' && key[2] === editorId;
+      first.close({ flush: true });
+      await settle();
+      expect(storage.rows.has(activeOpening)).toBe(true);
+      storage.writeFailureFor = undefined;
+      await browser.engine.retry(); await settle();
+      expect(server.value?.content).toBe('Last words before leaving');
+      expect(storage.rows.has(activeOpening)).toBe(false);
+      expect(storage.rows.has(watermark)).toBe(false);
+      const second = await browser.engine.openEditor(resource, browser.editorId(resource));
+      await second.commit(value => ({ ...value, content: 'second visit' }));
+      await browser.engine.retry(); await settle();
+      expect(server.value?.content).toBe('second visit');
+      expect(second.getState()).toMatchObject({ durable: true, error: null, checkpoint: { dirty: false } });
+    } finally {
+      browser.dispose();
+      if (previousLocks) Object.defineProperty(navigator, 'locks', previousLocks);
+      else Reflect.deleteProperty(navigator, 'locks');
+    }
   });
 
   it('persists offline edits and resumes their journal delivery once a request reaches the server', async () => {
