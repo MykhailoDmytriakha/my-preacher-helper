@@ -209,7 +209,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const [error, setError] = useState<FailureWords | null>(null);
 
   // Generated content by outline point ID
-  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues } = useEditorValues();
+  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues, foreignValuesBeforeAction } = useEditorValues();
 
   /**
    * The text as it is RIGHT NOW.
@@ -1205,6 +1205,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         conclusionSectionRef={conclusionSectionRef}
         generatedContent={shownContent}
         userActionValues={userActionValues}
+        foreignValuesBeforeAction={foreignValuesBeforeAction}
         modifiedContent={modifiedContent}
         savedSermonPoints={savedSermonPoints}
         editModePoints={editModePoints}

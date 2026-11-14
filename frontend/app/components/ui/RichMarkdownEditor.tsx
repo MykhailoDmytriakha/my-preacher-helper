@@ -1,7 +1,7 @@
 import Placeholder from '@tiptap/extension-placeholder';
 import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor } from '@tiptap/react';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 import { retireHistory } from './foreignHistory';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -15,6 +15,8 @@ interface RichMarkdownEditorProps {
     onChange: (value: string) => void;
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
+    /** A foreign value coalesced with the own action; apply its boundary first. */
+    valueBeforeUserAction?: { value: string | null };
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
@@ -28,6 +30,7 @@ export function RichMarkdownEditor({
     value,
     onChange,
     valueIsUserAction = false,
+    valueBeforeUserAction,
     placeholder = '',
     minHeight = '150px',
     autoFocus = false,
@@ -62,24 +65,36 @@ export function RichMarkdownEditor({
         },
     });
 
+    const appliedForeignValue = useRef(valueBeforeUserAction);
+
     // ACCEPTED LIMITATION: a foreign value retires this editor's entire Undo/Redo history.
     // Until the person acts again, Undo and Redo do nothing, including for earlier own typing.
     // Later own actions are undoable as usual; Undo/Redo cannot cross the arrival boundary.
     // Use production's full-document setContent for both origins, including its selection and
     // composition behavior. Only an explicit own action enters history; neither origin emits an update.
     useEffect(() => {
-        // @ts-expect-error - type
-        const currentMarkdown = editor ? (editor.storage.markdown).getMarkdown() : '';
-        if (!editor || editor.isDestroyed || draft === currentMarkdown) return;
-        editor.chain()
-            .command(({ tr }) => {
-                closeHistory(tr).setMeta('addToHistory', valueIsUserAction);
-                return true;
-            })
-            .setContent(draft, { emitUpdate: false })
-            .run();
-        if (!valueIsUserAction) retireHistory(editor);
-    }, [draft, editor, valueIsUserAction]);
+        if (!editor || editor.isDestroyed) return;
+        const replace = (next: string, own: boolean) => {
+            // @ts-expect-error - tiptap-markdown storage is not declared by core
+            if (next === editor.storage.markdown.getMarkdown()) return;
+            editor.chain()
+                .command(({ tr }) => {
+                    closeHistory(tr).setMeta('addToHistory', own);
+                    return true;
+                })
+                .setContent(next, { emitUpdate: false })
+                .run();
+            if (!own) retireHistory(editor);
+        };
+        // The buffer can still contain the previous render's draft. Wait for its value echo,
+        // and consume this baseline once so an origin-only render cannot replay it over typing.
+        if (valueIsUserAction && valueBeforeUserAction && draft === value
+            && appliedForeignValue.current !== valueBeforeUserAction) {
+            appliedForeignValue.current = valueBeforeUserAction;
+            if (valueBeforeUserAction.value !== null) replace(valueBeforeUserAction.value, false);
+        }
+        replace(draft, valueIsUserAction && valueBeforeUserAction?.value !== null);
+    }, [draft, editor, value, valueIsUserAction, valueBeforeUserAction]);
 
     useEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user

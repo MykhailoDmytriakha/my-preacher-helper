@@ -72,7 +72,7 @@ export default function EditThoughtModal({
   // when it is saved.
   const { t } = useTranslation();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
-  const { value: text, act: setText, isUserAction: textIsUserAction } = useEditorValue(initialText);
+  const { value: text, act: setText, isUserAction: textIsUserAction, foreignValueBeforeAction: textForeignValue } = useEditorValue(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
@@ -183,7 +183,7 @@ export default function EditThoughtModal({
           onRemoveTag={handleRemoveTag} onAddTag={handleAddTag} />
         <div className="space-y-3">
           <ThoughtTextHeader dictation={dictation} saving={isSubmitting} />
-          <RichMarkdownEditor valueIsUserAction={textIsUserAction} value={text} onChange={value => { setText(value); setSaveError(null); }} placeholder={t('manualThought.placeholder')} />
+          <RichMarkdownEditor valueIsUserAction={textIsUserAction} valueBeforeUserAction={textForeignValue} value={text} onChange={value => { setText(value); setSaveError(null); }} placeholder={t('manualThought.placeholder')} />
         </div>
         {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{sayFailure(saveError, t)}</p>}
       </div>

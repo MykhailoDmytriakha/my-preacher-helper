@@ -47,6 +47,7 @@ interface UseManualConspectusParams {
 export interface ManualConspectus {
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
+  foreignValuesBeforeAction: Record<string, { value: string }>;
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -78,7 +79,7 @@ export function useManualConspectus({
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const planWriter = usePlanWriter();
-  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues } = useEditorValues();
+  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
   const rescuingNodes = useRef(new Set<string>());
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
@@ -719,6 +720,7 @@ export function useManualConspectus({
   return {
     contentByNodeId,
     userActionValues,
+    foreignValuesBeforeAction,
     savedNodeIds,
     modifiedNodeIds,
     pendingNodeIds,

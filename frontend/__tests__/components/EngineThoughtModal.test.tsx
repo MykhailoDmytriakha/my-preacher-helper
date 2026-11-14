@@ -1,4 +1,5 @@
-import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
+import { closeHistory } from '@tiptap/pm/history';
+import { markdown, mountedEditor, redo, typeAtEnd, undo, waitForMountedEditor } from '@test-utils/richMarkdownHistory';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
@@ -333,4 +334,141 @@ it('regression pin: keeps a dictated thought insertion undoable in the same moun
     expect(markdown(editor)).toBe(a.text);
     view.unmount();
   } finally { mockRealEditor = false; }
+});
+
+it.each([false, true])('E15 overlapping typing and dictation remain visible and saved, type again=%s', async typeAgain => {
+  mockRealEditor = true;
+  try {
+    const { harness, view } = setup('a');
+    await waitForMountedEditor(view.baseElement);
+    await settle();
+    const editor = mountedEditor(view.baseElement);
+    const callbacks = jest.mocked(useTextDictation).mock.calls.at(-1)![0];
+    typeAtEnd(editor, ' Typed');
+    await act(async () => { await callbacks.onText('Dictation'); await settleEngine(); });
+    const displayed = markdown(editor);
+    if (typeAgain) { typeAtEnd(editor, ' Later'); await settle(); }
+    await save(); await deliver(harness);
+    const stored = (harness.read(resource).value?.thoughts as unknown as typeof a[]).find(item => item.id === 'a')?.text;
+    expect({ displayed, stored }).toEqual({ displayed: a.text + ' Typed\n\nDictation',
+      stored: a.text + ' Typed\n\nDictation' + (typeAgain ? ' Later' : '') });
+    view.unmount();
+  } finally { mockRealEditor = false; }
+});
+
+it.each([false, true])('E12 own dictation keeps typing, Undo, Redo and Save, overlap=%s', async overlap => {
+  mockRealEditor = true;
+  try {
+    const { harness, view } = setup('a');
+    await waitForMountedEditor(view.baseElement);
+    await settle();
+    const editor = mountedEditor(view.baseElement);
+    const callbacks = jest.mocked(useTextDictation).mock.calls.at(-1)![0];
+    typeAtEnd(editor, ' Typed');
+    if (!overlap) await settle();
+    // Production groups adjacent actions for 500 ms; isolate this requested replacement on both branches.
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    await act(async () => { await callbacks.onText('Dictation'); await settleEngine(); });
+    const requested = a.text + ' Typed\n\nDictation';
+    expect(markdown(editor)).toBe(requested);
+    expect(undo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(a.text + ' Typed');
+    expect(redo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(requested);
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    typeAtEnd(editor, ' Later'); await settle();
+    expect(undo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(requested);
+    expect(redo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(requested + ' Later');
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    await save(); await deliver(harness);
+    expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text: requested + ' Later' }, b]);
+    view.unmount();
+  } finally { mockRealEditor = false; }
+});
+
+it.each([false, true])('U65 own thought draft recovery keeps Undo, Redo, later typing and Save, creation=%s', async creation => {
+  const originalNow = Date.now;
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup(creation ? undefined : 'a');
+    await waitForMountedEditor(view.baseElement); await settle();
+    const opening = creation ? '' : a.text;
+    typeAtEnd(mountedEditor(view.baseElement), 'Recovered'); await settle();
+    const recovered = opening + 'Recovered';
+    view.unmount();
+    const restored = render(<Workspace />);
+    await waitForMountedEditor(restored.baseElement); await settle();
+    const editor = mountedEditor(restored.baseElement);
+    typeAtEnd(editor, ' Current'); await settle();
+    const before = markdown(editor);
+    const choice = await screen.findByRole('option', { name: 'Sermon' });
+    fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
+    const recoveredAt = Date.now() + 1000;
+    Date.now = () => recoveredAt;
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    await waitFor(() => expect(markdown(editor)).toBe(recovered)); await settle();
+    expect(undo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(before);
+    expect(redo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(recovered);
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    typeAtEnd(editor, ' Later'); await settle();
+    expect(undo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(recovered);
+    expect(redo(editor)).toBe(true); await settle();
+    expect(markdown(editor)).toBe(recovered + ' Later');
+    expect(mountedEditor(restored.baseElement)).toBe(editor);
+    await save(); await deliver(harness);
+    const stored = harness.read(resource).value?.thoughts as unknown as typeof a[];
+    expect(stored.find(item => creation ? !['a', 'b'].includes(item.id) : item.id === 'a')?.text).toBe(recovered + ' Later');
+    restored.unmount();
+  } finally { Date.now = originalNow; mockRealEditor = false; }
+});
+
+
+it('undoes taking the other device thought locally and saves the visible text only on Save', async () => {
+  const originalNow = Date.now;
+  mockRealEditor = true;
+  try {
+    const { harness, view } = setup('a');
+    const first = await waitForMountedEditor(view.baseElement);
+    await settle();
+    typeAtEnd(first, ' Laptop.');
+    await settle();
+    harness.replace({ ...original, metadata: { ...original.metadata!, revision: 2 },
+      value: { ...original.value!, thoughts: [{ ...a, text: 'Opening thought PHONE.' }, b] } });
+    await deliver(harness);
+    await save();
+    await deliver(harness);
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    const editor = await waitForMountedEditor(view.baseElement);
+    await settle();
+    const acceptedAt = Date.now() + 1000;
+    Date.now = () => acceptedAt;
+    const resolution = await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' });
+    await waitFor(() => expect(resolution).toBeEnabled());
+    fireEvent.click(resolution);
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await deliver(harness);
+    await settle();
+    expect(markdown(editor)).toBe('Opening thought PHONE.');
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    const sendsBeforeUndo = jest.mocked(harness.transport.send).mock.calls.length;
+    const serverBeforeUndo = harness.read(resource);
+    expect(undo(editor)).toBe(true);
+    await settle();
+    await deliver(harness);
+    expect(markdown(editor)).toBe('Opening thought Laptop.');
+    expect(harness.transport.send).toHaveBeenCalledTimes(sendsBeforeUndo);
+    expect(harness.read(resource)).toEqual(serverBeforeUndo);
+    const visible = markdown(editor);
+    await save();
+    await deliver(harness);
+    expect(harness.transport.send).toHaveBeenCalledTimes(sendsBeforeUndo + 1);
+    expect(harness.read(resource).value).toMatchObject({ thoughts: [{ ...a, text: visible }, b] });
+    expect(visible).toBe('Opening thought Laptop.');
+    view.unmount();
+  } finally { Date.now = originalNow; mockRealEditor = false; }
 });

@@ -743,7 +743,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, []);
-    const { value: content, observe: setContent, act: changeContent, isUserAction: contentIsUserAction } = useEditorValue('');
+    const { value: content, observe: setContent, act: changeContent, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
@@ -1572,7 +1572,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 value={content}
-                                valueIsUserAction={contentIsUserAction}
+                                valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
                                 onChange={setContent}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"

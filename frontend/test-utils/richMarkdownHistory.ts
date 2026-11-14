@@ -1,4 +1,4 @@
-import { act } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 
 import type { Editor } from '@tiptap/core';
 
@@ -7,6 +7,10 @@ export function mountedEditor(container: HTMLElement): Editor {
   if (!root?.editor) throw new Error('Expected a mounted TipTap editor');
   root.editor.view.setProps({ handleScrollToSelection: () => true });
   return root.editor;
+}
+
+export function waitForMountedEditor(container: HTMLElement): Promise<Editor> {
+  return waitFor(() => mountedEditor(container));
 }
 
 export function markdown(editor: Editor): string {
@@ -23,5 +27,11 @@ export function typeAtEnd(editor: Editor, text: string) {
 export function undo(editor: Editor): boolean {
   let result = false;
   act(() => { result = editor.commands.undo(); });
+  return result;
+}
+
+export function redo(editor: Editor): boolean {
+  let result = false;
+  act(() => { result = editor.commands.redo(); });
   return result;
 }
