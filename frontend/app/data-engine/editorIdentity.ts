@@ -100,6 +100,11 @@ export function isDocumentEditor(editorId: string, resource: ResourceRef): boole
   return tabForEditor(openingEditorId(editorId), resource) !== null;
 }
 
+export function isDocumentEditorSlot(editorId: string, resource: ResourceRef, slot: string): boolean {
+  const opening = openingEditorId(editorId);
+  return tabForEditor(opening, resource) !== null && editorSlot(opening) === slot;
+}
+
 /** An editor and its manual forms or explicit recovery retain the same original opening. */
 export function sharesEditorOpening(first: string, second: string): boolean {
   const root = (id: string) => openingEditorId(readManualScopeIdentity(id)?.parentEditorId ?? id);

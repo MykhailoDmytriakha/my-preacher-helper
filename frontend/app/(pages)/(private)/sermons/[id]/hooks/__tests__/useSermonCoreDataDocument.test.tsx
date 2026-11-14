@@ -1,15 +1,17 @@
 import { renderHook } from '@testing-library/react';
 
-import { useDataDocument, useDataEngine, useDataForm } from '@/data-engine/react.client';
+import { editorIdentity, manualChoiceRecoveryIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
+import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { UNKNOWN_RECORD_PRESENCE } from '@/data-engine/recordPresence';
 import { DataSession } from '@/data-engine/session';
 
 import { useSermonCoreDataDocument } from '../useSermonCoreDataDocument';
 
 import type { SermonCorePatch } from '../useSermonCoreDataDocument';
+import type { RecoveryCheckpoint } from '@/data-engine/controller';
 import type { DocumentData } from '@/data-engine/types';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()) })) }));
+jest.mock('@/data-engine/react.client', () => ({ ...jest.requireActual('@/data-engine/react.client'), useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()) })) }));
 function setup(value: DocumentData | null = { userId: 'owner', title: 'Original', verse: 'John 1', thoughts: [], preparation: {
   authorIntent: 'Keep', textContext: { passage: 'Keep passage', contextNotes: 'Old notes' },
 } }) {
@@ -59,6 +61,43 @@ describe('useSermonCoreDataDocument', () => {
     expect(result.current.recover).toBe(s.api.recover);
     expect(result.current.keepLocal).toBe(s.api.keepLocal);
     rerender({ id: null }); expect(useDataDocument).toHaveBeenCalledWith(null, { slot: 'core' });
+  });
+
+  it('offers ordinary core drafts and reopened core forks with the point title, with no offer for scratch drafts', async () => {
+    const { api, session } = setup();
+    api.status = { phase: 'saved' } as NonNullable<typeof api.status>;
+    const { confirmed } = session.checkpoint();
+    const base = { ...confirmed.value!, preparation: { exegeticalPlan: [{ id: 'point', title: 'Opening' }] } };
+    const changed = { ...base, preparation: { exegeticalPlan: [{ id: 'point', title: 'Typed point' }] } };
+    const source = (slot: string, checkpointId: string, recovery = false): RecoveryCheckpoint => {
+      const editor = editorIdentity('earlier-tab', confirmed.resource, slot, checkpointId);
+      return { id: checkpointId, record: {
+        owner: 'owner', editorId: recovery ? recoveryEditorIdentity(editor, 'fork') : editor, prepared: null, unfinalized: [],
+        checkpoint: { ...session.checkpoint(), confirmed: { ...confirmed, value: base }, draft: changed, dirty: true },
+      } };
+    };
+    const ordinary = source('sermon', 'core-copy');
+    const fork = source('sermon', 'core-fork', true);
+    const isolated = source('core', 'isolated-core-copy');
+    const scratch = source('scratch', 'scratch-copy');
+    const submitted = source('core', 'submitted-copy');
+    submitted.record.checkpoint.pending.send = { value: changed, generation: 0 };
+    const reviewed = source('core', 'reviewed-copy');
+    reviewed.record.editorId = manualChoiceRecoveryIdentity('chosen', 'later');
+    jest.mocked(api.listRecoverable).mockImplementation(async options =>
+      options?.manualChoiceCopies === 'only' ? [reviewed] : [ordinary, fork, isolated, scratch, submitted, reviewed]);
+
+    renderHook(() => useSermonCoreDataDocument('sermon'));
+    const options = jest.mocked(useRecoveryDiscovery).mock.calls.at(-1)![0];
+    const choices = await options.list();
+    expect(choices).toEqual([
+      expect.objectContaining({ id: ordinary.id, preview: 'Typed point' }),
+      expect.objectContaining({ id: fork.id, preview: 'Typed point' }),
+      expect.objectContaining({ id: isolated.id, preview: 'Typed point' }),
+      expect.objectContaining({ id: reviewed.id }),
+    ]);
+    await options.recover(ordinary.id);
+    expect(api.recover).toHaveBeenCalledWith(ordinary.id);
   });
 
   it('binds title and verse forms to selected fields and stages typing without a document commit', async () => {

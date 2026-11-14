@@ -29,9 +29,9 @@ import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer 
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
 import { makeDocumentTagIntents, observeDocumentTagBasis, validDocumentTagIntents } from './documentTagCapture';
 import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
-import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
-import { restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
+import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -293,6 +293,26 @@ export function discoverLegacyRecovery(owner: string, options?: Parameters<typeo
 /** Export exactly the reviewed original, fenced to its owner. */
 export function exportLegacyRecovery(source: LegacyRecoverySource, owner: string): string {
   return exportLegacyOriginal(source, owner);
+}
+
+/** A workspace restores its own unsent words as well as retained versions from a completed review. */
+export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly string[]): boolean {
+  if (isManualChoiceRecoveryIdentity(record.editorId)) return true;
+  const { checkpoint } = record;
+  return checkpoint.dirty && !isOnlySubmittedCopy(record, () => true)
+    && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
+}
+
+export function exegeticalDraftTitlePreview(record: EditorRecord): string {
+  const { draft, confirmed } = record.checkpoint;
+  const next = exegeticalPlan(draft?.preparation);
+  if (!next) return '';
+  const opening = exegeticalPlan(confirmed.value?.preparation);
+  const titles = [...next.points.entries].flatMap(([id, { fields }]) => {
+    const title = fields.title;
+    return typeof title === 'string' && title !== opening?.points.entries.get(id)?.fields.title ? [title] : [];
+  });
+  return titles.join('\n').slice(0, 500);
 }
 
 /** A persisted field action keeps an exact calibrated interval, or explicitly unknown time. */

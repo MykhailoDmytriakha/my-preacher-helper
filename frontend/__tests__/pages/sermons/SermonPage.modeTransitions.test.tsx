@@ -79,6 +79,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineStructureWriterProv
   },
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({
+  ...jest.requireActual('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument'),
   useSermonCoreDataDocument: jest.fn(() => mockCore),
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument', () => ({

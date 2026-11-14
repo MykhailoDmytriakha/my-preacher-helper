@@ -1,7 +1,7 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, isWorkspaceRecoveryCopy, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -15,6 +15,8 @@ import type { Preparation, Sermon } from '@/models/models';
 export type SermonCorePatch = Partial<Pick<Sermon, 'title' | 'verse' | 'date' | 'church' | 'isPreached' | 'sourceNoteIds'>>;
 export interface QueuedCoreDelivery { delivery: 'queued' }
 const coreFields = new Set(['title', 'verse', 'date', 'church', 'isPreached', 'sourceNoteIds']);
+const CORE_SLOT = 'core';
+export const SERMON_WORKSPACE_SLOT = 'sermon';
 const NOT_EDITABLE = 'The sermon is not available for editing';
 
 /** Apply only supplied fields; undefined explicitly removes an optional field. */
@@ -34,7 +36,7 @@ function patchFields(current: DocumentData, patch: Record<string, unknown>, nest
 export function useSermonCoreDataDocument(sermonId: string | null) {
   const { owner } = useDataEngine();
   const { t, language } = useTranslation();
-  const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: 'core' });
+  const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: CORE_SLOT });
   usePublishShellTitle('sermons', sermonId, document.data);
   const titleForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'title', [['title']]);
   const verseForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'verse', [['verse']]);
@@ -99,12 +101,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   const recoveringHeader = borrowed.length > 0 && document.state?.savedIntentReplaceable === false
     && !titleForm.exactChoice && !verseForm.exactChoice;
   const recoveryReady = titleForm.recoveryReady && verseForm.recoveryReady;
+  const canOfferCoreDraft = document.status?.phase === 'saved' && !isReadOnly;
   const recovery = useRecoveryDiscovery({
     identity: document.recoveryIdentity,
     enabled: recoveryReady,
-    version: JSON.stringify([borrowed, recoveringHeader, document.status?.phase, document.confirmed?.metadata?.revision]),
+    version: JSON.stringify([borrowed, recoveringHeader, canOfferCoreDraft, document.status?.phase, document.confirmed?.metadata?.revision]),
     list: async () => {
-      const preserved = document.listRecoverable({ manualChoiceCopies: 'only' });
+      const preserved = canOfferCoreDraft ? document.listRecoverable() : document.listRecoverable({ manualChoiceCopies: 'only' });
       const forms = recoveringHeader ? Object.values(headerForms).map(async form => {
         if (!form.borrowedRecoveryIds?.length) return [];
         return (await form.listRecoverable()).filter(source => form.borrowedRecoveryIds.includes(source.scopeId)).map(source => ({
@@ -114,11 +117,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
         }));
       }) : [];
       const [copies, ...records] = await Promise.all([preserved, ...forms]);
-      return [...records.flat(), ...copies.map(source => {
-        const { id, record: { checkpoint } } = source;
-        return { id, title: String(checkpoint.draft?.title ?? checkpoint.confirmed.value?.title ?? sermonId ?? ''),
-          preview: checkpoint.draft?.verse !== checkpoint.confirmed.value?.verse ? String(checkpoint.draft?.verse ?? '') : '',
-          discard: () => document.discardRecovery(source) };
+      return [...records.flat(), ...copies.flatMap(source => {
+        const { id, record } = source;
+        const { checkpoint: { draft, confirmed } } = record;
+        if (!isWorkspaceRecoveryCopy(record, canOfferCoreDraft ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
+        const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '') : exegeticalDraftTitlePreview(record);
+        return [{ id, title: String(draft?.title ?? confirmed.value?.title ?? sermonId ?? ''), preview,
+          discard: () => document.discardRecovery(source) }];
       })];
     },
     recover: id => {

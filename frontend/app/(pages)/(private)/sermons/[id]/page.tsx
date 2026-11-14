@@ -65,7 +65,7 @@ import { sermonHasInconsistentThoughts } from "@utils/thoughtStructureConsistenc
 
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { EngineStructureWriterProvider } from './components/EngineStructureWriterProvider';
-import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
+import { SERMON_WORKSPACE_SLOT, useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
 import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
 import { useThoughtPlacementComparison } from './structure/ThoughtLockHistory';
 
@@ -205,7 +205,7 @@ const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
 export default function SermonPage() {
   const id = useRouteId();
   return (
-    <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: SERMON_WORKSPACE_SLOT, readOnlyCopy: true }}>
       {/* One door for outline writes on this page (the page outline and the structure editor alike). */}
       <EngineStructureWriterProvider sermonId={id}>
         <SermonPageContent id={id} />
