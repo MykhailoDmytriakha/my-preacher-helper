@@ -25,11 +25,11 @@ function hasForeignContinuation(origin: string, targets: ReadonlySet<string>, re
 
 /** Return may discover a foreign dependent after this same-tab editor opened. */
 export function reopenedManualAnswerScope(request: CommitRequest, editorId: string,
-  requests: ReadonlyMap<string, CommitRequest>): string | undefined {
+  resourceRequests: ReadonlyMap<string, CommitRequest>, requests: ReadonlyMap<string, CommitRequest>): string | undefined {
   const origin = readManualScopeIdentity(request.editorId)?.parentEditorId;
   const resource = request.baseline.resource;
   if (!origin || origin === editorId || !areSameTabManualParents(origin, editorId, resource)) return undefined;
-  const related = [...requests.values()].filter(row => row.owner === request.owner && equalValues(row.baseline.resource, resource));
+  const related = [...resourceRequests.values()];
   return hasForeignContinuation(origin, new Set([request.id]), resource, related, requests) ? request.editorId : undefined;
 }
 

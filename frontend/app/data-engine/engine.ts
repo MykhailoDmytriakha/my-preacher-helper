@@ -34,6 +34,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { OpenEditorJournal, OpenEditorRequests } from './openEditorRequests';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
@@ -243,6 +244,7 @@ export class DataEngine {
   private readonly cacheWrites = new Map<string, { owner: string; generation: number; resource: ResourceRef; operation: Promise<ResourceSnapshot> }>();
   private readonly reads = new Map<string, Promise<ResourceSnapshot>>();
   private pending: JournalEntry[] = [];
+  private pendingByOperation = new OpenEditorJournal([]);
   private pendingVersion = 0;
   private readonly pendingListeners = new Set<() => void>();
   private openAnswers: readonly ResourceRef[] = Object.freeze([]);
@@ -255,7 +257,8 @@ export class DataEngine {
   private readonly stopRuntime: () => void;
   private readonly commits: CommitQueue;
   private readonly stopCommits: () => void;
-  private commitRecords = new Map<string, CommitRequest>();
+  private readonly commitRecords = new Map<string, CommitRequest>();
+  private readonly editorRequests = new OpenEditorRequests();
   private readonly projectedCommitEvents = new Map<string, number>();
   private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
   private settling: { owner: string; generation: number; operation: Promise<void> } | null = null;
@@ -338,6 +341,7 @@ export class DataEngine {
     this.options.runtime.setOwner(owner);
     this.commits.setOwner(owner);
     this.commitRecords.clear();
+    this.editorRequests.clear();
     this.projectedCommitEvents.clear();
     this.options.collections?.setOwner(owner);
     this.options.observer.setOwner(owner);
@@ -392,6 +396,7 @@ export class DataEngine {
     for (const [id, request] of before) {
       if (!present.has(id) && this.commitRecords.get(id) === request) {
         this.commitRecords.delete(id);
+        this.editorRequests.delete(request);
         this.projectedCommitEvents.delete(id);
       }
     }
@@ -549,7 +554,32 @@ export class DataEngine {
   /** A delayed list may finish after delivery has already advanced the same request. */
   private rememberCommit(request: CommitRequest): void {
     const current = this.commitRecords.get(request.id);
-    if (!current || current.revision < request.revision) this.commitRecords.set(request.id, request);
+    if (current && current.revision >= request.revision) return;
+    this.commitRecords.set(request.id, request);
+    this.editorRequests.set(request, current);
+  }
+
+  private requestsForChoice(owner: string, ids: readonly string[], editorId?: string): CommitRequest[] {
+    return this.editorRequests.forChoice(this.commitRecords, owner, ids, editorId);
+  }
+
+  private journalForRequests(requests: readonly CommitRequest[]): JournalEntry[] {
+    return this.pendingByOperation.forOperations(requests.flatMap(request =>
+      [request.command?.operationId, request.atomic?.id].filter((id): id is string => Boolean(id))));
+  }
+
+  private canReplaceOpenIntent(owner: string, editorId: string, ids: readonly string[]): boolean {
+    if (!ids.length) return false;
+    const requests = this.requestsForChoice(owner, ids, editorId);
+    return canReplaceDocumentIntent(owner, editorId, ids, requests, this.journalForRequests(requests));
+  }
+
+  private answerForOpenIntent(owner: string, resource: ResourceRef, ids: readonly string[], journal = this.pendingByOperation) {
+    const requests = ids.flatMap(id => {
+      const request = this.commitRecords.get(id);
+      return request ? [request] : [];
+    });
+    return savedDocumentAnswer(owner, resource, ids, requests, journal.forOperations(ids));
   }
 
   private projectCollection(owner: string, collection: string, state: CollectionState): CollectionState {
@@ -1288,18 +1318,19 @@ export class DataEngine {
     return () => { this.openAnswerScopeListeners.delete(listener); };
   }
 
-  private answeredEditorWork(journal: readonly JournalEntry[]): OpenDocumentAnswer[] {
-    const requests = [...this.commitRecords.values()];
+  private answeredEditorWork(journal: OpenEditorJournal): OpenDocumentAnswer[] {
+    const owner = this.owner ?? '';
     const scopes: OpenDocumentAnswer[] = [];
     for (const [editorId, entry] of [...this.editors.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       // A transient action has no answering screen; opening it cannot hide the global question.
       if (editorSlot(editorId) === ACTION_SLOT) continue;
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
-      if (!checkpoint || !entry.controller!.hasChoiceAuthority(checkpoint) || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
-        Object.keys(checkpoint.pending), requests, journal)) continue;
-      const scope = { owner: this.owner ?? '', resource: checkpoint.confirmed.resource,
-        operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft,
-        ...ordinaryAnswerCoverage(checkpoint, requests, entry.manualChoices) };
+      if (!checkpoint || !entry.controller!.hasChoiceAuthority(checkpoint)) continue;
+      const operationIds = Object.keys(checkpoint.pending);
+      if (!this.answerForOpenIntent(owner, checkpoint.confirmed.resource, operationIds, journal)) continue;
+      const scope = { owner, resource: checkpoint.confirmed.resource,
+        operationIds: operationIds.sort(), draft: checkpoint.draft,
+        ...ordinaryAnswerCoverage(checkpoint, this.requestsForChoice(owner, operationIds), entry.manualChoices) };
       if (!scopes.some(previous => equalValues(previous, scope))) scopes.push(scope);
     }
     return scopes;
@@ -1311,11 +1342,11 @@ export class DataEngine {
   }
 
   private answeredEditorResources(journal: readonly JournalEntry[]): ResourceRef[] {
-    return this.resourcesForAnswers(this.answeredEditorWork(journal));
+    return this.resourcesForAnswers(this.answeredEditorWork(new OpenEditorJournal(journal)));
   }
 
   private publishOpenAnswers(): void {
-    const work = this.answeredEditorWork(this.pending);
+    const work = this.answeredEditorWork(this.pendingByOperation);
     if (!equalValues(work, this.openAnswerScopes)) {
       this.openAnswerScopes = Object.freeze(work.map(scope => Object.freeze({ ...copy(scope),
         resource: Object.freeze(copy(scope.resource)), operationIds: Object.freeze([...scope.operationIds]),
@@ -2224,11 +2255,12 @@ export class DataEngine {
           const borrowedManualAnswers = Object.entries(state.checkpoint.pending).flatMap(([id, intent]) => {
             const request = this.commitRecords.get(id);
             if (!request || !['conflict', 'refused'].includes(request.state)) return [];
-            const scope = intent.borrowedManualScope ?? reopenedManualAnswerScope(request, editorId, this.commitRecords);
+            const scope = intent.borrowedManualScope ?? reopenedManualAnswerScope(request, editorId,
+              this.editorRequests.forResource(owner, frozen), this.commitRecords);
             return scope ? [scope] : [];
           });
           return { ...state, borrowedManualAnswers, savedIntentReplaceable: legacy ? undefined : !loadingBranchAnswer && !borrowedManualAnswers.length && controller.hasChoiceAuthority(state.checkpoint)
-            && canReplaceDocumentIntent(owner, editorId, pendingIds, [...this.commitRecords.values()], this.pending) };
+            && this.canReplaceOpenIntent(owner, editorId, pendingIds) };
         },
         getObservation: () => { active(); return copy(entry.observation); },
         getPresence: () => {
@@ -2249,24 +2281,28 @@ export class DataEngine {
             && (heldCreation || creating && local)) {
             return { kind: 'creating', source: 'local', snapshot: { resource: copy(frozen), value: copy(checkpoint.draft), metadata: null } };
           }
-          const accepted = [...this.commitRecords.values()].flatMap(request =>
+          const accepted = [...this.editorRequests.forResource(owner, frozen).values()].flatMap(request =>
             request.owner === owner && request.result?.kind === 'acknowledged'
               && sameResource(request.result.snapshot.resource, frozen) ? [request.result.snapshot] : []);
           if (checkpoint.confirmed.value === null && checkpoint.confirmed.metadata?.deleted) accepted.push(checkpoint.confirmed);
           return copy(documentRecordPresence(frozen, entry.observation, undefined, accepted));
         },
-        getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
+        getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pendingByOperation)); },
         getSourceNoteLinkOpening: () => { active(); return sourceNoteLinkOpening(controller.getState().checkpoint, this.commitRecords); },
         getSermonPlanModeOpening: shown => {
           active();
-          return sameResource(shown.confirmed.resource, frozen) ? sermonPlanModeOpening(shown, [...this.commitRecords.values()]) : undefined;
+          return sameResource(shown.confirmed.resource, frozen)
+            ? sermonPlanModeOpening(shown, [...this.editorRequests.forResource(owner, frozen).values()]) : undefined;
         },
         getActions: () => {
           active();
-          const requests = [...this.commitRecords.values()];
+          const requests = [...this.editorRequests.forResource(owner, frozen).values()];
           return requests.filter(request => request.atomic?.kind === COUNCIL_CARRY && request.id === request.atomic.id
             && sameResource(request.baseline.resource, frozen) && !['acknowledged', 'cancelled'].includes(request.state))
-            .map(request => ({ id: request.id, delivery: describeActionDelivery(owner, request.atomic!.participants, requests, this.pending) }));
+            .map(request => {
+              const scope = this.requestsForChoice(owner, request.atomic!.participants);
+              return { id: request.id, delivery: describeActionDelivery(owner, request.atomic!.participants, scope, this.journalForRequests(scope)) };
+            });
         },
         carryCouncilTopicToNew: (topicId, title) => carryCouncilTopic(topicId, title),
         carryCouncilTopicToExisting: (topicId, destinationId) => carryCouncilTopic(topicId, '', destinationId),
@@ -2585,7 +2621,7 @@ export class DataEngine {
     const capture = (): ManualCapture => { active(); return this.captureManual(parent, owner, selection); };
     const hasFailedDelivery = () => {
       const checkpoint = parent.controller!.getState().checkpoint;
-      return Boolean(savedDocumentAnswer(owner, resource, Object.keys(checkpoint.pending), [...this.commitRecords.values()], this.pending));
+      return Boolean(this.answerForOpenIntent(owner, resource, Object.keys(checkpoint.pending)));
     };
     const execute = (action: () => Promise<unknown>): Promise<void> => {
       active();
@@ -2717,7 +2753,7 @@ export class DataEngine {
     };
     const requireScope = () => { active(); if (!state.scope) throw new Error('Open the manual form before editing'); return state.scope; };
     const exactRequest = (stage: ReturnType<ManualScope['getState']> | undefined, checkpoint: SessionCheckpoint) =>
-      exactManualRequest(stage, checkpoint, this.commitRecords);
+      exactManualRequest(stage, checkpoint, this.editorRequests.forResource(owner, resource));
     const finishExactChoice = async (choice: 'local' | 'remote', scope: ManualScope, request: CommitRequest,
       updating: Promise<void> | undefined, assertComparison: () => void, action?: EditorCommitAction, titles?: readonly OutlineTitleDecision[]) => {
         await updating; active(); assertComparison();
@@ -2795,9 +2831,9 @@ export class DataEngine {
         const controller = parent.controller!;
         const checkpoint = controller.getState().checkpoint;
         const request = exactRequest(form, checkpoint);
-        const records = [...this.commitRecords.values()];
-        const exact = request && canReplaceDocumentIntent(owner, '', [request.id], records, this.pending);
-        const documentChoiceRequired = !exact && hasBranchedOrdinaryAnswer(Object.keys(checkpoint.pending), records);
+        const exact = request && this.canReplaceOpenIntent(owner, '', [request.id]);
+        const pendingIds = Object.keys(checkpoint.pending);
+        const documentChoiceRequired = !exact && hasBranchedOrdinaryAnswer(pendingIds, this.requestsForChoice(owner, pendingIds));
         return { ...form, ...(exact ? { exactChoice: true as const } : {}),
           ...(documentChoiceRequired ? { documentChoiceRequired: true as const } : {}),
           comparison: exact || ((!documentChoiceRequired || form.choiceRequired) && controller.hasChoiceAuthority(checkpoint))
@@ -2948,9 +2984,11 @@ export class DataEngine {
     this.pendingVersion += 1;
     const next = copy(entries.filter(entry => entry.command.owner === this.owner));
     if (!force && equalValues(next, this.pending)) return;
+    const nextByOperation = new OpenEditorJournal(next);
     const changed = [...this.editors.values()].filter(entry => !entry.closed && entry.controller
-      && !equalValues(this.editorDelivery(entry, this.pending), this.editorDelivery(entry, next)));
+      && !equalValues(this.editorDelivery(entry, this.pendingByOperation), this.editorDelivery(entry, nextByOperation)));
     this.pending = next;
+    this.pendingByOperation = nextByOperation;
     for (const listener of this.pendingListeners) {
       try { listener(); } catch { /* Rendering never changes delivery state. */ }
     }
@@ -2958,7 +2996,7 @@ export class DataEngine {
     this.publishOpenAnswers();
   }
 
-  private editorDelivery(entry: EditorEntry, entries: JournalEntry[]): JournalEntry[] {
+  private editorDelivery(entry: EditorEntry, journal: OpenEditorJournal): JournalEntry[] {
     if (entry.closed || !entry.controller) return [];
     const checkpoint = entry.controller.getState().checkpoint;
     const operations = new Set(Object.keys(checkpoint.pending));
@@ -2968,8 +3006,8 @@ export class DataEngine {
       if (request?.command) operations.add(request.command.operationId);
       if (request?.atomic) { operations.add(request.atomic.id); atomicOperations.add(request.atomic.id); }
     }
-    return entries.filter(item => operations.has(item.command.operationId)
-      && (sameResource(checkpoint.confirmed.resource, item.command.resource) || atomicOperations.has(item.command.operationId)));
+    return journal.forOperations(operations).filter(item =>
+      sameResource(checkpoint.confirmed.resource, item.command.resource) || atomicOperations.has(item.command.operationId));
   }
 
   private async refreshAcknowledged(operationId: string, snapshot: ResourceSnapshot, owner: string, generation: number): Promise<void> {
