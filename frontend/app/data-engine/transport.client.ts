@@ -14,7 +14,7 @@ import { validStudyNoteReferenceAliases } from './studyNoteReferenceMerge';
 
 import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, DataCommand, EngineTransport, Json, ResourceSnapshot, StudyNoteReferenceAlias } from './types';
 
-const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
+export const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
 const resourceSchema = z.object({ collection: z.string(), id: z.string() });
 const metadataSchema = z.object({ protocol: z.literal(1), generation: z.string().min(1), revision: z.number().int().safe().positive(), deleted: z.boolean(), operationId: z.string().refine(isValidIdentifier).optional(),
   shareRevocation: z.string().refine(isValidIdentifier).optional(),
@@ -34,7 +34,7 @@ const serviceOrderAnchor = z.object({
   id: z.string().refine(isValidIdentifier), generation: z.string().refine(isValidIdentifier).nullable(), title: z.string().optional(),
 });
 const serviceOrderGap = z.object({ previous: serviceOrderAnchor.nullable(), next: serviceOrderAnchor.nullable() });
-export const serviceOrderPlacementComparisonSchema = z.object({
+export const serviceOrderPlacementComparison = z.object({
   step: z.object({ id: z.string().refine(isValidIdentifier), title: z.string().optional() }).optional(),
   mine: serviceOrderGap, saved: serviceOrderGap.nullable(), available: z.boolean(),
 });
@@ -44,7 +44,7 @@ const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
   z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), code: z.string().optional(), base: field, mine: field, theirs: field, outlineSubpointIds: z.array(z.string().refine(isValidIdentifier)).max(32).optional(),
     orderedOutlineSubpoints: z.array(z.object({ id: z.string().refine(isValidIdentifier), side: z.enum(['local', 'remote']) })).max(32).optional(), studyNoteReferenceOpening: field.optional() })),
-    serviceOrderPlacementComparison: serviceOrderPlacementComparisonSchema.optional() }),
+    serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional() }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),
     seriesMembershipComparisons: z.array(seriesComparison).min(1).max(MAX_RELATION_RESOURCES).optional() }),

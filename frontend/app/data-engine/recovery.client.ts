@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
+import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
 import { readManualScopeIdentity } from './editorIdentity';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -10,8 +11,7 @@ import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } fr
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { DataSession } from './session';
-import { isThoughtLocation, type ThoughtLocation } from './thoughtPlacementAction';
-import { serviceOrderPlacementComparisonSchema, snapshotSchema } from './transport.client';
+import { json, serviceOrderPlacementComparison, snapshotSchema } from './transport.client';
 
 import type { CommitRequest } from './commits';
 import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
@@ -19,7 +19,7 @@ import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, FieldValue, ResourceRef } from './types';
 
 const id = z.string().refine(isValidIdentifier);
-const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }), z.object({ exists: z.literal(true), value: z.unknown() })]);
+const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }), z.object({ exists: z.literal(true), value: json })]);
 const groupPlacementWitness = z.array(z.object({ id, templateId: id }));
 const groupPlacementGap = z.object({ previous: id.nullable(), next: id.nullable() });
 const groupPlacementCapture = z.object({
@@ -31,8 +31,8 @@ const groupPlacementCapture = z.object({
 });
 const councilWitness = z.array(z.object({ id }));
 const councilPlacementCapture = groupPlacementCapture.extend({ before: councilWitness, after: councilWitness });
-const actionTime = z.object({ earliestMs: z.number().finite(), latestMs: z.number().finite() })
-  .refine(time => time.earliestMs <= time.latestMs).nullable();
+const actionTime = z.object({ earliestMs: z.number().int().safe().positive(), latestMs: z.number().int().safe().positive() })
+  .refine(time => boundedActionTime(time) !== undefined).nullable();
 const observedRevision = z.number().int().safe().nonnegative();
 const commentPlaceObservation = z.object({ before: fieldSchema, after: fieldSchema, paragraph: fieldSchema,
   observedRevision: observedRevision.positive(), time: actionTime, predecessorOperationId: id.optional(),
@@ -53,30 +53,15 @@ function rowValues<T extends z.ZodTypeAny>(value: T) {
 function rowDrafts<T extends z.ZodTypeAny>(action: T) {
   return z.record(z.string().min(1), z.object({ generation: id, reviewed: z.literal(true).optional(), action }));
 }
+const storedRowValue = z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.record(json)]);
+const storedRowAction = rowValues(storedRowValue);
 const titleAction = rowValues(z.string());
 const nullableTitleAction = rowValues(z.string().nullable());
-const durationAction = rowValues(z.number().finite().nonnegative().nullable());
-const lockAction = rowValues(z.boolean());
-const thoughtPlacementAction = rowValues(z.custom<ThoughtLocation>(isThoughtLocation));
-const optionalCouncilField = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
-  z.object({ exists: z.literal(true), value: z.string() })]);
-const councilDateAction = fieldAction.extend({ before: optionalCouncilField, after: optionalCouncilField });
+const councilDateAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
 const councilDateDraft = z.object({ generation: id, action: councilDateAction });
-const councilOutcomeAction = rowValues(z.object({ discussed: z.boolean(), acceptedOptionId: z.string().nullable(), decision: z.string().nullable(),
-  resolution: z.enum(['postponed', 'dropped']).nullable() }));
-const exegeticalPointDraft = fieldAction.omit({ predecessorOperationId: true }).extend({
+const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
   title: z.string().nullable(), ancestors: z.array(z.string().min(1)),
-});
-const serviceOrderAnchor = z.object({ id, generation: id.nullable() }).nullable();
-const serviceOrderGap = z.object({ previous: serviceOrderAnchor, next: serviceOrderAnchor });
-const serviceOrderPlacement = z.object({
-  generation: id.nullable(), before: fieldSchema, rank: z.number().finite(), afterRequests: z.array(id).optional(),
-  placement: fieldAction.extend({ opening: serviceOrderGap, destination: serviceOrderGap }),
-});
-const serviceOrderStepPlacement = z.object({
-  generation: id.nullable(), shownIds: z.array(id),
-  placement: fieldAction.extend({ stepId: id, opening: groupPlacementGap, destination: groupPlacementGap }),
 });
 const accountPreferenceField = z.custom<AccountPreferenceField>(field => ACCOUNT_PREFERENCE_TARGETS.some(target => target.field === field));
 const checkpointConflict = z.object({
@@ -85,19 +70,19 @@ const checkpointConflict = z.object({
   orderedOutlineSubpoints: z.array(z.object({ id, side: z.enum(['local', 'remote']) })).max(32).optional(),
   studyNoteReferenceOpening: fieldSchema.optional(),
 });
-const pendingCheckpoint = z.object({
+const pendingShape = {
   commentPlaceAction: commentPlaceObservation.optional(), outlinePointPlacement: outlinePlacement.optional(),
   groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(),
   generation: observedRevision, value: z.unknown(), operations: z.array(id).optional(),
   borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional(),
   groupTitleAction: textAction.optional(), groupStatusAction: textAction.optional(),
   councilTitleAction: textAction.optional(), councilDateAction: councilDateAction.optional(), councilLifecycleAction: councilDateAction.optional(),
-  councilOutcomeActions: z.array(councilOutcomeAction).optional(), councilTopicTitleActions: z.array(titleAction).optional(),
+  councilOutcomeActions: z.array(storedRowAction).optional(), councilTopicTitleActions: z.array(titleAction).optional(),
   groupBlockTitleActions: z.array(titleAction).optional(), groupStepTitleActions: z.array(nullableTitleAction).optional(),
-  groupBlockStatusActions: z.array(titleAction).optional(), groupStepDurationActions: z.array(durationAction).optional(),
-  thoughtLockActions: z.array(lockAction).optional(), thoughtPlacementActions: z.array(thoughtPlacementAction).optional(),
+  groupBlockStatusActions: z.array(titleAction).optional(), groupStepDurationActions: z.array(storedRowAction).optional(),
+  thoughtLockActions: z.array(storedRowAction).optional(), thoughtPlacementActions: z.array(storedRowAction).optional(),
   outlineTitleActions: z.array(titleAction).optional(),
-} satisfies Record<keyof SessionCheckpoint['pending'][string], z.ZodTypeAny>);
+} satisfies Record<keyof SessionCheckpoint['pending'][string], z.ZodTypeAny>;
 const sourceNoteSelection = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
   z.object({ exists: z.literal(true), value: z.array(id) })]);
 const sourceNoteLinkCapture = z.object({
@@ -113,6 +98,8 @@ const sermonNoteOpening = z.object({
     z.object({ kind: z.enum(['point', 'subpoint']), id }),
   ]),
 });
+// These in-memory instructions can resend a move after later typing or an undo.
+type PlacementRetry = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry';
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
@@ -129,9 +116,7 @@ const recordSchema = z.object({
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(checkpointConflict).default([]),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
-    serviceOrderPlacementComparison: serviceOrderPlacementComparisonSchema.optional(),
-    serviceOrderPlacementRetry: serviceOrderPlacement.optional(),
-    serviceOrderStepPlacementRetry: serviceOrderStepPlacement.optional(),
+    serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
     groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(), decisions: z.array(z.object({
       path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.null()]), stored: z.union([z.string(), z.number(), z.null()]),
@@ -142,16 +127,16 @@ const recordSchema = z.object({
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
+    groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(),
     councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: councilDateDraft.optional(),
     councilLifecycleDraft: councilDateDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
-    councilOutcomeDrafts: rowDrafts(councilOutcomeAction).optional(),
-    groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(),
+    councilOutcomeDrafts: rowDrafts(storedRowAction).optional(),
     groupBlockTitleDrafts: rowDrafts(titleAction).optional(), groupBlockStatusDrafts: rowDrafts(titleAction).optional(),
-    groupStepTitleDrafts: rowDrafts(nullableTitleAction).optional(), groupStepDurationDrafts: rowDrafts(durationAction).optional(),
-    thoughtLockDrafts: rowDrafts(lockAction).optional(), thoughtPlacementDrafts: rowDrafts(thoughtPlacementAction).optional(),
+    groupStepTitleDrafts: rowDrafts(nullableTitleAction).optional(), groupStepDurationDrafts: rowDrafts(storedRowAction).optional(),
+    thoughtLockDrafts: rowDrafts(storedRowAction).optional(), thoughtPlacementDrafts: rowDrafts(storedRowAction).optional(),
     outlineTitleDrafts: rowDrafts(titleAction).optional(),
-    pending: z.record(id, pendingCheckpoint),
-  } satisfies Record<keyof SessionCheckpoint, z.ZodTypeAny>),
+    pending: z.record(id, z.object(pendingShape)),
+  } satisfies Record<keyof Omit<SessionCheckpoint, PlacementRetry>, z.ZodTypeAny>),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -166,41 +151,112 @@ export function recoveryCheckpointEditorId(owner: string, sourceId: unknown): st
     && sourceId === recoveryCheckpointId(owner, identity[1]) ? identity[1] : null;
 }
 
-function validateScopedEvidence(record: z.infer<typeof recordSchema>, collection: string): void {
-  const pendingIntents = Object.values(record.checkpoint.pending);
-  if (collection !== 'groups' && (record.retainedManualChoice?.groupStepPlacement
-    || record.retainedManualChoice?.groupFieldsGeneration !== undefined || record.checkpoint.groupFlowStepPlacementRetry
-    || record.checkpoint.groupTitleDraft || record.checkpoint.groupStatusDraft || record.checkpoint.groupBlockTitleDrafts
-    || record.checkpoint.groupBlockStatusDrafts || record.checkpoint.groupStepTitleDrafts || record.checkpoint.groupStepDurationDrafts
-    || pendingIntents.some(intent => intent.groupFlowStepPlacement || intent.groupTitleAction || intent.groupStatusAction
-      || intent.groupBlockTitleActions || intent.groupBlockStatusActions || intent.groupStepTitleActions || intent.groupStepDurationActions))) throw new Error('Group placement checkpoint identity mismatch');
-  if (collection !== 'councils' && (record.retainedManualChoice?.councilTopicPlacement
-    || record.retainedManualChoice?.councilFieldsGeneration !== undefined || record.checkpoint.councilTopicPlacementRetry
-    || record.checkpoint.councilTitleDraft || record.checkpoint.councilDateDraft || record.checkpoint.councilLifecycleDraft
-    || record.checkpoint.councilTopicTitleDrafts || record.checkpoint.councilOutcomeDrafts
-    || pendingIntents.some(intent => intent.councilTopicPlacement || intent.councilTitleAction || intent.councilDateAction
-      || intent.councilLifecycleAction || intent.councilTopicTitleActions || intent.councilOutcomeActions))) throw new Error('Council placement checkpoint identity mismatch');
-  if (collection !== 'planTemplates' && (record.retainedManualChoice?.outlinePointPlacement
-    || record.retainedManualChoice?.templateFieldsGeneration !== undefined)) throw new Error('Template recovery checkpoint identity mismatch');
-  if (!outlinePlacementField(collection) && (record.checkpoint.outlinePointPlacementRetry
-    || record.checkpoint.outlineTitleDrafts || pendingIntents.some(intent => intent.outlinePointPlacement || intent.outlineTitleActions))) {
-    throw new Error('Outline checkpoint identity mismatch');
+const { confirmed: _confirmed, draft: _draft, dirty: _dirty, editGeneration: _generation,
+  remoteCandidate: _remote, conflicts: _conflicts, pending: _pending, ...checkpointEvidence } = recordSchema.shape.checkpoint.shape;
+const { generation: _intentGeneration, value: _intentValue, operations: _operations,
+  borrowedManualScope: _borrow, ...pendingEvidence } = pendingShape;
+
+/**
+ * WHO HEARS ABOUT A DROPPED PROOF. A proof field this version cannot validate is dropped whole — exactly as
+ * every proof field was dropped before this codec knew them — and its name is reported: by default once per
+ * name per page session on the console, names only, never values or the person's text. A reporter or console
+ * that throws is ignored here, so a diagnostic never decides whether a draft is readable. The reporter lives in a
+ * global slot so the Jest setup can collect names without loading this module first.
+ */
+export type DroppedEvidenceReporter = (fields: readonly string[]) => void;
+const DROPPED_EVIDENCE_REPORTER = Symbol.for('preacher.dataEngine.droppedEvidenceReporter');
+const reportedFields = new Set<string>();
+const sayDroppedEvidence: DroppedEvidenceReporter = fields => {
+  const unsaid = fields.filter(field => !reportedFields.has(field));
+  if (!unsaid.length) return;
+  unsaid.forEach(field => reportedFields.add(field));
+  console.error('Data engine dropped unreadable checkpoint evidence:', unsaid.join(', '));
+};
+function reportDroppedEvidence(fields: readonly string[]): void {
+  try {
+    const installed = (globalThis as unknown as Record<symbol, DroppedEvidenceReporter | undefined>)[DROPPED_EVIDENCE_REPORTER];
+    (installed ?? sayDroppedEvidence)(fields);
+  } catch { /* A diagnostic that fails says nothing. */ }
+}
+
+type Fields = Record<string, unknown>;
+const isFields = (value: unknown): value is Fields => typeof value === 'object' && value !== null && !Array.isArray(value);
+/**
+ * Every proof a producer writes nests at most four levels (a row map, its row, the action, a flat before/after).
+ * A proof deeper than the bound is unreadable and is dropped before any recursive parse — this one or the record's
+ * own second parse — can come near the stack limit; a parser that throws drops it too.
+ */
+const MAX_PROOF_DEPTH = 32;
+function nestsDeeperThan(value: unknown, limit: number): boolean {
+  const open: Array<[unknown, number]> = [[value, 1]];
+  for (let next = open.pop(); next; next = open.pop()) {
+    const [node, depth] = next;
+    if (typeof node !== 'object' || node === null) continue;
+    if (depth > limit) return true;
+    for (const child of Object.values(node)) open.push([child, depth + 1]);
   }
-  if (collection !== 'sermons' && (record.checkpoint.exegeticalPointDrafts || record.checkpoint.thoughtLockDrafts
-    || record.checkpoint.thoughtPlacementDrafts || pendingIntents.some(intent => intent.thoughtLockActions || intent.thoughtPlacementActions))) {
-    throw new Error('Sermon checkpoint identity mismatch');
+  return false;
+}
+function accepts(schema: z.ZodTypeAny, value: unknown): boolean {
+  if (nestsDeeperThan(value, MAX_PROOF_DEPTH)) return false;
+  try { return schema.safeParse(value).success; } catch { return false; }
+}
+/** A proof field passes whole or goes whole; the words and core fields beside it are the validator's. */
+function withoutInvalidProof(fields: Fields, schemas: Record<string, z.ZodTypeAny>, prefix: string, dropped: string[]): Fields {
+  let kept = fields;
+  for (const [key, schema] of Object.entries(schemas)) {
+    if (fields[key] === undefined || accepts(schema, fields[key])) continue;
+    if (kept === fields) kept = { ...fields };
+    delete kept[key];
+    dropped.push(prefix + key);
   }
-  if (collection !== 'serviceOrders' && (record.checkpoint.serviceOrderPlacementRetry || record.checkpoint.serviceOrderStepPlacementRetry)) {
-    throw new Error('Service order checkpoint identity mismatch');
-  }
-  if (!['serviceOrders', 'groups', 'councils'].includes(collection) && record.checkpoint.serviceOrderPlacementComparison) {
-    throw new Error('Placement comparison checkpoint identity mismatch');
-  }
-  if (collection !== 'users' && record.checkpoint.accountPreferenceRetry) throw new Error('Preference checkpoint identity mismatch');
+  return kept;
 }
 
 /** Validate recovered disk data before it can enter a controller or another account. */
 export function validateRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
+  const dropped: string[] = [];
+  let checked = value;
+  if (isFields(value) && isFields(value.checkpoint)) {
+    let checkpoint = withoutInvalidProof(value.checkpoint, checkpointEvidence, '', dropped);
+    // Template retries capture the selected gesture separately from any later title typing.
+    // Sermon retries still share a document draft and must not become durable move instructions.
+    const confirmed = checkpoint.confirmed;
+    if (checkpoint.outlinePointPlacementRetry !== undefined
+      && (!isFields(confirmed) || !isFields(confirmed.resource) || confirmed.resource.collection !== 'planTemplates')) {
+      const { outlinePointPlacementRetry: _retry, ...draft } = checkpoint;
+      checkpoint = draft;
+    }
+
+    if (isFields(checkpoint.pending)) {
+      const pending = checkpoint.pending;
+      const kept = Object.fromEntries(Object.entries(pending).map(([operationId, intent]) =>
+        [operationId, isFields(intent) ? withoutInvalidProof(intent, pendingEvidence, 'pending.', dropped) : intent]));
+      if (Object.keys(kept).some(operationId => kept[operationId] !== pending[operationId])) checkpoint = { ...checkpoint, pending: kept };
+    }
+    if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };
+  }
+  if (dropped.length) reportDroppedEvidence([...new Set(dropped)]);
+  return decodeRecoveryRecord(checked, owner, editorId, resource);
+}
+
+function validateScopedEvidence(record: z.infer<typeof recordSchema>, collection: string): void {
+  const pendingIntents = Object.values(record.checkpoint.pending);
+  if (collection !== 'groups' && (record.retainedManualChoice?.groupStepPlacement
+    || record.retainedManualChoice?.groupFieldsGeneration !== undefined || record.checkpoint.groupFlowStepPlacementRetry
+    || pendingIntents.some(intent => intent.groupFlowStepPlacement))) throw new Error('Group placement checkpoint identity mismatch');
+  if (collection !== 'councils' && (record.retainedManualChoice?.councilTopicPlacement
+    || record.retainedManualChoice?.councilFieldsGeneration !== undefined || record.checkpoint.councilTopicPlacementRetry
+    || pendingIntents.some(intent => intent.councilTopicPlacement))) throw new Error('Council placement checkpoint identity mismatch');
+  if (collection !== 'planTemplates' && (record.retainedManualChoice?.outlinePointPlacement
+    || record.retainedManualChoice?.templateFieldsGeneration !== undefined)) throw new Error('Template recovery checkpoint identity mismatch');
+  if (!outlinePlacementField(collection) && pendingIntents.some(intent => intent.outlinePointPlacement)) {
+    throw new Error('Outline checkpoint identity mismatch');
+  }
+}
+
+/** Core fields, identity and ownership stay strict. */
+function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
   const record = recordSchema.parse(value);
   const ref = record.checkpoint.confirmed.resource;
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
@@ -235,7 +291,6 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
     ...conflict, base: field(conflict.base), mine: field(conflict.mine), theirs: field(conflict.theirs),
     ...(studyNoteReferenceOpening && { studyNoteReferenceOpening: field(studyNoteReferenceOpening) }),
   }));
-  const placement = record.checkpoint.serviceOrderPlacementRetry;
   const createIntent = record.checkpoint.confirmed.value === null && record.checkpoint.confirmed.metadata === null;
   const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => {
     const { commentPlaceAction: place, ...held } = intent;
@@ -252,8 +307,7 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   })) };
   return clone({ ...record, retainedManualChoice, prepared,
     checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent),
-      pending, conflicts, groupTextReview: groupReview,
-      serviceOrderPlacementRetry: placement && { ...placement, before: field(placement.before) } } });
+      pending, conflicts, groupTextReview: groupReview } });
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {

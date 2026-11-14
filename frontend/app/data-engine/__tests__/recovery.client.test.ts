@@ -5,6 +5,8 @@ import { forkCheckpoint, isRecoverableCheckpoint, recoveryCheckpointId, selectRe
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 
+import { takeDroppedProof } from '@test-utils/droppedEvidence';
+
 import type { EngineTransport, JournalEntry, JournalStore, ResourceSnapshot } from '../types';
 
 const resource = { collection: 'studyNotes', id: 'note' };
@@ -153,9 +155,12 @@ describe('Explicit checkpoint recovery', () => {
     source.checkpoint.accountPreferenceRetry = { field: 'reading.analysisHelp.short', time: { earliestMs: 1000, latestMs: 1010 } };
     const restored = validateRecoveryRecord(clone(source), 'owner', 'source');
     expect(restored.checkpoint.accountPreferenceRetry).toEqual(source.checkpoint.accountPreferenceRetry);
-    expect(() => validateRecoveryRecord({ ...source,
+    const unreadable = validateRecoveryRecord({ ...source,
       checkpoint: { ...source.checkpoint, accountPreferenceRetry: { field: 'arbitrary', time: null } },
-    }, 'owner', 'source')).toThrow();
+    }, 'owner', 'source');
+    expect(unreadable.checkpoint.accountPreferenceRetry).toBeUndefined();
+    expect(unreadable.checkpoint.draft).toEqual(source.checkpoint.draft);
+    takeDroppedProof('accountPreferenceRetry');
   });
 
   it('validates complete checkpoints including conflicts, pending values and command owner binding', () => {
