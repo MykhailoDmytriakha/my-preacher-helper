@@ -72,7 +72,9 @@ export function seriesCommandParticipant(record: CommitRequest): SeriesCommandPa
     membership: { ...seriesMembership, ...(seriesMembershipPredecessor && { predecessorOperationId: seriesMembershipPredecessor }) },
     opening, authored: value,
   } : undefined;
-  return { confirmed: working, draft: intended, ...(captured && { captured }) };
+  const analysisFramePredecessorRevision = record.analysisFramePredecessorRevision;
+  return { confirmed: working, draft: intended, ...(captured && { captured }),
+    ...(analysisFramePredecessorRevision !== undefined && { analysisFramePredecessorRevision }) };
 }
 
 export function showsSeriesMembershipComparison(values: readonly { id: string; generation: string | null; value: DocumentData }[],

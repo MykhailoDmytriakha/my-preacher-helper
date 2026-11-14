@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { planDataCommand } from '@/data-engine/serverRelations';
 import { validateCommand } from '@/data-engine/protocol';
+import { metadataAfterAnalysisFrame } from '@/data-engine/analysisFrameOrder.server';
 import { analysisMarkdown, cutAt, EMPTY_ANALYSIS, passageWords, storedAnalysis } from '@/utils/passageAnalysis';
 import { studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
 import rstEphesians from '../../../public/bible-text/rst/v1/ephesians.json';
@@ -65,6 +66,27 @@ const writesAreEmpty = (plan: { writes: ResourceSnapshot[] }) => expect(plan.wri
 beforeEach(() => records.clear());
 
 describe('analysis passage uniqueness across accepted writes', () => {
+  it.each(['source', 'recipient'] as const)('blocks the entire reshape if the %s frame returned to its shown value', async part => {
+    const source = put('source', 1), recipient = put('recipient', 3);
+    const affected = part === 'source' ? source : recipient;
+    const changeFrame = (from: ResourceSnapshot, value: DocumentData): ResourceSnapshot => ({
+      ...from, value, metadata: { ...from.metadata!, revision: from.metadata!.revision + 1 },
+    });
+    const changed = changeFrame(affected, reshaped(affected, affected === source ? 2 : 4));
+    const firstProof = metadataAfterAnalysisFrame(changed, affected, undefined);
+    const restored = changeFrame(changed, affected.value!);
+    const metadata = metadataAfterAnalysisFrame(restored, changed, firstProof);
+    records.set(key('studyNotes', affected.resource.id), restored);
+    const edits = [frameEdit(source, 5), frameEdit(recipient, 6)]
+      .map(edit => ({ ...edit, analysisFrameObservedRevision: 1 }));
+    const result = await planDataCommand(reshape(source, edits), part === 'source' ? restored : source, {
+      ...reader, analysisFrameMetadata: resource => resource.id === affected.resource.id ? metadata : undefined,
+    });
+    expect(result.result).toMatchObject({ kind: 'conflict', conflicts: ['analysis', 'content', 'scriptureRefs'].map(field =>
+      expect.objectContaining({ path: [affected.resource.id, field] })) });
+    writesAreEmpty(result);
+  });
+
   it('refuses an ordinary source-only update that changes an analysis passage onto an existing identity', async () => {
     const source = put('source', 1), occupied = put('occupied', 2);
     const next = reshaped(source, 2);

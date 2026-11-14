@@ -139,6 +139,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
   studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
+  /** Original acknowledged frame revision when a replay includes a newer head. */
+  analysisFramePredecessorRevision?: number;
   studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
   commentKindAction?: CommentKindObservation;
   commentPlaceAction?: CommentPlaceObservation;
@@ -1501,6 +1503,10 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
+    if (command.kind === 'update' && command.analysisFrameObservedRevision !== undefined
+      && record.analysisFramePredecessorRevision !== undefined) {
+      command.analysisFrameObservedRevision = record.analysisFramePredecessorRevision;
+    }
     if (record.sequence === 0 && command.kind === 'update' && record.studyNoteReferenceChange) {
       const referenceChange = record.studyNoteReferenceChange;
       command.changes = command.changes.map(change => equalValues(change.path, referenceChange.path) ? clone(referenceChange) : change);

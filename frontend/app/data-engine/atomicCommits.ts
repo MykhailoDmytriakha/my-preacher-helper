@@ -286,8 +286,19 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     // needs the actual opening for the exact field the person touched.
     const studyNoteReferenceChange = sameGeneration && snapshot.resource.collection === 'studyNotes'
       ? captureStudyNoteReferenceChange(ancestor, authored) : undefined;
+    const committed = predecessor.result.committed;
+    const responseOperation = snapshot.metadata?.operationId;
+    const exactOperation = predecessor.command?.operationId ?? predecessor.result.operationId;
+    // An older ACK can pair the same frame with a newer head but omit its original receipt revision.
+    const earlierRevision = committed?.generation === snapshot.metadata?.generation ? committed?.revision
+      : !committed && responseOperation !== exactOperation && sameGeneration ? record.baseline.metadata?.revision : undefined;
+    const analysisFramePredecessorRevision = snapshot.resource.collection === 'studyNotes' && snapshot.value?.type === 'analysis'
+      && authored?.type === 'analysis' && predecessor.value?.type === 'analysis' && earlierRevision !== undefined
+      && snapshot.metadata && snapshot.metadata.revision > earlierRevision
+      && sameAnalysisFrame(predecessor.value, snapshot.value) ? earlierRevision : undefined;
     return { ...record, initialized: true, working: snapshot, ...legacyLineage,
       ...(studyNoteReferenceChange && { studyNoteReferenceChange }),
+      ...(analysisFramePredecessorRevision !== undefined && { analysisFramePredecessorRevision }),
       intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
       ...(groupCopies.length && { rebasedGroupCopySources: groupCopies }),

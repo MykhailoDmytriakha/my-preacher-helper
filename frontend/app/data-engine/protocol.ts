@@ -210,6 +210,9 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       || !validSourceNoteLinkAction(command.sourceNoteLinkAction, sourceNoteLinkChange(command.changes), isValidIdentifier))) fail('Invalid source note selection');
     if (command.commentPlaceAction !== undefined && (command.resource.collection !== 'studyNotes'
       || !validCommentPlaceStamp(command.commentPlaceAction, command.changes))) fail('Invalid comment move');
+    if (command.analysisFrameObservedRevision !== undefined && (command.resource.collection !== 'studyNotes'
+      || !Number.isSafeInteger(command.analysisFrameObservedRevision) || command.analysisFrameObservedRevision < 1
+      || !ANALYSIS_RESHAPE_FRAME.every(field => paths.some(path => path[0] === field)))) fail('Invalid analysis frame revision');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
@@ -432,14 +435,16 @@ function validateAnalysisReshape(command: Extract<DataCommand, { relation: 'anal
       || named.has(edit.resource.id) || !Array.isArray(edit.changes)) fail('Invalid analysis reshape');
     named.add(edit.resource.id);
     if (edit.create !== undefined) {
-      if (index === 0 || edit.generation !== null || edit.changes.length !== 0 || !object(edit.create)
+      if (index === 0 || edit.generation !== null || edit.analysisFrameObservedRevision !== undefined || edit.changes.length !== 0 || !object(edit.create)
         || edit.create.userId !== command.owner || edit.create.type !== 'analysis' || !object(edit.create.analysis)
         || typeof edit.create.content !== 'string' || !Array.isArray(edit.create.scriptureRefs)
         || edit.create.materialIds !== undefined && (!Array.isArray(edit.create.materialIds) || edit.create.materialIds.length > 0)) fail('Invalid analysis reshape creation');
       validateCreate({ ...command, resource: edit.resource, generation: null, kind: 'create', value: edit.create } as Extract<DataCommand, { kind: 'create' }>, getResourcePolicy('studyNotes'));
       continue;
     }
-    if (edit.changes.length < 3 || edit.changes.length > 4) fail(invalidFrame);
+    if (edit.changes.length < 3 || edit.changes.length > 4
+      || (edit.analysisFrameObservedRevision !== undefined && (!Number.isSafeInteger(edit.analysisFrameObservedRevision)
+        || edit.analysisFrameObservedRevision < 1 || edit.generation === null))) fail(invalidFrame);
     const seen = new Set<string>();
     for (const change of edit.changes) {
       if (!object(change) || !Array.isArray(change.path) || change.path.length !== 1

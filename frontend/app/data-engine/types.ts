@@ -257,6 +257,7 @@ export type DataCommand = CommandBase & (
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteContentAction?: DocumentFieldStamp;
+      analysisFrameObservedRevision?: number;
       studyNoteTypeAction?: DocumentFieldStamp;
       studyNoteReferenceTimes?: Record<string, ActionTime>;
       studyNoteReferenceObservedRevisions?: Record<string, number>;
@@ -328,6 +329,7 @@ export type DataCommand = CommandBase & (
   /** A source analysis changes extent with its removed authored words landed in adjacent analyses. */
   | { kind: 'relation'; relation: 'analysis-reshape'; edits: Array<{
       resource: ResourceRef; generation: string | null; changes: FieldChange[]; create?: DocumentData;
+      analysisFrameObservedRevision?: number;
     }> }
 );
 

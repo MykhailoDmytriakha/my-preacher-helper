@@ -5,6 +5,7 @@ import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 import { TAG_NAME_EXISTS } from '@/utils/tagName';
 
+import { compareReturnedAnalysisFrame } from './analysisFrameOrder.server';
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { validCouncilCarry } from './councilCarryContent';
 import { COUNCIL_TOPIC_PLACEMENT_REVIEW, legacyCouncilTopicPlacementNeedsReview, planCouncilTopicPlacement } from './councilTopicPlacement.server';
@@ -43,6 +44,7 @@ export interface RelationReader {
   serviceOrderPlacement?: { rawMetadata: unknown; serverMs: number | undefined };
   seriesMembershipOrder?: SeriesMembershipReader;
   seriesPlacementMetadata?(resource: ResourceRef): unknown;
+  analysisFrameMetadata?(resource: ResourceRef): unknown;
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
@@ -499,7 +501,11 @@ class RelationPlanner {
         return this.conflict(conflicts);
       }
       if (value.type !== 'analysis' || !value.analysis || typeof value.content !== 'string' || !Array.isArray(value.scriptureRefs)) fail(INVALID_DOCUMENT);
-      const updated = applyCommand({ ...command, resource: edit.resource, generation: edit.generation, kind: 'update', changes: edit.changes }, current);
+      const update = { ...command, resource: edit.resource, generation: edit.generation, kind: 'update' as const, changes: edit.changes,
+        ...(edit.analysisFrameObservedRevision !== undefined && { analysisFrameObservedRevision: edit.analysisFrameObservedRevision }) };
+      const returned = compareReturnedAnalysisFrame(update, current, this.reader.analysisFrameMetadata?.(edit.resource));
+      if (returned.length) return this.conflict(returned.map(conflict => ({ ...conflict, path: [edit.resource.id, ...conflict.path] })));
+      const updated = applyCommand(update, current);
       if (updated.kind === 'conflict') return this.conflict(updated.conflicts.map(conflict => ({ ...conflict, path: [edit.resource.id, ...conflict.path] })));
       if (updated.kind !== 'acknowledged') return updated;
       candidates.push(updated.snapshot);

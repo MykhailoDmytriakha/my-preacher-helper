@@ -12,6 +12,7 @@ import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
+import { compareReturnedAnalysisFrame, metadataAfterAnalysisFrame } from './analysisFrameOrder.server';
 import { metadataAfterAuthoredListRemovals, orderAuthoredListAdditions } from './authoredListOrder.server';
 import { isAuthoredListComparison } from './authoredStringList';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
@@ -777,8 +778,11 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? metadataAfterStudyNoteReferences(bounded, snapshot, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine,
         primary ? studyNoteReferenceOrder : undefined)
       : bounded;
+    const analysisMetadata = snapshot.resource.collection === 'studyNotes' && snapshot.value?.type === 'analysis'
+      ? metadataAfterAnalysisFrame({ ...snapshot, metadata: referenceMetadata ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
+      : referenceMetadata;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
-      _dataEngine: { ...boundOutlineTitleMetadata(value, referenceMetadata), ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
+      _dataEngine: { ...boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata), ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
         ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }
   for (const [index, addition] of (listOrder?.discarded ?? []).entries()) {
@@ -1104,6 +1108,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const planned = await planDataCommand(orderedCommand, current, {
         guardedTagCleanupName: tagCleanup?.absentTagName,
         orderStudyNoteReference: studyNoteReferenceOrder?.order,
+        analysisFrameMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
         seriesPlacementMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
         ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
@@ -1131,6 +1136,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       });
       const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
+      uncertain.push(...compareReturnedAnalysisFrame(command, current, raw?._dataEngine));
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled, ...(outlineTitleOrder?.settled ?? [])] : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'

@@ -181,6 +181,11 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
     ] } : seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
       : { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
   } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets, retainedRoots);
+  if (prepared.command.kind === 'update' && confirmed.resource.collection === 'studyNotes'
+    && confirmed.value?.type === 'analysis' && draft?.type === 'analysis' && confirmed.metadata
+    && !sameAnalysisFrame(confirmed.value, draft)) {
+    prepared.command.analysisFrameObservedRevision = confirmed.metadata.revision;
+  }
   const command = confirmed.resource.collection === 'sermons' && prepared.command.kind === 'update'
     ? withPlanTextEvidence(prepared.command, planTextEvidence ?? capturePlanTextEvidence({ before: confirmed.value, after: draft }))
     : prepared.command;
@@ -190,6 +195,7 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
 export interface SeriesCommandParticipant {
   confirmed: ResourceSnapshot;
   draft: DocumentData | null;
+  analysisFramePredecessorRevision?: number;
   captured?: {
     membership: SeriesMembershipCapture & { predecessorOperationId?: string };
     opening: DocumentData;
@@ -232,7 +238,7 @@ export function prepareAtomicDomainCommand(owner: string, operationId: string,
       return failure('A live owned source analysis with a changed authored frame is required');
     }
     const seen = new Set<string>();
-    const edits = participants.map(({ confirmed, draft }, index) => {
+    const edits = participants.map(({ confirmed, draft, analysisFramePredecessorRevision }, index) => {
       if (confirmed.resource.collection !== 'studyNotes' || seen.has(confirmed.resource.id)) return failure('Analysis reshape participants must be distinct study notes');
       seen.add(confirmed.resource.id);
       if (!draft || draft.userId !== owner || draft.type !== 'analysis' || !draft.analysis) return failure('Analysis reshape notes must be owned analyses');
@@ -248,7 +254,8 @@ export function prepareAtomicDomainCommand(owner: string, operationId: string,
       const changes: FieldChange[] = ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(confirmed.value!, [field]), after: readField(draft, [field]) }));
       const title = diffFields(confirmed.value, draft).find(change => change.path[0] === 'title');
       if (title) changes.push(title);
-      return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, changes };
+      return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, changes,
+        ...(confirmed.metadata && { analysisFrameObservedRevision: analysisFramePredecessorRevision ?? confirmed.metadata.revision }) };
     });
     if (!edits[0] || 'create' in edits[0]) return failure('The source analysis cannot be a new recipient');
     return validateCommand({ protocol: 1, owner, operationId, resource: copy(source.confirmed.resource),
