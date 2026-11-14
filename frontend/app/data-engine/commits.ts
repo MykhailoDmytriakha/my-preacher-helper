@@ -1322,6 +1322,7 @@ export class CommitQueue {
       };
       const source = placementSteps(record.working.value.steps);
       const sentPosition = source && projectServiceOrderStep(source, stepMove.placement.stepId, stepMove.placement.destination);
+      // A stale working copy must not prevent the captured command from reaching the server.
       const submitted = sentPosition ? { ...record.working.value, steps: sentPosition } : record.working.value;
       return { ...record, command, submitted, state: 'prepared' };
     }

@@ -1018,7 +1018,7 @@ export class EditorController {
             session.stageOutlinePointPlacementRetry(retry.move, retry.draft);
           }
           preservePlacementTail(outlineRequest.id, tail, choice === 'local');
-        } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
+        } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict' && stepAnswer.serviceOrderPlacementComparison) {
           const comparison = stepAnswer.serviceOrderPlacementComparison;
           const proposed = source.pending[stepRequest.id]?.value;
           if (!equalValues(proposed, decided.draft) || (comparison?.step?.id !== selectedStepMove.placement.stepId)) {

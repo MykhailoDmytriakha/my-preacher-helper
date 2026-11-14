@@ -1,3 +1,4 @@
+import { hasOutlinePointOrder } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
@@ -24,7 +25,7 @@ import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { outlinePlacementField } from './outlinePlacementResource';
-import { alignPendingOutlinePointPlacements, projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
+import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
@@ -123,6 +124,7 @@ export class DataSession {
   static restore(checkpoint: SessionCheckpoint): DataSession {
     const session = new DataSession(checkpoint.confirmed);
     session.state = { ...copy(checkpoint), conflicts: copy(checkpoint.conflicts ?? []) };
+    session.replaceDraft(checkpoint.draft);
     session.refreshUnreadableComparisons();
     return session;
   }
@@ -205,29 +207,11 @@ export class DataSession {
     const planActions = stageExegeticalPoint(this.state, value, shown, autosaveStamp?.field === 'exegetical-point' ? autosaveStamp : undefined);
     if (planActions) this.state.exegeticalPointDrafts = planActions;
     else delete this.state.exegeticalPointDrafts;
-    this.clearChangedPlacementRetries(value);
-    this.state.draft = copy(value);
+    this.replaceDraft(value);
     this.state.editGeneration = generation;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
       || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
     this.refreshUnreadableComparisons();
-  }
-
-  private clearChangedPlacementRetries(value: DocumentData | null): void {
-    const { serviceOrderPlacementRetry: order, serviceOrderStepPlacementRetry: step, outlinePointPlacementRetry: outline } = this.state;
-    if (order && value?.rank !== order.rank) delete this.state.serviceOrderPlacementRetry;
-    if (step) {
-      const steps = placementSteps(value?.steps);
-      if (!steps || projectServiceOrderStep(steps, step.placement.stepId, step.placement.destination) !== steps) {
-        delete this.state.serviceOrderStepPlacementRetry;
-      }
-    }
-    if (outline) {
-      const collection = this.state.confirmed.resource.collection;
-      const projected = projectResourceOutlinePoint(collection, value, outline);
-      const field = outlinePlacementField(collection);
-      if (!field || !projected || !equalValues(projected[field], value?.[field])) delete this.state.outlinePointPlacementRetry;
-    }
   }
 
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
@@ -399,7 +383,7 @@ export class DataSession {
       ? [...new Map([...retainedConflicts, ...rebased.conflicts].map(conflict => [JSON.stringify(conflict.path), conflict])).values()]
       : rebased.conflicts;
     this.state.confirmed = copy(accepted);
-    this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
+    this.replaceDraft(rebased.value.exists ? rebased.value.value as DocumentData : null);
     this.state.conflicts = copy(conflicts);
     this.state.remoteCandidate = conflicts.length ? copy(accepted) : null;
     this.state.editGeneration = this.reserveEditGeneration();
@@ -496,7 +480,7 @@ export class DataSession {
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
-    this.state.draft = copy(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
+    this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
     this.state.conflicts = copy(rebased.conflicts);
     this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
@@ -517,7 +501,7 @@ export class DataSession {
       return;
     }
     this.state.confirmed = copy(snapshot);
-    this.state.draft = copy(snapshot.value);
+    this.replaceDraft(snapshot.value);
     this.clearAutosaveFieldDrafts();
     this.state.remoteCandidate = null;
   }
@@ -553,7 +537,7 @@ export class DataSession {
     const authored = placementSource?.draft;
     const merged = authored && atChoice ? mergeEditsAfterAnchoredPlacement(placementSource, atChoice, authored, { ...this.state, draft: confirmed.value })
       : mergeDocumentFields(atChoice, this.state.draft, confirmed.value);
-    this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
+    this.replaceDraft(merged.value.exists ? merged.value.value as DocumentData : null);
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
     // A choice about an earlier request cannot silently decide later positional work.
     this.state.conflicts = placementSource || hasDifferentAnalysisPositionBasis(atChoice, this.state.draft, confirmed.value) ? copy(merged.conflicts) : [];
@@ -608,7 +592,7 @@ export class DataSession {
     if (remainingPoints.length && remainingPoints.length === unreadableExegeticalProofs?.length) return false;
     const result = mergeDocumentFields(confirmed.value, withPoints, remoteCandidate.value);
     this.state.confirmed = copy(remoteCandidate);
-    this.state.draft = result.value.exists ? copy(result.value.value as DocumentData) : null;
+    this.replaceDraft(result.value.exists ? result.value.value as DocumentData : null);
     this.state.conflicts = copy(result.conflicts);
     this.state.remoteCandidate = result.conflicts.length ? copy(remoteCandidate) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
@@ -647,7 +631,7 @@ export class DataSession {
       this.refreshUnreadableComparisons();
       return;
     }
-    this.state.draft = copy(this.state.confirmed.value);
+    this.replaceDraft(this.state.confirmed.value);
     this.clearAutosaveFieldDrafts();
     this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = false;
@@ -755,7 +739,7 @@ export class DataSession {
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;
       this.state.confirmed = copy(candidate);
       // A restored held time owns the status even if that status had not changed on this device.
-      this.state.draft = copy(chosenGroup && lifecycle && openingLifecycle && !equalValues(lifecycle, openingLifecycle)
+      this.replaceDraft(chosenGroup && lifecycle && openingLifecycle && !equalValues(lifecycle, openingLifecycle)
         ? withCouncilLifecycle(chosenGroup, lifecycle) : chosenGroup);
     }
     if (reviewingUnreadableProof) delete this.state.unreadableScalarProof;
@@ -848,6 +832,24 @@ export class DataSession {
 
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
     this.state.accountPreferenceRetry = { field, time };
+  }
+
+  private replaceDraft(value: DocumentData | null): void {
+    // A retry owns exactly its displayed target, regardless of who replaces the draft.
+    const rankMove = this.state.serviceOrderPlacementRetry;
+    if (rankMove && value?.rank !== rankMove.rank) delete this.state.serviceOrderPlacementRetry;
+    const stepMove = this.state.serviceOrderStepPlacementRetry;
+    if (stepMove) {
+      const target = projectServiceOrderStep(stepMove.shownIds.map(id => ({ id })), stepMove.placement.stepId, stepMove.placement.destination);
+      const steps = placementSteps(value?.steps);
+      if (!target || !steps || !equalValues(steps.map(step => step.id), target.map(step => step.id))) delete this.state.serviceOrderStepPlacementRetry;
+    }
+    const outlineMove = this.state.outlinePointPlacementRetry;
+    if (outlineMove) {
+      const field = outlinePlacementField(this.state.confirmed.resource.collection);
+      if (!field || !hasOutlinePointOrder(value?.[field], outlineMove.after)) delete this.state.outlinePointPlacementRetry;
+    }
+    this.state.draft = copy(value);
   }
 
   private clearAutosaveFieldDrafts(): void {
