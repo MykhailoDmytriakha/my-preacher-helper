@@ -36,6 +36,34 @@ describe('plan writes on an engine document', () => {
     expect(state.current!.planText).toEqual({ n1: 'Rewritten on the phone' });
   });
 
+  it('removes only the chosen sub-point and detaches its thought in the same edit', async () => {
+    const sibling = { id: 'sibling', text: 'New sibling title', position: 2000 };
+    const target = { id: 'target', text: 'Remove this child', position: 1000 };
+    const other = { id: 'other', text: 'Other point' };
+    const point = { id: 'parent', text: 'New parent title', subPoints: [target, sibling] };
+    const attached = { id: 'linked', outlinePointId: 'parent', subPointId: 'target' };
+    const unrelated = { id: 'keep', outlinePointId: 'parent', subPointId: 'sibling' };
+    const { state, writer } = draft({
+      ...sermon({ parent: 'Already transferred text', target: '' }),
+      outline: { introduction: [], main: [other], conclusion: [point] },
+      thoughts: [attached, unrelated],
+    });
+    await expect(writer.removeSubPoint('s1', 'parent', 'target')).resolves.toMatchObject({ kind: 'removed' });
+    expect(state.current?.outline).toEqual({
+      introduction: [], main: [other], conclusion: [{ ...point, subPoints: [sibling] }],
+    });
+    expect(state.current?.thoughts).toEqual([{ ...attached, subPointId: null }, unrelated]);
+    expect(state.current?.planText).toEqual({ parent: 'Already transferred text', target: '' });
+  });
+
+  it('leaves a child alone if it moved to a different parent before removal', async () => {
+    const outline = { introduction: [{ id: 'old-parent', text: 'Original parent' }], conclusion: [],
+      main: [{ id: 'new-parent', text: 'New parent', subPoints: [{ id: 'target', text: 'Moved child', position: 1000 }] }] };
+    const { state, writer } = draft({ ...sermon({ target: 'Moved words' }), outline });
+    await expect(writer.removeSubPoint('s1', 'old-parent', 'target')).resolves.toMatchObject({ kind: 'absent' });
+    expect(state.current).toMatchObject({ outline, planText: { target: 'Moved words' } });
+  });
+
   it('removes cells of deleted plan points and saves the chosen mode', async () => {
     const { state, writer } = draft(sermon({ n1: 'Keep', gone: 'Removed point' }));
     await writer.savePlanText('s1', {}, ['gone']);

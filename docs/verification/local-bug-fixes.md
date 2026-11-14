@@ -9792,3 +9792,15 @@ On local build `KAXaIvVPVu18Mb_VkdxJX`, headless Chrome at 390 and 1280 px used 
 After authorized deployment, use a disposable sermon linked to a test note. Ask for a proposal for a point containing a written subpoint. Hold the transfer in the test profile while confirming subpoint removal. Check the Apply button, then release the transfer and reopen. If the outline fails, the child heading can remain with the words already moved to the parent. Leaving during transfer and overlapping Save are separate tracker items.
 
 Full Jest passed 15,784 tests with 17 skipped. TypeScript, scoped ESLint, local production build and independent source review passed.
+
+## BUG-20261114-late-child-delete-restores-deleted-parent · Keep the later deletion of a whole point
+
+Sermons → a sermon → Plan → By hand. Confirm deletion of a written subpoint, then confirm deletion of its whole point while the earlier text transfer is still finishing. The old callback sent a whole outline from before the later click. The current baseline no longer contained that point, so the writer interpreted the old heading and its surviving sibling as a new addition. A mounted regression with the actual Data Engine reproduced the return of the point and second subpoint in the stored outline.
+
+The child removal now takes the parent and child IDs and applies to the outline the editor holds at that moment. If the child no longer belongs to that point, there is no structure to write. The next structural edit uses the result of a completed removal as its working base. The same edit repairs the affected thought link while keeping links to surviving subpoints. Tests cover a child already removed elsewhere, a child moved to another parent, a later parent removal and ordinary removal with current headings intact.
+
+The headless Chrome check used local Auth and Firestore emulators and a controlled pause in the browser after submitting the text transfer. On the old build `KAXaIvVPVu18Mb_VkdxJX`, the whole point was absent at revision 3 and returned with the other child at revision 4. On build `ewx_bS1oktmZMBHZJvW78`, the deleted point stayed absent at revision 3 after release and after reload at 390 and 1280 px. The independent neighboring point and its text stayed visible and unchanged. Reports, the timing script, and visually reviewed screenshots are in `artifacts/manual-plan-late-child-delete-20261114`.
+
+After authorized deployment, use a disposable test sermon with two written subpoints and a neighboring point. Exercise both deletions from the manual plan with the timing probe scoped to the test profile. Verify the final outline after reload and confirm the neighboring point's words. If the deployed UI serializes the buttons, also verify the later click after the first operation settles. The mounted test covers the exact delayed completion after a later deletion, including when the buttons cannot reproduce that timing.
+
+Full Jest passed 15,788 tests with 17 skipped. TypeScript, scoped ESLint with warnings, local production build and independent source review passed.

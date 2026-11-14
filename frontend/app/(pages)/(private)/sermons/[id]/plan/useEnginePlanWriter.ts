@@ -4,8 +4,10 @@ import { useDataDocument } from '@/data-engine/react.client';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_PLAN_AGGREGATE } from '@/services/sermons.client';
 import { liveNodeIds, readPlanText } from '@/utils/planText';
+import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { findOutlinePointLocation } from '@/utils/subPoints';
 
-import { createEngineStructureWriter, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
+import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
 import type { PlanMode, PlanWriter } from './planWriter';
 import type { StructureWriter } from '@/components/sermon/structureWriter';
@@ -41,6 +43,23 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
   return {
     updateThought: structure.updateThought,
     updateSermonOutline: structure.updateSermonOutline,
+    removeSubPoint: (sermonId, pointId, subPointId) => editEngineSermon<Awaited<ReturnType<PlanWriter['removeSubPoint']>>>(document, owner, current => {
+      if (current.id !== undefined && current.id !== sermonId) throw new Error('Sermon editor is unavailable');
+      const outline = current.outline;
+      const location = findOutlinePointLocation(outline, pointId);
+      const children = location?.outlinePoint.subPoints;
+      if (!outline || !location || !children?.some(sub => sub.id === subPointId)) {
+        return { next: current, result: {
+          kind: 'absent', outline: outline ?? null, parentText: location ? readPlanText(current)[pointId] ?? '' : undefined,
+        } };
+      }
+      const { section, outlinePoint } = location;
+      const updated = { ...outlinePoint, subPoints: children.filter(sub => sub.id !== subPointId) };
+      const changedOutline = { ...outline,
+        [section]: outline[section].map(point => point.id === pointId ? updated : point),
+      };
+      return { next: replaceSermonOutline(current, changedOutline), result: { kind: 'removed', outline: changedOutline } };
+    }),
     preparePlanMode: prepareMode,
     savePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode)(),
     initializePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode, true)(),

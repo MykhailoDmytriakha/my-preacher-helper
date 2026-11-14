@@ -9,12 +9,13 @@ import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
 import { liveNodeIds, mergeStoredPlanText, mergeStoredSavedFlags, readPlanText } from "@/utils/planText";
+import { findOutlinePointLocation } from "@/utils/subPoints";
 import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { orphanedCells } from "../OrphanedPlanText";
 import { usePlanTextBaseline } from "../planTextBaseline";
-import { usePlanWriter } from "../planWriter";
+import { usePlanWriter, type PlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
 
 import type { SermonSectionKey } from "../types";
@@ -136,7 +137,7 @@ export function useManualConspectus({
   /**
    * The skeleton this screen OPENED with. `updateSermonOutline` merges against it by point
    * id, which is what lets a point added on a phone survive a save from a laptop that never
-   * saw it. Only an answered save may advance it.
+   * saw it. Only an answered local outline edit may advance it.
    */
   const confirmedOutlineRef = useRef<SermonOutline | null | undefined>(undefined);
   useEffect(() => {
@@ -504,8 +505,7 @@ export function useManualConspectus({
    * nobody can go and find.
    */
   const detachThoughtsFrom = useCallback((
-    matches: (thought: Sermon["thoughts"][number]) => boolean,
-    clear: "point" | "subPoint"
+    matches: (thought: Sermon["thoughts"][number]) => boolean
   ) => {
     const currentSermon = sermonRef.current;
     if (!currentSermon) return;
@@ -513,12 +513,9 @@ export function useManualConspectus({
     const affected = (currentSermon.thoughts ?? []).filter(matches);
     if (affected.length === 0) return;
 
-    const detach = (thought: Sermon["thoughts"][number]) => (clear === "point"
-      ? { ...thought, outlinePointId: null, subPointId: null }
-      : { ...thought, subPointId: null });
-
     affected.forEach((thought) => {
-      planWriter.updateThought(currentSermon.id, detach(thought) as typeof thought, thought)
+      const detached = { ...thought, outlinePointId: null, subPointId: null };
+      planWriter.updateThought(currentSermon.id, detached as typeof thought, thought)
         .catch((error) => debugLog("Detaching a thought from a deleted node failed", { id: thought.id, error }));
     });
   }, [planWriter]);
@@ -624,8 +621,11 @@ export function useManualConspectus({
    * now empty, and its words are already safe in the parent.
    */
   const deleteSubPoint = useCallback(async (pointId: string, subPointId: string) => {
-    const outline = sermonRef.current?.outline;
-    if (!outline) return;
+    const currentSermon = sermonRef.current;
+    if (!currentSermon?.outline) return;
+    const { id: sermonId } = currentSermon;
+    const location = findOutlinePointLocation(currentSermon.outline, pointId);
+    if (!location?.outlinePoint.subPoints?.some(subPoint => subPoint.id === subPointId)) return;
 
     const rescued = contentRef.current[subPointId] ?? "";
     const openingParent = contentRef.current[pointId] ?? "";
@@ -687,6 +687,33 @@ export function useManualConspectus({
         debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
       }
 
+      if (sermonRef.current?.id !== sermonId) return;
+      // Resolve the removal against the writer's current outline. The user may have
+      // deleted the whole point or changed another child while the transfer was saving.
+      let removal: Awaited<ReturnType<PlanWriter['removeSubPoint']>> | undefined;
+      try {
+        removal = await planWriter.removeSubPoint(sermonId, pointId, subPointId);
+      } catch (error) {
+        debugLog("Manual plan sub-point removal failed", { sermonId, subPointId, error });
+        toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
+      }
+      if (sermonRef.current?.id !== sermonId) return;
+      if (removal?.kind === 'removed') confirmedOutlineRef.current = removal.outline;
+
+      if (removal?.kind === 'absent') {
+        const stored = removal.parentText;
+        if (stored !== undefined && !modifiedRef.current[pointId]) {
+          const before = contentRef.current[pointId] ?? "";
+          if (rescuing && stored === appendRescuedText(before)) {
+            setRescuedAppend({ nodeId: pointId, append: { before, after: stored } });
+          }
+          contentRef.current = { ...contentRef.current, [pointId]: stored };
+          setContentByNodeId(previous => ({ ...previous, [pointId]: stored }));
+        }
+        if (!modifiedRef.current[subPointId] && !liveNodeIds(removal.outline).has(subPointId)) discardCells([subPointId]);
+        return;
+      }
+
       if (rescuing) {
         const parent = contentRef.current[pointId] ?? "";
         const combined = appendRescuedText(parent);
@@ -697,16 +724,10 @@ export function useManualConspectus({
         if (combined === mergedParent) settle({ [pointId]: mergedParent });
       }
 
-      const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
-        point.id === pointId
-          ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
-          : point
-      ))));
       const remainingChildText = contentRef.current[subPointId];
       const childChanged = Boolean(remainingChildText && remainingChildText !== rescued);
-      if (removed) {
+      if (removal?.kind === 'removed') {
         if (!childChanged) discardCells([subPointId]);
-        detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
       } else if (rescuing && !childChanged) {
         const stored = readPlanText(sermonRef.current)[subPointId] ?? "";
         contentRef.current = { ...contentRef.current, [subPointId]: stored };
@@ -721,7 +742,7 @@ export function useManualConspectus({
       }
       refreshTransfers(version => version + 1);
     }
-  }, [detachThoughtsFrom, discardCells, persistOutline, setContentByNodeId, settle, t, writeText]);
+  }, [discardCells, planWriter, setContentByNodeId, settle, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
@@ -737,7 +758,7 @@ export function useManualConspectus({
     );
     if (!removed) return;
 
-    detachThoughtsFrom((thought) => thought.outlinePointId === pointId, "point");
+    detachThoughtsFrom((thought) => thought.outlinePointId === pointId);
 
     setContentByNodeId((previous) => {
       const next = { ...previous };

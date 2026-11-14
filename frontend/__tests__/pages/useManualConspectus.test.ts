@@ -26,6 +26,7 @@ import type { Sermon } from '@/models/models';
  */
 
 const mockUpdateSermonOutline = jest.fn();
+const mockRemoveSubPoint = jest.fn();
 const mockUpdateThought = jest.fn();
 const mockSavePlanText = jest.fn();
 const mockToastError = jest.fn();
@@ -36,6 +37,7 @@ const mockPlanWriter: PlanWriter = {
   initializePlanMode: jest.fn().mockResolvedValue(undefined),
   preparePlanMode: jest.fn(() => async () => undefined),
   updateThought: (...args: Parameters<PlanWriter['updateThought']>) => mockUpdateThought(...args),
+  removeSubPoint: (...args: Parameters<PlanWriter['removeSubPoint']>) => mockRemoveSubPoint(...args),
   updateSermonOutline: (...args: Parameters<PlanWriter['updateSermonOutline']>) => mockUpdateSermonOutline(...args),
 };
 const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -101,6 +103,9 @@ beforeEach(() => {
   // The outbox is real storage shared across tests; a leftover intent would keep a cell held.
   listOutbox().forEach((entry) => removeFromOutbox(entry.id));
   mockSavePlanText.mockResolvedValue(undefined);
+  mockRemoveSubPoint.mockResolvedValue({
+    kind: 'removed', outline: { introduction: [{ id: 'point-1', text: 'First point', subPoints: [] }], main: [], conclusion: [] },
+  });
   mockUpdateSermonOutline.mockImplementation(async (_id: string, next: unknown) => next);
   mockUpdateThought.mockResolvedValue({});
 });
@@ -191,15 +196,17 @@ describe('useManualConspectus deletions', () => {
     expect(removed ?? []).toEqual([]);
 
     expect(mockSavePlanText).toHaveBeenCalledTimes(1);
+    expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'point-1', 'sub-1');
+    expect(mockSavePlanText.mock.invocationCallOrder[0]).toBeLessThan(mockRemoveSubPoint.mock.invocationCallOrder[0]);
   });
 
   it('keeps the rescued sub-point text when the structure write fails', async () => {
-    mockUpdateSermonOutline.mockRejectedValue(new Error('structure write refused'));
+    mockRemoveSubPoint.mockRejectedValue(new Error('structure write refused'));
 
     const { view } = renderConspectus(sermonWithText());
     await act(async () => { await view.result.current.deleteSubPoint('point-1', 'sub-1'); });
 
-    await waitFor(() => expect(mockUpdateSermonOutline).toHaveBeenCalled());
+    await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalled());
 
     // The rescue landed first, so the words survive even though the sub-point stays.
     const [, changedText] = mockSavePlanText.mock.calls[0];
@@ -227,26 +234,6 @@ describe('useManualConspectus deletions', () => {
       expect(thought.outlinePointId).toBeNull();
       expect(thought.subPointId).toBeNull();
     });
-  });
-
-  it('releases only the sub-point link when a sub-point goes', async () => {
-    const sermon = {
-      ...sermonWithText(),
-      thoughts: [
-        { id: 'th-2', text: 'On the sub-point', tags: [], date: '', outlinePointId: 'point-1', subPointId: 'sub-1' },
-      ],
-    } as unknown as Sermon;
-
-    const { view } = renderConspectus(sermon);
-    await act(async () => { await view.result.current.deleteSubPoint('point-1', 'sub-1'); });
-
-    await waitFor(() => expect(mockUpdateThought).toHaveBeenCalled());
-
-    const detached = mockUpdateThought.mock.calls.map((call) => call[1]);
-    expect(detached).toHaveLength(1);
-    expect(detached[0].subPointId).toBeNull();
-    // It still belongs to its point — only the grouping under it is gone.
-    expect(detached[0].outlinePointId).toBe('point-1');
   });
 });
 

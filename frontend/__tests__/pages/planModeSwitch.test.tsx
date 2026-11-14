@@ -32,6 +32,7 @@ const mockPlanWriter = {
   preparePlanMode: mockPrepare,
   initializePlanMode: jest.fn(),
   updateThought: jest.fn(),
+  removeSubPoint: jest.fn(),
   updateSermonOutline: jest.fn(),
 };
 const wrapper = ({ children }: { children: React.ReactNode }) => (

@@ -367,16 +367,18 @@ it('moves the child once when its exact paragraph is already in the parent', asy
 
 let mockFailNextRescue = false;
 let mockRejectRescueOutline: (() => Promise<never>) | undefined;
+const mockRemoveSubPoint = jest.fn();
 let mockWaitForRescue: (() => Promise<void>) | undefined;
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
   const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter');
   return { ...actual, useEnginePlanWriter: (...args: unknown[]) => {
     const result = actual.useEnginePlanWriter(...args);
-    return { ...result, writer: { ...result.writer, updateSermonOutline: (...params: unknown[]) => {
+    return { ...result, writer: { ...result.writer, removeSubPoint: (...params: unknown[]) => {
+      mockRemoveSubPoint(...params);
       const refuse = mockRejectRescueOutline;
       mockRejectRescueOutline = undefined;
       if (refuse) return refuse();
-      return result.writer.updateSermonOutline(...params);
+      return result.writer.removeSubPoint(...params);
     }, savePlanText: async (...params: unknown[]) => {
       if (mockFailNextRescue) { mockFailNextRescue = false; throw new Error('Injected pre-write storage refusal'); }
       const resultPromise = result.writer.savePlanText(...params);
@@ -451,6 +453,92 @@ it('shows the stored child accurately if deleting its heading fails after text t
   } finally {
     refuse?.(new Error('Test ended'));
     mockRejectRescueOutline = undefined;
+    view.unmount();
+  }
+});
+
+it('keeps a parent deleted after its child transfer began', async () => {
+  localStorage.clear();
+  mockRemoveSubPoint.mockClear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.', other: 'Other child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [
+    { id: 'child', text: 'Child heading', position: 0 },
+    { id: 'other', text: 'Other child heading', position: 1 },
+  ];
+  const view = await render();
+  let release: (() => void) | undefined;
+  mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    fireEvent.click(screen.getAllByTitle('plan.deleteSubPoint')[0]);
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(release).toBeDefined());
+    fireEvent.click(screen.getByTitle('plan.deletePoint'));
+    fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    await waitFor(() => expect(screen.queryByTitle('plan.deletePoint')).not.toBeInTheDocument());
+    await act(async () => { release!(); });
+    await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child'));
+    expect(harness.transport.send).toHaveBeenCalledTimes(2);
+    expect(harness.server.value?.outline).toMatchObject({ introduction: [] });
+    expect(screen.queryByTitle('plan.deletePoint')).not.toBeInTheDocument();
+  } finally {
+    release?.();
+    mockWaitForRescue = undefined;
+    view.unmount();
+  }
+});
+
+it('shows transferred words when the child heading was already removed elsewhere', async () => {
+  localStorage.clear();
+  mockRemoveSubPoint.mockClear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  let release: (() => void) | undefined;
+  mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    const editor = mountedEditor(view.container);
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(release).toBeDefined());
+    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.' }));
+    await act(async () => { await harness.remote({ outline: {
+      introduction: [{ id: 'p1', text: 'First point', subPoints: [] }], main: [], conclusion: [],
+    } }); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    await act(async () => { release!(); });
+    await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child'));
+    expect(markdown(editor)).toBe('Opening.\n\nChild paragraph.');
+    for (const [command] of jest.mocked(harness.transport.send).mock.calls) {
+      expect(command.kind === 'update' && command.changes.some(change => change.path[0] === 'outline')).toBe(false);
+    }
+  } finally {
+    release?.();
+    mockWaitForRescue = undefined;
+    view.unmount();
+  }
+});
+
+it('can delete the whole point after deleting one of its children', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  try {
+    const title = screen.getByRole('button', { name: 'plan.renamePoint' });
+    fireEvent.click(title);
+    fireEvent.change(screen.getByRole('textbox', { name: 'plan.renamePoint' }), { target: { value: 'Renamed point' } });
+    fireEvent.blur(screen.getByRole('textbox', { name: 'plan.renamePoint' }));
+    await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ text: 'Renamed point' }] }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ subPoints: [] }] }));
+    fireEvent.click(screen.getByTitle('plan.deletePoint'));
+    fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [] }));
+  } finally {
     view.unmount();
   }
 });
