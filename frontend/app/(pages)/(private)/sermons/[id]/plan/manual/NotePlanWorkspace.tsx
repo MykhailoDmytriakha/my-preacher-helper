@@ -69,7 +69,8 @@ export function NotePointGenerateButton({ point, section, targetNodeId }: {
   const generating = Boolean(state.generatingIds[requestId]);
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const overlapping = Boolean(state.generatingIds[point.id]) || nodes.some((node) => state.generatingIds[node.id]);
-  const pending = nodes.some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const pending = nodes.some(node => state.conspectus.pendingNodeIds.has(node.id)
+    || state.conspectus.isTransferringText(node.id));
   const hasContent = nodes.some((node) => state.conspectus.contentByNodeId[node.id]?.trim());
   const label = targetNodeId ? 'plan.fromNote.generateSubPoint'
     : point.subPoints?.length ? 'plan.fromNote.generatePointWithSubPoints' : 'plan.fromNote.generatePoint';
@@ -94,9 +95,12 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
   const requestId = targetNodeId ?? point.id;
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const proposal = state.proposals[requestId];
+  const proposalWaiting = Boolean(proposal && state.proposalBlocked(proposal));
+  const proposalChanged = Boolean(proposal && !proposalWaiting && state.proposalChanged(proposal));
   const busy = Boolean(state.generatingIds[requestId]);
   const disabled = state.blocked || Boolean(state.generatingIds[point.id])
-    || nodes.some((node) => state.generatingIds[node.id] || state.conspectus.pendingNodeIds.has(node.id));
+    || nodes.some((node) => state.generatingIds[node.id] || state.conspectus.pendingNodeIds.has(node.id)
+      || state.conspectus.isTransferringText(node.id));
   const scope = targetNodeId
     ? t('plan.refine.scopeSubPoint', { title: nodes[0]?.heading })
     : t(point.subPoints?.length ? 'plan.refine.scopeWholePoint' : 'plan.refine.scopePoint', { title: point.text });
@@ -108,7 +112,9 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
           document.getElementById(`${refinementPanelId(requestId)}-trigger`)?.focus();
         }}
         onGenerate={(intent) => void state.generate(point, targetNodeId, intent)} />
-      {state.errors[requestId] && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{t(`plan.fromNote.${state.errors[requestId]}`)}</p>}
+      {(state.errors[requestId] || proposalChanged) && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
+        {t(`plan.fromNote.${proposalChanged ? 'contextChanged' : state.errors[requestId]}`)}
+      </p>}
       {proposal && (
         <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
           <p className="font-medium">{t('plan.fromNote.proposal')}</p>
@@ -129,7 +135,8 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
+            <Button variant="primary" className="disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={proposalWaiting || proposalChanged} onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
             <Button variant="secondary" onClick={() => state.discard(requestId)}>{t('common.cancel')}</Button>
             <Button onClick={() => state.setRefining(requestId, true)}>{t('plan.refine.adjustRequest')}</Button>
           </div>

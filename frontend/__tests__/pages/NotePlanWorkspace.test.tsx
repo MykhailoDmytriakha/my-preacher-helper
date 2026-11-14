@@ -23,7 +23,7 @@ const point = { id: 'p', text: 'Who stood out?', note: 'List the people', subPoi
 const sermon = { id: 's', title: 'Title', verse: '', date: '', thoughts: [], userId: 'u', sourceNoteIds: ['n'],
   outline: { introduction: [], main: [point], conclusion: [] } } as Sermon;
 const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(),
-  restoreCells: jest.fn(), saveModified: jest.fn() } as unknown as ManualConspectus;
+  isTransferringText: () => false, restoreCells: jest.fn(), saveModified: jest.fn() } as unknown as ManualConspectus;
 
 const requestRefinement = () => {
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));

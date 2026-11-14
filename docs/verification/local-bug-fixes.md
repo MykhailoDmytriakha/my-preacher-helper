@@ -9780,3 +9780,15 @@ On local build `jbPhssRACZpvHMKCWKJi6`, headless Chrome at 390 and 1280 px navig
 After authorized deployment, use a disposable sermon and a dedicated profile. Save and reopen the manual plan three times, check the final words and inspect the owner-scoped IndexedDB keys before and after each exit. A browser terminated before recording retirement can leave an active opening and its marker. Historical IDs, one-shot actions and manual scopes require separate treatment and stay in BUGS.md.
 
 Full Jest passed 15,782 tests with 17 skipped. TypeScript, scoped ESLint (warnings only), the production build and independent review passed.
+
+## BUG-20261114-manual-plan-rescue-overwrites-parent-typing · Keep a proposal separate from a pending transfer
+
+Sermons → a sermon built from a note → Plan → By hand → Refine text. A whole-point AI proposal can be ready when its child starts being removed. On the previous code the proposal's Apply action was still available while the text transfer was waiting. A separate mounted regression delayed and refused the outline write after the text transfer succeeded. The child still showed an old paragraph even though the stored child was empty.
+
+Generation, refinement and Apply check the affected node IDs while a transfer is open. The visible proposal is retained. After its basis changes, the interface uses the existing explanatory message and prevents applying it over the transferred words. A failed outline update reconciles an unchanged child with the current stored value. Words typed into the child after deletion began stay available locally.
+
+On local build `KAXaIvVPVu18Mb_VkdxJX`, headless Chrome at 390 and 1280 px used fixture AI output and isolated Auth and Firestore. Both runs held the command, checked the affected proposal, then completed the removal. The transferred child paragraph and the independent neighbor were confirmed in storage and after reopening the plan. The mounted regressions cover the exact held-writer order and a refused outline update. Reports, red assertions and screenshots are in `artifacts/manual-plan-ai-rescue-20261114`.
+
+After authorized deployment, use a disposable sermon linked to a test note. Ask for a proposal for a point containing a written subpoint. Hold the transfer in the test profile while confirming subpoint removal. Check the Apply button, then release the transfer and reopen. If the outline fails, the child heading can remain with the words already moved to the parent. Leaving during transfer and overlapping Save are separate tracker items.
+
+Full Jest passed 15,784 tests with 17 skipped. TypeScript, scoped ESLint, local production build and independent source review passed.

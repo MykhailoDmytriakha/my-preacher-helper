@@ -17,7 +17,7 @@ const generated = { contentByNodeId: { p: '- New', sub: '- Detail' }, missingMat
 function setup(initial: Record<string, string> = {}, blocked = false) {
   const cells = { ...initial };
   const restoreCells = jest.fn((incoming: Record<string, string>) => Object.assign(cells, incoming));
-  const conspectus = { contentByNodeId: cells, pendingNodeIds: new Set(), restoreCells } as unknown as ManualConspectus;
+  const conspectus = { contentByNodeId: cells, pendingNodeIds: new Set(), isTransferringText: () => false, restoreCells } as unknown as ManualConspectus;
   const options = { sermon, conspectus, blocked };
   const hook = renderHook(() => useNotePlanGeneration(options));
   return { ...hook, options, cells, restoreCells };

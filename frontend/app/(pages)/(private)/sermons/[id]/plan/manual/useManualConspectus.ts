@@ -50,6 +50,7 @@ export interface ManualConspectus {
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
   rescuedAppend?: { nodeId: string; append: ObservedTextAppend };
+  isTransferringText: (nodeId: string) => boolean;
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -84,7 +85,9 @@ export function useManualConspectus({
   const planWriter = usePlanWriter();
   const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
-  const rescuingNodes = useRef(new Set<string>());
+  const rescuingNodes = useRef(new Map<string, number>());
+  const [, refreshTransfers] = useState(0);
+  const isTransferringText = useCallback((nodeId: string) => rescuingNodes.current.has(nodeId), []);
   const [rescuedAppend, setRescuedAppend] = useState<ManualConspectus["rescuedAppend"]>();
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
@@ -662,50 +665,61 @@ export function useManualConspectus({
      * text now.
      */
     const rescuing = Boolean(rescued.trim());
-    rescuingNodes.current.add(pointId);
-    rescuingNodes.current.add(subPointId);
+    const transferring = [pointId, subPointId];
+    for (const id of transferring) rescuingNodes.current.set(id, (rescuingNodes.current.get(id) ?? 0) + 1);
+    refreshTransfers(version => version + 1);
     try {
-      if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
-    } catch (error) {
-      if (!isOfflineQueuedError(error)) {
-        rescuingNodes.current.delete(pointId);
-        rescuingNodes.current.delete(subPointId);
-        setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
-          nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
-        debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
-        toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
-        return;
+      try {
+        if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
+      } catch (error) {
+        if (!isOfflineQueuedError(error)) {
+          setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
+            nodeId => Boolean(modifiedRef.current[nodeId]) || (rescuingNodes.current.get(nodeId) ?? 0) > (transferring.includes(nodeId) ? 1 : 0)));
+          debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
+          toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
+          return;
+        }
+        /**
+         * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
+         * the replay later merged the rescued words into a parent whose sub-point was still
+         * standing — a deletion the person asked for, left half done until they did it again.
+         */
+        debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
       }
-      /**
-       * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
-       * the replay later merged the rescued words into a parent whose sub-point was still
-       * standing — a deletion the person asked for, left half done until they did it again.
-       */
-      debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
-    } finally {
-      rescuingNodes.current.delete(pointId);
-      rescuingNodes.current.delete(subPointId);
-    }
 
-    if (rescuing) {
-      const parent = contentRef.current[pointId] ?? "";
-      const combined = appendRescuedText(parent);
-      setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
-      contentRef.current = { ...contentRef.current, [pointId]: combined };
-      // Text Undo cannot restore the child. Apply its transferred paragraph as the new baseline.
-      setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
-      if (combined === mergedParent) settle({ [pointId]: mergedParent });
-    }
+      if (rescuing) {
+        const parent = contentRef.current[pointId] ?? "";
+        const combined = appendRescuedText(parent);
+        setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
+        contentRef.current = { ...contentRef.current, [pointId]: combined };
+        // Text Undo cannot restore the child. Apply its transferred paragraph as the new baseline.
+        setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
+        if (combined === mergedParent) settle({ [pointId]: mergedParent });
+      }
 
-    const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
-      point.id === pointId
-        ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
-        : point
-    ))));
-    if (removed) {
+      const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
+        point.id === pointId
+          ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
+          : point
+      ))));
       const remainingChildText = contentRef.current[subPointId];
-      if (!remainingChildText || remainingChildText === rescued) discardCells([subPointId]);
-      detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
+      const childChanged = Boolean(remainingChildText && remainingChildText !== rescued);
+      if (removed) {
+        if (!childChanged) discardCells([subPointId]);
+        detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
+      } else if (rescuing && !childChanged) {
+        const stored = readPlanText(sermonRef.current)[subPointId] ?? "";
+        contentRef.current = { ...contentRef.current, [subPointId]: stored };
+        setContentByNodeId(previous => ({ ...previous, [subPointId]: stored }));
+        settle({ [subPointId]: stored });
+      }
+    } finally {
+      for (const id of transferring) {
+        const count = rescuingNodes.current.get(id);
+        if (count === 1) rescuingNodes.current.delete(id);
+        else if (count) rescuingNodes.current.set(id, count - 1);
+      }
+      refreshTransfers(version => version + 1);
     }
   }, [detachThoughtsFrom, discardCells, persistOutline, setContentByNodeId, settle, t, writeText]);
 
@@ -749,6 +763,7 @@ export function useManualConspectus({
     contentByNodeId,
     userActionValues,
     rescuedAppend,
+    isTransferringText,
     savedNodeIds,
     modifiedNodeIds,
     pendingNodeIds,

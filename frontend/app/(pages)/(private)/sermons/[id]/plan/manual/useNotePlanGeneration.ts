@@ -66,8 +66,14 @@ export function useNotePlanGeneration(options: Options) {
       && Object.entries(proposal.before).every(([id, text]) => (current.conspectus.contentByNodeId[id] ?? '') === text);
   };
 
+  const isCellUnavailable = (nodeId: string) => latest.current.conspectus.isTransferringText(nodeId)
+    || latest.current.conspectus.pendingNodeIds.has(nodeId);
+  const proposalBlocked = (proposal: Proposal) => Object.keys(proposal.before).some(isCellUnavailable);
+  const proposalChanged = (proposal: Proposal) => !unchanged(proposal);
+
   const accept = (pointId: string, proposal = proposals[pointId]) => {
-    if (!proposal || !unchanged(proposal)) {
+    if (!proposal || proposalBlocked(proposal)) return false;
+    if (!unchanged(proposal)) {
       setErrors((previous) => ({ ...previous, [pointId]: 'contextChanged' }));
       return false;
     }
@@ -91,7 +97,7 @@ export function useNotePlanGeneration(options: Options) {
     if (!currentPoint) return;
     const nodeIds = notePlanTargetNodes(currentPoint, targetNodeId).map((node) => node.nodeId);
     if (!nodeIds.length) return;
-    if (nodeIds.some((id) => current.conspectus.pendingNodeIds.has(id))) return;
+    if (nodeIds.some(isCellUnavailable)) return;
     const before = Object.fromEntries(nodeIds.map((id) => [id, current.conspectus.contentByNodeId[id] ?? '']));
     const context = notePlanContextKey(current.sermon, point.id);
     const sermonId = current.sermon.id;
@@ -132,7 +138,7 @@ export function useNotePlanGeneration(options: Options) {
     if (!currentPoint) return;
     const scope = notePlanTargetNodes(currentPoint, targetNodeId);
     if (!scope.length || requests.current.has(point.id)
-      || scope.some((node) => requests.current.has(node.nodeId))
+      || scope.some(node => requests.current.has(node.nodeId) || isCellUnavailable(node.nodeId))
       || latest.current.blocked || !mounted.current) return;
     const controller = new AbortController();
     requests.current.set(requestId, controller);
@@ -153,7 +159,7 @@ export function useNotePlanGeneration(options: Options) {
 
   return {
     style, setStyle, generatingIds, busy: Object.values(generatingIds).some(Boolean),
-    proposals, errors, missing, generate, accept, refiningIds, setRefining,
+    proposals, errors, missing, generate, accept, proposalBlocked, proposalChanged, refiningIds, setRefining,
     discard: (pointId: string) => setProposals((previous) => { const next = { ...previous }; delete next[pointId]; return next; }),
   };
 }

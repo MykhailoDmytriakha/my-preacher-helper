@@ -366,12 +366,18 @@ it('moves the child once when its exact paragraph is already in the parent', asy
 });
 
 let mockFailNextRescue = false;
+let mockRejectRescueOutline: (() => Promise<never>) | undefined;
 let mockWaitForRescue: (() => Promise<void>) | undefined;
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
   const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter');
   return { ...actual, useEnginePlanWriter: (...args: unknown[]) => {
     const result = actual.useEnginePlanWriter(...args);
-    return { ...result, writer: { ...result.writer, savePlanText: async (...params: unknown[]) => {
+    return { ...result, writer: { ...result.writer, updateSermonOutline: (...params: unknown[]) => {
+      const refuse = mockRejectRescueOutline;
+      mockRejectRescueOutline = undefined;
+      if (refuse) return refuse();
+      return result.writer.updateSermonOutline(...params);
+    }, savePlanText: async (...params: unknown[]) => {
       if (mockFailNextRescue) { mockFailNextRescue = false; throw new Error('Injected pre-write storage refusal'); }
       const resultPromise = result.writer.savePlanText(...params);
       const pause = mockWaitForRescue;
@@ -380,6 +386,73 @@ jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
       else await resultPromise;
     } } };
   } };
+});
+
+it('holds the overlapping AI proposal while the subpoint transfer is pending', async () => {
+  localStorage.clear();
+  mockNoteMode = true;
+  let view: Awaited<ReturnType<typeof render>> | undefined;
+  let release: (() => void) | undefined;
+  try {
+    mockSermon = { ...sermon({ p1: 'Opening.', child: 'Child paragraph.' }), sourceNoteIds: ['source-note'] };
+    mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+    jest.mocked(generateNotePlanContent).mockResolvedValue({
+      contentByNodeId: { p1: 'Requested AI words.', child: 'Requested child words.' },
+      missingMaterial: {},
+    });
+    view = await render();
+    const [parentRefinement] = await screen.findAllByRole('button', { name: 'plan.refine.open' });
+    fireEvent.click(parentRefinement);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+    const apply = await screen.findByRole('button', { name: 'plan.fromNote.apply' });
+    expect(apply).toBeEnabled();
+    mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(release).toBeDefined());
+    expect(apply).toBeDisabled();
+    expect(screen.getAllByText('Requested AI words.')).toHaveLength(1);
+    await act(async () => { release!(); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.' });
+    expect(screen.getByText('Requested AI words.')).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('plan.fromNote.contextChanged');
+    expect(apply).toBeDisabled();
+  } finally {
+    release?.();
+    mockWaitForRescue = undefined;
+    mockNoteMode = false;
+    view?.unmount();
+  }
+});
+
+it('shows the stored child accurately if deleting its heading fails after text transfer', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  let refuse: ((error: Error) => void) | undefined;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    const parent = mountedEditor(view.container);
+    mockRejectRescueOutline = () => new Promise((_resolve, reject) => { refuse = reject; });
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(refuse).toBeDefined());
+    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ child: '' }));
+    await act(async () => { refuse!(new Error('Injected outline refusal after text transfer')); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.failedToSaveOutline'));
+    expect(screen.getByTitle('plan.deleteSubPoint')).toBeInTheDocument();
+    expect(markdown(parent)).toBe('Opening.\n\nChild paragraph.');
+    const child = view.container.querySelectorAll<HTMLElement & { editor: typeof parent }>('.tiptap')[1].editor;
+    expect(markdown(child)).toBe('');
+    expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.', child: '' });
+  } finally {
+    refuse?.(new Error('Test ended'));
+    mockRejectRescueOutline = undefined;
+    view.unmount();
+  }
 });
 
 it('retains the text typed in the parent while its child text is being rescued', async () => {
