@@ -6042,6 +6042,63 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it.each([null, 25])('does not silently overwrite a later deliberate return with a delayed title at %s', async earlierAt => {
+      const owner = await seed();
+      await processCommand(owner, savePoint('title', 40));
+      const returnToOpening = savePoint('title', 80);
+      await processCommand(owner, {
+        ...returnToOpening, operationId: 'exegetical-title-return',
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation([edited, neighbor]) },
+          after: { exists: true, value: opening } }],
+        exegeticalPlanActions: [{ ...returnToOpening.exegeticalPlanActions[0], observedRevision: 2 }],
+      });
+      const older = { ...point, title: 'Earlier queued title' };
+      const delayed = savePoint('title', earlierAt);
+      const result = await processCommand(owner, {
+        ...delayed, operationId: 'exegetical-delayed-title',
+        changes: [{ path: ['preparation'], before: { exists: true, value: opening },
+          after: { exists: true, value: preparation([older, neighbor]) } }],
+      });
+      if (earlierAt === null) {
+        expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'exegeticalPlan', 'id:point'],
+          mine: { exists: true, value: older }, theirs: { exists: true, value: point } }] });
+      } else {
+        expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: opening } } });
+      }
+      expect((await readDocument(owner, resource)).value?.preparation).toEqual(opening);
+      await expect(listExegeticalPointHistory(owner, resource.id, 'exegetical-chronology-seed')).resolves.toMatchObject({
+        entries: [{ nodeId: point.id, value: { point: older } }],
+      });
+    });
+
+    it('keeps both saved titles when one delayed Save carries two older point titles after returns', async () => {
+      const owner = await seed();
+      const changeBoth = (operationId: string, before: typeof point[], after: typeof point[], revision: number, offset: number | null) => ({
+        ...savePoint('title', offset), operationId,
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) },
+          after: { exists: true, value: preparation(after) } }],
+        exegeticalPlanActions: [point.id, neighbor.id].map(nodeId => ({
+          nodeId, kind: 'title' as const, observedRevision: revision,
+          time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+        })),
+      });
+      const initial = [point, neighbor], middle = [edited, revisedNeighbor];
+      expect(await processCommand(owner, changeBoth('desk-first', initial, middle, 1, 45))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, changeBoth('desk-return', middle, initial, 2, 80))).toMatchObject({ kind: 'acknowledged' });
+      const incoming = initial.map(row => ({ ...row, title: 'Older ' + row.title }));
+      expect(await processCommand(owner, changeBoth('phone-both', initial, incoming, 1, null))).toMatchObject({
+        kind: 'conflict', conflicts: expect.arrayContaining(initial.map(row => expect.objectContaining({
+          path: ['preparation', 'exegeticalPlan', 'id:' + row.id], theirs: { exists: true, value: row },
+        }))),
+      });
+      expect((await readDocument(owner, resource)).value?.preparation).toEqual(opening);
+      await expect(listExegeticalPointHistory(owner, resource.id, 'exegetical-chronology-seed')).resolves.toMatchObject({
+        entries: expect.arrayContaining(incoming.map(row => expect.objectContaining({
+          nodeId: row.id, value: expect.objectContaining({ point: row }), origin: 'comparison',
+        }))),
+      });
+    });
+
     it('accepts removal of the exact point title saved by its own preceding request without a clock', async () => {
       const owner = await seed();
       expect(await processCommand(owner, savePoint('title', null))).toMatchObject({ kind: 'acknowledged' });

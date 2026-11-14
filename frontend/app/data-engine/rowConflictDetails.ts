@@ -129,18 +129,20 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
 export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const { conflicts, draft, remoteCandidate } = checkpoint;
   if (!conflicts.length || !draft || !remoteCandidate?.value) return undefined;
-  const pointConflict = conflicts.find(({ path }) => exegeticalPointConflictId(path));
-  const pointId = pointConflict && exegeticalPointConflictId(pointConflict.path);
-  if (pointId) {
+  const pointIds = conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
+  if (pointIds.length) {
     const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
     const local = exegeticalPlan(draft.preparation), saved = exegeticalPlan(remoteCandidate.value.preparation);
     if (!opening || !local || !saved || checkpoint.confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return undefined;
-    const choice = readExegeticalPointChoice(opening, local, saved, pointId);
-    if (!choice) return undefined;
-    const mine = choice.mine?.point.title as string | undefined;
-    const stored = choice.saved?.point.title as string | undefined;
-    const identity = JSON.stringify([pointConflict!.path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);
-    return { kind: 'exegetical-point' as const, identity, mine: mine ?? null, stored: stored ?? null, scoped: conflicts.length === 1 };
+    const versions = pointIds.flatMap(id => {
+      const choice = readExegeticalPointChoice(opening, local, saved, id);
+      if (!choice) return [];
+      return [{ mine: (choice.mine?.point.title as string | undefined) ?? null,
+        stored: (choice.saved?.point.title as string | undefined) ?? null }];
+    });
+    if (versions.length !== pointIds.length) return undefined;
+    const identity = JSON.stringify([pointIds, versions, remoteCandidate.metadata, checkpoint.editGeneration]);
+    return { kind: 'exegetical-point' as const, identity, versions, scoped: conflicts.length === 1 };
   }
   if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];

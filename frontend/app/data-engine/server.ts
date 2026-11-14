@@ -1145,11 +1145,14 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       persistHomileticHistory(transaction, command, result.snapshot, homileticOrder, true);
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
     }
-    const comparison = exegeticalOrder?.comparison;
-    if (comparison && result.kind === 'conflict'
-      && result.conflicts.some(({ path }) => exegeticalPointConflictId(path) === comparison.nodeId)) {
+    if (result.kind === 'conflict' && exegeticalOrder?.comparisons?.length) {
+      const points = new Set(result.conflicts.map(({ path }) => exegeticalPointConflictId(path)));
       const history = documentRef.collection(EXEGETICAL_POINT_HISTORY);
-      transaction.set(history.doc(historyEntryId(result.snapshot, command.operationId)), { ...comparison, generation: result.snapshot.metadata!.generation });
+      for (const comparison of exegeticalOrder.comparisons) {
+        if (!points.has(comparison.nodeId)) continue;
+        const identity = exegeticalOrder.comparisons.length === 1 ? command.operationId : JSON.stringify([command.operationId, comparison.nodeId]);
+        transaction.set(history.doc(historyEntryId(result.snapshot, identity)), { ...comparison, generation: result.snapshot.metadata!.generation });
+      }
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, receipt.stored);

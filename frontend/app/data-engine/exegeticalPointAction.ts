@@ -90,9 +90,9 @@ export function readExegeticalPointChoice(opening: Plan, local: Plan, stored: Pl
   if (!before) return undefined;
   const mine = exegeticalPointVersion(local, id), saved = exegeticalPointVersion(stored, id);
   const localChange = changedExegeticalPoint(opening, local, id), storedChange = changedExegeticalPoint(opening, stored, id);
-  const returned = localChange === 'remove' && saved
-    && equalValues([saved.point, saved.ancestors], [before.point, before.ancestors]);
-  if (localChange && ((storedChange && localChange !== storedChange) || returned)) return { before, mine, saved };
+  const returned = localChange && saved && equalValues([saved.point, saved.ancestors], [before.point, before.ancestors]);
+  const competingTitles = localChange === 'title' && storedChange === 'title' && mine?.point.title !== saved?.point.title;
+  if (localChange && ((storedChange && localChange !== storedChange) || returned || competingTitles)) return { before, mine, saved };
 }
 
 export function exegeticalPointConflict(id: string, opening: ExegeticalPointVersion, local: ExegeticalPointVersion | null,

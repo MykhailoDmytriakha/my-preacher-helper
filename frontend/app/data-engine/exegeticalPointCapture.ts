@@ -68,7 +68,7 @@ export function captureExegeticalPointActions(checkpoint: SessionCheckpoint, bas
   const actions = checkpoint.exegeticalPointDrafts.flatMap((action): ExegeticalPointStamp[] => {
     if (action.generation !== baseline.metadata?.generation || action.observedRevision > baseline.metadata.revision
       || !matchesResult(next, action) || changedExegeticalPoint(opening, next, action.nodeId) !== action.kind) return [];
-    const predecessorOperationId = action.kind === 'remove' ? capturedPointPredecessor(baseline, action.nodeId, opening, predecessor, requests) : undefined;
+    const predecessorOperationId = capturedPointPredecessor(baseline, action.nodeId, opening, predecessor, requests);
     return [{ nodeId: action.nodeId, kind: action.kind, observedRevision: action.observedRevision, time: action.time,
       ...(predecessorOperationId && { predecessorOperationId }) }];
   });

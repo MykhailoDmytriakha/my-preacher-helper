@@ -25,7 +25,7 @@ type DisplacedPoint = {
 };
 
 type PointOrder = {
-  command: DataCommand; uncertain: ConflictDetail[]; candidates: IntendedProof[]; displaced?: DisplacedPoint; comparison?: Omit<ExegeticalPointHistoryEntry, 'id'>;
+  command: DataCommand; uncertain: ConflictDetail[]; candidates: IntendedProof[]; displaced?: DisplacedPoint; comparisons?: Omit<ExegeticalPointHistoryEntry, 'id'>[];
 };
 
 const digest = (value: unknown) => createHash('sha256').update(commandFingerprint(value)).digest('base64url');
@@ -65,23 +65,24 @@ function actions(command: Update, change: Change, revision: number, serverMs: nu
   return observed;
 }
 
-function competingPoint(change: Change, stored: Plan, evidence: ReadonlyMap<string, ExegeticalPointStamp>, saved: readonly Proof[]) {
-  const points = [...change.opening.points.entries.keys()].flatMap(nodeId => {
-    if (change.local.points.entries.has(nodeId) === stored.points.entries.has(nodeId)) return [];
+function competingPoints(change: Change, stored: Plan, evidence: ReadonlyMap<string, ExegeticalPointStamp>, saved: readonly Proof[]) {
+  return [...change.opening.points.entries.keys()].flatMap(nodeId => {
     const mine = changedExegeticalPoint(change.opening, change.local, nodeId);
+    if (!mine) return [];
     const theirs = changedExegeticalPoint(change.opening, stored, nodeId);
-    if (mine && theirs && mine !== theirs) return [{ nodeId, mine, theirs }];
+    if ((mine === 'title' && theirs === 'remove') || (mine === 'remove' && theirs === 'title')) {
+      return [{ nodeId, theirs }];
+    }
     const action = evidence.get(nodeId), proof = saved.find(item => item.nodeId === nodeId);
     const original = exegeticalPointVersion(change.opening, nodeId);
     const current = exegeticalPointVersion(stored, nodeId);
-    if (mine === 'remove' && !theirs && action && proof?.kind === 'title' && proof.revision > action.observedRevision && original
+    if (action && proof?.kind === 'title' && proof.revision > action.observedRevision && original && current
       && proof.opening === structure(original) && proof.result === resultOf(current)
-      && resultOf(original) === proof.result && action.predecessorOperationId !== proof.operationId) {
-      return [{ nodeId, mine, theirs: 'title' as const }];
-    }
+      && action.predecessorOperationId !== proof.operationId
+      && (theirs === 'title' ? resultOf(exegeticalPointVersion(change.local, nodeId)) !== proof.result
+        : !theirs && resultOf(original) === proof.result)) return [{ nodeId, theirs: 'title' as const }];
     return [];
   });
-  return points.length === 1 ? points[0] : undefined;
 }
 
 export function orderExegeticalPoints(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number): PointOrder {
@@ -99,8 +100,18 @@ export function orderExegeticalPoints(command: DataCommand, current: ResourceSna
       ? [{ action, opening: structure(opening), result: resultOf(exegeticalPointVersion(change.local, action.nodeId)) }] : [];
   });
   const saved = proofs(raw, metadata.generation);
-  const point = competingPoint(change, stored, evidence, saved);
+  const points = competingPoints(change, stored, evidence, saved);
+  const [point] = points;
   if (!point) return { ...base, candidates };
+  if (points.length > 1) {
+    const versions = points.map(({ nodeId }) => ({ nodeId, opening: exegeticalPointVersion(change.opening, nodeId)!,
+      mine: exegeticalPointVersion(change.local, nodeId), live: exegeticalPointVersion(stored, nodeId) }));
+    const uncertain = versions.map(({ nodeId, opening, mine, live }) => exegeticalPointConflict(nodeId, opening, mine, live));
+    const comparisons = versions.map(({ nodeId, mine, live }) => ({
+      nodeId, value: mine ?? live, winner: null, origin: 'comparison' as const,
+    }));
+    return { ...base, candidates, uncertain, comparisons };
+  }
   const { nodeId } = point;
   const opening = exegeticalPointVersion(change.opening, nodeId)!;
   const local = exegeticalPointVersion(change.local, nodeId), live = exegeticalPointVersion(stored, nodeId);
@@ -116,7 +127,7 @@ export function orderExegeticalPoints(command: DataCommand, current: ResourceSna
   const planned = { ...command, changes: command.changes.map(item => item === change.change ? { ...item, before, after } : item) };
   if (!ordered || !action?.time || !previous?.time) {
     return { command: planned, candidates, uncertain: [exegeticalPointConflict(nodeId, opening, local, live)],
-      comparison: { nodeId, value: local ?? live, winner: null, origin: 'comparison' } };
+      comparisons: [{ nodeId, value: local ?? live, winner: null, origin: 'comparison' }] };
   }
   if (ordered > 0 && !candidates.some(candidate => candidate.action.nodeId === nodeId)) candidates.push({ action, opening: beforeHash, result: resultOf(winner) });
   return { command: planned, candidates, uncertain: [], displaced: {
