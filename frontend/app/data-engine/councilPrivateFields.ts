@@ -1,7 +1,7 @@
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow, incompatibleCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
-import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
+import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { readPrivateFieldReview } from './privateFieldReview';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
@@ -12,6 +12,7 @@ import type { DocumentData, FieldValue } from './types';
 
 type CouncilPrivateField = { path: string[] } & (
   { field: 'title' | 'date' | 'heldAt'; mine: string | null; stored: string | null }
+  | { field: 'summary'; birth: string; mine: string | null; stored: string | null }
   | { field: 'topic-title'; birth: string; mine: string; stored: string }
   | { field: 'outcome'; birth: string; mine: CouncilOutcome; stored: CouncilOutcome; localAvailable?: false }
 );
@@ -32,6 +33,13 @@ function readCouncilField(checkpoint: SessionCheckpoint, path: string[]): Counci
     const stored = existingRowField(saved.topics, outcome, COUNCIL_OUTCOME);
     return mine && stored && !incompatibleCouncilOutcome(mine) && !incompatibleCouncilOutcome(stored)
       ? { field: 'outcome', path, birth: outcome, mine, stored } : undefined;
+  }
+  if (path.length === 3 && path[0] === 'topics' && path[1].startsWith('id:') && path[2] === 'summary') {
+    const birth = path[1].slice(3), target = COUNCIL_TOPIC_SUMMARY_POLICY.target('summary');
+    const opening = existingRowField(confirmed.value.topics, birth, target);
+    const mine = existingRowField(draft.topics, birth, target), stored = existingRowField(saved.topics, birth, target);
+    return opening !== undefined && mine !== undefined && stored !== undefined
+      ? { field: 'summary', path, birth, mine, stored } : undefined;
   }
   const topic = councilTopicTitleRow(path);
   if (topic) {
@@ -89,10 +97,11 @@ export function projectCouncilPrivateFields(review: NonNullable<ReturnType<typeo
     const decision = decisions.find(item => equalValues(item.path, field.path));
     if (!decision || (field.field === 'outcome' && field.localAvailable === false && decision.side === 'local')) return undefined;
     const selected = decision.side === 'local' ? 'mine' : 'stored';
-    if (field.field === 'topic-title' || field.field === 'outcome') {
+    if (field.field === 'topic-title' || field.field === 'outcome' || field.field === 'summary') {
       const topics = field.field === 'topic-title'
         ? replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_TOPIC_TITLE)
-        : replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_OUTCOME);
+        : field.field === 'summary' ? replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_TOPIC_SUMMARY_POLICY.target('summary'))
+          : replaceExistingRowField(value.topics, field.birth, field[selected], COUNCIL_OUTCOME);
       if (!topics) return undefined;
       value = { ...value, topics };
     } else {
@@ -102,4 +111,22 @@ export function projectCouncilPrivateFields(review: NonNullable<ReturnType<typeo
     }
   }
   return value;
+}
+
+export function readCouncilSummaryChoice(checkpoint: SessionCheckpoint, draft = checkpoint.draft) {
+  const { confirmed, remoteCandidate, conflicts, pending } = checkpoint;
+  if (confirmed.resource.collection !== 'councils' || !confirmed.metadata
+    || confirmed.metadata.generation !== remoteCandidate?.metadata?.generation || !draft || !confirmed.value
+    || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
+  const choice = readCouncilField({ ...checkpoint, draft }, conflicts[0].path);
+  if (choice?.field !== 'summary' || choice.mine === choice.stored) return undefined;
+  return { ...choice, before: existingRowField(confirmed.value.topics, choice.birth, COUNCIL_TOPIC_SUMMARY_POLICY.target('summary')) ?? null,
+    identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata, choice]) };
+}
+
+export function writeCouncilSummaryChoice(value: DocumentData | null,
+  choice: NonNullable<ReturnType<typeof readCouncilSummaryChoice>>, side: 'before' | 'mine') {
+  if (!value) return undefined;
+  const topics = replaceExistingRowField(value.topics, choice.birth, choice[side], COUNCIL_TOPIC_SUMMARY_POLICY.target('summary'));
+  return topics === undefined ? undefined : { ...value, topics };
 }

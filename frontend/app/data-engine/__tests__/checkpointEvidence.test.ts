@@ -47,7 +47,7 @@ type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dir
 const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
-  councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
+  councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
   groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: rowDrafts, groupStepDurationDrafts: rowDrafts,
   thoughtLockDrafts: rowDrafts, thoughtPlacementDrafts: rowDrafts,
   exegeticalPointDrafts: [{ nodeId: 'point', kind: 'title', observedRevision: 1, time, predecessorOperationId: 'earlier-save',
@@ -67,7 +67,7 @@ type PendingEvidenceKey = Exclude<keyof Pending, 'generation' | 'value' | 'opera
 const pendingEvidence = {
   groupTitleAction: observation, groupDescriptionAction: optionalObservation, groupStatusAction: observation, councilTitleAction: observation,
   councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
-  councilOutcomeActions: [row], councilTopicTitleActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
+  councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], groupFlowStepPlacement: groupPlacement,
   councilTopicPlacement: councilPlacement, commentPlaceAction,

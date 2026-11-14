@@ -14,6 +14,7 @@ import { captureCommentPlace, matchesCommentPlaceRequest } from './commentPlaceA
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
+import { readCouncilSummaryChoice } from './councilPrivateFields';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
@@ -2564,7 +2565,7 @@ export class DataEngine {
     const about = copy(checkpoint.confirmed.resource);
     const pending = checkpoint.pending;
     const preference = readAccountPreferenceComparison(checkpoint);
-    const groupText = readGroupFlowTextChoice(checkpoint);
+    const groupText = readGroupFlowTextChoice(checkpoint) || readCouncilSummaryChoice(checkpoint);
     const finalPrivateFieldChoice = readPrivateDocumentReview(checkpoint)?.remaining.length === 1;
     const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
     const affected = [...this.manualForms.values()].filter(item => {

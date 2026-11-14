@@ -23,7 +23,7 @@ import { commentKindChoiceOpening, readCommentKindComparison as commentKindCompa
 import { firstCommentReference as readCommentReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
 import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison } from './commentPlaceChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
-import { readPrivateCouncilComparison as privateCouncilComparison } from './councilPrivateFields';
+import { readCouncilSummaryChoice as councilSummaryChoice, readPrivateCouncilComparison as privateCouncilComparison } from './councilPrivateFields';
 import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
@@ -101,6 +101,7 @@ export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) 
 export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) { return hasStudyNoteReferenceReview(checkpoint.conflicts); }
 export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) { return studyNoteFieldsComparison(checkpoint); }
 export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
+export function readCouncilSummaryChoice(checkpoint: SessionCheckpoint) { return councilSummaryChoice(checkpoint); }
 export function readPrivateCouncilComparison(checkpoint: SessionCheckpoint) { return privateCouncilComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 /** A recovered scalar comparison has no server request yet but still pins both displayed values. */

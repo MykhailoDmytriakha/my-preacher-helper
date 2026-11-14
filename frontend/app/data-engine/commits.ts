@@ -1605,10 +1605,10 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      const { councilOutcomeActions, groupBlockContentActions, groupStepNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
       Object.assign(command, rowFields);
       // The two row arrays on the command already carry these exact values.
-      for (const [key, actions] of Object.entries({ councilOutcomeActions, groupBlockContentActions, groupStepNotesActions })) {
+      for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions })) {
         if (actions) Object.assign(command, { [key]: actions.map(({ before: _before, after: _after, ...proof }) => proof) });
       }
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);

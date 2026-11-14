@@ -8,7 +8,7 @@ import type { RowDetailPolicy } from './rowDetailAction';
 import type { DataCommand, ResourceSnapshot } from './types';
 
 /** A queued older client can compare values but cannot prove which occurrence of the same text it saw. */
-export function orderGroupFlowText<Field extends string, Value extends string | null>(command: DataCommand,
+export function orderRowText<Field extends string, Value extends string | null>(command: DataCommand,
   current: ResourceSnapshot, raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>) {
   const metadata = current.metadata;
   if (command.resource.collection !== policy.collection || command.kind !== 'update' || !metadata || metadata.deleted

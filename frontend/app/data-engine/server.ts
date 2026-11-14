@@ -23,7 +23,7 @@ import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPag
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
 import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind, type CouncilTopicKindHistoryPage } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_PLACEMENT_HISTORY, metadataAfterCouncilTopicPlacement } from './councilTopicPlacement.server';
-import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
+import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath, documentFieldValue, isSermonPlanMode } from './documentFieldAction';
@@ -36,7 +36,6 @@ import { equalValues, object, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { groupFirstMeetingComparison } from './groupFirstMeeting';
 import { adoptLegacyFirstGroupMeeting, firstGroupMeetingLegacyMetadata, prepareFirstGroupMeetingOrder, rawFirstGroupMeetingOpening } from './groupFirstMeetingOrder.server';
-import { orderGroupFlowText } from './groupFlowTextOrder.server';
 import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
 import { metadataAfterGroupFlowTopology } from './groupFlowTopology.server';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
@@ -59,6 +58,7 @@ import { mergeFields, advanceResourceSnapshot, commandFingerprint, getResourcePo
 import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField } from './rowFieldAction';
+import { orderRowText } from './rowTextOrder.server';
 import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { compareReturnedSermonText, metadataAfterSermonText } from './sermonTextOrder.server';
@@ -585,7 +585,7 @@ function persistRowDetailHistory<Field extends string, Value extends RowValue>(t
   });
 }
 
-function persistGroupFlowTextHistory<Field extends string, Value extends string | null>(transaction: Transaction, command: DataCommand,
+function persistRowTextHistory<Field extends string, Value extends string | null>(transaction: Transaction, command: DataCommand,
   snapshot: ResourceSnapshot, policy: RowDetailPolicy<Field, Value>, order?: RowDetailOrder<Field, Value>) {
   const fields = retainedRowDetailHistory(snapshot, policy, order);
   if (!fields.length || !snapshot.metadata) return;
@@ -680,12 +680,12 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   const step = orderRowDetails(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
   const blockStatus = orderRowDetails(step.command, current, metadata, serverMs, GROUP_BLOCK_STATUS_POLICY);
   const duration = orderRowDetails(blockStatus.command, current, metadata, serverMs, GROUP_STEP_DURATION_POLICY);
-  const content = orderGroupFlowText(alignGroupStepDurationRepresentation(duration.command, current), current, metadata, serverMs, GROUP_BLOCK_CONTENT_POLICY);
-  const notes = orderGroupFlowText(content.command, current, metadata, serverMs, GROUP_STEP_NOTES_POLICY);
+  const content = orderRowText(alignGroupStepDurationRepresentation(duration.command, current), current, metadata, serverMs, GROUP_BLOCK_CONTENT_POLICY);
+  const notes = orderRowText(content.command, current, metadata, serverMs, GROUP_STEP_NOTES_POLICY);
   return { block, step, blockStatus, duration, content, notes };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -701,6 +701,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   serviceStepTitleOrder?: RowDetailOrder<'title', string>;
   serviceStepScriptureOrder?: ReturnType<typeof orderServiceStepScripture>;
   councilTopicTitleOrder?: RowDetailOrder<'title', string>;
+  councilTopicSummaryOrder?: RowDetailOrder<'summary', string | null>;
   councilAssemblyOrder?: RowDetailOrder<'forAssembly', boolean>;
   councilTopicKindOrder?: RowDetailOrder<'kind', CouncilTopicKind>;
   councilOutcomeOrder?: ReturnType<typeof orderCouncilOutcome>;
@@ -749,7 +750,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const stepTitle = metadataAfterRowDetails({ ...snapshot, metadata: flag }, raw, SERVICE_ORDER_STEP_TITLE_POLICY, primary ? serviceStepTitleOrder : undefined);
     const stepScripture = metadataAfterRowDetails({ ...snapshot, metadata: stepTitle }, raw, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, primary ? serviceStepScriptureOrder : undefined);
     const topicTitle = metadataAfterRowDetails({ ...snapshot, metadata: stepScripture }, raw, COUNCIL_TOPIC_TITLE_POLICY, primary ? councilTopicTitleOrder : undefined);
-    const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicTitle }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
+    const topicSummary = metadataAfterRowDetails({ ...snapshot, metadata: topicTitle }, raw, COUNCIL_TOPIC_SUMMARY_POLICY, primary ? councilTopicSummaryOrder : undefined);
+    const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicSummary }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
     const topicKind = metadataAfterRowDetails({ ...snapshot, metadata: assembly }, raw, COUNCIL_TOPIC_KIND_POLICY, primary ? councilTopicKindOrder : undefined);
     const topicOutcome = metadataAfterRowDetails({ ...snapshot, metadata: topicKind }, raw, COUNCIL_OUTCOME_POLICY, primary ? councilOutcomeOrder : undefined,
       undefined, primary ? councilOutcomeOrder?.queueDigest : undefined);
@@ -889,14 +891,15 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_TITLE_POLICY, groupFlowOrder?.step);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_STATUS_POLICY, groupFlowOrder?.blockStatus);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_DURATION_POLICY, groupFlowOrder?.duration);
-  persistGroupFlowTextHistory(transaction, command, primarySnapshot, GROUP_BLOCK_CONTENT_POLICY, groupFlowOrder?.content);
-  persistGroupFlowTextHistory(transaction, command, primarySnapshot, GROUP_STEP_NOTES_POLICY, groupFlowOrder?.notes);
+  persistRowTextHistory(transaction, command, primarySnapshot, GROUP_BLOCK_CONTENT_POLICY, groupFlowOrder?.content);
+  persistRowTextHistory(transaction, command, primarySnapshot, GROUP_STEP_NOTES_POLICY, groupFlowOrder?.notes);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_FLAG_POLICY, serviceFlagOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_STEP_TITLE_POLICY, serviceStepTitleOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, serviceStepScriptureOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder);
+  persistRowTextHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, THOUGHT_LOCK_POLICY, thoughtLockOrder);
@@ -1065,6 +1068,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     let serviceStepTitleOrder: RowDetailOrder<'title', string> | undefined;
     let serviceStepScriptureOrder: ReturnType<typeof orderServiceStepScripture> | undefined;
     let councilTopicTitleOrder: RowDetailOrder<'title', string> | undefined;
+    let councilTopicSummaryOrder: RowDetailOrder<'summary', string | null> | undefined;
     let councilAssemblyOrder: RowDetailOrder<'forAssembly', boolean> | undefined;
     let councilTopicKindOrder: RowDetailOrder<'kind', CouncilTopicKind> | undefined;
     let councilOutcomeOrder: ReturnType<typeof orderCouncilOutcome> | undefined;
@@ -1109,7 +1113,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       serviceStepTitleOrder = orderRowDetails(serviceFlagOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_TITLE_POLICY);
       serviceStepScriptureOrder = orderServiceStepScripture(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved);
       councilTopicTitleOrder = orderRowDetails(serviceStepScriptureOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
-      councilAssemblyOrder = orderRowDetails(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
+      councilTopicSummaryOrder = orderRowText(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_SUMMARY_POLICY);
+      councilAssemblyOrder = orderRowDetails(councilTopicSummaryOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
       councilTopicKindOrder = orderRowDetails(councilAssemblyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_KIND_POLICY);
       councilOutcomeOrder = orderCouncilOutcome(councilTopicKindOrder.command, current, raw?._dataEngine, serverMs, command);
       const aligned = alignServiceOrderFlagRepresentation(alignCouncilAssembly(alignCouncilTopicKind(councilOutcomeOrder.command, current), current), current);
@@ -1156,7 +1161,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         },
         list: relationListFor(owner, transaction, rawDocuments),
       });
-      const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
+      const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilTopicSummaryOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
       uncertain.push(...compareReturnedAnalysisFrame(command, current, raw?._dataEngine),
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine));
@@ -1200,7 +1205,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       cleanup = { name: command.baseline.name, after: null, completed: !detachedTagName };
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     if (result.kind === 'conflict') {
       // Keep a proven earlier value even if another field blocks the command. Mark a result that

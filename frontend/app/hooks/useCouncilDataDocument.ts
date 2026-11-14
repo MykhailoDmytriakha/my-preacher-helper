@@ -73,7 +73,8 @@ export function useCouncilDataDocument(councilId: string) {
   }, [council, document, apply]);
 
   const setTopicSummary = (topicId: string, summary: string) =>
-    document.update(apply(current => ({ ...current, topics: patchCouncilTopicSummary(current.topics, topicId, summary) })));
+    document.update(apply(current => ({ ...current, topics: patchCouncilTopicSummary(current.topics, topicId, summary) })),
+      { action: { kind: 'council-topic-summary', rowId: topicId } });
   const holdTopicSummary = (topicId: string, summary: string) =>
     document.holdDraftAlternative(confirmed => ({
       ...confirmed,

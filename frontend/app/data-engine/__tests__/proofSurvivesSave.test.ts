@@ -221,6 +221,30 @@ it.each(['block content', 'leader notes'] as const)('holds delayed %s after the 
   expect((await desktop('legacy-phone', value, withWords('Legacy delayed text'))).kind).toBe('conflict');
 });
 
+it.each(['opening words', 'missing summary'] as const)('holds a delayed council summary after an intentional return to %s', async mode => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'councils', id: 'council-summary-return' };
+  const topic = { id: 'topic', title: 'Section', kind: 'decision', options: [], questions: [],
+    ...(mode === 'opening words' && { summary: 'Opening summary' }) };
+  const value = { userId: 'owner', title: 'Independent council title', status: 'preparing', topics: [topic] };
+  const snapshot: ResourceSnapshot = { resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set('councils/' + resource.id, { ...value, _dataEngine: snapshot.metadata });
+  const withSummary = (summary: string) => ({ ...value, topics: [{ ...topic, summary }] });
+  const phone = new DataSession(snapshot);
+  phone.edit(withSummary('Earlier offline summary'), undefined, { field: 'council-topic-summary', rowId: 'topic', time: null });
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint: phone.checkpoint(), prepared: null, unfinalized: [] };
+  const reopened = (await throughDeviceStorage(record)).checkpoint;
+  const temporary = withSummary('Later temporary summary');
+  const edit = (operationId: string, before: DocumentData, after: DocumentData) => processCommand('owner', {
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update', changes: diffFields(before, after),
+  });
+  expect((await edit('away', value, temporary)).kind).toBe('acknowledged');
+  expect((await edit('return', temporary, value)).kind).toBe('acknowledged');
+
+  expect((await save(reopened)).kind).toBe('conflict');
+  expect((await readDocument('owner', resource)).value).toMatchObject(value);
+});
+
 it('retains the exact displaced group row texts once when known action order keeps the later words', async () => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'groups', id: 'timed-group-row-text' };

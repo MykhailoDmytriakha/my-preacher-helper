@@ -10,6 +10,7 @@ import { keepUncontestedCommentFields } from './commentKindChoice';
 import { commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, keepUncontestedCommentPlace, readCommentPlaceComparison } from './commentPlaceChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
+import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
 import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
 import { hasCouncilTopic } from './councilTopicTitleAction';
@@ -903,7 +904,7 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readOutlineParentComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint) || readGroupFlowTextChoice(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && (readOutlinePointPlacementComparison(checkpoint) || readOutlineParentComparison(checkpoint) || readStudyNoteReferenceComparison(checkpoint) || readGroupFlowTextChoice(checkpoint) || readCouncilSummaryChoice(checkpoint)))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || Boolean(sourceNoteComparison && !ordinary) || retired.some(request => expected.checkpoint.pending[request.id]
@@ -928,10 +929,12 @@ export class EditorController {
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
         const groupText = !reviewingGroup && !selection && readGroupFlowTextChoice(decided, local);
-        const groupDraft = groupText && writeGroupFlowTextChoice(local, groupText, 'before');
-        const groupRemainder = groupDraft && decided.confirmed.value && decided.remoteCandidate?.value
-          ? mergeDocumentFields(decided.confirmed.value, groupDraft, decided.remoteCandidate.value) : undefined;
-        if (groupRemainder?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
+        const councilSummary = !selection && !correction && readCouncilSummaryChoice(decided, local);
+        const remainingDraft = groupText ? writeGroupFlowTextChoice(local, groupText, 'before')
+          : councilSummary ? writeCouncilSummaryChoice(local, councilSummary, 'before') : undefined;
+        const textRemainder = remainingDraft && decided.confirmed.value && decided.remoteCandidate?.value
+          ? mergeDocumentFields(decided.confirmed.value, remainingDraft, decided.remoteCandidate.value) : undefined;
+        if (textRemainder?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
         const placeOpening = !selection && !correction ? commentPlaceChoiceOpening(decided) : undefined;
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
@@ -1105,6 +1108,12 @@ export class EditorController {
             if (groupText.field === 'description') session.stageReviewedGroupDescription(choiceTime ?? null);
             else session.stageReviewedGroupFlowText([groupText.path], choiceTime ?? null);
           }
+          if (councilSummary) {
+            const reviewed = writeCouncilSummaryChoice(session.checkpoint().draft, councilSummary, 'mine');
+            if (!reviewed) throw Object.assign(new Error('The reviewed section changed'), { code: 'decision-changed' });
+            session.edit(reviewed);
+            session.stageReviewedCouncilSummary(councilSummary.path, choiceTime ?? null);
+          }
           if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;
           if (selectedMove) {
@@ -1130,7 +1139,7 @@ export class EditorController {
           }
         } else {
           const chosenPath = preference?.path ?? (!selection && decided.serviceOrderPlacementComparison ? ['rank'] : undefined);
-          const retainedFields = groupRemainder ?? (chosenPath && local && decided.confirmed.value && decided.remoteCandidate?.value
+          const retainedFields = textRemainder ?? (chosenPath && local && decided.confirmed.value && decided.remoteCandidate?.value
             ? mergeDocumentFields(decided.confirmed.value,
               writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined);
           if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
@@ -1153,7 +1162,7 @@ export class EditorController {
             if (merged.value.exists) session.edit(merged.value.value as DocumentData);
             session.retainOutlineTitleActions(decided);
             session.stageOutlineReviewTitles(titles);
-            if (groupRemainder) session.retainUnreviewedAutosaveActions(decided);
+            if (textRemainder) session.retainUnreviewedAutosaveActions(decided);
           }
           if (remoteChoice?.refused && !decided.remoteCandidate) {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);

@@ -843,6 +843,10 @@ export class DataSession {
     carryOutlineTitleActions(source, this.state);
   }
 
+  stageReviewedCouncilSummary(path: readonly string[], time: ActionTime | null): void {
+    stageReviewedRowFields(this.state, [path], time, ['council-topic-summary']);
+  }
+
   stageReviewedGroupFlowText(paths: readonly (readonly string[])[], time: ActionTime | null): void {
     stageReviewedGroupFlowText(this.state, paths, time);
   }

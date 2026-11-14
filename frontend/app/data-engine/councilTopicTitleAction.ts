@@ -32,3 +32,11 @@ export function councilTopicTitleRow(path: readonly string[] | undefined): strin
 export function hasCouncilTopic(rows: unknown, id: string): boolean {
   return existingRowField(rows, id, COUNCIL_TOPIC_ID) === id;
 }
+
+export const COUNCIL_TOPIC_SUMMARY_POLICY: RowDetailPolicy<'summary', string | null> = {
+  collection: 'councils', fields: ['summary'], birth: COUNCIL_TOPIC_ID,
+  target: () => ({ field: 'topics', leaf: 'summary', missing: null,
+    accepts: (value): value is string | null => value === null || typeof value === 'string' }),
+  proofs: 'councilTopicSummaryProofs', actions: 'councilTopicSummaryActions', history: '_topicSummaryHistory',
+  repeatedFields: ['summary'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
+};

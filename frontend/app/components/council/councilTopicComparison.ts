@@ -1,5 +1,5 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
-import { readCouncilTopicConflict, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
+import { readCouncilSummaryChoice, readCouncilTopicConflict, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
 
@@ -11,6 +11,9 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
   const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
   if (placement) return placement;
   const privateField = checkpoint && readPrivateCouncilComparison(checkpoint);
+  const summary = privateField?.field === 'summary' ? privateField : checkpoint && readCouncilSummaryChoice(checkpoint);
+  if (summary) return { identity: summary.identity, title: t('council.topic.summary'), valueKind: 'field', scopedChoice: true,
+    mine: summary.mine || t('dataSync.emptyField'), stored: summary.stored || t('dataSync.emptyField') };
   if (privateField?.field === 'outcome') {
     const topic = topics?.find(item => item.id === privateField.birth);
     return { identity: privateField.identity, title: t('council.topic.atCouncil'), valueKind: 'field', scopedChoice: true,
@@ -23,7 +26,7 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
       mine: privateField.mine || untitled, stored: privateField.stored || untitled };
   }
   const unreadable = privateField ?? (checkpoint && readUnreadableScalarComparison(checkpoint));
-  if (unreadable && unreadable.field !== 'status') {
+  if (unreadable && unreadable.field !== 'status' && unreadable.field !== 'summary') {
     const label = unreadable.field === 'title' ? 'council.detail.titleLabel'
       : unreadable.field === 'date' ? 'council.detail.dateLabel' : 'council.history.lifecycle';
     return { identity: unreadable.identity, title: t(label), valueKind: 'field', scopedChoice: true,

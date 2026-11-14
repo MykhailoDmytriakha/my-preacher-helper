@@ -1,4 +1,4 @@
-import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
+import type { RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
 import type { RowFieldTarget } from './rowFieldAction';
 
 const isText = (value: unknown): value is string => typeof value === 'string';
@@ -24,8 +24,6 @@ export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = 
   proofs: 'groupStepTitleProofs', actions: 'groupStepTitleActions', history: '_stepTitleHistory',
   repeatedFields: ['title'], allowUnclocked: true,
 };
-
-export type GroupFlowTextStamp = Omit<RowDetailObservation<string | null>, 'before' | 'after'>;
 
 export const GROUP_BLOCK_CONTENT_POLICY: RowDetailPolicy<'content', string> = {
   collection: 'groups', fields: ['content'], birth: GROUP_BLOCK_TITLE_POLICY.birth,
