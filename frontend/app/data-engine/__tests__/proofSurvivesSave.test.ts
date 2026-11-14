@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
+import { takeDroppedProof } from '@test-utils/droppedEvidence';
 
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
@@ -83,6 +84,18 @@ async function throughDeviceStorage(record: EditorRecord): Promise<EditorRecord>
   return (await store.read('owner', record.editorId))!;
 }
 
+const PROOF_RECOVERY = ['never persisted', 'persisted and reloaded', 'persisted with unreadable time'] as const;
+async function reopenWithTime(record: EditorRecord, mode: typeof PROOF_RECOVERY[number], key: string, row?: string) {
+  if (mode === 'never persisted') return record.checkpoint;
+  if (mode === 'persisted with unreadable time') {
+    const evidence = loose(record.checkpoint)[key];
+    loose(loose(row ? loose(evidence)[row] : evidence).action).time = 'unreadable';
+  }
+  const restored = await throughDeviceStorage(record);
+  if (mode === 'persisted with unreadable time') takeDroppedProof(key);
+  return restored.checkpoint;
+}
+
 const SCALARS = [
   ['groupTitleDraft', 'groupTitleAction', 'groups', 'title', 'Opening', 'Mine', 'Other'],
   ['groupStatusDraft', 'groupStatusAction', 'groups', 'status', 'draft', 'active', 'completed'],
@@ -92,7 +105,7 @@ const SCALARS = [
 ] as const;
 
 describe.each(SCALARS)('a scalar draft keeps its proof across device storage: %s', (key, action, collection, field, before, mine, other) => {
-  it.each(['never persisted', 'persisted and reloaded'] as const)('%s', async mode => {
+  it.each(PROOF_RECOVERY)('%s', async mode => {
     const db = installWorldFirestore(() => T + 1000);
     const resource = { collection, id: 'scalar' };
     const value: Loose = { userId: 'owner', title: 'Opening', status: collection === 'groups' ? 'draft' : 'preparing', date: '2099-04-10', topics: [], flow: [], templates: [], meetingDates: [] };
@@ -115,7 +128,7 @@ describe.each(SCALARS)('a scalar draft keeps its proof across device storage: %s
     } as unknown as DataCommand);
     expect((await laptop('later-away', before, other, 1)).kind).toBe('acknowledged');
     expect((await laptop('later-back', other, before, 2)).kind).toBe('acknowledged');
-    const outcome = await save((mode === 'never persisted' ? record : await throughDeviceStorage(record)).checkpoint);
+    const outcome = await save(await reopenWithTime(record, mode, key));
     expect(outcome.kind).toBe('conflict');
     expect(loose(outcome.commands[0])[action]).toBeDefined();
     expect((await readDocument('owner', resource)).value?.[field] ?? null).toBe(before);
@@ -137,7 +150,7 @@ const ROWS = [
 ] as unknown as Array<[string, string, RowDetailPolicy<string, RowValue>, string, RowValue, RowValue, RowValue]>;
 
 describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (key, stamp, policy, field, before, mine, other) => {
-  it.each(['never persisted', 'persisted and reloaded'] as const)('%s', async mode => {
+  it.each(PROOF_RECOVERY)('%s', async mode => {
     const db = installWorldFirestore(() => T + 1000);
     const resource = { collection: policy.collection, id: 'rowdoc' };
     const target = policy.target(field), born = policy.birth.leaf === 'id' ? 'r' : 'row-born';
@@ -164,7 +177,7 @@ describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (ke
     expect((await laptop('later-away', before, other, 1)).kind).toBe('acknowledged');
     expect((await laptop('later-back', other, before, 2)).kind).toBe('acknowledged');
     const stored = (await readDocument('owner', resource)).value?.[target.field];
-    const outcome = await save((mode === 'never persisted' ? record : await throughDeviceStorage(record)).checkpoint);
+    const outcome = await save(await reopenWithTime(record, mode, key, 'r'));
     expect(outcome.kind).toBe('conflict');
     expect(loose(outcome.commands[0])[policy.actions]).toBeDefined();
     expect((await readDocument('owner', resource)).value?.[target.field]).toEqual(stored);

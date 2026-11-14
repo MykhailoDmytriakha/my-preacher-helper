@@ -285,7 +285,8 @@ describe('the dropped-proof tripwire', () => {
       expect(error).toHaveBeenCalledTimes(1);
       for (const record of [reported, said]) {
         expect(record.checkpoint.draft).toEqual({ userId: 'owner', title: 'Later' });
-        expect(record.checkpoint).not.toHaveProperty('groupStatusDraft');
+        if (record === reported) expect(record.checkpoint.groupStatusDraft?.action.time).toBeNull();
+        else expect(record.checkpoint).not.toHaveProperty('groupStatusDraft');
         expect(record.checkpoint).not.toHaveProperty('councilLifecycleDraft');
       }
     } finally { error.mockRestore(); slot[REPORTER] = installed; }

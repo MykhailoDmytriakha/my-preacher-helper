@@ -157,9 +157,8 @@ const { generation: _intentGeneration, value: _intentValue, operations: _operati
   borrowedManualScope: _borrow, ...pendingEvidence } = pendingShape;
 
 /**
- * WHO HEARS ABOUT A DROPPED PROOF. A proof field this version cannot validate is dropped whole — exactly as
- * every proof field was dropped before this codec knew them — and its name is reported: by default once per
- * name per page session on the console, names only, never values or the person's text. A reporter or console
+ * The codec reports the names of unreadable observations once per page session, without values or text.
+ * An unreadable clock may be dropped while the rest of its observation survives validation. A reporter or console
  * that throws is ignored here, so a diagnostic never decides whether a draft is readable. The reporter lives in a
  * global slot so the Jest setup can collect names without loading this module first.
  */
@@ -201,13 +200,50 @@ function accepts(schema: z.ZodTypeAny, value: unknown): boolean {
   if (nestsDeeperThan(value, MAX_PROOF_DEPTH)) return false;
   try { return schema.safeParse(value).success; } catch { return false; }
 }
-/** A proof field passes whole or goes whole; the words and core fields beside it are the validator's. */
+
+/** Drop the clock alone when the rest of the observation can still order an edit by its revision. */
+function withoutUnreadableClock(value: unknown): unknown {
+  if (!isFields(value) || value.time === null || boundedActionTime(value.time)) return value;
+  return { ...value, time: null };
+}
+
+function draftWithoutUnreadableClock(value: unknown): unknown {
+  return isFields(value) ? { ...value, action: withoutUnreadableClock(value.action) } : value;
+}
+
+function rowDraftsWithoutUnreadableClocks(value: unknown): unknown {
+  return isFields(value) ? Object.fromEntries(Object.entries(value).map(([rowId, row]) => [rowId, draftWithoutUnreadableClock(row)])) : value;
+}
+
+const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
+  groupTitleDraft: draftWithoutUnreadableClock,
+  groupStatusDraft: draftWithoutUnreadableClock,
+  councilTitleDraft: draftWithoutUnreadableClock,
+  councilDateDraft: draftWithoutUnreadableClock,
+  councilLifecycleDraft: draftWithoutUnreadableClock,
+  councilOutcomeDrafts: rowDraftsWithoutUnreadableClocks,
+  councilTopicTitleDrafts: rowDraftsWithoutUnreadableClocks,
+  groupBlockTitleDrafts: rowDraftsWithoutUnreadableClocks,
+  groupBlockStatusDrafts: rowDraftsWithoutUnreadableClocks,
+  groupStepTitleDrafts: rowDraftsWithoutUnreadableClocks,
+  groupStepDurationDrafts: rowDraftsWithoutUnreadableClocks,
+  thoughtLockDrafts: rowDraftsWithoutUnreadableClocks,
+  thoughtPlacementDrafts: rowDraftsWithoutUnreadableClocks,
+  outlineTitleDrafts: rowDraftsWithoutUnreadableClocks,
+  exegeticalPointDrafts: value => Array.isArray(value) ? value.map(withoutUnreadableClock) : value,
+};
+
+/** Keep the words and core fields even when an optional observation cannot be read. */
 function withoutInvalidProof(fields: Fields, schemas: Record<string, z.ZodTypeAny>, prefix: string, dropped: string[]): Fields {
   let kept = fields;
   for (const [key, schema] of Object.entries(schemas)) {
-    if (fields[key] === undefined || accepts(schema, fields[key])) continue;
+    const value = fields[key];
+    if (value === undefined || accepts(schema, value)) continue;
     if (kept === fields) kept = { ...fields };
-    delete kept[key];
+    const withoutClock = !prefix && Object.hasOwn(clockFallbacks, key) && !nestsDeeperThan(value, MAX_PROOF_DEPTH)
+      ? clockFallbacks[key](value) : undefined;
+    if (withoutClock !== undefined && accepts(schema, withoutClock)) kept[key] = withoutClock;
+    else delete kept[key];
     dropped.push(prefix + key);
   }
   return kept;

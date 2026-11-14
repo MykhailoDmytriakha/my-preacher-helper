@@ -48,6 +48,9 @@ function groupFlowFieldVersions(checkpoint: SessionCheckpoint, draft: DocumentDa
   return { field: comparisonField, target, birthTarget, birth, id, path, before, mine, stored };
 }
 
+const withoutBookkeeping = (value: DocumentData) => Object.fromEntries(
+  Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key)));
+
 function findGroupRow(rows: DocumentData[string] | undefined, id: string): DocumentData | undefined {
   return Array.isArray(rows) ? rows.find((row): row is DocumentData => object(row) && row.id === id) : undefined;
 }
@@ -83,6 +86,19 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
       identity: JSON.stringify([checkpoint.editGeneration, checkpoint.groupTextReview, remoteCandidate?.metadata?.revision]) };
   }
   if (checkpoint.conflicts.length !== 1 || checkpoint.groupTextReview) return undefined;
+  const [conflict] = checkpoint.conflicts;
+  // A return to the opening title is an explicit server comparison even though an ordinary value merge sees equality.
+  if (confirmed.resource.collection === 'groups' && confirmed.metadata
+    && confirmed.metadata.generation === remoteCandidate?.metadata?.generation && remoteCandidate.value && draft
+    && Object.keys(checkpoint.pending).length === 1 && conflict.path.length === 1 && conflict.path[0] === 'title'
+    && equalValues(conflict.base, conflict.theirs)) {
+    const { title: mine } = draft;
+    const { title: stored } = remoteCandidate.value;
+    if (typeof mine === 'string' && typeof stored === 'string' && mine !== stored) {
+      return { field: 'title' as const, mine, stored,
+        identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata.generation, remoteCandidate.metadata.revision, conflict.path, mine, stored]) };
+    }
+  }
   const versions = groupFlowFieldVersions(checkpoint, draft);
   if (!versions || versions.mine === versions.stored || !draft || !confirmed.value || !remoteCandidate) return undefined;
   const { field, target, id, path, before, mine, stored } = versions;
@@ -90,8 +106,7 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
     const rows = replaceExistingRowField(value[target.field], id, before, target);
     const normalized = target.field === 'templates' && Array.isArray(rows) ? rows.map(row => object(row) && row.id === id
       ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'updatedAt')) : row) : rows;
-    return { ...Object.fromEntries(Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key))),
-      [target.field]: normalized };
+    return { ...withoutBookkeeping(value), [target.field]: normalized };
   };
   if (field !== 'content' && field !== 'notes' && !equalValues(compared(confirmed.value), compared(draft))) return undefined;
   return { field, mine, stored,

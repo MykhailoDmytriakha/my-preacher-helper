@@ -12,6 +12,17 @@ describe('group flow title comparison', () => {
   const metadata = { protocol: 1 as const, generation: 'group', revision: 1, deleted: false };
   const opening: ResourceSnapshot = { resource, value, metadata };
 
+  it('shows the local and stored title when the server reports a conflict after a return', () => {
+    const base = { ...opening, value: { ...value, title: 'Original group name' } };
+    const checkpoint = new DataSession(base).checkpoint();
+    checkpoint.draft = { ...base.value, title: 'Recovered group name' };
+    checkpoint.pending.save = { generation: 1, value: checkpoint.draft };
+    checkpoint.remoteCandidate = { ...base, metadata: { ...metadata, revision: 3 } };
+    checkpoint.conflicts = [{ path: ['title'], base: { exists: true, value: base.value.title },
+      mine: { exists: true, value: 'Recovered group name' }, theirs: { exists: true, value: base.value.title } }];
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'title', mine: 'Recovered group name', stored: 'Original group name' });
+  });
+
   it('compares the displayed titles instead of stale words from the original conflict', () => {
     const checkpoint = new DataSession(opening).checkpoint();
     checkpoint.draft = { ...value, templates: [{ ...template, title: 'Latest local', updatedAt: 'local' }] };

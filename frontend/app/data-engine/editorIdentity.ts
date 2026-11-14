@@ -12,10 +12,10 @@ export function editorIdentity(tabId: string, resource: ResourceRef, slot: strin
   return JSON.stringify([tabId, resource.collection, resource.id, slot, suffix]);
 }
 
-/** The slot an editor identity was opened under; null for a recovery fork or any other shape. */
+/** The screen slot is the same for a fresh opening and its recovery forks. */
 export function editorSlot(editorId: string): string | null {
   try {
-    const parts: unknown = JSON.parse(editorId);
+    const parts: unknown = JSON.parse(openingEditorId(editorId));
     if (!Array.isArray(parts) || typeof parts[3] !== 'string' || (parts.length === 4 && parts[1] === 'manual')) return null;
     return parts[3];
   } catch {

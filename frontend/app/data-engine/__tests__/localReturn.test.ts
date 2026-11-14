@@ -1,6 +1,6 @@
 import { waitFor } from '@testing-library/react';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
-import { editorIdentity, manualScopeIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
+import { editorIdentity, editorSlot, manualScopeIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
 import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
 import { readGroupFlowFieldConflict } from '@/data-engine/rowConflictDetails';
@@ -1746,4 +1746,12 @@ it('follows saved local work while an automatically opened form is still untouch
     expect(form.getState()?.dirty).toBe(false);
     expect(h.server.value?.title).toBe('Opening group');
   } finally { a.dispose(); b.dispose(); }
+});
+
+
+it('keeps screen work in its screen slot when the editor was opened from recovery', () => {
+  const group = { collection: 'groups', id: 'group' };
+  const opening = editorIdentity('tab', group, 'group', 'opening');
+  expect(editorSlot(recoveryEditorIdentity(opening, 'recovered'))).toBe('group');
+  expect(editorSlot(manualScopeIdentity(recoveryEditorIdentity(opening, 'recovered'), 'meeting'))).toBeNull();
 });
