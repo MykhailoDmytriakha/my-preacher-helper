@@ -24,7 +24,7 @@ import { preferredTopologicalOrder } from './preferredTopologicalOrder';
 import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
-import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
+import { planSubpointTransferConflicts, preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 import { isSermonTextRoot } from './sermonTextOpenings';
 import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -225,6 +225,11 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
+    const transfer = command.planSubpointTransfer;
+    if (transfer !== undefined && (command.resource.collection !== 'sermons' || !removal || !object(transfer)
+      || !isValidIdentifier(transfer.pointId) || !isValidIdentifier(transfer.subPointId) || transfer.pointId === transfer.subPointId
+      || typeof transfer.openingText !== 'string' || typeof transfer.parentOpeningText !== 'string' || !own(removal, transfer.subPointId)
+      || transfer.openingText !== removal[transfer.subPointId])) fail('Invalid plan subpoint transfer');
     const discard = command.observedPlanTextDiscard;
     if (discard !== undefined) {
       const next = command.changes.find(change => change.path[0] === 'planText')?.after.value;
@@ -1001,6 +1006,8 @@ function applyPreachedFlag(change: FieldChange | undefined, value: DocumentData)
 
 function applyPlanTextUpdate(command: Extract<DataCommand, { kind: 'update' }>, planText: FieldChange | undefined,
   previous: DocumentData, candidate: DocumentData): ConflictDetail[] {
+  const transferConflicts = planSubpointTransferConflicts(command, previous, candidate);
+  if (transferConflicts.length) return transferConflicts;
   if (planText) {
     const stale = command.observedPlanTextDiscard
       ? stalePlanTextDiscards(previous, candidate, command.observedPlanTextDiscard) : [];

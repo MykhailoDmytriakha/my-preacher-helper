@@ -802,6 +802,13 @@ export class CommitQueue {
     const earlierCouncilMove = councilMove && councilTopicPlacementPredecessor(records, predecessor, councilMove);
     const councilPredecessor = earlierCouncilMove?.councilTopicQueue === councilTopicQueue ? earlierCouncilMove?.id : undefined;
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
+    if (planTextEvidence && editorAction?.kind === 'sermon-plan-text' && editorAction.transfer) {
+      const { transfer } = editorAction;
+      if (planTextEvidence.observedPlanTextRemoval?.[transfer.subPointId] !== transfer.openingText) {
+        throw Object.assign(new Error('The subpoint opening could not be verified'), { code: 'decision-changed' });
+      }
+      planTextEvidence.planSubpointTransfer = transfer;
+    }
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records);
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined, records);

@@ -177,31 +177,19 @@ describe('useManualConspectus deletions', () => {
     expect(mockSavePlanText).not.toHaveBeenCalled();
   });
 
-  it('rescues the sub-point text before touching the structure', async () => {
+  it('supplies the text transfer with the sub-point removal', async () => {
     const { view } = renderConspectus(sermonWithText());
     await act(async () => { await view.result.current.deleteSubPoint('point-1', 'sub-1'); });
 
-    await waitFor(() => expect(mockSavePlanText).toHaveBeenCalled());
-
-    /**
-     * ONE WRITE CARRIES BOTH HALVES — the rescue into the parent and the emptying of the
-     * sub-point. Split across two writes, a failure in between left the words in BOTH places,
-     * and a retry added them again; offline it was worse, because only the first half was
-     * queued and the replay later merged the text into a parent whose sub-point still stood.
-     * The blank also masks the legacy sub-point copy after the outline is accepted.
-     */
-    const [, changedText, removed] = mockSavePlanText.mock.calls[0];
-    expect(changedText['point-1']).toContain('Point text');
-    expect(changedText['point-1']).toContain('Sub-point text');
-    expect(changedText['sub-1']).toBe('');
-    expect(removed ?? []).toEqual([]);
-
-    expect(mockSavePlanText).toHaveBeenCalledTimes(1);
-    expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'point-1', 'sub-1');
-    expect(mockSavePlanText.mock.invocationCallOrder[0]).toBeLessThan(mockRemoveSubPoint.mock.invocationCallOrder[0]);
+    expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'point-1', 'sub-1', expect.objectContaining({
+      parentText: 'Point text\n\nSub-point text',
+      parentOpeningText: 'Point text',
+      openingText: 'Sub-point text',
+    }));
+    expect(mockSavePlanText).not.toHaveBeenCalled();
   });
 
-  it('keeps the rescued sub-point text when the structure write fails', async () => {
+  it('keeps both displayed texts when the combined removal fails', async () => {
     mockRemoveSubPoint.mockRejectedValue(new Error('structure write refused'));
 
     const { view } = renderConspectus(sermonWithText());
@@ -209,9 +197,11 @@ describe('useManualConspectus deletions', () => {
 
     await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalled());
 
-    // The rescue landed first, so the words survive even though the sub-point stays.
-    const [, changedText] = mockSavePlanText.mock.calls[0];
-    expect(changedText['point-1']).toContain('Sub-point text');
+    expect(view.result.current.contentByNodeId).toMatchObject({
+      'point-1': 'Point text',
+      'sub-1': 'Sub-point text',
+    });
+    expect(mockSavePlanText).not.toHaveBeenCalled();
   });
 
   it('releases every thought that pointed at a deleted point', async () => {

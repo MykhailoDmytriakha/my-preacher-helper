@@ -19,6 +19,7 @@ import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdo
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
+import type { CommitRequest } from '@/data-engine/commits';
 import type { Sermon } from '@/models/models';
 
 /**
@@ -66,7 +67,7 @@ jest.mock('@/services/sermons.client', () => ({
 jest.mock('@/services/thought.service', () => ({ updateThought: jest.fn() }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
 
-jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
 
 const sermon = (planText: Record<string, string>): Sermon => ({
   id: 'sermon-1',
@@ -351,6 +352,81 @@ it('keeps the rescued paragraph when text Undo cannot restore the deleted child'
   view.unmount();
 });
 
+it('stores a subpoint transfer and its removal in one command', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.planMode = 'manual';
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  try {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ subPoints: [] }] }));
+    const updates = jest.mocked(harness.transport.send).mock.calls.flatMap(([command]) =>
+      command.kind === 'update' && command.resource.collection === 'sermons' ? [command.changes.map(change => change.path[0]).sort()] : []);
+    expect(updates).toEqual([['outline', 'planText']]);
+    expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.', child: '' });
+  } finally { view.unmount(); }
+});
+
+it.each(['before the native write', 'after the native write'] as const)('recovers the confirmed removal when navigation closes the editor %s', async boundary => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.planMode = 'manual';
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  act(() => { harness.engine.setOnline(false); });
+  const capture = harness.commits.createWithCheckpoint!;
+  const gate = deferred();
+  let reached = false;
+  const isTransfer = (request: CommitRequest | undefined) => request?.planTextEvidence?.planSubpointTransfer?.subPointId === 'child';
+  const held = boundary === 'before the native write'
+    ? jest.spyOn(harness.commits, 'createWithCheckpoint').mockImplementation(async (request, project) => {
+      if (!reached && isTransfer(request)) { reached = true; await gate.promise; }
+      return capture(request, project);
+    })
+    : undefined;
+  if (!held) harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+    if (reached || mode !== 'readwrite' || ![...rows.values()].some(row => isTransfer(row as CommitRequest))) return false;
+    reached = true;
+    return true;
+  };
+  const release = () => {
+    gate.resolve();
+    harness.storage.holdCompletionAfterCommit = undefined;
+    if (!held && reached) harness.storage.finishCompletion();
+  };
+  let reopened: ReturnType<typeof rtlRender> | undefined;
+  try {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(reached).toBe(true));
+    view.unmount();
+    release();
+    const transferred = 'Opening.\n\nChild paragraph.';
+    await waitFor(async () => {
+      const requests = await harness.commits.list('user-1');
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        value: { outline: { introduction: [{ subPoints: [] }] }, planText: { p1: transferred } },
+        planTextEvidence: { planSubpointTransfer: { pointId: 'p1', subPointId: 'child' } },
+      });
+    });
+    reopened = rtlRender(page(queryClient()));
+    await screen.findAllByText('A sermon in progress');
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+    await waitFor(() => expect(harness.server.value).toMatchObject({
+      outline: { introduction: [{ subPoints: [] }] },
+      planText: { p1: transferred, child: '' },
+    }));
+  } finally {
+    release();
+    held?.mockRestore();
+    reopened?.unmount();
+    view.unmount();
+  }
+});
+
 it('moves the child once when its exact paragraph is already in the parent', async () => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Opening.\n\nChild paragraph.\n\nClosing.', child: 'Child paragraph.' });
@@ -393,6 +469,16 @@ jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
       },
       removeSubPoint: async (...params: unknown[]) => {
         mockRemoveSubPoint(...params);
+        if (params[3]) {
+          mockPlanTextWrites(...params);
+          const beforeWrite = mockBeforePlanTextWrite;
+          mockBeforePlanTextWrite = null;
+          if (beforeWrite) await beforeWrite();
+          if (mockFailNextRescue) { mockFailNextRescue = false; throw new Error('Injected pre-write storage refusal'); }
+        }
+        const pause = mockWaitForRescue;
+        mockWaitForRescue = undefined;
+        if (pause) await pause();
         const refuse = mockRejectRescueOutline;
         mockRejectRescueOutline = undefined;
         if (refuse) return refuse();
@@ -400,16 +486,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
         return result.writer.removeSubPoint(...params);
       },
       savePlanText: async (...params: unknown[]) => {
-        mockPlanTextWrites(...params);
-        const beforeWrite = mockBeforePlanTextWrite;
-        mockBeforePlanTextWrite = null;
-        if (beforeWrite) await beforeWrite();
-        if (mockFailNextRescue) { mockFailNextRescue = false; throw new Error('Injected pre-write storage refusal'); }
-        const resultPromise = result.writer.savePlanText(...params);
-        const pause = mockWaitForRescue;
-        mockWaitForRescue = undefined;
-        if (pause) await Promise.all([resultPromise, pause()]);
-        else await resultPromise;
+        return result.writer.savePlanText(...params);
       },
     } };
   } };
@@ -454,7 +531,7 @@ it('holds the overlapping AI proposal while the subpoint transfer is pending', a
   }
 });
 
-it('shows the stored child accurately if deleting its heading fails after text transfer', async () => {
+it('leaves both cells intact when the combined transfer is refused', async () => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
@@ -467,14 +544,13 @@ it('shows the stored child accurately if deleting its heading fails after text t
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
     await waitFor(() => expect(refuse).toBeDefined());
-    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ child: '' }));
-    await act(async () => { refuse!(new Error('Injected outline refusal after text transfer')); });
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.failedToSaveOutline'));
+    await act(async () => { refuse!(new Error('Injected refusal of combined deletion')); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.failedToSavePoint'));
     expect(screen.getByTitle('plan.deleteSubPoint')).toBeInTheDocument();
-    expect(markdown(parent)).toBe('Opening.\n\nChild paragraph.');
+    expect(markdown(parent)).toBe('Opening.');
     const child = view.container.querySelectorAll<HTMLElement & { editor: typeof parent }>('.tiptap')[1].editor;
-    expect(markdown(child)).toBe('');
-    expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.', child: '' });
+    expect(markdown(child)).toBe('Child paragraph.');
+    expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.', child: 'Child paragraph.' });
   } finally {
     refuse?.(new Error('Test ended'));
     mockRejectRescueOutline = undefined;
@@ -498,13 +574,12 @@ it('keeps a parent deleted after its child transfer began', async () => {
     fireEvent.click(screen.getAllByTitle('plan.deleteSubPoint')[0]);
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
     await waitFor(() => expect(release).toBeDefined());
-    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.' }));
     await act(async () => { await harness.remote({ outline: { introduction: [], main: [], conclusion: [] },
       planText: { p1: '', child: '', other: '' } }); });
     await waitFor(() => expect(screen.queryByTitle('plan.deletePoint')).not.toBeInTheDocument());
     const sendsBeforeCompletion = jest.mocked(harness.transport.send).mock.calls.length;
     await act(async () => { release!(); });
-    await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child'));
+    expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child', expect.any(Object));
     for (const [command] of jest.mocked(harness.transport.send).mock.calls.slice(sendsBeforeCompletion)) {
       expect(command.kind === 'update' && command.changes.some(change => change.path[0] === 'outline')).toBe(false);
     }
@@ -531,13 +606,12 @@ it('shows transferred words when the child heading was already removed elsewhere
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
     await waitFor(() => expect(release).toBeDefined());
-    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild paragraph.' }));
     await act(async () => { await harness.remote({ outline: {
       introduction: [{ id: 'p1', text: 'First point', subPoints: [] }], main: [], conclusion: [],
-    } }); });
+    }, planText: { p1: 'Opening.\n\nChild paragraph.', child: '' } }); });
     await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
     await act(async () => { release!(); });
-    await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child'));
+    expect(mockRemoveSubPoint).toHaveBeenCalledWith('sermon-1', 'p1', 'child', expect.any(Object));
     expect(markdown(editor)).toBe('Opening.\n\nChild paragraph.');
     for (const [command] of jest.mocked(harness.transport.send).mock.calls) {
       expect(command.kind === 'update' && command.changes.some(change => change.path[0] === 'outline')).toBe(false);
@@ -545,6 +619,40 @@ it('shows transferred words when the child heading was already removed elsewhere
   } finally {
     release?.();
     mockWaitForRescue = undefined;
+    view.unmount();
+  }
+});
+
+it.each(['child', 'parent'] as const)('keeps the last visible copy when the %s was removed without transferring the child words', async removed => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.planMode = 'manual';
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  const gate = deferred();
+  let reached = false;
+  mockWaitForRescue = () => { reached = true; return gate.promise; };
+  let reopened: ReturnType<typeof rtlRender> | undefined;
+  try {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(reached).toBe(true));
+    const introduction = removed === 'parent' ? [] : [{ id: 'p1', text: 'First point', subPoints: [] }];
+    const planText = { p1: removed === 'parent' ? '' : 'Opening.', child: '' };
+    await act(async () => { await harness.remote({ outline: { introduction, main: [], conclusion: [] }, planText }); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    await act(async () => { gate.resolve(); await gate.promise; });
+    const dialog = await screen.findByRole('status', { name: 'plan.orphanedTitle' });
+    expect(within(dialog).getByText('Child paragraph.')).toBeVisible();
+    expect(harness.server.value).toMatchObject({ outline: { introduction }, planText });
+    view.unmount();
+    reopened = rtlRender(page(queryClient()));
+    expect(await screen.findByText('Child paragraph.')).toBeVisible();
+    expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument();
+  } finally {
+    gate.resolve();
+    mockWaitForRescue = undefined;
+    reopened?.unmount();
     view.unmount();
   }
 });
@@ -1000,7 +1108,7 @@ describe('manual deletion locks', () => {
     await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
     expect(markdown(parent)).toBe('Opening.\n\nChild words.');
     await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.match(/Child words\./g)).toHaveLength(1));
-    expect(mockPlanTextWrites).toHaveBeenCalledTimes(1);
+    expect(mockPlanTextWrites).toHaveBeenCalledTimes(2);
   });
 
   it('M04 blocks every deletion during rescue then allows point deletion without resurrection', async () => {

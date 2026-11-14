@@ -2071,7 +2071,7 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const placementSaves = new Map<number, ClosingSaveIntent[]>();
+      const pendingActionSaves = new Map<number, ClosingSaveIntent[]>();
       const commit = (updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction, noteContent?: StudyNoteContentCapture | null) => {
         active();
         const checkpoint = controller.getState().checkpoint;
@@ -2100,7 +2100,8 @@ export class DataEngine {
           throw Object.assign(new Error('The shown sermon changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft, checkpoint.confirmed);
-        let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
+        let captured = next === checkpoint.draft && (action?.kind === 'document-tags'
+          || action?.kind === 'sermon-plan-text' && action.transfer) ? undefined : action;
         if (action?.kind === 'service-order-placement'
           && (frozen.collection !== 'serviceOrders' || !next || next.rank !== action.move.rank
             || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
@@ -2224,12 +2225,14 @@ export class DataEngine {
           || captured?.kind === 'council-topic-placement' ? captured : undefined;
         if (move) void controller.save(checkpoint).catch(() => undefined);
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
-        const stagedMove = move && controller.getState().checkpoint;
-        const saving = controller.save(stagedMove, undefined, onCaptured, captureScope, stamp ? undefined : captured, undefined, noteContent);
-        if (move && stagedMove) {
-          const edit = stagedMove.editGeneration;
-          placementSaves.set(edit, [{ checkpoint }, { checkpoint: stagedMove, action: move }]);
-          void saving.then(() => { placementSaves.delete(edit); }, () => undefined);
+        const keepOnClose = move || (captured?.kind === 'sermon-plan-text' && captured.transfer ? captured : undefined);
+        const stagedAction = keepOnClose && controller.getState().checkpoint;
+        const saving = controller.save(stagedAction, undefined, onCaptured, captureScope, stamp ? undefined : captured, undefined, noteContent);
+        if (keepOnClose && stagedAction) {
+          const edit = stagedAction.editGeneration;
+          const pending = { checkpoint: stagedAction, action: keepOnClose };
+          pendingActionSaves.set(edit, move ? [{ checkpoint }, pending] : [pending]);
+          void saving.then(() => { pendingActionSaves.delete(edit); }, () => undefined);
         }
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
@@ -2421,13 +2424,13 @@ export class DataEngine {
           if (entry.closed) return;
           const current = this.current(owner, generation);
           const leaving = flush && current ? this.leavingIntent(controller) : null;
-          const moves = flush && current ? [...placementSaves.values()].flat() : [];
-          const record = leaving || moves.length ? this.closingRecord(controller) : null;
+          const actions = flush && current ? [...pendingActionSaves.values()].flat() : [];
+          const record = leaving || actions.length ? this.closingRecord(controller) : null;
           const closingRequests: CommitRequest[] = [];
           // Register before closing. The local handoff outlives the controller and gates only
           // another opening of this resource, even if no checkpoint discovery has to read the queue.
-          const saving = moves.length
-            ? this.keepClosingPlacementSaves(owner, generation, editorId, controller.settled(), moves, record, closingRequests, leaving?.checkpoint)
+          const saving = actions.length
+            ? this.keepClosingActionSaves(owner, generation, editorId, controller.settled(), actions, record, closingRequests, leaving?.checkpoint)
             : leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, record, closingRequests, leaving.predecessorId) : undefined;
           // With no request taking the last words along, retain the unwritten checkpoint.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
@@ -2495,10 +2498,10 @@ export class DataEngine {
     return pending;
   }
 
-  private keepClosingPlacementSaves(owner: string, generation: number, editorId: string, settled: Promise<void>,
-    moves: readonly ClosingSaveIntent[], record: EditorRecord | null, closingRequests: CommitRequest[], trailing?: SessionCheckpoint): Promise<void> {
+  private keepClosingActionSaves(owner: string, generation: number, editorId: string, settled: Promise<void>,
+    actions: readonly ClosingSaveIntent[], record: EditorRecord | null, closingRequests: CommitRequest[], trailing?: SessionCheckpoint): Promise<void> {
     const intents = new Map<number, ClosingSaveIntent>();
-    for (const intent of moves) {
+    for (const intent of actions) {
       const edit = intent.checkpoint.editGeneration;
       if (!intents.has(edit) || intent.action) intents.set(edit, intent);
     }

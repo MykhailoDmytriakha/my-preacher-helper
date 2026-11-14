@@ -15,7 +15,7 @@ import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client'
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useRouteId } from "@/hooks/useRouteId";
 import { sermonLanguage } from "@/utils/documentLanguage";
-import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
+import { legacySectionText, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
 
@@ -33,7 +33,6 @@ import PlanPreachingView from "../PlanPreachingView";
 import { PlanWriterContext } from "../planWriter";
 import useCopyFormattedContent from "../useCopyFormattedContent";
 import { useEnginePlanWriter } from "../useEnginePlanWriter";
-import usePlanTextDraft from "../usePlanTextDraft";
 import usePlanViewMode from "../usePlanViewMode";
 
 import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
@@ -310,9 +309,11 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
   const confirmedRevision = source.document.confirmed?.metadata?.revision;
-  const conspectus = useManualConspectus({ sermon, confirmedRevision, t, mode: noteMode ? 'note' : 'manual' });
-  /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
-  const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
+  const conspectus = useManualConspectus({
+    sermon, confirmedRevision, t, mode: noteMode ? 'note' : 'manual',
+    draftScope: { owner, sermonId, frozen: copyReadOnly, state: source.document.state },
+  });
+  const { draft, livePlanNodes } = conspectus;
   /**
    * On a copy for reading the text comes straight from the document, as the reader drew it: the
    * editor's cells are merged over time and would keep text a newer copy no longer has.
@@ -338,22 +339,6 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
     return filled;
   }, [sermon?.outline, shownText]);
 
-  /**
-   * Text that never reached the server survives a closed tab — the precondition the write
-   * guard states about itself. Without it, refusing a stale save would merely move the loss
-   * from "someone else's paragraph" to "your own".
-   */
-  const draft = usePlanTextDraft({
-    uid: owner,
-    sermonId,
-    contentByNodeId: conspectus.contentByNodeId,
-    modifiedNodeIds: conspectus.modifiedNodeIds,
-    pendingNodeIds: conspectus.pendingNodeIds,
-    pendingText: conspectus.pendingText,
-    liveNodeIds: livePlanNodes,
-    frozen: copyReadOnly,
-    durableState: source.document.state,
-  });
   /**
    * Resolve the initial recovery question before writing. Remaining independent copies
    * stay available after that choice. A copy for reading never becomes writable.

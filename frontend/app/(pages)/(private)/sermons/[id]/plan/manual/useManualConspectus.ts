@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useEditorValues } from '@/components/ui/useEditorValue';
@@ -15,14 +15,17 @@ import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { orphanedCells } from "../OrphanedPlanText";
 import { usePlanTextBaseline } from "../planTextBaseline";
-import { usePlanWriter, type PlanWriter } from "../planWriter";
+import { usePlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
+import usePlanTextDraft, { type PlanTextDraft } from "../usePlanTextDraft";
 
+import type { DurablePlanState } from "../planDraftCheckpoint";
 import type { SermonSectionKey } from "../types";
 import type { ObservedTextAppend } from '@/components/ui/richMarkdownComposition';
 import type { Sermon, SermonOutline, SermonPoint } from "@/models/models";
 
 const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
+const containsParagraph = (text: string, paragraph: string) => ("\n\n" + text + "\n\n").includes("\n\n" + paragraph + "\n\n");
 
 /**
  * EVERY WRITE THE HAND-WRITTEN PLAN MAKES — and there are only two kinds now.
@@ -43,11 +46,14 @@ const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
 interface UseManualConspectusParams {
   sermon: Sermon | null;
   confirmedRevision?: number;
+  draftScope?: { owner: string | null; sermonId: string; state?: DurablePlanState | null; frozen: boolean };
   mode?: 'manual' | 'note';
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
 export interface ManualConspectus {
+  draft: PlanTextDraft;
+  livePlanNodes: Set<string>;
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
   rescuedAppend?: { nodeId: string; append: ObservedTextAppend };
@@ -84,13 +90,13 @@ const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclus
 export function useManualConspectus({
   sermon,
   confirmedRevision,
+  draftScope,
   t,
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const planWriter = usePlanWriter();
   const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
-  const rescuingNodes = useRef(new Set<string>());
   const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
   const busyNodes = useRef<ReadonlySet<string>>(new Set());
   const pendingDeletion = useRef<Promise<boolean> | null>(null);
@@ -109,6 +115,12 @@ export function useManualConspectus({
   /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
   const { nodeIds: pendingNodeIds, text: pendingText, refresh: refreshPending } =
     usePendingPlanCells(sermon);
+  const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
+  const draft = usePlanTextDraft({
+    uid: draftScope?.owner, sermonId: draftScope?.sermonId, contentByNodeId, modifiedNodeIds, pendingNodeIds, pendingText,
+    liveNodeIds: livePlanNodes, frozen: draftScope?.frozen, durableState: draftScope?.state,
+  });
+  const { keepDetachedCell } = draft;
 
   const sermonRef = useRef<Sermon | null>(sermon);
   useEffect(() => {
@@ -194,7 +206,7 @@ export function useManualConspectus({
      * replay then buried the first version. The baseline already knew about queued cells;
      * the text on screen has to know it too, or the two disagree about the same cell.
      */
-    const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId) || rescuingNodes.current.has(nodeId);
+    const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId);
     setContentByNodeId((previous) => mergeStoredPlanText(previous, stored, keepScreen));
     setSavedNodeIds((previous) => mergeStoredSavedFlags(previous, stored, keepScreen));
   }, [baseline, confirmedRevision, refreshPending, sermon?.planText, sermon?.plan, setContentByNodeId]);
@@ -641,12 +653,6 @@ export function useManualConspectus({
     })));
   }, [persistOutline]);
 
-  /**
-   * TEXT FIRST HERE, because this deletion RESCUES text into the point above. Were the
-   * skeleton written first, a failure on the text write would take the sub-point away and
-   * the rescued words with it. This order's worst case is survivable: the sub-point stays,
-   * now empty, and its words are already safe in the parent.
-   */
   const removeSubPoint = useCallback(async (pointId: string, subPointId: string) => {
     const currentSermon = sermonRef.current;
     if (!currentSermon?.outline || busyNodes.current.size) return false;
@@ -655,125 +661,73 @@ export function useManualConspectus({
     if (!location?.outlinePoint.subPoints?.some(subPoint => subPoint.id === subPointId)) return false;
 
     const rescued = contentRef.current[subPointId] ?? "";
-    const openingParent = contentRef.current[pointId] ?? "";
-    const appendRescuedText = (parent: string) => {
-      if (!parent.trim()) return rescued;
-      // Match a whole Markdown block so a phrase inside another paragraph does not stand in for the child.
-      if (("\n\n" + parent + "\n\n").includes("\n\n" + rescued + "\n\n")) return parent;
-      const separator = parent.endsWith("\n\n") ? "" : parent.endsWith("\n") ? "\n" : "\n\n";
-      return parent + separator + rescued;
-    };
-    const mergedParent = appendRescuedText(openingParent);
+    const parent = contentRef.current[pointId] ?? "";
+    const separator = parent.endsWith("\n\n") ? "" : parent.endsWith("\n") ? "\n" : "\n\n";
+    const containsRescue = containsParagraph(parent, rescued);
+    const parentText = !parent.trim() ? rescued : containsRescue ? parent : parent + separator + rescued;
+    const ids = [pointId, subPointId];
+    const stored = readPlanText(currentSermon);
+    // Bind the source to the stored copy this editor had before any local edits.
+    const basis = baseline.forNodes(ids);
+    const transfer = rescued.trim() ? {
+      parentText,
+      openingText: baseline.displayedForNode(subPointId),
+      parentOpeningText: baseline.displayedForNode(pointId),
+      baselineByNodeId: basis,
+      revisionsByNodeId: baseline.revisionsForNodes(ids),
+    } : undefined;
 
-    /**
-     * ONE WRITE, NOT TWO — the rescue and the emptying travel together.
-     *
-     * Splitting them created a window with the words in BOTH places: the parent already held
-     * the rescued paragraph while the sub-point still held its copy, so a failure in between
-     * — or a retry — duplicated the text. Offline it was worse: the guarded half was queued
-     * and the cleanup half never ran at all, and the replay later added the paragraph to a
-     * parent whose sub-point was still standing.
-     *
-     * The sub-point's cell is BLANKED rather than deleted here, and that is what makes one
-     * write possible: `deleteField()` is a sentinel object that cannot survive the outbox's
-     * JSON, while an empty string survives anything and masks any legacy copy of that cell.
-     */
-    /**
-     * NOTHING TO RESCUE MEANS NOTHING TO WRITE — and that is not a micro-optimisation.
-     *
-     * Writing `planText.<parent> = ""` marks the section as MAINTAINED IN THE NEW SHAPE
-     * (`planText.ts` → `sectionWasWritten`), which switches off the fallback that still serves
-     * an old sermon its stored assembled section. Deleting an empty sub-point from a sermon
-     * that has never had per-node text would therefore make the whole introduction vanish from
-     * reading, preaching and export — while it sat untouched in Firestore.
-     *
-     * An empty sub-point needs only the outline change. Only a real rescue writes, and then
-     * the flag flipping is correct, because the parent really does hold
-     * text now.
-     */
-    const rescuing = Boolean(rescued.trim());
-    setBusy([pointId, subPointId]);
-    rescuingNodes.current.add(pointId);
-    rescuingNodes.current.add(subPointId);
+    setBusy(ids);
     try {
-      try {
-        if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
-      } catch (error) {
-        if (!isOfflineQueuedError(error)) {
-          rescuingNodes.current.delete(pointId);
-          rescuingNodes.current.delete(subPointId);
-          setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
-            nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
-          debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
-          toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
-          return false;
-        }
-        /**
-         * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
-         * the replay later merged the rescued words into a parent whose sub-point was still
-         * standing — a deletion the person asked for, left half done until they did it again.
-         */
-        debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
-      } finally {
-        rescuingNodes.current.clear();
-      }
-
+      const removal = await planWriter.removeSubPoint(sermonId, pointId, subPointId, transfer);
       if (sermonRef.current?.id !== sermonId) return false;
-      const storedAfterTransfer = readPlanText(sermonRef.current);
-      if (rescuing) {
-        const parent = contentRef.current[pointId] ?? "";
-        const combined = appendRescuedText(parent);
-        const stored = storedAfterTransfer[pointId] ?? "";
-        // A newer observed paragraph also wins while this removal is waiting.
-        if (stored === "" || stored === openingParent || stored === mergedParent) {
-          setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
-          contentRef.current = { ...contentRef.current, [pointId]: combined };
-          setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
-          if (combined === mergedParent) settle({ [pointId]: mergedParent });
-        }
-      }
-
-      // Resolve the removal against the writer's current outline. The user may have
-      // deleted the whole point or changed another child while the transfer was saving.
-      let removal: Awaited<ReturnType<PlanWriter['removeSubPoint']>> | undefined;
-      try {
-        removal = await planWriter.removeSubPoint(sermonId, pointId, subPointId);
-      } catch (error) {
-        debugLog("Manual plan sub-point removal failed", { sermonId, subPointId, error });
-        toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
-      }
-      if (sermonRef.current?.id !== sermonId) return false;
-      if (removal?.kind === 'removed') confirmedOutlineRef.current = removal.outline;
-
-      if (removal?.kind === 'absent') {
-        const stored = removal.parentText;
-        if (stored !== undefined && !modifiedRef.current[pointId]) {
-          const before = contentRef.current[pointId] ?? "";
-          if (rescuing && stored === appendRescuedText(before)) {
-            setRescuedAppend({ nodeId: pointId, append: { before, after: stored } });
+      if (removal.kind === 'absent') {
+        const exists = liveNodeIds(removal.outline).has(subPointId);
+        if (exists) return false;
+        // A legacy client may remove only the heading. Keep the exact words from the
+        // confirmed action if the surviving point and the retired cell hold neither copy.
+        const needsCopy = transfer && removal.sourceText !== rescued
+          && !containsParagraph(removal.parentText ?? "", rescued);
+        if (!modifiedRef.current[subPointId]) {
+          const saved = !needsCopy || keepDetachedCell(subPointId, rescued);
+          if (saved) forgetCells([subPointId]);
+          else {
+            contentRef.current = { ...contentRef.current, [subPointId]: rescued };
+            modifiedRef.current = { ...modifiedRef.current, [subPointId]: true };
+            setContentByNodeId(previous => ({ ...previous, [subPointId]: rescued }));
+            setModifiedNodeIds(previous => ({ ...previous, [subPointId]: true }));
+            toast.error(t(SAVE_POINT_ERROR_KEY));
           }
-          contentRef.current = { ...contentRef.current, [pointId]: stored };
-          setContentByNodeId(previous => ({ ...previous, [pointId]: stored }));
         }
-        if (!modifiedRef.current[subPointId] && !liveNodeIds(removal.outline).has(subPointId)) forgetCells([subPointId]);
-        return !liveNodeIds(removal.outline).has(subPointId);
+        if (needsCopy) toast.warning(t("plan.orphanedBody"));
+        return !needsCopy;
       }
 
-      const remainingChildText = contentRef.current[subPointId];
-      const childChanged = Boolean(remainingChildText && remainingChildText !== rescued);
-      if (removal?.kind === 'removed') {
-        if (!childChanged) forgetCells([subPointId]);
-      } else if (rescuing && !childChanged) {
-        const stored = readPlanText(sermonRef.current)[subPointId] ?? "";
-        contentRef.current = { ...contentRef.current, [subPointId]: stored };
-        setContentByNodeId(previous => ({ ...previous, [subPointId]: stored }));
-        settle({ [subPointId]: stored });
+      confirmedOutlineRef.current = removal.outline;
+      if (transfer) {
+        const observed = readPlanText(sermonRef.current)[pointId] ?? "";
+        // Retire text Undo at the boundary where the outline loses the source cell.
+        if (observed === parentText || observed === (stored[pointId] ?? "")) {
+          setRescuedAppend({ nodeId: pointId, append: { before: parent, after: parentText } });
+          contentRef.current = { ...contentRef.current, [pointId]: parentText };
+          setContentByNodeId(previous => ({ ...previous, [pointId]: parentText }));
+          settle({ [pointId]: parentText });
+        }
+        baseline.confirm({ [pointId]: parentText, [subPointId]: "" });
+        if (!currentSermon.planMode) void planWriter.initializePlanMode(sermonId, mode)
+          .catch(error => debugLog("Recording the plan editor failed", { error }));
       }
-      return removal?.kind === 'removed';
+      forgetCells([subPointId]);
+      return true;
+    } catch (error) {
+      debugLog("Manual plan sub-point removal failed", { sermonId, subPointId, error });
+      toast.error(t(writeFailureTranslationKey(error, transfer ? SAVE_POINT_ERROR_KEY : "errors.failedToSaveOutline")));
+      return false;
     } finally {
+      refreshPending();
       setBusy([]);
     }
-  }, [forgetCells, planWriter, setBusy, setContentByNodeId, settle, t, writeText]);
+  }, [baseline, forgetCells, keepDetachedCell, mode, planWriter, refreshPending, setBusy, setContentByNodeId, settle, t]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const removePoint = useCallback(async (pointId: string) => {
@@ -840,6 +794,8 @@ export function useManualConspectus({
   const restoreCells = changeOwnCells;
 
   return {
+    draft,
+    livePlanNodes,
     contentByNodeId,
     userActionValues,
     rescuedAppend,

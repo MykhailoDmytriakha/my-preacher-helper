@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef } from "react";
 
-import { liveNodeIds } from '@/utils/planTextStorage';
+import { liveNodeIds, readPlanText } from '@/utils/planTextStorage';
 
 import type { Sermon } from "@/models/models";
 
@@ -47,11 +47,13 @@ export interface PlanTextBaseline {
   forget: (nodeIds: string[]) => void;
   /** The baseline to state for a write covering these nodes. */
   forNodes: (nodeIds: string[]) => Record<string, string | null>;
+  displayedForNode: (nodeId: string) => string;
   revisionsForNodes: (nodeIds: string[]) => Record<string, number | null>;
 }
 
 export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTextBaseline {
   const baselineRef = useRef<Record<string, string | null>>({});
+  const displayedRef = useRef<Record<string, string>>({});
   const revisionsRef = useRef(new Map<string, number | null>());
   const latestAdoptedRevision = useRef<number | null>(null);
   /**
@@ -63,6 +65,7 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
   if (ownerRef.current !== sermonId) {
     ownerRef.current = sermonId;
     baselineRef.current = {};
+    displayedRef.current = {};
     revisionsRef.current.clear();
     latestAdoptedRevision.current = null;
   }
@@ -74,6 +77,7 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
   ) => {
     if (!sermon) return;
     const stored = sermon.planText ?? {};
+    const displayed = readPlanText(sermon);
     const previousRevision = latestAdoptedRevision.current;
     latestAdoptedRevision.current = revision ?? null;
     /**
@@ -89,12 +93,14 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
       }
       revisionsRef.current.set(nodeId, revision ?? null);
       baselineRef.current[nodeId] = stored[nodeId] ?? null;
+      displayedRef.current[nodeId] = displayed[nodeId] ?? '';
     });
   }, []);
 
   const confirm = useCallback((sent: Record<string, string>) => {
     Object.entries(sent).forEach(([nodeId, text]) => {
       baselineRef.current[nodeId] = text;
+      displayedRef.current[nodeId] = text;
     });
   }, []);
 
@@ -102,12 +108,14 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
     Object.entries(serverByNodeId).forEach(([nodeId, text]) => {
       baselineRef.current[nodeId] = text;
       revisionsRef.current.set(nodeId, revisions?.[nodeId] ?? null);
+      displayedRef.current[nodeId] = text ?? '';
     });
   }, []);
 
   const forget = useCallback((nodeIds: string[]) => {
     nodeIds.forEach((nodeId) => {
       delete baselineRef.current[nodeId];
+      delete displayedRef.current[nodeId];
       revisionsRef.current.delete(nodeId);
     });
   }, []);
@@ -122,6 +130,7 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
     Object.fromEntries(nodeIds.map((nodeId) => [nodeId, baselineRef.current[nodeId] ?? null])),
   []);
 
+  const displayedForNode = useCallback((nodeId: string) => displayedRef.current[nodeId] ?? '', []);
   const revisionsForNodes = useCallback((nodeIds: string[]): Record<string, number | null> =>
     Object.fromEntries(nodeIds.map(nodeId => [nodeId, revisionsRef.current.has(nodeId)
       ? revisionsRef.current.get(nodeId)! : latestAdoptedRevision.current])), []);
@@ -133,7 +142,7 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
    * of an exhausted heap before anything reached storage.
    */
   return useMemo(
-    () => ({ adopt, confirm, observe, forget, forNodes, revisionsForNodes }),
-    [adopt, confirm, observe, forget, forNodes, revisionsForNodes]
+    () => ({ adopt, confirm, observe, forget, forNodes, displayedForNode, revisionsForNodes }),
+    [adopt, confirm, observe, forget, forNodes, displayedForNode, revisionsForNodes]
   );
 }

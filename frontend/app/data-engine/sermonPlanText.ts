@@ -1,15 +1,40 @@
 import { liveNodeIds, readPlanText } from '@/utils/planTextStorage';
+import { findOutlinePointLocation } from '@/utils/subPoints';
 
-import { equalValues, object, own } from './fieldValues';
+import { equalValues, object, own, readField } from './fieldValues';
 
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange } from './types';
 import type { Sermon } from '@/models/models';
 
 type CapturedPlan = { before: DocumentData | null; after: DocumentData | null };
 type PlanTextUpdate = Extract<DataCommand, { kind: 'update' }>;
-export type PlanTextEvidence = Pick<PlanTextUpdate, 'observedPlanTextRemoval' | 'observedPlanTextDiscard'>;
+export type PlanSubpointTransfer = { pointId: string; subPointId: string; openingText: string; parentOpeningText: string };
+export type PlanTextEvidence = Pick<PlanTextUpdate, 'observedPlanTextRemoval' | 'observedPlanTextDiscard' | 'planSubpointTransfer'>;
 
 const asSermon = (value: DocumentData | null) => value as unknown as Sermon | null;
+
+const hasSubpoint = (document: DocumentData, { pointId, subPointId }: PlanSubpointTransfer) =>
+  Boolean(findOutlinePointLocation(asSermon(document)?.outline, pointId)?.outlinePoint.subPoints?.some(child => child.id === subPointId));
+
+/** A transfer cannot consume a moved child or append a copy of text the user did not see. */
+export function planSubpointTransferConflicts(command: PlanTextUpdate, previous: DocumentData, candidate: DocumentData): ConflictDetail[] {
+  const transfer = command.planSubpointTransfer;
+  if (!transfer) return [];
+  if (!hasSubpoint(previous, transfer) || liveNodeIds(asSermon(candidate)?.outline).has(transfer.subPointId)) {
+    const outline = command.changes.find(change => change.path[0] === 'outline')!;
+    return [{ path: outline.path, base: outline.before, mine: outline.after, theirs: readField(previous, ['outline']) }];
+  }
+  const actual = readPlanText(asSermon(previous));
+  const authored = command.changes.find(change => change.path[0] === 'planText')?.after.value;
+  return [[transfer.pointId, transfer.parentOpeningText], [transfer.subPointId, transfer.openingText]].flatMap(([id, opening]) => {
+    const stored = actual[id] ?? '';
+    if (stored === opening) return [];
+    const proposed = id === transfer.subPointId ? { exists: true, value: '' }
+      : object(authored) ? readField(authored, [id]) : { exists: true, value: opening };
+    return [{ path: ['planText', id], base: { exists: true, value: opening },
+      mine: proposed, theirs: { exists: true, value: stored } }];
+  });
+}
 
 /** Attach only the words that the removal actually knew about at capture. */
 function observedPlanTextRemoval({ before, after }: CapturedPlan): Record<string, string> | undefined {
@@ -117,6 +142,7 @@ export function withPlanTextEvidence(command: DataCommand, evidence: PlanTextEvi
   return {
     ...command,
     ...(removal ? { observedPlanTextRemoval: removal } : {}),
+    ...(removal && evidence.planSubpointTransfer ? { planSubpointTransfer: evidence.planSubpointTransfer } : {}),
     ...(discard.length ? { observedPlanTextDiscard: Object.fromEntries(discard) } : {}),
   };
 }

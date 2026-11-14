@@ -22,6 +22,7 @@ export interface PlanTextDraft {
   markCellAuthored: (nodeId: string, text: string) => void;
   cellAuthoringVersion: (nodeId: string) => number;
   holdCellAlternative: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
+  keepDetachedCell: (nodeId: string, text: string) => boolean;
   orphaned: PlanOrphanCell[];
   forget: (cells: PlanOrphanCell[]) => void;
 }
@@ -169,6 +170,19 @@ export default function usePlanTextDraft({
     session.authored.set(id, { text, order: ++session.authoring });
   }, [session]);
   const cellAuthoringVersion = useCallback((id: string) => session.authored.get(id)?.order ?? 0, [session]);
+  const keepDetachedCell = useCallback((id: string, text: string) => {
+    const { owner, documentId } = session;
+    if (!session.enabled || !owner || !documentId) return false;
+    const key = cellKey(owner, documentId, id, newClientId());
+    if (!saveDraft(key, text)) return false;
+    const sourceRecord = readDraft<string>(key);
+    if (!sourceRecord) return false;
+    const copy = { id, key, text, sourceRecord };
+    setFound(previous => previous?.session === session
+      ? { ...previous, copies: [...previous.copies, copy] }
+      : previous);
+    return true;
+  }, [session]);
   const holdCellAlternative = useCallback((id: string, text: string) => {
     const { owner, documentId } = session;
     if (!session.enabled || !owner || !documentId || selectionRef.current.session !== session) return;
@@ -221,6 +235,6 @@ export default function usePlanTextDraft({
     });
     setFound(previous => previous?.session === session ? { ...previous, copies: previous.copies.filter(copy => !forgotten.has(copy.key)) } : previous);
   }, [session]);
-  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion, holdCellAlternative, orphaned, forget }),
-    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, markCellAuthored, orphaned, recovered, selectCopy, selected]);
+  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion, holdCellAlternative, keepDetachedCell, orphaned, forget }),
+    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, keepDetachedCell, markCellAuthored, orphaned, recovered, selectCopy, selected]);
 }

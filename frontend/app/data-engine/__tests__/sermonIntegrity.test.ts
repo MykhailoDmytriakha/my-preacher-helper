@@ -177,4 +177,20 @@ describe('plan text in an explicit outline removal', () => {
     expect(applyCommand(discard, confirmed({ ...orphan, outline: keptOutline })))
       .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['planText', 'point'] }] });
   });
+
+  it.each(['edited', 'moved', 'removed'] as const)('does not partially apply a transfer when the source was %s elsewhere', change => {
+    const parent = { id: 'point', text: 'Point', subPoints: [{ id: 'sub', text: 'Sub', position: 0 }] };
+    const other = { id: 'kept', text: 'Another point' };
+    const before = { ...base, outline: { introduction: [other], main: [parent], conclusion: [] } };
+    const after = { ...before, outline: { ...before.outline, main: [{ ...parent, subPoints: [] }] },
+      planText: { ...before.planText, point: 'Observed paragraph\n\nObserved subpoint', sub: '' } };
+    const evidence = { ...capturePlanTextEvidence({ before, after }),
+      planSubpointTransfer: { pointId: 'point', subPointId: 'sub', openingText: 'Observed subpoint', parentOpeningText: 'Observed paragraph' } };
+    const transfer = prepareDomainCommand('owner', 'transfer', confirmed(before), after, [], evidence).command;
+    const stored = change === 'edited' ? { ...before, planText: { ...before.planText, sub: 'Other device words' } }
+      : change === 'moved' ? { ...before, outline: { ...after.outline, introduction: [{ ...other, subPoints: parent.subPoints }] } }
+        : { ...before, outline: after.outline };
+    const current = confirmed(stored);
+    expect(applyCommand(transfer, current)).toMatchObject({ kind: 'conflict', snapshot: current });
+  });
 });

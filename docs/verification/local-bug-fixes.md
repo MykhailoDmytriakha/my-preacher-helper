@@ -9814,3 +9814,17 @@ The guarded paths now wait for the current removal and a durable outline save. B
 Headless Chrome on local build `p_bWBkboODkx7d-hrIuYJ` at 390 and 1280 px held the before-capture step, verified the unload protection, used Back to sermon, then reopened. The transfer was stored and only the selected subpoint was gone. Both scripts and screenshots were reviewed. Browser-history Back still lost the pre-capture action; global navigation needs the same guarantee and the tracker stays open. Evidence is in `artifacts/manual-plan-leave-20261114`. After authorized deployment repeat the plan's own Back flow with a disposable sermon and test profile.
 
 Full Jest passed 15,838 tests with 17 skipped. TypeScript, scoped ESLint with warnings, and the local production build passed.
+
+## BUG-20261114-plan-delete-lost-on-leaving · Keep the confirmed removal through browser Back and the app menu
+
+Open Sermons → a sermon → Plan → By hand. Confirm removal of a written subpoint and leave before the write finishes. On build `p_bWBkboODkx7d-hrIuYJ`, browser Back could interrupt the first asynchronous write. Reopening showed both subpoints, no command reached the emulator, and the document stayed at revision 1.
+
+The confirmed action now captures one Data Engine command with the outline removal and text transfer. The closing editor retains that same action while local capture completes. The server checks the shown source and destination text and the source's membership before applying the transfer. An already-removed card may have been retired by another screen without saving the moved words. When neither stored location has those exact words, the plan retains a private copy in its existing removed-point text panel, including after reopening.
+
+The mounted regression first saw separate `planText` and `outline` commands and now sees a single update containing both. Editor-close tests hold capture before the native write and hold the completion callback after the native write. Closing offline and reopening delivers one request with the exact transfer. Further regressions cover an independently removed child or parent, a moved or changed source, duplicate confirmation, and Undo after the move.
+
+Headless Chrome on local build `FaNzOc4OuDvVAq-sVLo76` used Firestore and Auth emulators. Six runs at 390 and 1280 px covered browser Back, the main menu's Studies link, and the page's Back to sermon link, plus deletion of an empty subpoint and of a whole point. The emulator still had revision 1 after navigation while delivery was delayed. Reopening and reloading showed revision 2 with the intended structure, one transferred paragraph where applicable, and unchanged neighboring text. Retries reused the same operation ID. Screenshots and reports are in `artifacts/manual-plan-atomic-leave-20261114`.
+
+Full Jest passed 15,846 tests with 17 skipped. Scoped ESLint passed with warnings. TypeScript, the local production build, and independent source review passed.
+
+After authorized deployment, use a disposable sermon on the deployed version. Add two subpoints and write distinct text under each. Remove one, immediately use browser Back, then reopen and reload the plan. Confirm that its text appears once under the parent, that the other subpoint and its text remain, and that the same behavior holds through the app menu.

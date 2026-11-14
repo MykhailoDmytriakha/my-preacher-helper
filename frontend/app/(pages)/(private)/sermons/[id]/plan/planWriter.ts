@@ -4,6 +4,13 @@ import type { Sermon, SermonOutline, Thought } from '@/models/models';
 
 export type PlanMode = NonNullable<Sermon['planMode']>;
 export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<string, string | null>; revisionsByNodeId?: Record<string, number | null>; orphaned?: true }
+export interface SubpointTextTransfer {
+  parentText: string;
+  openingText: string;
+  parentOpeningText: string;
+  baselineByNodeId: Record<string, string | null>;
+  revisionsByNodeId: Record<string, number | null>;
+}
 
 /**
  * EVERY WRITE THE PLAN SCREENS MAKE, BEHIND ONE SEAM — the same arrangement as the structure
@@ -15,8 +22,8 @@ export interface PlanWriter {
   savePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
   preparePlanMode(sermonId: string, mode: PlanMode): () => Promise<void>;
   initializePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
-  removeSubPoint(sermonId: string, pointId: string, subPointId: string): Promise<
-    { kind: 'removed'; outline: SermonOutline } | { kind: 'absent'; outline: SermonOutline | null; parentText?: string }
+  removeSubPoint(sermonId: string, pointId: string, subPointId: string, transfer?: SubpointTextTransfer): Promise<
+    { kind: 'removed'; outline: SermonOutline } | { kind: 'absent'; outline: SermonOutline | null; parentText?: string; sourceText?: string }
   >;
   captureOutlineUpdate(): Promise<void>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
