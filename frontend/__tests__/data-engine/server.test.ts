@@ -2066,6 +2066,17 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it.each([false, true])('uses the affected row for an unclocked first date after eviction (evicted first slot: %s)', async affected => {
+      expect(await seed(true)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('first-place', 'location', 'Main room', 10))).toMatchObject({ kind: 'acknowledged' });
+      const raw = documents.get('groups/first-slot')!;
+      raw._dataEngine = { ...raw._dataEngine as object, revision: 40, meetingDateProofFloor: 8,
+        meetingDateProofEvictions: { floor: 8, older: 0, rows: [{ rowId: affected ? opening.id : 'different-row', revision: 8 }] } };
+      const answer = await processCommand(owner, save('unclocked-first-date', [], [{ ...opening, date: '2026-12-20' }]));
+      expect(answer).toMatchObject({ kind: affected ? 'conflict' : 'acknowledged',
+        snapshot: { value: { meetingDates: [{ ...opening, location: 'Main room', date: affected ? '' : '2026-12-20' }] } } });
+    });
+
     it('does not infer the order of a third date from two equal dates whose action times overlapped', async () => {
       expect(await seed()).toMatchObject({ kind: 'acknowledged' });
       const date = '2026-12-13';
@@ -8958,4 +8969,85 @@ it('does not let a delayed old preaching date win after its newer proof is evict
   const result = await processCommand('owner-1', old);
   expect(result.kind).toBe('conflict');
   expect((documents.get('sermons/sermon')!.preachDates as Array<{ date: string }>)[0].date).toBe('2026-01-01');
+});
+
+it.each(['sermons', 'groups'] as const)('accepts 34 dated rows from one stale device in %s without reviewing untouched rows', async collection => {
+  const owner = 'owner-1';
+  const resource = { collection, id: 'offline-date-batch' };
+  const field = collection === 'sermons' ? 'preachDates' : 'meetingDates';
+  const evidence = collection === 'sermons' ? 'preachDateAction' : 'meetingDateAction';
+  const stamp = '2026-11-08T00:00:00.000Z';
+  const rows = Array.from({ length: 34 }, (_, index) => ({ id: 'row-' + index, date: '2026-12-13',
+    church: { id: 'church', name: 'Church' }, status: 'planned', notes: 'Keep row ' + index, createdAt: stamp }));
+  const value = collection === 'sermons' ? { verse: 'John 1:1', date: stamp, thoughts: [] } : { status: 'draft', flow: [], templates: [] };
+  const base = { protocol: 1, owner, resource, dependsOn: [] };
+  const created = await processCommand(owner, { ...base, operationId: 'date-batch-opening', kind: 'create', generation: null,
+    value: { ...value, userId: owner, title: 'Dated rows', [field]: rows, createdAt: stamp, updatedAt: stamp } });
+  expect(created.kind).toBe('acknowledged');
+  const replies = [];
+  for (const [index, row] of rows.entries()) {
+    const after = '2026-12-20';
+    const at = 1_799_999_900_000 + index * 20;
+    const answer = await processCommand(owner, { ...base, operationId: 'date-' + index, kind: 'update', generation: 'date-batch-opening',
+      changes: [{ path: [field], before: { exists: true, value: rows },
+        after: { exists: true, value: rows.map(item => item.id === row.id ? { ...item, date: after } : item) } }],
+      [evidence]: { rowId: row.id, before: row.date, after, observedRevision: 1, time: { earliestMs: at, latestMs: at + 1 } },
+    });
+    replies.push(answer.kind);
+  }
+  expect(replies).toEqual(Array(34).fill('acknowledged'));
+  expect((await readDocument(owner, resource))?.value?.[field]).toEqual(rows.map(row => ({ ...row, date: '2026-12-20' })));
+});
+
+it.each(['legacy', 'malformed', 'unreadable', 'missing scalar', 'low scalar', 'overflow'] as const)('keeps conservative date review when eviction coverage is %s', async coverage => {
+  const owner = 'owner-1', resource = { collection: 'sermons', id: 'dated-gap-fallback' };
+  const stamp = '2026-11-08T00:00:00.000Z';
+  const row = { id: 'untracked-row', date: '2026-12-13', church: { id: 'church', name: 'Church' }, notes: 'Keep words', createdAt: stamp };
+  const proofRows = Array.from({ length: 32 }, (_, index) => ({ id: 'recent-' + index, date: row.date, church: row.church, createdAt: stamp }));
+  const rows = [row, ...proofRows];
+  const at = 1_799_999_900_000;
+  const time = { earliestMs: at, latestMs: at + 1 };
+  const evicted = Array.from({ length: 256 }, (_, index) => ({ rowId: 'evicted-' + index, revision: 257 - index }));
+  const raw = {
+    protocol: 1, generation: 'generation', revision: 300, deleted: false,
+    ...((coverage !== 'missing scalar' && coverage !== 'unreadable') && { preachDateProofFloor: coverage === 'low scalar' ? 10 : 257 }),
+    ...(coverage === 'malformed' && { preachDateProofEvictions: { floor: 256, older: 0, rows: evicted } }),
+    ...(coverage === 'unreadable' && { preachDateProofEvictions: { floor: 'unreadable', older: 'unreadable', rows: [null] } }),
+    ...((coverage === 'missing scalar' || coverage === 'low scalar') && {
+      preachDateProofEvictions: { floor: 257, older: 0, rows: evicted },
+    }),
+    ...(coverage === 'overflow' && {
+      preachDateProofEvictions: { floor: 257, older: 0, rows: evicted },
+      preachDateActions: proofRows.map((item, index) => ({ rowId: item.id, date: item.date, time, revision: 300 - index })),
+    }),
+  };
+  documents.set('sermons/dated-gap-fallback', { title: 'Sermon', userId: owner, verse: 'John 1:1', date: stamp, thoughts: [],
+    preachDates: rows, _dataEngine: raw });
+  const submit = (operationId: string, selected: typeof proofRows[number], observedRevision: number) => processCommand(owner, {
+    protocol: 1, operationId, owner, resource, generation: 'generation', dependsOn: [], kind: 'update',
+    changes: [{ path: ['preachDates'], before: { exists: true, value: rows },
+      after: { exists: true, value: rows.map(item => item.id === selected.id ? { ...item, date: '2026-12-20' } : item) } }],
+    preachDateAction: { rowId: selected.id, before: selected.date, after: '2026-12-20', observedRevision, time },
+  });
+  if (coverage === 'overflow') {
+    expect(await submit('push-out-last-eviction', row, 300)).toMatchObject({ kind: 'acknowledged' });
+    const latest = (await readDocument(owner, resource))!.value!.preachDates as unknown as typeof rows;
+    rows.splice(0, rows.length, ...latest);
+    const metadata = documents.get('sermons/dated-gap-fallback')!._dataEngine as {
+      preachDateProofFloor: number; preachDateProofEvictions: { older: number; rows: unknown[] };
+    };
+    expect(metadata.preachDateProofFloor).toBe(269);
+    expect(metadata.preachDateProofEvictions.older).toBe(2);
+    expect(metadata.preachDateProofEvictions.rows).toHaveLength(256);
+    // Emulate an untouched row whose ID falls outside the bounded recent eviction records.
+    const unknown = { ...row, id: 'ancient-untouched-row' };
+    const doc = documents.get('sermons/dated-gap-fallback')!;
+    rows.push(unknown);
+    doc.preachDates = rows;
+    expect(await submit('old-after-overflow', unknown, 1)).toMatchObject({ kind: 'conflict' });
+  } else {
+    expect(await submit('old-without-row-coverage', row, 11)).toMatchObject({
+      kind: 'conflict', conflicts: [{ path: ['preachDates', 'id:untracked-row', 'date'] }],
+    });
+  }
 });

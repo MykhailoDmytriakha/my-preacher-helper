@@ -10,6 +10,7 @@ import type { DatedRowActionEvidence, DatedRowTarget, DisplacedRowDate } from '.
 import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 
 const MAX_PROOFS = 32;
+const MAX_EVICTED_ROWS = 256;
 type Proof = { rowId: string; date: string; time: ActionTime | null; revision: number; operationId?: string; rowCreatedAt?: string };
 type DateOrder = { command: DataCommand; target?: DatedRowTarget; action?: DatedRowActionEvidence; displaced?: DisplacedRowDate;
   kept?: Proof; coalesced?: Pick<Proof, 'rowId' | 'date' | 'time'>; uncertain?: ConflictDetail[] };
@@ -27,13 +28,46 @@ function proofs(rawMetadata: unknown, target: DatedRowTarget): Proof[] {
   });
 }
 
-function dateProofFloor(rawMetadata: unknown, target: DatedRowTarget): number {
-  const floor = object(rawMetadata) ? rawMetadata[proofFloorKey(target)] : undefined;
-  return proofRevision(floor) ? floor : 0;
-}
-
 function proofFloorKey(target: DatedRowTarget): string {
   return target === MEETING_DATE_TARGET ? 'meetingDateProofFloor' : 'preachDateProofFloor';
+}
+
+function evictionsKey(target: DatedRowTarget): string {
+  return target === MEETING_DATE_TARGET ? 'meetingDateProofEvictions' : 'preachDateProofEvictions';
+}
+
+function dateProofEvictions(rawMetadata: unknown, target: DatedRowTarget, revision: number) {
+  const raw = object(rawMetadata) ? rawMetadata : {};
+  const legacy = raw[proofFloorKey(target)];
+  const saved = raw[evictionsKey(target)];
+  const rows = new Map<string, number>();
+  if (legacy === undefined && saved === undefined) return { rows, older: 0, floor: 0 };
+  const legacyFloor = proofRevision(legacy) ? Math.min(legacy, revision) : 0;
+  let highest = 0, malformed = false;
+  const candidates = object(saved) && Array.isArray(saved.rows) ? saved.rows : [];
+  if (candidates.length > MAX_EVICTED_ROWS) return { rows, older: revision, floor: revision };
+  for (const row of candidates) {
+    const knownRevision = object(row) && proofRevision(row.revision) ? Math.min(row.revision, revision) : 0;
+    highest = Math.max(highest, knownRevision);
+    if (!knownRevision || !object(row) || row.revision !== knownRevision || !boundedRowId(row.rowId) || rows.has(row.rowId)) malformed = true;
+    else rows.set(row.rowId, knownRevision);
+  }
+  const savedFloor = object(saved) && proofRevision(saved.floor) ? Math.min(saved.floor, revision) : 0;
+  const older = object(saved) && proofRevision(saved.older) ? Math.min(saved.older, revision) : 0;
+  const floor = Math.max(legacyFloor, savedFloor, older, highest);
+  // Older writers preserve the legacy floor and can drop the finer evidence.
+  if (!object(saved) || saved.floor !== floor || legacyFloor !== floor || !Array.isArray(saved.rows)
+    || malformed || saved.older !== older || Math.max(older, highest) !== floor) {
+    rows.clear();
+    const conservative = floor || revision;
+    return { rows, older: conservative, floor: conservative };
+  }
+  return { rows, older, floor };
+}
+
+function dateProofFloor(rawMetadata: unknown, target: DatedRowTarget, revision: number, rowId: string): number {
+  const { rows, older } = dateProofEvictions(rawMetadata, target, revision);
+  return Math.max(older, rows.get(rowId) ?? 0);
 }
 
 function uncertainDate(command: DataCommand, action: DatedRowActionEvidence, target: DatedRowTarget): DateOrder {
@@ -83,7 +117,7 @@ export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, r
       }
       const cleared = proofs(rawMetadata, target).some(proof => proof.rowId === knownOpeningRow && proof.date === ''
         && proof.revision <= current.metadata!.revision);
-      if (before === '' && live === '' && after && (cleared || dateProofFloor(rawMetadata, target) > 0)) {
+      if (before === '' && live === '' && after && (cleared || dateProofFloor(rawMetadata, target, current.metadata.revision, knownOpeningRow) > 0)) {
         return { command, uncertain: [uncertainRowChange({ rowId: knownOpeningRow, before, after, time: null, observedRevision: 0 }, target)] };
       }
     }
@@ -104,7 +138,7 @@ export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, r
     return compareUnobservedDate(command, target, action, previous);
   }
   if (!previous && currentDate === action.before
-    && action.observedRevision < Math.min(dateProofFloor(rawMetadata, target), current.metadata.revision)) return uncertainDate(command, action, target);
+    && action.observedRevision < dateProofFloor(rawMetadata, target, current.metadata.revision, action.rowId)) return uncertainDate(command, action, target);
   const matchesKnownOpening = knownOpeningRow === action.rowId && currentDate === action.before;
   if (!previous && (currentDate === action.after || (target === MEETING_DATE_TARGET && action.observedRevision < current.metadata.revision
     && !matchesKnownOpening))) return { command };
@@ -144,7 +178,12 @@ export function metadataAfterDatedRow(snapshot: ResourceSnapshot, raw: Record<st
   } else if (order?.kept) keep.unshift(order.kept);
   const unique = [...new Map(keep.slice().reverse().map(proof => [proof.rowId, proof])).values()].reverse();
   const retained = unique.slice(0, MAX_PROOFS);
-  // After pruning, an action older than an evicted proof cannot infer that a matching value is untouched.
-  const floor = unique.slice(MAX_PROOFS).reduce((value, proof) => Math.max(value, proof.revision), dateProofFloor(raw?._dataEngine, target));
-  return { ...snapshot.metadata, ...(retained.length && { [target.proofs]: retained }), ...(floor && { [proofFloorKey(target)]: floor }) };
+  // A retained eviction still names the affected row. Only older, unaddressable gaps apply to every row.
+  const evicted = dateProofEvictions(raw?._dataEngine, target, snapshot.metadata.revision);
+  for (const proof of unique.slice(MAX_PROOFS)) evicted.rows.set(proof.rowId, Math.max(evicted.rows.get(proof.rowId) ?? 0, proof.revision));
+  const ordered = [...evicted.rows].map(([rowId, revision]) => ({ rowId, revision })).sort((a, b) => b.revision - a.revision);
+  const older = Math.max(evicted.older, ordered[MAX_EVICTED_ROWS]?.revision ?? 0);
+  const floor = Math.max(evicted.floor, ordered[0]?.revision ?? 0);
+  return { ...snapshot.metadata, ...(retained.length && { [target.proofs]: retained }),
+    ...(floor && { [proofFloorKey(target)]: floor, [evictionsKey(target)]: { floor, older, rows: ordered.slice(0, MAX_EVICTED_ROWS) } }) };
 }
