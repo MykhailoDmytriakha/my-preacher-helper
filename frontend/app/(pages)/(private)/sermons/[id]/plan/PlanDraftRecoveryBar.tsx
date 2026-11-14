@@ -51,9 +51,11 @@ export function PlanDraftRecoveryBar({
   onDiscard,
   subject,
   onChoose,
+  restoreDisabled = false,
 }: {
   cells: RecoveredCell[];
   onRestore: () => void;
+  restoreDisabled?: boolean;
   onDiscard: () => void;
   subject?: unknown;
   onChoose?: (nodeId: string, key: string) => void;
@@ -89,7 +91,8 @@ export function PlanDraftRecoveryBar({
           <button
             type="button"
             onClick={onRestore}
-            className="inline-flex items-center rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
+            disabled={restoreDisabled}
+            className="inline-flex items-center rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("plan.draftRecoveryRestore")}
           </button>

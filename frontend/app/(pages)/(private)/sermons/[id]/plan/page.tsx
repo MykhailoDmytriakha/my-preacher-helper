@@ -1121,6 +1121,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
           subject={JSON.stringify([sermon?.userId, sermonId])}
           cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies, generatedContent)}
           onChoose={planDraft.selectCopy}
+          restoreDisabled={Object.keys(planDraft.recovered).some((nodeId) => generatingIds[nodeId])}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});
             planDraft.accept();

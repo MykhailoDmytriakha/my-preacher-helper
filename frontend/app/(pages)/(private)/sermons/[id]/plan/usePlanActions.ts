@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
@@ -63,6 +63,11 @@ export default function usePlanActions({
   planTextBaseline,
 }: UsePlanActionsParams) {
   const planWriter = usePlanWriter();
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   /** Saves run one after another, so each states the baseline its predecessor confirmed. */
   const writeChainRef = useRef<Promise<unknown>>(Promise.resolve());
   /** The cells as they are RIGHT NOW, for actions taken long after a save was attempted. */
@@ -76,6 +81,7 @@ export default function usePlanActions({
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
     if (aiBlocked || !sermon) return;
 
+    const textAtGeneration = generatedContentRef.current[outlinePointId] ?? "";
     setGeneratingIds((prev) => ({
       ...prev,
       [outlinePointId]: true,
@@ -108,6 +114,12 @@ export default function usePlanActions({
         outlinePointId,
         style: planStyle,
       });
+
+      if (!mountedRef.current) return;
+      if ((generatedContentRef.current[outlinePointId] ?? "") !== textAtGeneration) {
+        toast.error(t("plan.generationNotApplied"));
+        return;
+      }
 
       onGenerated({
         outlinePointId: outlinePoint.id,

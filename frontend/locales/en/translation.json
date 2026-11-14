@@ -2768,6 +2768,7 @@
     "generatingAll": "Generating...",
     "generateAll": "Generate All",
     "contentGenerated": "Content generated",
+    "generationNotApplied": "This point's text changed while it was being generated. The result was not applied — generate again.",
     "planSaved": "Plan saved",
     "pointSaved": "Point saved",
     "renamePoint": "Rename this point",

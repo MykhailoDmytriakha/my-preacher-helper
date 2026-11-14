@@ -366,6 +366,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     modifiedContent,
     savedSermonPoints,
     editModePoints,
+    generatingIds,
     noContentText,
     t,
     onSaveSermonPoint,
@@ -420,7 +421,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
             sectionColor={isModified ? sectionColors : undefined}
             // Emptying the text is a legitimate edit — gating on "has content" left the
             // stored text impossible to remove.
-            disabled={!isModified && isSaved}
+            disabled={Boolean(generatingIds[outlinePoint.id]) || (!isModified && isSaved)}
             title={t("plan.save")}
           >
             <Save className="h-4 w-4" />
@@ -455,6 +456,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
               {isEditMode ? (
                 <RichMarkdownEditor
                   value={nodeContent}
+                  editable={!generatingIds[node.id]}
                   valueBeforeUserAction={foreignValuesBeforeAction[node.id]}
                   valueIsUserAction={userActionValues[node.id] !== undefined && userActionValues[node.id] === nodeContent}
                   placeholder={noContentText}
