@@ -268,6 +268,38 @@ describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (ke
   });
 });
 
+it('keeps the valid opening of a group block when a different block proof is unreadable', async () => {
+  const resource = { collection: 'groups', id: 'group-partially-readable-blocks' };
+  const first = { id: 'a', title: 'First opening name', createdAt: 'first-row' };
+  const second = { id: 'b', title: 'Second opening name', createdAt: 'second-row' };
+  const value = { userId: 'owner', title: 'Group', templates: [first, second] };
+  const session = new DataSession({ resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+  const localFirst = { ...first, title: 'First private name' };
+  const localSecond = { ...second, title: 'Second private name' };
+  session.edit({ ...value, templates: [localFirst, second] }, undefined, { field: 'group-block-title', rowId: 'a', time: null });
+  session.edit({ ...value, templates: [localFirst, localSecond] }, undefined, { field: 'group-block-title', rowId: 'b', time: null });
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.groupBlockTitleDrafts).toHaveProperty('a.action.observedRevision', 1);
+  expect(checkpoint.groupBlockTitleDrafts).toHaveProperty('b.action.observedRevision', 1);
+  loose(checkpoint.groupBlockTitleDrafts?.a?.action).observedRevision = 'unreadable';
+  loose(checkpoint.groupBlockTitleDrafts?.b?.action).time = 'unreadable';
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+  const recovered = (await throughDeviceStorage(record)).checkpoint;
+  takeDroppedProof('groupBlockTitleDrafts');
+  const expectedProof = { generation: 'g', action: { rowId: 'b', rowCreatedAt: 'second-row', before: second.title, after: localSecond.title,
+    observedRevision: 1, time: null } };
+  expect(recovered.groupBlockTitleDrafts).toEqual({ b: expectedProof });
+  expect(recovered.unreadableRowProofs).toEqual([{ field: 'groupBlockTitleDrafts', rowId: 'a', birth: 'first-row', generation: 'g' }]);
+  expect(recovered.conflicts.map(({ path }) => path)).toEqual([['templates', 'id:a', 'title']]);
+  for (const side of ['mine', 'stored']) {
+    const reopened = DataSession.restore(recovered);
+    if (side === 'mine') reopened.keepLocal();
+    else reopened.acceptRemote(reopened.checkpoint().draft);
+    expect(reopened.checkpoint().draft?.templates).toEqual([side === 'mine' ? localFirst : first, localSecond]);
+    expect(reopened.checkpoint().groupBlockTitleDrafts?.b).toEqual(expectedProof);
+  }
+});
+
 it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row edit from acting on a %s', async situation => {
   const resource = { collection: 'groups', id: 'group-proof-row' };
   const opening = { id: 'row', title: 'Opening block name', createdAt: 'opening-row' };

@@ -70,6 +70,10 @@ const sameCapture = (first: Action, second: Action) => first.rowId === second.ro
 const isCaptured = (checkpoint: SessionCheckpoint, action: Action, target: Target) => Object.values(checkpoint.pending)
   .some(request => request[target.action]?.some(captured => sameCapture(action, captured)));
 
+export function hasRowProofTarget(collection: string, key: string): boolean {
+  return targetsFor(collection).some(target => target.draft === key);
+}
+
 export type UnreadableRowProof = { field: DraftKey; rowId: string; birth: string; generation: string };
 
 /** Recover a row address only from a structurally valid identity in the draft that carried the proof. */

@@ -13,7 +13,7 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
-import { unreadableRowProofs } from './rowFieldAutosave';
+import { hasRowProofTarget, unreadableRowProofs } from './rowFieldAutosave';
 import { DataSession } from './session';
 import { json, serviceOrderPlacementComparison, snapshotSchema } from './transport.client';
 
@@ -212,6 +212,18 @@ function accepts(schema: z.ZodTypeAny, value: unknown): boolean {
   try { return schema.safeParse(value).success; } catch { return false; }
 }
 
+function splitRowProofs(key: string, raw: unknown) {
+  if (!isFields(raw)) return;
+  const schema = (checkpointEvidence as Record<string, z.ZodTypeAny>)[key];
+  const readable: [string, unknown][] = [];
+  const unreadable: [string, unknown][] = [];
+  for (const [rowId, proof] of Object.entries(raw)) {
+    const candidate = !nestsDeeperThan(proof, MAX_PROOF_DEPTH) ? draftWithoutUnreadableClock(proof) : proof;
+    (accepts(schema, { [rowId]: candidate }) ? readable : unreadable).push([rowId, candidate]);
+  }
+  return { readable: Object.fromEntries(readable), unreadable: Object.fromEntries(unreadable) };
+}
+
 /** Drop the clock alone when the rest of the observation can still order an edit by its revision. */
 function withoutUnreadableClock(value: unknown): unknown {
   if (!isFields(value) || value.time === null || boundedActionTime(value.time)) return value;
@@ -222,25 +234,12 @@ function draftWithoutUnreadableClock(value: unknown): unknown {
   return isFields(value) ? { ...value, action: withoutUnreadableClock(value.action) } : value;
 }
 
-function rowDraftsWithoutUnreadableClocks(value: unknown): unknown {
-  return isFields(value) ? Object.fromEntries(Object.entries(value).map(([rowId, row]) => [rowId, draftWithoutUnreadableClock(row)])) : value;
-}
-
 const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
   groupTitleDraft: draftWithoutUnreadableClock,
   groupStatusDraft: draftWithoutUnreadableClock,
   councilTitleDraft: draftWithoutUnreadableClock,
   councilDateDraft: draftWithoutUnreadableClock,
   councilLifecycleDraft: draftWithoutUnreadableClock,
-  councilOutcomeDrafts: rowDraftsWithoutUnreadableClocks,
-  councilTopicTitleDrafts: rowDraftsWithoutUnreadableClocks,
-  groupBlockTitleDrafts: rowDraftsWithoutUnreadableClocks,
-  groupBlockStatusDrafts: rowDraftsWithoutUnreadableClocks,
-  groupStepTitleDrafts: rowDraftsWithoutUnreadableClocks,
-  groupStepDurationDrafts: rowDraftsWithoutUnreadableClocks,
-  thoughtLockDrafts: rowDraftsWithoutUnreadableClocks,
-  thoughtPlacementDrafts: rowDraftsWithoutUnreadableClocks,
-  outlineTitleDrafts: rowDraftsWithoutUnreadableClocks,
   exegeticalPointDrafts: value => Array.isArray(value) ? value.map(withoutUnreadableClock) : value,
 };
 
@@ -289,8 +288,13 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
     }
     if (typeof collection === 'string' && dropped.length && isFields(checkpoint.draft)) {
-      const rows = dropped.flatMap(key => checkpoint[key] === undefined ? unreadableRowProofs(collection, key, (value.checkpoint as Fields)[key],
-        checkpoint.draft as EditorRecord['checkpoint']['draft']) : []);
+      const rows = dropped.flatMap(key => {
+        if (checkpoint[key] !== undefined || !hasRowProofTarget(collection, key)) return [];
+        const proofs = splitRowProofs(key, (value.checkpoint as Fields)[key]);
+        if (!proofs) return [];
+        if (Object.keys(proofs.readable).length) checkpoint = { ...checkpoint, [key]: proofs.readable };
+        return unreadableRowProofs(collection, key, proofs.unreadable, checkpoint.draft as EditorRecord['checkpoint']['draft']);
+      });
       if (rows.length) {
         const existing = Array.isArray(checkpoint.unreadableRowProofs) ? checkpoint.unreadableRowProofs : [];
         const distinct = new Map([...existing, ...rows].filter(isFields).map(row => [JSON.stringify([row.field, row.rowId, row.birth, row.generation]), row]));
