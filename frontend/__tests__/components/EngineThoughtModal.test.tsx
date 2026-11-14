@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { useTextDictation } from '@/hooks/useTextDictation';
 
@@ -78,6 +78,9 @@ it('keeps typing outside the page document and captures text plus placement in o
   expect(screen.getByTestId('projection')).not.toHaveTextContent('My edited thought');
   expect(harness.transport.send).not.toHaveBeenCalled(); await save(); await deliver(harness);
   expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+    thoughtTextActions: [expect.objectContaining({ rowId: 'a', rowCreatedAt: a.date, observedRevision: 1 })],
+  }));
   expect(harness.read(resource).value).toMatchObject({ thoughts: [{ ...a, text: 'My edited thought', outlinePointId: 'main', subPointId: null }, b],
     structure: { main: ['a'], ambiguous: ['b'] }, thoughtsBySection: { main: ['a'], ambiguous: ['b'] } }); view.unmount();
 });
@@ -164,16 +167,37 @@ it.each(['local', 'remote'] as const)('retains the opening thought ancestor and 
   await deliver(harness); await save(); await deliver(harness);
   expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text: 'Remote text' }, b]);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('My text');
-  const resolution = await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  const words = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(words).toHaveTextContent('My text');
+  expect(words).toHaveTextContent('Remote text');
+  const resolution = within(words).getByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' });
   await waitFor(() => expect(resolution).toBeEnabled());
   fireEvent.click(resolution);
   if (choice === 'remote') {
     // The local thought remains visible until the discard confirmation is accepted.
     expect(screen.getByLabelText('Thought')).toHaveValue('My text');
-    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
   }
   await deliver(harness); const text = choice === 'local' ? 'My text' : 'Remote text';
   await ready(text); expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text }, b]); view.unmount();
+});
+
+it('keeps a tag edited in the same Save when taking the stored thought text', async () => {
+  const { harness, view } = setup('a'); await ready(a.text);
+  fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'My text' } });
+  fireEvent.click(screen.getByRole('button', { name: 'thought.addTagAria' }));
+  await settle();
+  harness.replace({ ...original, metadata: { ...original.metadata!, revision: 2 },
+    value: { ...original.value!, thoughts: [{ ...a, text: 'Remote text' }, b] } });
+  await deliver(harness); await save(); await deliver(harness);
+  fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('My text');
+  const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  fireEvent.click(within(comparison).getByRole('button', { name: 'dataSync.useStoredVersion' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+  await deliver(harness);
+  await ready('Remote text');
+  expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text: 'Remote text', tags: ['custom'] }, b]);
+  view.unmount();
 });
 
 it('keeps an offline saved creation visible across restart and retries the same command once', async () => {

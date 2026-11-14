@@ -66,7 +66,7 @@ export interface ManualScopeRecord {
   recoverySavedRequestId?: string;
 }
 export type ManualFieldInput = MeetingDateInput | GroupMeetingFieldInput | PreachDateFieldInput | HomileticMoveInput | OutlineSubpointInput;
-type ManualThoughtMetadata = { thoughtPlacementIds?: readonly string[]; thoughtTagId?: string };
+type ManualThoughtMetadata = { thoughtPlacementIds?: readonly string[]; thoughtTagId?: string; thoughtTextId?: string };
 export type ManualDocumentMetadataSave = { documentMetadata: ManualThoughtMetadata & { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
 export type ManualSaveOptions = ManualThoughtMetadata & { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; homileticMoves?: readonly HomileticMoveGesture[]; outlineSubpointMoves?: readonly OutlineSubpointMove[] };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => Promise<ManualSavedIntent>;
@@ -258,6 +258,9 @@ export class ManualScope {
       const selected = (path: ManualPath) => captured.selection.some(item => samePath(item, path));
       return selected(row) || (selected([...row, 'outlinePointId']) && selected([...row, 'subPointId']));
     });
+    const textId = thoughtMetadata?.thoughtTextId;
+    const textRow = textId && captured.selection.some(path => samePath(path, ['thoughts', { id: textId }])
+      || samePath(path, ['thoughts', { id: textId }, 'text']));
     const tagId = thoughtMetadata?.thoughtTagId;
     const tagRow = tagId && captured.selection.some(path => samePath(path, ['thoughts', { id: tagId }]));
     const dateIndex = captured.selection.findIndex(path => samePath(path, ['preachDates']));
@@ -300,6 +303,7 @@ export class ManualScope {
         ...(documentMetadataTime !== undefined && { documentMetadataTime }),
         ...(placementRows?.length && { thoughtPlacementIds: placementRows }),
         ...(tagId && tagRow && { thoughtTagId: tagId }),
+        ...(textId && textRow && { thoughtTextId: textId }),
       };
       const submit = admitted ?? this.options.port.save;
       const request = onCaptured ? await submit(captured.scopeId, checkpoint, options, onCaptured)

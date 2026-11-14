@@ -304,6 +304,7 @@ export type DataCommand = CommandBase & (
       councilTopicSummaryActions?: RowTextStamp[];
       groupBlockContentActions?: RowTextStamp[];
       groupStepNotesActions?: RowTextStamp[];
+      thoughtTextActions?: RowTextStamp[];
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
       councilLifecycleAction?: DocumentFieldStamp;
@@ -313,7 +314,7 @@ export type DataCommand = CommandBase & (
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions' | 'councilTopicSummaryActions' | 'groupBlockContentActions' | 'groupStepNotesActions'>
+      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions' | 'councilTopicSummaryActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'thoughtTextActions'>
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

@@ -13,6 +13,7 @@ import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
+import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
@@ -22,6 +23,7 @@ export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
     || isPlanCellPath(path) || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
+    || thoughtTextConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
 
@@ -148,6 +150,8 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
     const path = conflicts[0].path;
     if (path[0] === 'preachDates' && !readSermonConflictField(stored.value, path.slice(0, 2)).exists) throw changed();
     const pointId = exegeticalPointConflictId(path);
+    const thoughtId = thoughtTextConflictId(path);
+    if (thoughtId && !readThoughtTextConflict(thoughtId, draft, stored.value)) throw changed();
     if (sermonNoteConflictTarget(path)) {
       const note = sermonNoteConflictText(path, draft, stored.value);
       if (!note) return undefined;

@@ -1639,13 +1639,14 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId?: string; thoughtTagId?: string }): ManualDocumentMetadataSave => {
+    captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId?: string; thoughtTagId?: string; thoughtTextId?: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
       const date = target && 'rowId' in target ? target : undefined;
       const thought = target && !('rowId' in target) ? target : undefined;
       return { documentMetadata: { time: time ?? null,
         ...(thought?.thoughtPlacementId && { thoughtPlacementIds: [thought.thoughtPlacementId] }),
         ...(thought?.thoughtTagId && { thoughtTagId: thought.thoughtTagId }),
+        ...(thought?.thoughtTextId && { thoughtTextId: thought.thoughtTextId }),
         ...(date && time && { dateAction: { ...date, time } }) } };
     },
     save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualDocumentMetadataSave) => {

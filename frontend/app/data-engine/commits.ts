@@ -40,6 +40,7 @@ import { noteCorrectionOpening, oversizedNoteOpening, shortenedNoteContent } fro
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentAfterAcknowledgement, MAX_RELATION_RESOURCES } from './protocol';
+import { compactRowTextStamps } from './rowDetailAction';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
@@ -418,6 +419,7 @@ type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; predece
   outlineSubpointMoves?: readonly OutlineSubpointMove[];
   thoughtPlacementIds?: readonly string[];
   thoughtTagId?: string;
+  thoughtTextId?: string;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
@@ -858,7 +860,7 @@ export class CommitQueue {
       ? { [editorAction.homileticPositionReview]: baseline.metadata.revision } : undefined;
     const autosaveFields = groupMove || councilMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records);
     const rowFields = groupMove || councilMove ? {}
-      : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
+      : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds, frozenOptions?.thoughtTextId);
     const thoughtTagActions = captureThoughtTagActions(baseline, predecessor, intent.draft, frozenOptions?.thoughtTagId, frozenOptions?.documentMetadataTime, records);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
@@ -1605,11 +1607,11 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
       Object.assign(command, rowFields);
       // The two row arrays on the command already carry these exact values.
-      for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions })) {
-        if (actions) Object.assign(command, { [key]: actions.map(({ before: _before, after: _after, ...proof }) => proof) });
+      for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions })) {
+        if (actions) Object.assign(command, { [key]: compactRowTextStamps(actions) });
       }
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;

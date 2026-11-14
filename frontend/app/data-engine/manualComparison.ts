@@ -7,13 +7,14 @@ import { sameManualSelection } from './manualScope';
 import { readOutlineParentComparison } from './outlineParentChoice';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
 import type { CommitRequest } from './commits';
 import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; kind?: 'first-group-meeting'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -61,6 +62,9 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
       }
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
+      const thoughtId = exact && conflicts.length === 1 ? thoughtTextConflictId(conflicts[0].path) : undefined;
+      const exactThoughtText = thoughtId && form.record.selection.some(path => equalValues(path, ['thoughts', { id: thoughtId }])
+        || equalValues(path, ['thoughts', { id: thoughtId }, 'text'])) && readThoughtTextConflict(thoughtId, mine, stored.value);
       const changed = form.record.selection.some(path => !sameManualSelection(request.baseline.value, request.value, path)
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));
       const exactList = conflicts.some(({ code, path }) => isAuthoredListComparison(code)
@@ -70,12 +74,12 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || exactVerse || exactList || outlineParent) {
+      if (changed || exactVerse || exactThoughtText || exactList || outlineParent) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
           conflictPaths: [...conflicts, ...observedConflicts].map(conflict => conflict.path), mine,
-          ...(outlineParent && { outlineParent }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
+          ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }
     id = exact ? undefined : request.predecessor ?? undefined;

@@ -31,7 +31,8 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
+import { compactRowTextStamps } from './rowDetailAction';
+import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
@@ -427,6 +428,14 @@ export class DataSession {
     if (!equalValues(confirmed, this.state.confirmed)) throw new Error('The confirmed baseline changed during preparation');
     const { command, submittedValue } = prepareDomainCommand(owner, operationId, confirmed, draft, targets);
     pending[operationId] = { generation: editGeneration, value: copy(submittedValue) };
+    if (command?.kind === 'update' && intended.thoughtTextDrafts) {
+      const rowFields = captureRowFields(intended, confirmed, undefined, []);
+      const { thoughtTextActions } = matchingRowFields(command.changes, rowFields, confirmed.resource.collection);
+      if (thoughtTextActions) {
+        pending[operationId].thoughtTextActions = thoughtTextActions;
+        command.thoughtTextActions = compactRowTextStamps(thoughtTextActions);
+      }
+    }
     return command;
   }
 
@@ -823,6 +832,7 @@ export class DataSession {
     if (candidate) {
       this.retainOutlineTitleActions(titleSource);
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
+      stageReviewedRowFields(this.state, this.state.conflicts.map(({ path }) => path), choiceTime, ['thought-text']);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
       this.stageOutlineReviewTitles(titles, choiceTime);
       if (reviewingRows) this.stageReviewedGroupFlowText(this.state.conflicts.filter(issue => issue.code === UNREADABLE_ROW_PROOF).map(issue => issue.path), choiceTime);

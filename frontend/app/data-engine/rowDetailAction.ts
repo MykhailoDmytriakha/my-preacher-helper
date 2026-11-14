@@ -8,6 +8,12 @@ export type RowDetailObservation<Value extends RowValue> = RowFieldObservation<V
 export type RowDetailAction<Value extends RowValue> = RowFieldEvidence<Value> & RowDetailObservation<Value>;
 export type RowTextStamp = Omit<RowDetailObservation<string | null>, 'before' | 'after'>;
 
+export function compactRowTextStamps(actions: readonly RowDetailObservation<RowValue>[]): RowTextStamp[] {
+  return actions.map(({ rowId, rowCreatedAt, observedRevision, time, predecessorOperationId }) => ({
+    rowId, rowCreatedAt, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }),
+  }));
+}
+
 export type RowDetailHistoryEntry<Field extends string, Value extends RowValue> = DisplacedRowField<Value> & { field: Field; rowCreatedAt: string; scope?: RowValue };
 export type RowDetailActions<Field extends string, Value extends RowValue> = Partial<Record<Field, RowDetailAction<Value>>>;
 

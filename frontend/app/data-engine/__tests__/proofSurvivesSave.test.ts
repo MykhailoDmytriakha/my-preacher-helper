@@ -222,6 +222,37 @@ it.each(['block content', 'leader notes'] as const)('holds delayed %s after the 
   expect((await desktop('legacy-phone', value, withWords('Legacy delayed text'))).kind).toBe('conflict');
 });
 
+it.each(['older client', 'current client without time', 'current client with earlier time'] as const)(
+  'keeps the deliberate return of a thought when the late Save comes from a %s', async variant => {
+    const db = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'sermons', id: 'thought-text-return' };
+    const value = (text: string): DocumentData => ({
+      userId: 'owner', title: 'Independent sermon', verse: '', date: 'born',
+      thoughts: [{ id: 'a', date: 'born', text, tags: [] }, { id: 'b', date: 'born', text: 'Neighbor', tags: [] }],
+    });
+    const opening = value('Opening words');
+    const later = value('Later words');
+    const earlier = value('Earlier offline words');
+    db.documents.set('sermons/' + resource.id, { ...opening, _dataEngine: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+    const command = (operationId: string, before: DocumentData, after: DocumentData, observedRevision: number,
+      offset: number | null | undefined): DataCommand => ({
+      protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+      changes: diffFields(before, after),
+      ...(offset !== undefined && { thoughtTextActions: [{ rowId: 'a', rowCreatedAt: 'born', observedRevision,
+        time: offset === null ? null : { earliestMs: T + offset, latestMs: T + offset + 1 } }] }),
+    });
+    const late = command('phone', opening, earlier, 1, variant === 'older client' ? undefined : variant === 'current client without time' ? null : 10);
+    expect((await processCommand('owner', command('desktop-away', opening, later, 1, 100))).kind).toBe('acknowledged');
+    expect((await processCommand('owner', command('desktop-back', later, opening, 2, 200))).kind).toBe('acknowledged');
+    const result = await processCommand('owner', late);
+    if (variant === 'current client with earlier time') {
+      expect(result.kind).toBe('acknowledged');
+    } else {
+      expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['thoughts', 'id:a', 'text'] }] });
+    }
+    expect((await readDocument('owner', resource)).value).toMatchObject(opening);
+  });
+
 it.each(['opening words', 'missing summary'] as const)('holds a delayed council summary after an intentional return to %s', async mode => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'councils', id: 'council-summary-return' };

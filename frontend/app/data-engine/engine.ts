@@ -2799,7 +2799,8 @@ export class DataEngine {
         const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
           ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
           : undefined;
-        await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage }, () => {
+        await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage,
+          choiceTime: action?.kind === 'document-metadata' ? action.time : undefined }, () => {
           active(); assertComparison();
           const current = scope.getState();
           const reviewed = exactRequest(current, controller.getState().checkpoint);

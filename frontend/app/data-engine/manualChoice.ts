@@ -17,7 +17,7 @@ import { projectOutlineParentChoice, type OutlineTitleDecision } from './outline
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { carryOutlineTitleActions, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds } from './rowFieldAutosave';
+import { carryOutlineTitleActions, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -25,7 +25,9 @@ import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNote
 import { withoutUnsignedTemplateOrder } from './templateOutlineMerge';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { changedThoughtTagTarget } from './thoughtTagAction';
+import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
+import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 import type { ManualScope } from './manualScope';
@@ -69,7 +71,13 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       const shownForm = meeting && readManualScopeIdentity(record.scopeId);
       const sameMeetingForm = savedForm && shownForm && savedForm.slot === 'group-meeting' && shownForm.slot === savedForm.slot
         && savedForm.parentEditorId === shownForm.parentEditorId;
-      if (recovered || sameMeetingForm || (record.scopeId === request.editorId && (markedList || meeting || hasLaterScope(request, requests)))) return request;
+      const thoughtText = request.result?.kind === 'conflict' && request.result.conflicts.some(({ path }) => {
+        const id = thoughtTextConflictId(path);
+        return id && record.selection.some(selected => equalValues(selected, ['thoughts', { id }])
+          || equalValues(selected, ['thoughts', { id }, 'text']));
+      });
+      if (recovered || sameMeetingForm || (record.scopeId === request.editorId
+        && (markedList || meeting || thoughtText || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
   }
@@ -83,6 +91,7 @@ export function exactManualWords(stage: ManualStage, request: CommitRequest): Do
 export interface ExactManualChoice {
   choice: 'local' | 'remote';
   titles?: readonly OutlineTitleDecision[];
+  choiceTime?: ActionTime | null;
   request: CommitRequest;
   stored: ResourceSnapshot;
   value: DocumentData;
@@ -139,6 +148,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     if (stored.value && changedThoughtTagTarget(stored.value, request)) {
       throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
     }
+    if (request.result?.kind === 'conflict' && stored.value && request.result.conflicts.some(({ path }) => {
+      const id = thoughtTextConflictId(path);
+      return id && (!reviewed || !readThoughtTextConflict(id, reviewed, stored.value!));
+    })) throw Object.assign(new Error('The thought that was compared has changed'), { code: 'decision-changed' });
     const dateEdits = chooseLocalPreachDateEdits(basis, reviewed, stored, request.preachStatusActions);
     const explicit = request.result?.kind === 'conflict'
       ? localThoughtPlacementChoices(request.result.conflicts, basis.value, reviewed, stored.value) : undefined;
@@ -155,6 +168,9 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     const held = checkpoint.pending[request.id];
     carryOutlineTitleActions({ ...checkpoint, confirmed: basis, conflicts: request.result.conflicts,
       pending: { [request.id]: { ...held, outlineTitleActions: request.outlineTitleActions ?? held.outlineTitleActions } } }, resolved);
+  }
+  if (decision.choice === 'local' && request.result?.kind === 'conflict') {
+    stageReviewedRowFields(resolved, request.result.conflicts.map(({ path }) => path), decision.choiceTime ?? null, ['thought-text']);
   }
   if (decision.titles) stageReviewedOutlineTitleIds(resolved, decision.titles.filter(title => title.side === 'local' && !title.field).map(title => title.id), null);
   const decided = { ...record, checkpoint: resolved,

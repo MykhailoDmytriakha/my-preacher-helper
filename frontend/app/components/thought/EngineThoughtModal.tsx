@@ -125,7 +125,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
     const locationChanged = original && ((original.outlinePointId ?? null) !== (shown.outlinePointId ?? null)
       || (original.subPointId ?? null) !== (shown.subPointId ?? null));
     const metadata = thoughtId ? form.captureDocumentMetadataAction({
-      thoughtTagId: thoughtId, ...(locationChanged && { thoughtPlacementId: thoughtId }),
+      thoughtTagId: thoughtId, thoughtTextId: thoughtId, ...(locationChanged && { thoughtPlacementId: thoughtId }),
     }) : undefined;
     try {
       const trim = (current: DocumentData) => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }));
@@ -151,9 +151,14 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
   };
   const resolve = async (choice: 'local' | 'remote') => {
     if (isBusy) return;
-    if (choice === 'local') await form.keepLocal(); else await form.acceptRemote();
+    if (choice === 'local') await form.keepLocal(undefined, thoughtId ? form.captureDocumentMetadataAction() : undefined);
+    else await form.acceptRemote();
     if (!thoughtId) onClose();
   };
+  const versions = form.comparison;
+  const words = versions?.thoughtText;
+  const comparison = words && words.id === thoughtId ? { mine: words.mine, stored: words.stored, identity: versions?.identity,
+    title: t('editThought.textLabel'), valueKind: 'field' as const, scopedChoice: true as const } : undefined;
   const visibleTags = shown.tags.flatMap((name, index) => {
     if (boardSection === undefined) return [{ name, index }];
     if (isStructureTag(name)) return [];
@@ -176,7 +181,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
         submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={isBusy} unsaved={form.dirty}
         submitDisabled={isBusy || Boolean(dictation.error) || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
     <div className="space-y-5">
-      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} errorWords={form.error ? form.errorWords : undefined} onRetry={form.retry}
+      <DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} errorWords={form.error ? form.errorWords : undefined} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
