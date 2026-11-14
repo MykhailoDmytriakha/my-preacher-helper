@@ -34,7 +34,7 @@ const serviceOrderAnchor = z.object({
   id: z.string().refine(isValidIdentifier), generation: z.string().refine(isValidIdentifier).nullable(), title: z.string().optional(),
 });
 const serviceOrderGap = z.object({ previous: serviceOrderAnchor.nullable(), next: serviceOrderAnchor.nullable() });
-const serviceOrderPlacementComparison = z.object({
+export const serviceOrderPlacementComparisonSchema = z.object({
   step: z.object({ id: z.string().refine(isValidIdentifier), title: z.string().optional() }).optional(),
   mine: serviceOrderGap, saved: serviceOrderGap.nullable(), available: z.boolean(),
 });
@@ -44,7 +44,7 @@ const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
   z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), code: z.string().optional(), base: field, mine: field, theirs: field, outlineSubpointIds: z.array(z.string().refine(isValidIdentifier)).max(32).optional(),
     orderedOutlineSubpoints: z.array(z.object({ id: z.string().refine(isValidIdentifier), side: z.enum(['local', 'remote']) })).max(32).optional(), studyNoteReferenceOpening: field.optional() })),
-    serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional() }),
+    serviceOrderPlacementComparison: serviceOrderPlacementComparisonSchema.optional() }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),
     seriesMembershipComparisons: z.array(seriesComparison).min(1).max(MAX_RELATION_RESOURCES).optional() }),

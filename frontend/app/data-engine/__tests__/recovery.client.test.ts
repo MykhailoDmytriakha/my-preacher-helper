@@ -1,4 +1,6 @@
 import { EditorController, type CheckpointRecoveryStore, type EditorRecord } from '../controller';
+import { uncapturedAutosaveFields } from '../documentFieldAction';
+import { captureExegeticalPointActions } from '../exegeticalPointCapture';
 import { forkCheckpoint, isRecoverableCheckpoint, recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from '../recovery.client';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
@@ -77,6 +79,83 @@ describe('Explicit checkpoint recovery', () => {
     s.records.get('["owner","source"]')!.checkpoint.dirty = false;
     await expect(forkCheckpoint(s.store, 'owner', '["owner","source"]', 'fork', resource)).rejects.toThrow('no pending local work');
     expect(s.store.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the authored revision and clock of an exegetical point before capturing a command', () => {
+    const opening: ResourceSnapshot = { ...snapshot, resource: { collection: 'sermons', id: 'sermon' },
+      value: { userId: 'owner', preparation: { exegeticalPlan: [{ id: 'point', title: 'Opening' }] } } };
+    const editor = new DataSession(opening);
+    const time = { earliestMs: 1_000, latestMs: 1_010 };
+    editor.edit({ userId: 'owner', preparation: { exegeticalPlan: [{ id: 'point', title: 'Written offline' }] } },
+      editor.checkpoint(), { field: 'exegetical-point', nodeId: 'point', intent: 'title', time });
+    const original = { ...record(), checkpoint: editor.checkpoint() };
+    expect(original.checkpoint.exegeticalPointDrafts).toEqual([
+      { nodeId: 'point', kind: 'title', generation: 'gen', observedRevision: 1, time, title: 'Written offline', ancestors: [] },
+    ]);
+    const restored = validateRecoveryRecord(clone(original), 'owner', 'source');
+    expect(restored.checkpoint.exegeticalPointDrafts).toEqual(original.checkpoint.exegeticalPointDrafts);
+    expect(captureExegeticalPointActions(restored.checkpoint, opening, undefined, [])).toEqual([
+      { nodeId: 'point', kind: 'title', observedRevision: 1, time },
+    ]);
+  });
+
+  it('keeps the proof of a captured group title so recovery does not submit the same edit twice', () => {
+    const opening: ResourceSnapshot = { ...snapshot, resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Opening' } };
+    const editor = new DataSession(opening);
+    const draft = { userId: 'owner', title: 'Typed title' };
+    const time = { earliestMs: 1_000, latestMs: 1_010 };
+    editor.edit(draft, editor.checkpoint(), { field: 'title', time });
+    const stamp = { before: 'Opening', after: 'Typed title', observedRevision: 1, time };
+    editor.registerCommit('operation', 1, draft, undefined, { groupTitleAction: stamp });
+    const original = { ...record(), checkpoint: editor.checkpoint() };
+    expect(original.checkpoint.groupTitleDraft).toMatchObject({ action: stamp });
+    const restored = validateRecoveryRecord(clone(original), 'owner', 'source');
+    expect(restored.checkpoint.pending.operation.groupTitleAction).toEqual(stamp);
+    expect(uncapturedAutosaveFields(restored.checkpoint, restored.checkpoint.confirmed, undefined, [])).toEqual({});
+  });
+
+  it('keeps pending row evidence and the conflict details that determine which field is under review', () => {
+    const original = record();
+    original.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    const time = { earliestMs: 1000, latestMs: 1010 };
+    const action = { rowId: 'point', rowCreatedAt: 'point', before: 'Opening', after: 'Written', observedRevision: 1,
+      time, predecessorOperationId: 'earlier' };
+    original.checkpoint.outlineTitleDrafts = { point: { generation: 'gen', action } };
+    original.checkpoint.pending.next = { value: { userId: 'owner' }, generation: 1, outlineTitleActions: [action] };
+    original.checkpoint.conflicts = [
+      { path: ['outline', 'main'], base: { exists: false }, mine: { exists: true, value: 'mine' },
+        theirs: { exists: true, value: 'theirs' }, code: 'outline-subpoint-placement', outlineSubpointIds: ['child'],
+        orderedOutlineSubpoints: [{ id: 'neighbor', side: 'remote' }] },
+    ];
+    const restored = validateRecoveryRecord(clone(original), 'owner', 'source');
+    expect(restored.checkpoint.outlineTitleDrafts).toEqual(original.checkpoint.outlineTitleDrafts);
+    expect(restored.checkpoint.pending.next.outlineTitleActions).toEqual([action]);
+    expect(restored.checkpoint.conflicts).toEqual(original.checkpoint.conflicts);
+  });
+
+  it.each(['groups', 'councils', 'serviceOrders'])('retains placement comparison details for %s', collection => {
+    const original = record();
+    original.checkpoint.confirmed.resource.collection = collection;
+    original.checkpoint.serviceOrderPlacementComparison = {
+      step: { id: 'step', title: 'Meeting step' },
+      mine: { previous: { id: 'before', generation: null, title: 'Previous' }, next: null },
+      saved: { previous: null, next: { id: 'after', generation: 'gen', title: 'Next' } },
+      available: true,
+    };
+    const restored = validateRecoveryRecord(clone(original), 'owner', 'source');
+    expect(restored.checkpoint.serviceOrderPlacementComparison).toEqual(original.checkpoint.serviceOrderPlacementComparison);
+  });
+
+  it('keeps account retries and does not accept unknown evidence as an account preference', () => {
+    const source = record();
+    source.checkpoint.confirmed.resource = { collection: 'users', id: 'owner' };
+    source.checkpoint.accountPreferenceRetry = { field: 'reading.analysisHelp.short', time: { earliestMs: 1000, latestMs: 1010 } };
+    const restored = validateRecoveryRecord(clone(source), 'owner', 'source');
+    expect(restored.checkpoint.accountPreferenceRetry).toEqual(source.checkpoint.accountPreferenceRetry);
+    expect(() => validateRecoveryRecord({ ...source,
+      checkpoint: { ...source.checkpoint, accountPreferenceRetry: { field: 'arbitrary', time: null } },
+    }, 'owner', 'source')).toThrow();
   });
 
   it('validates complete checkpoints including conflicts, pending values and command owner binding', () => {

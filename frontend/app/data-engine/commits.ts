@@ -166,8 +166,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   studyNoteReferenceEvidence?: StudyNoteReferenceEvidence;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
-  groupTitleAction?: DocumentFieldAction;
-  groupStatusAction?: DocumentFieldAction;
+  groupTitleAction?: DocumentFieldObservation;
+  groupStatusAction?: DocumentFieldObservation;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   /** Exact visible saves that authorize an ordinary deletion once they are accepted. */

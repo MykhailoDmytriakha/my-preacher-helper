@@ -294,8 +294,8 @@ export type DataCommand = CommandBase & (
       tagMembershipActions?: TagMembershipWire<TagMembershipAction>[];
       sourceNoteLinkAction?: SourceNoteLinkAction;
       seriesFieldActions?: SeriesFieldStamps;
-      groupTitleAction?: DocumentFieldAction;
-      groupStatusAction?: DocumentFieldAction;
+      groupTitleAction?: DocumentFieldObservation;
+      groupStatusAction?: DocumentFieldObservation;
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
       councilLifecycleAction?: DocumentFieldStamp;
