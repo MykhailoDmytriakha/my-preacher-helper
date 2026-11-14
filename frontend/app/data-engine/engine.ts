@@ -186,6 +186,7 @@ interface EditorEntry {
   closed: boolean;
   listeners: Set<() => void>;
   observation: Observation;
+  pendingActionSaves: Map<number, ClosingSaveIntent[]>;
 }
 
 interface ManualFormEntry {
@@ -317,19 +318,13 @@ export class DataEngine {
     // Leaving an account retires its editors as surely as leaving a screen: what storage has not
     // caught up with is written under the account that typed it, never under the next one.
     const previous = this.owner, previousGeneration = this.generation;
-    const unwritten = [...this.editors.values()].flatMap(entry => {
-      const record = entry.controller && !entry.closed ? this.unwrittenRecord(entry.controller) : null;
-      return record ? [{ entry, record, pending: entry.controller!.settled() }] : [];
-    });
-    const retiringEditors = [...this.editors.values()];
+    const retiringEditors = [...this.editors].map(([editorId, entry]) => ({
+      entry, writeback: previous ? this.keepRetiringEditor(previous, previousGeneration, editorId, entry) : undefined,
+    }));
     this.editors.clear();
     this.owner = owner;
     this.generation += 1;
-    for (const entry of retiringEditors) {
-      const captured = unwritten.find(item => item.entry === entry);
-      const keeping = previous && captured ? this.keepUnwritten(captured.record, previous, previousGeneration, captured.pending) : undefined;
-      this.close(entry, keeping);
-    }
+    for (const { entry, writeback } of retiringEditors) this.close(entry, writeback);
     for (const manual of this.manualForms.values()) this.retireManual(manual, previousGeneration);
     this.manualForms.clear();
     for (const scope of new Set([...this.membershipForms.values(), ...this.membershipReleases.values()])) {
@@ -1882,7 +1877,7 @@ export class DataEngine {
       presence: this.recoveryPresence.hold(owner, 'checkpoint', [recoveryCheckpointId(owner, editorId), ...recoverySourceIds]),
       initializing: null,
       controller: null, stopObservation: null, stopController: null, closed: false,
-      listeners: new Set(), observation: initialObservation(),
+      listeners: new Set(), observation: initialObservation(), pendingActionSaves: new Map(),
     };
     this.editors.set(editorId, entry);
     let onAbort: (() => void) | undefined;
@@ -2071,7 +2066,7 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const pendingActionSaves = new Map<number, ClosingSaveIntent[]>();
+      const { pendingActionSaves } = entry;
       const commit = (updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction, noteContent?: StudyNoteContentCapture | null) => {
         active();
         const checkpoint = controller.getState().checkpoint;
@@ -2225,7 +2220,7 @@ export class DataEngine {
           || captured?.kind === 'council-topic-placement' ? captured : undefined;
         if (move) void controller.save(checkpoint).catch(() => undefined);
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
-        const keepOnClose = move || (captured?.kind === 'sermon-plan-text' && captured.transfer ? captured : undefined);
+        const keepOnClose = move || (captured?.kind === 'sermon-plan-text' ? captured : undefined);
         const stagedAction = keepOnClose && controller.getState().checkpoint;
         const saving = controller.save(stagedAction, undefined, onCaptured, captureScope, stamp ? undefined : captured, undefined, noteContent);
         if (keepOnClose && stagedAction) {
@@ -2527,6 +2522,22 @@ export class DataEngine {
       } }, generation);
     void pending.then(() => { if (this.current(owner, generation)) this.backgroundDrain(); }, () => undefined);
     return pending;
+  }
+
+  /** Retiring a provider keeps explicit plan Saves ahead of their dependent removal. */
+  private keepRetiringEditor(owner: string, generation: number, editorId: string, entry: EditorEntry): Promise<unknown> | undefined {
+    const { controller } = entry;
+    if (!controller || entry.closed) return undefined;
+    const actions = [...entry.pendingActionSaves.values()].flat().filter(intent => intent.action?.kind === 'sermon-plan-text');
+    const unwritten = this.unwrittenRecord(controller);
+    if (!actions.length && !unwritten) return undefined;
+    const settled = controller.settled(), requests: CommitRequest[] = [];
+    const saving = actions.length
+      ? this.keepClosingActionSaves(owner, generation, editorId, settled, actions, this.closingRecord(controller), requests)
+      : undefined;
+    const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
+      saving ? Promise.allSettled([settled, saving]) : settled, undefined, requests) : undefined;
+    return saving && keeping ? Promise.all([saving, keeping]) : saving ?? keeping;
   }
 
   /** The checkpoint a closing editor has not written yet; a retired controller has none to give. */

@@ -95,6 +95,11 @@ export function useManualConspectus({
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const planWriter = usePlanWriter();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
   const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
@@ -375,8 +380,9 @@ export function useManualConspectus({
       writeChainRef.current = queued.catch(() => undefined);
       await queued;
 
-      toast.success(t("plan.pointSaved"));
+      if (mounted.current) toast.success(t("plan.pointSaved"));
     } catch (error) {
+      if (!mounted.current) return;
       /**
        * QUEUED IS NOT REFUSED. Offline the guard cannot compare anything, so it stores the
        * intent in the durable outbox and says so by throwing. The text is owned by something
@@ -721,7 +727,7 @@ export function useManualConspectus({
       return true;
     } catch (error) {
       debugLog("Manual plan sub-point removal failed", { sermonId, subPointId, error });
-      toast.error(t(writeFailureTranslationKey(error, transfer ? SAVE_POINT_ERROR_KEY : "errors.failedToSaveOutline")));
+      if (mounted.current) toast.error(t(writeFailureTranslationKey(error, transfer ? SAVE_POINT_ERROR_KEY : "errors.failedToSaveOutline")));
       return false;
     } finally {
       refreshPending();

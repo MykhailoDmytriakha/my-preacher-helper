@@ -733,6 +733,68 @@ describe('manual deletion locks', () => {
     await userEvent.type(editor.view.dom, ' Later typing', { skipClick: true });
   };
 
+  it.each([
+    ['other', 'stay'], ['p1', 'stay'], ['child', 'stay'], ['p1', 'leave'], ['child', 'leave'], ['child', 'keep typing'],
+    ['p1', 'rename the point'], ['child', 'rename the point'],
+  ] as const)('completes removal behind an earlier %s Save with a held local callback when you %s', async (nodeId, departure) => {
+    mockSermon!.planMode = 'manual';
+    const view = await render();
+    const opening = { p1: 'Opening.', child: 'Child words.', other: 'Other.' };
+    const updated = { ...opening, [nodeId]: opening[nodeId] + ' Typed before removal.' };
+    let reached = false;
+    let waiting = false;
+    harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+      if (reached || mode !== 'readwrite') return false;
+      const save = [...rows.values()].some(value => {
+        const request = value as CommitRequest | undefined;
+        const plan = request?.value?.planText as Record<string, string> | undefined;
+        return request?.state === 'queued' && !request.planTextEvidence?.planSubpointTransfer && plan?.[nodeId] === updated[nodeId];
+      });
+      if (save) reached = waiting = true;
+      return save;
+    };
+    const release = () => {
+      harness.storage.holdCompletionAfterCommit = undefined;
+      if (waiting) { waiting = false; harness.storage.finishCompletion(); }
+    };
+    let reopened: ReturnType<typeof rtlRender> | undefined;
+    try {
+      const pointIndex = nodeId === 'other' ? 1 : 0;
+      fireEvent.click(screen.getAllByTitle('plan.editMode')[pointIndex]);
+      const editorRoot = view.container.querySelectorAll<HTMLElement>('.tiptap')[nodeId === 'child' ? 1 : 0];
+      const editor = mountedEditor(editorRoot.parentElement!);
+      typeAtEnd(editor, ' Typed before removal.');
+      fireEvent.click(screen.getAllByTitle('plan.save')[pointIndex]);
+      await waitFor(() => expect(reached).toBe(true));
+      if (departure === 'keep typing') typeAtEnd(editor, ' Typed after Save.');
+      if (departure === 'rename the point') {
+        fireEvent.click(screen.getAllByRole('button', { name: 'plan.renamePoint' })[0]);
+        const title = screen.getByRole('textbox', { name: 'plan.renamePoint' });
+        fireEvent.change(title, { target: { value: 'Renamed during Save' } });
+        fireEvent.blur(title);
+        await screen.findByText('Renamed during Save');
+      }
+      removeChild();
+      await waitFor(() => expect(mockRemoveSubPoint).toHaveBeenCalledTimes(1));
+      if (departure === 'leave') {
+        await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+        view.unmount();
+      }
+      await act(async () => { release(); });
+      if (departure === 'leave') {
+        reopened = rtlRender(page(queryClient()));
+        await screen.findAllByText('A sermon in progress');
+        await act(async () => { await harness.engine.retry(); });
+      }
+      const parent = updated.p1 + '\n\n' + updated.child + (departure === 'keep typing' ? ' Typed after Save.' : '');
+      await waitFor(() => expect(harness.server.value).toMatchObject({
+        outline: { introduction: [{ text: departure === 'rename the point' ? 'Renamed during Save' : 'First point', subPoints: [] }] },
+        planText: { p1: parent, child: '', other: updated.other },
+      }));
+      expect(toast.error).not.toHaveBeenCalled();
+    } finally { release(); reopened?.unmount(); view.unmount(); }
+  });
+
   it('waits for a pending sub-point deletion when leaving through Back to sermon', async () => {
     const { view, gate } = await begin();
     try {

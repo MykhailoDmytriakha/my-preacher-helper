@@ -9828,3 +9828,15 @@ Headless Chrome on local build `FaNzOc4OuDvVAq-sVLo76` used Firestore and Auth e
 Full Jest passed 15,846 tests with 17 skipped. Scoped ESLint passed with warnings. TypeScript, the local production build, and independent source review passed.
 
 After authorized deployment, use a disposable sermon on the deployed version. Add two subpoints and write distinct text under each. Remove one, immediately use browser Back, then reopen and reload the plan. Confirm that its text appears once under the parent, that the other subpoint and its text remain, and that the same behavior holds through the app menu.
+
+## BUG-20261114-plan-save-races-pending-delete · Complete both actions when Save overlaps subpoint removal
+
+In Sermons → a sermon → Plan → By hand, type into the parent or the child, use Save, then immediately confirm removal of the child. On build `FaNzOc4OuDvVAq-sVLo76`, Chrome held the Save completion callback after its IndexedDB transaction had committed. The draft already displayed the typed words, but removal compared them against the old opening. Only Save reached Firestore. The child remained and the plan showed a refusal. Saving a neighboring point completed successfully before or after removal.
+
+The plan writer now carries forward only an exact earlier Save from this opening and only for the cells it changed. The removal stages immediately and uses the existing Data Engine predecessor for local capture and delivery. The latest baseline still protects against words the person did not observe. The old editor retains both explicit captures even when the whole provider retires, while unsent words remain a private draft. The page no longer issues a stale refusal toast once its editor has unmounted.
+
+The mounted regressions first reproduced both refusals with the real storage harness. They now cover the parent, the child, the neighboring point, continuing to type, an intervening rename, and reopening after provider retirement before the first callback. Nine Headless Chrome scenarios on build `gQSWOSCgIsI_JtD9HaonY` used Firestore and Auth emulators at 390 and 1280 px. They include reverse order for independent points, app-menu departure, and a rename included with the accepted outline update. Reopening and reloading preserved the typed words, the moved paragraph, and the other child's text. The browser also showed that a separate local backup can remain visible as a recovery prompt after the transfer. That finding remains open as `BUG-20261114-plan-transferred-text-offered-as-draft`. Evidence is in `artifacts/manual-plan-save-remove-20261114`.
+
+Full Jest passed 15,854 tests with 17 skipped. TypeScript, the local production build, scoped ESLint with warnings, and independent source review passed.
+
+After authorized deployment, use a disposable sermon with one parent and two written children. Append distinct words to the parent and press Save, then immediately confirm removal of one child. Verify that the parent contains both the added words and the moved text, no refusal appears, and the other child is unchanged after reopening. Repeat after adding words to the child instead of the parent.
