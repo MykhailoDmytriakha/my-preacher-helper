@@ -179,6 +179,64 @@ it('regression pin: keeps explicitly recovered series description text undoable 
   } finally { Date.now = originalNow; mockRealEditor = false; jest.restoreAllMocks(); }
 });
 
+it('cannot Undo and resave the local description after taking the other device’s version', async () => {
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    typeAtEnd(mountedEditor(view.baseElement), ' Laptop.');
+    await act(async () => { await settleEngine(); });
+    await act(async () => { await harness.remote({ description: 'Opening description PHONE.' }); });
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(screen.getByTestId('parent-state')).toHaveTextContent('conflict');
+    view.unmount();
+
+    const reopened = render(<Workspace />);
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    const editor = mountedEditor(reopened.baseElement);
+    expect(markdown(editor)).toBe('Opening description Laptop.');
+    fireEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(() => expect(markdown(editor)).toBe('Opening description PHONE.'));
+    expect(mountedEditor(reopened.baseElement)).toBe(editor);
+    const undone = undo(editor);
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(undone).toBe(false);
+    expect(markdown(editor)).toBe('Opening description PHONE.');
+    expect(harness.server.value).toMatchObject({ description: 'Opening description PHONE.', bookOrTopic: 'Romans' });
+    reopened.unmount();
+  } finally { mockRealEditor = false; jest.restoreAllMocks(); }
+});
+
+it('displays the requested series draft when recovery immediately follows native typing', async () => {
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    typeAtEnd(mountedEditor(view.baseElement), ' Recovered');
+    await act(async () => { await settleEngine(); });
+    view.unmount();
+    const reopened = render(<Workspace />);
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    const editor = mountedEditor(reopened.baseElement);
+    const draft = await screen.findByRole('option', { name: 'Opening title' });
+    fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: draft.getAttribute('value') } });
+    typeAtEnd(editor, ' Current');
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description Recovered');
+    typeAtEnd(editor, ' Later');
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(harness.server.value?.description).toBe('Opening description Recovered Later');
+    reopened.unmount();
+  } finally { mockRealEditor = false; }
+});
+
 it('C30 explicit recovery to the opening description is one undoable action over current local text', async () => {
   const originalNow = Date.now;
   mockRealEditor = true;

@@ -1596,6 +1596,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     active: stage?.record.active ?? false,
     ...(stage?.documentChoiceRequired ? { documentChoiceRequired: true as const, mirrorsDocumentConflict } : {}),
     data: ownStage ?? document.data,
+    ...(ownStage && stage?.requestedRecovery && { requestedRecovery: true as const }),
     /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
     recoveryReady: Boolean(targetForm),
     recoveryVersion: JSON.stringify([Boolean(stage?.record.active), Boolean(stage?.documentChoiceRequired), document.status?.phase]),

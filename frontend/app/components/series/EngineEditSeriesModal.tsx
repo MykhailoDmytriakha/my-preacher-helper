@@ -70,7 +70,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     }>
     <div className="space-y-5">
       <fieldset disabled={loading || !form.active || form.busy}>
-        <SeriesFormFields valueIsUserAction={form.active} values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
+        <SeriesFormFields valueIsUserAction={form.requestedRecovery} values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
       {owner && generation && <DocumentMetadataHistory<SeriesTimedField> key={JSON.stringify([owner, seriesId, generation])}
         owner={owner} generation={generation} collection="series" id={seriesId} current={form.data}

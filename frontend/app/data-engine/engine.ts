@@ -107,7 +107,7 @@ export interface DataEngineOptions {
 }
 
 export interface ManagedManualForm {
-  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true; documentChoiceRequired?: true }) | null;
+  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true; documentChoiceRequired?: true; requestedRecovery?: true }) | null;
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
@@ -2650,6 +2650,7 @@ export class DataEngine {
     const state = { parent, selection: copy(selection), scopeId: manualScopeIdentity(parentEditorId, slot), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
     this.manualForms.set(registryKey, state);
     let opening: Promise<void> | null = null;
+    let requestedRecovery: { scope: ManualScope; generation: number } | undefined;
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
     const intent = (request: CommitRequest): ManualSavedIntent => ({ id: request.id, owner: request.owner, resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor });
     const capture = (): ManualCapture => { active(); return this.captureManual(parent, owner, selection); };
@@ -2779,6 +2780,7 @@ export class DataEngine {
         }
         initializing = false;
         state.scope = scope;
+        requestedRecovery = sourceScopeId ? { scope, generation: scope.getState().record.generation } : undefined;
         if (sourceScopeId) this.emit(parent); else emit();
       };
       opening = run().catch(error => { state.presence?.release(); state.presence = null; throw error; }).finally(() => { opening = null; state.opening = null; });
@@ -2870,6 +2872,8 @@ export class DataEngine {
         const pendingIds = Object.keys(checkpoint.pending);
         const documentChoiceRequired = !exact && hasBranchedOrdinaryAnswer(pendingIds, this.requestsForChoice(owner, pendingIds));
         return { ...form, ...(exact ? { exactChoice: true as const } : {}),
+          ...(form.record.active && requestedRecovery?.scope === state.scope && requestedRecovery.generation === form.record.generation
+            && { requestedRecovery: true as const }),
           ...(documentChoiceRequired ? { documentChoiceRequired: true as const } : {}),
           comparison: exact || ((!documentChoiceRequired || form.choiceRequired) && controller.hasChoiceAuthority(checkpoint))
             ? manualComparison(form, checkpoint, this.commitRecords, exact ? request : undefined) : undefined };
