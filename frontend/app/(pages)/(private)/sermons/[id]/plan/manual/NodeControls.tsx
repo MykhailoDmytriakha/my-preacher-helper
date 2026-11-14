@@ -120,6 +120,7 @@ export const DeleteNodeButton = ({
   armedLabel,
   onDelete,
   compact = false,
+  disabled = false,
 }: {
   title: string;
   /** The full consequence — what will be lost or moved. Tooltip and screen reader. */
@@ -128,6 +129,7 @@ export const DeleteNodeButton = ({
   armedLabel: string;
   onDelete: () => void;
   compact?: boolean;
+  disabled?: boolean;
 }) => {
   const [isArmed, setIsArmed] = useState(false);
 
@@ -137,6 +139,7 @@ export const DeleteNodeButton = ({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => {
         if (isArmed) {
           setIsArmed(false);

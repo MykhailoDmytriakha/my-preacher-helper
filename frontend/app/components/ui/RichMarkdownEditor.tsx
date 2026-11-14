@@ -23,6 +23,8 @@ interface RichMarkdownEditorProps {
     confirmedTextTransfer?: ObservedTextAppend;
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
+    /** A foreign value coalesced with the own action; apply its boundary first. */
+    valueBeforeUserAction?: { value: string | null };
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
@@ -66,6 +68,7 @@ export function RichMarkdownEditor({
     observedAppend: appendedText,
     confirmedTextTransfer,
     valueIsUserAction = false,
+    valueBeforeUserAction,
     placeholder = '',
     minHeight = '150px',
     autoFocus = false,
@@ -76,6 +79,7 @@ export function RichMarkdownEditor({
     const { draft, change, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
     const acceptedTransfer = useRef<ObservedTextAppend | undefined>(undefined);
     const composition = useRef<Composition | null>(null);
+    const appliedForeignValue = useRef(valueBeforeUserAction);
     const current = useRef({ draft, value, observedAppend, valueIsUserAction });
     const heldText = useRef<{ settle?: (keep: boolean, chosenWrite?: void | Promise<unknown>) => void } | null>(null);
     const [choice, setChoice] = useState<string | null>(null);
@@ -122,10 +126,15 @@ export function RichMarkdownEditor({
                 if (draft === readMarkdown(editor)) retireHistory(editor);
                 else showDraft(editor, draft, false);
             } else {
-                showDraft(editor, draft, draft === value ? valueIsUserAction : undefined);
+                if (draft === value && valueIsUserAction && valueBeforeUserAction && appliedForeignValue.current !== valueBeforeUserAction) {
+                    appliedForeignValue.current = valueBeforeUserAction;
+                    if (valueBeforeUserAction.value !== null) showDraft(editor, valueBeforeUserAction.value, false);
+                }
+                const ownValue = valueIsUserAction && valueBeforeUserAction?.value !== null;
+                showDraft(editor, draft, draft === value ? ownValue : undefined);
             }
         }
-    }, [confirmedTextTransfer, draft, editor, value, valueIsUserAction]);
+    }, [confirmedTextTransfer, draft, editor, value, valueIsUserAction, valueBeforeUserAction]);
 
     useLayoutEffect(() => {
         const container = editorContainer.current;

@@ -744,7 +744,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, []);
-    const { value: content, observe: setContent, act: setOwnContent, append: appendContent, appended: contentAppend, isUserAction: contentIsUserAction } = useEditorValue('');
+    const { value: content, observe: setContent, act: setOwnContent, append: appendContent, appended: contentAppend, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
     const contentOpeningRef = useRef<Omit<StudyNoteContentCapture, 'time'> | undefined>(undefined);
     const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture } | null>(null);
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
@@ -1882,7 +1882,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             <RichMarkdownEditor
                                 value={content}
                                 observedAppend={contentAppend}
-                                valueIsUserAction={contentIsUserAction}
+                                valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
                                 onChange={changeContent}
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}

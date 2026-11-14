@@ -167,7 +167,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
           <button
             type="button"
             onClick={() => void conspectus.savePoint(point.id, section, nodeIds)}
-            disabled={!isModified}
+            disabled={!isModified || nodeIds.some(id => conspectus.busyNodeIds.has(id))}
             /**
              * THE SAME SIGNAL AS THE PAIRED SCREEN: the button lights up in the section's
              * colour while something is unsaved. Two screens over one plan teaching different
@@ -193,6 +193,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             {isEditing ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </button>
           <DeleteNodeButton
+            disabled={conspectus.busyNodeIds.size > 0}
             title={t("plan.deletePoint")}
             armedTitle={t("plan.deletePointConfirm")}
             armedLabel={t("plan.deleteConfirm")}
@@ -220,6 +221,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
                   <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />
                 </span>}
                 {!readOnly && <DeleteNodeButton
+                  disabled={conspectus.busyNodeIds.size > 0}
                   compact
                   title={t("plan.deleteSubPoint")}
                   armedTitle={t("plan.deleteSubPointConfirm")}
@@ -235,8 +237,10 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             />}
             {isEditing && !readOnly ? (
               <RichMarkdownEditor
+                editable={!conspectus.busyNodeIds.has(node.id)}
                 value={conspectus.contentByNodeId[node.id] ?? ""}
                 confirmedTextTransfer={conspectus.rescuedAppend?.nodeId === node.id ? conspectus.rescuedAppend.append : undefined}
+                valueBeforeUserAction={conspectus.foreignValuesBeforeAction[node.id]}
                 valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
                 placeholder={t(NO_PLAN_CONTENT_KEY)}
                 minHeight={node.kind === "subPoint" ? "90px" : "120px"}
@@ -523,9 +527,10 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
         <PlanDraftRecoveryBar
           subject={JSON.stringify([sermon?.userId, sermonId])}
           cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies, conspectus.contentByNodeId)}
+          restoreDisabled={Object.keys(draft.recovered).some(id => conspectus.busyNodeIds.has(id))}
           onChoose={draft.selectCopy}
           onRestore={() => {
-            conspectus.restoreCells(draft.recovered ?? {});
+            if (!conspectus.restoreCells(draft.recovered ?? {})) return;
             draft.accept();
             answerDraftQuestion();
           }}
@@ -536,6 +541,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       <OrphanedPlanText
       subject={JSON.stringify([sermon?.userId, sermonId])}
         cells={orphans}
+        busyNodeIds={conspectus.busyNodeIds}
         storedSermon={source.confirmedSermon}
         storedRevision={confirmedRevision}
         liveIds={livePlanNodes}

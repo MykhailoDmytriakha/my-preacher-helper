@@ -1,4 +1,5 @@
-import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
+import { closeHistory } from '@tiptap/pm/history';
+import { markdown, mountedEditor, redo, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { EngineEditSeriesModal } from '@/components/series/EngineEditSeriesModal';
@@ -264,4 +265,80 @@ it('C30 explicit recovery to the opening description is one undoable action over
     expect(harness.transport.send).not.toHaveBeenCalled();
     expect(afterUndo).toBe(before); restored.unmount();
   } finally { Date.now = originalNow; mockRealEditor = false; jest.restoreAllMocks(); }
+});
+
+it.each([false, true])('E16 own Series recovery stays visible through Undo, Redo, later typing and Save, overlap=%s', async overlap => {
+  const originalNow = Date.now;
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    typeAtEnd(mountedEditor(view.baseElement), ' Recovered');
+    await act(async () => { await settleEngine(); });
+    view.unmount();
+    const reopened = render(<Workspace />);
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    const editor = mountedEditor(reopened.baseElement);
+    const choice = await screen.findByRole('option', { name: 'Opening title' });
+    fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
+    const recoveredAt = Date.now() + 1000;
+    Date.now = () => recoveredAt;
+    typeAtEnd(editor, ' Current');
+    if (!overlap) await act(async () => { await settleEngine(); });
+    // Keep the requested recovery separate from the native event on production too.
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    await act(async () => { await settleEngine(); });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' })).toBeEnabled());
+    expect(markdown(editor)).toBe('Opening description Recovered');
+    expect(undo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description Current');
+    expect(redo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description Recovered');
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    typeAtEnd(editor, ' Later'); await act(async () => { await settleEngine(); });
+    expect(undo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description Recovered');
+    expect(redo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description Recovered Later');
+    expect(mountedEditor(reopened.baseElement)).toBe(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(harness.server.value?.description).toBe('Opening description Recovered Later');
+    reopened.unmount();
+  } finally { Date.now = originalNow; mockRealEditor = false; }
+});
+
+it.each([false, true])('E10 native Series typing and metadata preserve Undo, Redo and Save, separate=%s', async separate => {
+  mockRealEditor = true;
+  try {
+    const { harness, view } = setup();
+    const title = await screen.findByDisplayValue('Opening title');
+    await waitFor(() => expect(title).toBeEnabled());
+    const editor = mountedEditor(view.baseElement);
+    // Initial production setContent can still share a history group with the first native event.
+    act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+    if (separate) {
+      typeAtEnd(editor, ' A'); await act(async () => { await settleEngine(); });
+      act(() => { editor.view.dispatch(closeHistory(editor.state.tr)); });
+      typeAtEnd(editor, ' B');
+    } else act(() => {
+      editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' A');
+      editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' B');
+    });
+    await act(async () => { await settleEngine(); });
+    fireEvent.change(title, { target: { value: 'Changed title' } });
+
+    await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description A B');
+    expect(undo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe(separate ? 'Opening description A' : 'Opening description');
+    expect(redo(editor)).toBe(true); await act(async () => { await settleEngine(); });
+    expect(markdown(editor)).toBe('Opening description A B');
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(harness.server.value).toMatchObject({ title: 'Changed title', description: 'Opening description A B' });
+    view.unmount();
+  } finally { mockRealEditor = false; }
 });

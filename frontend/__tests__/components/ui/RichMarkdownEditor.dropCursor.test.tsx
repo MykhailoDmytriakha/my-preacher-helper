@@ -6,7 +6,7 @@ import { markdown, mountedEditor, typeAtEnd } from '@test-utils/richMarkdownHist
 const originalElementFromPoint = document.elementFromPoint;
 afterEach(() => { cleanup(); jest.useRealTimers(); jest.restoreAllMocks(); document.elementFromPoint = originalElementFromPoint; });
 
-it.each([false, true])('B30 keeps one drag cursor and removes it on drag end with earlier typing=%s', retirement => {
+it.each([false, true])('B30 / D03 ACCEPTED COSMETIC DIFFERENCE: hides the indicator until the next dragover, then removes it on drag end, earlier typing=%s', retirement => {
   jest.useFakeTimers();
   const view = render(<RichMarkdownEditor value="Original paragraph." onChange={jest.fn()} />);
   const editor = mountedEditor(view.container);

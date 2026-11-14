@@ -210,7 +210,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const [error, setError] = useState<FailureWords | null>(null);
 
   // Generated content by outline point ID
-  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues } = useEditorValues();
+  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues, foreignValuesBeforeAction } = useEditorValues();
 
   /**
    * The text as it is RIGHT NOW.
@@ -1125,6 +1125,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
           subject={JSON.stringify([sermon?.userId, sermonId])}
           cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies, generatedContent)}
           onChoose={planDraft.selectCopy}
+          restoreDisabled={Object.keys(planDraft.recovered).some((nodeId) => generatingIds[nodeId])}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});
             planDraft.accept();
@@ -1209,6 +1210,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         conclusionSectionRef={conclusionSectionRef}
         generatedContent={shownContent}
         userActionValues={userActionValues}
+        foreignValuesBeforeAction={foreignValuesBeforeAction}
         modifiedContent={modifiedContent}
         savedSermonPoints={savedSermonPoints}
         editModePoints={editModePoints}

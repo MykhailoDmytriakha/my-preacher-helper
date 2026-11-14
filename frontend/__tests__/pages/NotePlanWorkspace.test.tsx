@@ -22,8 +22,8 @@ jest.mock('@/(pages)/(private)/sermons/[id]/plan/planApi', () => ({ generateNote
 const point = { id: 'p', text: 'Who stood out?', note: 'List the people', subPoints: [{ id: 'sub', text: 'Their work', position: 0 }] };
 const sermon = { id: 's', title: 'Title', verse: '', date: '', thoughts: [], userId: 'u', sourceNoteIds: ['n'],
   outline: { introduction: [], main: [point], conclusion: [] } } as Sermon;
-const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(),
-  isTransferringText: () => false, restoreCells: jest.fn(), saveModified: jest.fn() } as unknown as ManualConspectus;
+const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(), busyNodeIds: new Set(), isTransferringText: () => false,
+  restoreCells: jest.fn(() => true), saveModified: jest.fn() } as unknown as ManualConspectus;
 
 const requestRefinement = () => {
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));

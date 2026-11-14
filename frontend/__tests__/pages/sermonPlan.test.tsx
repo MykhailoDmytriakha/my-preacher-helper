@@ -1,6 +1,8 @@
-import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
+import { deferred } from '@test-utils/deferred';
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { toast } from 'sonner';
 
@@ -18,6 +20,7 @@ let mockRealEditor = false;
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
+    info: jest.fn(),
     error: jest.fn(),
   },
 }));
@@ -391,6 +394,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockPush.mockClear();
     mockReplace.mockClear();
     mockToast.success.mockClear();
+    mockToast.info.mockClear();
     mockToast.error.mockClear();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
@@ -1230,6 +1234,151 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       expect(markdown(editor)).toBe(before);
       view.unmount();
     } finally { mockRealEditor = false; localStorage.clear(); }
+  });
+
+  it.each(['intro-p1', 'main-p1'])('holds draft restore only when it includes the generating node: %s', async (nodeId) => {
+    saveDraft(draftKey('test-user', 'test-sermon-id', `plan:${nodeId}`, 'first'), 'First draft.', undefined, false, 1);
+    saveDraft(draftKey('test-user', 'test-sermon-id', `plan:${nodeId}`, 'second'), 'Second draft.', undefined, false, 2);
+    const answer = deferred<Response>();
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn((input, options) => String(input).includes('outlinePointId=')
+      ? answer.promise : previousFetch(input, options));
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      const restore = await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' });
+      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      if (nodeId === 'intro-p1') {
+        expect(restore).toBeDisabled();
+        fireEvent.click(restore);
+        expect(within(screen.getByTestId('plan-introduction-right-section')).getByText('First draft.')).toBeInTheDocument();
+      } else {
+        expect(restore).toBeEnabled();
+        fireEvent.click(restore);
+        expect(screen.getByText('Second draft.')).toBeInTheDocument();
+      }
+      await act(async () => {
+        answer.resolve({ ok: true, status: 200, json: async () => ({ content: 'AI replacement.' }) } as Response);
+      });
+      expect(await within(screen.getByTestId('plan-introduction-right-section')).findByText('AI replacement.')).toBeInTheDocument();
+      if (nodeId === 'intro-p1') {
+        expect(restore).toBeEnabled();
+        fireEvent.click(restore);
+        expect(await screen.findByText('Second draft.')).toBeInTheDocument();
+      } else {
+        expect(screen.getByText('Second draft.')).toBeInTheDocument();
+      }
+    } finally {
+      view.unmount();
+      global.fetch = previousFetch;
+      localStorage.clear();
+    }
+  });
+
+  it.each([200, 500, 429])('locks only the generating cell until a %s response settles', async (status) => {
+    mockRealEditor = true;
+    const answer = deferred<Response>();
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn((input, options) => String(input).includes('outlinePointId=')
+      ? answer.promise : previousFetch(input, options));
+    openSermon({
+      ...defaultSermon(),
+      planText: { 'intro-p1': 'Opening.', 'intro-sub': 'Child.', 'main-p1': 'Other.' },
+      outline: {
+        introduction: [{ id: 'intro-p1', text: 'Intro Point 1', subPoints: [{ id: 'intro-sub', text: 'Child point', position: 1000 }] }],
+        main: [{ id: 'main-p1', text: 'Main Point 1' }],
+        conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
+      },
+    });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      const intro = await screen.findByTestId('plan-introduction-right-section');
+      const main = screen.getByTestId('plan-main-right-section');
+      fireEvent.click(within(intro).getByTitle('Edit Mode'));
+      fireEvent.click(within(main).getByTitle('Edit Mode'));
+      const editor = mountedEditor(intro);
+      const child = mountedEditor(intro.querySelectorAll<HTMLElement>('.tiptap')[1].parentElement!);
+      const other = mountedEditor(main);
+      expect(markdown(editor)).toBe('Opening.');
+      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+
+      expect(editor.isEditable).toBe(false);
+      expect(editor.view.dom).toHaveAttribute('contenteditable', 'false');
+      act(() => { editor.view.dom.focus(); });
+      await userEvent.type(editor.view.dom, ' Typed', { skipClick: true });
+      expect(markdown(editor)).toBe('Opening.');
+      expect(within(intro).getByTitle('Save')).toBeDisabled();
+      expect(other.isEditable).toBe(true);
+      expect(child.isEditable).toBe(true);
+      typeAtEnd(other, ' Other typing');
+      typeAtEnd(child, ' Child typing');
+
+      await act(async () => {
+        answer.resolve({ ok: status === 200, status, json: async () => ({ content: 'AI replacement.' }) } as Response);
+      });
+      await waitFor(() => expect(editor.isEditable).toBe(true));
+      expect(editor.view.dom).toHaveAttribute('contenteditable', 'true');
+      expect(markdown(editor)).toBe(status === 200 ? 'AI replacement.' : 'Opening.');
+      expect(markdown(other)).toBe('Other. Other typing');
+      expect(markdown(child)).toBe('Child. Child typing');
+      expect(within(intro).getByTitle('Save')).toBeEnabled();
+      if (status === 200) {
+        expect(mountedEditor(intro)).toBe(editor);
+        expect(undo(editor)).toBe(true);
+        expect(markdown(editor)).toBe('Opening.');
+      }
+    } finally {
+      view.unmount();
+      mockRealEditor = false;
+      global.fetch = previousFetch;
+    }
+  });
+
+  it('G01 keeps other-device text shown and stored when it arrives during generation', async () => {
+    mockRealEditor = true;
+    const answer = deferred<Response>();
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn((input, options) => String(input).includes('outlinePointId=')
+      ? answer.promise : previousFetch(input, options));
+    openSermon({ ...defaultSermon(), planText: { 'intro-p1': 'Opening.' } });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      const intro = await screen.findByTestId('plan-introduction-right-section');
+      fireEvent.click(within(intro).getByTitle('Edit Mode'));
+      const editor = mountedEditor(intro);
+      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Phone words.' } }); });
+      expect(markdown(editor)).toBe('Phone words.');
+      await act(async () => {
+        answer.resolve({ ok: true, status: 200, json: async () => ({ content: 'AI replacement.' }) } as Response);
+      });
+      await waitFor(() => expect(editor.isEditable).toBe(true));
+      expect(markdown(editor)).toBe('Phone words.');
+      expect(mockToast.info).toHaveBeenCalledWith('plan.generationTextChanged');
+      expect(mockToast.success).not.toHaveBeenCalledWith('Content generated');
+      fireEvent.click(within(intro).getByTitle('Save'));
+      expect(storedPlanText()['intro-p1']).toBe('Phone words.');
+      typeAtEnd(editor, ' After');
+      fireEvent.click(within(intro).getByTitle('Save'));
+      await waitFor(() => expect(storedPlanText()['intro-p1']).toBe('Phone words. After'));
+    } finally { view.unmount(); mockRealEditor = false; global.fetch = previousFetch; }
+  });
+
+  it('does not announce generation success after leaving the page', async () => {
+    const answer = deferred<Response>();
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn((input, options) => String(input).includes('outlinePointId=')
+      ? answer.promise : previousFetch(input, options));
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      await screen.findByTestId('plan-introduction-right-section');
+      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      view.unmount();
+      await act(async () => {
+        answer.resolve({ ok: true, status: 200, json: async () => ({ content: 'AI replacement.' }) } as Response);
+      });
+      expect(mockToast.success).not.toHaveBeenCalledWith('Content generated');
+    } finally { view.unmount(); global.fetch = previousFetch; }
   });
 
   it('regression pin: keeps generated text undoable in the same mounted plan cell', async () => {

@@ -52,6 +52,8 @@ export interface ManualConspectus {
   userActionValues: Record<string, string>;
   rescuedAppend?: { nodeId: string; append: ObservedTextAppend };
   isTransferringText: (nodeId: string) => boolean;
+  foreignValuesBeforeAction: Record<string, { value: string }>;
+  busyNodeIds: ReadonlySet<string>;
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -60,7 +62,7 @@ export interface ManualConspectus {
   pendingText: Record<string, string>;
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
-  restoreCells: (cells: Record<string, string>) => void;
+  restoreCells: (cells: Record<string, string>) => boolean;
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
@@ -84,11 +86,16 @@ export function useManualConspectus({
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const planWriter = usePlanWriter();
-  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues } = useEditorValues();
+  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
-  const rescuingNodes = useRef(new Map<string, number>());
-  const [, refreshTransfers] = useState(0);
-  const isTransferringText = useCallback((nodeId: string) => rescuingNodes.current.has(nodeId), []);
+  const rescuingNodes = useRef(new Set<string>());
+  const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
+  const busyNodes = useRef<ReadonlySet<string>>(new Set());
+  const setBusy = useCallback((ids: string[]) => {
+    busyNodes.current = new Set(ids);
+    setBusyNodeIds(busyNodes.current);
+  }, []);
+  const isTransferringText = useCallback((nodeId: string) => busyNodes.current.has(nodeId), []);
   const [rescuedAppend, setRescuedAppend] = useState<ManualConspectus["rescuedAppend"]>();
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
@@ -234,12 +241,22 @@ export function useManualConspectus({
     });
   }, [baseline, t]);
 
-  const setNodeContent = useCallback((nodeId: string, text: string) => {
-    contentRef.current = { ...contentRef.current, [nodeId]: text };
-    setRescuedAppend(previous => previous?.nodeId === nodeId ? undefined : previous);
-    changeContentByNodeId((previous) => ({ ...previous, [nodeId]: text }));
-    setModifiedNodeIds((previous) => ({ ...previous, [nodeId]: true }));
+  /** The single entry for personal text changes; a refused batch changes no cells. */
+  const changeOwnCells = useCallback((cells: Record<string, string>): boolean => {
+    if (Object.keys(cells).some(id => busyNodes.current.has(id))) return false;
+    contentRef.current = { ...contentRef.current, ...cells };
+    setRescuedAppend(previous => previous && previous.nodeId in cells ? undefined : previous);
+    changeContentByNodeId(previous => ({ ...previous, ...cells }));
+    setModifiedNodeIds(previous => ({
+      ...previous,
+      ...Object.fromEntries(Object.keys(cells).map((id) => [id, true])),
+    }));
+    return true;
   }, [changeContentByNodeId]);
+
+  const setNodeContent = useCallback((nodeId: string, text: string) => {
+    changeOwnCells({ [nodeId]: text });
+  }, [changeOwnCells]);
 
   /**
    * Writes the given nodes' text, each under its own key, and mirrors it into the sermon in
@@ -327,6 +344,7 @@ export function useManualConspectus({
        * A cell that was never modified here has nothing to contribute; if nothing was
        * modified at all, the point's own cell is sent so pressing Save still means something.
        */
+      if (nodeIds.some(id => busyNodes.current.has(id))) return;
       const changed = nodeIds.filter((id) => modifiedNodeIds[id]);
       const toSend = changed.length > 0 ? changed : [pointId];
 
@@ -371,12 +389,18 @@ export function useManualConspectus({
   }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
 
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
-  const discardCells = useCallback((nodeIds: string[]) => {
+  const forgetCells = useCallback((nodeIds: string[]) => {
     const dropped = new Set(nodeIds);
-    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
+    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([id]) => !dropped.has(id)));
+    contentRef.current = keep(contentRef.current);
     setContentByNodeId(keep);
+    setSavedNodeIds(keep);
     setModifiedNodeIds(keep);
   }, [setContentByNodeId]);
+
+  const discardCells = useCallback((nodeIds: string[]) => {
+    if (!nodeIds.some(nodeId => busyNodes.current.has(nodeId))) forgetCells(nodeIds);
+  }, [forgetCells]);
 
   const saveModified = useCallback(async (): Promise<boolean> => {
     const unsaved = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
@@ -622,7 +646,7 @@ export function useManualConspectus({
    */
   const deleteSubPoint = useCallback(async (pointId: string, subPointId: string) => {
     const currentSermon = sermonRef.current;
-    if (!currentSermon?.outline) return;
+    if (!currentSermon?.outline || busyNodes.current.size) return;
     const { id: sermonId } = currentSermon;
     const location = findOutlinePointLocation(currentSermon.outline, pointId);
     if (!location?.outlinePoint.subPoints?.some(subPoint => subPoint.id === subPointId)) return;
@@ -665,16 +689,18 @@ export function useManualConspectus({
      * text now.
      */
     const rescuing = Boolean(rescued.trim());
-    const transferring = [pointId, subPointId];
-    for (const id of transferring) rescuingNodes.current.set(id, (rescuingNodes.current.get(id) ?? 0) + 1);
-    refreshTransfers(version => version + 1);
+    setBusy([pointId, subPointId]);
+    rescuingNodes.current.add(pointId);
+    rescuingNodes.current.add(subPointId);
     try {
       try {
         if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
       } catch (error) {
         if (!isOfflineQueuedError(error)) {
+          rescuingNodes.current.delete(pointId);
+          rescuingNodes.current.delete(subPointId);
           setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
-            nodeId => Boolean(modifiedRef.current[nodeId]) || (rescuingNodes.current.get(nodeId) ?? 0) > (transferring.includes(nodeId) ? 1 : 0)));
+            nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
           debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
           toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
           return;
@@ -685,9 +711,25 @@ export function useManualConspectus({
          * standing — a deletion the person asked for, left half done until they did it again.
          */
         debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
+      } finally {
+        rescuingNodes.current.clear();
       }
 
       if (sermonRef.current?.id !== sermonId) return;
+      const storedAfterTransfer = readPlanText(sermonRef.current);
+      if (rescuing) {
+        const parent = contentRef.current[pointId] ?? "";
+        const combined = appendRescuedText(parent);
+        const stored = storedAfterTransfer[pointId] ?? "";
+        // A newer observed paragraph also wins while this removal is waiting.
+        if (stored === "" || stored === openingParent || stored === mergedParent) {
+          setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
+          contentRef.current = { ...contentRef.current, [pointId]: combined };
+          setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
+          if (combined === mergedParent) settle({ [pointId]: mergedParent });
+        }
+      }
+
       // Resolve the removal against the writer's current outline. The user may have
       // deleted the whole point or changed another child while the transfer was saving.
       let removal: Awaited<ReturnType<PlanWriter['removeSubPoint']>> | undefined;
@@ -710,24 +752,14 @@ export function useManualConspectus({
           contentRef.current = { ...contentRef.current, [pointId]: stored };
           setContentByNodeId(previous => ({ ...previous, [pointId]: stored }));
         }
-        if (!modifiedRef.current[subPointId] && !liveNodeIds(removal.outline).has(subPointId)) discardCells([subPointId]);
+        if (!modifiedRef.current[subPointId] && !liveNodeIds(removal.outline).has(subPointId)) forgetCells([subPointId]);
         return;
-      }
-
-      if (rescuing) {
-        const parent = contentRef.current[pointId] ?? "";
-        const combined = appendRescuedText(parent);
-        setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
-        contentRef.current = { ...contentRef.current, [pointId]: combined };
-        // Text Undo cannot restore the child. Apply its transferred paragraph as the new baseline.
-        setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
-        if (combined === mergedParent) settle({ [pointId]: mergedParent });
       }
 
       const remainingChildText = contentRef.current[subPointId];
       const childChanged = Boolean(remainingChildText && remainingChildText !== rescued);
       if (removal?.kind === 'removed') {
-        if (!childChanged) discardCells([subPointId]);
+        if (!childChanged) forgetCells([subPointId]);
       } else if (rescuing && !childChanged) {
         const stored = readPlanText(sermonRef.current)[subPointId] ?? "";
         contentRef.current = { ...contentRef.current, [subPointId]: stored };
@@ -735,57 +767,53 @@ export function useManualConspectus({
         settle({ [subPointId]: stored });
       }
     } finally {
-      for (const id of transferring) {
-        const count = rescuingNodes.current.get(id);
-        if (count === 1) rescuingNodes.current.delete(id);
-        else if (count) rescuingNodes.current.set(id, count - 1);
-      }
-      refreshTransfers(version => version + 1);
+      setBusy([]);
     }
-  }, [discardCells, planWriter, setContentByNodeId, settle, t, writeText]);
+  }, [forgetCells, planWriter, setBusy, setContentByNodeId, settle, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
     const outline = sermonRef.current?.outline;
     const section = sectionOfPoint(pointId);
-    if (!outline || !section) return;
+    if (!outline || !section || busyNodes.current.size > 0) return;
 
     const point = (outline[section] ?? []).find((candidate) => candidate.id === pointId);
     const removedNodeIds = [pointId, ...((point?.subPoints ?? []).map((sub) => sub.id))];
 
-    const removed = await persistOutline(
-      mapPoints(outline, (points) => points.filter((candidate) => candidate.id !== pointId))
-    );
-    if (!removed) return;
+    setBusy(removedNodeIds);
+    try {
+      const removed = await persistOutline(
+        mapPoints(outline, (points) => points.filter((candidate) => candidate.id !== pointId))
+      );
+      if (!removed) return;
 
-    detachThoughtsFrom((thought) => thought.outlinePointId === pointId);
+      detachThoughtsFrom((thought) => thought.outlinePointId === pointId);
 
-    setContentByNodeId((previous) => {
-      const next = { ...previous };
-      removedNodeIds.forEach((nodeId) => { delete next[nodeId]; });
-      return next;
-    });
+      setContentByNodeId((previous) => {
+        const next = { ...previous };
+        removedNodeIds.forEach((nodeId) => { delete next[nodeId]; });
+        return next;
+      });
 
-  }, [detachThoughtsFrom, persistOutline, sectionOfPoint, setContentByNodeId]);
+    } finally {
+      setBusy([]);
+    }
+  }, [detachThoughtsFrom, persistOutline, sectionOfPoint, setBusy, setContentByNodeId]);
 
   /**
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
    * confirmed, so the screen must keep saying so until a save actually succeeds.
    */
-  const restoreCells = useCallback((cells: Record<string, string>) => {
-    changeContentByNodeId((previous) => ({ ...previous, ...cells }));
-    setModifiedNodeIds((previous) => ({
-      ...previous,
-      ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
-    }));
-  }, [changeContentByNodeId]);
+  const restoreCells = changeOwnCells;
 
   return {
     contentByNodeId,
     userActionValues,
     rescuedAppend,
     isTransferringText,
+    foreignValuesBeforeAction,
     savedNodeIds,
+    busyNodeIds,
     modifiedNodeIds,
     pendingNodeIds,
     pendingText,
