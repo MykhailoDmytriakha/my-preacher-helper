@@ -16,6 +16,7 @@ type Change = NonNullable<ReturnType<typeof exegeticalPlanChange>>;
 type Plan = NonNullable<ReturnType<typeof exegeticalPlan>>;
 type IntendedProof = { action: ExegeticalPointStamp; opening: string; result: string };
 const MAX_PROOFS = 32;
+const MAX_EVICTED_POINTS = 256;
 
 export const EXEGETICAL_POINT_HISTORY = '_exegeticalPointHistory';
 
@@ -47,6 +48,19 @@ function proofs(raw: unknown, generation: string): Proof[] {
   }) : [];
 }
 
+function evictedPointProofs(raw: unknown, generation: string, revision: number) {
+  const state = object(raw) && raw.generation === generation ? raw.exegeticalPointEvictions : undefined;
+  const entries = object(state) && Array.isArray(state.points) ? state.points.slice(0, MAX_EVICTED_POINTS) : [];
+  const points = new Map<string, number>();
+  for (const item of entries) {
+    if (object(item) && boundedRowId(item.nodeId) && proofRevision(item.revision) && item.revision <= revision) {
+      points.set(item.nodeId, Math.max(points.get(item.nodeId) ?? 0, item.revision));
+    }
+  }
+  const older = object(state) && proofRevision(state.older) && state.older <= revision ? state.older : 0;
+  return { points, older };
+}
+
 function actions(command: Update, change: Change, revision: number, serverMs: number) {
   if (!Array.isArray(command.exegeticalPlanActions) || command.exegeticalPlanActions.length > MAX_PROOFS) return new Map<string, ExegeticalPointStamp>();
   const observed = new Map<string, ExegeticalPointStamp>();
@@ -65,7 +79,8 @@ function actions(command: Update, change: Change, revision: number, serverMs: nu
   return observed;
 }
 
-function competingPoints(change: Change, stored: Plan, evidence: ReadonlyMap<string, ExegeticalPointStamp>, saved: readonly Proof[]) {
+function competingPoints(change: Change, stored: Plan, evidence: ReadonlyMap<string, ExegeticalPointStamp>, saved: readonly Proof[],
+  evicted: ReturnType<typeof evictedPointProofs>) {
   return [...change.opening.points.entries.keys()].flatMap(nodeId => {
     const mine = changedExegeticalPoint(change.opening, change.local, nodeId);
     if (!mine) return [];
@@ -74,10 +89,15 @@ function competingPoints(change: Change, stored: Plan, evidence: ReadonlyMap<str
       return [{ nodeId, theirs }];
     }
     const action = evidence.get(nodeId), proof = saved.find(item => item.nodeId === nodeId);
+    if (!action) return [];
     const original = exegeticalPointVersion(change.opening, nodeId);
     const current = exegeticalPointVersion(stored, nodeId);
-    if (action && proof?.kind === 'title' && proof.revision > action.observedRevision && original && current
-      && proof.opening === structure(original) && proof.result === resultOf(current)
+    const currentResult = resultOf(current);
+    // A returned title and a never-changed title look alike after an older receipt was pruned.
+    if (!proof && action.observedRevision < Math.max(evicted.points.get(nodeId) ?? 0, evicted.older) && original && current
+      && currentResult === resultOf(original)) return [{ nodeId, theirs: 'title' as const }];
+    if (proof?.kind === 'title' && proof.revision > action.observedRevision && original && current
+      && proof.opening === structure(original) && proof.result === currentResult
       && action.predecessorOperationId !== proof.operationId
       && (theirs === 'title' ? resultOf(exegeticalPointVersion(change.local, nodeId)) !== proof.result
         : !theirs && resultOf(original) === proof.result)) return [{ nodeId, theirs: 'title' as const }];
@@ -100,7 +120,8 @@ export function orderExegeticalPoints(command: DataCommand, current: ResourceSna
       ? [{ action, opening: structure(opening), result: resultOf(exegeticalPointVersion(change.local, action.nodeId)) }] : [];
   });
   const saved = proofs(raw, metadata.generation);
-  const points = competingPoints(change, stored, evidence, saved);
+  const evicted = evictedPointProofs(raw, metadata.generation, metadata.revision);
+  const points = competingPoints(change, stored, evidence, saved, evicted);
   const [point] = points;
   if (!point) return { ...base, candidates };
   if (points.length > 1) {
@@ -138,18 +159,27 @@ export function orderExegeticalPoints(command: DataCommand, current: ResourceSna
 
 export function metadataAfterExegeticalPoints(snapshot: ResourceSnapshot, raw: unknown, order?: PointOrder) {
   const { metadata, resource, value } = snapshot;
-  if (!metadata || resource.collection !== 'sermons') return metadata;
+  if (!metadata || metadata.deleted || resource.collection !== 'sermons') return metadata;
   const previousProofs = proofs(raw, metadata.generation);
-  if (!previousProofs.length && !order?.candidates.length) return metadata;
+  const evicted = evictedPointProofs(raw, metadata.generation, metadata.revision);
+  if (!previousProofs.length && !order?.candidates.length && !evicted.points.size && !evicted.older) return metadata;
   const next = exegeticalPlan(value?.preparation);
-  if (!next) return metadata;
-  const accepted = order?.candidates.filter(candidate => candidate.result === resultOf(exegeticalPointVersion(next, candidate.action.nodeId))) ?? [];
+  const accepted = next ? order?.candidates.filter(candidate => candidate.result === resultOf(exegeticalPointVersion(next, candidate.action.nodeId))) ?? [] : [];
   const changed = new Set(accepted.map(candidate => candidate.action.nodeId));
-  const previous = previousProofs.filter(proof =>
-    !changed.has(proof.nodeId) && proof.result === resultOf(exegeticalPointVersion(next, proof.nodeId)));
-  const tracked = [...accepted.map(({ action, opening, result }) => ({ ...action, opening, result, revision: metadata.revision, operationId: metadata.operationId! })),
-    ...previous].slice(0, MAX_PROOFS);
-  return tracked.length ? { ...metadata, exegeticalPointProofs: tracked } : metadata;
+  const previous = next ? previousProofs.filter(proof =>
+    !changed.has(proof.nodeId) && proof.result === resultOf(exegeticalPointVersion(next, proof.nodeId))) : [];
+  const recent = [...accepted.map(({ action, opening, result }) => ({ ...action, opening, result, revision: metadata.revision, operationId: metadata.operationId! })),
+    ...previous];
+  const tracked = recent.slice(0, MAX_PROOFS);
+  for (const proof of recent.slice(MAX_PROOFS)) {
+    evicted.points.set(proof.nodeId, Math.max(evicted.points.get(proof.nodeId) ?? 0, proof.revision));
+  }
+  // Keep earlier gaps even when a new receipt exists. An untracked structural edit can invalidate that receipt.
+  const pointRevisions = [...evicted.points].map(([nodeId, revision]) => ({ nodeId, revision })).sort((a, b) => b.revision - a.revision);
+  const evictions = { points: pointRevisions.slice(0, MAX_EVICTED_POINTS),
+    older: pointRevisions.slice(MAX_EVICTED_POINTS).reduce((latest, point) => Math.max(latest, point.revision), evicted.older) };
+  return { ...metadata, ...(tracked.length && { exegeticalPointProofs: tracked }),
+    ...((evictions.points.length || evictions.older) && { exegeticalPointEvictions: evictions }) };
 }
 
 export function retainedExegeticalPointHistory(snapshot: ResourceSnapshot, order?: PointOrder) {

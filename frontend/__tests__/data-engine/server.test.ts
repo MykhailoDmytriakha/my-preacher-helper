@@ -6042,6 +6042,42 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it.each([
+      ['title', 2, 'conflict'], ['remove', 2, 'conflict'], ['title', 4, 'acknowledged'], ['remove', 4, 'acknowledged'],
+      ['neighbor', 2, 'acknowledged'],
+    ] as const)('checks %s at revision %s after a returned title leaves the proof window: %s', async (kind, observed, outcome) => {
+      const owner = await seed();
+      const others = Array.from({ length: 32 }, (_, index) => ({ id: 'other-' + index, title: 'Other point ' + index }));
+      const initial = [point, neighbor, ...others];
+      const editPlan = (operationId: string, before: typeof point[], after: typeof point[], ids: string[], revision: number) => processCommand(owner, {
+        ...savePoint('title', null), operationId,
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) },
+          after: { exists: true, value: preparation(after) } }],
+        exegeticalPlanActions: ids.map(nodeId => ({ nodeId, kind: after.some(row => row.id === nodeId) ? 'title' as const : 'remove' as const,
+          observedRevision: revision, time: null })),
+      });
+      expect(await editPlan('add-more-points', [point, neighbor], initial, [], 1)).toMatchObject({ kind: 'acknowledged' });
+      const middle = [edited, neighbor, ...others];
+      expect(await editPlan('title-away', initial, middle, [point.id], 2)).toMatchObject({ kind: 'acknowledged' });
+      expect(await editPlan('title-back', middle, initial, [point.id], 3)).toMatchObject({ kind: 'acknowledged' });
+      const final = [point, neighbor, ...others.map(row => ({ ...row, title: row.title + ' edited' }))];
+      // Each separate point gets a newer receipt. One further independent update tests persistence of the cutoff.
+      expect(await editPlan('other-points', initial, final, others.map(row => row.id), 4)).toMatchObject({ kind: 'acknowledged' });
+      const last = { id: 'last', title: 'Last point' };
+      expect(await editPlan('add-one-more-point', final, [...final, last], [], 5)).toMatchObject({ kind: 'acknowledged' });
+      const target = kind === 'neighbor' ? neighbor : point;
+      const proposed = kind === 'remove' ? initial.filter(row => row.id !== target.id)
+        : initial.map(row => row.id === target.id ? { ...row, title: 'Earlier title' } : row);
+      const delayed = await editPlan('phone-after-return', initial, proposed, [target.id], observed);
+      if (outcome === 'conflict') expect(delayed).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'exegeticalPlan', 'id:point'],
+        mine: kind === 'title' ? { exists: true, value: proposed[0] } : { exists: false }, theirs: { exists: true, value: point } }] });
+      else expect(delayed).toMatchObject({ kind: 'acknowledged' });
+      const accepted = outcome === 'conflict' ? final : [
+        ...proposed.slice(0, kind === 'remove' ? 1 : 2), ...final.slice(2),
+      ];
+      expect((await readDocument(owner, resource)).value?.preparation).toEqual(preparation([...accepted, last]));
+    });
+
     it.each([null, 25])('does not silently overwrite a later deliberate return with a delayed title at %s', async earlierAt => {
       const owner = await seed();
       await processCommand(owner, savePoint('title', 40));
