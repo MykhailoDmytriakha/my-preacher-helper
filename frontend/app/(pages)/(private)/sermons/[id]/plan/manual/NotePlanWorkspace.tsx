@@ -70,6 +70,7 @@ export function NotePointGenerateButton({ point, section, targetNodeId }: {
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const overlapping = Boolean(state.generatingIds[point.id]) || nodes.some((node) => state.generatingIds[node.id]);
   const pending = nodes.some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const deleting = nodes.some((node) => state.conspectus.busyNodeIds.has(node.id));
   const hasContent = nodes.some((node) => state.conspectus.contentByNodeId[node.id]?.trim());
   const label = targetNodeId ? 'plan.fromNote.generateSubPoint'
     : point.subPoints?.length ? 'plan.fromNote.generatePointWithSubPoints' : 'plan.fromNote.generatePoint';
@@ -79,7 +80,7 @@ export function NotePointGenerateButton({ point, section, targetNodeId }: {
       id={`${refinementPanelId(requestId)}-trigger`}
       expanded={hasContent ? Boolean(state.refiningIds[requestId]) : undefined}
       controls={hasContent ? refinementPanelId(requestId) : undefined}
-      disabled={overlapping || pending || (!hasContent && state.blocked)} onClick={() => {
+      disabled={deleting || overlapping || pending || (!hasContent && state.blocked)} onClick={() => {
         if (hasContent) state.setRefining(requestId, !state.refiningIds[requestId]);
         else void state.generate(point, targetNodeId);
       }}
@@ -95,7 +96,8 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const proposal = state.proposals[requestId];
   const busy = Boolean(state.generatingIds[requestId]);
-  const disabled = state.blocked || Boolean(state.generatingIds[point.id])
+  const deleting = nodes.some((node) => state.conspectus.busyNodeIds.has(node.id));
+  const disabled = deleting || state.blocked || Boolean(state.generatingIds[point.id])
     || nodes.some((node) => state.generatingIds[node.id] || state.conspectus.pendingNodeIds.has(node.id));
   const scope = targetNodeId
     ? t('plan.refine.scopeSubPoint', { title: nodes[0]?.heading })
@@ -129,7 +131,7 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
+            <Button variant="primary" disabled={deleting} onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
             <Button variant="secondary" onClick={() => state.discard(requestId)}>{t('common.cancel')}</Button>
             <Button onClick={() => state.setRefining(requestId, true)}>{t('plan.refine.adjustRequest')}</Button>
           </div>

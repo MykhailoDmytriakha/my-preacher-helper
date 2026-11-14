@@ -48,6 +48,7 @@ export interface ManualConspectus {
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
   foreignValuesBeforeAction: Record<string, { value: string }>;
+  busyNodeIds: ReadonlySet<string>;
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -56,7 +57,7 @@ export interface ManualConspectus {
   pendingText: Record<string, string>;
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
-  restoreCells: (cells: Record<string, string>) => void;
+  restoreCells: (cells: Record<string, string>) => boolean;
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
@@ -82,6 +83,9 @@ export function useManualConspectus({
   const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
   const rescuingNodes = useRef(new Set<string>());
+  // Personal text actions are held independently of incoming stored text.
+  const busyNodes = useRef(new Set<string>());
+  const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
 
@@ -221,10 +225,21 @@ export function useManualConspectus({
     });
   }, [baseline, t]);
 
-  const setNodeContent = useCallback((nodeId: string, text: string) => {
-    changeContentByNodeId((previous) => ({ ...previous, [nodeId]: text }));
-    setModifiedNodeIds((previous) => ({ ...previous, [nodeId]: true }));
+  /** The single entry for personal text changes; a refused batch changes no cells. */
+  const changeOwnCells = useCallback((cells: Record<string, string>, dropped: string[] = []): boolean => {
+    if ([...Object.keys(cells), ...dropped].some((id) => busyNodes.current.has(id))) return false;
+    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([id]) => !dropped.includes(id)));
+    changeContentByNodeId((previous) => ({ ...keep(previous), ...cells }));
+    setModifiedNodeIds((previous) => ({
+      ...keep(previous),
+      ...Object.fromEntries(Object.keys(cells).map((id) => [id, true])),
+    }));
+    return true;
   }, [changeContentByNodeId]);
+
+  const setNodeContent = useCallback((nodeId: string, text: string) => {
+    changeOwnCells({ [nodeId]: text });
+  }, [changeOwnCells]);
 
   /**
    * Writes the given nodes' text, each under its own key, and mirrors it into the sermon in
@@ -353,11 +368,8 @@ export function useManualConspectus({
 
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const discardCells = useCallback((nodeIds: string[]) => {
-    const dropped = new Set(nodeIds);
-    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
-    setContentByNodeId(keep);
-    setModifiedNodeIds(keep);
-  }, [setContentByNodeId]);
+    changeOwnCells({}, nodeIds);
+  }, [changeOwnCells]);
 
   const saveModified = useCallback(async (): Promise<boolean> => {
     const unsaved = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
@@ -607,121 +619,130 @@ export function useManualConspectus({
    */
   const deleteSubPoint = useCallback(async (pointId: string, subPointId: string) => {
     const outline = sermonRef.current?.outline;
-    if (!outline) return;
+    if (!outline || busyNodes.current.size > 0) return;
 
-    const rescued = (contentByNodeId[subPointId] ?? "").trim();
-    const mergedParent = [contentByNodeId[pointId] ?? "", rescued]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join("\n\n");
-
-    /**
-     * ONE WRITE, NOT TWO — the rescue and the emptying travel together.
-     *
-     * Splitting them created a window with the words in BOTH places: the parent already held
-     * the rescued paragraph while the sub-point still held its copy, so a failure in between
-     * — or a retry — duplicated the text. Offline it was worse: the guarded half was queued
-     * and the cleanup half never ran at all, and the replay later added the paragraph to a
-     * parent whose sub-point was still standing.
-     *
-     * The sub-point's cell is BLANKED rather than deleted here, and that is what makes one
-     * write possible: `deleteField()` is a sentinel object that cannot survive the outbox's
-     * JSON, while an empty string survives anything and masks any legacy copy of that cell.
-     */
-    /**
-     * NOTHING TO RESCUE MEANS NOTHING TO WRITE — and that is not a micro-optimisation.
-     *
-     * Writing `planText.<parent> = ""` marks the section as MAINTAINED IN THE NEW SHAPE
-     * (`planText.ts` → `sectionWasWritten`), which switches off the fallback that still serves
-     * an old sermon its stored assembled section. Deleting an empty sub-point from a sermon
-     * that has never had per-node text would therefore make the whole introduction vanish from
-     * reading, preaching and export — while it sat untouched in Firestore.
-     *
-     * An empty sub-point needs only the outline change. Only a real rescue writes, and then
-     * the flag flipping is correct, because the parent really does hold
-     * text now.
-     */
-    const rescuing = rescued !== "" && mergedParent !== (contentByNodeId[pointId] ?? "");
-    rescuingNodes.current.add(pointId);
-    rescuingNodes.current.add(subPointId);
+    busyNodes.current = new Set([pointId, subPointId]);
+    setBusyNodeIds(new Set(busyNodes.current));
     try {
-      if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
-    } catch (error) {
-      if (!isOfflineQueuedError(error)) {
+      const rescued = (contentByNodeId[subPointId] ?? "").trim();
+      const mergedParent = [contentByNodeId[pointId] ?? "", rescued]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join("\n\n");
+
+      /**
+       * ONE WRITE, NOT TWO — the rescue and the emptying travel together.
+       *
+       * Splitting them created a window with the words in BOTH places: the parent already held
+       * the rescued paragraph while the sub-point still held its copy, so a failure in between
+       * — or a retry — duplicated the text. Offline it was worse: the guarded half was queued
+       * and the cleanup half never ran at all, and the replay later added the paragraph to a
+       * parent whose sub-point was still standing.
+       *
+       * The sub-point's cell is BLANKED rather than deleted here, and that is what makes one
+       * write possible: `deleteField()` is a sentinel object that cannot survive the outbox's
+       * JSON, while an empty string survives anything and masks any legacy copy of that cell.
+       */
+      /**
+       * NOTHING TO RESCUE MEANS NOTHING TO WRITE — and that is not a micro-optimisation.
+       *
+       * Writing `planText.<parent> = ""` marks the section as MAINTAINED IN THE NEW SHAPE
+       * (`planText.ts` → `sectionWasWritten`), which switches off the fallback that still serves
+       * an old sermon its stored assembled section. Deleting an empty sub-point from a sermon
+       * that has never had per-node text would therefore make the whole introduction vanish from
+       * reading, preaching and export — while it sat untouched in Firestore.
+       *
+       * An empty sub-point needs only the outline change. Only a real rescue writes, and then
+       * the flag flipping is correct, because the parent really does hold
+       * text now.
+       */
+      const rescuing = rescued !== "" && mergedParent !== (contentByNodeId[pointId] ?? "");
+      rescuingNodes.current.add(pointId);
+      rescuingNodes.current.add(subPointId);
+      try {
+        if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
+      } catch (error) {
+        if (!isOfflineQueuedError(error)) {
+          rescuingNodes.current.delete(pointId);
+          rescuingNodes.current.delete(subPointId);
+          setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
+            nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
+          debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
+          toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
+          return;
+        }
+        /**
+         * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
+         * the replay later merged the rescued words into a parent whose sub-point was still
+         * standing — a deletion the person asked for, left half done until they did it again.
+         */
+        debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
+      } finally {
         rescuingNodes.current.delete(pointId);
         rescuingNodes.current.delete(subPointId);
-        setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
-          nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
-        debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
-        toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
-        return;
       }
-      /**
-       * QUEUED IS OWNED. Treating it as a failure returned before the structure was touched, so
-       * the replay later merged the rescued words into a parent whose sub-point was still
-       * standing — a deletion the person asked for, left half done until they did it again.
-       */
-      debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
+
+      changeContentByNodeId((previous) => {
+        const next = { ...previous, [pointId]: mergedParent };
+        delete next[subPointId];
+        return next;
+      });
+
+      const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
+        point.id === pointId
+          ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
+          : point
+      ))));
+      if (removed) detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
     } finally {
-      rescuingNodes.current.delete(pointId);
-      rescuingNodes.current.delete(subPointId);
+      busyNodes.current.clear();
+      setBusyNodeIds(new Set());
     }
-
-    changeContentByNodeId((previous) => {
-      const next = { ...previous, [pointId]: mergedParent };
-      delete next[subPointId];
-      return next;
-    });
-
-    const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
-      point.id === pointId
-        ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
-        : point
-    ))));
-    if (removed) detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
   }, [changeContentByNodeId, contentByNodeId, detachThoughtsFrom, persistOutline, setContentByNodeId, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
     const outline = sermonRef.current?.outline;
     const section = sectionOfPoint(pointId);
-    if (!outline || !section) return;
+    if (!outline || !section || busyNodes.current.size > 0) return;
 
     const point = (outline[section] ?? []).find((candidate) => candidate.id === pointId);
     const removedNodeIds = [pointId, ...((point?.subPoints ?? []).map((sub) => sub.id))];
 
-    const removed = await persistOutline(
-      mapPoints(outline, (points) => points.filter((candidate) => candidate.id !== pointId))
-    );
-    if (!removed) return;
+    busyNodes.current = new Set(removedNodeIds);
+    setBusyNodeIds(new Set(busyNodes.current));
+    try {
+      const removed = await persistOutline(
+        mapPoints(outline, (points) => points.filter((candidate) => candidate.id !== pointId))
+      );
+      if (!removed) return;
 
-    detachThoughtsFrom((thought) => thought.outlinePointId === pointId, "point");
+      detachThoughtsFrom((thought) => thought.outlinePointId === pointId, "point");
 
-    setContentByNodeId((previous) => {
-      const next = { ...previous };
-      removedNodeIds.forEach((nodeId) => { delete next[nodeId]; });
-      return next;
-    });
+      setContentByNodeId((previous) => {
+        const next = { ...previous };
+        removedNodeIds.forEach((nodeId) => { delete next[nodeId]; });
+        return next;
+      });
 
+    } finally {
+      busyNodes.current.clear();
+      setBusyNodeIds(new Set());
+    }
   }, [detachThoughtsFrom, persistOutline, sectionOfPoint, setContentByNodeId]);
 
   /**
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
    * confirmed, so the screen must keep saying so until a save actually succeeds.
    */
-  const restoreCells = useCallback((cells: Record<string, string>) => {
-    changeContentByNodeId((previous) => ({ ...previous, ...cells }));
-    setModifiedNodeIds((previous) => ({
-      ...previous,
-      ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
-    }));
-  }, [changeContentByNodeId]);
+  const restoreCells = changeOwnCells;
 
   return {
     contentByNodeId,
     userActionValues,
     foreignValuesBeforeAction,
     savedNodeIds,
+    busyNodeIds,
     modifiedNodeIds,
     pendingNodeIds,
     pendingText,

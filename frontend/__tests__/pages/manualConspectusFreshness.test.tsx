@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
+import userEvent from '@testing-library/user-event';
+import type { ManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
 import { toast } from 'sonner';
 
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
+import { OrphanedPlanText } from '@/(pages)/(private)/sermons/[id]/plan/OrphanedPlanText';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
 import '@testing-library/jest-dom';
 
@@ -11,6 +14,7 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 
+import { deferred } from '@test-utils/deferred';
 import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
@@ -340,15 +344,485 @@ it('regression pin: keeps the requested child-text rescue undoable in the mounte
 });
 
 let mockFailNextRescue = false;
+let mockBeforePlanTextWrite: (() => Promise<void>) | null = null;
+let mockBeforeOutlineWrite: (() => Promise<void>) | null = null;
+const mockPlanTextWrites = jest.fn();
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
   const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter');
   return { ...actual, useEnginePlanWriter: (...args: unknown[]) => {
     const result = actual.useEnginePlanWriter(...args);
-    return { ...result, writer: { ...result.writer, savePlanText: (...params: unknown[]) => {
+    return { ...result, writer: { ...result.writer, updateSermonOutline: async (...params: unknown[]) => {
+      const beforeWrite = mockBeforeOutlineWrite;
+      mockBeforeOutlineWrite = null;
+      await beforeWrite?.();
+      return result.writer.updateSermonOutline(...params);
+    }, savePlanText: async (...params: unknown[]) => {
+      mockPlanTextWrites(...params);
+      const beforeWrite = mockBeforePlanTextWrite;
+      mockBeforePlanTextWrite = null;
+      await beforeWrite?.();
       if (mockFailNextRescue) { mockFailNextRescue = false; return Promise.reject(new Error('Injected pre-write storage refusal')); }
       return result.writer.savePlanText(...params);
     } } };
   } };
+});
+
+let mockConspectus: ManualConspectus;
+jest.mock('@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus', () => {
+  const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus');
+  return { ...actual, useManualConspectus: (...args: unknown[]) => {
+    mockConspectus = actual.useManualConspectus(...args);
+    return mockConspectus;
+  } };
+});
+
+let mockGeneration: ReturnType<typeof import('@/(pages)/(private)/sermons/[id]/plan/manual/useNotePlanGeneration').useNotePlanGeneration>;
+jest.mock('@/(pages)/(private)/sermons/[id]/plan/manual/useNotePlanGeneration', () => {
+  const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/manual/useNotePlanGeneration');
+  return { ...actual, useNotePlanGeneration: (...args: unknown[]) => {
+    mockGeneration = actual.useNotePlanGeneration(...args);
+    return mockGeneration;
+  } };
+});
+
+describe('manual deletion locks', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockBeforePlanTextWrite = null;
+    mockBeforeOutlineWrite = null;
+    mockFailNextRescue = false;
+    mockNoteMode = false;
+    mockSermon = sermon({ p1: 'Opening.', child: 'Child words.', other: 'Other.' });
+    mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+    mockSermon.outline!.main = [{ id: 'other', text: 'Other heading' }];
+  });
+
+  const removeChild = () => {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+  };
+  const begin = async () => {
+    const view = await render();
+    screen.getAllByRole('button', { name: 'plan.editMode' }).forEach(button => fireEvent.click(button));
+    const editors = Array.from(view.container.querySelectorAll<HTMLElement>('.tiptap'))
+      .map(element => mountedEditor(element.parentElement!));
+    const gate = deferred();
+    const before = jest.fn(() => gate.promise);
+    mockBeforePlanTextWrite = before;
+    const actions = mockConspectus;
+    removeChild();
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    return { view, parent: editors[0], child: editors[1], other: editors[2], gate, actions };
+  };
+  const attemptTyping = async (editor: ReturnType<typeof mountedEditor>) => {
+    act(() => { editor.view.dom.focus(); });
+    await userEvent.type(editor.view.dom, ' Later typing', { skipClick: true });
+  };
+
+  it('prevents orphan Discard confirmation during deletion and clears text and dirty state after refusal', async () => {
+    const view = await render();
+    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    typeAtEnd(mountedEditor(view.container), ' Unsaved local words.');
+    const gate = deferred();
+    const before = jest.fn(() => gate.promise);
+    mockBeforeOutlineWrite = before;
+    fireEvent.click(screen.getAllByTitle('plan.deletePoint')[0]);
+    fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await harness.remote({ outline: { introduction: [], main: [], conclusion: [] } });
+    });
+    const localCopy = () => screen.getByText('Opening. Unsaved local words.').closest('li')!;
+    const discard = within(localCopy()).getByRole('button', { name: 'plan.orphanedDiscard' });
+    expect(discard).toBeDisabled();
+    fireEvent.click(discard);
+    expect(screen.queryByRole('button', { name: 'common.discardText.confirm' })).not.toBeInTheDocument();
+    expect(mockConspectus.contentByNodeId.p1).toBe('Opening. Unsaved local words.');
+    expect(mockConspectus.modifiedNodeIds.p1).toBe(true);
+
+    await act(async () => {
+      gate.reject(new Error('Injected deletion refusal'));
+    });
+    await waitFor(() => expect(mockConspectus.busyNodeIds.size).toBe(0));
+    fireEvent.click(within(localCopy()).getByRole('button', { name: 'plan.orphanedDiscard' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(() => {
+      expect(mockConspectus.contentByNodeId.p1).toBeUndefined();
+      expect(mockConspectus.modifiedNodeIds.p1).toBeUndefined();
+    });
+    expect(screen.queryByText('Opening. Unsaved local words.')).not.toBeInTheDocument();
+  });
+
+  it('withdraws an open orphan Discard confirmation when its cell becomes busy', async () => {
+    const cells = [{ id: 'p1', text: 'Unsaved orphan words.' }];
+    const onDiscard = jest.fn();
+    const view = rtlRender(<OrphanedPlanText cells={cells} onDiscard={onDiscard} busyNodeIds={new Set()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.orphanedDiscard' }));
+    expect(screen.getByRole('button', { name: 'common.discardText.confirm' })).toBeInTheDocument();
+    view.rerender(<OrphanedPlanText cells={cells} onDiscard={onDiscard} busyNodeIds={new Set(['p1'])} />);
+    expect(screen.queryByRole('button', { name: 'common.discardText.confirm' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'plan.orphanedDiscard' })).toBeDisabled();
+    expect(onDiscard).not.toHaveBeenCalled();
+    view.rerender(<OrphanedPlanText cells={cells} onDiscard={onDiscard} busyNodeIds={new Set()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.orphanedDiscard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(() => expect(onDiscard).toHaveBeenCalledWith(cells));
+  });
+
+  it('locks both rescued cells through the outline write and leaves another point editable', async () => {
+    const { parent, child, other, gate } = await begin();
+    expect(parent.isEditable).toBe(false);
+    expect(child.isEditable).toBe(false);
+    expect(screen.getAllByTitle('plan.save')[0]).toBeDisabled();
+    await attemptTyping(parent);
+    await attemptTyping(child);
+    expect(markdown(parent)).toBe('Opening.');
+    expect(markdown(child)).toBe('Child words.');
+    expect(other.isEditable).toBe(true);
+    typeAtEnd(other, ' Still editable');
+    const outlineGate = deferred();
+    const beforeOutline = jest.fn(() => outlineGate.promise);
+    mockBeforeOutlineWrite = beforeOutline;
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(beforeOutline).toHaveBeenCalledTimes(1));
+    expect(parent.isEditable).toBe(false);
+    expect(child.isEditable).toBe(false);
+    await act(async () => { outlineGate.resolve(); });
+    await waitFor(() => expect(parent.isEditable).toBe(true));
+    expect(markdown(parent)).toBe('Opening.\n\nChild words.');
+    expect(markdown(other)).toBe('Other. Still editable');
+    expect(mockPlanTextWrites).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\nChild words.', child: '' }));
+  });
+
+  it.each(['refused', 'queued'] as const)('releases the rescue lock after a %s text write', async outcome => {
+    const { parent, child, gate } = await begin();
+    expect(parent.isEditable).toBe(false);
+    expect(child.isEditable).toBe(false);
+    if (outcome === 'queued') {
+      act(() => { harness.engine.setOnline(false); });
+      await act(async () => { gate.resolve(); });
+    } else {
+      await act(async () => { gate.reject(new Error('Injected refusal')); });
+    }
+    await waitFor(() => expect(parent.isEditable).toBe(true));
+    if (outcome === 'refused') {
+      expect(child.isEditable).toBe(true);
+      expect(markdown(parent)).toBe('Opening.');
+      expect(markdown(child)).toBe('Child words.');
+      expect(screen.getByTitle('plan.deleteSubPoint')).toBeEnabled();
+      expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.', child: 'Child words.' });
+    } else {
+      expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument();
+      expect(markdown(parent)).toBe('Opening.\n\nChild words.');
+      expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Opening.');
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+      await waitFor(() => expect((harness.server.value?.outline as Sermon['outline'])!.introduction[0].subPoints).toEqual([]));
+      expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Opening.\n\nChild words.');
+      expect(toast.error).not.toHaveBeenCalled();
+    }
+  });
+
+  it('U66-03 rejects stale editor callbacks and draft writes at the door during rescue', async () => {
+    const { parent, child, gate, actions } = await begin();
+    act(() => {
+      actions.setNodeContent('p1', 'Typing during rescue.');
+      actions.setNodeContent('child', 'Child typing during rescue.');
+    });
+    expect(mockConspectus.contentByNodeId.p1).toBe('Opening.');
+    expect(mockConspectus.contentByNodeId.child).toBe('Child words.');
+    act(() => {
+      expect(actions.restoreCells({ p1: 'Recovered words.', other: 'Other draft.' })).toBe(false);
+      actions.discardCells(['p1']);
+    });
+    expect(mockConspectus.contentByNodeId.p1).toBe('Opening.');
+    expect(mockConspectus.contentByNodeId.child).toBe('Child words.');
+    expect(mockConspectus.contentByNodeId.other).toBe('Other.');
+    expect(mockConspectus.modifiedNodeIds.p1).not.toBe(true);
+    await attemptTyping(parent);
+    await attemptTyping(child);
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(parent.isEditable).toBe(true));
+    expect(markdown(parent)).toBe('Opening.\n\nChild words.');
+    expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Opening.\n\nChild words.');
+  });
+
+  it('holds text actions synchronously before the deletion state renders', async () => {
+    await render();
+    await waitFor(() => expect(mockConspectus.contentByNodeId.p1).toBe('Opening.'));
+    const actions = mockConspectus;
+    const gate = deferred();
+    mockBeforePlanTextWrite = () => gate.promise;
+    let deletion: Promise<void>;
+    act(() => {
+      deletion = actions.deleteSubPoint('p1', 'child');
+      actions.setNodeContent('p1', 'Same tick typing.');
+      expect(actions.restoreCells({ child: 'Same tick AI.' })).toBe(false);
+    });
+    expect(mockConspectus.contentByNodeId.p1).toBe('Opening.');
+    expect(mockConspectus.contentByNodeId.child).toBe('Child words.');
+    await act(async () => { gate.resolve(); await deletion; });
+    expect(mockConspectus.busyNodeIds.size).toBe(0);
+  });
+
+  it.each(['point', 'sub-point'] as const)('R02/R04 shows incoming text during a pending %s outline write and preserves it on the next Save', async deletion => {
+    const view = await render();
+    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    const parent = mountedEditor(view.container);
+    const gate = deferred();
+    const before = jest.fn(() => gate.promise);
+    mockBeforeOutlineWrite = before;
+    if (deletion === 'point') {
+      fireEvent.click(screen.getAllByTitle('plan.deletePoint')[0]);
+      fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    } else removeChild();
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    await act(async () => { await harness.remote({ planText: { p1: 'Phone words.', child: deletion === 'point' ? 'Child words.' : '', other: 'Other.' } }); });
+    // This display/Save history also passes on production. Busy must never hide observations.
+    expect(markdown(parent)).toBe('Phone words.');
+    await act(async () => { gate.reject(new Error('Injected outline refusal')); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(markdown(parent)).toBe('Phone words.');
+    await act(async () => { await mockConspectus.savePoint('p1', 'introduction', ['p1', 'child']); });
+    expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Phone words.');
+    typeAtEnd(parent, ' New edit.');
+    fireEvent.click(screen.getAllByTitle('plan.save')[0]);
+    await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Phone words. New edit.'));
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an incoming version immediately in the read-only editor during the outline wait', async () => {
+    const { parent, gate } = await begin();
+    const outlineGate = deferred();
+    const before = jest.fn(() => outlineGate.promise);
+    mockBeforeOutlineWrite = before;
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    expect(parent.isEditable).toBe(false);
+    await act(async () => { await harness.remote({ planText: { p1: 'Phone words.', child: '', other: 'Other.' } }); });
+    expect(markdown(parent)).toBe('Phone words.');
+    expect(parent.isEditable).toBe(false);
+    await act(async () => { outlineGate.reject(new Error('Injected outline refusal')); });
+    await waitFor(() => expect(parent.isEditable).toBe(true));
+    expect(markdown(parent)).toBe('Phone words.');
+  });
+
+  it.each(['p1', 'child'])('A01 holds a proposal for busy %s and applies it after the deletion ends', async nodeId => {
+    mockNoteMode = true;
+    try {
+      mockSermon!.sourceNoteIds = ['source-note'];
+      jest.mocked(generateNotePlanContent).mockResolvedValue({
+        contentByNodeId: nodeId === 'p1' ? { p1: 'Requested AI words.', child: 'Child words.' } : { child: 'Requested AI words.' }, missingMaterial: {},
+      });
+      const view = await render();
+      fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+      const parent = mountedEditor(view.container);
+      fireEvent.click(screen.getAllByRole('button', { name: 'plan.refine.open' })[nodeId === 'p1' ? 0 : 1]);
+      fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+      fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+      const apply = await screen.findByRole('button', { name: 'plan.fromNote.apply' });
+      const accept = mockGeneration.accept;
+      const gate = deferred();
+      mockBeforePlanTextWrite = () => gate.promise;
+      removeChild();
+      expect(apply).toBeDisabled();
+      screen.getAllByRole('button', { name: 'plan.refine.open' }).slice(0, 2).forEach(button => expect(button).toBeDisabled());
+      fireEvent.click(apply);
+      act(() => { expect(accept(nodeId)).toBe(false); });
+      expect(mockConspectus.contentByNodeId[nodeId]).toBe(nodeId === 'p1' ? 'Opening.' : 'Child words.');
+      expect(mockGeneration.proposals[nodeId]).toBeDefined();
+      await act(async () => { gate.reject(new Error('Injected text refusal')); });
+      await waitFor(() => expect(apply).toBeEnabled());
+      fireEvent.click(apply);
+      expect(mockConspectus.contentByNodeId[nodeId]).toBe('Requested AI words.');
+      expect(mockGeneration.proposals[nodeId]).toBeUndefined();
+      expect(parent.isEditable).toBe(true);
+    } finally { mockNoteMode = false; }
+  });
+
+  it('keeps an AI result arriving during deletion as a proposal until the door opens', async () => {
+    mockNoteMode = true;
+    try {
+      mockSermon!.sourceNoteIds = ['source-note'];
+      const answer = deferred<Awaited<ReturnType<typeof generateNotePlanContent>>>();
+      jest.mocked(generateNotePlanContent).mockReturnValue(answer.promise);
+      await render();
+      fireEvent.click((await screen.findAllByRole('button', { name: 'plan.refine.open' }))[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+      fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+      const gate = deferred();
+      mockBeforePlanTextWrite = () => gate.promise;
+      removeChild();
+      await act(async () => { answer.resolve({ contentByNodeId: { p1: 'Arriving AI.', child: 'Child words.' }, missingMaterial: {} }); });
+      const apply = await screen.findByRole('button', { name: 'plan.fromNote.apply' });
+      expect(apply).toBeDisabled();
+      act(() => { expect(mockGeneration.accept('p1')).toBe(false); });
+      expect(mockConspectus.contentByNodeId.p1).toBe('Opening.');
+      await act(async () => { gate.reject(new Error('Injected text refusal')); });
+      await waitFor(() => expect(apply).toBeEnabled());
+      fireEvent.click(apply);
+      expect(mockConspectus.contentByNodeId.p1).toBe('Arriving AI.');
+    } finally { mockNoteMode = false; }
+  });
+
+  it('releases a refused rescue and adopts the version that arrived during its text write', async () => {
+    const { parent, child, gate } = await begin();
+    await act(async () => { await harness.remote({ planText: { p1: 'Phone words.', child: 'Phone child.', other: 'Other.' } }); });
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(parent.isEditable).toBe(true);
+    expect(child.isEditable).toBe(true);
+    expect(markdown(parent)).toBe('Phone words.');
+    expect(markdown(child)).toBe('Phone child.');
+    expect(mockConspectus.busyNodeIds.size).toBe(0);
+    screen.getAllByTitle('plan.deletePoint').forEach(button => expect(button).toBeEnabled());
+  });
+
+  it.each(['point', 'sub-point'] as const)('does not retain busy cells on a new visit after unmount during %s deletion', async deletion => {
+    const view = await render();
+    await waitFor(() => expect(mockConspectus.contentByNodeId.p1).toBe('Opening.'));
+    const gate = deferred();
+    const before = jest.fn(() => gate.promise);
+    if (deletion === 'point') {
+      mockBeforeOutlineWrite = before;
+      fireEvent.click(screen.getAllByTitle('plan.deletePoint')[0]);
+      fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    } else {
+      mockBeforePlanTextWrite = before;
+      removeChild();
+    }
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    expect(mockConspectus.busyNodeIds.has('p1')).toBe(true);
+    view.unmount();
+    await act(async () => { gate.resolve(); });
+    const reopened = await render();
+    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    expect(mountedEditor(reopened.container).isEditable).toBe(true);
+    expect(mockConspectus.busyNodeIds.size).toBe(0);
+    screen.getAllByTitle('plan.deletePoint').forEach(button => expect(button).toBeEnabled());
+  });
+
+  it('releases all busy cells after an offline-queued point deletion and single flight holds until settlement', async () => {
+    await render();
+    await waitFor(() => expect(mockConspectus.contentByNodeId.p1).toBe('Opening.'));
+    const actions = mockConspectus;
+    const gate = deferred();
+    const before = jest.fn(() => gate.promise);
+    mockBeforeOutlineWrite = before;
+    let deletion: Promise<void>;
+    act(() => { deletion = actions.deletePoint('p1'); });
+    await waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    expect([...mockConspectus.busyNodeIds].sort()).toEqual(['child', 'p1']);
+    await act(async () => {
+      await actions.deletePoint('other');
+      await actions.deleteSubPoint('p1', 'child');
+    });
+    expect(mockPlanTextWrites).not.toHaveBeenCalled();
+    expect(before).toHaveBeenCalledTimes(1);
+    act(() => { harness.engine.setOnline(false); });
+    await act(async () => { gate.resolve(); await deletion; });
+    expect(mockConspectus.busyNodeIds.size).toBe(0);
+    screen.getAllByTitle('plan.deletePoint').forEach(button => expect(button).toBeEnabled());
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+    await waitFor(() => expect((harness.server.value?.outline as Sermon['outline'])!.introduction).toEqual([]));
+    expect((harness.server.value?.outline as Sermon['outline'])!.main).toHaveLength(1);
+  });
+
+  it('M13 ignores double confirmation and stale callback re-entry, rescuing one copy', async () => {
+    const { parent, gate, actions } = await begin();
+    expect(screen.getByTitle('plan.deleteSubPoint')).toBeDisabled();
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    await act(async () => { await actions.deleteSubPoint('p1', 'child'); });
+    expect(mockPlanTextWrites).toHaveBeenCalledTimes(1);
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByTitle('plan.save')[0]);
+    expect(markdown(parent).match(/Child words\./g)).toHaveLength(1);
+    await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1).toBe('Opening.\n\nChild words.'));
+    expect(mockPlanTextWrites).toHaveBeenCalledTimes(1);
+  });
+
+  it('M10 blocks child typing before outline refusal and retry cannot duplicate the rescue', async () => {
+    const { parent, child, gate } = await begin();
+    expect(child.isEditable).toBe(false);
+    await attemptTyping(child);
+    expect(markdown(child)).toBe('Child words.');
+    mockBeforeOutlineWrite = () => Promise.reject(new Error('Injected outline refusal'));
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(parent.isEditable).toBe(true);
+    expect(child.isEditable).toBe(true);
+    expect(screen.getByTitle('plan.deleteSubPoint')).toBeEnabled();
+    removeChild();
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    expect(markdown(parent)).toBe('Opening.\n\nChild words.');
+    await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.match(/Child words\./g)).toHaveLength(1));
+    expect(mockPlanTextWrites).toHaveBeenCalledTimes(1);
+  });
+
+  it('M04 blocks every deletion during rescue then allows point deletion without resurrection', async () => {
+    const { gate, actions } = await begin();
+    screen.getAllByTitle('plan.deletePoint').forEach(button => {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    });
+    await act(async () => { await actions.deletePoint('p1'); });
+    expect(screen.getAllByTitle('plan.deletePoint')).toHaveLength(2);
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(screen.getAllByTitle('plan.deletePoint')[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByTitle('plan.deletePoint')[0]);
+    fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    await waitFor(() => expect((harness.server.value?.outline as Sermon['outline'])!.introduction).toEqual([]));
+    await act(async () => { await harness.engine.retry(); });
+    expect(screen.getAllByTitle('plan.deletePoint')).toHaveLength(1);
+    expect((harness.server.value?.outline as Sermon['outline'])!.introduction).toEqual([]);
+  });
+
+  it.each(['p1', 'other'])('holds draft restore only when it targets a busy cell: %s', async nodeId => {
+    saveDraft(draftKey('user-1', 'sermon-1', `plan:${nodeId}`, 'first'), 'First draft.', undefined, false, 1);
+    saveDraft(draftKey('user-1', 'sermon-1', `plan:${nodeId}`, 'second'), 'Second draft.', undefined, false, 2);
+    await render();
+    fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+    const restore = await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' });
+    const gate = deferred();
+    mockBeforePlanTextWrite = () => gate.promise;
+    removeChild();
+    if (nodeId === 'p1') {
+      expect(restore).toBeDisabled();
+      expect(screen.getAllByTitle('plan.save')[0]).toBeDisabled();
+      fireEvent.click(restore);
+      expect(mockConspectus.contentByNodeId.p1).toBe('First draft.');
+    } else {
+      expect(restore).toBeEnabled();
+      fireEvent.click(restore);
+      expect(mockConspectus.contentByNodeId.other).toBe('Second draft.');
+    }
+    await act(async () => { gate.resolve(); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    if (nodeId === 'p1') expect(restore).toBeEnabled();
+    else expect(mockConspectus.contentByNodeId.other).toBe('Second draft.');
+  });
+
+  it('locks a deleted point and all its children until a refused outline write finishes', async () => {
+    const view = await render();
+    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    const parent = mountedEditor(view.container);
+    const child = mountedEditor(view.container.querySelectorAll<HTMLElement>('.tiptap')[1].parentElement!);
+    const gate = deferred();
+    mockBeforeOutlineWrite = () => gate.promise;
+    fireEvent.click(screen.getAllByTitle('plan.deletePoint')[0]);
+    fireEvent.click(screen.getByTitle('plan.deletePointConfirm'));
+    expect(parent.isEditable).toBe(false);
+    expect(child.isEditable).toBe(false);
+    await attemptTyping(parent);
+    await attemptTyping(child);
+    await act(async () => { gate.reject(new Error('Injected outline refusal')); });
+    await waitFor(() => expect(parent.isEditable).toBe(true));
+    expect(child.isEditable).toBe(true);
+    expect(markdown(parent)).toBe('Opening.');
+    expect(markdown(child)).toBe('Child words.');
+  });
 });
 
 it('B80 a refused local child deletion must not opt a later remote rescue into Undo and erase it on Save', async () => {

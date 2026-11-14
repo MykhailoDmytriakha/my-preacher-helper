@@ -73,7 +73,7 @@ export function useNotePlanGeneration(options: Options) {
     }
     // A missing source must never erase existing writing with an empty generated cell.
     const cells = Object.fromEntries(Object.entries(proposal.contentByNodeId).filter(([, text]) => text.trim()));
-    latest.current.conspectus.restoreCells(cells);
+    if (!latest.current.conspectus.restoreCells(cells)) return false;
     setMissing((previous) => {
       const next = { ...previous };
       Object.keys(proposal.before).forEach((id) => { delete next[id]; });

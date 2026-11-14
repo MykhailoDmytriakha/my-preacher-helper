@@ -42,6 +42,7 @@ export function OrphanedPlanText({
   liveIds,
   onDiscard,
   readOnly = false,
+  busyNodeIds,
   subject,
 }: {
   cells: PlanOrphanCell[];
@@ -50,6 +51,7 @@ export function OrphanedPlanText({
   onDiscard: (cells: PlanOrphanCell[]) => void;
   /** A copy for reading: the words stay in sight and copyable, and letting them go waits. */
   readOnly?: boolean;
+  busyNodeIds?: ReadonlySet<string>;
   subject?: unknown;
 }) {
   const { t } = useTranslation();
@@ -60,10 +62,11 @@ export function OrphanedPlanText({
     .map(([id, text]): PlanOrphanCell => ({ id, text, stored: true }));
   const shown = [...cells, ...stored];
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
-  const current = useRef({ shown, readOnly, subject });
-  current.current = { shown, readOnly, subject };
+  const current = useRef({ shown, readOnly, subject, busyNodeIds });
+  current.current = { shown, readOnly, subject, busyNodeIds };
   const shownCells = JSON.stringify(shown);
-  useEffect(() => { withdraw(); }, [subject, readOnly, shownCells, withdraw]);
+  const busyCells = JSON.stringify(shown.filter(cell => busyNodeIds?.has(cell.id)).map(planOrphanIdentity));
+  useEffect(() => { withdraw(); }, [subject, readOnly, shownCells, busyCells, withdraw]);
   const discard = (cell: PlanOrphanCell) => {
     void askBeforeDiscard(true, () => {
       if (cell.stored && storedSermon) {
@@ -72,6 +75,7 @@ export function OrphanedPlanText({
         }).catch(() => toast.error(t("common.saveError")));
       } else onDiscard([cell]);
     }, () => current.current.subject === subject && !current.current.readOnly
+      && !current.current.busyNodeIds?.has(cell.id)
       && current.current.shown.some(candidate => planOrphanIdentity(candidate) === planOrphanIdentity(cell) && candidate.text === cell.text));
   };
 
@@ -103,6 +107,7 @@ export function OrphanedPlanText({
               </button>
               {!readOnly && <button
                 type="button"
+                disabled={busyNodeIds?.has(cell.id)}
                 onClick={() => discard(cell)}
                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
               >
