@@ -13,7 +13,7 @@ import type { FailureWords } from '@/utils/actionFailureMessage';
 import type { RecordingDraft, RecordingDraftContext } from '@/utils/recordingDraftStore';
 
 interface TextDictationOptions {
-  onText: (text: string, sourceId?: string) => void | Promise<void>;
+  onText: (text: string, sourceId?: string, recovered?: true) => void | Promise<void>;
   /** Only for callbacks that await the canonical durable text writer themselves. */
   acceptAfterText?: boolean;
   canTranscribe?: () => boolean;
@@ -40,6 +40,7 @@ interface HeldRecording {
   blob: Blob;
   transcript?: string;
   transcriptPersisted?: boolean;
+  recovered?: true;
   persisted: boolean;
   retryAllowed: boolean;
 }
@@ -99,6 +100,13 @@ export function useTextDictation(options: TextDictationOptions) {
     return () => retireSources(included);
   };
   const accept = () => captureAcceptance()();
+  const releaseApplied = (ids: Iterable<string>) => {
+    let released = false;
+    for (const id of ids) {
+      if (ownership.applied.delete(id)) released = true;
+    }
+    if (released) patch({});
+  };
   const acceptedSourceIds = options.acceptedSourceIds;
   const linkedSourceIds = options.linkedSourceIds;
   useEffect(() => {
@@ -150,7 +158,10 @@ export function useTextDictation(options: TextDictationOptions) {
   const publishSourceText = async (held: HeldRecording, text: string) => {
     if (context) ownership.applied.add(held.id);
     const textIsDurable = callbacks.current.acceptAfterText;
-    try { await callbacks.current.onText(text, held.id); }
+    try {
+      if (held.recovered) await callbacks.current.onText(text, held.id, true);
+      else await callbacks.current.onText(text, held.id);
+    }
     catch (error) { ownership.applied.delete(held.id); throw error; }
     // Its writer can finish after unmount and still release this exact source.
     if (textIsDurable) await captureAcceptance()().catch(() => undefined);
@@ -216,7 +227,7 @@ export function useTextDictation(options: TextDictationOptions) {
   const recover = (draft: RecordingDraft) => {
     if (!context || !contextId || draft.ownerId !== ownerId || !recordingMatchesDestination(draft, context, contextId, callbacks.current.linkedSourceIds)) return Promise.resolve(false);
     return transcribe({ id: draft.id, blob: draft.blob, transcript: draft.transcript, transcriptPersisted: draft.transcript !== undefined,
-      persisted: true, retryAllowed: true });
+      persisted: true, recovered: true, retryAllowed: true });
   };
 
   return {
@@ -229,7 +240,7 @@ export function useTextDictation(options: TextDictationOptions) {
     maxRetries: 3,
     transcriptionBlocked,
     blockedLabelKey: blockedLabelKey('dictation'),
-    complete, retry, clear, discard, accept, recover, captureAcceptance, carryTo,
+    complete, retry, clear, discard, accept, recover, captureAcceptance, releaseApplied, carryTo,
     appliedDraftIds: [...ownership.applied],
     recordingContext: options.recordingContext,
     recordingKey: JSON.stringify([ownerId, context, contextId]),

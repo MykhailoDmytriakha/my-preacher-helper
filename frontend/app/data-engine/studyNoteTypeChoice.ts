@@ -64,7 +64,10 @@ export function keepUncontestedStudyNoteFields(basis: ResourceSnapshot, draft: D
   const compared = comparedStudyNoteFields(basis, draft, stored, conflicts);
   if (!compared || !basis.value || !draft || !stored?.value) return;
   const opening = basis.value;
-  const retained = compared.reduce((value, { field }) => writeField(value, [field], readField(opening, [field])), draft);
+  const paths: string[][] = compared.map(({ field }) => [field]);
+  // The source is still recoverable; only the chosen body can confirm that it used this transcript.
+  if (compared.some(({ field }) => field === 'content')) paths.push(['dictationSourceIds']);
+  const retained = paths.reduce((value, field) => writeField(value, field, readField(opening, field)), draft);
   const merged = mergeDocumentFields(opening, retained, stored.value);
   if (merged.conflicts.length || !merged.value.exists) throw Object.assign(new Error('The shown study note choice changed'), { code: 'decision-changed' });
   return merged.value.value as DocumentData;

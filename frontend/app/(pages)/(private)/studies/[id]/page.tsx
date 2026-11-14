@@ -236,7 +236,7 @@ function useNoteDeletion({ confirm, noteId, isNew, uid, deleteNote, router }: an
 
 
 function useNoteAIAssistant({
-    noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
+    noteId, recordingContextId, content, availableTags, setTitle, appendDictation, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
 }: {
     noteId: string;
     recordingContextId: string;
@@ -247,7 +247,7 @@ function useNoteAIAssistant({
     setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
-    setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
+    setTitle: (t: string) => void; appendDictation: (text: string, recovered: boolean) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Text the app inserts whole — dictation, an applied analysis — is saved at once, not after the typing pause. */
@@ -368,13 +368,13 @@ function useNoteAIAssistant({
         acceptedSourceIds: acceptedDictationSourceIds,
         onSourcePersisted: sourceId => setRecordingSourceIds(previous => previous.includes(sourceId) ? previous : [...previous, sourceId]),
         endpoint: '/api/studies/transcribe',
-        onText: async (text, sourceId) => {
+        onText: async (text, sourceId, recovered) => {
             if (!sourceId || !uid) throw new Error('The note recording owner is not available');
             // Projected IDs prevent duplicate insertion; only confirmed IDs permit source retirement.
             if (dictationSourceIds.includes(sourceId)) return;
             setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
             saveAtOnceRef.current = true;
-            setContent(previous => previous ? `${previous}\n\n${text}` : text);
+            appendDictation(text, recovered === true);
         },
         onEmpty: () => toast.error(t('errors.audioProcessing')),
         onError: words => toast.error(sayFailure(words, t)),
@@ -893,6 +893,21 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             ? { owner: uid, id: noteId, value, capture: { ...seen, time: captureActionTime?.() ?? null } } : null;
         setContent(value);
     };
+    const appendDictation = (text: string, recovered: boolean) => {
+        const next = content ? `${content}\n\n${text}` : text;
+        if (recovered) {
+            // Restoring a recording from this note is a fresh choice on the shown words.
+            const opening = baselineRef.current?.content;
+            const observed = opening === undefined ? undefined : observeContent?.(noteId, opening);
+            if (uid && observed) {
+                contentOpeningRef.current = observed;
+                contentEditRef.current = { owner: uid, id: noteId, value: next, capture: { ...observed, time: null } };
+                setContent(next);
+                return;
+            }
+        }
+        setContent(next);
+    };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
     const changeType = (value: StudyNoteType) => {
@@ -996,7 +1011,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
     const isEditing = writesNow(editingWanted, draftHeld ? unsavedRecovery : null);
 
-    const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
+    const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean; release: (ids: Iterable<string>) => void }) | null>(null);
+    const releaseUnconfirmedDictation = (shownIds: readonly string[], acceptedIds: readonly string[]) => {
+        const stored = new Set(acceptedIds);
+        const rejected = new Set(shownIds.filter(id => !stored.has(id)));
+        if (!rejected.size) return;
+        voiceHandoffRef.current?.()?.release(rejected);
+        setDictationSourceIds(previous => previous.some(id => rejected.has(id)) ? previous.filter(id => !rejected.has(id)) : previous);
+    };
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
         creationId,
@@ -1028,7 +1050,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         onContentAcknowledged: (saved, proof) => {
             if (proof) contentOpeningRef.current = { generation: proof.generation, observedRevision: proof.revision, opening: saved };
         },
-        onSaved: (saved, replacedTitle, replacedTags, replacedType, replacedContent) => {
+        onSaved: (saved, replacedTitle, replacedTags, replacedType, replacedContent, replacedDictation) => {
+            if (replacedDictation) releaseUnconfirmedDictation(replacedDictation, saved.dictationSourceIds ?? []);
             if (replacedContent !== undefined) {
                 const pendingContent = contentEditRef.current;
                 if (pendingContent?.owner !== uid || pendingContent?.id !== noteId || pendingContent?.value === replacedContent) {
@@ -1096,6 +1119,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
     }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, observedReferenceVersion, observeContent, noteId]);
+    useEffect(() => {
+        if (!isNew && noteIsAccepted && content === rowPayload?.content) {
+            releaseUnconfirmedDictation(dictationSourceIds, rowPayload.dictationSourceIds ?? []);
+        }
+    });
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
@@ -1240,12 +1268,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         resendVoiceBlob, voiceController,
         pendingAnalysisResult, pendingAnalysisKey, dismissAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
+        noteId, recordingContextId, content, availableTags, setTitle, appendDictation, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
     voiceHandoffRef.current = () => ({ accepted: voiceController.captureAcceptance(), carryTo: voiceController.carryTo,
-        canChangeDestination: voiceController.canChangeDestination });
+        canChangeDestination: voiceController.canChangeDestination, release: voiceController.releaseApplied });
 
     useNoteInitialization({
         notesLoading, uid, isNew, isInitialized, existingNote, t,
@@ -1360,6 +1388,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 }
                 break;
             case 'content':
+                if (side === 'stored') releaseUnconfirmedDictation(dictationSourceIds, confirmedDictationSources?.get(noteId) ?? []);
                 contentEditRef.current = reviewed && uid ? { owner: uid, id: noteId, value: mine, capture: {
                     generation: reviewed.generation, observedRevision: reviewed.revision, opening: stored, time: null,
                 } } : null;

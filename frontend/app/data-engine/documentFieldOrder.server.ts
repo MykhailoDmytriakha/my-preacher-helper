@@ -308,7 +308,13 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
     if (target.field === 'church') command = resolvePlannedChurchFill(command, order.command, current);
     else if (target.action === 'seriesFieldActions' && target.field === 'title') command = resolveSeriesTitleMirror(command, order, current);
     else if (target.field === 'heldAt') command = alignCouncilLifecycle(order, current);
-    else command = order.command;
+    else if (target.action === 'studyNoteContentAction' && order.displaced && current.value
+      && order.command.kind === 'update' && command.kind === 'update') {
+      const requested = documentFieldChange(command.changes, target);
+      command = requested && !equalValues(requested.after, order.displaced.winnerValue)
+        ? { ...order.command, changes: order.command.changes.filter(change => change.path[0] !== 'dictationSourceIds') }
+        : order.command;
+    } else command = order.command;
     return { target, order };
   });
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };

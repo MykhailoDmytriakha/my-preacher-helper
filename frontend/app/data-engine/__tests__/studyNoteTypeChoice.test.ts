@@ -30,3 +30,19 @@ it('keeps an independent paragraph when the queued title and type both conflict'
   expect(keepUncontestedStudyNoteFields(basis, draft, stored, conflicts))
     .toEqual({ title: 'Stored title', type: 'note', content: 'Offline paragraph' });
 });
+
+it('keeps the recording available when the saved body excludes its transcript', () => {
+  const resource = { collection: 'studyNotes', id: 'note' };
+  const metadata = { protocol: 1 as const, generation: 'generation', revision: 1, deleted: false };
+  const basis: ResourceSnapshot = { resource, metadata, value: { title: 'Opening title', type: 'note', content: 'Opening body',
+    dictationSourceIds: ['earlier-source'], recordingSourceIds: ['earlier-source', 'unapplied-source'] } };
+  const draft = { ...basis.value, title: 'Independent phone title', content: 'Opening body\n\nNew dictated words',
+    dictationSourceIds: ['earlier-source', 'unapplied-source'] };
+  const stored: ResourceSnapshot = { resource, metadata: { ...metadata, revision: 4 },
+    value: { ...basis.value, content: 'Saved body', dictationSourceIds: ['earlier-source', 'other-device-source'] } };
+  const conflicts: ConflictDetail[] = [{ path: ['content'], base: { exists: true, value: 'Opening body' },
+    mine: { exists: true, value: draft.content }, theirs: { exists: true, value: 'Saved body' } }];
+  expect(keepUncontestedStudyNoteFields(basis, draft, stored, conflicts)).toEqual({
+    ...stored.value, title: draft.title,
+  });
+});

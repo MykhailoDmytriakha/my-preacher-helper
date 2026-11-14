@@ -139,7 +139,7 @@ export function useNoteAutoSave({
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
      */
-    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType, replacedContent?: string) => void;
+    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType, replacedContent?: string, replacedDictation?: readonly string[]) => void;
     referenceEdits?: ReadonlyMap<string, NoteReferenceEdit>;
     onContentCaptured?: (opening: Omit<StudyNoteContentCapture, 'time'>) => void;
     onContentAcknowledged?: (content: string, proof: { generation: string; revision: number } | undefined) => void;
@@ -346,7 +346,6 @@ export function useNoteAutoSave({
         // indicator after the spinner ends.
         setLastSaved(null);
         try {
-            const recording = captureRecordingHandoff?.();
             const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin, ...(draftTargetGeneration !== undefined && { targetGeneration: draftTargetGeneration }) } : submittedPayload;
             const captureScope = prepareNoteDraftCapture(uid, noteId, backup, draftWriterId, draftEditedAt);
             const submission = updateNote({
@@ -443,15 +442,25 @@ export function useNoteAutoSave({
                     }
                 }
                 if (replacedReferences) onReferenceAcknowledged?.(submittedPayload.scriptureRefs, acceptedReferences, aliases, saved?.revision, saved?.referenceEngineRevision);
-                const acceptedPayload = { ...submittedPayload, title: acceptedTitle, content: acceptedContent, tags: acceptedTags, type: acceptedType, scriptureRefs: acceptedReferences };
-                if (replacedContent !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent);
+                const acceptedPayload = { title: acceptedTitle, content: acceptedContent, tags: acceptedTags, type: acceptedType,
+                    scriptureRefs: acceptedReferences, ...noteRecordingMetadata(saved ? saved.dictationSourceIds : submittedPayload.dictationSourceIds,
+                        saved ? saved.recordingSourceIds : submittedPayload.recordingSourceIds) };
+                const replacedDictation = replacedContent !== undefined && (submittedPayload.dictationSourceIds ?? []).filter(id =>
+                    !acceptedPayload.dictationSourceIds?.includes(id));
+                if (replacedDictation && replacedDictation.length) {
+                    const current = baselineRef.current;
+                    if (current && current.content === acceptedContent) {
+                        const { dictationSourceIds: _submitted, ...rest } = current;
+                        baselineRef.current = { ...rest, ...noteRecordingMetadata(acceptedPayload.dictationSourceIds) };
+                    }
+                    onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent, replacedDictation);
+                } else if (replacedContent !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent);
                 else if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
                 else if (replacedTags) onSaved?.(acceptedPayload, replacedTitle, replacedTags);
                 else if (replacedTitle !== undefined) onSaved?.(acceptedPayload, replacedTitle);
                 else onSaved?.(acceptedPayload);
             };
             afterCanonicalCapture(submission, backup, noteId, onCaptured, draftEditedAt);
-            void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
             if (acceptance.kind !== 'persisted') {

@@ -157,7 +157,7 @@ it('retries a failed transcript-cache write before publishing and reuses it afte
   expect(saved.transcript).toBe('Cached once'); view.unmount();
   const next = options(); const returned = renderHook(() => useTextDictation(next));
   await act(async () => { await returned.result.current.recover(saved); });
-  expect(next.onText).toHaveBeenCalledWith('Cached once', saved.id);
+  expect(next.onText).toHaveBeenCalledWith('Cached once', saved.id, true);
   expect(transcribe).toHaveBeenCalledTimes(1);
 });
 
@@ -167,7 +167,7 @@ it('recovers only the exact new-study source linked to this created note', async
   const callbacks = Object.assign(options(), { recordingContext: { context: 'study' as const, contextId: 'created-note' }, linkedSourceIds: [draft.id] });
   const view = renderHook(() => useTextDictation(callbacks));
   await act(async () => { await view.result.current.recover(draft); });
-  expect(callbacks.onText).toHaveBeenCalledWith(draft.transcript, draft.id);
+  expect(callbacks.onText).toHaveBeenCalledWith(draft.transcript, draft.id, true);
   await act(async () => { await view.result.current.recover({ ...draft, id: 'unrelated-source' }); });
   expect(callbacks.onText).toHaveBeenCalledTimes(1); expect(transcribe).not.toHaveBeenCalled();
 });

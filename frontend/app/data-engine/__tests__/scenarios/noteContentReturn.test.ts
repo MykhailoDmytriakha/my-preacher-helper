@@ -80,6 +80,37 @@ describe('Delayed first delivery of note text after a deliberate return', () => 
     }));
   });
 
+  it('preserves the raw recording link without confirming a transcript that lost by action time', async () => {
+    world = new DeviceWorld();
+    const opening = noteValue();
+    const original = String(opening.content);
+    await world.seed(noteRef, opening);
+    const phone = await world.device('phone'), desktop = await world.device('desktop');
+    const earlier = await phone.open(noteRef), later = await desktop.open(noteRef);
+    const generation = earlier.getState().checkpoint.confirmed.metadata!.generation;
+    const time = phone.clock.capture('owner')!;
+    expect(time).toBeDefined();
+    phone.goOffline();
+    await phone.run(() => earlier.commitWithReceipt(value => ({ ...value, content: original + '\n\nDraft transcript',
+      recordingSourceIds: ['new-source'], dictationSourceIds: ['new-source'], tags: ['Independent tag'],
+    }), { noteContent: { generation, observedRevision: 1, opening: original, time } }));
+    await world.advance(5_000);
+    const saveDesktop = (before: string, after: string) => {
+      const observedRevision = later.getState().checkpoint.confirmed.metadata!.revision;
+      return desktop.run(() => later.commitWithReceipt(value => ({ ...value, content: after }),
+        { noteContent: { generation, observedRevision, opening: before, time: desktop.clock.capture('owner')! } }));
+    };
+    await saveDesktop(original, 'Desktop edit');
+    await world.advance(5_000);
+    await saveDesktop('Desktop edit', original);
+    await world.settle();
+    await phone.goOnline();
+    const saved = (await world.snapshot(noteRef)).value!;
+    expect(saved).toMatchObject({ content: original, recordingSourceIds: ['new-source'], tags: ['Independent tag'] });
+    expect(saved.dictationSourceIds ?? []).toEqual([]);
+    expect(await world.questions()).toEqual([]);
+  });
+
 
   it('continues the same offline content edit through an intervening title save with no clock', async () => {
     world = new DeviceWorld();
