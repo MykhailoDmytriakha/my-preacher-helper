@@ -127,7 +127,7 @@ describe('group flow title comparison', () => {
     expect(readGroupFlowFieldConflict(session.checkpoint())).toMatchObject({
       field: 'description', mine: 'Private description', stored: 'Old description',
     });
-    expect(session.choosePrivateGroupText('local', null)).toBe(true);
+    expect(session.choosePrivateFields('local', null)).toBe(true);
     expect(session.checkpoint()).toMatchObject({
       conflicts: [], draft: { title: 'Same new group title', description: 'Private description' },
     });

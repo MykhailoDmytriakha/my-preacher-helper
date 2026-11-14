@@ -200,12 +200,18 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
   if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
 }
 
-export function stageReviewedGroupFlowText(checkpoint: SessionCheckpoint, paths: readonly (readonly string[])[], time: ActionTime | null,
-  includeOtherFields = false): void {
+export function stageReviewedGroupFlowText(checkpoint: SessionCheckpoint, paths: readonly (readonly string[])[], time: ActionTime | null): void {
+  if (checkpoint.confirmed.resource.collection === 'groups') {
+    stageReviewedRowFields(checkpoint, paths, time, ['group-block-content', 'group-step-notes']);
+  }
+}
+
+export function stageReviewedRowFields(checkpoint: SessionCheckpoint, paths: readonly (readonly string[])[], time: ActionTime | null,
+  kinds?: readonly RowFieldActionKind[]): void {
   const { confirmed, draft } = checkpoint;
   const metadata = confirmed.metadata;
-  if (confirmed.resource.collection !== 'groups' || !metadata || metadata.deleted || !draft) return;
-  for (const target of targetsFor('groups').filter(item => includeOtherFields || item.stamp === 'group-block-content' || item.stamp === 'group-step-notes')) {
+  if (!metadata || metadata.deleted || !draft) return;
+  for (const target of targetsFor(confirmed.resource.collection).filter(item => !kinds || kinds.includes(item.stamp))) {
     const field = target.policy.target(target.field);
     for (const path of paths) {
       const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;

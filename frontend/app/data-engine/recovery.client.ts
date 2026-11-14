@@ -136,7 +136,7 @@ const recordSchema = z.object({
     unreadableExegeticalProofs: z.array(unreadableExegeticalProof).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
-    privateGroupTextReview: z.object({ revision: z.number().int().safe().nonnegative(),
+    privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
       decisions: z.array(groupTextDecision.omit({ row: true, removedBy: true, linkedSteps: true })) }).optional(),
     groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(),
       decisions: z.array(groupTextDecision), separateDraft: z.literal(true).optional() }).optional(),
@@ -274,6 +274,10 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   let checked = value;
   if (isFields(value) && isFields(value.checkpoint)) {
     let checkpoint = withoutInvalidProof(value.checkpoint, checkpointEvidence, '', dropped);
+    if (checkpoint.privateFieldReview === undefined && accepts(checkpointEvidence.privateFieldReview, checkpoint.privateGroupTextReview)
+      && checkpoint.privateGroupTextReview !== undefined) {
+      checkpoint = { ...checkpoint, privateFieldReview: checkpoint.privateGroupTextReview };
+    }
     // Template retries capture the selected gesture separately from any later title typing.
     // Sermon retries still share a document draft and must not become durable move instructions.
     const confirmed = checkpoint.confirmed;

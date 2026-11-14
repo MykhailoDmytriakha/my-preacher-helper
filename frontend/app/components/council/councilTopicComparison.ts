@@ -1,5 +1,5 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
-import { readCouncilTopicConflict, readUnreadableScalarComparison } from '@/data-engine/react.client';
+import { readCouncilTopicConflict, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
 
@@ -10,7 +10,13 @@ import type { CouncilTopic } from '@/models/models';
 export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined, t: (key: string) => string, topics?: readonly CouncilTopic[]): TextComparison | undefined {
   const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
   if (placement) return placement;
-  const unreadable = checkpoint && readUnreadableScalarComparison(checkpoint);
+  const privateField = checkpoint && readPrivateCouncilComparison(checkpoint);
+  if (privateField?.field === 'topic-title') {
+    const untitled = t('council.topicTitleHistory.untitled');
+    return { identity: privateField.identity, title: t('council.detail.newTopicPlaceholder'), valueKind: 'field', scopedChoice: true,
+      mine: privateField.mine || untitled, stored: privateField.stored || untitled };
+  }
+  const unreadable = privateField ?? (checkpoint && readUnreadableScalarComparison(checkpoint));
   if (unreadable && unreadable.field !== 'status') {
     const label = unreadable.field === 'title' ? 'council.detail.titleLabel'
       : unreadable.field === 'date' ? 'council.detail.dateLabel' : 'council.history.lifecycle';

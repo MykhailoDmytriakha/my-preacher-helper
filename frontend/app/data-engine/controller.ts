@@ -450,7 +450,7 @@ export class EditorController {
       this.assertChoiceAuthority();
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
-      if (expected && !selection && !this.prepared && this.session.choosePrivateGroupText('remote', null)) {
+      if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
         this.result = null;
         await this.persist();
         return;
@@ -505,7 +505,7 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
-      if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateGroupText('local', choiceTime ?? null)) {
+      if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
         this.result = null;
         await this.persist();
         return;

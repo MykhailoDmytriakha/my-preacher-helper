@@ -344,6 +344,35 @@ it.each(['none', 'acknowledged', 'cancelled'] as const)('asks before sending a r
   }
 });
 
+
+it.each(['local', 'remote'] as const)('compares the council title and date independently after restoring a private draft (%s first)', async first => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'councils', id: 'council-recovered-two-fields' };
+  const value = { userId: 'owner', title: 'Saved council name', status: 'preparing', date: '2099-04-10', topics: [] };
+  const confirmed: ResourceSnapshot = { resource, value, metadata: { protocol: 1, generation: 'g', revision: 3, deleted: false } };
+  db.documents.set('councils/' + resource.id, { ...value, _dataEngine: confirmed.metadata });
+  const device = new DataSession(confirmed);
+  device.edit({ ...value, title: 'Private council name' }, undefined, { field: 'title', time: null });
+  device.edit({ ...value, title: 'Private council name', date: '2099-04-12' }, undefined, { field: 'date', time: null });
+  const checkpoint = device.checkpoint();
+  loose(checkpoint.councilTitleDraft?.action).observedRevision = 'unreadable';
+  loose(checkpoint.councilDateDraft?.action).observedRevision = 'unreadable';
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+  const restored = DataSession.restore((await throughDeviceStorage(record)).checkpoint);
+  takeDroppedProof('councilTitleDraft');
+  takeDroppedProof('councilDateDraft');
+
+  expect(restored.choosePrivateFields(first, null)).toBe(true);
+  const awaitingSecond = restored.checkpoint();
+  expect((await save(awaitingSecond)).code).toBe('resolve-version-first');
+  expect(restored.choosePrivateFields(first === 'local' ? 'remote' : 'local', null)).toBe(true);
+  const completed = restored.checkpoint();
+  const expected = { ...value, ...(first === 'local' ? { title: 'Private council name' } : { date: '2099-04-12' }) };
+  expect(completed.draft).toEqual(expected);
+  expect((await save(completed)).kind).toBe('acknowledged');
+  expect((await readDocument('owner', resource)).value).toMatchObject(expected);
+});
+
 const ROWS = [
   ['councilOutcomeDrafts', 'council-topic-outcome', COUNCIL_OUTCOME_POLICY, 'outcome',
     { discussed: false, acceptedOptionId: null, decision: null, resolution: null }, { discussed: true, acceptedOptionId: null, decision: 'Mine', resolution: null },
@@ -357,6 +386,30 @@ const ROWS = [
   ['thoughtPlacementDrafts', 'thought-placement', THOUGHT_PLACEMENT_POLICY, 'outlineLocation',
     { outlinePointId: null, subPointId: null }, { outlinePointId: 'p1', subPointId: null }, { outlinePointId: 'p2', subPointId: null }],
 ] as unknown as Array<[string, string, RowDetailPolicy<string, RowValue>, string, RowValue, RowValue, RowValue]>;
+
+
+it.each(['local', 'remote'] as const)('chooses council lifecycle and topic title independently (%s lifecycle)', side => {
+  const resource = { collection: 'councils', id: 'council-lifecycle-and-topic-recovery' };
+  const topic = { id: 'topic', title: 'Stored section name' };
+  const value = { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic] };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const opened = new DataSession({ resource, value, metadata }).checkpoint();
+  const heldAt = '2026-11-13T10:00:00.000Z';
+  const otherHeldAt = '2026-11-13T11:00:00.000Z';
+  opened.unreadableScalarProof = ['heldAt'];
+  opened.unreadableRowProofs = [{ field: 'councilTopicTitleDrafts', rowId: topic.id, birth: topic.id, generation: 'g' }];
+  opened.draft = { ...value, status: 'held', heldAt, topics: [{ ...topic, title: 'Private section name' }] };
+  opened.remoteCandidate = { resource, value: { ...value, status: 'held', heldAt: otherHeldAt }, metadata: { ...metadata, revision: 3 } };
+  const recovered = DataSession.restore(opened);
+  expect(recovered.choosePrivateFields(side, null)).toBe(true);
+  expect(recovered.choosePrivateFields('local', null)).toBe(true);
+  const checkpoint = recovered.checkpoint();
+  expect(checkpoint.conflicts).toEqual([]);
+  expect(checkpoint.draft).toMatchObject({ status: 'held', heldAt: side === 'local' ? heldAt : otherHeldAt,
+    topics: [{ ...topic, title: 'Private section name' }] });
+  expect(checkpoint.councilTopicTitleDrafts?.topic.action.observedRevision).toBe(3);
+  if (side === 'local') expect(checkpoint.councilLifecycleDraft?.action.observedRevision).toBe(3);
+});
 
 describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (key, stamp, policy, field, before, mine, other) => {
   it.each([...PROOF_RECOVERY, 'persisted with unreadable row revision'] as const)('%s', async mode => {
@@ -459,19 +512,21 @@ it.each(['local', 'remote'] as const)('persists a %s choice for one recovered fi
   db.documents.set('groups/' + resource.id, { ...value, _dataEngine: stored.metadata });
   const recovered = DataSession.restore((await throughDeviceStorage(record)).checkpoint);
   takeDroppedProof('groupBlockTitleDrafts');
-  expect(recovered.choosePrivateGroupText(firstChoice, null)).toBe(true);
+  expect(recovered.choosePrivateFields(firstChoice, null)).toBe(true);
   const stage = recovered.checkpoint();
   expect(stage.draft).toEqual(local);
   expect(stage.unreadableRowProofs).toHaveLength(2);
   expect((await save(stage)).code).toBe('resolve-version-first');
 
-  const resumed = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: stage })).checkpoint);
+  const { privateFieldReview, ...openingStage } = stage;
+  const storedStage = firstChoice === 'remote' ? { ...openingStage, privateGroupTextReview: privateFieldReview } : stage;
+  const resumed = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: storedStage })).checkpoint);
   expect(readGroupFlowFieldConflict(resumed.checkpoint())).toMatchObject({ rowId: 'b', mine: authored(b).title, stored: b.title });
   const secondChoice = firstChoice === 'local' ? 'remote' : 'local';
-  expect(resumed.choosePrivateGroupText(secondChoice, null)).toBe(true);
+  expect(resumed.choosePrivateFields(secondChoice, null)).toBe(true);
   const complete = resumed.checkpoint();
   expect(complete.conflicts).toEqual([]);
-  expect(complete.privateGroupTextReview).toBeUndefined();
+  expect(complete.privateFieldReview).toBeUndefined();
   expect(complete.groupBlockTitleDrafts?.c?.action.observedRevision).toBe(1);
   expect(complete.groupBlockTitleDrafts?.[firstChoice === 'local' ? 'a' : 'b']?.action.observedRevision).toBe(3);
   expect(complete.draft?.templates).toEqual([firstChoice === 'local' ? authored(a) : a, secondChoice === 'local' ? authored(b) : b, authored(c)]);
