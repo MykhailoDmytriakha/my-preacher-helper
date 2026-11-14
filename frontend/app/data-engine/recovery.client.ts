@@ -354,7 +354,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         const distinct = new Map([...existing, ...rows].filter(isFields).map(row => [JSON.stringify([row.field, row.rowId, row.birth, row.generation]), row]));
         checkpoint = { ...checkpoint, unreadableRowProofs: [...distinct.values()] };
       }
-      if (checkPointProofs && parsed?.success) checkpoint = recoverPointEvidence(checkpoint, rawExegeticalProofs, parsed.data, pendingOpening, dropped);
+      if (checkPointProofs && parsed?.success) {
+        const authoredAfterSave = typeof checkpoint.editGeneration === 'number' && typeof latestPending?.generation === 'number'
+          && latestPending.generation < checkpoint.editGeneration;
+        checkpoint = recoverPointEvidence(checkpoint, rawExegeticalProofs, parsed.data, authoredAfterSave ? pendingOpening : undefined, dropped);
+      }
     }
     if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };
   }

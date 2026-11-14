@@ -33,10 +33,10 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
       mine: format(comparison.mine), stored: format(comparison.stored), scopedChoice: true };
   }
   if (kind === 'exegetical-point') {
-    const removed = t('dataSync.exegeticalPointRemoved');
+    const title = (value: string | null) => value === null ? t('dataSync.exegeticalPointRemoved') : value || t('dataSync.emptyField');
     const versions = { identity, valueKind: 'field' as const, title: t('dataSync.exegeticalPointTitle'),
-      mine: comparison.versions.map(version => version.mine ?? removed).join('\n'),
-      stored: comparison.versions.map(version => version.stored ?? removed).join('\n'),
+      mine: comparison.versions.map(version => title(version.mine)).join('\n'),
+      stored: comparison.versions.map(version => title(version.stored)).join('\n'),
       keepMineDisabled: !comparison.localAvailable };
     if (!comparison.scoped) {
       return { ...versions, description: t('dataSync.exegeticalPointMultipleConflicts'),

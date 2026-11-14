@@ -708,6 +708,44 @@ it('asks about the whole removed branch when the stored proof points to its chil
   expect(restored.checkpoint().draft?.preparation).toEqual({ exegeticalPlan: [branch, sibling], authorIntent: 'Private words' });
 });
 
+it('waits to review an unreadable title of a point that is still in its first Save', async () => {
+  const resource = { collection: 'sermons', id: 'pending-point-proof' };
+  const sibling = { id: 'sibling', title: 'Other point', children: [] };
+  const point = { id: 'new-point', title: '', children: [] };
+  const document = (plan: typeof point[], authorIntent = 'Opening words') =>
+    ({ userId: 'owner', preparation: { exegeticalPlan: plan, authorIntent } });
+  const value = document([sibling]);
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  const submitted = document([sibling, point]);
+  session.edit(submitted);
+  session.registerCommit('first-save', session.checkpoint().editGeneration, submitted);
+  const privateTitle = 'Private title typed while saving';
+  const draft = document([sibling, { ...point, title: privateTitle }], 'Independent private words');
+  session.edit(draft, undefined, { field: 'exegetical-point', nodeId: point.id, intent: 'title', time: null });
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.exegeticalPointDrafts?.[0]?.nodeId).toBe(point.id);
+  loose(checkpoint).exegeticalPointDrafts = 'broken address list';
+  const first: CommitRequest = { id: 'first-save', owner: 'owner', editorId: 'old-editor', editGeneration: 1,
+    baseline: { resource, value, metadata }, working: { resource, value, metadata }, value: submitted, intended: submitted,
+    predecessor: null, revision: 0, initialized: false, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] }, first)).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  const reopened = DataSession.restore(recovered);
+  expect(reopened.checkpoint().conflicts).toEqual([]);
+  reopened.accept({ kind: 'acknowledged', operationId: 'first-save', snapshot: { resource, value: submitted,
+    metadata: { ...metadata, revision: 2, operationId: 'first-save' } } });
+  expect(reopened.checkpoint().draft?.preparation).toEqual(draft.preparation);
+  expect(reopened.checkpoint().conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:new-point']]);
+  expect(reopened.prepare('next-save', 'owner')).toBeNull();
+  const stored = DataSession.restore(reopened.checkpoint());
+  stored.acceptRemote(stored.checkpoint().draft);
+  expect(stored.checkpoint().draft?.preparation).toEqual(document([sibling, point], 'Independent private words').preparation);
+  expect(stored.prepare('independent-edit', 'owner')?.kind).toBe('update');
+  reopened.keepLocal();
+  expect(reopened.checkpoint().draft?.preparation).toEqual(draft.preparation);
+});
+
 it.each(['title', 'remove'] as const)('holds a recovered exegetical %s when the original point revision is unreadable', async kind => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'sermons', id: 'sermon-point-proof' };

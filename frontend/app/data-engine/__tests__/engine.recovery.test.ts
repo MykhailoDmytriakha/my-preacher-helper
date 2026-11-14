@@ -13,8 +13,9 @@ const snapshot: ResourceSnapshot = { resource, value: { userId: 'owner', content
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const tick = async () => { for (let index = 0; index < 50; index += 1) await Promise.resolve(); };
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
-function setup(creating = false) {
-  const session = new DataSession(creating ? { resource, value: null, metadata: null } : snapshot);
+function setup(creating = false, opening = snapshot) {
+  const { resource } = opening;
+  const session = new DataSession(creating ? { resource, value: null, metadata: null } : opening);
   session.edit(creating ? { content: 'new' } : { userId: 'owner', content: 'mine' });
   const source: EditorRecord = { owner: 'owner', editorId: 'previous-tab', checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
   const records = new Map([[recoveryCheckpointId('owner', source.editorId), clone(source)]]);
@@ -28,15 +29,15 @@ function setup(creating = false) {
     }),
     listRecoverable: jest.fn(async (owner, ref) => selectRecoverableCheckpoints([...records], owner, ref)),
   };
-  const transport: EngineTransport = { read: jest.fn(async () => snapshot), send: jest.fn() };
+  const transport: EngineTransport = { read: jest.fn(async () => opening), send: jest.fn() };
   const runtime = new DataEngineRuntime({ transport, journal: { list: async () => [], put: async () => undefined, remove: async () => undefined } });
   const sourceAdapter = { listen: jest.fn(() => jest.fn()) };
   const observer = new ResourceObserver({ transport, source: sourceAdapter });
   const commits = createMemoryCommitStore();
   const engine = new DataEngine({ runtime, observer, transport, checkpoints: store, commits,
-    snapshots: { read: async () => snapshot, put: async () => undefined }, operationId: () => 'new-operation' });
+    snapshots: { read: async () => opening, put: async () => undefined }, operationId: () => 'new-operation' });
   engine.setOnline(false); engine.setOwner('owner');
-  return { engine, store, records, source, sourceAdapter, commits };
+  return { engine, store, records, source, sourceAdapter, commits, transport };
 }
 
 describe('DataEngine explicit recovery', () => {
@@ -111,6 +112,47 @@ describe('DataEngine explicit recovery', () => {
     await expect(s.engine.recoverEditor(resource, 'fresh-tab', listed[0].id)).rejects.toThrow('already exists');
     s.engine.setOwner('other'); expect(await s.engine.listRecoverable()).toEqual([]);
     s.engine.dispose();
+  });
+
+  it.each(['offline', 'unreachable', 'newer', 'replacement'] as const)('preserves an unreadable point draft when the saved choice is %s', async situation => {
+    const ref = { collection: 'sermons', id: 'point-recovery' };
+    const pointId = 'point';
+    const value = (title: string) => ({ userId: 'owner', preparation: { exegeticalPlan: [{ id: pointId, title }] } });
+    const opening = { resource: ref, value: value('Opening title'), metadata: snapshot.metadata! };
+    const s = setup(false, opening);
+    try {
+      const draft = value('Private title');
+      const { checkpoint } = s.source;
+      checkpoint.draft = draft;
+      checkpoint.unreadableExegeticalProofs = [{ nodeId: pointId, kind: 'title', generation: opening.metadata.generation, ancestors: [] }];
+      const sourceId = recoveryCheckpointId('owner', s.source.editorId);
+      s.records.set(sourceId, clone(s.source));
+      const editor = await s.engine.recoverEditor(ref, 'review', sourceId);
+      const compared = editor.getState().checkpoint;
+      expect(compared.conflicts[0]?.theirs.value).toMatchObject({ title: 'Opening title' });
+      const saved = { ...opening, value: value('Newer saved title'), metadata: { ...opening.metadata,
+        revision: 2, generation: situation === 'replacement' ? 'new-generation' : opening.metadata.generation } };
+      if (situation !== 'offline') {
+        jest.mocked(s.transport.read).mockImplementation(async (_owner, _resource, options) => {
+          if (!options?.fresh) return opening;
+          if (situation === 'unreachable') throw new Error('Network unavailable');
+          return saved;
+        });
+        s.engine.setOnline(true);
+        await tick();
+      }
+      const result = situation === 'newer' ? 'decision-changed' : 'fresh-read-required';
+      await expect(editor.acceptRemote(undefined, compared)).rejects.toMatchObject({ code: result });
+      expect(editor.getState().checkpoint.draft).toEqual(draft);
+      expect(s.records.get(sourceId)?.checkpoint.draft).toEqual(draft);
+      expect(s.transport.send).not.toHaveBeenCalled();
+      if (situation === 'newer') {
+        const latest = editor.getState().checkpoint;
+        expect(latest.conflicts[0]?.theirs.value).toMatchObject({ title: 'Newer saved title' });
+        await editor.acceptRemote(undefined, latest);
+        expect(editor.getState().checkpoint.draft).toEqual(saved.value);
+      }
+    } finally { s.engine.dispose(); }
   });
 
   it('preserves recovered create intent before any observation can turn it into an update', async () => {

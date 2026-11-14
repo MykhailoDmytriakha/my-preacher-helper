@@ -114,10 +114,11 @@ function insertionIndex(current: readonly Json[], version: ExegeticalPointVersio
 
 /** Replace one compatible branch, retaining its surviving sibling anchors when it has to be put back. */
 export function projectExegeticalPoint(preparation: unknown, plan: Plan, id: string, path: string[],
-  version: ExegeticalPointVersion | null): FieldValue | undefined {
+  version: ExegeticalPointVersion | null, mode: 'branch' | 'title' = 'branch'): FieldValue | undefined {
   if (!object(preparation) || !compatibleScope(plan, path) || (version && !equalValues(version.ancestors, path))) return undefined;
   const existing = exegeticalPointVersion(plan, id);
   if (existing && !equalValues(existing.ancestors, path)) return undefined;
+  if (mode === 'title' && (!existing || typeof version?.point.title !== 'string')) return undefined;
   if (!existing && !version) return { exists: true, value: preparation };
   if (!existing && version) {
     const restored = indexTree([version.point], CHILDREN);
@@ -125,7 +126,13 @@ export function projectExegeticalPoint(preparation: unknown, plan: Plan, id: str
   }
   function rewrite(nodes: Json[], depth: number): Json[] | undefined {
     if (depth === path.length) {
-      if (existing) return nodes.flatMap(node => (node as DocumentData).id !== id ? [node] : version ? [version.point] : []);
+      if (existing) return nodes.flatMap(node => {
+        const row = node as DocumentData;
+        if (row.id !== id) return [row];
+        if (!version) return [];
+        // A title choice keeps the raw branch, including explicitly empty child lists.
+        return [mode === 'title' ? { ...row, title: version.point.title } : version.point];
+      });
       const index = insertionIndex(nodes, version!, id);
       return index === undefined ? undefined : [...nodes.slice(0, index), version!.point, ...nodes.slice(index)];
     }

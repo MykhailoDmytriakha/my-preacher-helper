@@ -1547,8 +1547,11 @@ export class DataEngine {
           if (!retained) {
             const reconciled = record && reconcileRecoveryRecord(record, requests);
             const checkpoint = reconciled?.checkpoint;
-            if (!checkpoint || !['groups', 'councils'].includes(frozen.collection) || Object.keys(checkpoint.pending).length
-              || !(checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length)) return reconciled;
+            if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
+            const review = ['groups', 'councils'].includes(frozen.collection)
+              ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
+              : frozen.collection === 'sermons' && checkpoint.unreadableExegeticalProofs?.length;
+            if (!review) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);
             active();
@@ -2256,6 +2259,21 @@ export class DataEngine {
         }
         if (compared && !equalValues(current, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
+        }
+        if (current.unreadableExegeticalProofs?.length && !Object.keys(current.pending).length) {
+          const saved = await this.readWriteTarget(frozen).catch(() => null);
+          active();
+          const shown = current.remoteCandidate ?? current.confirmed;
+          if (!saved || !canReplaceSnapshot(shown, saved)) {
+            throw Object.assign(new Error('Read the current sermon before choosing'), { code: 'fresh-read-required' });
+          }
+          if (!equalValues(shown, saved)) {
+            await controller.observe(saved, 'server');
+            throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
+          }
+          if (!equalValues(current, controller.getState().checkpoint)) {
+            throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
+          }
         }
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();

@@ -63,6 +63,16 @@ function unobservedPointChanges(opening: Plan, local: Plan, pending: Plan | unde
   return addresses;
 }
 
+function pendingOnlyTitleChanges(opening: Plan, pending: Plan, local: Plan, generation: string,
+  known: ReadonlySet<string>): UnreadableExegeticalProof[] {
+  return [...pending.points.entries.keys()].flatMap(nodeId => {
+    if (known.has(nodeId) || !boundedRowId(nodeId) || opening.points.entries.has(nodeId)
+      || changedExegeticalPoint(pending, local, nodeId) !== 'title') return [];
+    const { ancestors } = exegeticalPointVersion(pending, nodeId)!;
+    return [{ nodeId, kind: 'title', generation, ancestors }];
+  });
+}
+
 export function recoverExegeticalPointProofs(confirmed: ResourceSnapshot, draft: DocumentData,
   pendingOpening: DocumentData | undefined, proofs: readonly RecoveryPoint[], wholeListUnreadable: boolean) {
   const metadata = confirmed.metadata;
@@ -86,9 +96,11 @@ export function recoverExegeticalPointProofs(confirmed: ResourceSnapshot, draft:
     }
   }
   if (findLostAddress) {
-    const changes = unobservedPointChanges(opening, local, pending, metadata.generation, new Set([...readable.keys(), ...held.keys()]));
-    for (const address of changes) held.set(address.nodeId, address);
-    damaged ||= changes.length > 0;
+    const known = new Set([...readable.keys(), ...held.keys()]);
+    const changes = unobservedPointChanges(opening, local, pending, metadata.generation, known);
+    const pendingOnly = pending ? pendingOnlyTitleChanges(opening, pending, local, metadata.generation, known) : [];
+    for (const address of [...changes, ...pendingOnly]) held.set(address.nodeId, address);
+    damaged ||= changes.length > 0 || pendingOnly.length > 0;
   }
   for (const nodeId of readable.keys()) held.delete(nodeId);
   return { damaged, readable: [...readable.values()], held: [...held.values()] };
@@ -110,13 +122,8 @@ export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, addres
   const apply = (value: DocumentData, side: 'opening' | 'mine'): DocumentData | undefined => {
     const tree = exegeticalPlan(value.preparation);
     if (!tree) return;
-    const point = exegeticalPointVersion(tree, nodeId);
     const selected = side === 'opening' ? before : mine;
-    // A title choice owns the title only. A removal owns the original branch.
-    if (kind === 'title' && !point) return;
-    const version = kind === 'title' && point && selected
-      ? { ...point, point: { ...point.point, title: selected.point.title } } : selected;
-    const preparation = projectExegeticalPoint(value.preparation, tree, nodeId, ancestors, version);
+    const preparation = projectExegeticalPoint(value.preparation, tree, nodeId, ancestors, selected, kind === 'title' ? 'title' : 'branch');
     return preparation && writeField(value, ['preparation'], preparation);
   };
   const sameBranch = saved && equalValues(saved.ancestors, ancestors);
