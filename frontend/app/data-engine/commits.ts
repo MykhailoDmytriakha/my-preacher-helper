@@ -22,6 +22,7 @@ import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { seriesCommandParticipant } from './membershipIntent';
+import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -30,6 +31,7 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
@@ -1086,7 +1088,11 @@ export class CommitQueue {
         changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
         serviceOrderStepPlacement: stepMove.placement,
       };
-      return { ...record, command, submitted: record.intended, state: 'prepared' };
+      const steps = placementSteps(record.working.value.steps);
+      const submittedSteps = steps && projectServiceOrderStep(steps, stepMove.placement.stepId, stepMove.placement.destination);
+      // A stale working copy must not prevent the captured command from reaching the server.
+      const submitted = submittedSteps ? { ...record.working.value, steps: submittedSteps } : record.working.value;
+      return { ...record, command, submitted, state: 'prepared' };
     }
     const outlineMove = record.sequence === 0 ? record.outlinePointPlacement : undefined;
     if (outlineMove && record.working.value) {
@@ -1100,7 +1106,8 @@ export class CommitQueue {
           after: { exists: true, value: outlineMove.after } }],
         outlinePointPlacement: legacyRevision ? { ...outlineMove.placement, observedRevision: legacyRevision } : outlineMove.placement,
       };
-      return { ...record, command, submitted: record.intended, state: 'prepared' };
+      const submitted = alignPendingOutlinePointPlacements(record.working.value, record.value, [outlineMove]);
+      return { ...record, command, submitted, state: 'prepared' };
     }
     const markRebase = pendingBibleMarkRebase(record);
     const fields = record.sequence === 0 ? documentFieldTargets(record.working.resource.collection) : [];

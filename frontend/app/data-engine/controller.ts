@@ -797,7 +797,7 @@ export class EditorController {
             if (!retry) throw Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
             session.stageOutlinePointPlacementRetry(retry.move, retry.draft);
           }
-        } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
+        } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict' && stepAnswer.serviceOrderPlacementComparison) {
           const comparison = stepAnswer.serviceOrderPlacementComparison;
           const proposed = source.pending[stepRequest.id]?.value;
           if (!equalValues(proposed, decided.draft) || (comparison?.step?.id !== selectedStepMove.placement.stepId)) {
