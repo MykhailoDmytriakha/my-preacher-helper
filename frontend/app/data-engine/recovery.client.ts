@@ -67,7 +67,7 @@ const councilDateAction = fieldAction.extend({ before: fieldSchema, after: field
 const councilDateDraft = z.object({ generation: id, action: councilDateAction });
 const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
-  title: z.string().nullable(), ancestors: z.array(z.string().min(1)),
+  title: z.string().nullable(), ancestors: z.array(z.string().min(1)), removedPointId: z.string().min(1).max(128).optional(),
 });
 const unreadableExegeticalProof = exegeticalPointDraft.pick({ nodeId: true, kind: true, generation: true, ancestors: true });
 const unreadableExegeticalAddress = unreadableExegeticalProof.extend({ pendingAddition: z.literal(true).optional() });
@@ -284,7 +284,8 @@ function recoverPointEvidence(checkpoint: Fields, raw: unknown, confirmed: Resou
     if (nestsDeeperThan(item, MAX_PROOF_DEPTH)) return {};
     const draft = exegeticalPointDraft.safeParse(withoutUnreadableClock(item));
     const address = unreadableExegeticalProof.safeParse(item);
-    return { draft: draft.success ? draft.data : undefined, address: address.success ? address.data : undefined };
+    return { draft: draft.success ? draft.data : undefined, address: address.success ? address.data : undefined,
+      removedPointId: isFields(item) ? item.removedPointId : undefined };
   }) ?? [];
   const recovered = recoverExegeticalPointProofs(confirmed, checkpoint.draft as DocumentData, pendingOpening, points, !list);
   if (!recovered?.damaged) return checkpoint;

@@ -708,6 +708,75 @@ it('asks about the whole removed branch when the stored proof points to its chil
   expect(restored.checkpoint().draft?.preparation).toEqual({ exegeticalPlan: [branch, sibling], authorIntent: 'Private words' });
 });
 
+it.each(['current', 'legacy', 'invalid identity witness', 'unreadable legacy revision'] as const)('holds two removed siblings when their %s observations name the same point', async format => {
+  const resource = { collection: 'sermons', id: 'damaged-sibling-removals' };
+  const a = { id: 'a', title: 'First point' }, b = { id: 'b', title: 'Second point' };
+  const c = { id: 'c', title: 'Independent point' };
+  const value = { userId: 'owner', preparation: { exegeticalPlan: [a, b, c], authorIntent: 'Opening words' } };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  const removing = (nodeId: string, plan: typeof a[]) => session.edit({ ...value, preparation: { ...value.preparation, exegeticalPlan: plan } },
+    undefined, { field: 'exegetical-point', nodeId, intent: 'remove', time: null });
+  removing(a.id, [b, c]);
+  removing(b.id, [c]);
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.exegeticalPointDrafts).toHaveLength(2);
+  if (format === 'legacy' || format === 'unreadable legacy revision') {
+    for (const proof of checkpoint.exegeticalPointDrafts ?? []) delete loose(proof).removedPointId;
+  }
+  const damaged = loose(checkpoint.exegeticalPointDrafts?.find(proof => proof.nodeId === a.id));
+  damaged.nodeId = b.id;
+  if (format === 'invalid identity witness') damaged.removedPointId = 15;
+  if (format === 'unreadable legacy revision') damaged.observedRevision = 'unreadable';
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] })).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  const held = recovered.unreadableExegeticalProofs?.map(address => address.nodeId).sort();
+  const legacy = format === 'legacy' || format === 'unreadable legacy revision';
+  expect(held).toEqual(legacy ? [a.id, b.id] : [a.id]);
+  const kept = recovered.exegeticalPointDrafts?.map(proof => proof.nodeId);
+  expect(kept).toEqual(legacy ? undefined : [b.id]);
+  expect((await save(recovered)).code).toBe('resolve-version-first');
+  for (const choice of ['local', 'stored']) {
+    const reopened = DataSession.restore(recovered);
+    if (choice === 'local') reopened.keepLocal();
+    else reopened.acceptRemote(reopened.checkpoint().draft);
+    const expected = choice === 'local' ? [c] : legacy ? [a, b, c] : [a, c];
+    expect(reopened.checkpoint().draft?.preparation).toEqual({ exegeticalPlan: expected, authorIntent: 'Opening words' });
+    expect(reopened.checkpoint().exegeticalPointDrafts?.map(proof => proof.nodeId)).toEqual(kept);
+  }
+});
+
+it.each(['current', 'legacy', 'duplicated current binding'] as const)('discards an acknowledged removal alias beside a later %s observation', async format => {
+  const resource = { collection: 'sermons', id: 'acknowledged-removal-alias' };
+  const a = { id: 'a', title: 'First point' }, b = { id: 'b', title: 'Second point' };
+  const c = { id: 'c', title: 'Independent point' };
+  const value = { userId: 'owner', preparation: { exegeticalPlan: [a, b, c] } };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  const document = (exegeticalPlan: typeof a[]) => ({ ...value, preparation: { exegeticalPlan } });
+  session.edit(document([b, c]), undefined, { field: 'exegetical-point', nodeId: a.id, intent: 'remove', time: null });
+  session.registerCommit('remove-first', session.checkpoint().editGeneration, document([b, c]));
+  session.accept({ kind: 'acknowledged', operationId: 'remove-first', snapshot: { resource, value: document([b, c]),
+    metadata: { ...metadata, revision: 2, operationId: 'remove-first' } } });
+  const time = { earliestMs: T, latestMs: T + 5 };
+  session.edit(document([c]), undefined, { field: 'exegetical-point', nodeId: b.id, intent: 'remove', time });
+  const checkpoint = session.checkpoint();
+  const older = loose(checkpoint.exegeticalPointDrafts?.find(action => action.nodeId === a.id));
+  if (format === 'duplicated current binding') older.removedPointId = b.id;
+  else delete older.removedPointId;
+  older.nodeId = b.id;
+  if (format === 'legacy') delete loose(checkpoint.exegeticalPointDrafts?.[0]).removedPointId;
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] })).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  if (format === 'current') {
+    expect(recovered.unreadableExegeticalProofs).toBeUndefined();
+    expect(recovered.exegeticalPointDrafts).toEqual([expect.objectContaining({ nodeId: b.id, observedRevision: 2, time })]);
+  } else {
+    expect(recovered.unreadableExegeticalProofs).toEqual([{ nodeId: b.id, kind: 'remove', generation: 'g', ancestors: [] }]);
+    expect(recovered.exegeticalPointDrafts).toBeUndefined();
+  }
+});
+
 it.each(['acknowledged', 'cancelled'] as const)('reviews an unreadable new point title after its first Save is %s', async disposition => {
   const resource = { collection: 'sermons', id: 'pending-point-proof' };
   const sibling = { id: 'sibling', title: 'Other point', children: [] };

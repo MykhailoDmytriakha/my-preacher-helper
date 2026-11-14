@@ -12,7 +12,7 @@ import type { DocumentData, FieldChange, ResourceSnapshot } from './types';
 
 export type ExegeticalPointEdit = { kind: 'exegetical-point'; nodeId: string; intent: 'title' | 'remove' };
 export type ExegeticalPointEditStamp = { field: 'exegetical-point'; nodeId: string; intent: ExegeticalPointEdit['intent']; time: ActionTime | null };
-type Draft = ExegeticalPointStamp & { generation: string; title: string | null; ancestors: string[] };
+type Draft = ExegeticalPointStamp & { generation: string; title: string | null; ancestors: string[]; removedPointId?: string };
 const LIMIT = 32;
 
 function matchesResult(plan: NonNullable<ReturnType<typeof exegeticalPlan>>, action: Draft) {
@@ -21,7 +21,7 @@ function matchesResult(plan: NonNullable<ReturnType<typeof exegeticalPlan>>, act
 }
 
 export type UnreadableExegeticalProof = Pick<Draft, 'nodeId' | 'kind' | 'generation' | 'ancestors'> & { pendingAddition?: true };
-type RecoveryPoint = { address?: UnreadableExegeticalProof; draft?: Draft };
+type RecoveryPoint = { address?: UnreadableExegeticalProof; draft?: Draft; removedPointId?: unknown };
 type Plan = NonNullable<ReturnType<typeof exegeticalPlan>>;
 type RecoveredPoint =
   | { kind: 'readable'; action: Draft }
@@ -33,11 +33,23 @@ function addressedPoint(plan: Plan, address: UnreadableExegeticalProof) {
   return point && equalValues(point.ancestors, address.ancestors) ? point : undefined;
 }
 
-function recoverPoint({ address, draft: action }: RecoveryPoint, opening: Plan, local: Plan, pending: Plan | undefined,
-  metadata: NonNullable<ResourceSnapshot['metadata']>): RecoveredPoint {
+function sharesLegacyRemovalScope(opening: Plan, local: Plan, address: UnreadableExegeticalProof): boolean {
+  const point = opening.points.entries.get(address.nodeId);
+  if (!point) return false;
+  return (opening.points.orders.get(point.parent) ?? []).some(id => id !== address.nodeId
+    && changedExegeticalPoint(opening, local, id) === 'remove');
+}
+
+function recoverPoint({ address, draft: action, removedPointId }: RecoveryPoint, opening: Plan, local: Plan, pending: Plan | undefined,
+  metadata: NonNullable<ResourceSnapshot['metadata']>, duplicateAddress: boolean): RecoveredPoint {
   if (!address || address.generation !== metadata.generation) return { kind: 'unidentified', damaged: true };
   const current = exegeticalPointVersion(local, address.nodeId);
   const before = addressedPoint(opening, address), queued = pending && addressedPoint(pending, address);
+  if (address.kind === 'remove') {
+    if (removedPointId !== undefined && removedPointId !== address.nodeId) return { kind: 'unidentified', damaged: true };
+    if (removedPointId === undefined && (duplicateAddress || sharesLegacyRemovalScope(opening, local, address)
+      || (pending && sharesLegacyRemovalScope(pending, local, address)))) return { kind: 'unidentified', damaged: true };
+  }
   const changedTitle = (basis: typeof before) => basis && current?.point.title !== basis.point.title;
   const explainsDraft = address.kind === 'remove' ? before || queued : changedTitle(before) || changedTitle(queued);
   const matches = action && action.observedRevision <= metadata.revision && matchesResult(local, action);
@@ -83,9 +95,24 @@ export function recoverExegeticalPointProofs(confirmed: ResourceSnapshot, draft:
   const held = new Map<string, UnreadableExegeticalProof>();
   let findLostAddress = wholeListUnreadable;
   let damaged = wholeListUnreadable;
+  const addressCounts = new Map<string, number>();
+  for (const { address } of proofs) {
+    if (address?.generation === metadata.generation) addressCounts.set(address.nodeId, (addressCounts.get(address.nodeId) ?? 0) + 1);
+  }
   for (const proof of proofs) {
-    const point = recoverPoint(proof, opening, local, pending, metadata);
-    if (point.kind === 'readable') readable.set(point.action.nodeId, point.action);
+    const duplicate = proof.address !== undefined && (addressCounts.get(proof.address.nodeId) ?? 0) > 1;
+    const point = recoverPoint(proof, opening, local, pending, metadata, duplicate);
+    if (point.kind === 'readable') {
+      const { action } = point;
+      if (action.kind === 'remove' && (readable.has(action.nodeId) || held.has(action.nodeId))) {
+        // Two complete removals cannot own the same point in a healthy checkpoint.
+        readable.delete(action.nodeId);
+        held.set(action.nodeId, { nodeId: action.nodeId, kind: action.kind, generation: action.generation, ancestors: action.ancestors });
+        damaged = true;
+      } else {
+        readable.set(action.nodeId, action);
+      }
+    }
     if (point.kind === 'held') {
       held.set(point.address.nodeId, point.address);
       damaged = true;
@@ -175,7 +202,8 @@ export function stageExegeticalPoint(checkpoint: SessionCheckpoint, next: Docume
   const point = exegeticalPointVersion(opening, stamp.nodeId)!;
   const title = exegeticalPointVersion(plan, stamp.nodeId)?.point.title;
   const action = { nodeId: stamp.nodeId, kind: stamp.intent, observedRevision: basis.revision, time, generation: metadata.generation,
-    title: typeof title === 'string' ? title : null, ancestors: point.ancestors };
+    title: typeof title === 'string' ? title : null, ancestors: point.ancestors,
+    ...(stamp.intent === 'remove' && { removedPointId: point.point.id as string }) };
   return [action, ...previous.filter(item => item.nodeId !== stamp.nodeId)].slice(0, LIMIT);
 }
 
