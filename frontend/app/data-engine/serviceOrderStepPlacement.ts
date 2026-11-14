@@ -17,3 +17,13 @@ export function retainedStepOrderChanged(before: DocumentData[], after: Document
   const newer = new Set(after.map(step => step.id));
   return !equalValues(before.map(step => step.id).filter(id => newer.has(id)), after.map(step => step.id).filter(id => older.has(id)));
 }
+
+/** A returned anchor is new server data when both the predecessor and the visible draft lacked it. */
+export function returnedPlacementAnchors(shown: unknown, local: unknown, stored: unknown,
+  anchors: readonly (string | null)[]): string[] {
+  const prior = placementSteps(shown);
+  const draft = placementSteps(local), saved = placementSteps(stored);
+  if (!prior || !draft || !saved) return [];
+  return anchors.filter((id): id is string => id !== null && !prior.some(row => row.id === id) && !draft.some(row => row.id === id)
+    && saved.some(row => row.id === id));
+}

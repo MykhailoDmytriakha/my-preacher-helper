@@ -1,4 +1,4 @@
-import { hasOutlinePointOrder } from '@/utils/outlineDnd';
+import { hasOutlinePointOrder, SECTION_KEYS } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
@@ -17,7 +17,7 @@ import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint, UNREADABLE_EXEGETICAL_PROOF, unreadableExegeticalChoice, type UnreadableExegeticalProof } from './exegeticalPointCapture';
-import { readField, writeField } from './fieldValues';
+import { object, readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
@@ -32,7 +32,7 @@ import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, me
 import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
-import { placementSteps } from './serviceOrderStepPlacement';
+import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
@@ -78,6 +78,27 @@ const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
 export const UNREADABLE_ROW_PROOF = 'unreadable-row-proof';
 const unreadablePointPlanPath = ['preparation', 'exegeticalPlan'];
+
+function returnedPlacementAncestor(request: CommitRequest, base: DocumentData, prior: DocumentData | null, draft: DocumentData,
+  saved: DocumentData | null): DocumentData {
+  const step = request.serviceOrderStepPlacement;
+  if (step) {
+    const { previous, next } = step.placement.destination;
+    const returned = returnedPlacementAnchors(prior?.steps, draft.steps, saved?.steps, [previous, next]);
+    const steps = placementSteps(base.steps);
+    return returned.length && steps ? { ...base, steps: steps.filter(row => !returned.includes(row.id)) } : base;
+  }
+  const move = request.outlinePointPlacement;
+  const field = move && outlinePlacementField(request.baseline.resource.collection);
+  if (!move || !field) return base;
+  const [opening, shown, proposed, stored] = [base, prior, draft, saved].map(data => data?.[field]);
+  if (!object(opening) || !object(shown) || !object(proposed) || !object(stored)) return base;
+  const { section, previous, next } = move.placement.destination;
+  const all = (outline: DocumentData) => SECTION_KEYS.flatMap(key => placementSteps(outline[key]) ?? []);
+  const returned = returnedPlacementAnchors(all(shown), all(proposed), all(stored), [previous, next]);
+  const rows = placementSteps(opening[section]);
+  return returned.length && rows ? { ...base, [field]: { ...opening, [section]: rows.filter(row => !returned.includes(row.id)) } } : base;
+}
 
 export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
   return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length);
@@ -341,7 +362,9 @@ export class DataSession {
       // The exact move took only the position. Save the additional typing in its own generation.
       this.state.editGeneration = this.reserveEditGeneration();
     }
-    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
+    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) {
+      this.accept(request.result, request.atomic?.kind === 'analysis-reshape', request);
+    }
     return request.state === 'acknowledged';
   }
 
@@ -406,7 +429,7 @@ export class DataSession {
    * Queued, sending and unknown operations must retain their identity until acknowledged. */
   release(operationId: string): void { delete this.state.pending[operationId]; }
 
-  accept(result: CommandResult, wholeAnalysisFrame = false): void {
+  accept(result: CommandResult, wholeAnalysisFrame = false, request?: CommitRequest): void {
     const submitted = this.state.pending[result.operationId];
     if (!submitted) return;
     if (result.kind !== 'acknowledged') {
@@ -447,7 +470,11 @@ export class DataSession {
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
     const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
-    const acceptedAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
+    const rowAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
+    const acceptedAncestor = !newerSubmitted && this.state.editGeneration === submitted.generation
+      && request?.predecessor && rowAncestor && this.state.draft
+      && this.state.confirmed.metadata?.generation === accepted.metadata?.generation
+      ? returnedPlacementAncestor(request, rowAncestor, this.state.confirmed.value, this.state.draft, accepted.value) : rowAncestor;
     const horizon = newerSubmitted ? newerSubmitted.generation : submitted.generation;
     const outlineMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.outlinePointPlacement

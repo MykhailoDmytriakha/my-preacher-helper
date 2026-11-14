@@ -420,6 +420,8 @@ it.each(['step', 'outline'] as const)('%s delivers sibling words separately when
     const stored = await h.server();
     expect(stored?.title).toBe(words);
     expect(order(family, stored)).toEqual(order(family, h.movedDraft));
-    expect(h.session.checkpoint()).toMatchObject({ pending: {}, conflicts: [], draft: { title: words } });
+    const settled = h.session.checkpoint();
+    expect(order(family, settled.draft)).toEqual(order(family, stored));
+    expect(settled).toMatchObject({ pending: {}, conflicts: [], dirty: false, draft: { title: words } });
   } finally { h.stop(); }
 });
