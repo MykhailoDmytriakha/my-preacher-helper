@@ -347,6 +347,35 @@ describe('one action on a document no screen has open', () => {
       expect(harness.server.value?.sourceNoteIds).toEqual(['note-a']);
     });
 
+    it('takes a service rename started while the user’s earlier choice is being applied', async () => {
+      const service = { collection: 'serviceOrders', id: 'service-1' };
+      const snapshot: ResourceSnapshot = { ...savedSermon, resource: service,
+        value: { userId: 'owner', title: 'Service name', rank: 1000, steps: [] } };
+      const harness = documentEngineHarness(snapshot);
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+      const wrapper = ({ children }: { children: React.ReactNode }) => <DataEngineProvider>{children}</DataEngineProvider>;
+      const { result } = renderHook(() => ({ banner: useDocumentActions(), form: useDocumentActions() }), { wrapper });
+      await waitFor(() => expect(result.current.form.ready).toBe(true));
+      harness.silentRemote({ title: 'Edited on the laptop' });
+      await act(async () => { await result.current.form.commit(service, current => ({ ...current!, title: 'Edited on the phone' })); });
+      await waitFor(async () => { await settleEngine(); expect(await harness.engine.listRecoverable(service)).toHaveLength(1); });
+      const earlierReads = harness.engine.listRecoverable.bind(harness.engine);
+      let release!: () => void;
+      const readGate = new Promise<void>(resolve => { release = resolve; });
+      const delayed = jest.spyOn(harness.engine, 'listRecoverable').mockImplementationOnce(async target => {
+        await readGate;
+        return earlierReads(target);
+      });
+      const choice = result.current.banner.resolve(service, 'mine');
+      const rename = result.current.form.submit(service, { kind: 'update', update: current => ({ ...current!, title: 'Newest words' }) });
+      const outcome = rename.then(() => 'submitted', error => (error as { code?: string }).code);
+      try {
+        await act(async () => { await settleEngine(); release(); await choice; });
+        expect(await outcome).toBe('submitted');
+        await waitFor(async () => { await settleEngine(); expect(harness.server.value?.title).toBe('Newest words'); });
+      } finally { release(); delayed.mockRestore(); }
+    });
+
     it('takes the stored version when asked, dropping this device\'s draft', async () => {
       const { harness, result } = await conflicted();
       await act(async () => { await result.current.resolve(resource, 'theirs'); });

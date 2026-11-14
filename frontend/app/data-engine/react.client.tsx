@@ -444,6 +444,10 @@ export function isOneShotRecord(record: EditorRecord): boolean {
 }
 
 const decisionRequired = () => Object.assign(new Error('An earlier change to this document waits for a decision'), { code: 'decision-required' });
+
+// A banner and an editor can share a document without sharing a hook instance.
+const applyingDocumentChoices = new WeakMap<BrowserDataEngine, Map<string, Promise<number>>>();
+const documentChoiceKey = (owner: string, { collection, id }: ResourceRef) => JSON.stringify([owner, collection, id]);
 const remoteDeleted = (record: EditorRecord) => {
   const candidate = record.checkpoint.remoteCandidate;
   return Boolean(candidate && (candidate.value === null || candidate.metadata?.deleted));
@@ -496,7 +500,13 @@ export function useDocumentActions() {
     if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
     // A document that waits for a decision takes no further one-shot change: each attempt
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
-    if (!creating && (await waitingFor(resource)).length) throw decisionRequired();
+    if (!creating) {
+      const applying = applyingDocumentChoices.get(browser)?.get(documentChoiceKey(owner, resource));
+      // Allow a Save to follow a choice already made. An unanswered conflict still blocks it.
+      if (applying) await applying.catch(() => undefined);
+      if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
+      if ((await waitingFor(resource)).length) throw decisionRequired();
+    }
     const editor = await openFor(resource, browser.editorId(resource, ACTION_SLOT), creating);
     try { return await action(editor); } finally { editor.close({ flush: false }); }
   }, [browser, owner, waitingFor, openFor]);
@@ -569,62 +579,76 @@ export function useDocumentActions() {
         && sourceNoteLinkComparison(checkpoint));
       const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes)
         ? actionClock.capture(owner) ?? null : undefined;
-      let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
-      const sharedAnswer = (comparedSourceNotes && sourceNoteChoiceRecord(waiting))
-        || (resource.collection === 'studyNotes' && exactField && commentPlaceChoiceRecord(waiting));
-      if (sharedAnswer) waiting = [sharedAnswer];
-      const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
-        && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
-      if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
-        new Error('The shown saved copy changed'), { code: 'decision-changed' });
-      let taken = 0;
-      if (!exactField && (scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForStudyNoteReferenceReview(checkpoint))) {
-        throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
+      const key = documentChoiceKey(owner, resource);
+      let applying = applyingDocumentChoices.get(browser);
+      if (!applying) {
+        applying = new Map();
+        applyingDocumentChoices.set(browser, applying);
       }
-      if (scope && choice === 'theirs' && !exactField) {
-        // Modern copies settle through the same request-scoped projection as screen drafts.
-        taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
-        // Only directly owned legacy commands still need an editor; never reopen cancelled modern work.
-        waiting = waiting.filter(({ record }) => shown(record) && record.prepared
-          && isDirectLegacyDocumentIntent(Object.keys(record.checkpoint.pending), record.prepared.operationId)
-          && scope.operationIds.includes(record.prepared.operationId));
-      }
-      if (scope && choice === 'mine' && waiting.some(({ record }) => !shown(record))) throw Object.assign(
-        new Error('The shown saved copy changed'), { code: 'decision-changed' });
-      if (!waiting.length) return taken;
-      if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
-        throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
-      }
-      for (const { record } of waiting) {
-        const editor = await openFor(resource, record.editorId);
-        try {
-          const place = commentPlaceChoiceOpening(record.checkpoint);
-          const held = Object.keys(record.checkpoint.pending);
-          const capturedByChoice = place && held.length > 0 && !isDirectLegacyDocumentIntent(held, record.prepared?.operationId);
-          if (choice === 'mine') {
-            const seen = commentKindChoiceOpening(record.checkpoint);
-            if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
-            const time = seen || place ? actionClock.capture(owner) ?? null : null;
-            await editor.keepLocal(scope ? shown(record) : undefined, undefined, place ? time : placementTime);
-            if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
-            else if (place && !capturedByChoice) {
-              await editor.commit(value => value, { kind: 'comment-place', commentPlace: { time, seen: place, reviewed: true } });
-            } else if (!capturedByChoice && !comparedSourceNotes) {
-              const { checkpoint } = editor.getState();
-              if (checkpoint.dirty && !Object.keys(checkpoint.pending).length) await editor.save();
+      const applyChoice = async () => {
+        if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
+        let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
+        const sharedAnswer = (comparedSourceNotes && sourceNoteChoiceRecord(waiting))
+          || (resource.collection === 'studyNotes' && exactField && commentPlaceChoiceRecord(waiting));
+        if (sharedAnswer) waiting = [sharedAnswer];
+        const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
+          && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
+        if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
+          new Error('The shown saved copy changed'), { code: 'decision-changed' });
+        let taken = 0;
+        if (!exactField && (scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForStudyNoteReferenceReview(checkpoint))) {
+          throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
+        }
+        if (scope && choice === 'theirs' && !exactField) {
+          // Modern copies settle through the same request-scoped projection as screen drafts.
+          taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
+          // Only directly owned legacy commands still need an editor; never reopen cancelled modern work.
+          waiting = waiting.filter(({ record }) => shown(record) && record.prepared
+            && isDirectLegacyDocumentIntent(Object.keys(record.checkpoint.pending), record.prepared.operationId)
+            && scope.operationIds.includes(record.prepared.operationId));
+        }
+        if (scope && choice === 'mine' && waiting.some(({ record }) => !shown(record))) throw Object.assign(
+          new Error('The shown saved copy changed'), { code: 'decision-changed' });
+        if (!waiting.length) return taken;
+        if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
+          throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
+        }
+        for (const { record } of waiting) {
+          const editor = await openFor(resource, record.editorId);
+          try {
+            const place = commentPlaceChoiceOpening(record.checkpoint);
+            const held = Object.keys(record.checkpoint.pending);
+            const capturedByChoice = place && held.length > 0 && !isDirectLegacyDocumentIntent(held, record.prepared?.operationId);
+            if (choice === 'mine') {
+              const seen = commentKindChoiceOpening(record.checkpoint);
+              if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
+              const time = seen || place ? actionClock.capture(owner) ?? null : null;
+              await editor.keepLocal(scope ? shown(record) : undefined, undefined, place ? time : placementTime);
+              if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
+              else if (place && !capturedByChoice) {
+                await editor.commit(value => value, { kind: 'comment-place', commentPlace: { time, seen: place, reviewed: true } });
+              } else if (!capturedByChoice && !comparedSourceNotes) {
+                const { checkpoint } = editor.getState();
+                if (checkpoint.dirty && !Object.keys(checkpoint.pending).length) await editor.save();
+              }
+              continue;
             }
-            continue;
-          }
-          await editor.acceptRemote(scope ? shown(record) : undefined);
-          if (comparedSourceNotes || capturedByChoice) continue;
-          const { checkpoint } = editor.getState();
-          if (Object.keys(checkpoint.pending).length) continue;
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
-            || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
-          else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
-        } finally { editor.close({ flush: false }); }
-      }
-      return taken + waiting.length;
+            await editor.acceptRemote(scope ? shown(record) : undefined);
+            if (comparedSourceNotes || capturedByChoice) continue;
+            const { checkpoint } = editor.getState();
+            if (Object.keys(checkpoint.pending).length) continue;
+            if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || serviceStepConflict(record.checkpoint)?.field === 'scriptureRefs'
+              || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
+            else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
+          } finally { editor.close({ flush: false }); }
+        }
+        return taken + waiting.length;
+      };
+      const previous = applying.get(key);
+      const settling = (previous ?? Promise.resolve(0)).catch(() => undefined).then(applyChoice);
+      applying.set(key, settling);
+      try { return await settling; }
+      finally { if (applying.get(key) === settling) applying.delete(key); }
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);
 }

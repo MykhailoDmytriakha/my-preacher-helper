@@ -42,6 +42,7 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
@@ -1319,7 +1320,10 @@ export class CommitQueue {
         changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
         serviceOrderStepPlacement: stepMove.placement,
       };
-      return { ...record, command, submitted: record.intended, state: 'prepared' };
+      const source = placementSteps(record.working.value.steps);
+      const sentPosition = source && projectServiceOrderStep(source, stepMove.placement.stepId, stepMove.placement.destination);
+      const submitted = sentPosition ? { ...record.working.value, steps: sentPosition } : record.working.value;
+      return { ...record, command, submitted, state: 'prepared' };
     }
     const groupMove = record.sequence === 0 ? record.groupFlowStepPlacement : undefined;
     if (groupMove && record.working.value && groupMove.placement.queueId) {
@@ -1365,7 +1369,8 @@ export class CommitQueue {
           after: { exists: true, value: outlineMove.after } }],
         outlinePointPlacement: provenRevision ? { ...outlineMove.placement, observedRevision: provenRevision } : outlineMove.placement,
       };
-      return { ...record, command, submitted: record.intended, state: 'prepared' };
+      const submitted = projectResourceOutlinePoint(record.working.resource.collection, record.working.value, outlineMove) ?? record.working.value;
+      return { ...record, command, submitted, state: 'prepared' };
     }
     const markRebase = pendingBibleMarkRebase(record);
     const fields = record.sequence === 0 ? documentFieldTargets(record.working.resource.collection) : [];

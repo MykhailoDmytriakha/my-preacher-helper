@@ -42,7 +42,7 @@ const loose = (value: unknown) => value as Loose;
 let sequence = 0;
 type Outcome = { kind?: string; code?: string; commands: Loose[] };
 
-async function save(checkpoint: EditorRecord['checkpoint']): Promise<Outcome> {
+async function save(checkpoint: EditorRecord['checkpoint'], preceding = false): Promise<Outcome> {
   const commands: Loose[] = [];
   const transport = {
     read: async (_owner: string, resource: ResourceRef) => readDocument('owner', resource),
@@ -59,7 +59,15 @@ async function save(checkpoint: EditorRecord['checkpoint']): Promise<Outcome> {
     readConfirmed: resource => readDocument('owner', resource) });
   queue.setOwner('owner');
   try {
-    const request = await queue.save('old-editor', checkpoint);
+    let predecessorId: string | undefined;
+    if (preceding) {
+      const opening = new DataSession(checkpoint.confirmed);
+      opening.edit({ ...checkpoint.confirmed.value, title: 'Earlier queued name' });
+      const predecessor = (await queue.save('old-editor', opening.checkpoint()))!;
+      predecessorId = predecessor.id;
+      checkpoint = { ...checkpoint, editGeneration: checkpoint.editGeneration + 1 };
+    }
+    const request = await queue.save('old-editor', checkpoint, { predecessorId });
     await queue.drain(true);
     return { kind: (await queue.list()).find(item => item.id === request?.id)?.result?.kind, commands };
   } catch (error) {
@@ -173,7 +181,11 @@ const POINTS = [{ id: 'a', text: 'First', title: 'First', type: 'custom', subPoi
 const MOVED = [POINTS[1], POINTS[0]];
 
 describe.each(['rank', 'step', 'outline'] as const)('a recovered %s placement retry', family => {
-  it.each([['keeps the move', false], ['undoes the move', true]] as const)('then private words: the draft %s, the words are sent and kept', async (_label, undo) => {
+  it.each([
+    ['after reload', 'keeps the move', true, false, false], ['after reload', 'undoes the move', true, true, false],
+    ['on the same screen', 'keeps the move', false, false, false], ['on the same screen', 'undoes the move', false, true, false],
+    ['with an earlier Save still queued', 'keeps the move', false, false, true],
+  ] as const)('%s, then private words: the draft %s and the words survive', async (_mode, _label, reload, undo, preceding) => {
     const db = installWorldFirestore(() => T + 1000);
     const value: Loose = { userId: 'owner', title: 'Opening', createdAt: 'now', updatedAt: 'now', date: '2026-11-12', rank: 1, steps: POINTS,
       thoughts: [], verse: 'John 1:1', outline: { introduction: [], main: POINTS, conclusion: [] } };
@@ -194,18 +206,36 @@ describe.each(['rank', 'step', 'outline'] as const)('a recovered %s placement re
     const record: EditorRecord = { owner: 'owner', editorId: 'old-editor', prepared: null, unfinalized: [], checkpoint: session.checkpoint() };
 
     // Left and reopened: the recovered draft continues; then the person types.
-    const reopened = DataSession.restore((await throughDeviceStorage(record)).checkpoint);
+    const reopened = reload ? DataSession.restore((await throughDeviceStorage(record)).checkpoint) : session;
     const words = 'Private words after recovery';
-    reopened.edit({ ...(undo ? clone(value) : reopened.checkpoint().draft!), title: words } as DocumentData);
-    const outcome = await save((await throughDeviceStorage({ ...record, checkpoint: reopened.checkpoint() })).checkpoint);
+    const draft = undo ? clone(value) : reopened.checkpoint().draft!;
+    const rowWords = (rows: Loose[]) => rows.map(row => row.id === 'a' ? { ...row, title: words, text: words } : row);
+    // A placement-only command must not take credit for words in the same array as the move.
+    if (family === 'step') draft.steps = rowWords(draft.steps as Loose[]) as DocumentData[];
+    if (family === 'outline') {
+      const outline = draft.outline as { main: Loose[] };
+      draft.outline = { ...outline, main: rowWords(outline.main) } as DocumentData;
+    }
+    reopened.edit({ ...draft, title: words } as DocumentData);
+    const edited = reopened.checkpoint();
+    const outcome = await save(reload ? (await throughDeviceStorage({ ...record, checkpoint: edited })).checkpoint : edited, preceding);
 
     const moved = { rank: 'rank', step: 'steps', outline: 'outline' }[family];
     expect(outcome.kind).toBe('acknowledged');
-    expect(outcome.commands.map(command => (command.changes as Array<{ path: string[] }>).map(change => change.path)))
-      .toEqual([undo ? [['title']] : [['title'], [moved]]]);
+    const sentPaths = outcome.commands.flatMap(command => (command.changes as Array<{ path: string[] }>).map(change => change.path[0]));
+    const hasRowWords = family !== 'rank';
+    const sentPlacement = !undo && !reload;
+    const placementActions = outcome.commands.filter(command => command.serviceOrderPlacement || command.serviceOrderStepPlacement || command.outlinePointPlacement);
+    expect(placementActions).toHaveLength(Number(sentPlacement));
+    if (sentPlacement && hasRowWords) expect(JSON.stringify(placementActions[0].changes)).not.toContain(words);
+    expect(sentPaths).toContain('title');
+    expect(sentPaths.filter(path => path === moved)).toHaveLength(Number(!undo || hasRowWords) + Number(sentPlacement && hasRowWords));
     const server = (await readDocument('owner', resource)).value!;
     expect(server.title).toBe(words);
-    const order = family === 'rank' ? server.rank : (family === 'step' ? server.steps as Loose[] : (server.outline as { main: Loose[] }).main).map(point => point.id);
-    expect(order).toEqual(family === 'rank' ? (undo ? 1 : 4) : (undo ? ['a', 'b'] : ['b', 'a']));
+    const rows = family === 'step' ? server.steps as Loose[] : (server.outline as { main: Loose[] }).main;
+    if (hasRowWords) expect(rows.find(row => row.id === 'a')?.title).toBe(words);
+    const order = family === 'rank' ? server.rank : rows.map(point => point.id);
+    if (family === 'rank' && !undo && !reload) expect(order).toBeGreaterThan(3);
+    else expect(order).toEqual(family === 'rank' ? (undo ? 1 : 4) : (undo ? ['a', 'b'] : ['b', 'a']));
   });
 });

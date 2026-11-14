@@ -104,6 +104,16 @@ function templatePlacementBirthRevision(record: CommitRequest, predecessor: Comm
   return [pointId, destination.previous, destination.next].some(id => id !== null && !ids.has(id)) ? head.revision : undefined;
 }
 
+/** Rebase words that belong to the same Save after projecting its position on both copies. */
+function initializePlacement(record: CommitRequest, snapshot: ResourceSnapshot,
+  basis: DocumentData | null, placed: DocumentData | null): CommitRequest {
+  const merged = mergeDocumentFields(basis, record.value, placed);
+  const common = { ...record, initialized: true, working: snapshot };
+  if (merged.conflicts.length) return { ...common, state: 'conflict',
+    result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: merged.conflicts } };
+  return { ...common, intended: merged.value.exists ? merged.value.value as DocumentData : snapshot.value };
+}
+
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
   if (record.removalLineage) return initializePendingRemoval(record, records);
   const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
@@ -123,18 +133,21 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       if ((snapshot.metadata?.generation ?? null) !== record.serviceOrderPlacement.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
       }
-      return { ...record, initialized: true, working: snapshot,
-        intended: { ...snapshot.value, rank: record.serviceOrderPlacement.rank } };
+      const { rank } = record.serviceOrderPlacement;
+      return initializePlacement(record, snapshot,
+        predecessor.value && { ...predecessor.value, rank }, { ...snapshot.value, rank });
     }
     if (record.serviceOrderStepPlacement && snapshot.value) {
       const move = record.serviceOrderStepPlacement;
       if (move.generation !== null && snapshot.metadata?.generation !== move.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
       }
-      const steps = placementSteps(snapshot.value.steps);
-      const projected = steps && projectServiceOrderStep(steps, move.placement.stepId, move.placement.destination);
-      return { ...record, initialized: true, working: snapshot,
-        intended: projected ? { ...snapshot.value, steps: projected } : snapshot.value };
+      const placeStep = (document: DocumentData | null) => {
+        const steps = placementSteps(document?.steps);
+        const projected = steps && projectServiceOrderStep(steps, move.placement.stepId, move.placement.destination);
+        return projected ? { ...document, steps: projected } : document;
+      };
+      return initializePlacement(record, snapshot, placeStep(predecessor.value), placeStep(snapshot.value));
     }
     if (record.councilTopicPlacement && snapshot.value) {
       const move = record.councilTopicPlacement;
@@ -156,9 +169,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
       }
       const birthRevision = templatePlacementBirthRevision(record, predecessor, snapshot);
-      return { ...record, initialized: true, working: snapshot, ...legacyLineage,
-        ...(birthRevision && { outlinePointPlacementBirthRevision: birthRevision }),
-        intended: projectResourceOutlinePoint(snapshot.resource.collection, snapshot.value, move) ?? snapshot.value };
+      const placePoint = (document: DocumentData | null) =>
+        projectResourceOutlinePoint(snapshot.resource.collection, document, move) ?? document;
+      return { ...initializePlacement(record, snapshot, placePoint(predecessor.value), placePoint(snapshot.value)),
+        ...legacyLineage, ...(birthRevision && { outlinePointPlacementBirthRevision: birthRevision }) };
     }
     if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
       if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {

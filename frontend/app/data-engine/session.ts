@@ -1,3 +1,5 @@
+import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
+
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { keepReviewedAuthoredLists } from './authoredListChoice';
@@ -21,13 +23,15 @@ import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfter
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
-import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
+import { outlinePlacementField } from './outlinePlacementResource';
+import { alignPendingOutlinePointPlacements, projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
@@ -150,9 +154,28 @@ export class DataSession {
     const planActions = stageExegeticalPoint(this.state, value, shown, autosaveStamp?.field === 'exegetical-point' ? autosaveStamp : undefined);
     if (planActions) this.state.exegeticalPointDrafts = planActions;
     else delete this.state.exegeticalPointDrafts;
+    this.clearChangedPlacementRetries(value);
     this.state.draft = copy(value);
     this.state.editGeneration = generation;
-    this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+    this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
+      || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
+  }
+
+  private clearChangedPlacementRetries(value: DocumentData | null): void {
+    const { serviceOrderPlacementRetry: order, serviceOrderStepPlacementRetry: step, outlinePointPlacementRetry: outline } = this.state;
+    if (order && value?.rank !== order.rank) delete this.state.serviceOrderPlacementRetry;
+    if (step) {
+      const steps = placementSteps(value?.steps);
+      if (!steps || projectServiceOrderStep(steps, step.placement.stepId, step.placement.destination) !== steps) {
+        delete this.state.serviceOrderStepPlacementRetry;
+      }
+    }
+    if (outline) {
+      const collection = this.state.confirmed.resource.collection;
+      const projected = projectResourceOutlinePoint(collection, value, outline);
+      const field = outlinePlacementField(collection);
+      if (!field || !projected || !equalValues(projected[field], value?.[field])) delete this.state.outlinePointPlacementRetry;
+    }
   }
 
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
