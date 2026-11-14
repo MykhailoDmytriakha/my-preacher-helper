@@ -70,6 +70,7 @@ const exegeticalPointDraft = fieldAction.extend({
   title: z.string().nullable(), ancestors: z.array(z.string().min(1)),
 });
 const unreadableExegeticalProof = exegeticalPointDraft.pick({ nodeId: true, kind: true, generation: true, ancestors: true });
+const unreadableExegeticalAddress = unreadableExegeticalProof.extend({ pendingAddition: z.literal(true).optional() });
 const accountPreferenceField = z.custom<AccountPreferenceField>(field => ACCOUNT_PREFERENCE_TARGETS.some(target => target.field === field));
 const checkpointConflict = z.object({
   path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema, code: z.string().optional(),
@@ -141,7 +142,7 @@ const recordSchema = z.object({
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'outlineTitleDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
-    unreadableExegeticalProofs: z.array(unreadableExegeticalProof).max(32).optional(),
+    unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
@@ -288,7 +289,7 @@ function recoverPointEvidence(checkpoint: Fields, raw: unknown, confirmed: Resou
   const recovered = recoverExegeticalPointProofs(confirmed, checkpoint.draft as DocumentData, pendingOpening, points, !list);
   if (!recovered?.damaged) return checkpoint;
   dropped.push('exegeticalPointDrafts');
-  const held = unreadableExegeticalProof.array().max(32).safeParse(checkpoint.unreadableExegeticalProofs ?? []);
+  const held = unreadableExegeticalAddress.array().max(32).safeParse(checkpoint.unreadableExegeticalProofs ?? []);
   const addresses = new Map((held.success ? held.data : []).map(address => [address.nodeId, address]));
   for (const address of recovered.held) addresses.set(address.nodeId, address);
   return { ...checkpoint, exegeticalPointDrafts: recovered.readable.length ? recovered.readable : undefined,

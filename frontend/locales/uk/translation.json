@@ -263,6 +263,7 @@
     "exegeticalPointTitle": "Пункт екзегетичного плану",
     "exegeticalPointMultipleConflicts": "Є й інші конфліктні правки. Цей вибір застосовується до всіх конфліктів.",
     "exegeticalPointRemoved": "Пункт видалено",
+    "exegeticalPointNotSaved": "Пункт не збережено",
     "exegeticalPointRemove": "Видалити пункт",
     "exegeticalPointKeepMine": "Залишити мій пункт",
     "exegeticalPointKeepSaved": "Залишити збережений пункт",

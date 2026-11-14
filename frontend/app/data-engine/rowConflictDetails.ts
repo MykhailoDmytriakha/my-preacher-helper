@@ -147,12 +147,13 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
         if (!choice) return [];
         const { mine, theirs } = choice.conflict;
         const title = (value: typeof mine) => (value.value as DocumentData | undefined)?.title as string | undefined;
-        return [{ mine: title(mine) ?? null, stored: title(theirs) ?? null, localAvailable: choice.localAvailable }];
+        return [{ mine: title(mine) ?? null, stored: title(theirs) ?? null, localAvailable: choice.localAvailable,
+          pendingAddition: choice.pendingAddition }];
       }
       const choice = readExegeticalPointChoice(opening, local, saved, id);
       if (!choice) return [];
       return [{ mine: (choice.mine?.point.title as string | undefined) ?? null,
-        stored: (choice.saved?.point.title as string | undefined) ?? null, localAvailable: true }];
+        stored: (choice.saved?.point.title as string | undefined) ?? null, localAvailable: true, pendingAddition: false }];
     });
     if (versions.length !== points.length) return undefined;
     const identity = JSON.stringify([points, versions, remoteCandidate.metadata, checkpoint.editGeneration]);

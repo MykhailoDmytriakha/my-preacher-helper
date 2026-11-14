@@ -65,6 +65,12 @@ export function exegeticalPointVersion(plan: Plan, id: string): ExegeticalPointV
     siblings: plan.points.orders.get(found.parent) ?? [] } : null;
 }
 
+export function rawExegeticalBranch(plan: Plan, version: ExegeticalPointVersion): DocumentData {
+  let nodes = plan.nodes;
+  for (const id of version.ancestors) nodes = (nodes.find(node => (node as DocumentData).id === id) as DocumentData)[CHILDREN] as Json[];
+  return nodes.find(node => (node as DocumentData).id === version.point.id) as DocumentData;
+}
+
 function compatibleScope(plan: Plan, path: string[]) {
   return path.every((id, index) => plan.points.entries.get(id)?.parent === (path[index - 1] ?? null));
 }
@@ -95,7 +101,7 @@ export function readExegeticalPointChoice(opening: Plan, local: Plan, stored: Pl
   if (localChange && ((storedChange && localChange !== storedChange) || returned || competingTitles)) return { before, mine, saved };
 }
 
-export function exegeticalPointConflict(id: string, opening: ExegeticalPointVersion, local: ExegeticalPointVersion | null,
+export function exegeticalPointConflict(id: string, opening: ExegeticalPointVersion | null, local: ExegeticalPointVersion | null,
   stored: ExegeticalPointVersion | null) {
   const field = (version: ExegeticalPointVersion | null): FieldValue => version ? { exists: true, value: version.point } : { exists: false };
   return { path: [ROOT, PLAN, 'id:' + id], base: field(opening), mine: field(local), theirs: field(stored) };

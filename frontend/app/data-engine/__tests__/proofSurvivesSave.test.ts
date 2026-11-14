@@ -708,7 +708,7 @@ it('asks about the whole removed branch when the stored proof points to its chil
   expect(restored.checkpoint().draft?.preparation).toEqual({ exegeticalPlan: [branch, sibling], authorIntent: 'Private words' });
 });
 
-it('waits to review an unreadable title of a point that is still in its first Save', async () => {
+it.each(['acknowledged', 'cancelled'] as const)('reviews an unreadable new point title after its first Save is %s', async disposition => {
   const resource = { collection: 'sermons', id: 'pending-point-proof' };
   const sibling = { id: 'sibling', title: 'Other point', children: [] };
   const point = { id: 'new-point', title: '', children: [] };
@@ -733,17 +733,25 @@ it('waits to review an unreadable title of a point that is still in its first Sa
   takeDroppedProof('exegeticalPointDrafts');
   const reopened = DataSession.restore(recovered);
   expect(reopened.checkpoint().conflicts).toEqual([]);
-  reopened.accept({ kind: 'acknowledged', operationId: 'first-save', snapshot: { resource, value: submitted,
-    metadata: { ...metadata, revision: 2, operationId: 'first-save' } } });
-  expect(reopened.checkpoint().draft?.preparation).toEqual(draft.preparation);
+  const savedSibling = { ...sibling, title: 'Newer saved neighbor' };
+  const savedPlan = disposition === 'cancelled' ? [savedSibling] : [savedSibling, point];
+  const saved = { resource, value: document(savedPlan), metadata: { ...metadata, revision: 2, operationId: 'next-version' } };
+  if (disposition === 'cancelled') {
+    reopened.observe(saved, { source: 'server' });
+    reopened.applyCommit({ ...first, state: 'cancelled', cancelledByChoice: true });
+  } else {
+    reopened.accept({ kind: 'acknowledged', operationId: 'first-save', snapshot: saved });
+  }
+  const kept = document([savedSibling, { ...point, title: privateTitle }], 'Independent private words');
+  expect(reopened.checkpoint().draft?.preparation).toEqual(kept.preparation);
   expect(reopened.checkpoint().conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:new-point']]);
   expect(reopened.prepare('next-save', 'owner')).toBeNull();
   const stored = DataSession.restore(reopened.checkpoint());
   stored.acceptRemote(stored.checkpoint().draft);
-  expect(stored.checkpoint().draft?.preparation).toEqual(document([sibling, point], 'Independent private words').preparation);
+  expect(stored.checkpoint().draft?.preparation).toEqual(document(savedPlan, 'Independent private words').preparation);
   expect(stored.prepare('independent-edit', 'owner')?.kind).toBe('update');
   reopened.keepLocal();
-  expect(reopened.checkpoint().draft?.preparation).toEqual(draft.preparation);
+  expect(reopened.checkpoint().draft?.preparation).toEqual(kept.preparation);
 });
 
 it.each(['title', 'remove'] as const)('holds a recovered exegetical %s when the original point revision is unreadable', async kind => {

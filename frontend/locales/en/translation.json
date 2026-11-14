@@ -259,6 +259,7 @@
     "exegeticalPointTitle": "Exegetical plan point",
     "exegeticalPointMultipleConflicts": "There are also other conflicting changes. This choice applies to all of them.",
     "exegeticalPointRemoved": "Point removed",
+    "exegeticalPointNotSaved": "Point not saved",
     "exegeticalPointRemove": "Remove point",
     "exegeticalPointKeepMine": "Keep my point",
     "exegeticalPointKeepSaved": "Keep saved point",

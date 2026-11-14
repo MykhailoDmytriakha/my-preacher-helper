@@ -1,5 +1,5 @@
 import { boundedActionTime } from './actionClock';
-import { changedExegeticalPoint, exegeticalPlan, exegeticalPointConflict, exegeticalPlanChange, exegeticalPointVersion, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
+import { changedExegeticalPoint, exegeticalPlan, exegeticalPointConflict, exegeticalPlanChange, exegeticalPointVersion, projectExegeticalPoint, rawExegeticalBranch, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { boundedRowId } from './rowFieldAction';
@@ -20,7 +20,7 @@ function matchesResult(plan: NonNullable<ReturnType<typeof exegeticalPlan>>, act
   return action.kind === 'remove' ? !point : point?.point.title === action.title && equalValues(point.ancestors, action.ancestors);
 }
 
-export type UnreadableExegeticalProof = Pick<Draft, 'nodeId' | 'kind' | 'generation' | 'ancestors'>;
+export type UnreadableExegeticalProof = Pick<Draft, 'nodeId' | 'kind' | 'generation' | 'ancestors'> & { pendingAddition?: true };
 type RecoveryPoint = { address?: UnreadableExegeticalProof; draft?: Draft };
 type Plan = NonNullable<ReturnType<typeof exegeticalPlan>>;
 type RecoveredPoint =
@@ -69,7 +69,7 @@ function pendingOnlyTitleChanges(opening: Plan, pending: Plan, local: Plan, gene
     if (known.has(nodeId) || !boundedRowId(nodeId) || opening.points.entries.has(nodeId)
       || changedExegeticalPoint(pending, local, nodeId) !== 'title') return [];
     const { ancestors } = exegeticalPointVersion(pending, nodeId)!;
-    return [{ nodeId, kind: 'title', generation, ancestors }];
+    return [{ nodeId, kind: 'title', generation, ancestors, pendingAddition: true }];
   });
 }
 
@@ -118,21 +118,27 @@ export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, addres
   const { nodeId, ancestors, kind } = address;
   const before = exegeticalPointVersion(opening, nodeId), mine = exegeticalPointVersion(local, nodeId);
   const saved = live ? exegeticalPointVersion(live, nodeId) : null;
-  if (!before || !equalValues(before.ancestors, ancestors) || (kind === 'remove' ? mine : !mine || !equalValues(mine.ancestors, ancestors))) return;
+  const pendingAddition = Boolean(address.pendingAddition && kind === 'title' && !before);
+  if ((!before && !pendingAddition) || (before && !equalValues(before.ancestors, ancestors))
+    || (kind === 'remove' ? mine : !mine || !equalValues(mine.ancestors, ancestors))) return;
   const apply = (value: DocumentData, side: 'opening' | 'mine'): DocumentData | undefined => {
     const tree = exegeticalPlan(value.preparation);
     if (!tree) return;
-    const selected = side === 'opening' ? before : mine;
-    const preparation = projectExegeticalPoint(value.preparation, tree, nodeId, ancestors, selected, kind === 'title' ? 'title' : 'branch');
+    const selected = side === 'opening' ? before : pendingAddition && mine
+      ? { ...mine, point: rawExegeticalBranch(local, mine) } : mine;
+    const mode = kind === 'title' && !pendingAddition ? 'title' : 'branch';
+    const preparation = projectExegeticalPoint(value.preparation, tree, nodeId, ancestors, selected, mode);
     return preparation && writeField(value, ['preparation'], preparation);
   };
   const sameBranch = saved && equalValues(saved.ancestors, ancestors);
-  const localAvailable = Boolean(stored.metadata?.generation === address.generation && live &&
-    (kind === 'title' ? sameBranch : (!saved || (sameBranch && equalValues(saved.point.children, before.point.children)))
-      && !before.ancestors.some(id => !live.points.entries.has(id))));
+  const canChooseLocal = live && (pendingAddition ? !saved && projectExegeticalPoint(stored.value?.preparation, live, nodeId, ancestors, mine)
+    : kind === 'title' ? sameBranch
+    : (!saved || (sameBranch && equalValues(saved.point.children, before?.point.children)))
+      && ancestors.every(id => live.points.entries.has(id)));
+  const localAvailable = Boolean(stored.metadata?.generation === address.generation && live && canChooseLocal);
   const conflict = { ...exegeticalPointConflict(nodeId, before, mine, saved), code: UNREADABLE_EXEGETICAL_PROOF };
-  return { conflict, localAvailable, apply,
-    reviewedTogether: (reviewed: typeof conflict) => kind === 'title'
+  return { conflict, localAvailable, pendingAddition, apply,
+    reviewedTogether: (reviewed: typeof conflict) => kind === 'title' && !pendingAddition
       ? (reviewed.mine.value as DocumentData)?.title === mine?.point.title : equalValues(reviewed.mine, conflict.mine) };
 }
 

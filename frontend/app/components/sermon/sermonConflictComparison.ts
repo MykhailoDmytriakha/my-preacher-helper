@@ -36,7 +36,7 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     const title = (value: string | null) => value === null ? t('dataSync.exegeticalPointRemoved') : value || t('dataSync.emptyField');
     const versions = { identity, valueKind: 'field' as const, title: t('dataSync.exegeticalPointTitle'),
       mine: comparison.versions.map(version => title(version.mine)).join('\n'),
-      stored: comparison.versions.map(version => title(version.stored)).join('\n'),
+      stored: comparison.versions.map(version => version.pendingAddition ? t('dataSync.exegeticalPointNotSaved') : title(version.stored)).join('\n'),
       keepMineDisabled: !comparison.localAvailable };
     if (!comparison.scoped) {
       return { ...versions, description: t('dataSync.exegeticalPointMultipleConflicts'),
@@ -45,8 +45,9 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     const [version] = comparison.versions;
     return { ...versions, scopedChoice: true, actions: {
         local: t(version.mine === null ? 'dataSync.exegeticalPointRemove' : 'dataSync.exegeticalPointKeepMine'),
-        stored: t(version.stored === null ? 'dataSync.exegeticalPointRemove' : 'dataSync.exegeticalPointKeepSaved'),
-        ...(version.stored === null && { confirmStored: 'dataSync.confirmStoredPointRemoval' }),
+        stored: t(version.pendingAddition ? 'dataSync.useStoredVersion'
+          : version.stored === null ? 'dataSync.exegeticalPointRemove' : 'dataSync.exegeticalPointKeepSaved'),
+        ...(version.stored === null && !version.pendingAddition && { confirmStored: 'dataSync.confirmStoredPointRemoval' }),
       } };
   }
   const date = (value: Json | undefined) => {
