@@ -15,6 +15,19 @@ jest.mock('@/components/ui/RichMarkdownToolbar', () => ({ RichMarkdownToolbar: (
 const original = 'Original paragraph.';
 const phone = '\n\nPhone paragraph.';
 
+it.each([false, true])('reconciles a confirmed append while preserving newer input, newer input=%s', hasNewerInput => {
+  const onChange = jest.fn();
+  const view = render(<RichMarkdownEditor value={original} onChange={onChange} />);
+  const editor = mountedEditor(view.container);
+  typeAtEnd(editor, ' Typed.');
+  const written = markdown(editor);
+  if (hasNewerInput) typeAtEnd(editor, ' Newer.');
+  const visibleBeforeAppend = markdown(editor);
+  const after = written + phone;
+  view.rerender(<RichMarkdownEditor value={after} observedAppend={{ before: written, after }} onChange={onChange} />);
+  expect(markdown(editor)).toBe(hasNewerInput ? visibleBeforeAppend : after);
+});
+
 it.each([false, true])('ACCEPTED LIMITATION: foreign arrival retires all Undo/Redo, earlier typing=%s', earlierTyping => {
   const onChange = jest.fn();
   const view = render(<RichMarkdownEditor value={original} onChange={onChange} />);

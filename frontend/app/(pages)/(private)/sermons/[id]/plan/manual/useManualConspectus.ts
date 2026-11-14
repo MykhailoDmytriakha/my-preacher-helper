@@ -18,6 +18,7 @@ import { usePlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
 
 import type { SermonSectionKey } from "../types";
+import type { ObservedTextAppend } from '@/components/ui/richMarkdownComposition';
 import type { Sermon, SermonOutline, SermonPoint } from "@/models/models";
 
 const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
@@ -48,6 +49,7 @@ interface UseManualConspectusParams {
 export interface ManualConspectus {
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
+  rescuedAppend?: { nodeId: string; append: ObservedTextAppend };
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -83,6 +85,7 @@ export function useManualConspectus({
   const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues } = useEditorValues();
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
   const rescuingNodes = useRef(new Set<string>());
+  const [rescuedAppend, setRescuedAppend] = useState<ManualConspectus["rescuedAppend"]>();
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
 
@@ -228,6 +231,8 @@ export function useManualConspectus({
   }, [baseline, t]);
 
   const setNodeContent = useCallback((nodeId: string, text: string) => {
+    contentRef.current = { ...contentRef.current, [nodeId]: text };
+    setRescuedAppend(previous => previous?.nodeId === nodeId ? undefined : previous);
     changeContentByNodeId((previous) => ({ ...previous, [nodeId]: text }));
     setModifiedNodeIds((previous) => ({ ...previous, [nodeId]: true }));
   }, [changeContentByNodeId]);
@@ -619,11 +624,16 @@ export function useManualConspectus({
     const outline = sermonRef.current?.outline;
     if (!outline) return;
 
-    const rescued = (contentByNodeId[subPointId] ?? "").trim();
-    const mergedParent = [contentByNodeId[pointId] ?? "", rescued]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join("\n\n");
+    const rescued = contentRef.current[subPointId] ?? "";
+    const openingParent = contentRef.current[pointId] ?? "";
+    const appendRescuedText = (parent: string) => {
+      if (!parent.trim()) return rescued;
+      // Match a whole Markdown block so a phrase inside another paragraph does not stand in for the child.
+      if (("\n\n" + parent + "\n\n").includes("\n\n" + rescued + "\n\n")) return parent;
+      const separator = parent.endsWith("\n\n") ? "" : parent.endsWith("\n") ? "\n" : "\n\n";
+      return parent + separator + rescued;
+    };
+    const mergedParent = appendRescuedText(openingParent);
 
     /**
      * ONE WRITE, NOT TWO — the rescue and the emptying travel together.
@@ -651,7 +661,7 @@ export function useManualConspectus({
      * the flag flipping is correct, because the parent really does hold
      * text now.
      */
-    const rescuing = rescued !== "" && mergedParent !== (contentByNodeId[pointId] ?? "");
+    const rescuing = Boolean(rescued.trim());
     rescuingNodes.current.add(pointId);
     rescuingNodes.current.add(subPointId);
     try {
@@ -677,19 +687,27 @@ export function useManualConspectus({
       rescuingNodes.current.delete(subPointId);
     }
 
-    changeContentByNodeId((previous) => {
-      const next = { ...previous, [pointId]: mergedParent };
-      delete next[subPointId];
-      return next;
-    });
+    if (rescuing) {
+      const parent = contentRef.current[pointId] ?? "";
+      const combined = appendRescuedText(parent);
+      setRescuedAppend({ nodeId: pointId, append: { before: parent, after: combined } });
+      contentRef.current = { ...contentRef.current, [pointId]: combined };
+      // Text Undo cannot restore the child. Apply its transferred paragraph as the new baseline.
+      setContentByNodeId(previous => ({ ...previous, [pointId]: combined }));
+      if (combined === mergedParent) settle({ [pointId]: mergedParent });
+    }
 
     const removed = await persistOutline(mapPoints(outline, (points) => points.map((point) => (
       point.id === pointId
         ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
         : point
     ))));
-    if (removed) detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
-  }, [changeContentByNodeId, contentByNodeId, detachThoughtsFrom, persistOutline, setContentByNodeId, t, writeText]);
+    if (removed) {
+      const remainingChildText = contentRef.current[subPointId];
+      if (!remainingChildText || remainingChildText === rescued) discardCells([subPointId]);
+      detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
+    }
+  }, [detachThoughtsFrom, discardCells, persistOutline, setContentByNodeId, settle, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
@@ -730,6 +748,7 @@ export function useManualConspectus({
   return {
     contentByNodeId,
     userActionValues,
+    rescuedAppend,
     savedNodeIds,
     modifiedNodeIds,
     pendingNodeIds,

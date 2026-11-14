@@ -324,7 +324,7 @@ it('regression pin: keeps an explicitly applied note-plan AI replacement undoabl
   } finally { mockNoteMode = false; }
 });
 
-it('regression pin: keeps the requested child-text rescue undoable in the mounted manual parent', async () => {
+it('keeps the rescued paragraph when text Undo cannot restore the deleted child', async () => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Original manual paragraph.', child: 'Child paragraph.' });
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
@@ -333,22 +333,84 @@ it('regression pin: keeps the requested child-text rescue undoable in the mounte
   const editor = mountedEditor(view.container);
   fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
   fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
-  await waitFor(() => expect(markdown(editor)).toBe('Original manual paragraph.\n\nChild paragraph.'));
+  await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+  const transferred = 'Original manual paragraph.\n\nChild paragraph.';
+  expect(markdown(editor)).toBe(transferred);
   expect(mountedEditor(view.container)).toBe(editor);
+  expect(undo(editor)).toBe(false);
+  expect(markdown(editor)).toBe(transferred);
+  typeAtEnd(editor, ' Then another edit.');
   expect(undo(editor)).toBe(true);
-  expect(markdown(editor)).toBe('Original manual paragraph.');
+  expect(markdown(editor)).toBe(transferred);
+  expect(harness.server.value?.planText).toMatchObject({ p1: transferred });
+  view.unmount();
+});
+
+it('moves the child once when its exact paragraph is already in the parent', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.\n\nChild paragraph.\n\nClosing.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  typeAtEnd(editor, ' Already typed.');
+  const opening = markdown(editor);
+  fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+  fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+  await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+  expect(markdown(editor)).toBe(opening);
+  expect(harness.server.value?.planText).toMatchObject({ p1: opening, child: '' });
+  expect(undo(editor)).toBe(false);
+  expect(screen.getByRole('button', { name: 'plan.save' })).toBeDisabled();
+  view.unmount();
 });
 
 let mockFailNextRescue = false;
+let mockWaitForRescue: (() => Promise<void>) | undefined;
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
   const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter');
   return { ...actual, useEnginePlanWriter: (...args: unknown[]) => {
     const result = actual.useEnginePlanWriter(...args);
-    return { ...result, writer: { ...result.writer, savePlanText: (...params: unknown[]) => {
-      if (mockFailNextRescue) { mockFailNextRescue = false; return Promise.reject(new Error('Injected pre-write storage refusal')); }
-      return result.writer.savePlanText(...params);
+    return { ...result, writer: { ...result.writer, savePlanText: async (...params: unknown[]) => {
+      if (mockFailNextRescue) { mockFailNextRescue = false; throw new Error('Injected pre-write storage refusal'); }
+      const resultPromise = result.writer.savePlanText(...params);
+      const pause = mockWaitForRescue;
+      mockWaitForRescue = undefined;
+      if (pause) await Promise.all([resultPromise, pause()]);
+      else await resultPromise;
     } } };
   } };
+});
+
+it('retains the text typed in the parent while its child text is being rescued', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  let release: (() => void) | undefined;
+  mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    const editor = mountedEditor(view.container);
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(release).toBeDefined());
+    await act(async () => {
+      editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Typed.');
+      expect(markdown(editor)).toBe('Opening. Typed.');
+      release!();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    expect(markdown(editor)).toBe('Opening. Typed.\n\nChild paragraph.');
+    typeAtEnd(editor, ' Later.');
+    fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+    await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening. Typed.\n\nChild paragraph. Later.' }));
+  } finally {
+    release?.();
+    mockWaitForRescue = undefined;
+    view.unmount();
+  }
 });
 
 it('B80 a refused local child deletion must not opt a later remote rescue into Undo and erase it on Save', async () => {

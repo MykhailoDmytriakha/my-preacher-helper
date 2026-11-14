@@ -19,6 +19,8 @@ interface RichMarkdownEditorProps {
     onHoldText?: (typed: string) => ((keep: boolean, chosenWrite?: void | Promise<unknown>) => void) | undefined;
     /** A proven append from a document action, including an append to an empty draft. */
     observedAppend?: ObservedTextAppend;
+    /** Text now owned by this cell after an accepted deletion elsewhere in the document. */
+    confirmedTextTransfer?: ObservedTextAppend;
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
     placeholder?: string;
@@ -59,7 +61,8 @@ export function RichMarkdownEditor({
     value,
     onChange,
     onHoldText,
-    observedAppend,
+    observedAppend: appendedText,
+    confirmedTextTransfer,
     valueIsUserAction = false,
     placeholder = '',
     minHeight = '150px',
@@ -67,7 +70,9 @@ export function RichMarkdownEditor({
     stickyToolbarTop,
     editable = true,
 }: RichMarkdownEditorProps) {
-    const { draft, change, takeObserved } = useBufferedText(value, onChange);
+    const observedAppend = confirmedTextTransfer ?? appendedText;
+    const { draft, change, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
+    const acceptedTransfer = useRef<ObservedTextAppend | undefined>(undefined);
     const composition = useRef<Composition | null>(null);
     const current = useRef({ draft, value, observedAppend, valueIsUserAction });
     const heldText = useRef<{ settle?: (keep: boolean, chosenWrite?: void | Promise<unknown>) => void } | null>(null);
@@ -108,9 +113,17 @@ export function RichMarkdownEditor({
 
     useEffect(() => {
         if (editor && heldText.current === null && composition.current?.editor !== editor && !editor.view?.composing) {
-            showDraft(editor, draft, draft === value ? valueIsUserAction : undefined);
+            const transferred = confirmedTextTransfer && confirmedTextTransfer !== acceptedTransfer.current &&
+                confirmedTextTransfer.after === value && draft === value;
+            if (transferred) {
+                acceptedTransfer.current = confirmedTextTransfer;
+                if (draft === readMarkdown(editor)) retireHistory(editor);
+                else showDraft(editor, draft, false);
+            } else {
+                showDraft(editor, draft, draft === value ? valueIsUserAction : undefined);
+            }
         }
-    }, [draft, editor, value, valueIsUserAction]);
+    }, [confirmedTextTransfer, draft, editor, value, valueIsUserAction]);
 
     useLayoutEffect(() => {
         const container = editorContainer.current;

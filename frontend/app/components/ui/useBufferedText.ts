@@ -9,7 +9,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
  * A change the document refuses (`onChange` rejects) will never echo: the field keeps the refused
  * words in view but no longer holds them over the document's next value.
  */
-export function useBufferedText(value: string, onChange: (next: string) => void | Promise<unknown>) {
+export function useBufferedText(value: string, onChange: (next: string) => void | Promise<unknown>, acceptedInput?: string) {
   const [draft, setDraft] = useState(value);
   const pending = useRef<string | null>(null);
   const attempts = useRef(0);
@@ -19,9 +19,9 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
   // Reconcile document echoes before the next native input. A passive mirror can leave
   // deferred state work between continuous keystrokes and controlled-input restoration.
   useLayoutEffect(() => {
-    if (pending.current === value) pending.current = null;
+    if (pending.current === value || pending.current === acceptedInput) pending.current = null;
     if (pending.current === null) setDraft(value);
-  }, [value]);
+  }, [value, acceptedInput]);
 
   return {
     draft,
