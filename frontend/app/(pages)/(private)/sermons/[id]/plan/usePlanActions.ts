@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
@@ -6,6 +6,7 @@ import { Sermon } from "@/models/models";
 import { isOfflineQueuedError, isStaleWriteError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
+import { AI_RESULT_CONFLICT, AI_RESULT_NOT_STARTED, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { debugLog } from "@/utils/debugMode";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
@@ -13,6 +14,7 @@ import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { generatePlanPointContent } from "./planApi";
 import { getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
+import { beginPlanPointResult, dismissPlanPointResult, listPlanPointResults, planPointResultKey, readPlanPointResult, retainPlanPointResult, watchPlanPointResults, type PlanPointResult } from './planPointResult.client';
 import { usePlanWriter } from "./planWriter";
 
 import type { PlanOutlineLookup } from "./planOutlineLookup";
@@ -32,6 +34,7 @@ interface UsePlanActionsParams {
     content: string;
     section: SermonSectionKey;
   }) => void;
+  retainGeneratedDraft?: (pointId: string, content: string) => boolean;
   onSaved: (params: {
     outlinePointId: string;
     /** Every cell this save wrote, so the screen can clear "modified" on all of them. */
@@ -59,6 +62,7 @@ export default function usePlanActions({
   t,
   setGeneratingIds,
   onGenerated,
+  retainGeneratedDraft,
   onSaved,
   onAiSuccess,
   aiBlocked = false,
@@ -80,6 +84,15 @@ export default function usePlanActions({
   }, []);
   const requests = useRef(new Map<string, symbol>());
   const previousScope = useRef(scope);
+  const [results, setResults] = useState<{ scope: symbol; points: Record<string, PlanPointResult> }>();
+  const ownerId = sermon?.userId;
+  const sermonId = sermon?.id;
+  useEffect(() => {
+    if (!ownerId || !sermonId) return;
+    const refresh = () => setResults({ scope, points: listPlanPointResults(ownerId, sermonId) });
+    refresh();
+    return watchPlanPointResults(ownerId, sermonId, refresh);
+  }, [ownerId, scope, sermonId]);
   useEffect(() => {
     if (previousScope.current === scope) return;
     previousScope.current = scope;
@@ -95,12 +108,15 @@ export default function usePlanActions({
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
     if (aiBlocked || !sermon || requests.current.get(outlinePointId) === scope) return;
 
+    const key = planPointResultKey(sermon.userId, sermon.id, outlinePointId);
+    if (readPlanPointResult(key)) return;
     requests.current.set(outlinePointId, scope);
     setGeneratingIds((prev) => ({
       ...prev,
       [outlinePointId]: true,
     }));
 
+    let attempt: PlanPointResult | undefined;
     try {
       const outlinePoint = getPointFromLookup(outlineLookup, outlinePointId);
       const section = getPointSectionFromLookup(outlineLookup, outlinePointId);
@@ -125,27 +141,46 @@ export default function usePlanActions({
 
       const openingText = generatedContentRef.current[outlinePointId] ?? "";
       const openingAuthoring = cellAuthoringVersion?.(outlinePointId);
+      attempt = beginPlanPointResult(key, planStyle);
+      if (!attempt) {
+        toast.error(t('draftStorage.title'));
+        return;
+      }
       const { content } = await generatePlanPointContent({
         sermonId: sermon.id,
         outlinePointId,
         style: planStyle,
-      });
+      }, { ownerId: sermon.userId, operationId: attempt.id });
+      const result = { ...attempt, kind: 'ready' as const, content };
+      const retainedAttempt = readPlanPointResult(key);
+      if (retainedAttempt?.id !== attempt.id || retainedAttempt.kind === 'ready') return;
+      if (retainedAttempt.kind === 'failed') {
+        retainPlanPointResult(key, result, attempt);
+        return;
+      }
 
       const current = currentGeneration.current;
-      if (!mounted.current || current.scope !== scope) return;
       const currentSection = getPointSectionFromLookup(current.outlineLookup, outlinePointId);
-      if (!currentSection || (generatedContentRef.current[outlinePointId] ?? "") !== openingText
+      if (!mounted.current || current.scope !== scope || !currentSection || (generatedContentRef.current[outlinePointId] ?? "") !== openingText
         || current.cellAuthoringVersion?.(outlinePointId) !== openingAuthoring) {
+        retainPlanPointResult(key, result, attempt);
+        if (!mounted.current || current.scope !== scope) return;
         toast.info(t("plan.generationTextChanged"));
         await onAiSuccess?.();
         return;
       }
       current.onGenerated({ outlinePointId, content, section: currentSection });
+      if (!retainGeneratedDraft || retainGeneratedDraft(outlinePointId, content)) {
+        dismissPlanPointResult(key, attempt);
+      } else retainPlanPointResult(key, result, attempt);
       await onAiSuccess?.();
 
       if (mounted.current && currentGeneration.current.scope === scope) toast.success(t("plan.contentGenerated"));
     } catch (error) {
       debugLog("Plan generate failed", { sermonId: sermon.id, outlinePointId, error });
+      if (attempt && definitiveGenerationFailure(error)) {
+        retainPlanPointResult(key, { ...attempt, kind: 'failed', message: 'errors.failedToGenerateContent' }, attempt);
+      }
       if (!mounted.current || currentGeneration.current.scope !== scope || isUsageCapReachedError(error)) return;
       // Out of time is not "failed": the 60 s ceiling cut it, and another try may fit.
       toast.error(t(ranOutOfTime(error) ? "errors.aiOutOfTime" : "errors.failedToGenerateContent"));
@@ -158,7 +193,51 @@ export default function usePlanActions({
         });
       }
     }
-  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, scope, sermon, setGeneratingIds, t]);
+  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, retainGeneratedDraft, scope, sermon, setGeneratingIds, t]);
+
+  const recoveredResults = results?.scope === scope ? results.points : {};
+  const recoverPointResult = async (pointId: string, resume = false) => {
+    if (!ownerId || !sermonId || requests.current.get(pointId) === scope) return;
+    const key = planPointResultKey(ownerId, sermonId, pointId);
+    const attempt = readPlanPointResult(key);
+    if (attempt?.kind !== 'pending' || resume && !attempt.receiptMissing) return;
+    requests.current.set(pointId, scope);
+    setGeneratingIds(previous => ({ ...previous, [pointId]: true }));
+    try {
+      const { content } = await generatePlanPointContent({
+        sermonId, outlinePointId: pointId, style: attempt.style,
+      }, { ownerId, operationId: attempt.id, recoverOnly: !resume });
+      retainPlanPointResult(key, { ...attempt, kind: 'ready', content }, attempt);
+      if (mounted.current && currentGeneration.current.scope === scope) await onAiSuccess?.();
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === AI_RESULT_NOT_STARTED) {
+        retainPlanPointResult(key, { ...attempt, receiptMissing: true }, attempt);
+      } else if (definitiveGenerationFailure(error)) {
+        retainPlanPointResult(key, { ...attempt, kind: 'failed', message: 'errors.failedToGenerateContent' }, attempt);
+      }
+    } finally {
+      if (mounted.current && currentGeneration.current.scope === scope) {
+        requests.current.delete(pointId);
+        setGeneratingIds(previous => {
+          const { [pointId]: _finished, ...remaining } = previous;
+          return remaining;
+        });
+      }
+    }
+  };
+  const applyPointResult = (pointId: string, result: PlanPointResult) => {
+    if (!ownerId || !sermonId || result.kind !== 'ready') return;
+    const section = getPointSectionFromLookup(currentGeneration.current.outlineLookup, pointId);
+    if (!section) return;
+    const key = planPointResultKey(ownerId, sermonId, pointId);
+    if (readPlanPointResult(key)?.id !== result.id) return;
+    if (retainGeneratedDraft && !retainGeneratedDraft(pointId, result.content)) return;
+    currentGeneration.current.onGenerated({ outlinePointId: pointId, content: result.content, section });
+    dismissPlanPointResult(key, result);
+  };
+  const discardPointResult = (pointId: string, result: PlanPointResult) => {
+    if (ownerId && sermonId && result.kind !== 'pending') dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+  };
 
   /**
    * Saves one outline point — meaning ALL of its cells at once (`planNodes.ts`).
@@ -282,6 +361,17 @@ export default function usePlanActions({
 
   return {
     generateSermonPointContent,
+    recoveredResults,
+    recoverPointResult,
+    applyPointResult,
+    discardPointResult,
     saveSermonPoint,
   };
+}
+
+function definitiveGenerationFailure(error: unknown): boolean {
+  const outcome = error as { status?: number; code?: string; operationEnded?: boolean } | null | undefined;
+  return isUsageCapReachedError(error) || outcome?.operationEnded === true
+    || outcome?.code === AI_RESULT_UNAVAILABLE || outcome?.code === AI_RESULT_CONFLICT
+    || [400, 403, 404, 409, 422].includes(outcome?.status ?? 0);
 }

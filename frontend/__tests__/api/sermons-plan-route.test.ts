@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 
-import { generatePlanForSection, generatePlanPointContent } from '@/api/clients/openAI.client';
+import { generatePlanForSection, generatePlanPointContent, recoverPlanPointContent } from '@/api/clients/openAI.client';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { AiResultUnavailableError } from '@/api/errors/aiResultRecovery.server';
 import { GET, PUT } from '@/api/sermons/[id]/plan/route';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
@@ -140,6 +141,40 @@ describe('Sermon Plan Route', () => {
   });
 
   describe('GET /api/sermons/:id/plan?outlinePointId=<id>', () => {
+    it('recovers the original text for its owner even when the point was removed', async () => {
+      const request = {
+        headers: new Headers({
+          'X-AI-Operation-Id': 'f0e5b194-b526-4747-9068-8e86df3ef302',
+          'X-AI-Recover-Only': '1',
+        }),
+        nextUrl: { searchParams: new URLSearchParams({ outlinePointId: 'removed', style: 'narrative' }) },
+      } as unknown as NextRequest;
+      const context = { params: Promise.resolve({ id: mockSermon.id }) };
+      jest.mocked(recoverPlanPointContent).mockResolvedValueOnce('Words from the original generation');
+
+      const response = await GET(request, context);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ content: 'Words from the original generation' });
+      expect(recoverPlanPointContent).toHaveBeenCalledWith(expect.objectContaining({
+        operationId: 'f0e5b194-b526-4747-9068-8e86df3ef302',
+      }));
+      expect(generatePlanPointContent).not.toHaveBeenCalled();
+      expect(getVisualOrderedThoughtsForOutlinePoint).not.toHaveBeenCalled();
+
+      jest.mocked(getRequiredAuthenticatedUid).mockResolvedValueOnce('another-owner');
+      expect((await GET(request, context)).status).toBe(403);
+      expect(recoverPlanPointContent).toHaveBeenCalledTimes(1);
+
+      jest.mocked(recoverPlanPointContent).mockRejectedValueOnce(new AiResultUnavailableError('missing'));
+      const early = await GET(request, context);
+      expect(early.status).toBe(409);
+      expect(await early.json()).toMatchObject({ code: 'ai-result-not-started' });
+      jest.mocked(recoverPlanPointContent).mockRejectedValueOnce(new AiResultUnavailableError('ended'));
+      const ended = await GET(request, context);
+      expect(await ended.json()).toMatchObject({ code: 'ai-result-unavailable' });
+    });
+
     it('should generate content for outline point', async () => {
       (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
         { id: 't1', text: 'First thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', keyFragments: ['k1'] },

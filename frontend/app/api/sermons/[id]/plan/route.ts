@@ -3,22 +3,26 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { AiResultUnavailableError } from '@/api/errors/aiResultRecovery.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { studiesRepository } from '@/api/repositories/studies.repository';
 import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { ThoughtInStructure } from '@/models/models';
+import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest, aiResultRecoveryRefusal } from '@/services/recoverableAiResult.server';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { AI_RESULT_NOT_STARTED, AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
 import { requestLanguage } from '@/utils/appLocale';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
-import { generateNotePlanPoint, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
+import { generateNotePlanPoint, generatePlanPointContent, recoverPlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 export const dynamic = 'force-dynamic';
+const PLAN_POINT_MODEL_BUDGET_MS = 45_000;
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
@@ -48,6 +52,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) {
     return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
@@ -62,7 +67,7 @@ export async function GET(
 
   // If outlinePointId is provided, generate content for the specific outline point
   if (outlinePointId) {
-    return generateSermonPointContent(id, outlinePointId, uid, style || undefined);
+    return generateSermonPointContent(request, id, outlinePointId, uid, style || 'memory', startedAt);
   }
 
   // A whole section generated and SAVED here is the legacy write road; only shipped bundles ask for
@@ -72,12 +77,19 @@ export async function GET(
 
 // Helper function to generate content for a specific outline point
 async function generateSermonPointContent(
+  request: NextRequest,
   sermonId: string,
   outlinePointId: string,
   uid: string,
-  style?: PlanStyle
+  style: PlanStyle,
+  startedAt: number,
 ) {
   try {
+    const operation = request.headers?.has(AI_RESULT_OPERATION_HEADER) ? aiResultRecoveryForRequest(request, {
+      ownerId: uid,
+      source: ['sermon-plan-point-v1', sermonId, outlinePointId, style],
+      deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
+    }) : undefined;
     // Fetch the sermon
     const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId));
     if (!sermon) {
@@ -85,6 +97,10 @@ async function generateSermonPointContent(
     }
     if (sermon.userId !== uid) {
       return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (request.headers?.get(AI_RESULT_RECOVERY_ONLY_HEADER) === '1') {
+      if (!operation) return jsonNoStore({ error: 'An operation ID is required to recover a plan result' }, { status: 400 });
+      return jsonNoStore({ content: await recoverPlanPointContent(operation.recovery) });
     }
 
     // Find the outline point in the sermon structure
@@ -149,20 +165,26 @@ async function generateSermonPointContent(
       sectionName,
       keyFragments, // Pass combined key fragments
       adjacentContext || undefined, // Pass context if available
-      style || 'memory', // Pass style
+      style,
       outlinePoint.subPoints, // Pass sub-points for structured generation
-      uid
+      uid,
+      ...(operation ? [{ recovery: operation.recovery, deadline: startedAt + PLAN_POINT_MODEL_BUDGET_MS }] as const : []),
     );
 
     if (!success) {
       return jsonNoStore(
-        { error: 'Failed to generate content for outline point' },
+        { error: 'Failed to generate content for outline point', ...(operation && { operationEnded: true }) },
         { status: 500 }
       );
     }
 
     return jsonNoStore({ content });
   } catch (error: unknown) {
+    if (error instanceof AiResultUnavailableError && error.reason === 'missing') {
+      return jsonNoStore({ code: AI_RESULT_NOT_STARTED, error: 'The plan generation has not registered yet' }, { status: 409 });
+    }
+    const recoveryFailure = aiResultRecoveryRefusal(error);
+    if (recoveryFailure) return jsonNoStore(recoveryFailure.body, { status: recoveryFailure.status });
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);

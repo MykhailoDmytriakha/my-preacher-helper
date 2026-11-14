@@ -24,6 +24,7 @@ export interface PlanTextDraft {
   cellAuthoringVersion: (nodeId: string) => number;
   holdCellAlternative: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   keepDetachedCell: (nodeId: string, text: string) => boolean;
+  keepGeneratedCell: (nodeId: string, text: string) => boolean;
   prepareTransferCapture: (pointId: string, subPointId: string, parent: string, child: string) => string | undefined;
   orphaned: PlanOrphanCell[];
   forget: (cells: PlanOrphanCell[]) => void;
@@ -238,6 +239,13 @@ export default function usePlanTextDraft({
       : previous);
     return true;
   }, [session]);
+  const keepGeneratedCell = useCallback((id: string, text: string) => {
+    const { owner, documentId, writerId, ours, owed } = session;
+    if (!session.enabled || !owner || !documentId || !saveDraft(cellKey(owner, documentId, id, writerId), text, undefined, true)) return false;
+    ours[id] = text;
+    delete owed[id];
+    return true;
+  }, [session]);
   const holdCellAlternative = useCallback((id: string, text: string) => {
     const { owner, documentId } = session;
     if (!session.enabled || !owner || !documentId || selectionRef.current.session !== session) return;
@@ -291,6 +299,6 @@ export default function usePlanTextDraft({
     setFound(previous => previous?.session === session ? { ...previous, copies: previous.copies.filter(copy => !forgotten.has(copy.key)) } : previous);
   }, [session]);
   return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion,
-    holdCellAlternative, keepDetachedCell, prepareTransferCapture, orphaned, forget }),
-    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, keepDetachedCell, markCellAuthored, orphaned, prepareTransferCapture, recovered, selectCopy, selected]);
+    holdCellAlternative, keepDetachedCell, keepGeneratedCell, prepareTransferCapture, orphaned, forget }),
+    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, keepDetachedCell, keepGeneratedCell, markCellAuthored, orphaned, prepareTransferCapture, recovered, selectCopy, selected]);
 }

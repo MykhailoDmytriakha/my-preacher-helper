@@ -66,6 +66,9 @@ Object.defineProperty(window, 'matchMedia', {
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
 }));
+jest.mock('@/services/firebaseAuth.service', () => ({
+  auth: { currentUser: { uid: 'test-user', getIdToken: jest.fn().mockResolvedValue('test-id-token') } },
+}));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 

@@ -1,6 +1,7 @@
 export const AI_RESULT_OPERATION_HEADER = 'X-AI-Operation-Id';
 export const AI_RESULT_RECOVERY_ONLY_HEADER = 'X-AI-Recover-Only';
 export const AI_RESULT_PENDING = 'ai-result-pending';
+export const AI_RESULT_NOT_STARTED = 'ai-result-not-started';
 export const AI_RESULT_UNAVAILABLE = 'ai-result-unavailable';
 export const AI_RESULT_CONFLICT = 'ai-result-conflict';
 

@@ -1,11 +1,12 @@
 import React from "react";
-import { act, renderHook as rtlRenderHook } from "@testing-library/react";
+import { act, renderHook as rtlRenderHook, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
 import { generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import { withStatus } from "@/utils/aiTimeFailure";
 import { PlanWriterContext } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
+import type { PlanOutlineLookup } from "@/(pages)/(private)/sermons/[id]/plan/planOutlineLookup";
 import type { PlanWriter } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
 import { UsageCapReachedError } from "@/services/usageLimits";
 
@@ -107,6 +108,7 @@ describe("usePlanActions", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
   });
 
   function createGeneratingIdsHarness(initial: GeneratingIds = {}) {
@@ -155,6 +157,131 @@ describe("usePlanActions", () => {
       section: "introduction",
     });
     expect(mockToast.success).toHaveBeenCalledWith("plan.contentGenerated");
+  });
+
+  it("offers the paid result after leaving the plan before the reply", async () => {
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    let finish!: (value: { content: string }) => void;
+    mockGeneratePlanPointContent.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const open = () => renderHook(() => usePlanActions({
+      sermon, planStyle: "memory", outlineLookup, generatedContent: {},
+      t, setGeneratingIds, onGenerated, onSaved: jest.fn(),
+    }));
+    const original = open();
+    let request!: Promise<void>;
+    act(() => { request = original.result.current.generateSermonPointContent("p1"); });
+    original.unmount();
+    await act(async () => { finish({ content: "Words generated after departure" }); await request; });
+    const reopened = open();
+    await waitFor(() => expect(reopened.result.current.recoveredResults?.p1).toMatchObject({
+      content: "Words generated after departure",
+    }));
+    expect(onGenerated).not.toHaveBeenCalled();
+    expect(mockGeneratePlanPointContent).toHaveBeenCalledTimes(1);
+    reopened.unmount();
+  });
+
+  it("checks the original attempt after a lost response even if the style preference changed", async () => {
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    mockGeneratePlanPointContent.mockRejectedValueOnce(new TypeError("The connection closed"));
+    const open = (planStyle: "memory" | "narrative") => renderHook(() => usePlanActions({
+      sermon, planStyle, outlineLookup, generatedContent: { p1: "My current words" },
+      t, setGeneratingIds, onGenerated, onSaved: jest.fn(),
+    }));
+    const original = open("memory");
+    await act(async () => { await original.result.current.generateSermonPointContent("p1"); });
+    const originalOptions = mockGeneratePlanPointContent.mock.calls[0][1];
+    original.unmount();
+
+    const reopened = open("narrative");
+    expect(reopened.result.current.recoveredResults.p1.kind).toBe("pending");
+    mockGeneratePlanPointContent.mockResolvedValueOnce({ content: "The original generated answer" });
+
+    await act(async () => { await reopened.result.current.recoverPointResult("p1"); });
+
+    expect(mockGeneratePlanPointContent).toHaveBeenCalledTimes(2);
+    expect(mockGeneratePlanPointContent).toHaveBeenLastCalledWith(
+      { sermonId: sermon.id, outlinePointId: "p1", style: "memory" },
+      { ...originalOptions, recoverOnly: true },
+    );
+    expect(reopened.result.current.recoveredResults.p1).toMatchObject({
+      kind: "ready", content: "The original generated answer",
+    });
+    expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original answer if a check reached the server before the original request and the point was removed", async () => {
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    let finish!: (value: { content: string }) => void;
+    mockGeneratePlanPointContent.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const open = (lookup: PlanOutlineLookup) => renderHook(() => usePlanActions({
+      sermon, planStyle: "memory", outlineLookup: lookup, generatedContent: {},
+      t, setGeneratingIds, onGenerated, onSaved: jest.fn(),
+    }));
+    const original = open(outlineLookup);
+    let request!: Promise<void>;
+    act(() => { request = original.result.current.generateSermonPointContent("p1"); });
+    original.unmount();
+
+    const reopened = open({ ...outlineLookup, byPointId: { p2: outlineLookup.byPointId.p2 } });
+    mockGeneratePlanPointContent.mockRejectedValueOnce(Object.assign(new Error("Receipt missing"), {
+      code: "ai-result-not-started",
+    }));
+    await act(async () => { await reopened.result.current.recoverPointResult("p1"); });
+    expect(reopened.result.current.recoveredResults.p1).toMatchObject({ kind: "pending", receiptMissing: true });
+
+    await act(async () => { finish({ content: "Answer for the removed point" }); await request; });
+    const proposal = reopened.result.current.recoveredResults.p1;
+    expect(proposal).toMatchObject({ kind: "ready", content: "Answer for the removed point" });
+    act(() => reopened.result.current.applyPointResult("p1", proposal));
+    expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it("resumes an unregistered generation using its original operation ID", async () => {
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    mockGeneratePlanPointContent.mockRejectedValueOnce(new Error("Request was interrupted"));
+    const { result } = renderHook(() => usePlanActions({
+      sermon, planStyle: "memory", outlineLookup, generatedContent: {},
+      t, setGeneratingIds, onGenerated, onSaved: jest.fn(),
+    }));
+    await act(async () => { await result.current.generateSermonPointContent("p1"); });
+    const originalOptions = mockGeneratePlanPointContent.mock.calls[0][1];
+    mockGeneratePlanPointContent.mockRejectedValueOnce(Object.assign(new Error("Receipt missing"), {
+      code: "ai-result-not-started",
+    }));
+    await act(async () => { await result.current.recoverPointResult("p1"); });
+
+    mockGeneratePlanPointContent.mockResolvedValueOnce({ content: "The continued generation" });
+    await act(async () => { await result.current.recoverPointResult("p1", true); });
+    expect(mockGeneratePlanPointContent).toHaveBeenLastCalledWith(
+      { sermonId: sermon.id, outlinePointId: "p1", style: "memory" },
+      { ...originalOptions, recoverOnly: false },
+    );
+    expect(result.current.recoveredResults.p1).toMatchObject({ kind: "ready", content: "The continued generation" });
+    expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it("does not start a paid request if the identity cannot be stored", async () => {
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const denyStorage = jest.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
+      throw new DOMException("Storage full", "QuotaExceededError");
+    });
+    const { result } = renderHook(() => usePlanActions({
+      sermon, planStyle: "memory", outlineLookup, generatedContent: {},
+      t, setGeneratingIds, onGenerated: jest.fn(), onSaved: jest.fn(),
+    }));
+
+    try {
+      await act(async () => { await result.current.generateSermonPointContent("p1"); });
+      expect(mockGeneratePlanPointContent).not.toHaveBeenCalled();
+      expect(mockToast.error).toHaveBeenCalledWith("draftStorage.title");
+    } finally {
+      denyStorage.mockRestore();
+    }
   });
 
   it.each(["edit", "edit and undo", "other point", "other sermon"])("checks %s before applying a delayed generation", async change => {

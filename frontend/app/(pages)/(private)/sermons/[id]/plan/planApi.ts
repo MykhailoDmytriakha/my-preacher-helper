@@ -1,8 +1,11 @@
 import { PlanStyle } from "@/api/clients/openAI.client";
+import { aiResultErrorCode } from '@/utils/aiResultAttempt.client';
+import { AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
-import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { accountChangedError, getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { NotePlanResultSchema, type NotePlanResult, type NotePlanRevision } from '@/utils/notePlan';
+import { resolveOwnerUid } from '@/utils/queryKeys';
 
 
 interface GeneratePlanPointContentParams {
@@ -34,32 +37,39 @@ export async function generateNotePlanContent(
   return NotePlanResultSchema.parse(await response.json());
 }
 
-function createPlanGenerationRequestId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export async function generatePlanPointContent({
   sermonId,
   outlinePointId,
   style,
-}: GeneratePlanPointContentParams): Promise<GeneratePlanPointContentResponse> {
-  const queryParams = new URLSearchParams({
-    outlinePointId,
-    style,
-    requestId: createPlanGenerationRequestId(),
-  });
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await apiClient(`/api/sermons/${sermonId}/plan?${queryParams.toString()}`, {
+}: GeneratePlanPointContentParams, { ownerId, operationId, recoverOnly = false }: {
+  ownerId: string;
+  operationId: string;
+  recoverOnly?: boolean;
+}): Promise<GeneratePlanPointContentResponse> {
+  const path = `/api/sermons/${encodeURIComponent(sermonId)}/plan?${new URLSearchParams({ outlinePointId, style })}`;
+  const authHeaders = await getAuthenticatedRequestHeaders(ownerId);
+  if (resolveOwnerUid() !== ownerId) throw accountChangedError();
+  // The plan already keeps this identity in the proposal record before the request starts.
+  const response = await apiClient(path, {
     cache: "no-store",
-    headers: authHeaders,
+    headers: {
+      ...authHeaders,
+      [AI_RESULT_OPERATION_HEADER]: operationId,
+      ...(recoverOnly && { [AI_RESULT_RECOVERY_ONLY_HEADER]: '1' }),
+    },
     category: 'ai',
+    timeout: 60_000,
   });
+  const data = await response.json().catch(() => null);
+  if (resolveOwnerUid() !== ownerId) throw accountChangedError();
 
   if (!response.ok) {
-    throw withStatus(new Error(`Failed to generate content: ${response.status}`), response.status);
+    throw Object.assign(withStatus(new Error(`Failed to generate content: ${response.status}`), response.status), {
+      code: aiResultErrorCode(data),
+      operationEnded: data?.operationEnded === true,
+    });
   }
 
-  const data = await response.json();
   if (typeof data?.content !== "string") {
     throw new Error("Failed to generate content: invalid response payload");
   }

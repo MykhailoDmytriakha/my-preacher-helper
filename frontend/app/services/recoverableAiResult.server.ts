@@ -43,7 +43,7 @@ export function recoverableAiResult(input: StoreInput & { deadline: number; reco
       let claim = input.recoverOnly
         ? await preserveUncertainOutcome(() => receipt.read())
         : await preserveUncertainOutcome(() => receipt.claim());
-      if (!claim) throw new AiResultUnavailableError();
+      if (!claim) throw new AiResultUnavailableError('missing');
       const expiredBefore = now().getTime() - RUNNING_ATTEMPT_WINDOW_MS;
       if (claim.state === 'running' && claim.startedAtMs <= expiredBefore) {
         claim = await preserveUncertainOutcome(() => receipt.expireRunning(expiredBefore));

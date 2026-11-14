@@ -170,6 +170,7 @@ interface PlanMainLayoutContextValue {
   setPlanStyle: (style: PlanStyle) => void;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
+  priorResultIds?: ReadonlySet<string>;
   aiBlocked: boolean;
   registerPairRef: RegisterPairedCardRef;
   generatedContent: Record<string, string>;
@@ -230,6 +231,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
     onGenerate,
     generatedContent,
     generatingIds,
+    priorResultIds,
     aiBlocked,
     onOpenFragmentsModal,
     readOnly,
@@ -241,6 +243,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   const keyFragmentsCount = thoughts.reduce((count, thought) => count + (thought.keyFragments?.length || 0), 0);
   const currentGeneratedContent = generatedContent[outlinePoint.id] || null;
   const isGenerating = Boolean(generatingIds[outlinePoint.id]);
+  const hasPriorResult = priorResultIds?.has(outlinePoint.id);
 
   return (
     <Card
@@ -271,8 +274,9 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
             onClick={() => void onGenerate(outlinePoint.id)}
             colors={sectionColors}
             generating={isGenerating}
-            disabled={isGenerating || aiBlocked}
-            label={aiBlocked ? t("settings.usage.aiUsageExhausted") : isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
+            disabled={isGenerating || hasPriorResult || aiBlocked}
+            label={isGenerating ? t("plan.generating") : hasPriorResult ? t("plan.pointResultTitle")
+              : aiBlocked ? t("settings.usage.aiUsageExhausted") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
           />
         </div>}
       </h3>
@@ -639,6 +643,7 @@ export interface PlanMainLayoutProps {
   setPlanStyle: (style: PlanStyle) => void;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
+  priorResultIds?: ReadonlySet<string>;
   aiBlocked: boolean;
   registerPairRef: RegisterPairedCardRef;
   introductionSectionRef: React.RefObject<HTMLDivElement | null>;
@@ -690,6 +695,7 @@ export default function PlanMainLayout({
   setPlanStyle,
   isLoading,
   generatingIds,
+  priorResultIds,
   aiBlocked,
   registerPairRef,
   introductionSectionRef,
@@ -730,6 +736,7 @@ export default function PlanMainLayout({
     setPlanStyle,
     isLoading,
     generatingIds,
+    priorResultIds,
     aiBlocked,
     registerPairRef,
     generatedContent,

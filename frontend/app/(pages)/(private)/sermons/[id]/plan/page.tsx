@@ -49,6 +49,7 @@ import { PlanModeHistory, PlanModeStatus } from './PlanModeStatus';
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
 import PlanPageHeader from "./PlanPageHeader";
+import PlanPointResultPanel from './PlanPointResultPanel';
 import PlanPreachingView from "./PlanPreachingView";
 import { assessPlanReadiness, type PlanReadinessIssue } from "./planReadiness";
 import { usePlanTextBaseline } from "./planTextBaseline";
@@ -656,6 +657,10 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
 
   const {
     generateSermonPointContent,
+    recoveredResults,
+    recoverPointResult,
+    applyPointResult,
+    discardPointResult,
     saveSermonPoint,
   } = usePlanActions({
     sermon,
@@ -665,6 +670,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     t,
     setGeneratingIds,
     cellAuthoringVersion: planDraft.cellAuthoringVersion,
+    retainGeneratedDraft: planDraft.keepGeneratedCell,
     onGenerated: handlePlanPointGenerated,
     onSaved: handlePlanPointSaved,
     onAiSuccess: refreshAiUsage,
@@ -1117,6 +1123,9 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       />
 
       {orphanArea}
+      {!readOnly && <PlanPointResultPanel results={recoveredResults} generating={generatingIds}
+        outline={outlineLookup} applyDisabled={Boolean(planDraft.recovered)} t={t}
+        recover={recoverPointResult} apply={applyPointResult} discard={discardPointResult} />}
 
       {/* On a copy for reading the recovered text waits in storage: restoring it would mark
           cells unsaved that cannot be saved, and discarding it would lose the only copy. */}
@@ -1203,6 +1212,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         setPlanStyle={setPlanStyle}
         isLoading={isLoading}
         generatingIds={generatingIds}
+        priorResultIds={new Set(Object.keys(recoveredResults))}
         aiBlocked={aiBlocked}
         registerPairRef={registerPairRef}
         introductionSectionRef={introductionSectionRef}

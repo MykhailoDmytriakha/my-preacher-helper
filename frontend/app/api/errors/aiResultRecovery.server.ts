@@ -6,7 +6,7 @@ export class AiResultPendingError extends Error {
 }
 
 export class AiResultUnavailableError extends Error {
-  constructor() {
+  constructor(readonly reason: 'missing' | 'ended' = 'ended') {
     super('The AI operation ended without a recoverable result');
     this.name = 'AiResultUnavailableError';
   }

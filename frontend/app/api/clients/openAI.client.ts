@@ -1,6 +1,7 @@
 import 'openai/shims/node';
 import OpenAI from "openai";
 
+import { isAiResultRecoveryError } from '@/api/errors/aiResultRecovery.server';
 import {
   sortingSystemPrompt,
   buildSortItemKeys,
@@ -42,7 +43,7 @@ import { callWithStructuredOutput } from "./structuredOutput";
 import { generateThoughtStructured, type GenerateThoughtResult } from "./thought.structured";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
-import type { AiResultRecovery } from "@/services/recoverableAiResult.server";
+import type { AiResultRecovery, SettleParsedAiResult } from "@/services/recoverableAiResult.server";
 
 export type { PlanContext, PlanStyle } from "./planTypes";
 
@@ -1173,7 +1174,8 @@ export async function generatePlanPointContent(
   context?: PlanContext,
   style: PlanStyle = 'memory',
   subPoints?: SubPoint[],
-  userId?: string
+  userId?: string,
+  operation?: { recovery: AiResultRecovery; deadline: number },
 ): Promise<{ content: string; success: boolean }> {
   // Detect language — base primarily on THOUGHTS text to avoid
   // generating a different language than the thoughts themselves
@@ -1230,7 +1232,7 @@ export async function generatePlanPointContent(
       context: inputInfo,
     });
 
-    const result = await callWithStructuredOutput(
+    const generate = (settleParsedResult?: SettleParsedAiResult) => callWithStructuredOutput(
       promptBlueprint.systemPrompt,
       promptBlueprint.userMessage,
       PlanPointContentResponseSchema,
@@ -1239,8 +1241,13 @@ export async function generatePlanPointContent(
         userId,
         promptBlueprint,
         logContext: inputInfo,
+        ...(settleParsedResult && { settleParsedResult }),
+        ...(operation && { requestOptions: { timeout: Math.max(1, Math.floor(operation.deadline - performance.now())), maxRetries: 0 } }),
       }
     );
+    const result = operation
+      ? await operation.recovery.run(value => PlanPointContentResponseSchema.parse(value), generate)
+      : await generate();
 
     if (!result.success || !result.data) {
       return { content: "", success: false };
@@ -1250,11 +1257,21 @@ export async function generatePlanPointContent(
 
     return { content, success: content.length > 0 };
   } catch (error) {
+    if (isAiResultRecoveryError(error)) throw error;
     console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
     if (isUsageCapReachedError(error)) throw error;
     if (error instanceof StoreUnavailableError) throw error;
     return { content: "", success: false };
   }
+}
+
+/** A recovery-only receipt can return the settled model output without reading live inputs. */
+export async function recoverPlanPointContent(recovery: AiResultRecovery): Promise<string> {
+  const result = await recovery.run(value => PlanPointContentResponseSchema.parse(value), async () => {
+    throw new Error('Plan result recovery cannot invoke the model');
+  });
+  if (!result.success || !result.data) throw new Error('The plan result could not be read');
+  return assemblePlanPointMarkdown(result.data);
 }
 
 /** Generate editable cue cards from the full study and the preacher's placed reminders. */
