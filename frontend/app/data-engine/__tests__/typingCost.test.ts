@@ -68,6 +68,9 @@ it.each([0, 100, 1000])('publishes only the requested collection with %i unrelat
   engine.setOnline(false); engine.setOwner('owner');
   const first = await engine.readCollection('studyNotes');
   const remembered = (engine as unknown as { commitRecords: Map<string, CommitRequest> }).commitRecords;
+  // Warm the complete presentation cache through the ordinary return-to-tab path.
+  engine.setVisible(true);
+  for (let attempt = 0; remembered.size !== size + 1 && attempt < 10; attempt++) await settleEngine();
   expect(remembered.size).toBe(size + 1);
   let unrelated = 0;
   const all = remembered.values.bind(remembered);

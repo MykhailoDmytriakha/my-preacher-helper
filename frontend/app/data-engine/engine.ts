@@ -591,7 +591,7 @@ export class DataEngine {
   readCollection(collection: string): Promise<CollectionState> {
     const owner = this.requireOwner(), generation = this.generation;
     return this.collectionReader().read(collection, { allowIncompleteCache: true }).then(async state => {
-      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      const requests = await this.commits.listForCollection(collection); this.assertCurrent(owner, generation);
       requests.forEach(request => this.rememberCommit(request));
       return this.projectCollection(owner, collection, state);
     });
@@ -614,7 +614,7 @@ export class DataEngine {
     const stopCommits = this.commits.subscribe(({ request }) => {
       if (request.owner === owner && request.baseline.resource.collection === collection) emit();
     });
-    this.background(this.commits.list().then(requests => {
+    this.background(this.commits.listForCollection(collection).then(requests => {
       if (!active || !this.current(owner, generation)) return;
       requests.forEach(request => this.rememberCommit(request));
       emit();
@@ -626,7 +626,7 @@ export class DataEngine {
   refreshCollection(collection: string): Promise<CollectionState> {
     const owner = this.requireOwner(), generation = this.generation;
     return this.collectionReader().refresh(collection).then(async state => {
-      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      const requests = await this.commits.listForCollection(collection); this.assertCurrent(owner, generation);
       requests.forEach(request => this.rememberCommit(request));
       return this.projectCollection(owner, collection, state);
     });

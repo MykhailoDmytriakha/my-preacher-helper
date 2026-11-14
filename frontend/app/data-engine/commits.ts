@@ -204,6 +204,7 @@ export type ChoiceCheckpoint = EditorRecord | EditorRecord[] | {
 
 export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
+  listForCollection?(owner: string, collection: string): Promise<CommitRequest[]>;
   /** Full cancellation evidence is needed only if this owner has an analysis action. */
   listForAnalysisRecovery?(owner: string): Promise<CommitRequest[]>;
   /** Read the current rows for a known operation without opening the rest of the queue. */
@@ -564,6 +565,19 @@ export class CommitQueue {
     const owner = this.owner, generation = this.generation;
     if (!owner) return [];
     const records = await this.options.store.list(owner);
+    if (!this.current(owner, generation)) return [];
+    records.forEach(request => this.receipts.observe(request));
+    return orderCommitRequests(records);
+  }
+
+  /** Collection presentation can use its own snapshot of native request rows. */
+  async listForCollection(collection: string): Promise<CommitRequest[]> {
+    const owner = this.owner, generation = this.generation;
+    if (!owner) return [];
+    if (!this.options.store.listForCollection) {
+      return (await this.list()).filter(request => request.owner === owner && request.baseline.resource.collection === collection);
+    }
+    const records = await this.options.store.listForCollection(owner, collection);
     if (!this.current(owner, generation)) return [];
     records.forEach(request => this.receipts.observe(request));
     return orderCommitRequests(records);

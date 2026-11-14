@@ -3,6 +3,7 @@
 import { cancellationScope } from './atomicCommits';
 import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
 import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './checkpointStorage.client';
+import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { writeManualChoiceRecoveries } from './manualScopes.client';
@@ -75,6 +76,7 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
 /** Each request has its own row; a participant batch shares one IndexedDB transaction. */
 export function createIndexedDbCommitStore(collect = collectCommitRows): CommitStore {
   const transaction = createEngineStorageTransaction();
+  const collections = createCollectionCommitReads(transaction);
   const createBatch = async (requests: readonly CommitRequest[]): Promise<CommitRequest[]> => {
     const frozen = clone(requests); assertCommitBatch(frozen);
     if (!frozen.length) return [];
@@ -156,6 +158,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     list: owner => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, done);
     }),
+    listForCollection: collections,
     listForAnalysisRecovery: owner => transaction('readonly', (store, read, done) => {
       read(store.getAllKeys(engineOwnerRange('analysis-reshape-request', owner)), keys => {
         if (!keys.length) { done([]); return; }

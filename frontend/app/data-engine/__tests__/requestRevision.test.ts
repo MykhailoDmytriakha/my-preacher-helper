@@ -27,7 +27,10 @@ it.each(['manual form', 'editor manual restore', 'collection watcher'] as const)
     const held = new Promise<CommitRequest[]>(resolve => { release = () => resolve(queued); });
     const holdAt = mode === 'editor manual restore' ? 3 : 1;
     let reads = 0;
-    jest.spyOn(h.commits, 'list').mockImplementation(owner => ++reads === holdAt ? held : originalList(owner));
+    if (mode === 'collection watcher') {
+      const scoped = h.commits.listForCollection!.bind(h.commits);
+      jest.spyOn(h.commits, 'listForCollection').mockImplementation((owner, collection) => ++reads === holdAt ? held : scoped(owner, collection));
+    } else jest.spyOn(h.commits, 'list').mockImplementation(owner => ++reads === holdAt ? held : originalList(owner));
     const form = editor.form('content', [['content']]);
     if (mode === 'manual form') opening = form.begin();
     else if (mode === 'collection watcher') { stop = engine.watchCollection('studyNotes', () => undefined); opening = Promise.resolve(); }

@@ -24,7 +24,7 @@ it.each(['readCollection', 'refreshCollection'] as const)('returns known accepta
     expect(['queued', 'prepared']).toContain(earlier[0].state);
     const held = new Promise<CommitRequest[]>(resolve => { release = () => resolve(earlier); });
     let heldReadStarted = false;
-    jest.spyOn(h.commits, 'list').mockImplementationOnce(() => { heldReadStarted = true; return held; });
+    jest.spyOn(h.commits, 'listForCollection').mockImplementationOnce(() => { heldReadStarted = true; return held; });
     reading = engine[method]('studyNotes');
     void reading.catch(() => undefined);
     await settleEngine();
@@ -50,7 +50,7 @@ it.each(['readCollection', 'refreshCollection'] as const)('includes work capture
     const editor = await engine.openEditor(resource, browser.editorId(resource));
     const held = new Promise<CommitRequest[]>(resolve => { release = () => resolve([]); });
     let heldReadStarted = false;
-    jest.spyOn(h.commits, 'list').mockImplementationOnce(() => { heldReadStarted = true; return held; });
+    jest.spyOn(h.commits, 'listForCollection').mockImplementationOnce(() => { heldReadStarted = true; return held; });
     reading = engine[method]('studyNotes'); void reading.catch(() => undefined);
     await settleEngine(); expect(heldReadStarted).toBe(true);
     await editor.commit(value => ({ ...value, title: 'Later pending title' })); await settleEngine();
@@ -88,7 +88,7 @@ it.each(['readCollection', 'refreshCollection'] as const)('rejects an old owner 
     await editor.commit(value => ({ ...value, title: 'Original owner title' })); await settleEngine();
     const originalList = h.commits.list.bind(h.commits), records = await originalList('owner');
     const held = new Promise<CommitRequest[]>(resolve => { release = () => resolve(records); });
-    jest.spyOn(h.commits, 'list').mockImplementationOnce(() => held);
+    jest.spyOn(h.commits, 'listForCollection').mockImplementationOnce(() => held);
     reading = engine[method]('studyNotes'); void reading.catch(() => undefined);
     await settleEngine(); engine.setOwner('next-owner'); release();
     await expect(reading).rejects.toThrow('Account changed');
@@ -108,7 +108,7 @@ it.each(['readCollection', 'refreshCollection'] as const)('includes a new resour
     const editor = await engine.createEditor(createdResource, browser.editorId(createdResource));
     const held = new Promise<CommitRequest[]>(resolve => { release = () => resolve([]); });
     let heldReadStarted = false;
-    jest.spyOn(h.commits, 'list').mockImplementationOnce(() => { heldReadStarted = true; return held; });
+    jest.spyOn(h.commits, 'listForCollection').mockImplementationOnce(() => { heldReadStarted = true; return held; });
     reading = engine[method]('studyNotes'); void reading.catch(() => undefined);
     await settleEngine(); expect(heldReadStarted).toBe(true);
     await editor.commit(() => ({ ...snapshot.value, title: 'New pending note' })); await settleEngine();
