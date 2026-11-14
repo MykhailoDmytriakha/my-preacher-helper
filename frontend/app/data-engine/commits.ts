@@ -691,6 +691,7 @@ export class CommitQueue {
         : intent.outlinePointPlacementRetry ? { kind: 'outline-point-placement', move: intent.outlinePointPlacementRetry } as const
           : intent.groupFlowStepPlacementRetry ? { kind: 'group-flow-step-placement', move: intent.groupFlowStepPlacementRetry } as const
             : intent.councilTopicPlacementRetry ? { kind: 'council-topic-placement', move: intent.councilTopicPlacementRetry } as const : undefined);
+    if (intent.conflicts.length || intent.unreadableScalarProof?.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title }
         : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture }
@@ -699,7 +700,6 @@ export class CommitQueue {
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
-    if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const removalLineage = frozenOptions?.pendingRemoval && captureRemovalLineage(frozenOptions.pendingRemoval, baseline, predecessor, records);
     const sourceNoteLink = editorAction?.kind === 'sermon-source-note-links'

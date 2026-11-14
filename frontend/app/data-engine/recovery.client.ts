@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
+import { autosaveFieldTargets } from './documentFieldAction';
 import { readManualScopeIdentity } from './editorIdentity';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
@@ -115,6 +116,7 @@ const recordSchema = z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(checkpointConflict).default([]),
+    unreadableScalarProof: z.array(z.string()).min(1).max(5).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
@@ -152,7 +154,7 @@ export function recoveryCheckpointEditorId(owner: string, sourceId: unknown): st
 }
 
 const { confirmed: _confirmed, draft: _draft, dirty: _dirty, editGeneration: _generation,
-  remoteCandidate: _remote, conflicts: _conflicts, pending: _pending, ...checkpointEvidence } = recordSchema.shape.checkpoint.shape;
+  remoteCandidate: _remote, conflicts: _conflicts, pending: _pending, unreadableScalarProof: _unreadableScalars, ...checkpointEvidence } = recordSchema.shape.checkpoint.shape;
 const { generation: _intentGeneration, value: _intentValue, operations: _operations,
   borrowedManualScope: _borrow, ...pendingEvidence } = pendingShape;
 
@@ -270,6 +272,13 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         [operationId, isFields(intent) ? withoutInvalidProof(intent, pendingEvidence, 'pending.', dropped) : intent]));
       if (Object.keys(kept).some(operationId => kept[operationId] !== pending[operationId])) checkpoint = { ...checkpoint, pending: kept };
     }
+    const collection = isFields(confirmed) && isFields(confirmed.resource) && confirmed.resource.collection;
+    if (dropped.length || checkpoint.unreadableScalarProof !== undefined) {
+      const held = Array.isArray(checkpoint.unreadableScalarProof) ? checkpoint.unreadableScalarProof : [];
+      const fields = typeof collection === 'string' ? autosaveFieldTargets(collection).filter(target => held.includes(target.field)
+        || (dropped.includes(target.draft) && checkpoint[target.draft] === undefined)).map(target => target.field) : [];
+      if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
+    }
     if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };
   }
   if (dropped.length) reportDroppedEvidence([...new Set(dropped)]);
@@ -341,9 +350,9 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
     ...decision, row: decision.row ? document(decision.row)! : undefined,
     linkedSteps: decision.linkedSteps?.map(step => document(step)!),
   })) };
+  const checkpoint = { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
   return clone({ ...record, retainedManualChoice, prepared,
-    checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent),
-      pending, conflicts, groupTextReview: groupReview } });
+    checkpoint: checkpoint.unreadableScalarProof?.length ? DataSession.restore(checkpoint).checkpoint() : checkpoint });
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {

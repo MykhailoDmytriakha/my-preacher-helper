@@ -1,5 +1,5 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
-import { readGroupFlowFieldConflict, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
+import { readGroupFlowFieldConflict, readUnreadableScalarComparison, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
@@ -35,6 +35,12 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const answers = useOpenDocumentAnswerScopes();
   const placement = checkpoint?.confirmed.resource.collection === 'groups' && anchoredStepComparison(checkpoint, 'serviceOrders.stepPosition', t);
   if (placement) return placement;
+  const unreadable = checkpoint && readUnreadableScalarComparison(checkpoint);
+  if (unreadable && (unreadable.field === 'title' || unreadable.field === 'status')) {
+    const field = unreadable.field === 'title' ? 'title' : 'groupStatus';
+    return { identity: unreadable.identity, title: t(fields[field]), valueKind: 'field', scopedChoice: true,
+      mine: groupFlowFieldText(t, field, unreadable.mine), stored: groupFlowFieldText(t, field, unreadable.stored) };
+  }
   const comparison = checkpoint && readGroupFlowFieldConflict(checkpoint);
   if (!checkpoint || !comparison) return undefined;
   const { resource, value } = checkpoint.confirmed;

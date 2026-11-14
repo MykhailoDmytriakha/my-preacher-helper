@@ -16,6 +16,7 @@ export function recoveryChoiceFingerprint(records: readonly EditorRecord[]): str
     draft: checkpoint.draft,
     remoteCandidate: checkpoint.remoteCandidate,
     groupTextReview: checkpoint.groupTextReview,
+    unreadableScalarProof: checkpoint.unreadableScalarProof,
     pending: Object.fromEntries(Object.entries(checkpoint.pending).sort(([a], [b]) => a.localeCompare(b))),
     preparedOperationId: prepared?.operationId ?? null,
     unfinalized: [...unfinalized].sort(),

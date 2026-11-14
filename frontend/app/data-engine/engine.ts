@@ -2337,7 +2337,7 @@ export class DataEngine {
     const { checkpoint } = state;
     const pending = Object.entries(checkpoint.pending);
     const unqueued = pending.every(([, request]) => request.generation < checkpoint.editGeneration);
-    const waitsForPerson = checkpoint.conflicts.length > 0
+    const waitsForPerson = checkpoint.conflicts.length > 0 || Boolean(checkpoint.unreadableScalarProof?.length)
       || state.result?.kind === 'conflict' || state.result?.kind === 'refused'
       || Boolean(checkpoint.confirmed.metadata?.deleted)
       || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null);

@@ -48,7 +48,7 @@ import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type
 import { validateResourceDocument } from './resourceSchemas';
 import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { readSermonPlanModeComparison as sermonPlanModeComparison } from './sermonFieldChoice';
-import { deletedUnder, type SessionCheckpoint } from './session';
+import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -101,6 +101,19 @@ export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) 
 export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) { return studyNoteFieldsComparison(checkpoint); }
 export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
+/** A recovered scalar comparison has no server request yet but still pins both displayed values. */
+export function readUnreadableScalarComparison(checkpoint: SessionCheckpoint) {
+  if (!checkpoint.unreadableScalarProof?.length || Object.keys(checkpoint.pending).length || checkpoint.conflicts.length !== 1) return;
+  const [choice] = checkpoint.conflicts;
+  const stored = checkpoint.remoteCandidate;
+  if (choice.code !== UNREADABLE_SCALAR_PROOF || choice.path.length !== 1 || !stored?.value
+    || stored.metadata?.generation !== checkpoint.confirmed.metadata?.generation) return;
+  const text = ({ exists, value }: FieldValue) => !exists ? '' : typeof value === 'string' ? value : undefined;
+  const mine = text(choice.mine), saved = text(choice.theirs);
+  if (mine === undefined || saved === undefined) return;
+  return { field: choice.path[0], mine, stored: saved,
+    identity: JSON.stringify([checkpoint.editGeneration, stored.metadata?.revision, choice]) };
+}
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export const captureOutlinePointPlacement = captureOutlinePlacement;
 export const captureOutlineSubpointMove = captureSubpointMove;

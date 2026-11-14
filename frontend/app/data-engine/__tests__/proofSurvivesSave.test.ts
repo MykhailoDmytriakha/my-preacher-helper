@@ -3,7 +3,8 @@ import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
 import { takeDroppedProof } from '@test-utils/droppedEvidence';
 
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
-import { CommitQueue, createMemoryCommitStore } from '../commits';
+import { CommitQueue, createMemoryCommitStore, type CommitRequest } from '../commits';
+import { createIndexedDbCommitStore } from '../commits.client';
 import { COUNCIL_OUTCOME_POLICY } from '../councilOutcomeAction';
 import { COUNCIL_TOPIC_TITLE_POLICY } from '../councilTopicTitleAction';
 import { GROUP_BLOCK_STATUS_POLICY } from '../groupBlockStatusAction';
@@ -77,8 +78,9 @@ async function save(checkpoint: EditorRecord['checkpoint'], preceding = false): 
 }
 
 /** The draft as the device stores it and an editor restores it: written through the native adapter, read back. */
-async function throughDeviceStorage(record: EditorRecord): Promise<EditorRecord> {
+async function throughDeviceStorage(record: EditorRecord, request?: CommitRequest): Promise<EditorRecord> {
   installStorageHarness();
+  if (request) await createIndexedDbCommitStore().create(request);
   const store = createIndexedDbCheckpoints();
   await store.put(record);
   return (await store.read('owner', record.editorId))!;
@@ -133,6 +135,77 @@ describe.each(SCALARS)('a scalar draft keeps its proof across device storage: %s
     expect(loose(outcome.commands[0])[action]).toBeDefined();
     expect((await readDocument('owner', resource)).value?.[field] ?? null).toBe(before);
   });
+});
+
+it.each(['none', 'acknowledged', 'cancelled'] as const)('asks before sending a recovered council title with unreadable revision after %s earlier work', async earlier => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'councils', id: 'council-with-unreadable-proof' };
+  const value = { userId: 'owner', title: 'Opening', status: 'preparing', date: '2099-04-10', topics: [] };
+  const snapshot: ResourceSnapshot = { resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set(resource.collection + '/' + resource.id, { ...value, _dataEngine: snapshot.metadata });
+  const session = new DataSession(snapshot);
+  const queuedValue = { ...value, title: 'Previously submitted title' };
+  if (earlier !== 'none') {
+    session.edit(queuedValue, undefined, { field: 'title', time: null });
+    session.registerCommit('earlier', session.checkpoint().editGeneration, queuedValue);
+  }
+  const privateTitle = earlier === 'none' ? 'Private title' : 'Opening';
+  session.edit({ ...value, title: privateTitle }, undefined, { field: 'title', time: null });
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.councilTitleDraft).toBeDefined();
+  loose(checkpoint.councilTitleDraft?.action).observedRevision = 'unreadable';
+  const earlierRequest: CommitRequest = { id: 'earlier', owner: 'owner', editorId: 'old-editor', editGeneration: 1, baseline: snapshot,
+    working: snapshot, value: queuedValue, intended: queuedValue, predecessor: null, revision: 0, initialized: false,
+    command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+  const recovered = await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] },
+    earlier === 'none' ? undefined : earlierRequest);
+  takeDroppedProof('councilTitleDraft');
+  const setTitle = (operationId: string, before: string, after: string, observedRevision: number) => processCommand('owner', {
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+    changes: diffFields({ ...value, title: before }, { ...value, title: after }),
+    councilTitleAction: { before, after, observedRevision, time: null },
+  });
+  const reopened = DataSession.restore(recovered.checkpoint);
+  const storedTitle = earlier === 'none' ? 'Opening' : 'Previously submitted title';
+  const storedRevision = earlier === 'none' ? 1 : 2;
+  if (earlier !== 'none') {
+    const answer = await setTitle('earlier', 'Opening', 'Previously submitted title', 1);
+    expect(answer.kind).toBe('acknowledged');
+    if (earlier === 'acknowledged') reopened.accept(answer);
+    else {
+      if (answer.kind !== 'acknowledged') throw new Error('The remote version was not saved');
+      reopened.observe(answer.snapshot, { source: 'server' });
+      reopened.applyCommit({ ...earlierRequest, state: 'cancelled', cancelledByChoice: true });
+    }
+  }
+  expect((await setTitle('desktop-away', storedTitle, 'Desktop edit', storedRevision)).kind).toBe('acknowledged');
+  expect((await setTitle('desktop-return', 'Desktop edit', storedTitle, storedRevision + 1)).kind).toBe('acknowledged');
+  const outcome = await save(reopened.checkpoint());
+  expect(outcome.commands).toHaveLength(0);
+  expect(outcome.code).toBe('resolve-version-first');
+  expect(reopened.checkpoint().draft?.title).toBe(privateTitle);
+  expect((await readDocument('owner', resource)).value?.title).toBe(storedTitle);
+
+  // Deciding the title does not discard an unrelated draft field.
+  const live = await readDocument('owner', resource);
+  const existingDraft = reopened.checkpoint().draft!;
+  reopened.edit({ ...existingDraft, description: 'Independent words' });
+  reopened.observe(live, { source: 'server' });
+  const savedChoice = DataSession.restore(reopened.checkpoint());
+  savedChoice.acceptRemote(savedChoice.checkpoint().draft);
+  expect(savedChoice.checkpoint()).toMatchObject({ dirty: true, conflicts: [], draft: { title: storedTitle, description: 'Independent words' } });
+  expect(savedChoice.checkpoint()).not.toHaveProperty('unreadableScalarProof');
+  reopened.keepLocal();
+  expect(reopened.checkpoint()).toMatchObject({ dirty: true, conflicts: [], draft: { title: privateTitle, description: 'Independent words' } });
+  expect(reopened.checkpoint()).not.toHaveProperty('unreadableScalarProof');
+  if (earlier === 'none') {
+    // The user's current words may equal the original opening but differ from an already displayed remote edit.
+    const returned = DataSession.restore(recovered.checkpoint);
+    returned.observe({ ...live, value: { ...live.value!, title: 'New saved words' } }, { source: 'server' });
+    returned.edit({ ...returned.checkpoint().draft!, title: value.title });
+    returned.keepLocal();
+    expect(returned.checkpoint().draft?.title).toBe(value.title);
+  }
 });
 
 const ROWS = [

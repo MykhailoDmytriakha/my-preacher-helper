@@ -1749,6 +1749,31 @@ it('follows saved local work while an automatically opened form is still untouch
 });
 
 
+it('keeps a private unreadable edit on this device when a previous Save is still pending at close', async () => {
+  const { h, a, b, inA } = await setup();
+  try {
+    await inA.commit(current => ({ ...current!, title: 'Earlier title' }));
+    await settleEngine();
+    const [earlier] = await h.commits.list('owner');
+    const sourceId = editorIdentity('tab-A', resource, 'group', 'held-private');
+    const checkpoint = inA.getState().checkpoint;
+    await h.checkpoints.create({ owner: 'owner', editorId: sourceId, prepared: null, unfinalized: [], checkpoint: {
+      ...checkpoint, unreadableScalarProof: ['title'], editGeneration: checkpoint.editGeneration + 1,
+      draft: { ...checkpoint.draft!, title: 'Later private title' }, dirty: true,
+    } });
+    const recovered = await b.openEditor(resource, sourceId);
+    expect(recovered.getState().checkpoint.unreadableScalarProof).toEqual(['title']);
+    expect(Object.keys(recovered.getState().checkpoint.pending)).toEqual([earlier.id]);
+    recovered.close({ flush: true });
+    await settleEngine();
+    const stored = await h.checkpoints.read('owner', sourceId);
+    expect(stored?.checkpoint.draft?.title).toBe('Later private title');
+    expect(stored?.checkpoint.unreadableScalarProof).toEqual(['title']);
+    expect((await h.commits.list('owner')).map(request => request.id)).toEqual([earlier.id]);
+    expect(h.transport.send).not.toHaveBeenCalled();
+  } finally { a.dispose(); b.dispose(); }
+});
+
 it('keeps screen work in its screen slot when the editor was opened from recovery', () => {
   const group = { collection: 'groups', id: 'group' };
   const opening = editorIdentity('tab', group, 'group', 'opening');

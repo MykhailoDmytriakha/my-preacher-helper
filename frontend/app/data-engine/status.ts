@@ -128,7 +128,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
     ...(phase === 'refused' && state.result?.kind === 'refused' && { refusalCode: state.result.code }),
     hasForeignChange: foreign,
-    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
+    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !checkpoint.unreadableScalarProof?.length && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && !checkpoint.confirmed.metadata?.deleted
       && ((pendingIds.length === 0 && checkpoint.confirmed.value !== null)
         || (!refused && (canRemovePendingCreation(state) || Boolean(pendingRemovalOpening(state))))),
