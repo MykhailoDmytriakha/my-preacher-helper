@@ -9746,3 +9746,13 @@ The mounted test waits on the writer's completion. Headless Chrome build `W6AEdX
 After authorized deployment, use a disposable sermon with a parent, a written child and an independent neighbor. Open By hand, confirm the deletion while holding the first text request in the test profile, and type into the parent's opening paragraph. Release the request and check both texts, the Undo boundary, Save and reload. Repeat with a child paragraph already copied into the parent and verify one copy after reloading. The fixture should use a separate test account.
 
 Full Jest passed 15,777 tests with 17 skipped. TypeScript, scoped ESLint, production build and independent source review passed.
+
+## BUG-20261114-own-insert-and-next-typing-undo-together · Undo the typing after dictation separately
+
+Studies → a note → Edit → New Recording. On localhost build `W6AEdXgnG8bHRLVzXJe73` a fixture recording supplied a paragraph, followed immediately by keyboard text. One Undo removed both. The mounted editor regression also reproduced the same grouping while checking the earlier typing group.
+
+The shared Markdown editor now closes the history group after an explicit insertion as well as before it. A subsequent keystroke starts an independent group. The regression checks separate Undo and Redo steps for earlier typing, the insertion and later typing.
+
+On local production build `-Kr0Nv3Vko2F4EGEDMpEP`, headless Chrome at 390 and 1280 px used an emulated microphone, a fixture transcription response and local Auth and Firestore. The first Undo kept the dictated paragraph and removed the later words. The next Undo removed the paragraph. Two Redo steps restored both, and the note still contained both after Done and reload. The recordings remained linked. Reports, a red assertion and visually reviewed screenshots are in `artifacts/undo-insertion-step-20261114`. Full Jest passed 15,778 tests with 17 skipped. TypeScript, scoped ESLint, production build and independent source review passed.
+
+After authorized deployment, use a disposable note in a dedicated test account. Dictate a short sentence and immediately type another. Check both Undo/Redo steps, press Done and reopen. A separately timed test covers dictation arriving in the same render as typing.

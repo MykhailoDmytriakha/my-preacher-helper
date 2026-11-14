@@ -55,6 +55,8 @@ function showDraft(editor: Editor, draft: string, userAction?: boolean) {
     // Only an external value retires prior Undo and Redo. Restoring a composition's
     // display does not establish a new observed document.
     if (userAction === false) retireHistory(editor);
+    // Keystrokes after an explicit insertion start their own group too.
+    if (userAction === true) editor.view.dispatch(closeHistory(editor.state.tr));
 }
 
 export function RichMarkdownEditor({

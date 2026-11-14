@@ -28,6 +28,29 @@ it.each([false, true])('reconciles a confirmed append while preserving newer inp
   expect(markdown(editor)).toBe(hasNewerInput ? visibleBeforeAppend : after);
 });
 
+it('undoes immediate typing independently of an explicitly inserted value', () => {
+  const onChange = jest.fn();
+  const view = render(<RichMarkdownEditor value={original} onChange={onChange} />);
+  const editor = mountedEditor(view.container);
+  typeAtEnd(editor, ' Before.');
+  const before = markdown(editor);
+  view.rerender(<RichMarkdownEditor value={before} valueIsUserAction onChange={onChange} />);
+  const inserted = before + ' Dictation.';
+  view.rerender(<RichMarkdownEditor value={inserted} valueIsUserAction onChange={onChange} />);
+  typeAtEnd(editor, ' After.');
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe(inserted);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe(before);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe(original);
+  act(() => { expect(editor.commands.redo()).toBe(true); });
+  act(() => { expect(editor.commands.redo()).toBe(true); });
+  expect(markdown(editor)).toBe(inserted);
+  act(() => { expect(editor.commands.redo()).toBe(true); });
+  expect(markdown(editor)).toBe(inserted + ' After.');
+});
+
 it.each([false, true])('ACCEPTED LIMITATION: foreign arrival retires all Undo/Redo, earlier typing=%s', earlierTyping => {
   const onChange = jest.fn();
   const view = render(<RichMarkdownEditor value={original} onChange={onChange} />);
