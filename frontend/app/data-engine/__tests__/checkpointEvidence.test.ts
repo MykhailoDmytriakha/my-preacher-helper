@@ -48,7 +48,8 @@ const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
-  groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: rowDrafts, groupStepDurationDrafts: rowDrafts,
+  groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: { row: { generation: 'g', action: { ...row, before: 'empty', after: 'filled' } } },
+  groupStepDurationDrafts: { row: { generation: 'g', action: { ...row, before: 1, after: 2 } } },
   thoughtLockDrafts: rowDrafts, thoughtPlacementDrafts: rowDrafts,
   exegeticalPointDrafts: [{ nodeId: 'point', kind: 'title', observedRevision: 1, time, predecessorOperationId: 'earlier-save',
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
@@ -106,6 +107,11 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
   if (key === 'sourceNoteLinkRetry') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
   if (key === 'groupTextReview') source.checkpoint.pending.request = { generation: 1, value: source.checkpoint.draft };
+  if (key.startsWith('groupBlock') || key.startsWith('groupStep')) {
+    const block = { id: row.rowId, createdAt: row.rowCreatedAt, title: row.after, content: row.after, status: 'filled' };
+    const step = { id: row.rowId, templateId: row.rowCreatedAt, instanceTitle: row.after, instanceNotes: row.after, durationMin: 2 };
+    source.checkpoint.draft = { ...source.checkpoint.draft, templates: [block], flow: [step] };
+  }
   const record = { ...source, checkpoint: { ...source.checkpoint, [key]: value } } as EditorRecord;
   const kept = await throughDeviceStorage(record, key === 'groupTextReview');
   for (const checkpoint of Object.values(kept)) expect((checkpoint as unknown as Record<string, unknown>)[key]).toEqual(value);

@@ -123,6 +123,7 @@ describe('Explicit checkpoint recovery', () => {
     const time = { earliestMs: 1000, latestMs: 1010 };
     const action = { rowId: 'point', rowCreatedAt: 'point', before: 'Opening', after: 'Written', observedRevision: 1,
       time, predecessorOperationId: 'earlier' };
+    original.checkpoint.draft = { ...original.checkpoint.draft, outline: { main: [{ id: 'point', text: 'Written' }] } };
     original.checkpoint.outlineTitleDrafts = { point: { generation: 'gen', action } };
     original.checkpoint.pending.next = { value: { userId: 'owner' }, generation: 1, outlineTitleActions: [action] };
     original.checkpoint.conflicts = [

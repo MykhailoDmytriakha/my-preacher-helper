@@ -605,6 +605,37 @@ it.each(['local', 'remote'] as const)('persists a %s choice for one recovered fi
   expect((await readDocument('owner', resource)).value?.templates).toEqual(complete.draft?.templates);
 });
 
+it.each(['missing birth', 'wrong birth', 'wrong generation', 'wrong row id', 'wrong words', 'wrong opening', 'unreadable map'] as const)(
+  'holds the exact group block whose original observation has %s', async mode => {
+    const db = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'groups', id: 'group-with-damaged-row-address' };
+    const row = { id: 'block', title: 'Saved block', type: 'custom', content: 'Keep content', status: 'filled', createdAt: 'born', updatedAt: 'born' };
+    const neighbor = { ...row, id: 'neighbor', title: 'Independent block' };
+    const value = { userId: 'owner', title: 'Group', status: 'draft', templates: [row, neighbor], flow: [], meetingDates: [] };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const session = new DataSession({ resource, value, metadata });
+    session.edit({ ...value, templates: [{ ...row, title: 'Private name' }, neighbor] }, undefined, {
+      field: 'group-block-title', rowId: row.id, time: null,
+    });
+    const checkpoint = session.checkpoint();
+    if (mode === 'unreadable map') loose(checkpoint).groupBlockTitleDrafts = 'unreadable';
+    else {
+      const entry = loose(checkpoint.groupBlockTitleDrafts?.block);
+      if (mode === 'wrong generation') entry.generation = 'another-generation';
+      else if (mode === 'wrong row id') loose(entry.action).rowId = 'neighbor';
+      else if (mode === 'wrong words') loose(entry.action).after = 'Different private words';
+      else if (mode === 'wrong opening') loose(entry.action).before = 'Different opening words';
+      else loose(entry.action).rowCreatedAt = mode === 'missing birth' ? null : 'another-row';
+    }
+    db.documents.set('groups/' + resource.id, { ...value, _dataEngine: { ...metadata, revision: 3 } });
+    const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+    const recovered = (await throughDeviceStorage(record)).checkpoint;
+    takeDroppedProof('groupBlockTitleDrafts');
+    expect(recovered.conflicts.map(({ path }) => path)).toEqual([['templates', 'id:block', 'title']]);
+    expect((await save(recovered)).code).toBe('resolve-version-first');
+    expect((await readDocument('owner', resource)).value?.templates).toEqual([row, neighbor]);
+  });
+
 it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row edit from acting on a %s', async situation => {
   const resource = { collection: 'groups', id: 'group-proof-row' };
   const opening = { id: 'row', title: 'Opening block name', createdAt: 'opening-row' };

@@ -79,15 +79,56 @@ export function hasRowProofTarget(collection: string, key: string): boolean {
 
 export type UnreadableRowProof = { field: DraftKey; rowId: string; birth: string; generation: string };
 
-/** Recover a row address only from a structurally valid identity in the draft that carried the proof. */
-export function unreadableRowProofs(collection: string, key: string, raw: unknown, draft: DocumentData | null): UnreadableRowProof[] {
-  const target = targetsFor(collection).find(item => item.draft === key);
-  if (!target || !object(raw)) return [];
-  return Object.entries(raw).flatMap(([rowId, row]) => {
-    if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId) || !object(row) || !object(row.action)
-      || row.action.rowId !== rowId || typeof row.action.rowCreatedAt !== 'string' || typeof row.generation !== 'string'
-      || birthAt(draft, rowId, target) !== row.action.rowCreatedAt) return [];
-    return [{ field: target.draft, rowId, birth: row.action.rowCreatedAt, generation: row.generation }];
+/** A readable proof must still name this generation and match the exact words on the device. */
+export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'> & { pendingOpening?: DocumentData }, key: string,
+  proofs: Record<string, unknown>): Record<string, unknown> {
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  const target = targetsFor(confirmed.resource.collection).find(item => item.draft === key);
+  if (!metadata || metadata.deleted || !target || !draft) return {};
+  const field = target.policy.target(target.field);
+  const opening = existingRowFields(confirmed.value?.[field.field], field);
+  const openingBirths = existingRowFields(confirmed.value?.[field.field], target.policy.birth);
+  const values = existingRowFields(draft[field.field], field);
+  const births = existingRowFields(draft[field.field], target.policy.birth);
+  return Object.fromEntries(Object.entries(proofs).filter(([id, proof]) => {
+    if (!object(proof) || !object(proof.action) || proof.generation !== metadata.generation) return false;
+    const action = proof.action;
+    if (action.rowId !== id || !(target.policy.acceptsRowId ?? boundedRowId)(id)
+      || typeof action.observedRevision !== 'number' || action.observedRevision > metadata.revision
+      || births.get(id) !== action.rowCreatedAt || !equalValues(values.get(id), action.after)) return false;
+    // Placement and outline-title edits have separately validated frames that can differ
+    // from the document field's value at the same revision.
+    if (target.stamp === 'thought-placement' || target.stamp === 'outline-title') return true;
+    if (action.observedRevision < metadata.revision || openingBirths.get(id) !== action.rowCreatedAt
+      || equalValues(opening.get(id), action.before)) return true;
+    const pending = checkpoint.pendingOpening;
+    return Boolean(pending && birthAt(pending, id, target) === action.rowCreatedAt
+      && equalValues(fieldAt(pending, id, target), action.before));
+  }));
+}
+
+/**
+ * The corrupt observation cannot establish identity or order. Use the exact rows whose values
+ * the two readable copies show changing, in this collection's declared field only.
+ */
+export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'>, key: string,
+  readable: Record<string, unknown>): UnreadableRowProof[] {
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  const target = targetsFor(confirmed.resource.collection).find(item => item.draft === key);
+  if (!target || !draft || !confirmed.value || !metadata || metadata.deleted) return [];
+  const rowField = target.policy.target(target.field);
+  const opening = existingRowFields(confirmed.value[rowField.field], rowField);
+  const proposed = existingRowFields(draft[rowField.field], rowField);
+  const oldBirths = existingRowFields(confirmed.value[rowField.field], target.policy.birth);
+  const newBirths = existingRowFields(draft[rowField.field], target.policy.birth);
+  return [...proposed].flatMap(([rowId, after]) => {
+    const before = opening.get(rowId), birth = newBirths.get(rowId);
+    if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId) || Object.hasOwn(readable, rowId)
+      || before === undefined || after === undefined || equalValues(before, after)
+      || birth === undefined || oldBirths.get(rowId) !== birth) return [];
+    return [{ field: target.draft, rowId, birth, generation: metadata.generation }];
   });
 }
 

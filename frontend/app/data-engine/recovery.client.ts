@@ -14,14 +14,14 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
-import { hasRowProofTarget, unreadableRowProofs } from './rowFieldAutosave';
+import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
 import { DataSession } from './session';
 import { json, serviceOrderPlacementComparison, snapshotSchema } from './transport.client';
 
 import type { CommitRequest } from './commits';
 import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
 import type { SessionCheckpoint } from './session';
-import type { ConflictDetail, FieldValue, ResourceRef } from './types';
+import type { DocumentData, ConflictDetail, FieldValue, ResourceRef } from './types';
 
 const id = z.string().refine(isValidIdentifier);
 const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }), z.object({ exists: z.literal(true), value: json })]);
@@ -232,12 +232,11 @@ function splitRowProofs(key: string, raw: unknown) {
   if (!isFields(raw)) return;
   const schema = (checkpointEvidence as Record<string, z.ZodTypeAny>)[key];
   const readable: [string, unknown][] = [];
-  const unreadable: [string, unknown][] = [];
   for (const [rowId, proof] of Object.entries(raw)) {
     const candidate = !nestsDeeperThan(proof, MAX_PROOF_DEPTH) ? draftWithoutUnreadableClock(proof) : proof;
-    (accepts(schema, { [rowId]: candidate }) ? readable : unreadable).push([rowId, candidate]);
+    if (accepts(schema, { [rowId]: candidate })) readable.push([rowId, candidate]);
   }
-  return { readable: Object.fromEntries(readable), unreadable: Object.fromEntries(unreadable) };
+  return Object.fromEntries(readable);
 }
 
 /** Drop the clock alone when the rest of the observation can still order an edit by its revision. */
@@ -308,14 +307,25 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         || (dropped.includes(target.draft) && checkpoint[target.draft] === undefined)).map(target => target.field) : [];
       if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
     }
-    if (typeof collection === 'string' && dropped.length && isFields(checkpoint.draft)) {
-      const rows = dropped.flatMap(key => {
-        if (checkpoint[key] !== undefined || !hasRowProofTarget(collection, key)) return [];
-        const proofs = splitRowProofs(key, (value.checkpoint as Fields)[key]);
-        if (!proofs) return [];
-        if (Object.keys(proofs.readable).length) checkpoint = { ...checkpoint, [key]: proofs.readable };
-        return unreadableRowProofs(collection, key, proofs.unreadable, checkpoint.draft as EditorRecord['checkpoint']['draft']);
-      });
+    if (typeof collection === 'string' && isFields(checkpoint.draft)) {
+      const original = value.checkpoint;
+      const rowKeys = Object.keys(original).filter(key => original[key] !== undefined && hasRowProofTarget(collection, key));
+      const parsed = rowKeys.length ? snapshotSchema.safeParse(checkpoint.confirmed) : undefined;
+      const latestPending = rowKeys.length && isFields(checkpoint.pending) ? Object.values(checkpoint.pending)
+        .filter(isFields).reduce<Fields | undefined>((latest, intent) =>
+          typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined)
+        : undefined;
+      const pendingOpening = isFields(latestPending?.value) ? latestPending.value as DocumentData : undefined;
+      const rows = parsed?.success ? rowKeys.flatMap(key => {
+        const structurallyReadable = checkpoint[key] ?? splitRowProofs(key, original[key]);
+        const source = { confirmed: parsed.data, draft: checkpoint.draft as EditorRecord['checkpoint']['draft'], pendingOpening };
+        const readable = validRecoveredRowProofs(source, key, isFields(structurallyReadable) ? structurallyReadable : {});
+        const lost = !isFields(structurallyReadable) || Object.keys(readable).length !== Object.keys(structurallyReadable).length;
+        if (!lost && !dropped.includes(key)) return [];
+        dropped.push(key);
+        checkpoint = { ...checkpoint, [key]: Object.keys(readable).length ? readable : undefined };
+        return unreadableRowProofs(source, key, readable);
+      }) : [];
       if (rows.length) {
         const existing = Array.isArray(checkpoint.unreadableRowProofs) ? checkpoint.unreadableRowProofs : [];
         const distinct = new Map([...existing, ...rows].filter(isFields).map(row => [JSON.stringify([row.field, row.rowId, row.birth, row.generation]), row]));
