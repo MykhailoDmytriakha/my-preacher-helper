@@ -71,6 +71,22 @@ delete process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 // wants the test login on sets it itself (utils/testLogin.ts).
 delete process.env.NEXT_PUBLIC_ENABLE_TEST_LOGIN;
 
+// TRIPWIRE FOR DROPPED ORDERING PROOF (app/data-engine/recovery.client.ts). A proof field the checkpoint
+// codec cannot validate is dropped whole and its name reported. Under test the names are collected — never
+// thrown inside application code, so every outcome is the same as in production — and a test that leaves
+// one behind fails after it ends: some producer emits a proof the schema does not accept. A test that drops
+// proof on purpose takes exactly the names it expects (test-utils/droppedEvidence.ts).
+const droppedProof = [];
+globalThis[Symbol.for('preacher.dataEngine.droppedEvidenceReporter')] = (fields) => { droppedProof.push(...fields); };
+globalThis[Symbol.for('preacher.dataEngine.droppedEvidenceEvents')] = droppedProof;
+afterEach(() => {
+  const left = droppedProof.splice(0);
+  if (left.length) {
+    throw new Error(`The data-engine checkpoint codec dropped proof fields it could not validate: ${left.join(', ')}. `
+      + 'Fix the producer or the schema; a test that drops proof on purpose takes the names it expects with takeDroppedProof().');
+  }
+});
+
 // Lazy load heavy mocks only when NODE_ENV is test
 if (process.env.NODE_ENV === 'test') {
   // Pre-configure fetch mock for better performance

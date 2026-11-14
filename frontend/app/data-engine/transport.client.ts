@@ -13,7 +13,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, DataCommand, EngineTransport, Json, ResourceSnapshot } from './types';
 
-const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
+export const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
 const resourceSchema = z.object({ collection: z.string(), id: z.string() });
 const metadataSchema = z.object({ protocol: z.literal(1), generation: z.string().min(1), revision: z.number().int().safe().positive(), deleted: z.boolean(), operationId: z.string().refine(isValidIdentifier).optional(),
   shareRevocation: z.string().refine(isValidIdentifier).optional() });
@@ -32,7 +32,7 @@ const serviceOrderAnchor = z.object({
   id: z.string().refine(isValidIdentifier), generation: z.string().refine(isValidIdentifier).nullable(), title: z.string().optional(),
 });
 const serviceOrderGap = z.object({ previous: serviceOrderAnchor.nullable(), next: serviceOrderAnchor.nullable() });
-const serviceOrderPlacementComparison = z.object({
+export const serviceOrderPlacementComparison = z.object({
   step: z.object({ id: z.string().refine(isValidIdentifier), title: z.string().optional() }).optional(),
   mine: serviceOrderGap, saved: serviceOrderGap.nullable(), available: z.boolean(),
 });
