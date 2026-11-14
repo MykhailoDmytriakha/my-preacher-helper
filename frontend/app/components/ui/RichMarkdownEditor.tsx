@@ -1,7 +1,9 @@
 import Placeholder from '@tiptap/extension-placeholder';
+import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { retireHistory } from './foreignHistory';
 import { decideComposition, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -17,6 +19,8 @@ interface RichMarkdownEditorProps {
     onHoldText?: (typed: string) => ((keep: boolean, chosenWrite?: void | Promise<unknown>) => void) | undefined;
     /** A proven append from a document action, including an append to an empty draft. */
     observedAppend?: ObservedTextAppend;
+    /** Opt in only when the supplied value is this editor user's requested edit. */
+    valueIsUserAction?: boolean;
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
@@ -36,11 +40,19 @@ function readMarkdown(editor: Editor): string {
     return editor.storage.markdown.getMarkdown();
 }
 
-function showDraft(editor: Editor, draft: string) {
-    if (draft !== readMarkdown(editor)) {
-        // Rendering an observed value must not announce it as a user edit.
-        editor.commands.setContent(draft, { emitUpdate: false });
-    }
+function showDraft(editor: Editor, draft: string, userAction?: boolean) {
+    if (editor.isDestroyed || draft === readMarkdown(editor)) return;
+    editor.chain()
+        .command(({ tr }) => {
+            if (userAction !== undefined) closeHistory(tr);
+            tr.setMeta('addToHistory', userAction === true);
+            return true;
+        })
+        .setContent(draft, { emitUpdate: false })
+        .run();
+    // Only an external value retires prior Undo and Redo. Restoring a composition's
+    // display does not establish a new observed document.
+    if (userAction === false) retireHistory(editor);
 }
 
 export function RichMarkdownEditor({
@@ -48,6 +60,7 @@ export function RichMarkdownEditor({
     onChange,
     onHoldText,
     observedAppend,
+    valueIsUserAction = false,
     placeholder = '',
     minHeight = '150px',
     autoFocus = false,
@@ -56,7 +69,7 @@ export function RichMarkdownEditor({
 }: RichMarkdownEditorProps) {
     const { draft, change, takeObserved } = useBufferedText(value, onChange);
     const composition = useRef<Composition | null>(null);
-    const current = useRef({ draft, value, observedAppend });
+    const current = useRef({ draft, value, observedAppend, valueIsUserAction });
     const heldText = useRef<{ settle?: (keep: boolean, chosenWrite?: void | Promise<unknown>) => void } | null>(null);
     const [choice, setChoice] = useState<string | null>(null);
     const editorContainer = useRef<HTMLDivElement>(null);
@@ -91,13 +104,13 @@ export function RichMarkdownEditor({
         },
     });
 
-    useLayoutEffect(() => { current.current = { draft, value, observedAppend }; }, [draft, value, observedAppend]);
+    useLayoutEffect(() => { current.current = { draft, value, observedAppend, valueIsUserAction }; }, [draft, value, observedAppend, valueIsUserAction]);
 
     useEffect(() => {
         if (editor && heldText.current === null && composition.current?.editor !== editor && !editor.view?.composing) {
-            showDraft(editor, draft);
+            showDraft(editor, draft, draft === value ? valueIsUserAction : undefined);
         }
-    }, [draft, editor]);
+    }, [draft, editor, value, valueIsUserAction]);
 
     useLayoutEffect(() => {
         const container = editorContainer.current;
@@ -138,13 +151,15 @@ export function RichMarkdownEditor({
         heldText.current = null;
         setChoice(null);
         if (keepTyped) {
-            showDraft(editor, choice);
+            // Undo of the decision returns to the adopted version, not the old editor frame.
+            showDraft(editor, value, false);
+            showDraft(editor, choice, true);
             const chosenWrite = change(choice);
             settle?.(true, chosenWrite);
         } else {
             settle?.(false);
             takeObserved();
-            showDraft(editor, value);
+            showDraft(editor, value, current.current.valueIsUserAction);
         }
     };
 
@@ -173,11 +188,19 @@ export function RichMarkdownEditor({
                                     break;
                                 case 'adopt':
                                     takeObserved();
-                                    showDraft(editor, result.text);
+                                    showDraft(editor, result.text, current.current.valueIsUserAction);
                                     break;
-                                case 'publish':
+                                case 'publish': {
+                                    const currentValue = current.current;
+                                    const merged = result.text !== confirmed && result.text !== currentValue.value;
+                                    if (merged && !currentValue.valueIsUserAction) {
+                                        // Undo can remove the newly composed words while keeping the foreign append.
+                                        showDraft(editor, currentValue.value, false);
+                                        showDraft(editor, result.text, true);
+                                    }
                                     change(result.text);
                                     break;
+                                }
                                 case 'compare':
                                     showDraft(editor, result.text);
                                     heldText.current = { settle: onHoldText?.(result.text) };

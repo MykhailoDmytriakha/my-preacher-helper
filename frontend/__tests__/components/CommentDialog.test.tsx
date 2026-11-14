@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { CommentDialog, CommentWayBar } from '@/components/CommentDialog';
@@ -15,10 +16,18 @@ import type React from 'react';
  * bar turns green and the main button makes it a note. The editor is the notes' own (a Tiptap surface), stood in
  * for here by a plain field; the engine's door is checked by what it is asked to write.
  */
+let mockRealEditor = false;
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
-  RichMarkdownEditor: ({ value, onChange, placeholder, editable = true }: { value: string; onChange: (value: string) => void; placeholder?: string; editable?: boolean }) => (
+  RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+      if (mockRealEditor) {
+        const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+        return <RichMarkdownEditor {...props} />;
+      }
+      const { value, onChange, placeholder, editable = true } = props;
+      return (
     <textarea aria-label="editor" placeholder={placeholder} value={value} readOnly={!editable} onChange={(event) => onChange(event.target.value)} />
-  ),
+  );
+  },
 }));
 
 let mockInterpolateCommentTitle = false;
@@ -1168,4 +1177,45 @@ describe('CommentDialog', () => {
       expect(screen.queryByRole('button', { name: 'comment.move' })).not.toBeInTheDocument();
     });
   });
+});
+
+it('regression pin: keeps a requested comment draft replacement undoable in the mounted editor', async () => {
+  mockRealEditor = true;
+  try {
+    saveDraft(draftKey('owner', 'c1', 'comment', 'previous'), { text: 'Requested restored words.', reference: null, title: '' });
+    const view = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="" onClose={jest.fn()} />);
+    const editor = mountedEditor(view.baseElement);
+    const before = markdown(editor);
+    fireEvent.click(await screen.findByRole('button', { name: 'unsavedDraft.restore' }));
+    expect(markdown(editor)).toBe('Requested restored words.');
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    expect(undo(editor)).toBe(true);
+    expect(markdown(editor)).toBe(before);
+    view.unmount();
+  } finally { mockRealEditor = false; }
+});
+
+it('B60 clears the comment recovery flag on taking a remote conflict version, then keeps it through keyboard Undo and Redo', async () => {
+  mockRealEditor = true;
+  try {
+    const remote = 'Remote comment paragraph.';
+    saveDraft(draftKey('owner', 'c1', 'comment', 'previous'), { text: 'Own restored words.', reference: null, title: '' });
+    const view = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="" onClose={jest.fn()} />);
+    const editor = mountedEditor(view.baseElement);
+    fireEvent.click(await screen.findByRole('button', { name: 'unsavedDraft.restore' }));
+    expect(markdown(editor)).toBe('Own restored words.');
+    mockEngine.updateNote.mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6, { content: remote })), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never);
+    fireEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    expect(markdown(editor)).toBe(remote);
+    fireEvent.keyDown(editor.view.dom, { key: 'z', code: 'KeyZ', ctrlKey: true, keyCode: 90 });
+    fireEvent.keyDown(editor.view.dom, { key: 'y', code: 'KeyY', ctrlKey: true, keyCode: 89 });
+    typeAtEnd(editor, ' Later typing.');
+    undo(editor); undo(editor);
+    expect(markdown(editor)).toBe(remote);
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(mockEngine.updateNote).toHaveBeenCalledTimes(1));
+    view.unmount();
+  } finally { mockRealEditor = false; }
 });

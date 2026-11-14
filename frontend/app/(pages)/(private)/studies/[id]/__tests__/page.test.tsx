@@ -1,3 +1,4 @@
+import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
 import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import type { RecordPresence } from '@/data-engine/recordPresence';
@@ -8,7 +9,7 @@ import RouteLoading from '../loading';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
-import { draftKey, findDraftCopies, readDraft } from '@/utils/durableDraft';
+import { draftKey, findDraftCopies, readDraft, saveDraft } from '@/utils/durableDraft';
 import { findNewNoteDrafts } from '@/utils/newNoteDrafts';
 import { Toaster, toast } from 'sonner';
 import enTranslations from '@locales/en/translation.json';
@@ -17,6 +18,7 @@ let mockAiFeedbackText: string | undefined;
 
 const mockRecordingRows = new Map<string, unknown>();
 const mockAuthState: { user: { uid: string } | null; loading: boolean } = { user: { uid: 'user-1' }, loading: false };
+let mockRealEditor = false;
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => mockAuthState }));
 jest.mock('idb-keyval', () => ({
   createStore: jest.fn(() => ({})),
@@ -112,7 +114,13 @@ jest.mock('../../components/SermonsBuiltOnNote', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, onHoldText, placeholder }: any) => (
+    RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+      if (mockRealEditor) {
+        const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+        return <RichMarkdownEditor {...props} />;
+      }
+      const { value, onChange, onHoldText, placeholder } = props;
+      return (
         <textarea
             data-testid="rich-markdown-editor"
             value={value}
@@ -120,7 +128,8 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
             onCompositionEnd={event => onHoldText?.(event.data)}
             placeholder={placeholder}
         />
-    ),
+    );
+    },
 }));
 
 // The comment's window has its own suite (CommentDialog.test.tsx); here only whether it is open matters.
@@ -226,6 +235,29 @@ describe('StudyNoteEditorPage Pagination', () => {
             const newOwnersCopies = findDraftCopies<{ content: string }>('user-2', 'note-1', 'note');
             expect(newOwnersCopies.some(copy => copy?.value.content === 'Last quarter-second words')).toBe(false);
         } finally { view.unmount(); localStorage.clear(); jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+
+    it('regression pin: keeps a second requested note draft replacement undoable in the mounted editor', async () => {
+        mockRealEditor = true;
+        localStorage.clear();
+        try {
+            const first = { title: 'First', content: 'First requested words.', tags: [], scriptureRefs: [], type: 'note' };
+            const second = { ...first, title: 'Second', content: 'Second requested words.' };
+            saveDraft(draftKey('user-1', 'note-1', 'note', 'first'), first, undefined, false, 1);
+            saveDraft(draftKey('user-1', 'note-1', 'note', 'second'), second, undefined, false, 2);
+            const view = render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const editor = mountedEditor(view.container);
+            const before = markdown(editor);
+            fireEvent.click(await screen.findByRole('button', { name: 'unsavedDraft.restore' }));
+            expect(markdown(editor)).not.toBe(before);
+            expect(mountedEditor(view.container)).toBe(editor);
+            expect(undo(editor)).toBe(true);
+            expect(markdown(editor)).toBe(before);
+            view.unmount();
+        } finally { mockRealEditor = false; localStorage.clear(); }
     });
 
     it('lets the owner choose and restore each unfinished copy of the same note', () => {

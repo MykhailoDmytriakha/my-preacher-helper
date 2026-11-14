@@ -236,6 +236,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             {isEditing && !readOnly ? (
               <RichMarkdownEditor
                 value={conspectus.contentByNodeId[node.id] ?? ""}
+                valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
                 placeholder={t(NO_PLAN_CONTENT_KEY)}
                 minHeight={node.kind === "subPoint" ? "90px" : "120px"}
                 onChange={(text) => {

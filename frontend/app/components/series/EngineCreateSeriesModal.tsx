@@ -68,7 +68,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
     }>
     <div className="space-y-5">
       <fieldset disabled={busy}>
-        <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
+        <SeriesFormFields valueIsUserAction={Boolean(document.state?.checkpoint.dirty)} values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
       </fieldset>
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{sayFailure(missing, t)}</p>}
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {

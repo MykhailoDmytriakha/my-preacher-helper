@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useEditorValues } from '@/components/ui/useEditorValue';
 import { isOfflineQueuedError, isStaleWriteError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
@@ -46,6 +47,7 @@ interface UseManualConspectusParams {
 
 export interface ManualConspectus {
   contentByNodeId: Record<string, string>;
+  userActionValues: Record<string, string>;
   savedNodeIds: Record<string, boolean>;
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
@@ -78,7 +80,9 @@ export function useManualConspectus({
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const planWriter = usePlanWriter();
-  const [contentByNodeId, setContentByNodeId] = useState<Record<string, string>>({});
+  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues } = useEditorValues();
+  // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
+  const rescuingNodes = useRef(new Set<string>());
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
 
@@ -173,10 +177,10 @@ export function useManualConspectus({
      * replay then buried the first version. The baseline already knew about queued cells;
      * the text on screen has to know it too, or the two disagree about the same cell.
      */
-    const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId);
+    const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId) || rescuingNodes.current.has(nodeId);
     setContentByNodeId((previous) => mergeStoredPlanText(previous, stored, keepScreen));
     setSavedNodeIds((previous) => mergeStoredSavedFlags(previous, stored, keepScreen));
-  }, [baseline, confirmedRevision, refreshPending, sermon?.planText, sermon?.plan]);
+  }, [baseline, confirmedRevision, refreshPending, sermon?.planText, sermon?.plan, setContentByNodeId]);
 
   /**
    * WHAT THE SERVER TURNED OUT TO HOLD, kept until the person decides what to do about it.
@@ -224,9 +228,9 @@ export function useManualConspectus({
   }, [baseline, t]);
 
   const setNodeContent = useCallback((nodeId: string, text: string) => {
-    setContentByNodeId((previous) => ({ ...previous, [nodeId]: text }));
+    changeContentByNodeId((previous) => ({ ...previous, [nodeId]: text }));
     setModifiedNodeIds((previous) => ({ ...previous, [nodeId]: true }));
-  }, []);
+  }, [changeContentByNodeId]);
 
   /**
    * Writes the given nodes' text, each under its own key, and mirrors it into the sermon in
@@ -363,7 +367,7 @@ export function useManualConspectus({
     const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
     setContentByNodeId(keep);
     setModifiedNodeIds(keep);
-  }, []);
+  }, [setContentByNodeId]);
 
   const saveModified = useCallback(async (): Promise<boolean> => {
     const unsaved = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
@@ -648,10 +652,16 @@ export function useManualConspectus({
      * text now.
      */
     const rescuing = rescued !== "" && mergedParent !== (contentByNodeId[pointId] ?? "");
+    rescuingNodes.current.add(pointId);
+    rescuingNodes.current.add(subPointId);
     try {
       if (rescuing) await writeText({ [pointId]: mergedParent, [subPointId]: "" });
     } catch (error) {
       if (!isOfflineQueuedError(error)) {
+        rescuingNodes.current.delete(pointId);
+        rescuingNodes.current.delete(subPointId);
+        setContentByNodeId(previous => mergeStoredPlanText(previous, readPlanText(sermonRef.current),
+          nodeId => Boolean(modifiedRef.current[nodeId]) || rescuingNodes.current.has(nodeId)));
         debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
         toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
         return;
@@ -662,9 +672,12 @@ export function useManualConspectus({
        * standing — a deletion the person asked for, left half done until they did it again.
        */
       debugLog("Sub-point delete: rescue queued offline, continuing with the structure", { subPointId });
+    } finally {
+      rescuingNodes.current.delete(pointId);
+      rescuingNodes.current.delete(subPointId);
     }
 
-    setContentByNodeId((previous) => {
+    changeContentByNodeId((previous) => {
       const next = { ...previous, [pointId]: mergedParent };
       delete next[subPointId];
       return next;
@@ -676,7 +689,7 @@ export function useManualConspectus({
         : point
     ))));
     if (removed) detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
-  }, [contentByNodeId, detachThoughtsFrom, persistOutline, t, writeText]);
+  }, [changeContentByNodeId, contentByNodeId, detachThoughtsFrom, persistOutline, setContentByNodeId, t, writeText]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
@@ -700,22 +713,23 @@ export function useManualConspectus({
       return next;
     });
 
-  }, [detachThoughtsFrom, persistOutline, sectionOfPoint]);
+  }, [detachThoughtsFrom, persistOutline, sectionOfPoint, setContentByNodeId]);
 
   /**
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
    * confirmed, so the screen must keep saying so until a save actually succeeds.
    */
   const restoreCells = useCallback((cells: Record<string, string>) => {
-    setContentByNodeId((previous) => ({ ...previous, ...cells }));
+    changeContentByNodeId((previous) => ({ ...previous, ...cells }));
     setModifiedNodeIds((previous) => ({
       ...previous,
       ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
     }));
-  }, []);
+  }, [changeContentByNodeId]);
 
   return {
     contentByNodeId,
+    userActionValues,
     savedNodeIds,
     modifiedNodeIds,
     pendingNodeIds,

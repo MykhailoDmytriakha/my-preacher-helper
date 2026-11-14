@@ -1,13 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
+import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
 import '@testing-library/jest-dom';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
@@ -27,6 +31,7 @@ import type { Sermon } from '@/models/models';
  */
 
 let mockSermon: Sermon | null = null;
+let mockNoteMode = false;
 let harness: ReturnType<typeof documentEngineHarness>;
 
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
@@ -39,9 +44,12 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mockNoteMode ? 'source=note' : ''),
   usePathname: () => '/sermons/sermon-1/plan/manual',
 }));
+
+jest.mock('@/hooks/useSermonNoteLinks', () => ({ useSourceNotes: () => ({ notes: [], missingIds: [], loading: false }) }));
+jest.mock('@/(pages)/(private)/sermons/[id]/plan/planApi', () => ({ generateNotePlanContent: jest.fn() }));
 
 jest.mock('@/services/outline.service', () => ({ updateSermonOutline: jest.fn() }));
 // The real module with only the write replaced: listing exports by hand meant every new
@@ -246,4 +254,152 @@ it('keeps a previous manual-plan cell readable and unchanged while the missing s
   expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
   view.unmount(); client.clear();
   expect(readDraft(key)).toEqual(stored);
+});
+
+it.each([
+  { earlierTyping: false, laterTyping: false },
+  { earlierTyping: true, laterTyping: false },
+  { earlierTyping: true, laterTyping: true },
+])('preserves a remotely refreshed manual cell through Undo, earlier typing=$earlierTyping, later typing=$laterTyping', async ({ earlierTyping, laterTyping }) => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Original manual paragraph.' });
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  if (earlierTyping) {
+    typeAtEnd(editor, ' Laptop edit.');
+    fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+    await waitFor(() => expect(harness.server.value?.planText).toEqual({ p1: 'Original manual paragraph. Laptop edit.' }));
+  }
+  const adopted = markdown(editor) + '\n\nPhone paragraph.';
+  await act(async () => { await harness.remote({ planText: { p1: adopted } }); });
+  await waitFor(() => expect(markdown(editor)).toBe(adopted));
+  expect(mountedEditor(view.container)).toBe(editor);
+  if (laterTyping) typeAtEnd(editor, ' Later laptop text.');
+  expect(undo(editor)).toBe(laterTyping);
+  expect(markdown(editor)).toBe(adopted);
+  expect(undo(editor)).toBe(false);
+  expect(markdown(editor)).toBe(adopted);
+  act(() => { expect(editor.commands.redo()).toBe(laterTyping); });
+  expect(markdown(editor)).toBe(adopted + (laterTyping ? ' Later laptop text.' : ''));
+  expect(harness.server.value?.planText).toEqual({ p1: adopted });
+  expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
+});
+
+it('regression pin: keeps a second requested manual draft replacement undoable in the mounted editor', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Original manual paragraph.' });
+  saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1', 'first'), 'First requested words.', undefined, false, 1);
+  saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1', 'second'), 'Second requested words.', undefined, false, 2);
+  const view = await render();
+  fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  const before = markdown(editor);
+  fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  expect(markdown(editor)).not.toBe(before);
+  expect(mountedEditor(view.container)).toBe(editor);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe(before);
+});
+
+it('regression pin: keeps an explicitly applied note-plan AI replacement undoable in the mounted manual cell', async () => {
+  localStorage.clear();
+  mockNoteMode = true;
+  try {
+    mockSermon = { ...sermon({ p1: 'Original manual paragraph.' }), sourceNoteIds: ['source-note'] };
+    jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p1: 'Requested AI text.' }, missingMaterial: {} });
+    const view = await render();
+    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    const editor = mountedEditor(view.container);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'plan.fromNote.apply' }));
+    expect(markdown(editor)).toBe('Requested AI text.');
+    expect(mountedEditor(view.container)).toBe(editor);
+    expect(undo(editor)).toBe(true);
+    expect(markdown(editor)).toBe('Original manual paragraph.');
+    view.unmount();
+  } finally { mockNoteMode = false; }
+});
+
+it('regression pin: keeps the requested child-text rescue undoable in the mounted manual parent', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Original manual paragraph.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+  fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+  await waitFor(() => expect(markdown(editor)).toBe('Original manual paragraph.\n\nChild paragraph.'));
+  expect(mountedEditor(view.container)).toBe(editor);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe('Original manual paragraph.');
+});
+
+let mockFailNextRescue = false;
+jest.mock('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter', () => {
+  const actual = jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter');
+  return { ...actual, useEnginePlanWriter: (...args: unknown[]) => {
+    const result = actual.useEnginePlanWriter(...args);
+    return { ...result, writer: { ...result.writer, savePlanText: (...params: unknown[]) => {
+      if (mockFailNextRescue) { mockFailNextRescue = false; return Promise.reject(new Error('Injected pre-write storage refusal')); }
+      return result.writer.savePlanText(...params);
+    } } };
+  } };
+});
+
+it('B80 a refused local child deletion must not opt a later remote rescue into Undo and erase it on Save', async () => {
+  localStorage.clear();
+  const original = 'Original manual paragraph.';
+  const child = 'Child paragraph.';
+  const remote = original + '\n\n' + child;
+  mockSermon = sermon({ p1: original, child });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  mockFailNextRescue = true;
+  fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+  fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  expect(markdown(editor)).toBe(original);
+  expect(harness.server.value?.planText).toEqual({ p1: original, child });
+  // The phone independently completed the same rescue: parent receives the child's words, child is removed.
+  await act(async () => { await harness.remote({ planText: { p1: remote, child: '' }, outline: { introduction: [{ id: 'p1', text: 'First point', subPoints: [] }], main: [], conclusion: [] } }); });
+  await waitFor(() => expect(markdown(editor)).toBe(remote));
+  expect(mountedEditor(view.container)).toBe(editor);
+  expect(undo(editor)).toBe(false);
+  const afterUndo = markdown(editor);
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+  await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1).toBe(afterUndo));
+  expect(afterUndo).toBe(remote);
+  expect((harness.server.value?.planText as Record<string, string>).p1).toBe(remote);
+});
+
+it('C13 manual plan saves the arriving table without changing its shape', async () => {
+  localStorage.clear();
+  const original = '| A | B |\n| --- | --- |\n| abcdef | Keep |';
+  mockSermon = sermon({ p1: original }); const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+  await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.trim()).toBe(markdown(editor).trim()));
+  const remote = '| A | B |\n| --- | --- |\n| abef | Keep |';
+  await act(async () => { await harness.remote({ planText: { p1: remote } }); });
+  const arrived = { text: markdown(editor), json: editor.getJSON(), tables: editor.view.dom.querySelectorAll('table').length };
+  expect(undo(editor)).toBe(false);
+  act(() => { expect(editor.commands.redo()).toBe(false); });
+  typeAtEnd(editor, ' Own.');
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+  await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1).toContain('Own.'));
+  expect(arrived.tables).toBe(1); expect(arrived.text.trim()).toBe(remote);
+  expect(mountedEditor(view.container)).toBe(editor);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor).trim()).toBe(remote);
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+  await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.trim()).toBe(remote));
 });

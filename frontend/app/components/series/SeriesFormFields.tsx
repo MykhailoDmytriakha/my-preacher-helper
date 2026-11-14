@@ -46,9 +46,10 @@ interface SeriesFormFieldsProps {
   values: SeriesFormValues;
   onChange: (patch: Partial<SeriesFormValues>) => void;
   colorPickerTitle: string;
+  valueIsUserAction?: boolean;
 }
 
-export default function SeriesFormFields({ values, onChange, colorPickerTitle }: SeriesFormFieldsProps) {
+export default function SeriesFormFields({ values, onChange, colorPickerTitle, valueIsUserAction = false }: SeriesFormFieldsProps) {
   const { t } = useTranslation();
   const [pickingColor, setPickingColor] = useState(false);
   return (
@@ -64,7 +65,7 @@ export default function SeriesFormFields({ values, onChange, colorPickerTitle }:
         </FormField>
       </div>
       <FormField label={t('workspaces.series.form.description')}>
-        <RichMarkdownEditor value={values.description} onChange={description => onChange({ description })}
+        <RichMarkdownEditor valueIsUserAction={valueIsUserAction} value={values.description} onChange={description => onChange({ description })}
           placeholder={t('workspaces.series.form.descriptionPlaceholder')} minHeight="120px" />
       </FormField>
       <FormField label={t('workspaces.series.form.status')}>

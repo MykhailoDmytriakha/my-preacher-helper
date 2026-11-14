@@ -1,5 +1,6 @@
 'use client';
 
+
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useReducer, useRef } from 'react';
@@ -23,6 +24,7 @@ import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { TagHistory } from '@/components/ui/TagHistory';
+import { useEditorValue } from '@/components/ui/useEditorValue';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
@@ -742,7 +744,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, []);
-    const [content, setContent] = useState('');
+    const { value: content, observe: setContent, act: setOwnContent, isUserAction: contentIsUserAction } = useEditorValue('');
     const contentOpeningRef = useRef<Omit<StudyNoteContentCapture, 'time'> | undefined>(undefined);
     const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture } | null>(null);
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
@@ -891,7 +893,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             ? previous.capture : contentOpeningRef.current?.opening === opening ? contentOpeningRef.current : undefined;
         contentEditRef.current = uid && !isNew && seen
             ? { owner: uid, id: noteId, value, capture: { ...seen, time: captureActionTime?.() ?? null } } : null;
-        setContent(value);
+        setOwnContent(value);
     };
     const appendDictation = (text: string, recovered: boolean) => {
         const next = content ? `${content}\n\n${text}` : text;
@@ -902,11 +904,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             if (uid && observed) {
                 contentOpeningRef.current = observed;
                 contentEditRef.current = { owner: uid, id: noteId, value: next, capture: { ...observed, time: null } };
-                setContent(next);
+                setOwnContent(next);
                 return;
             }
         }
-        setContent(next);
+        setOwnContent(next);
     };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
@@ -1118,7 +1120,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, observedReferenceVersion, observeContent, noteId]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, observedReferenceVersion, observeContent, noteId, setContent]);
     useEffect(() => {
         if (!isNew && noteIsAccepted && content === rowPayload?.content) {
             releaseUnconfirmedDictation(dictationSourceIds, rowPayload.dictationSourceIds ?? []);
@@ -1146,7 +1148,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const origin = !isNew && opening && !restored.reviewLegacyFields ? restored.origin : undefined;
         setTitle(restored.title);
         contentEditRef.current = uid && origin?.content ? { owner: uid, id: noteId, value: restored.content, capture: origin.content } : null;
-        setContent(restored.content);
+        setOwnContent(restored.content);
         setTags(restored.tags);
         setType(restored.type);
         restoringDraft.current = Boolean(!isNew && opening);
@@ -1184,7 +1186,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // Keep the selected source until the current writer or outbox durably takes over.
         acceptRecovered(recovery || origin || reviewingLegacyDraft.current ? { transferToWriter: true } : undefined);
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, existingNote, noteIsAccepted, presence, isNew, noteId, uid, currentGeneration, currentEngineRevision, recoveryGeneration]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, setTags, setType, setOwnContent, existingNote, noteIsAccepted, presence, isNew, noteId, uid, currentGeneration, currentEngineRevision, recoveryGeneration]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1883,6 +1885,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 value={content}
+                                valueIsUserAction={contentIsUserAction}
                                 onChange={changeContent}
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}

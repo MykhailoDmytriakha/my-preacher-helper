@@ -1,3 +1,4 @@
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
@@ -8,8 +9,14 @@ import { documentEngineHarness, settleEngine } from '../../test-utils/documentEn
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
-  <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
+let mockRealEditor = false;
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+  if (mockRealEditor) {
+    const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+    return <RichMarkdownEditor {...props} />;
+  }
+  return <textarea aria-label="Description" value={props.value} onChange={event => props.onChange(event.target.value)} />;
+} }));
 const resource = { collection: 'series', id: 'new-series' };
 function setup() {
   const harness = documentEngineHarness({ resource, value: null, metadata: null });
@@ -94,4 +101,26 @@ describe('deleteGuard recoverable draft behavior', () => {
     }) })]));
     expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
   });
+});
+
+it('regression pin: keeps requested creation recovery undoable in the mounted series description', async () => {
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    const title = await screen.findByPlaceholderText('workspaces.series.form.titlePlaceholder');
+    await waitFor(() => expect(title).toBeEnabled());
+    fireEvent.change(title, { target: { value: 'Requested series draft' } });
+    typeAtEnd(mountedEditor(view.baseElement), 'Requested description.');
+    await act(async () => { await settleEngine(); });
+    const choices = await harness.checkpoints.listRecoverable('owner', resource);
+    const recoveryId = choices.find(item => item.record.checkpoint.draft?.title === 'Requested series draft')!.id;
+    view.unmount();
+    const restored = render(<Workspace recoveryId={recoveryId} />);
+    const editor = mountedEditor(restored.baseElement);
+    await waitFor(() => expect(markdown(editor)).toBe('Requested description.'));
+    expect(mountedEditor(restored.baseElement)).toBe(editor);
+    expect(undo(editor)).toBe(true);
+    expect(markdown(editor)).toBe('');
+    restored.unmount();
+  } finally { mockRealEditor = false; }
 });

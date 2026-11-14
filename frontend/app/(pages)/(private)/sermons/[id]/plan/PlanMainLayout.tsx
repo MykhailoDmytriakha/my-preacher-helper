@@ -176,6 +176,7 @@ interface PlanMainLayoutContextValue {
   sermonId: string;
   noContentText: string;
   t: (key: string, options?: Record<string, unknown>) => string;
+  userActionValues: Record<string, string>;
   modifiedContent: Record<string, boolean>;
   savedSermonPoints: Record<string, boolean>;
   editModePoints: Record<string, boolean>;
@@ -361,6 +362,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
 }, ref) => {
   const {
     generatedContent,
+    userActionValues,
     modifiedContent,
     savedSermonPoints,
     editModePoints,
@@ -456,6 +458,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                 <RichMarkdownEditor
                   value={nodeContent}
                   onHoldText={typed => onHoldCellText?.(node.id, typed)}
+                  valueIsUserAction={userActionValues[node.id] !== undefined && userActionValues[node.id] === nodeContent}
                   placeholder={noContentText}
                   minHeight={node.kind === "subPoint" ? "90px" : "150px"}
                   onChange={(newContent) => {
@@ -637,6 +640,7 @@ export interface PlanMainLayoutProps {
   mainSectionRef: React.RefObject<HTMLDivElement | null>;
   conclusionSectionRef: React.RefObject<HTMLDivElement | null>;
   generatedContent: Record<string, string>;
+  userActionValues: Record<string, string>;
   modifiedContent: Record<string, boolean>;
   savedSermonPoints: Record<string, boolean>;
   editModePoints: Record<string, boolean>;
@@ -686,6 +690,7 @@ export default function PlanMainLayout({
   mainSectionRef,
   conclusionSectionRef,
   generatedContent,
+  userActionValues,
   modifiedContent,
   savedSermonPoints,
   editModePoints,
@@ -724,6 +729,7 @@ export default function PlanMainLayout({
     sermonId,
     noContentText,
     t,
+    userActionValues,
     modifiedContent,
     savedSermonPoints,
     editModePoints,

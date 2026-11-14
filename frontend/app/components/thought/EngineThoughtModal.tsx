@@ -197,7 +197,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
       <div className="space-y-3">
         <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
         {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
-          : <RichMarkdownEditor value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
+          : <RichMarkdownEditor valueIsUserAction={form.active} value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
       </div>
     </div>
   </FormDialog>{discardDialog}</>;

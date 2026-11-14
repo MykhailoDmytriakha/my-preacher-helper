@@ -1,3 +1,5 @@
+import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
+
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { useTextDictation } from '@/hooks/useTextDictation';
@@ -16,16 +18,15 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isMagicAvailable: false }) }));
 jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({ accept: jest.fn(async () => undefined), discard: jest.fn(async () => undefined) })) }));
 jest.mock('@/components/thought/ThoughtTextHeader', () => ({ ThoughtTextHeader: () => null }));
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({
-  RichMarkdownEditor: ({ value, onChange, observedAppend }: {
-    value: string;
-    onChange: (value: string) => void;
-    observedAppend?: { before: string; after: string };
-  }) => (
-    <textarea aria-label="Thought" value={value} onChange={event => onChange(event.target.value)}
-      data-append-before={observedAppend?.before} data-append-after={observedAppend?.after} />
-  ),
-}));
+let mockRealEditor = false;
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+  if (mockRealEditor) {
+    const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+    return <RichMarkdownEditor {...props} />;
+  }
+  return <textarea aria-label="Thought" value={props.value} onChange={event => props.onChange(event.target.value)}
+    data-append-before={props.observedAppend?.before} data-append-after={props.observedAppend?.after} />;
+} }));
 const resource = { collection: 'sermons', id: 'sermon' };
 const a = { id: 'a', text: 'Opening thought', tags: [], date: '2026-09-19' };
 const b = { id: 'b', text: 'Sibling', tags: [], date: '2026-09-19' };
@@ -343,4 +344,20 @@ it.each(['capture', 'transcription'])('protects every exit and Save while %s is 
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount();
   jest.mocked(useTextDictation).mockReturnValue({} as ReturnType<typeof useTextDictation>);
+});
+
+it('regression pin: keeps a dictated thought insertion undoable in the same mounted editor', async () => {
+  mockRealEditor = true;
+  try {
+    const { view } = setup('a');
+    await waitFor(() => expect(view.baseElement.querySelector('.tiptap')).not.toBeNull());
+    const editor = mountedEditor(view.baseElement);
+    const callbacks = jest.mocked(useTextDictation).mock.calls.at(-1)![0];
+    await act(async () => { await callbacks.onText('Dictated passage.'); await settleEngine(); });
+    expect(mountedEditor(view.baseElement)).toBe(editor);
+    expect(markdown(editor)).toBe(a.text + '\n\nDictated passage.');
+    expect(undo(editor)).toBe(true);
+    expect(markdown(editor)).toBe(a.text);
+    view.unmount();
+  } finally { mockRealEditor = false; }
 });

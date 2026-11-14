@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useIsRestoring } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +9,7 @@ import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { useEditorValues } from '@/components/ui/useEditorValue';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
@@ -210,7 +210,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const [error, setError] = useState<FailureWords | null>(null);
 
   // Generated content by outline point ID
-  const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
+  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues } = useEditorValues();
 
   /**
    * The text as it is RIGHT NOW.
@@ -287,7 +287,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
     setGeneratedContent(keep);
     setModifiedContent(keep);
-  }, []);
+  }, [setGeneratedContent]);
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const planOrphans = mergeOrphans(orphanedCells(generatedContent, modifiedContent, livePlanNodes), planDraft.orphaned);
   const restorePlanCells = useCallback((cells: Record<string, string>) => {
@@ -298,7 +298,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       ...prev,
       ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
     }));
-  }, []);
+  }, [setGeneratedContent]);
 
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
@@ -567,9 +567,9 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
      * sermon, and keeping the screen's copy instead would hold a copy for reading over it.
      */
     const keepScreen = (nodeId: string) => Boolean(modifiedContent[nodeId]);
-    setGeneratedContent((prev) => mergeStoredPlanText(prev, storedText, keepScreen));
+    observeGeneratedContent((prev) => mergeStoredPlanText(prev, storedText, keepScreen));
     setSavedSermonPoints((prev) => mergeStoredSavedFlags(prev, storedText, keepScreen));
-  }, [confirmedRevision, sermon, modifiedContent, pendingPlanCells, planTextBaseline]);
+  }, [confirmedRevision, sermon, modifiedContent, pendingPlanCells, planTextBaseline, observeGeneratedContent]);
 
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
@@ -1208,6 +1208,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         mainSectionRef={mainSectionRef}
         conclusionSectionRef={conclusionSectionRef}
         generatedContent={shownContent}
+        userActionValues={userActionValues}
         modifiedContent={modifiedContent}
         savedSermonPoints={savedSermonPoints}
         editModePoints={editModePoints}
