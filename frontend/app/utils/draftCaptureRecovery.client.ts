@@ -6,6 +6,7 @@ import {
   draftKey, readDraft, retireDraftCapture, saveDraft, readDraftsStrict,
   type DurableDraft,
 } from '@/utils/durableDraft';
+import { PLAN_DRAFT_CAPTURE_PREFIX, reconcilePlanTransferDrafts } from '@/utils/planDraftCapture.client';
 
 export const DRAFT_CAPTURE_PREFIX = 'draft-capture:v1:';
 interface DraftCaptureScope {
@@ -20,6 +21,9 @@ export interface CapturedDraftWrite {
   owner: string;
   resource: { collection: string; id: string };
   value: unknown;
+  state?: string;
+  acceptedValue?: unknown;
+  planTransfer?: { pointId: string; subPointId: string };
 }
 
 /** Only public canonical capabilities: this module owns no request rows or transport. */
@@ -85,6 +89,10 @@ export async function reconcileCapturedDrafts(owner: string, port: DraftCaptureP
   if (!active()) return;
   for (const captured of captures) {
     if (!active()) return;
+    if (captured.scope.startsWith(PLAN_DRAFT_CAPTURE_PREFIX)) {
+      await reconcilePlanTransferDrafts(owner, captured, port, active);
+      continue;
+    }
     const binding = readScope(captured.scope);
     if (captured.owner !== owner || !binding || !captured.value || !sameResource(binding.resource, captured.resource)
       || !ownsAddress(owner, binding.sourceKey, { value: null, savedAt: 0, creationTargetId: captured.resource.id }, captured.resource)) continue;

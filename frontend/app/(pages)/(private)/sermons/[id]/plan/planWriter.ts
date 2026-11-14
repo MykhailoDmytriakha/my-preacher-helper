@@ -10,6 +10,7 @@ export interface SubpointTextTransfer {
   parentOpeningText: string;
   baselineByNodeId: Record<string, string | null>;
   revisionsByNodeId: Record<string, number | null>;
+  draftCaptureScope?: string;
 }
 
 /**

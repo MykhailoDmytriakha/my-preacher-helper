@@ -9840,3 +9840,15 @@ The mounted regressions first reproduced both refusals with the real storage har
 Full Jest passed 15,854 tests with 17 skipped. TypeScript, the local production build, scoped ESLint with warnings, and independent source review passed.
 
 After authorized deployment, use a disposable sermon with one parent and two written children. Append distinct words to the parent and press Save, then immediately confirm removal of one child. Verify that the parent contains both the added words and the moved text, no refusal appears, and the other child is unchanged after reopening. Repeat after adding words to the child instead of the parent.
+
+## BUG-20261114-plan-transferred-text-offered-as-draft · Retire the exact backup after the transfer
+
+In Sermons → a sermon → Plan → By hand, edit the parent or a child, then confirm removal of the child and reopen the plan. The baseline Chrome run saved the intended text in the parent but also displayed a recovery prompt for a copy already carried by the transfer. The mounted regression confirmed that the opening's backup stayed on disk after both commands were acknowledged.
+
+The existing draft recovery bridge records which copies the transfer carries. The request retains that evidence through navigation and provider replacement. Acknowledgement must still prove the exact parent text and the removed child before the bridge retires a backup. It compares the capture token, or the complete original record for a restored legacy copy. A separately stored copy remains available even when its words match. A new authored copy gets a distinct token, including when a failed local write must be retried.
+
+On local build `7ulwu6oib25vIXQu8pgSs`, Chrome used Firestore and Auth emulators at 390 and 1280 px. Tests covered the pending Save, exit through the app menu, direct removal, offline capture followed by reconnection, and two legacy restore cases. Reopening showed the saved words under the parent. The offline copy stayed until acknowledgement, and the control with a separate equal-text draft correctly kept its recovery card. Evidence is in `artifacts/manual-plan-transferred-draft-20261114`.
+
+Full Jest passed 15,865 tests with 17 skipped. TypeScript, the production build, scoped ESLint with warnings, and independent source review passed.
+
+After authorized deployment, use a disposable sermon and enter a distinctive paragraph into a child. Wait long enough for the device backup, press Save, confirm removal, then reopen and reload the plan. The paragraph should be visible under the parent without a recovery prompt for that same copy. Repeat with a deliberately restored private draft under the child, then confirm that a still-unsaved copy remains available when a transfer has yet to be acknowledged.

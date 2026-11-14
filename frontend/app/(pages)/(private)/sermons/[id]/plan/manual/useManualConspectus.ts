@@ -125,7 +125,7 @@ export function useManualConspectus({
     uid: draftScope?.owner, sermonId: draftScope?.sermonId, contentByNodeId, modifiedNodeIds, pendingNodeIds, pendingText,
     liveNodeIds: livePlanNodes, frozen: draftScope?.frozen, durableState: draftScope?.state,
   });
-  const { keepDetachedCell } = draft;
+  const { keepDetachedCell, prepareTransferCapture } = draft;
 
   const sermonRef = useRef<Sermon | null>(sermon);
   useEffect(() => {
@@ -681,6 +681,7 @@ export function useManualConspectus({
       parentOpeningText: baseline.displayedForNode(pointId),
       baselineByNodeId: basis,
       revisionsByNodeId: baseline.revisionsForNodes(ids),
+      draftCaptureScope: prepareTransferCapture(pointId, subPointId, parent, rescued),
     } : undefined;
 
     setBusy(ids);
@@ -733,7 +734,7 @@ export function useManualConspectus({
       refreshPending();
       setBusy([]);
     }
-  }, [baseline, forgetCells, keepDetachedCell, mode, planWriter, refreshPending, setBusy, setContentByNodeId, settle, t]);
+  }, [baseline, forgetCells, keepDetachedCell, mode, planWriter, prepareTransferCapture, refreshPending, setBusy, setContentByNodeId, settle, t]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const removePoint = useCallback(async (pointId: string) => {

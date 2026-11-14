@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SERMON_PLAN_AGGREGATE } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { readDraftAddress } from "@/utils/draftAddress";
-import { clearDraftIfMatches, draftKey, listDraftKeys, readDraft, readDraftsStrict, saveDraft, type DurableDraft } from "@/utils/durableDraft";
+import { clearDraftIfMatches, draftKey, listDraftKeys, readDraft, readDraftsStrict, saveDraft, subscribeDraftCapture, type DurableDraft } from "@/utils/durableDraft";
+import { planTransferCaptureScope, type PlanDraftBinding } from "@/utils/planDraftCapture.client";
 
 import { durablePlanCells, type DurablePlanState } from "./planDraftCheckpoint";
 
@@ -23,6 +24,7 @@ export interface PlanTextDraft {
   cellAuthoringVersion: (nodeId: string) => number;
   holdCellAlternative: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   keepDetachedCell: (nodeId: string, text: string) => boolean;
+  prepareTransferCapture: (pointId: string, subPointId: string, parent: string, child: string) => string | undefined;
   orphaned: PlanOrphanCell[];
   forget: (cells: PlanOrphanCell[]) => void;
 }
@@ -66,6 +68,7 @@ export default function usePlanTextDraft({
   const session = useMemo(() => ({
     owner: uid, documentId: sermonId, writerId: newClientId(), enabled: false,
     typed: new Set<string>(), ours: {} as Record<string, string>, owed: {} as Record<string, string>,
+    boundOwn: new Set<string>(), retiredOwn: new Set<string>(),
     cells: {} as Record<string, string>,
     authoring: 0, authored: new Map<string, { text: string; order: number }>(),
     content: {} as Record<string, string>, durableCells: null as Record<string, string> | null, adopted: new Map<string, AdoptedCell>(),
@@ -108,7 +111,7 @@ export default function usePlanTextDraft({
     Object.entries(cells).forEach(([id, text]) => {
       if (ours[id] === text) return;
       const key = cellKey(owner, documentId, id, writerId);
-      if (saveDraft(key, text)) { ours[id] = text; delete owed[id]; }
+      if (saveDraft(key, text, undefined, true)) { ours[id] = text; delete owed[id]; }
       else owed[id] = text;
     });
     session.adopted.forEach((copy, key) => {
@@ -154,6 +157,21 @@ export default function usePlanTextDraft({
     if (!session.owner || !session.documentId) return;
     setFound({ session, copies: readStoredCells(session.owner, session.documentId), selected: {} });
   }, [session]);
+  useEffect(() => subscribeDraftCapture(({ key }) => {
+    const address = readDraftAddress(key);
+    if (!address || address.owner !== session.owner || address.documentId !== session.documentId
+      || !address.aggregate.startsWith(`${SERMON_PLAN_AGGREGATE}:`)) return;
+    const remaining = readDraftsStrict([key]);
+    if (!remaining || remaining.has(key)) return;
+    session.adopted.delete(key);
+    if (address.writerId === session.writerId) {
+      const id = address.aggregate.slice(SERMON_PLAN_AGGREGATE.length + 1);
+      session.boundOwn.delete(id);
+      session.retiredOwn.add(id);
+    }
+    setFound(previous => previous?.session === session && previous.copies.some(copy => copy.key === key)
+      ? { ...previous, copies: previous.copies.filter(copy => copy.key !== key) } : previous);
+  }), [session]);
   const copies = useMemo(() => found?.session === session ? found.copies : [], [found, session]);
   const selected = useMemo(() => {
     const chosen = new Map<string, PlanDraftCopy>();
@@ -167,14 +185,51 @@ export default function usePlanTextDraft({
   const selectionRef = useRef({ session, selected });
   selectionRef.current = { session, selected };
   const markCellAuthored = useCallback((id: string, text: string) => {
+    const { owner, documentId, writerId, boundOwn, ours, owed } = session;
+    if (boundOwn.delete(id) && session.enabled && owner && documentId) {
+      // A new edit can return to the exact words carried by an earlier request.
+      // Give this authored copy its own identity before the older ACK can retire it.
+      delete ours[id];
+      if (saveDraft(cellKey(owner, documentId, id, writerId), text, undefined, 'renew')) {
+        ours[id] = text;
+        delete owed[id];
+      }
+    }
+    if (session.retiredOwn.delete(id)) delete session.ours[id];
     session.authored.set(id, { text, order: ++session.authoring });
   }, [session]);
   const cellAuthoringVersion = useCallback((id: string) => session.authored.get(id)?.order ?? 0, [session]);
+  const prepareTransferCapture = useCallback((pointId: string, subPointId: string, parent: string, child: string) => {
+    const { owner, documentId, writerId, ours, owed, cells } = session;
+    if (!session.enabled || !owner || !documentId) return undefined;
+    const transferred = new Map([[pointId, parent], [subPointId, child]]);
+    const copies = [...transferred].flatMap<PlanDraftBinding>(([id, text]) => {
+      const key = cellKey(owner, documentId, id, writerId);
+      const stored = readDraft<string>(key);
+      if (stored?.value === text && stored.captureToken) {
+        session.boundOwn.add(id);
+        return [{ key, proof: stored.captureToken }];
+      }
+      if (stored?.value !== text && cells[id] !== text) return [];
+      if (!saveDraft(key, text, undefined, true)) return [];
+      ours[id] = text;
+      delete owed[id];
+      const token = readDraft<string>(key)?.captureToken;
+      if (token) session.boundOwn.add(id);
+      return token ? [{ key, proof: token }] : [];
+    });
+    for (const [key, copy] of session.adopted) {
+      if (copy.seen && copy.sourceRecord && transferred.get(copy.id) === copy.text) {
+        copies.push({ key, proof: copy.sourceRecord.captureToken ?? copy.sourceRecord });
+      }
+    }
+    return planTransferCaptureScope(pointId, subPointId, copies);
+  }, [session]);
   const keepDetachedCell = useCallback((id: string, text: string) => {
     const { owner, documentId } = session;
     if (!session.enabled || !owner || !documentId) return false;
     const key = cellKey(owner, documentId, id, newClientId());
-    if (!saveDraft(key, text)) return false;
+    if (!saveDraft(key, text, undefined, true)) return false;
     const sourceRecord = readDraft<string>(key);
     if (!sourceRecord) return false;
     const copy = { id, key, text, sourceRecord };
@@ -187,7 +242,7 @@ export default function usePlanTextDraft({
     const { owner, documentId } = session;
     if (!session.enabled || !owner || !documentId || selectionRef.current.session !== session) return;
     const key = cellKey(owner, documentId, id, newClientId());
-    const saved = saveDraft(key, text);
+    const saved = saveDraft(key, text, undefined, true);
     const sourceRecord = saved ? readDraft<string>(key) ?? undefined : undefined;
     return (keep: boolean) => {
       if (!session.enabled || selectionRef.current.session !== session) return;
@@ -235,6 +290,7 @@ export default function usePlanTextDraft({
     });
     setFound(previous => previous?.session === session ? { ...previous, copies: previous.copies.filter(copy => !forgotten.has(copy.key)) } : previous);
   }, [session]);
-  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion, holdCellAlternative, keepDetachedCell, orphaned, forget }),
-    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, keepDetachedCell, markCellAuthored, orphaned, recovered, selectCopy, selected]);
+  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion,
+    holdCellAlternative, keepDetachedCell, prepareTransferCapture, orphaned, forget }),
+    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, keepDetachedCell, markCellAuthored, orphaned, prepareTransferCapture, recovered, selectCopy, selected]);
 }

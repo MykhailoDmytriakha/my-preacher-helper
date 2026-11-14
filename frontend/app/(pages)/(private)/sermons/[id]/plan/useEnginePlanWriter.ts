@@ -86,7 +86,7 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
     removeSubPoint: (sermonId, pointId, subPointId, requestedTransfer) => {
       const transfer = requestedTransfer && continueTransfer(requestedTransfer, pointId, subPointId, stagedCells);
       return editEngineSermon<Awaited<ReturnType<PlanWriter['removeSubPoint']>>>({
-        update: updater => document.commit(updater, transfer && { kind: 'sermon-plan-text', openings: transfer.revisionsByNodeId,
+        update: updater => document.commit(updater, transfer && { kind: 'sermon-plan-text', openings: transfer.revisionsByNodeId, draftCaptureScope: transfer.draftCaptureScope,
           transfer: { pointId, subPointId, openingText: transfer.openingText, parentOpeningText: transfer.parentOpeningText } }),
       }, owner, current => {
         if (current.id !== undefined && current.id !== sermonId) throw new Error('Sermon editor is unavailable');

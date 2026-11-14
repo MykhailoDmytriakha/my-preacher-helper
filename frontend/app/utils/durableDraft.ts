@@ -78,14 +78,14 @@ function storage(): Storage | null {
  * draft is retired, or the very text that was refused is confirmed by the server — a small draft
  * that saves never hides another that did not, and a saved one never keeps the notice up.
  */
-const refusedDraftKeys = new Map<string, { value: string; creationTargetId?: string }>();
+const refusedDraftKeys = new Map<string, { value: string; creationTargetId?: string; renewCapture?: boolean }>();
 const draftStorageListeners = new Set<() => void>();
 
 function recordDraftStorage(key: string, refused: false): void;
-function recordDraftStorage(key: string, refused: true, value: unknown, creationTargetId?: string): void;
-function recordDraftStorage(key: string, refused: boolean, value?: unknown, creationTargetId?: string): void {
+function recordDraftStorage(key: string, refused: true, value: unknown, creationTargetId?: string, renewCapture?: boolean): void;
+function recordDraftStorage(key: string, refused: boolean, value?: unknown, creationTargetId?: string, renewCapture?: boolean): void {
   const before = refusedDraftKeys.has(key);
-  if (refused) refusedDraftKeys.set(key, { value: serializeContent(value), creationTargetId }); else refusedDraftKeys.delete(key);
+  if (refused) refusedDraftKeys.set(key, { value: serializeContent(value), creationTargetId, renewCapture }); else refusedDraftKeys.delete(key);
   // Told on every change of WHICH keys are owed, not only when the whole set empties or fills: a
   // listener asking for one owner sees its answer change while other owners' debts stay.
   if (before === refusedDraftKeys.has(key)) return;
@@ -122,10 +122,11 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * it traded an original for a backup, silently. So a refused copy is reported instead: the
  * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity = false, editedAt?: number): boolean {
+export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity: boolean | 'renew' = false, editedAt?: number): boolean {
+  const renewCapture = captureIdentity === 'renew' || refusedDraftKeys.get(key)?.renewCapture === true;
   const store = storage();
   if (!store) {
-    recordDraftStorage(key, true, value, creationTargetId);
+    recordDraftStorage(key, true, value, creationTargetId, renewCapture);
     return false;
   }
 
@@ -143,8 +144,8 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
   const sameValue = previous && serializeContent(previous.value) === serializeContent(value);
   const previousToken = typeof previous?.captureToken === 'string' && previous.captureToken ? previous.captureToken : undefined;
   const sameEdit = !Number.isFinite(editedAt) || previous?.editedAt === editedAt;
-  const captureToken = sameLineage && sameValue && sameEdit && previousToken ? previousToken
-    : captureIdentity ? `${newClientId()}:${++draftIdentitySequence}` : undefined;
+  const captureToken = !renewCapture && sameLineage && sameValue && sameEdit && previousToken ? previousToken
+    : captureIdentity || renewCapture ? `${newClientId()}:${++draftIdentitySequence}` : undefined;
   // A capture refresh of the same payload is storage work, not another edit.
   const actionTime = Number.isFinite(editedAt) ? editedAt
     : sameLineage && sameValue && Number.isFinite(previous?.editedAt) ? previous?.editedAt : undefined;
@@ -155,7 +156,7 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
     store.setItem(key, payload);
   } catch {
     console.error('durableDraft: no room to persist', key);
-    recordDraftStorage(key, true, value, creationTargetId);
+    recordDraftStorage(key, true, value, creationTargetId, renewCapture);
     return false;
   }
   recordDraftStorage(key, false);
@@ -203,15 +204,24 @@ export function readDraftsStrict(keys: readonly string[]): Map<string, DurableDr
   } catch { return null; }
 }
 
+export type DraftCaptureProof = string | DurableDraft<unknown>;
+
+/** Older copies without a capture token require the whole original record. */
+export function matchesDraftCapture(draft: DurableDraft<unknown> | undefined, proof: DraftCaptureProof): boolean {
+  if (!draft) return false;
+  return typeof proof === 'string' ? draft.captureToken === proof : serializeContent(draft) === serializeContent(proof);
+}
+
 /** Compare immediately before removal; a later payload never belongs to this capture. */
-export function retireDraftCapture(key: string, captureToken: string, value: unknown): boolean {
+export function retireDraftCapture(key: string, proof: DraftCaptureProof, value: unknown): boolean {
+  if (refusedDraftKeys.get(key)?.renewCapture) return false;
   const store = storage();
   if (!store) return false;
   try {
     const raw = store.getItem(key);
     if (!raw) return true;
     const current = JSON.parse(raw) as DurableDraft<unknown>;
-    if (current.captureToken !== captureToken
+    if (!matchesDraftCapture(current, proof)
       || serializeContent(current.value) !== serializeContent(value)) return false;
     store.removeItem(key);
     if (store.getItem(key) !== null) return false;

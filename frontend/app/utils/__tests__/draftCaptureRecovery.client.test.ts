@@ -1,5 +1,6 @@
 import { DRAFT_CAPTURE_PREFIX, prepareDraftCapture, prepareNoteDraftCapture, reconcileCapturedDrafts, type CapturedDraftWrite, type DraftCapturePort } from '../draftCaptureRecovery.client';
 import { draftKey, moveDraft, readDraft, saveDraft, subscribeDraftCapture } from '../durableDraft';
+import { planTransferCaptureScope } from '../planDraftCapture.client';
 
 const owner = 'owner', resource = { collection: 'studyNotes', id: 'note' };
 const key = draftKey(owner, resource.id, 'note');
@@ -14,6 +15,67 @@ function setup() {
   return { scope, token, captured, port };
 }
 beforeEach(() => { localStorage.clear(); jest.restoreAllMocks(); });
+
+describe('canonical plan text transfer recovery', () => {
+  const sermon = { collection: 'sermons', id: 'plan' };
+  const parent = draftKey(owner, sermon.id, 'plan:point', 'opening');
+  const child = draftKey(owner, sermon.id, 'plan:child', 'opening');
+  const independent = draftKey(owner, sermon.id, 'plan:child', 'other-opening');
+  const transfer = { pointId: 'point', subPointId: 'child' };
+  const value = {
+    userId: owner, outline: { introduction: [], main: [{ id: 'point', subPoints: [] }], conclusion: [] },
+    planText: { point: 'Parent words.\n\nChild words.', child: '' },
+  };
+
+  function planCapture(overrides: Partial<CapturedDraftWrite> = {}) {
+    saveDraft(parent, 'Parent words.', undefined, true);
+    saveDraft(child, 'Child words.', undefined, true);
+    saveDraft(independent, 'Child words.', undefined, true);
+    const scope = planTransferCaptureScope('point', 'child', [parent, child].map(key => ({ key, proof: readDraft(key)!.captureToken! })))!;
+    const captured = { owner, resource: sermon, requestId: 'transfer', value, acceptedValue: value, planTransfer: transfer,
+      scope, state: 'acknowledged', ...overrides };
+    return { captured, port: { listWriteCaptures: async () => [captured],
+      releaseWriteCapture: jest.fn(async () => undefined), subscribeSavedWork: () => () => undefined } satisfies DraftCapturePort };
+  }
+
+  it('retires the carried parent and child but keeps an independent copy of equal words', async () => {
+    const { captured, port } = planCapture();
+    await reconcileCapturedDrafts(owner, port);
+    expect(readDraft(parent)).toBeNull();
+    expect(readDraft(child)).toBeNull();
+    expect(readDraft(independent)?.value).toBe('Child words.');
+    expect(port.releaseWriteCapture).toHaveBeenCalledWith(captured.scope, 'transfer');
+  });
+
+  it('keeps a later physical copy at the same address', async () => {
+    const { port } = planCapture();
+    saveDraft(child, 'Later unsent child words.', undefined, true);
+    await reconcileCapturedDrafts(owner, port);
+    expect(readDraft(parent)).toBeNull();
+    expect(readDraft(child)?.value).toBe('Later unsent child words.');
+    expect(port.releaseWriteCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { state: 'queued', acceptedValue: undefined },
+    { state: 'conflict', acceptedValue: undefined },
+    { planTransfer: { pointId: 'other', subPointId: 'child' } },
+  ])('retains the backups when the accepted transfer cannot be proved (%j)', async overrides => {
+    const { port } = planCapture(overrides);
+    await reconcileCapturedDrafts(owner, port);
+    expect(readDraft(parent)?.value).toBe('Parent words.');
+    expect(readDraft(child)?.value).toBe('Child words.');
+    expect(port.releaseWriteCapture).not.toHaveBeenCalled();
+  });
+
+  it('keeps private words and releases its hold if the terminal snapshot no longer proves the transfer', async () => {
+    const { port } = planCapture({ acceptedValue: { ...value, planText: { point: 'Different stored words.' } } });
+    await reconcileCapturedDrafts(owner, port);
+    expect(readDraft(parent)?.value).toBe('Parent words.');
+    expect(readDraft(child)?.value).toBe('Child words.');
+    expect(port.releaseWriteCapture).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('canonical note draft capture recovery', () => {
   it.each([false, true])('retires only its scoped copy without depending on a legacy slot: malformedLegacy=%s', async malformed => {

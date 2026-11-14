@@ -12,7 +12,7 @@ import '@testing-library/jest-dom';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, listDraftKeys, readDraft, saveDraft } from '@/utils/durableDraft';
 
 import { deferred } from '@test-utils/deferred';
 import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
@@ -733,6 +733,28 @@ describe('manual deletion locks', () => {
     await userEvent.type(editor.view.dom, ' Later typing', { skipClick: true });
   };
 
+  it.each([false, true])('retires the restored source only after its transfer is accepted (token=%s)', async token => {
+    mockSermon!.planMode = 'manual';
+    const words = 'Words restored from a previous opening.';
+    const chosen = draftKey('user-1', 'sermon-1', 'plan:child', token ? 'chosen-opening' : undefined);
+    const independent = draftKey('user-1', 'sermon-1', 'plan:child', 'independent-opening');
+    saveDraft(chosen, words, undefined, token);
+    const view = await render();
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      await waitFor(() => expect(mockConspectus.contentByNodeId.child).toBe(words));
+      saveDraft(independent, words, undefined, true);
+      act(() => { harness.engine.setOnline(false); });
+      removeChild();
+      await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+      expect(readDraft(chosen)?.value).toBe(words);
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+      await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\n' + words, child: '' }));
+      await waitFor(() => expect(readDraft(chosen)).toBeNull());
+      expect(readDraft(independent)?.value).toBe(words);
+    } finally { view.unmount(); }
+  });
+
   it.each([
     ['other', 'stay'], ['p1', 'stay'], ['child', 'stay'], ['p1', 'leave'], ['child', 'leave'], ['child', 'keep typing'],
     ['p1', 'rename the point'], ['child', 'rename the point'],
@@ -758,12 +780,20 @@ describe('manual deletion locks', () => {
       if (waiting) { waiting = false; harness.storage.finishCompletion(); }
     };
     let reopened: ReturnType<typeof rtlRender> | undefined;
+    let transferredBackup: string | undefined;
+    const independentBackup = draftKey('user-1', 'sermon-1', `plan:${nodeId}`, 'separate-opening');
     try {
       const pointIndex = nodeId === 'other' ? 1 : 0;
       fireEvent.click(screen.getAllByTitle('plan.editMode')[pointIndex]);
       const editorRoot = view.container.querySelectorAll<HTMLElement>('.tiptap')[nodeId === 'child' ? 1 : 0];
       const editor = mountedEditor(editorRoot.parentElement!);
       typeAtEnd(editor, ' Typed before removal.');
+      if (departure === 'leave') {
+        fireEvent(window, new Event('pagehide'));
+        transferredBackup = listDraftKeys().find(key => readDraft(key)?.value === updated[nodeId]);
+        expect(transferredBackup).toBeDefined();
+        saveDraft(independentBackup, updated[nodeId]);
+      }
       fireEvent.click(screen.getAllByTitle('plan.save')[pointIndex]);
       await waitFor(() => expect(reached).toBe(true));
       if (departure === 'keep typing') typeAtEnd(editor, ' Typed after Save.');
@@ -792,6 +822,10 @@ describe('manual deletion locks', () => {
         planText: { p1: parent, child: '', other: updated.other },
       }));
       expect(toast.error).not.toHaveBeenCalled();
+      if (transferredBackup) {
+        await waitFor(() => expect(readDraft(transferredBackup!)).toBeNull());
+        expect(readDraft(independentBackup)?.value).toBe(updated[nodeId]);
+      }
     } finally { release(); reopened?.unmount(); view.unmount(); }
   });
 

@@ -115,7 +115,7 @@ export type EditorCommitAction =
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'sermon-source-note-links'; selection: SourceNoteLinkCapture }
   | { kind: 'sermon-note-text'; opening: SermonNoteOpening }
-  | { kind: 'sermon-plan-text'; openings: SermonTextOpenings; transfer?: PlanSubpointTransfer }
+  | { kind: 'sermon-plan-text'; openings: SermonTextOpenings; transfer?: PlanSubpointTransfer; draftCaptureScope?: string }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };

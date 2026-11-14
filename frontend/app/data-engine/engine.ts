@@ -1771,14 +1771,24 @@ export class DataEngine {
   }
 
   /** A backup may transfer only to an actual request held by its own capture reference. */
-  async listWriteCaptures(scopePrefix: string): Promise<Array<{ requestId: string; scope: string; owner: string; resource: ResourceRef; value: DocumentData | null }>> {
+  async listWriteCaptures(scopePrefix: string) {
     if (this.disposed) throw new Error(ENGINE_DISPOSED);
     const owner = this.owner, generation = this.generation;
     if (!owner || !this.options.commits.listCaptures) return [];
     const requests = await this.options.commits.listCaptures(owner, scopePrefix);
     this.assertCurrent(owner, generation);
-    return requests.map(request => ({ requestId: request.id, scope: request.retentionScope!, owner,
-      resource: copy(request.baseline.resource), value: copy(request.value) }));
+    return requests.map(request => {
+      const transfer = request.planTextEvidence?.planSubpointTransfer;
+      const capture = { requestId: request.id, scope: request.retentionScope!, owner,
+        resource: copy(request.baseline.resource), value: copy(request.value) };
+      if (!transfer) return capture;
+      return {
+        ...capture,
+        state: request.state,
+        planTransfer: { pointId: transfer.pointId, subPointId: transfer.subPointId },
+        ...(request.result?.kind === 'acknowledged' && { acceptedValue: copy(request.result.snapshot.value) }),
+      };
+    });
   }
 
   async releaseWriteCapture(scope: string, requestId: string): Promise<void> {
@@ -2222,7 +2232,8 @@ export class DataEngine {
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
         const keepOnClose = move || (captured?.kind === 'sermon-plan-text' ? captured : undefined);
         const stagedAction = keepOnClose && controller.getState().checkpoint;
-        const saving = controller.save(stagedAction, undefined, onCaptured, captureScope, stamp ? undefined : captured, undefined, noteContent);
+        const scope = captureScope ?? (captured?.kind === 'sermon-plan-text' ? captured.draftCaptureScope : undefined);
+        const saving = controller.save(stagedAction, undefined, onCaptured, scope, stamp ? undefined : captured, undefined, noteContent);
         if (keepOnClose && stagedAction) {
           const edit = stagedAction.editGeneration;
           const pending = { checkpoint: stagedAction, action: keepOnClose };
@@ -2512,7 +2523,9 @@ export class DataEngine {
         let previous: string | undefined;
         for (const { capture, checkpoint, action, predecessor } of captures) {
           const project = record && ((request: CommitRequest) => reconcileRecoveryRecord({ ...record, checkpoint }, [...closingRequests, request]));
+          const retentionScope = action?.kind === 'sermon-plan-text' ? action.draftCaptureScope : undefined;
           const request = await capture({ predecessorId: previous ?? predecessor ?? null, ...(action && { action }),
+            ...(retentionScope && { retentionScope }),
             ...(project && { checkpoint: project }), deferRetention: true });
           if (request) {
             previous = request.id; closingRequests.push(request);

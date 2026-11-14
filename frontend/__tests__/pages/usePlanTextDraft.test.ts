@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import usePlanTextDraft from '@/(pages)/(private)/sermons/[id]/plan/usePlanTextDraft';
 import type { DurablePlanState } from '@/(pages)/(private)/sermons/[id]/plan/planDraftCheckpoint';
-import { draftKey, findDraftCopies, isDraftStorageRefused, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, findDraftCopies, isDraftStorageRefused, listDraftKeys, readDraft, retireDraftCapture, saveDraft } from '@/utils/durableDraft';
 
 /**
  * THE DRAFT IS THE LAST COPY, SO IT IS JUDGED BY WHETHER IT SURVIVES.
@@ -81,6 +81,42 @@ afterEach(() => {
 });
 
 describe('the plan draft', () => {
+  it('can back up the same words again when the person types after a confirmed handoff', () => {
+    const words = 'Words the person types again.';
+    const opening = render({ content: { p1: words }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(250); });
+    const [key] = listDraftKeys();
+    const token = readDraft(key)!.captureToken!;
+    act(() => { expect(retireDraftCapture(key, token, words)).toBe(true); });
+    expect(readDraft(key)).toBeNull();
+
+    act(() => { opening.result.current.markCellAuthored('p1', words); });
+    opening.rerender({ content: { p1: words }, modified: { p1: true }, pending: new Set(), live: new Set(['p1']) });
+    act(() => { jest.advanceTimersByTime(250); });
+    expect(readDraft(key)?.value).toBe(words);
+    expect(readDraft(key)?.captureToken).not.toBe(token);
+    opening.unmount();
+  });
+
+  it.each([false, true])('protects a later edit with the same words before confirmation (storage refusal=%s)', refused => {
+    const words = 'An earlier version of this point.';
+    const opening = render({ content: { p1: words }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(250); });
+    const [key] = listDraftKeys();
+    const token = readDraft(key)!.captureToken!;
+    expect(opening.result.current.prepareTransferCapture('p1', 'p2', words, 'Child text')).toBeDefined();
+    const storage = refused ? jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('Disk full'); }) : undefined;
+    act(() => { opening.result.current.markCellAuthored('p1', words); });
+    expect(retireDraftCapture(key, token, words)).toBe(false);
+    storage?.mockRestore();
+    opening.rerender({ content: { p1: words }, modified: { p1: true }, pending: new Set(), live: new Set(['p1']) });
+    act(() => { jest.advanceTimersByTime(250); });
+    expect(readDraft(key)?.value).toBe(words);
+    expect(readDraft(key)?.captureToken).not.toBe(token);
+    expect(isDraftStorageRefused()).toBe(false);
+    opening.unmount();
+  });
+
   it('reopens a held composition under the same cell without changing its stored text', () => {
     const opening = render({ content: { p1: 'Incoming copy', p2: 'Unrelated point' } });
     act(() => { opening.result.current.holdCellAlternative?.('p1', 'Confirmed composition'); });
