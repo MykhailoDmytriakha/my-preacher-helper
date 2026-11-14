@@ -213,6 +213,31 @@ describe('DataEngine HTTP routes', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it.each([10, 400_000])('keeps the acknowledgement proof with %i Unicode characters per related copy', async size => {
+    const resource = { collection: 'studyMaterials', id: 'material' };
+    const metadata = { protocol: 1 as const, generation: 'opening', revision: 2, deleted: false, operationId: 'accepted' };
+    const relatedSnapshots = Array.from({ length: 6 }, (_, index) => ({
+      resource: { collection: 'studyNotes', id: `note-${index}` },
+      value: { userId: 'verified-owner', content: 'я'.repeat(size) }, metadata,
+    }));
+    const accepted = {
+      kind: 'acknowledged' as const, operationId: 'accepted',
+      snapshot: { resource, value: { userId: 'verified-owner' }, metadata },
+      committed: metadata, relatedSnapshots,
+      affected: relatedSnapshots.map(({ resource, metadata }) => ({ resource, metadata })),
+    };
+    jest.mocked(processCommand).mockResolvedValue(accepted);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const text = await response.text();
+    if (size === 400_000) {
+      expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4 * 1024 * 1024);
+      const { relatedSnapshots: _, ...proof } = accepted;
+      expect(JSON.parse(text)).toEqual(proof);
+    } else expect(JSON.parse(text)).toEqual(accepted);
+  });
+
   it('gates date history before storage and uses only the authenticated owner when served', async () => {
     const input = request('http://localhost/api/data-engine/documents/sermons/sermon-1/preach-date-history?generation=g1');
     jest.mocked(assertDataEngineEnabled).mockImplementationOnce(() => { throw new DataEngineServerError('data-engine-disabled', 503); });

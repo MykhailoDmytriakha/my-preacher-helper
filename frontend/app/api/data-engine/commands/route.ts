@@ -2,7 +2,22 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { assertDataEngineEnabled, commandCollection, processCommand, readCommandBody, serverErrorResponse } from '@/data-engine/server';
 import { withStore } from '@/services/storeAvailability.server';
 
+import type { CommandResult } from '@/data-engine/types';
+
 export const runtime = 'nodejs';
+
+// Leave room below the hosting platform's 4.5 MB response limit.
+const MAX_ACKNOWLEDGEMENT_BYTES = 4 * 1024 * 1024;
+
+function commandResponse(result: CommandResult): Response {
+  let body = JSON.stringify(result);
+  if (result.kind === 'acknowledged' && result.relatedSnapshots?.length && Buffer.byteLength(body) > MAX_ACKNOWLEDGEMENT_BYTES) {
+    // Keep the primary copy and every effect's proof. Clients can read the related copies separately.
+    const { relatedSnapshots: _copies, ...proof } = result;
+    body = JSON.stringify(proof);
+  }
+  return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+}
 
 export async function POST(request: Request): Promise<Response> {
   const startedAt = performance.now();
@@ -19,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
       && new URL(request.url).searchParams.get('shareNoteReceipt') !== '1';
     const response = legacyRevoke && result.kind === 'acknowledged'
       ? { ...result, affected: undefined, relatedSnapshots: undefined } : result;
-    return Response.json(response, { headers: { 'Cache-Control': 'no-store' } });
+    return commandResponse(response);
   } catch (error) {
     return serverErrorResponse(error);
   }
