@@ -155,6 +155,56 @@ describe("usePlanActions", () => {
     expect(mockToast.success).toHaveBeenCalledWith("plan.contentGenerated");
   });
 
+  it.each(["edit", "edit and undo", "other point", "other sermon"])("checks %s before applying a delayed generation", async change => {
+    let finish!: (value: { content: string }) => void;
+    mockGeneratePlanPointContent.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn(), onSaved = jest.fn();
+    const initial = { currentSermon: sermon, generatedContent: { p1: "Opening", p2: "Other" }, authoringVersion: 0 };
+    const { result, rerender } = rtlRenderHook(({ currentSermon, generatedContent, authoringVersion }) => usePlanActions({
+      sermon: currentSermon, planStyle: "memory", outlineLookup, generatedContent,
+      cellAuthoringVersion: (id: string) => id === "p1" ? authoringVersion : 0,
+      t, setGeneratingIds, onGenerated, onSaved,
+    }), { wrapper, initialProps: initial });
+    let request!: Promise<void>;
+    act(() => { request = result.current.generateSermonPointContent("p1"); });
+    rerender({ currentSermon: change === "other sermon" ? { ...sermon, id: "different" } : sermon,
+      generatedContent: { p1: change === "edit" ? "New manual words" : "Opening", p2: change === "other point" ? "Other edited" : "Other" },
+      authoringVersion: change === "edit" || change === "edit and undo" ? 1 : 0 });
+    await act(async () => { finish({ content: "Late generated words" }); await request; });
+    if (change === "other point") {
+      expect(onGenerated).toHaveBeenCalledWith({ outlinePointId: "p1", content: "Late generated words", section: "introduction" });
+    } else {
+      expect(onGenerated).not.toHaveBeenCalled();
+      expect(mockToast.success).not.toHaveBeenCalled();
+      if (change !== "other sermon") expect(mockToast.info).toHaveBeenCalledWith("plan.generationTextChanged");
+    }
+  });
+
+  it("keeps the new sermon’s generation busy when an old response arrives for the same point id", async () => {
+    const replies: Array<(value: { content: string }) => void> = [];
+    mockGeneratePlanPointContent.mockImplementation(() => new Promise(resolve => { replies.push(resolve); }));
+    const { setGeneratingIds, getState } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn(), onSaved = jest.fn();
+    const { result, rerender } = rtlRenderHook((currentSermon: typeof sermon) => usePlanActions({
+      sermon: currentSermon, planStyle: "memory", outlineLookup, generatedContent: {},
+      t, setGeneratingIds, onGenerated, onSaved,
+    }), { wrapper, initialProps: sermon });
+    let first!: Promise<void>, second!: Promise<void>;
+    act(() => { first = result.current.generateSermonPointContent("p1"); });
+    rerender({ ...sermon, id: "different" });
+    expect(getState()).toEqual({});
+    act(() => { second = result.current.generateSermonPointContent("p1"); });
+    await act(async () => { replies[0]({ content: "Old sermon" }); await first; });
+    expect(getState()).toEqual({ p1: true });
+    expect(onGenerated).not.toHaveBeenCalled();
+    await result.current.generateSermonPointContent("p1");
+    expect(replies).toHaveLength(2);
+    await act(async () => { replies[1]({ content: "New sermon" }); await second; });
+    expect(getState()).toEqual({});
+    expect(onGenerated).toHaveBeenCalledWith(expect.objectContaining({ content: "New sermon" }));
+  });
+
   it("keeps parallel generate flows independent by point id", async () => {
     const deferredByPoint = new Map<string, {
       resolve: (value: { content: string }) => void;

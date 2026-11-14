@@ -664,6 +664,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     generatedContent,
     t,
     setGeneratingIds,
+    cellAuthoringVersion: planDraft.cellAuthoringVersion,
     onGenerated: handlePlanPointGenerated,
     onSaved: handlePlanPointSaved,
     onAiSuccess: refreshAiUsage,

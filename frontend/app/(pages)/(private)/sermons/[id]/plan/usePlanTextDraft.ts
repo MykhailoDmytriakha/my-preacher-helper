@@ -20,6 +20,7 @@ export interface PlanTextDraft {
   accept: () => void;
   discard: () => void;
   markCellAuthored: (nodeId: string, text: string) => void;
+  cellAuthoringVersion: (nodeId: string) => number;
   holdCellAlternative: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   orphaned: PlanOrphanCell[];
   forget: (cells: PlanOrphanCell[]) => void;
@@ -167,6 +168,7 @@ export default function usePlanTextDraft({
   const markCellAuthored = useCallback((id: string, text: string) => {
     session.authored.set(id, { text, order: ++session.authoring });
   }, [session]);
+  const cellAuthoringVersion = useCallback((id: string) => session.authored.get(id)?.order ?? 0, [session]);
   const holdCellAlternative = useCallback((id: string, text: string) => {
     const { owner, documentId } = session;
     if (!session.enabled || !owner || !documentId || selectionRef.current.session !== session) return;
@@ -219,6 +221,6 @@ export default function usePlanTextDraft({
     });
     setFound(previous => previous?.session === session ? { ...previous, copies: previous.copies.filter(copy => !forgotten.has(copy.key)) } : previous);
   }, [session]);
-  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, holdCellAlternative, orphaned, forget }),
-    [accept, copies, discard, forget, holdCellAlternative, markCellAuthored, orphaned, recovered, selectCopy, selected]);
+  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, cellAuthoringVersion, holdCellAlternative, orphaned, forget }),
+    [accept, cellAuthoringVersion, copies, discard, forget, holdCellAlternative, markCellAuthored, orphaned, recovered, selectCopy, selected]);
 }

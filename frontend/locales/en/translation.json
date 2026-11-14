@@ -2813,6 +2813,7 @@
     "generating": "Generating...",
     "generatingAll": "Generating...",
     "generateAll": "Generate All",
+    "generationTextChanged": "The point changed while content was generating. Your text was kept. You can generate again.",
     "contentGenerated": "Content generated",
     "planSaved": "Plan saved",
     "pointSaved": "Point saved",

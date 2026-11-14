@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
@@ -24,6 +24,7 @@ interface UsePlanActionsParams {
   planStyle: PlanStyle;
   outlineLookup: PlanOutlineLookup;
   generatedContent: Record<string, string>;
+  cellAuthoringVersion?: (nodeId: string) => number;
   t: (key: string, options?: Record<string, unknown>) => string;
   setGeneratingIds: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onGenerated: (params: {
@@ -54,6 +55,7 @@ export default function usePlanActions({
   planStyle,
   outlineLookup,
   generatedContent,
+  cellAuthoringVersion,
   t,
   setGeneratingIds,
   onGenerated,
@@ -68,14 +70,32 @@ export default function usePlanActions({
   /** The cells as they are RIGHT NOW, for actions taken long after a save was attempted. */
   const generatedContentRef = useRef(generatedContent);
   generatedContentRef.current = generatedContent;
+  const scope = useMemo(() => Symbol(JSON.stringify([sermon?.userId, sermon?.id])), [sermon?.userId, sermon?.id]);
+  const currentGeneration = useRef({ scope, outlineLookup, cellAuthoringVersion, onGenerated });
+  currentGeneration.current = { scope, outlineLookup, cellAuthoringVersion, onGenerated };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const requests = useRef(new Map<string, symbol>());
+  const previousScope = useRef(scope);
+  useEffect(() => {
+    if (previousScope.current === scope) return;
+    previousScope.current = scope;
+    // Requests from the old sermon cannot hold a button on the new one.
+    requests.current.clear();
+    setGeneratingIds({});
+  }, [scope, setGeneratingIds]);
   /** Re-entry for the "keep mine" button, without a circular hook dependency. */
   const saveSermonPointRef = useRef<
     ((id: string, cells: Record<string, string>, section: SermonSectionKey) => Promise<void>) | null
   >(null);
 
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
-    if (aiBlocked || !sermon) return;
+    if (aiBlocked || !sermon || requests.current.get(outlinePointId) === scope) return;
 
+    requests.current.set(outlinePointId, scope);
     setGeneratingIds((prev) => ({
       ...prev,
       [outlinePointId]: true,
@@ -103,32 +123,42 @@ export default function usePlanActions({
         return;
       }
 
+      const openingText = generatedContentRef.current[outlinePointId] ?? "";
+      const openingAuthoring = cellAuthoringVersion?.(outlinePointId);
       const { content } = await generatePlanPointContent({
         sermonId: sermon.id,
         outlinePointId,
         style: planStyle,
       });
 
-      onGenerated({
-        outlinePointId: outlinePoint.id,
-        content,
-        section,
-      });
+      const current = currentGeneration.current;
+      if (!mounted.current || current.scope !== scope) return;
+      const currentSection = getPointSectionFromLookup(current.outlineLookup, outlinePointId);
+      if (!currentSection || (generatedContentRef.current[outlinePointId] ?? "") !== openingText
+        || current.cellAuthoringVersion?.(outlinePointId) !== openingAuthoring) {
+        toast.info(t("plan.generationTextChanged"));
+        await onAiSuccess?.();
+        return;
+      }
+      current.onGenerated({ outlinePointId, content, section: currentSection });
       await onAiSuccess?.();
 
-      toast.success(t("plan.contentGenerated"));
+      if (mounted.current && currentGeneration.current.scope === scope) toast.success(t("plan.contentGenerated"));
     } catch (error) {
       debugLog("Plan generate failed", { sermonId: sermon.id, outlinePointId, error });
-      if (isUsageCapReachedError(error)) return;
+      if (!mounted.current || currentGeneration.current.scope !== scope || isUsageCapReachedError(error)) return;
       // Out of time is not "failed": the 60 s ceiling cut it, and another try may fit.
       toast.error(t(ranOutOfTime(error) ? "errors.aiOutOfTime" : "errors.failedToGenerateContent"));
     } finally {
-      setGeneratingIds((prev) => {
-        const { [outlinePointId]: _finishedPoint, ...next } = prev;
-        return next;
-      });
+      if (mounted.current && currentGeneration.current.scope === scope) {
+        requests.current.delete(outlinePointId);
+        setGeneratingIds((prev) => {
+          const { [outlinePointId]: _finishedPoint, ...next } = prev;
+          return next;
+        });
+      }
     }
-  }, [aiBlocked, onAiSuccess, onGenerated, outlineLookup, planStyle, sermon, setGeneratingIds, t]);
+  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, scope, sermon, setGeneratingIds, t]);
 
   /**
    * Saves one outline point — meaning ALL of its cells at once (`planNodes.ts`).
