@@ -69,11 +69,21 @@ function isNoteFieldCapture(value: unknown, field: 'title' | 'type'): boolean {
     && isValidRecoveryActionTime(time);
 }
 
+function isNoteBodyCapture(value: unknown, opening: unknown): boolean {
+  if (!isRecord(value) || typeof opening !== 'string' || value.opening !== opening) return false;
+  const { generation, observedRevision, requestId, time } = value;
+  return Object.keys(value).every(key => ['generation', 'observedRevision', 'opening', 'time', 'requestId'].includes(key))
+    && typeof generation === 'string' && generation.length > 0
+    && typeof observedRevision === 'number' && Number.isSafeInteger(observedRevision) && observedRevision > 0
+    && (requestId === undefined || (typeof requestId === 'string' && requestId.length > 0))
+    && isValidRecoveryActionTime(time);
+}
+
 function isNoteDraftOrigin(value: unknown): boolean {
   if (!isRecord(value) || !isRecord(value.fields)) return false;
   const { fields } = value;
   const allowed = new Set(['title', 'content', 'tags', 'scriptureRefs', 'type']);
-  return Object.keys(value).every(key => key === 'fields' || key === 'title' || key === 'type')
+  return Object.keys(value).every(key => key === 'fields' || key === 'title' || key === 'type' || key === 'content')
     && Object.keys(fields).length > 0 && Object.keys(fields).every(field => allowed.has(field))
     && (fields.title === undefined || typeof fields.title === 'string')
     && (fields.content === undefined || typeof fields.content === 'string')
@@ -81,7 +91,8 @@ function isNoteDraftOrigin(value: unknown): boolean {
     && isValidRecoveryPatch('studyNotes', Object.fromEntries(Object.entries(fields)
       .filter(([field]) => field === 'tags' || field === 'scriptureRefs')) as DocumentData)
     && (value.title === undefined || (fields.title !== undefined && isNoteFieldCapture(value.title, 'title')))
-    && (value.type === undefined || (fields.type !== undefined && isNoteFieldCapture(value.type, 'type')));
+    && (value.type === undefined || (fields.type !== undefined && isNoteFieldCapture(value.type, 'type')))
+    && (value.content === undefined || isNoteBodyCapture(value.content, fields.content));
 }
 
 function isNotePayload(value: unknown): value is NoteDraftPayload {

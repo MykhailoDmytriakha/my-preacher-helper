@@ -140,6 +140,17 @@ it('sorts a current note and its carried precreate source by edit time, not stor
 });
 
 
+it.each([null, { earliestMs: 100, latestMs: 120 }])('offers the original body capture with its stored time %j', time => {
+  const key = draftKey('owner', 'existing-note', 'note', 'body-opening');
+  const content = { generation: 'g', observedRevision: 1, opening: 'Earlier saved opening', time };
+  const payload = { ...value('Words typed before closing'), origin: { fields: { content: content.opening }, content } };
+  saveDraft(key, payload);
+  const original = localStorage.getItem(key);
+  expect(findNoteDraftCopies('owner', 'existing-note', 'note')).toEqual([expect.objectContaining({ key, value: payload })]);
+  expect(findUnreadableNoteDraftCopies('owner', 'existing-note')).toEqual([]);
+  expect(localStorage.getItem(key)).toBe(original);
+});
+
 it.each([
   {},
   { fields: null },
@@ -147,6 +158,9 @@ it.each([
   { fields: { title: '' }, title: { seen: { title: '', generation: 'g', revision: 1 }, time: { earliestMs: 200, latestMs: 100 } } },
   { fields: { tags: 3 } },
   { fields: { owner: 'other' } },
+  { fields: { content: 'Opening' }, content: { generation: 'g', observedRevision: 0, opening: 'Opening', time: null } },
+  { fields: { content: 'Opening' }, content: { generation: 'g', observedRevision: 1, opening: 'Other opening', time: null } },
+  { fields: { content: 'Opening' }, content: { generation: 'g', observedRevision: 1, opening: 'Opening', time: { earliestMs: 200, latestMs: 100 } } },
 ])('keeps an invalid recovery origin readable as an exact raw backup (%j)', origin => {
   const key = draftKey('owner', 'existing-note', 'note');
   saveDraft(key, { ...value('Words that must stay available'), origin });
