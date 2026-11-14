@@ -42,7 +42,7 @@ import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation,
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields } from './sermonFieldChoice';
-import { DataSession } from './session';
+import { DataSession, hasUnreadableDraftProof } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
@@ -2337,7 +2337,7 @@ export class DataEngine {
     const { checkpoint } = state;
     const pending = Object.entries(checkpoint.pending);
     const unqueued = pending.every(([, request]) => request.generation < checkpoint.editGeneration);
-    const waitsForPerson = checkpoint.conflicts.length > 0 || Boolean(checkpoint.unreadableScalarProof?.length)
+    const waitsForPerson = checkpoint.conflicts.length > 0 || hasUnreadableDraftProof(checkpoint)
       || state.result?.kind === 'conflict' || state.result?.kind === 'refused'
       || Boolean(checkpoint.confirmed.metadata?.deleted)
       || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null);

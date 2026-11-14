@@ -28,7 +28,7 @@ const groupFlowFields = {
 function groupFlowFieldVersions(checkpoint: SessionCheckpoint, draft: DocumentData | null, path = checkpoint.conflicts[0]?.path) {
   const { confirmed, remoteCandidate, pending } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft
-    || !path || Object.keys(pending).length !== 1
+    || !path || (checkpoint.unreadableRowProofs?.length ? Object.keys(pending).length !== 0 : Object.keys(pending).length !== 1)
     || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
   if (path.length !== 3 || !path[1].startsWith('id:')) return undefined;
   const comparisonField = (Object.keys(groupFlowFields) as Array<keyof typeof groupFlowFields>).find(field => {
@@ -108,7 +108,8 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
       ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'updatedAt')) : row) : rows;
     return { ...withoutBookkeeping(value), [target.field]: normalized };
   };
-  if (field !== 'content' && field !== 'notes' && !equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  if (!checkpoint.unreadableRowProofs?.length && field !== 'content' && field !== 'notes'
+    && !equalValues(compared(confirmed.value), compared(draft))) return undefined;
   return { field, mine, stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
 }

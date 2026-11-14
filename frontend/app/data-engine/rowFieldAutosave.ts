@@ -2,7 +2,7 @@ import { boundedActionTime } from './actionClock';
 import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_POLICY, councilOutcomeRow } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
-import { equalValues } from './fieldValues';
+import { equalValues, object } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
@@ -10,7 +10,7 @@ import { outlinePlacementField } from './outlinePlacementResource';
 import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
-import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
+import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 
@@ -69,6 +69,47 @@ const sameCapture = (first: Action, second: Action) => first.rowId === second.ro
   && first.observedRevision === second.observedRevision && equalValues(first.time, second.time);
 const isCaptured = (checkpoint: SessionCheckpoint, action: Action, target: Target) => Object.values(checkpoint.pending)
   .some(request => request[target.action]?.some(captured => sameCapture(action, captured)));
+
+export type UnreadableRowProof = { field: DraftKey; rowId: string; birth: string; generation: string };
+
+/** Recover a row address only from a structurally valid identity in the draft that carried the proof. */
+export function unreadableRowProofs(collection: string, key: string, raw: unknown, draft: DocumentData | null): UnreadableRowProof[] {
+  const target = targetsFor(collection).find(item => item.draft === key);
+  if (!target || !object(raw)) return [];
+  return Object.entries(raw).flatMap(([rowId, row]) => {
+    if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId) || !object(row) || !object(row.action)
+      || row.action.rowId !== rowId || typeof row.action.rowCreatedAt !== 'string' || typeof row.generation !== 'string'
+      || birthAt(draft, rowId, target) !== row.action.rowCreatedAt) return [];
+    return [{ field: target.draft, rowId, birth: row.action.rowCreatedAt, generation: row.generation }];
+  });
+}
+
+/** A row choice reads and replaces one field only while the original row still exists. */
+export function unreadableRowChoice(checkpoint: SessionCheckpoint, address: UnreadableRowProof) {
+  const { confirmed, draft } = checkpoint;
+  const stored = checkpoint.remoteCandidate ?? confirmed;
+  const target = targetsFor(confirmed.resource.collection).find(item => item.draft === address.field);
+  if (!target || !draft || !confirmed.value || address.generation !== confirmed.metadata?.generation) return;
+  const { rowId, birth } = address;
+  const rowField = target.policy.target(target.field);
+  const path = target.stamp === 'outline-title'
+    ? outlineTitlePath(outlinePlacementField(confirmed.resource.collection)!, rowId, draft[rowField.field])
+    : rowConflictPath(rowId, rowField);
+  if (!path) return;
+  const original = (value: DocumentData | null) => birthAt(value, rowId, target) === birth;
+  const opening = original(confirmed.value) ? fieldAt(confirmed.value, rowId, target) : undefined;
+  const mine = original(draft) ? fieldAt(draft, rowId, target) : undefined;
+  const theirs = address.generation === stored.metadata?.generation && original(stored.value) ? fieldAt(stored.value, rowId, target) : undefined;
+  if (mine === undefined) return;
+  const apply = (value: DocumentData, field: 'opening' | 'mine') => {
+    const selected = field === 'opening' ? opening : mine;
+    if (selected === undefined || !original(value)) return value;
+    const rows = replaceExistingRowField(value[rowField.field], rowId, selected, rowField);
+    return rows === undefined ? value : { ...value, [rowField.field]: rows };
+  };
+  return { path, base: rowConflictValue(opening ?? null), mine: rowConflictValue(mine), theirs: rowConflictValue(theirs ?? null),
+    available: theirs !== undefined, apply };
+}
 
 function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, target: Target) {
   const metadata = checkpoint.confirmed.metadata;

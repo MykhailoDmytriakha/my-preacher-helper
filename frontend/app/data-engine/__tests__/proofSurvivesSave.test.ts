@@ -223,7 +223,7 @@ const ROWS = [
 ] as unknown as Array<[string, string, RowDetailPolicy<string, RowValue>, string, RowValue, RowValue, RowValue]>;
 
 describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (key, stamp, policy, field, before, mine, other) => {
-  it.each(PROOF_RECOVERY)('%s', async mode => {
+  it.each([...PROOF_RECOVERY, 'persisted with unreadable row revision'] as const)('%s', async mode => {
     const db = installWorldFirestore(() => T + 1000);
     const resource = { collection: policy.collection, id: 'rowdoc' };
     const target = policy.target(field), born = policy.birth.leaf === 'id' ? 'r' : 'row-born';
@@ -250,11 +250,45 @@ describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (ke
     expect((await laptop('later-away', before, other, 1)).kind).toBe('acknowledged');
     expect((await laptop('later-back', other, before, 2)).kind).toBe('acknowledged');
     const stored = (await readDocument('owner', resource)).value?.[target.field];
-    const outcome = await save(await reopenWithTime(record, mode, key, 'r'));
-    expect(outcome.kind).toBe('conflict');
-    expect(loose(outcome.commands[0])[policy.actions]).toBeDefined();
+    if (mode === 'persisted with unreadable row revision') {
+      const damaged = loose(loose(record.checkpoint)[key]);
+      loose(loose(damaged.r).action).observedRevision = 'unreadable';
+    }
+    const recovered = mode === 'persisted with unreadable row revision' ? (await throughDeviceStorage(record)).checkpoint : await reopenWithTime(record, mode, key, 'r');
+    if (mode === 'persisted with unreadable row revision') takeDroppedProof(key);
+    const outcome = await save(recovered);
+    if (mode === 'persisted with unreadable row revision') {
+      expect(outcome.commands).toHaveLength(0);
+      expect(outcome.code).toBe('resolve-version-first');
+    } else {
+      expect(outcome.kind).toBe('conflict');
+      expect(loose(outcome.commands[0])[policy.actions]).toBeDefined();
+    }
     expect((await readDocument('owner', resource)).value?.[target.field]).toEqual(stored);
   });
+});
+
+it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row edit from acting on a %s', async situation => {
+  const resource = { collection: 'groups', id: 'group-proof-row' };
+  const opening = { id: 'row', title: 'Opening block name', createdAt: 'opening-row' };
+  const sibling = { id: 'sibling', title: 'Independent block', createdAt: 'other-row' };
+  const original = { userId: 'owner', title: 'Group', description: 'Opening description', templates: [opening, sibling] };
+  const snapshot: ResourceSnapshot = { resource, value: original, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  const session = new DataSession(snapshot);
+  session.edit({ ...original, description: 'Independent words', templates: [{ ...opening, title: 'Private block name' }, sibling] },
+    undefined, { field: 'group-block-title', rowId: opening.id, time: null });
+  const checkpoint = session.checkpoint();
+  loose(checkpoint.groupBlockTitleDrafts?.row?.action).observedRevision = 'unreadable';
+  const recovered = await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] });
+  takeDroppedProof('groupBlockTitleDrafts');
+  const reopened = DataSession.restore(recovered.checkpoint);
+  const replacement = { ...opening, title: 'Replacement block name', createdAt: 'replacement-row' };
+  const templates = situation === 'deleted row' ? [sibling] : [replacement, sibling];
+  reopened.observe({ ...snapshot, value: { ...original, templates }, metadata: { ...snapshot.metadata!, revision: 2 } }, { source: 'server' });
+  expect(() => reopened.keepLocal()).toThrow('The edited row is gone');
+  expect(reopened.checkpoint().draft?.templates).toContainEqual({ ...opening, title: 'Private block name' });
+  reopened.acceptRemote(reopened.checkpoint().draft);
+  expect(reopened.checkpoint()).toMatchObject({ conflicts: [], draft: { description: 'Independent words', templates } });
 });
 
 /*

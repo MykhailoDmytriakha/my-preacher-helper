@@ -48,7 +48,8 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const owned = answers.filter(answer => answer.owner === value?.userId && answer.resource.collection === resource.collection
     && answer.resource.id === resource.id && answer.operationIds.includes(operationId));
   // A common answer with queued descendants must use the document choice, which retains those saves.
-  if (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length)) return undefined;
+  const privateRow = Boolean(checkpoint.unreadableRowProofs?.length && !Object.keys(checkpoint.pending).length);
+  if (!privateRow && (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length))) return undefined;
   const { field, mine, stored, identity } = comparison;
   if (field === 'complete') return { identity, mine: '', stored: '', completeReview: true };
   const removedBy = 'removedBy' in comparison ? comparison.removedBy : undefined;

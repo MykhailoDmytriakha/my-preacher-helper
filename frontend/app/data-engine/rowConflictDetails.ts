@@ -40,13 +40,15 @@ function compareTopicField<Value extends RowValue>(checkpoint: SessionCheckpoint
       return rest;
     });
   };
-  if (!equalValues({ ...local, topics: withoutComparedFields(local.topics) }, { ...base, topics: withoutComparedFields(base.topics) })) return undefined;
+  if (!checkpoint.unreadableRowProofs?.length
+    && !equalValues({ ...local, topics: withoutComparedFields(local.topics) }, { ...base, topics: withoutComparedFields(base.topics) })) return undefined;
   return { mine, stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, id, target.leaf, mine, stored]) };
 }
 
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) {
-  if (checkpoint.conflicts.length !== 1 || Object.keys(checkpoint.pending).length !== 1) return undefined;
+  if (checkpoint.conflicts.length !== 1
+    || Object.keys(checkpoint.pending).length !== (checkpoint.unreadableRowProofs?.length ? 0 : 1)) return undefined;
   const path = checkpoint.conflicts[0].path;
   const outcome = councilOutcomeRow(path);
   if (outcome) {

@@ -28,7 +28,7 @@ import { alignPendingOutlinePointPlacements, projectResourceOutlinePoint, sameOu
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
+import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -59,6 +59,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   conflicts: ConflictDetail[];
   /** Private scalar edits whose saved observation no longer establishes an opening. */
   unreadableScalarProof?: string[];
+  unreadableRowProofs?: UnreadableRowProof[];
   groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
@@ -73,6 +74,11 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
+export const UNREADABLE_ROW_PROOF = 'unreadable-row-proof';
+
+export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
+  return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length);
+}
 
 /** An active earlier Save owns its words even if the dependent whole action is discarded. */
 function actionRollbackBase(request: CommitRequest, accepted: ResourceSnapshot, predecessor?: DocumentData | null):
@@ -115,21 +121,29 @@ export class DataSession {
   static restore(checkpoint: SessionCheckpoint): DataSession {
     const session = new DataSession(checkpoint.confirmed);
     session.state = { ...copy(checkpoint), conflicts: copy(checkpoint.conflicts ?? []) };
-    session.refreshUnreadableScalarComparison();
+    session.refreshUnreadableComparisons();
     return session;
   }
 
-  private refreshUnreadableScalarComparison(): void {
-    const { unreadableScalarProof, confirmed, draft, pending } = this.state;
-    if (!unreadableScalarProof?.length || Object.keys(pending).length) return;
+  private refreshUnreadableComparisons(): void {
+    const { unreadableScalarProof, unreadableRowProofs, confirmed, draft, pending } = this.state;
+    if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
-    const hadQuestion = this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF);
-    const questions = unreadableScalarProof.flatMap(field => {
+    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF;
+    const hadQuestion = this.state.conflicts.some(isPrivateProof);
+    const scalars = (unreadableScalarProof ?? []).flatMap(field => {
       const path = [field];
       const base = readField(confirmed.value ?? {}, path), mine = readField(draft ?? {}, path), theirs = readField(target.value ?? {}, path);
       return equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_SCALAR_PROOF }];
     });
-    const other = this.state.conflicts.filter(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF);
+    const rows = (unreadableRowProofs ?? []).flatMap(address => {
+      const choice = unreadableRowChoice(this.state, address);
+      if (!choice) return [];
+      const { path, base, mine, theirs, available } = choice;
+      return available && equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_ROW_PROOF }];
+    });
+    const questions = [...scalars, ...rows];
+    const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
       this.state.remoteCandidate = copy(target);
@@ -137,6 +151,7 @@ export class DataSession {
     } else {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.unreadableScalarProof;
+      delete this.state.unreadableRowProofs;
     }
   }
 
@@ -184,7 +199,7 @@ export class DataSession {
     this.state.editGeneration = generation;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
       || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
-    this.refreshUnreadableScalarComparison();
+    this.refreshUnreadableComparisons();
   }
 
   private clearChangedPlacementRetries(value: DocumentData | null): void {
@@ -275,7 +290,7 @@ export class DataSession {
         if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held.value, Boolean(request.placementChoiceStored));
         else this.state.conflicts = [];
       }
-      this.refreshUnreadableScalarComparison();
+      this.refreshUnreadableComparisons();
       return true;
     }
     if (request.serviceOrderPlacement && equalValues(request.serviceOrderPlacement, this.state.serviceOrderPlacementRetry)) {
@@ -383,7 +398,7 @@ export class DataSession {
   prepare(operationId: string, owner: string, targets: readonly ResourceSnapshot[] = [], intended: SessionCheckpoint = this.state): DataCommand | null {
     const { confirmed, draft, dirty, editGeneration } = intended;
     const { pending } = this.state;
-    if (!dirty || this.state.conflicts.length || intended.unreadableScalarProof?.length) return null;
+    if (!dirty || this.state.conflicts.length || hasUnreadableDraftProof(intended)) return null;
     if (pending[operationId]) throw new Error('Operation already prepared');
     if (Object.keys(pending).length) return null;
     if (!equalValues(confirmed, this.state.confirmed)) throw new Error('The confirmed baseline changed during preparation');
@@ -474,7 +489,7 @@ export class DataSession {
     this.state.conflicts = copy(rebased.conflicts);
     this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
-    this.refreshUnreadableScalarComparison();
+    this.refreshUnreadableComparisons();
   }
 
   observe(snapshot: ResourceSnapshot, { source }: { source: 'server' | 'cache' }): void {
@@ -487,7 +502,7 @@ export class DataSession {
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
       this.state.remoteCandidate = copy(snapshot);
-      this.refreshUnreadableScalarComparison();
+      this.refreshUnreadableComparisons();
       return;
     }
     this.state.confirmed = copy(snapshot);
@@ -552,20 +567,24 @@ export class DataSession {
   }
 
   /** A choice about a private unreadable edit owns only its displayed fields. */
-  private acceptStoredScalars(atChoice: DocumentData | null | undefined): boolean {
-    const { confirmed, remoteCandidate, draft, unreadableScalarProof, conflicts } = this.state;
-    if (!confirmed.value || !remoteCandidate?.value || !draft || !unreadableScalarProof?.length
-      || !conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF)
-      || conflicts.some(conflict => !unreadableScalarProof.includes(conflict.path[0]))
+  private acceptStoredUnreadableFields(atChoice: DocumentData | null | undefined): boolean {
+    const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, conflicts } = this.state;
+    if (!confirmed.value || !remoteCandidate?.value || !draft || !hasUnreadableDraftProof(this.state)
+      || !conflicts.length || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF)
       || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return false;
     const source = this.checkpoint();
     const shown = atChoice ?? draft;
-    const reduced = unreadableScalarProof.reduce((value, field) => {
+    const scalars = (unreadableScalarProof ?? []).reduce((value, field) => {
       const path = [field];
       if (!equalValues(readField(value, path), readField(shown, path))) return value;
       const opening = readField(confirmed.value!, path);
       return field === 'heldAt' ? withCouncilLifecycle(value, opening) : writeField(value, path, opening);
     }, draft);
+    const reduced = (unreadableRowProofs ?? []).reduce((value, address) => {
+      const current = unreadableRowChoice(this.state, address);
+      const reviewed = unreadableRowChoice({ ...this.state, draft: shown }, address);
+      return current && reviewed && equalValues(current.mine, reviewed.mine) ? current.apply(value, 'opening') : value;
+    }, scalars);
     const result = mergeDocumentFields(confirmed.value, reduced, remoteCandidate.value);
     this.state.confirmed = copy(remoteCandidate);
     this.state.draft = result.value.exists ? copy(result.value.value as DocumentData) : null;
@@ -574,7 +593,8 @@ export class DataSession {
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
     this.state.editGeneration = this.reserveEditGeneration();
     delete this.state.unreadableScalarProof;
-    carryAnchoredDraftChronology(source, this.state, unreadableScalarProof.map(field => ({ path: [field] })));
+    delete this.state.unreadableRowProofs;
+    carryAnchoredDraftChronology(source, this.state, conflicts);
     this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     return true;
   }
@@ -582,7 +602,8 @@ export class DataSession {
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
-    if (!this.state.remoteCandidate || this.acceptStoredScalars(atChoice)) return;
+    if (!this.state.remoteCandidate || this.acceptStoredUnreadableFields(atChoice)) return;
+    if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_ROW_PROOF)) delete this.state.unreadableRowProofs;
     if (atChoice === undefined || this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF)) delete this.state.unreadableScalarProof;
     const referenceChoice = chooseStudyNoteReferences(this.state, 'stored');
     if (referenceChoice) {
@@ -594,7 +615,7 @@ export class DataSession {
     if (atChoice !== undefined) {
       // The choice replaces the shown draft, while later typing remains a new local action.
       this.dropRefused(atChoice);
-      this.refreshUnreadableScalarComparison();
+      this.refreshUnreadableComparisons();
       return;
     }
     this.state.draft = copy(this.state.confirmed.value);
@@ -629,8 +650,9 @@ export class DataSession {
     }
     const candidate = this.state.remoteCandidate;
     const titleSource = choiceSource ?? { ...this.state };
-    const reviewingUnreadableProof = (!choiceSource || Object.keys(choiceSource.pending).length === 0)
-      && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF);
+    const reviewingPrivate = !choiceSource || Object.keys(choiceSource.pending).length === 0;
+    const reviewingUnreadableProof = reviewingPrivate && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF);
+    const reviewingRows = reviewingPrivate && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_ROW_PROOF);
     const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
@@ -672,7 +694,13 @@ export class DataSession {
           const local = readField(this.state.draft!, [field]);
           return field === 'heldAt' ? withCouncilLifecycle(value, local) : writeField(value, [field], local);
         }, explicit) : undefined;
-      const resolved = recoveringCopy ? keepGroupFlowCopyContent(reviewedScalars ?? explicit, draft, this.state.conflicts) : reviewedScalars ?? explicit;
+      const withScalars = reviewedScalars ?? explicit;
+      const withReviewedRows = reviewingRows && withScalars ? this.state.unreadableRowProofs?.reduce((value, address) => {
+        const row = unreadableRowChoice(this.state, address);
+        if (row && !row.available) throw Object.assign(new Error('The edited row is gone'), { code: 'decision-changed' });
+        return row?.apply(value, 'mine') ?? value;
+      }, withScalars) ?? withScalars : withScalars;
+      const resolved = recoveringCopy ? keepGroupFlowCopyContent(withReviewedRows, draft, this.state.conflicts) : withReviewedRows;
       const meeting = candidate.resource.collection === 'groups' && firstGroupMeetingReview(this.state.conflicts);
       const meetingChoice = meeting && candidate.value && projectFirstGroupMeetingChoice(candidate.value, meeting, 'local');
       if (meeting && !meetingChoice) throw Object.assign(new Error('The first meeting comparison changed'), { code: 'decision-changed' });
@@ -686,6 +714,7 @@ export class DataSession {
         ? withCouncilLifecycle(chosenGroup, lifecycle) : chosenGroup);
     }
     if (reviewingUnreadableProof) delete this.state.unreadableScalarProof;
+    if (reviewingRows) delete this.state.unreadableRowProofs;
     this.clearAutosaveFieldDrafts();
     if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
     if (candidate) {
@@ -698,7 +727,7 @@ export class DataSession {
     this.state.conflicts = [];
     this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
-    this.refreshUnreadableScalarComparison();
+    this.refreshUnreadableComparisons();
   }
 
   stageOutlineReviewTitles(titles: readonly OutlineTitleDecision[] = [], time: ActionTime | null = null): void {
