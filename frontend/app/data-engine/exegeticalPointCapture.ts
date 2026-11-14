@@ -147,7 +147,20 @@ export function hasLaterPendingExegeticalTitle(checkpoint: SessionCheckpoint, re
 
 export const UNREADABLE_EXEGETICAL_PROOF = 'unreadable-exegetical-proof';
 
-export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, address: UnreadableExegeticalProof) {
+function pendingPointBranch(checkpoint: SessionCheckpoint, address: UnreadableExegeticalProof): UnreadableExegeticalProof {
+  if (!address.pendingAddition || address.kind !== 'title') return address;
+  const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
+  const live = exegeticalPlan((checkpoint.remoteCandidate ?? checkpoint.confirmed).value?.preparation);
+  if (!opening || !live || opening.points.entries.has(address.nodeId) || live.points.entries.has(address.nodeId)) return address;
+  // Restore the shallowest missing ancestor only when it was absent from the opening too.
+  // An already saved and later removed parent is a different user action.
+  const index = address.ancestors.findIndex(id => !opening.points.entries.has(id) && !live.points.entries.has(id));
+  if (index < 0) return address;
+  return { ...address, nodeId: address.ancestors[index], ancestors: address.ancestors.slice(0, index) };
+}
+
+export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, original: UnreadableExegeticalProof) {
+  const address = pendingPointBranch(checkpoint, original);
   const { confirmed, draft, remoteCandidate } = checkpoint;
   if (confirmed.resource.collection !== 'sermons' || address.generation !== confirmed.metadata?.generation) return;
   const opening = exegeticalPlan(confirmed.value?.preparation), local = exegeticalPlan(draft?.preparation);
@@ -158,6 +171,9 @@ export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, addres
   const before = exegeticalPointVersion(opening, nodeId), mine = exegeticalPointVersion(local, nodeId);
   const saved = live ? exegeticalPointVersion(live, nodeId) : null;
   const pendingAddition = Boolean(address.pendingAddition && kind === 'title' && !before);
+  const movedScope = nodeId !== original.nodeId;
+  const reviewedNode = movedScope ? exegeticalPointVersion(local, original.nodeId) : mine;
+  if (movedScope && !equalValues(reviewedNode?.ancestors, original.ancestors)) return;
   if ((!before && !pendingAddition) || (before && !equalValues(before.ancestors, ancestors))
     || (kind === 'remove' ? mine : !mine || !equalValues(mine.ancestors, ancestors))) return;
   const apply = (value: DocumentData, side: 'opening' | 'mine'): DocumentData | undefined => {
@@ -176,14 +192,21 @@ export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, addres
       && ancestors.every(id => live.points.entries.has(id)));
   const localAvailable = Boolean(stored.metadata?.generation === address.generation && live && canChooseLocal);
   const conflict = { ...exegeticalPointConflict(nodeId, before, mine, saved), code: UNREADABLE_EXEGETICAL_PROOF };
-  return { conflict, localAvailable, pendingAddition, apply,
+  const descendantTitles = pendingAddition && mine && mine.point.children
+    ? [...(exegeticalPlan({ exegeticalPlan: [mine.point] })?.points.entries.values() ?? [])]
+      .filter(point => point.parent !== null).flatMap(point => typeof point.fields.title === 'string' ? [point.fields.title] : [])
+    : [];
+  return { conflict, localAvailable, pendingAddition, descendantTitles, apply,
     reviewedTogether: (reviewed: typeof conflict) => kind === 'title' && !pendingAddition
       ? (reviewed.mine.value as DocumentData)?.title === mine?.point.title : equalValues(reviewed.mine, conflict.mine) };
 }
 
 export function readUnreadableExegeticalChoice(checkpoint: SessionCheckpoint, nodeId: string) {
-  const address = checkpoint.unreadableExegeticalProofs?.find(item => item.nodeId === nodeId);
-  return address && unreadableExegeticalChoice(checkpoint, address);
+  for (const address of checkpoint.unreadableExegeticalProofs ?? []) {
+    const choice = unreadableExegeticalChoice(checkpoint, address);
+    if (choice?.conflict.path.at(-1) === 'id:' + nodeId) return choice;
+  }
+  return undefined;
 }
 
 export function stageExegeticalPoint(checkpoint: SessionCheckpoint, next: DocumentData | null, shown: ShownCopy | undefined,

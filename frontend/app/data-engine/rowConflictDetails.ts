@@ -148,12 +148,12 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
         const { mine, theirs } = choice.conflict;
         const title = (value: typeof mine) => (value.value as DocumentData | undefined)?.title as string | undefined;
         return [{ mine: title(mine) ?? null, stored: title(theirs) ?? null, localAvailable: choice.localAvailable,
-          pendingAddition: choice.pendingAddition }];
+          pendingAddition: choice.pendingAddition, descendantTitles: choice.descendantTitles }];
       }
       const choice = readExegeticalPointChoice(opening, local, saved, id);
       if (!choice) return [];
       return [{ mine: (choice.mine?.point.title as string | undefined) ?? null,
-        stored: (choice.saved?.point.title as string | undefined) ?? null, localAvailable: true, pendingAddition: false }];
+        stored: (choice.saved?.point.title as string | undefined) ?? null, localAvailable: true, pendingAddition: false, descendantTitles: [] }];
     });
     if (versions.length !== points.length) return undefined;
     const identity = JSON.stringify([points, versions, remoteCandidate.metadata, checkpoint.editGeneration]);

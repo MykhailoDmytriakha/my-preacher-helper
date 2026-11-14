@@ -174,10 +174,11 @@ export class DataSession {
       const choice = unreadableExegeticalChoice(this.state, address);
       return choice ? [choice.conflict] : [];
     });
+    const pointConflicts = [...new Map(pointChoices.map(issue => [issue.path.at(-1), issue])).values()];
     const points = unreadableExegeticalProofs?.length && pointChoices.length !== unreadableExegeticalProofs.length
       ? [{ path: unreadablePointPlanPath, base: readField(confirmed.value ?? {}, unreadablePointPlanPath),
         mine: readField(draft ?? {}, unreadablePointPlanPath), theirs: readField(target.value ?? {}, unreadablePointPlanPath),
-        code: UNREADABLE_EXEGETICAL_PROOF }, ...pointChoices] : pointChoices;
+        code: UNREADABLE_EXEGETICAL_PROOF }, ...pointConflicts] : pointConflicts;
     const questions = [...scalars, ...rows, ...points];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];

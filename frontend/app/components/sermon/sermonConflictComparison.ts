@@ -35,7 +35,7 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   if (kind === 'exegetical-point') {
     const title = (value: string | null) => value === null ? t('dataSync.exegeticalPointRemoved') : value || t('dataSync.emptyField');
     const versions = { identity, valueKind: 'field' as const, title: t('dataSync.exegeticalPointTitle'),
-      mine: comparison.versions.map(version => title(version.mine)).join('\n'),
+      mine: comparison.versions.map(version => [title(version.mine), ...version.descendantTitles.map(child => '↳ ' + title(child))].join('\n')).join('\n'),
       stored: comparison.versions.map(version => version.pendingAddition ? t('dataSync.exegeticalPointNotSaved') : title(version.stored)).join('\n'),
       keepMineDisabled: !comparison.localAvailable };
     if (!comparison.scoped) {

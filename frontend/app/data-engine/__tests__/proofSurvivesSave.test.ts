@@ -13,6 +13,7 @@ import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowT
 import { GROUP_STEP_DURATION_POLICY } from '../groupStepDurationAction';
 import { readGroupFlowFieldConflict } from '../groupTextReview';
 import { diffFields } from '../protocol';
+import { readSermonConflict } from '../rowConflictDetails';
 import { DataEngineRuntime } from '../runtime';
 import { processCommand, readDocument } from '../server';
 import { DataSession } from '../session';
@@ -821,6 +822,53 @@ it.each(['acknowledged', 'cancelled'] as const)('reviews an unreadable new point
   expect(stored.prepare('independent-edit', 'owner')?.kind).toBe('update');
   reopened.keepLocal();
   expect(reopened.checkpoint().draft?.preparation).toEqual(kept.preparation);
+});
+
+it.each([false, true])('reviews the missing parent with its recovered titles (multiple: %s)', async multiple => {
+  const resource = { collection: 'sermons', id: 'pending-nested-point' };
+  const savedPoint = { id: 'sibling', title: 'Saved point' };
+  const child = { id: 'child', title: '', children: [] };
+  const secondChild = { id: 'second-child', title: 'Another child' };
+  const parent = { id: 'parent', title: 'Unsaved parent', children: multiple ? [child, secondChild] : [child] };
+  const document = (exegeticalPlan: DocumentData[], authorIntent = 'Opening intent') =>
+    ({ userId: 'owner', preparation: { exegeticalPlan, authorIntent } });
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const opening = { resource, value: document([savedPoint]), metadata };
+  const session = new DataSession(opening);
+  const submitted = document([savedPoint, parent]);
+  session.edit(submitted);
+  session.registerCommit('earlier-addition', session.checkpoint().editGeneration, submitted);
+  const changedChild = { ...child, title: 'Later child title' };
+  let updatedParent = { ...parent, children: multiple ? [changedChild, secondChild] : [changedChild] };
+  session.edit(document([savedPoint, updatedParent], 'Independent private intent'), undefined,
+    { field: 'exegetical-point', nodeId: child.id, intent: 'title', time: null });
+  if (multiple) {
+    updatedParent = { ...updatedParent, children: [changedChild, { ...secondChild, title: 'Second later child title' }] };
+    session.edit(document([savedPoint, updatedParent], 'Independent private intent'), undefined,
+      { field: 'exegetical-point', nodeId: secondChild.id, intent: 'title', time: null });
+  }
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.exegeticalPointDrafts?.[0]?.nodeId).toBe(multiple ? secondChild.id : child.id);
+  loose(checkpoint).exegeticalPointDrafts = 'broken observations';
+  const earlier: CommitRequest = { id: 'earlier-addition', owner: 'owner', editorId: 'old-editor', editGeneration: 1,
+    baseline: opening, working: opening, value: submitted, intended: submitted,
+    predecessor: null, revision: 0, initialized: false, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] }, earlier)).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  const reopened = DataSession.restore(recovered);
+  const changed = { ...savedPoint, title: 'New saved neighbor' };
+  reopened.observe({ ...opening, value: document([changed]), metadata: { ...metadata, revision: 2 } }, { source: 'server' });
+  reopened.applyCommit({ ...earlier, state: 'cancelled', cancelledByChoice: true });
+  expect(reopened.checkpoint().conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:parent']]);
+  const comparison = readSermonConflict(reopened.checkpoint());
+  expect(comparison).toMatchObject({ kind: 'exegetical-point', versions: [
+    { mine: 'Unsaved parent', descendantTitles: multiple ? ['Later child title', 'Second later child title'] : ['Later child title'] },
+  ] });
+  const saved = DataSession.restore(reopened.checkpoint());
+  saved.acceptRemote(saved.checkpoint().draft);
+  expect(saved.checkpoint().draft?.preparation).toEqual(document([changed], 'Independent private intent').preparation);
+  reopened.keepLocal();
+  expect(reopened.checkpoint().draft?.preparation).toEqual(document([changed, updatedParent], 'Independent private intent').preparation);
 });
 
 it.each(['title', 'remove'] as const)('holds a recovered exegetical %s when the original point revision is unreadable', async kind => {
