@@ -40,7 +40,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => target.action === 'studyNoteContentAction' || 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
 const presentWordList = (value: FieldValue): FieldValue => value.exists ? value : { exists: true, value: [] };
 const sameFieldOpening = (first: FieldValue, second: FieldValue, target: DocumentFieldTarget) =>
   target.action === 'sermonRepeatedWordsAction' ? equalValues(presentWordList(first), presentWordList(second)) : equalValues(first, second);
@@ -65,7 +65,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction';
+  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction';
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
   : createHash('sha256').update(JSON.stringify(word)).digest('base64url');
@@ -198,6 +198,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'commentPlaceAction' && command.commentPlaceAction
     && !matchesCommentPlaceScope(current.value, change.before, command.commentPlaceAction.paragraph)) return { command };
   if (target.action === 'commentPlaceAction' && !command.commentPlaceAction && equalValues(change.before, change.after)) return { command };
+  if (target.action === 'studyNoteContentAction' && (equalValues(change.before, change.after)
+    || current.value?.type === 'analysis')) return { command };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   const previous = previousField(raw, current, target);
   if (target.action === 'commentPlaceAction') {
@@ -239,6 +241,13 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
       return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
     }
     return order;
+  }
+  if (target.action === 'studyNoteContentAction' && !previous && action.observedRevision < current.metadata.revision
+    && equalValues(action.before, stored) && !equalValues(action.after, stored)) {
+    const past = pastFieldOpenings(raw, target);
+    if (past === null || past?.includes(fieldDigest(stored, target))) {
+      return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
+    }
   }
   if (equalValues(action.after, stored)) {
     return (target.action === 'sermonPlanModeAction' || target.action === 'commentPlaceAction') && equalValues(action.before, action.after)

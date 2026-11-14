@@ -77,7 +77,7 @@ import type { PreachStatusIntent } from './preachStatusAction';
 import type { RowFieldActionKind } from './rowFieldAutosave';
 import type { SeriesHistorySelection, SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SeriesReorderComparison } from './seriesReorder';
-import type { EditorCommitAction } from './types';
+import type { EditorCommitAction, StudyNoteContentCapture } from './types';
 import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
@@ -522,7 +522,7 @@ export function useDocumentActions() {
     },
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
-    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction }) => withEditor(resource, editor => action.kind === 'delete'
+    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction; noteContent?: StudyNoteContentCapture | null }) => withEditor(resource, editor => action.kind === 'delete'
       ? editor.removeWithReceipt(options)
       : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create'),
     /**

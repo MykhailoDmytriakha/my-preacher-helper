@@ -71,7 +71,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
@@ -156,6 +156,9 @@ const COMMENT_KIND = { field: 'paragraph', action: 'commentKindAction', proof: '
   accepts: (value: unknown): value is boolean => typeof value === 'boolean', causal: true, optional: true } as const;
 const COMMENT_PLACE = { field: 'scriptureRefs', action: 'commentPlaceAction', proof: 'commentPlace',
   accepts: object, causal: true } as const;
+const STUDY_NOTE_CONTENT = { field: 'content', action: 'studyNoteContentAction', proof: 'studyNoteContent',
+  accepts: (value: unknown): value is string => typeof value === 'string', causal: true,
+} as const;
 const STUDY_NOTE_TITLE = { field: 'title', action: 'studyNoteTitleAction', proof: 'studyNoteTitle',
   accepts: (value): value is string => typeof value === 'string', causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
 const PLAN_TEMPLATE_NAME = { field: 'name', action: 'planTemplateNameAction', proof: 'planTemplateName',
@@ -172,7 +175,7 @@ const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'users') return ACCOUNT_PREFERENCE_TARGETS;
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
-  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE, COMMENT_KIND, COMMENT_PLACE];
+  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_CONTENT, STUDY_NOTE_TYPE, COMMENT_KIND, COMMENT_PLACE];
   if (collection === 'planTemplates') return [PLAN_TEMPLATE_NAME];
   if (collection === 'tags') return [TAG_COLOR];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
@@ -814,7 +817,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if ('path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
-  if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
+  if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

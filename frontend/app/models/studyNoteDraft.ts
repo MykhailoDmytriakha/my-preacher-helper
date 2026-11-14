@@ -1,4 +1,5 @@
 import type { StudyNoteTitleCapture, StudyNoteTypeCapture } from '@/data-engine/documentFieldAction';
+import type { StudyNoteContentCapture } from '@/data-engine/types';
 import type { ScriptureReference, StudyNoteType } from '@/models/models';
 
 /** The compared saved reference list and its scoped alternative for an unanswered choice. */
@@ -13,6 +14,7 @@ export interface NoteReferenceRecovery {
 export interface NoteDraftOrigin {
     fields: Partial<Pick<NoteDraftPayload, 'title' | 'content' | 'tags' | 'scriptureRefs' | 'type'>>;
     title?: StudyNoteTitleCapture;
+    content?: StudyNoteContentCapture;
     type?: StudyNoteTypeCapture;
 }
 

@@ -251,6 +251,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const timedReference = sameGeneration && Boolean(record.studyNoteReferenceEvidence) && hasStudyNoteReferenceReview(rebased.conflicts);
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
       || (timedReference && conflict.path[0] === 'scriptureRefs')
+      || (record.studyNoteContentAction && conflict.path.length === 1 && conflict.path[0] === 'content'
+        && equalValues(conflict.mine, record.studyNoteContentAction.after))
       || (record.groupFirstMeetingChange && conflict.path[0] === 'meetingDates')
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')

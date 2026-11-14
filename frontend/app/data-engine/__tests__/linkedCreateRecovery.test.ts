@@ -244,9 +244,8 @@ it('does not resurrect a source edit explicitly cancelled by accepting the canon
     await sourceEditor.commit(current => ({ ...current!, content: 'Edit explicitly declined' }));
     await engine.retry(); await settleEngine();
     const pending = (await h.commits.list('owner')).find(request => request.baseline.resource.id === source.id)!;
-    const command = prepareDomainCommand('owner', pending.id, pending.working, pending.intended).command;
-    expect(command).toMatchObject({ kind: 'update', resource: source, generation: 'accepted-source-generation' });
-    await h.commits.compareAndSet(pending, { ...pending, state: 'prepared', command });
+    // Observe the exact command the queue prepared, including optional field evidence.
+    expect(pending.command).toMatchObject({ kind: 'update', resource: source, generation: 'accepted-source-generation' });
     h.replace({ resource: source, value: { ...sourceValue, content: 'Canonical source from the other session' },
       metadata: { protocol: 1, generation: 'accepted-source-generation', revision: 2, deleted: false } });
     engine.setOnline(true); await engine.retry(); await settleEngine();

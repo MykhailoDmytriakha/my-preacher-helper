@@ -73,6 +73,14 @@ export interface StudyNoteReferenceEvidence {
   observedRevisions?: Record<string, number>;
 }
 
+export interface StudyNoteContentCapture {
+  generation: string;
+  observedRevision: number;
+  opening: string;
+  time: ActionTime | null;
+  requestId?: string;
+}
+
 export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
@@ -248,6 +256,7 @@ export type DataCommand = CommandBase & (
       councilOutcomeActions?: CouncilOutcomeWire[];
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
+      studyNoteContentAction?: DocumentFieldStamp;
       studyNoteTypeAction?: DocumentFieldStamp;
       studyNoteReferenceTimes?: Record<string, ActionTime>;
       studyNoteReferenceObservedRevisions?: Record<string, number>;

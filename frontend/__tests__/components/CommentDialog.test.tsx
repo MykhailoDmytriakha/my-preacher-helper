@@ -53,6 +53,8 @@ const mockEngine = {
   uid: 'owner',
   commentCollectionReady: true,
   notes: [] as StudyNote[],
+  observeContent: jest.fn((_id: string, _content: string, _engineRevision?: number):
+    { generation: string; observedRevision: number; opening: string } | undefined => undefined),
   createNote: jest.fn(() => ({ ...accepted(), note: {} })),
   updateNote: jest.fn(() => ({ ...accepted(), result: Promise.resolve({}) })),
   deleteNote: jest.fn(() => accepted()),
@@ -78,6 +80,7 @@ beforeEach(() => {
   mockPlacementLanguage = undefined;
   mockEngine.notes = [stored];
   jest.clearAllMocks();
+  mockEngine.observeContent.mockReset().mockReturnValue(undefined);
   // A test that fails midway leaves its one-time answers queued; the next test must not get them.
   mockEngine.createNote.mockReset().mockImplementation(() => ({ ...accepted(), note: {} }));
   mockEngine.updateNote.mockReset().mockImplementation(() => ({ ...accepted(), result: Promise.resolve({}) }));
@@ -354,12 +357,18 @@ describe('CommentDialog', () => {
   });
 
   it('keeps mine on top of the other device\'s version: the new revision and its words go into the next save', async () => {
+    mockEngine.observeContent.mockImplementation((_id, opening, revision) => ({
+      generation: 'comment-generation', observedRevision: revision ?? 21, opening,
+    }));
     mockEngine.updateNote
-      .mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6, { content: 'Чужой текст.' })), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never)
+      .mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6, { content: 'Чужой текст.' }, ['content'], 'comment-generation', 23)), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never)
       .mockImplementationOnce(() => ({ ...accepted(), result: Promise.resolve({}) }) as never);
     render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
     await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockEngine.updateNote).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      noteContent: { generation: 'comment-generation', observedRevision: 21, opening: stored.content, time: null },
+    }));
     const keep = await screen.findByRole('button', { name: 'freshness.conflictKeepMine' });
     await userEvent.click(keep);
     await waitFor(() => expect(mockEngine.updateNote).toHaveBeenCalledTimes(2));
@@ -367,6 +376,7 @@ describe('CommentDialog', () => {
       updates: { content: 'Сила приходит в ожидании. Моё.' },
       expectedRevision: 6,
       expectedBaseline: { content: 'Чужой текст.' },
+      noteContent: { generation: 'comment-generation', observedRevision: 23, opening: 'Чужой текст.', time: null },
     }));
   });
 

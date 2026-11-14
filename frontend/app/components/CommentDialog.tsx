@@ -17,7 +17,7 @@ import { UnsavedDraftOffer } from '@/components/UnsavedDraftOffer';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useDraftQuestion, useDurableDraft, useSettleShownDraft } from '@/hooks/useDurableDraft';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isStaleWriteError, type StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -37,7 +37,7 @@ export type CommentTarget = CommentDraftTarget;
 const NO_TYPE: StudyNoteType = 'note';
 
 /** What another device stored, for every field this window compares. */
-type StoredVersion = { revision: number; content: string; type: StudyNoteType; title: string; scriptureRefs: ScriptureReference[] | null; paragraph: boolean | undefined; reported: string[] };
+type StoredVersion = { revision: number; engineRevision?: number; content: string; type: StudyNoteType; title: string; scriptureRefs: ScriptureReference[] | null; paragraph: boolean | undefined; reported: string[] };
 
 /**
  * WHAT A SAVE OF A WRITTEN COMMENT WRITES: only the fields this window changed, each guarded by the value it opened with.
@@ -74,11 +74,11 @@ function changesOf(
  * rest are read from the list as it stands — a comment made a note there must be seen as one when its version is taken
  * (Codex review r2, 2026-10-28) — and from what the window opened with while the list does not have it.
  */
-function storedVersion({ actualRevision, serverValues }: { actualRevision: number; serverValues: Record<string, unknown> }, opened: StudyNote | undefined, live: StudyNote | undefined): StoredVersion {
+function storedVersion({ actualRevision, engineRevision, serverValues }: StaleWriteError, opened: StudyNote | undefined, live: StudyNote | undefined): StoredVersion {
   const { content, type, title, scriptureRefs, paragraph } = serverValues;
   const known = live ?? opened;
   return {
-    revision: actualRevision,
+    revision: actualRevision, engineRevision,
     content: typeof content === 'string' ? content : known?.content ?? '',
     type: typeof type === 'string' ? type as StudyNoteType : known ? known.type ?? NO_TYPE : 'comment',
     title: typeof title === 'string' ? title : known?.title ?? '',
@@ -285,7 +285,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   paragraphChoice?: ParagraphChoice;
 }) {
   const { t, language } = useTranslation();
-  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, observeCommentPlace, captureActionTime } = useStudyNotesEngine(true);
+  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, observeCommentPlace, observeContent, captureActionTime } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const found = target.kind === 'edit' ? notes.find((note) => note.id === target.id) : undefined;
@@ -296,6 +296,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const opened = useRef<StudyNote | undefined>(found);
   const [openingKind] = useState(() => found && observeCommentKind?.(found));
   const kindBasis = useRef(openingKind);
+  const contentBasis = useRef(found ? observeContent?.(found.id, found.content) : undefined);
   const [openingMove] = useState(() => found && observeCommentPlace?.(found));
   const placeBasis = useRef(openingMove);
   // Where this window's edits began: the version it opened with, or the other device's once that was taken.
@@ -310,6 +311,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     opened.current = found;
     kindBasis.current = observeCommentKind?.(found);
     placeBasis.current = observeCommentPlace?.(found);
+    contentBasis.current = observeContent?.(found.id, found.content);
     mine.current = found;
     setText(found.content);
     setTitle(found.title ?? '');
@@ -422,6 +424,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     };
     kindBasis.current = observeCommentKind?.(opened.current);
     placeBasis.current = observeCommentPlace?.(opened.current);
+    contentBasis.current = found.engineRevision === undefined ? undefined
+      : observeContent?.(opened.current.id, found.content, found.engineRevision);
   };
 
   // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
@@ -487,8 +491,12 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     const movedFrom = where.moved ? placeBasis.current : undefined;
     const seen = switchedKind && !movedFrom ? kindBasis.current : undefined;
     const compound = switchedKind || typeof updates.type === 'string';
+    const textOpening = contentBasis.current;
     updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null,
       expectedBaseline: switchedKind ? { ...baseline, scriptureRefs: note?.scriptureRefs } : baseline,
+      ...(typeof updates.content === 'string' && textOpening && textOpening.opening === baseline.content && {
+        noteContent: { ...textOpening, time: captureActionTime?.() ?? null },
+      }),
       ...(seen && { commentKindCapture: { seen, time: actionTime } }),
       ...(movedFrom && { commentPlaceCapture: { seen: movedFrom, time: actionTime, ...(compound && { compound: true }), ...(reviewedPlace && { reviewed: true }) } }),
     }).acceptance.then(() => saved(id), failed);

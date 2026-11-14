@@ -866,12 +866,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
       : readField(primarySnapshot.value, documentFieldPath(target));
     if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
-    if (target.action === 'sermonRepeatedWordsAction') {
+    if (target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction') {
       if (!primarySnapshot.metadata) continue;
       const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
       const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');
-      // Keep one exact list per history document. Two competing lists can exceed Firestore's document limit.
-      transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId) + '-repeatedWords'), {
+      // Keep one exact version per history document and identify the winner by digest.
+      transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId) + '-' + target.field), {
         generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
         fields: [{ field: target.field, value: displaced.value.value ?? null, winnerDigest,
           actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime }],

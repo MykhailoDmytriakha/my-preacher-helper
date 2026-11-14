@@ -25,7 +25,7 @@ import type { NoteDraftPayload } from './noteDraft';
 import type { NoteReferenceEdit } from './noteReferenceDraft';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
-import type { StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
+import type { StudyNoteContentCapture, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
 import type { SavedStudyNote, StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
@@ -80,7 +80,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -106,6 +106,7 @@ export function useNoteAutoSave({
         updates: Partial<StudyNote>;
         captureScope?: string;
         titleCapture?: StudyNoteTitleCapture;
+        noteContent?: StudyNoteContentCapture;
         typeCapture?: StudyNoteTypeCapture;
         tagMembership?: readonly DocumentTagIntent[];
         referenceEvidence?: StudyNoteReferenceEvidence;
@@ -138,8 +139,10 @@ export function useNoteAutoSave({
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
      */
-    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType) => void;
+    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType, replacedContent?: string) => void;
     referenceEdits?: ReadonlyMap<string, NoteReferenceEdit>;
+    onContentCaptured?: (opening: Omit<StudyNoteContentCapture, 'time'>) => void;
+    onContentAcknowledged?: (content: string, proof: { generation: string; revision: number } | undefined) => void;
     onReferenceAcknowledged?: (submitted: ScriptureReference[], accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[], revision?: number, engineRevision?: number) => void;
     /** Called only after an exact canonical request durably owns these words. */
     onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
@@ -286,6 +289,7 @@ export function useNoteAutoSave({
         };
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, payload);
         const wasDeliberate = deliberateOverwriteRef.current;
+        const noteContent = updates.content !== undefined ? draftOrigin?.content : undefined;
         const titleEdit = titleEditRef?.current;
         const seen = titleEdit?.capture.seen;
         const titleCapture = !wasDeliberate && titleEdit && titleEdit.owner === uid && titleEdit.id === noteId && titleEdit.value === title
@@ -348,6 +352,7 @@ export function useNoteAutoSave({
             const submission = updateNote({
                 id: noteId,
                 captureScope,
+                ...(noteContent && { noteContent }),
                 ...(titleCapture && { titleCapture }),
                 ...(typeCapture && { typeCapture }),
                 ...(tagMembership.length && { tagMembership }),
@@ -369,6 +374,14 @@ export function useNoteAutoSave({
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
             });
+            if (noteContent && submission.capture) {
+                const { generation, observedRevision } = noteContent;
+                void submission.capture.then(receipt => {
+                    if (receipt.kind === 'submitted' && receipt.requestId) {
+                        onContentCaptured?.({ generation, observedRevision, opening: submittedPayload.content, requestId: receipt.requestId });
+                    }
+                }).catch(() => undefined);
+            }
             if (titleCapture && titleEdit && titleEditRef && submission.capture) {
                 void submission.capture.then(receipt => {
                     if (receipt.kind !== 'submitted' || !receipt.requestId) return;
@@ -405,6 +418,8 @@ export function useNoteAutoSave({
             const acknowledge = (saved: SavedStudyNote | undefined) => {
                 if (submittedTypeRequestId && submittedTypeRef?.current?.seen.requestId === submittedTypeRequestId) submittedTypeRef.current = null;
                 const acceptedTitle = saved ? saved.title ?? '' : submittedPayload.title;
+                const acceptedContent = saved ? saved.content ?? '' : submittedPayload.content;
+                if (updates.content !== undefined) onContentAcknowledged?.(acceptedContent, saved?.contentProof);
                 const acceptedType = saved ? saved.type ?? 'note' : submittedPayload.type;
                 const replacedType = acceptedType !== submittedPayload.type ? submittedPayload.type : undefined;
                 const acceptedTags = saved?.tags ?? submittedPayload.tags;
@@ -414,10 +429,12 @@ export function useNoteAutoSave({
                 const aliases = saved?.studyNoteReferenceAliases ?? [];
                 const replacedReferences = serializeContent(acceptedReferences) !== serializeContent(submittedPayload.scriptureRefs);
                 const replacedTitle = acceptedTitle !== submittedPayload.title ? submittedPayload.title : undefined;
+                const replacedContent = acceptedContent !== submittedPayload.content ? submittedPayload.content : undefined;
                 const replacedTags = !sameNoteTags(acceptedTags, submittedPayload.tags) ? submittedPayload.tags : undefined;
                 const basis = baselineRef.current;
                 if (basis) {
                     if (replacedTitle !== undefined && basis.title === replacedTitle) baselineRef.current = { ...basis, title: acceptedTitle };
+                    if (replacedContent !== undefined && basis.content === replacedContent) baselineRef.current = { ...baselineRef.current!, content: acceptedContent };
                     if (replacedType !== undefined && basis.type === replacedType) baselineRef.current = { ...baselineRef.current!, type: acceptedType };
                     if (replacedTags) baselineRef.current = { ...baselineRef.current!, tags: rebaseNoteTags(replacedTags, basis.tags, acceptedTags) };
                     if (replacedReferences) {
@@ -426,8 +443,9 @@ export function useNoteAutoSave({
                     }
                 }
                 if (replacedReferences) onReferenceAcknowledged?.(submittedPayload.scriptureRefs, acceptedReferences, aliases, saved?.revision, saved?.referenceEngineRevision);
-                const acceptedPayload = { ...submittedPayload, title: acceptedTitle, tags: acceptedTags, type: acceptedType, scriptureRefs: acceptedReferences };
-                if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
+                const acceptedPayload = { ...submittedPayload, title: acceptedTitle, content: acceptedContent, tags: acceptedTags, type: acceptedType, scriptureRefs: acceptedReferences };
+                if (replacedContent !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent);
+                else if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
                 else if (replacedTags) onSaved?.(acceptedPayload, replacedTitle, replacedTags);
                 else if (replacedTitle !== undefined) onSaved?.(acceptedPayload, replacedTitle);
                 else onSaved?.(acceptedPayload);
@@ -501,7 +519,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

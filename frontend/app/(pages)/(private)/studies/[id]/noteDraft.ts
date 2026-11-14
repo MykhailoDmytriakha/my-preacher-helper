@@ -20,14 +20,15 @@ function keepOpening<Field extends DraftField>(fields: NoteDraftOrigin['fields']
 
 /** Keep the exact ancestor of the fields that need recovery. Unchanged fields stay with the server copy. */
 export function noteDraftOrigin(opening: NoteDraftPayload, draft: NoteDraftPayload,
-    title?: NoteDraftOrigin['title'], type?: NoteDraftOrigin['type']): NoteDraftOrigin | undefined {
+    title?: NoteDraftOrigin['title'], type?: NoteDraftOrigin['type'], content?: NoteDraftOrigin['content']): NoteDraftOrigin | undefined {
     const fields: NoteDraftOrigin['fields'] = {};
     for (const field of editableNoteDraftFields) keepOpening(fields, field, opening, draft);
     // A return to a confirmed value can still follow a different, queued local action.
     if (title?.seen.requestId && title.seen.title !== draft.title) fields.title ??= opening.title;
     if (type?.seen.requestId && type.seen.type !== draft.type) fields.type ??= opening.type;
     if (!Object.keys(fields).length) return undefined;
-    return { fields, ...(fields.title !== undefined && title && { title }), ...(fields.type !== undefined && type && { type }) };
+    return { fields, ...(fields.title !== undefined && title && { title }), ...(fields.type !== undefined && type && { type }),
+        ...(fields.content !== undefined && content && { content }) };
 }
 
 function restoreField<Field extends DraftField>(restored: NoteDraftPayload, field: Field, draft: NoteDraftPayload): void {

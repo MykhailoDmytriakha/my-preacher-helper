@@ -52,7 +52,7 @@ function comparedStudyNoteFields(basis: ResourceSnapshot, draft: DocumentData | 
     if (!values || (field !== 'title' && field !== 'type' && field !== 'content')) return;
     compared.push({ field, ...values });
   }
-  return compared.length === 1 && compared[0].field === 'content' ? undefined : compared;
+  return compared;
 }
 
 export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) {

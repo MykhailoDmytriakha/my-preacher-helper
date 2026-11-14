@@ -17,7 +17,7 @@ import type { CommentKindCapture, CommentKindSeen } from '@/data-engine/commentK
 import type { CommentPlaceCapture, CommentPlaceSeen } from '@/data-engine/commentPlaceAction';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTitleSeen, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
-import type { DocumentData, ResourceSnapshot, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
+import type { DocumentData, ResourceSnapshot, StudyNoteContentCapture, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
 import type { AnalysisReshapeEdit } from '@/utils/studyAnalysisReshape';
@@ -78,7 +78,7 @@ const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 
   ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
 }) as unknown as DocumentData;
 
-export type SavedStudyNote = StudyNote & { revision?: number; referenceEngineRevision?: number; studyNoteReferenceAliases?: StudyNoteReferenceAlias[] };
+export type SavedStudyNote = StudyNote & { contentProof?: { generation: string; revision: number }; revision?: number; referenceEngineRevision?: number; studyNoteReferenceAliases?: StudyNoteReferenceAlias[] };
 type NoteUpdate = {
   id: string;
   updates: Partial<StudyNote>;
@@ -87,6 +87,7 @@ type NoteUpdate = {
   expectedGeneration?: string | null;
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
+  noteContent?: StudyNoteContentCapture | null;
   typeCapture?: StudyNoteTypeCapture;
   commentKindCapture?: CommentKindCapture;
   commentPlaceCapture?: CommentPlaceCapture;
@@ -201,6 +202,16 @@ export function useStudyNotesEngine(enabled: boolean) {
     return metadata ? { generation: metadata.generation, revision: metadata.revision, reference: { exists: true, value: opening }, paragraph } : undefined;
   };
 
+  const observeContent = (id: string, opening: string, expectedRevision?: number) => {
+    const row = collection.state?.documents?.find(item => item.resource.id === id);
+    if (row?.needsAttention) return undefined;
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(item => item.resource.id === id)].find(snapshot =>
+      snapshot?.value?.content === opening && snapshot.metadata && !snapshot.metadata.deleted
+      && (expectedRevision === undefined || snapshot.metadata.revision === expectedRevision));
+    const metadata = observed?.metadata;
+    return metadata ? { generation: metadata.generation, observedRevision: metadata.revision, opening } : undefined;
+  };
+
   const observeTagBasis = (id: string, opening: string[]): DocumentTagBasis | undefined => {
     const basis = readTagOpening(collection.state, id, opening);
     return basis && { generation: basis.generation, revision: basis.revision };
@@ -213,6 +224,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     notes,
     noteDelivery,
     observeTitle,
+    observeContent,
     observeType,
     observeCommentKind,
     observeCommentPlace,
@@ -257,7 +269,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedGeneration, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedGeneration, expectedBaseline, captureScope, titleCapture, noteContent, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedStudyNote>;
@@ -301,6 +313,9 @@ export function useStudyNotesEngine(enabled: boolean) {
               throw Object.assign(new Error('The note was replaced'), { code: 'study-note-generation-changed' });
             }
             if (!current) throw new Error('Study note not found');
+            if (noteContent && noteContent.generation !== confirmed?.metadata?.generation) {
+              throw Object.assign(new Error('The note text belongs to another generation'), { code: 'study-note-generation-changed' });
+            }
             const stored = (current.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE] ?? 0;
             // The baseline is the note as the editor read it. Its references are compared as stored —
             // the guard compares stored data, never a reading of it:
@@ -361,7 +376,8 @@ export function useStudyNotesEngine(enabled: boolean) {
             const merged: DocumentData = { ...current, ...changes, ...receipts, updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             return next;
-          } }, captureScope || action ? { ...(captureScope && { captureScope }), ...(action && { action }) } : undefined);
+          } }, captureScope || action || patch.content !== undefined ? { ...(captureScope && { captureScope }), ...(action && { action }),
+            ...(patch.content !== undefined && { noteContent: noteContent ?? null }) } : undefined);
         } catch (error) {
           if (staleTimedField && error && typeof error === 'object' && 'code' in error
             && (error.code === 'study-note-title-basis-changed' || error.code === 'study-note-type-basis-changed' || error.code === 'comment-kind-basis-changed' || error.code === 'comment-place-basis-changed')) throw staleTimedField;
@@ -375,7 +391,10 @@ export function useStudyNotesEngine(enabled: boolean) {
         if (!snapshot.value) throw new Error('Accepted study note is missing');
         const revision = (snapshot.value.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE];
         const studyNoteReferenceAliases = snapshot.metadata?.studyNoteReferenceAliases;
-        return { ...engineNote(snapshot.value, id, locale), revision, referenceEngineRevision: snapshot.metadata?.revision, ...(studyNoteReferenceAliases && { studyNoteReferenceAliases }) };
+        const metadata = snapshot.metadata;
+        return { ...engineNote(snapshot.value, id, locale), revision, referenceEngineRevision: metadata?.revision,
+          ...(metadata && { contentProof: { generation: metadata.generation, revision: metadata.revision } }),
+          ...(studyNoteReferenceAliases && { studyNoteReferenceAliases }) };
       });
       void result.catch(() => undefined);
       return { ...submission, result };

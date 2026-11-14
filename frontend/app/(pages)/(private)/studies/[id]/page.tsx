@@ -94,6 +94,7 @@ import type { SheetReference } from '@/components/bible/VerseSheet';
 import type { DocumentTagBasis } from '@/data-engine/documentTagCapture';
 import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
 import type { RecordPresence } from '@/data-engine/recordPresence';
+import type { StudyNoteContentCapture } from '@/data-engine/types';
 import type { AppLocale } from '@/utils/appLocale';
 
 const missingRecoveryFields = (snapshot: RecordPresence | undefined) => snapshot?.kind === 'present' && snapshot.snapshot.value
@@ -725,7 +726,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading, complete: notesComplete, checking: notesChecking, error: notesError } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeContent, observeTagBasis, captureActionTime, loading: notesLoading, complete: notesComplete, checking: notesChecking, error: notesError } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -742,6 +743,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setTitleState(value);
     }, []);
     const [content, setContent] = useState('');
+    const contentOpeningRef = useRef<Omit<StudyNoteContentCapture, 'time'> | undefined>(undefined);
+    const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture } | null>(null);
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
@@ -880,6 +883,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = uid && seen ? { owner: uid, id: noteId, value, capture: { seen, time: captureActionTime?.() ?? null } } : null;
         setTitleState(value);
     };
+    const changeContent = (value: string) => {
+        if (value === content) return;
+        const previous = contentEditRef.current;
+        const opening = baselineRef.current?.content;
+        const seen = previous?.owner === uid && previous?.id === noteId && previous.capture.opening === opening
+            ? previous.capture : contentOpeningRef.current?.opening === opening ? contentOpeningRef.current : undefined;
+        contentEditRef.current = uid && !isNew && seen
+            ? { owner: uid, id: noteId, value, capture: { ...seen, time: captureActionTime?.() ?? null } } : null;
+        setContent(value);
+    };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
     const changeType = (value: StudyNoteType) => {
@@ -918,6 +931,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         baselineNoteIdRef.current = noteId;
         if (!adoptingCreatedId) {
             shownReferenceVersion.current = observedReferenceVersion(scriptureRefs);
+            contentOpeningRef.current = !isNew ? observeContent?.(noteId, content) : undefined;
             baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
             rememberShownTags(tags);
         }
@@ -943,7 +957,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const typeCapture = typeEdit?.owner === uid && typeEdit?.id === noteId && typeEdit.value === type
             ? typeEdit.capture : undefined;
         const opening = !isNew && confirmedDraft && baselineRef.current;
-        const origin = opening && !reviewingLegacyDraft.current && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture);
+        const bodyEdit = contentEditRef.current;
+        const contentCapture = bodyEdit?.owner === uid && bodyEdit?.id === noteId && bodyEdit.value === content ? bodyEdit.capture : undefined;
+        const origin = opening && !reviewingLegacyDraft.current && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture, contentCapture);
         const recoveryMeta = restoredGeneration.current !== undefined && { targetGeneration: restoredGeneration.current };
         const payload = reviewingLegacyDraft.current ? { ...authoredDraft, ...recoveryMeta, reviewLegacyFields: true as const }
             : origin ? { ...authoredDraft, ...recoveryMeta, origin } : authoredDraft;
@@ -1004,7 +1020,21 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             if (engineRevision) shownReferenceVersion.current = { references: accepted, revision: engineRevision };
             dispatchReferences({ type: 'acknowledge', submitted, accepted, aliases, revision, engineRevision });
         },
-        onSaved: (saved, replacedTitle, replacedTags, replacedType) => {
+        onContentCaptured: opening => {
+            if (baselineRef.current?.content === opening.opening || contentEditRef.current?.value === opening.opening) {
+                contentOpeningRef.current = opening;
+            }
+        },
+        onContentAcknowledged: (saved, proof) => {
+            if (proof) contentOpeningRef.current = { generation: proof.generation, observedRevision: proof.revision, opening: saved };
+        },
+        onSaved: (saved, replacedTitle, replacedTags, replacedType, replacedContent) => {
+            if (replacedContent !== undefined) {
+                const pendingContent = contentEditRef.current;
+                if (pendingContent?.owner !== uid || pendingContent?.id !== noteId || pendingContent?.value === replacedContent) {
+                    setContent(current => current === replacedContent ? saved.content : current);
+                }
+            }
             if (restoredGeneration.current === null) restoredGeneration.current = undefined;
             const pendingTitle = titleEditRef.current;
             if (replacedTitle !== undefined && (pendingTitle?.id !== noteId || pendingTitle.owner !== uid)) {
@@ -1050,6 +1080,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const adoptRow = useCallback(() => {
         if (!rowPayload) return;
         setTitle(rowPayload.title);
+        contentEditRef.current = null;
+        const opening = observeContent?.(noteId, rowPayload.content);
+        if (opening || contentOpeningRef.current?.opening !== rowPayload.content) contentOpeningRef.current = opening;
         setContent(rowPayload.content);
         setTags(rowPayload.tags);
         rememberShownTags(rowPayload.tags);
@@ -1062,7 +1095,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, observedReferenceVersion]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, observedReferenceVersion, observeContent, noteId]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
@@ -1084,6 +1117,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const restored = !isNew && opening ? restoreNoteDraft(unsavedRecovery, opening) : unsavedRecovery;
         const origin = !isNew && opening && !restored.reviewLegacyFields ? restored.origin : undefined;
         setTitle(restored.title);
+        contentEditRef.current = uid && origin?.content ? { owner: uid, id: noteId, value: restored.content, capture: origin.content } : null;
         setContent(restored.content);
         setTags(restored.tags);
         setType(restored.type);
@@ -1098,7 +1132,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             } else if (!differing.length) reviewingLegacyDraft.current = false;
         }
         restoredGeneration.current = restored.targetGeneration !== undefined
-            ? restored.targetGeneration : origin?.title?.seen.generation ?? origin?.type?.seen.generation ?? recoveryGeneration;
+            ? restored.targetGeneration : origin?.title?.seen.generation ?? origin?.type?.seen.generation ?? origin?.content?.generation ?? recoveryGeneration;
         if (origin && opening) {
             // The same displayed value can still have an unfinished action from this device.
             draftSnapshot.current = null;
@@ -1325,7 +1359,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                     } };
                 }
                 break;
-            case 'content': setContent(side === 'stored' ? stored : mine); break;
+            case 'content':
+                contentEditRef.current = reviewed && uid ? { owner: uid, id: noteId, value: mine, capture: {
+                    generation: reviewed.generation, observedRevision: reviewed.revision, opening: stored, time: null,
+                } } : null;
+                setContent(side === 'stored' ? stored : mine);
+                break;
             case 'tags': setTags(side === 'stored' ? stored : mine); break;
             case 'scriptureRefs':
                 dispatchReferences({ type: 'adopt', references: side === 'stored' ? stored : mine });
@@ -1815,7 +1854,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 value={content}
-                                onChange={setContent}
+                                onChange={changeContent}
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"

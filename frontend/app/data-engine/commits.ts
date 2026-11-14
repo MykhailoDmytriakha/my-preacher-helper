@@ -45,6 +45,7 @@ import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_PO
 import { coversCommittedEffect } from './snapshotFreshness';
 import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
+import { captureStudyNoteContent } from './studyNoteContentCapture';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
 import type { AccountPreferenceObservations } from './accountPreference';
@@ -68,7 +69,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, OutlineSubpointMove, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture, StudyNoteReferenceEvidence } from './types';
+import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, OutlineSubpointMove, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture, StudyNoteContentCapture, StudyNoteReferenceEvidence } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
@@ -133,6 +134,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderStepScriptureActions?: ServiceOrderStepScriptureActions;
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
+  studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
   studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
   commentKindAction?: CommentKindObservation;
   commentPlaceAction?: CommentPlaceObservation;
@@ -279,6 +281,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.commentTextOpening ?? null, incoming.commentTextOpening ?? null)
     || !equalValues(current.studyNoteTypeAction ?? null, incoming.studyNoteTypeAction ?? null)
     || !equalValues(current.studyNoteTitleAction ?? null, incoming.studyNoteTitleAction ?? null)
+    || !equalValues(current.studyNoteContentAction ?? null, incoming.studyNoteContentAction ?? null)
     || !equalValues(current.planTemplateNameAction ?? null, incoming.planTemplateNameAction ?? null)
     || !equalValues(current.tagColorAction ?? null, incoming.tagColorAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
@@ -387,7 +390,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
   return { knownIds: new Set(records.map(record => record.id)), groups, next: 1 };
 }
 
-type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   pendingRemoval?: PendingRemovalOpening;
   seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
@@ -438,7 +441,7 @@ function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -452,7 +455,7 @@ function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOp
     documentMetadataTime: options.documentMetadataTime && clone(options.documentMetadataTime),
     homileticMoves: options.homileticMoves && clone(options.homileticMoves),
     outlineSubpointMoves: options.outlineSubpointMoves && clone(options.outlineSubpointMoves),
-    action: options.action && clone(options.action) };
+    ...(options.noteContent !== undefined && { noteContent: clone(options.noteContent) }), action: options.action && clone(options.action) };
 }
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
@@ -665,7 +668,9 @@ export class CommitQueue {
     options: { action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue } = {}): CommitRequest | null {
     if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
     const { action, predecessor, commentTextOpening } = options;
-    const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, action && { action });
+    const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, {
+      ...(action && { action }), ...(commentTextOpening && { noteContent: null }),
+    });
     return replacement && { ...replacement, ...(commentTextOpening && { commentTextOpening }) };
   }
 
@@ -692,7 +697,7 @@ export class CommitQueue {
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
-      && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
+      && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const removalLineage = frozenOptions?.pendingRemoval && captureRemovalLineage(frozenOptions.pendingRemoval, baseline, predecessor, records);
@@ -749,6 +754,7 @@ export class CommitQueue {
     const noteTypeRequestId = noteTypeCapture?.seen.requestId;
     const noteType = captureStudyNoteType(baseline, intent.draft, noteTypeCapture, Boolean(noteTypeCapture && noteTypeRequestId
       && matchesStudyNoteTypeRequest(records.find(record => record.id === noteTypeRequestId), owner, baseline.resource, noteTypeCapture.seen)));
+    const noteContent = captureStudyNoteContent(baseline, intent.draft, predecessor, frozenOptions?.noteContent, records);
     const planModeCapture = editorAction?.kind === 'sermon-plan-mode' ? editorAction.mode : undefined;
     const planModeRequestId = planModeCapture?.seen.requestId;
     const planMode = planModeCapture && captureSermonPlanMode(baseline, intent.draft, planModeCapture,
@@ -825,6 +831,7 @@ export class CommitQueue {
       ...(councilTopicKindActions && { councilTopicKindActions }),
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...(noteTitle && { studyNoteTitleAction: noteTitle }),
+      ...(noteContent && { studyNoteContentAction: noteContent }),
       ...(noteType && { studyNoteTypeAction: noteType }),
       ...(planMode && { sermonPlanModeAction: planMode }),
       ...(commentKind && { commentKindAction: commentKind }),
