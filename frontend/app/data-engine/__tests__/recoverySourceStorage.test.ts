@@ -31,14 +31,6 @@ function acceptRemote(record: EditorRecord): EditorRecord {
   session.acceptRemote();
   return { ...record, checkpoint: session.checkpoint() };
 }
-function seedTerminalRequest(storage: ReturnType<typeof installStorageHarness>): void {
-  const request = { id: 'terminal-probe', owner, editorId: 'terminal-editor', editGeneration: 1,
-    state: 'acknowledged', unfinalized: [], baseline: initial(), value: initial().value,
-    predecessor: null, revision: 1, initialized: true, working: initial(), intended: initial().value, command: null, submitted: null, sequence: 0,
-    result: { kind: 'acknowledged', operationId: 'terminal-probe', snapshot: initial() } };
-  const key = ['request', owner, request.editorId, request.editGeneration];
-  storage.rows.set(JSON.stringify(key), request);
-}
 
 let storage: ReturnType<typeof installStorageHarness>;
 beforeEach(() => { jest.clearAllMocks(); storage = installStorageHarness(); });
@@ -182,11 +174,10 @@ it('rolls back source deletion and target cleanup when the native transaction fa
   await store.put(editorRecord('source'));
   await forkCheckpoint(store, owner, recoveryCheckpointId(owner, 'source'), 'fork', resource);
   const target = acceptRemote((await store.read(owner, 'fork'))!);
-  seedTerminalRequest(storage);
-  storage.writeFailure = true;
+  storage.writeFailureFor = key => JSON.stringify(key) === checkpointKeyString(owner, 'source');
 
   await expect(store.put(target)).rejects.toThrow('disk full');
-  storage.writeFailure = false;
+  storage.writeFailureFor = undefined;
 
   expect((await store.read(owner, 'source'))?.checkpoint.draft?.content).toBe('private words source');
   expect((await store.read(owner, 'fork'))?.recoveryOrigins).toHaveLength(1);
