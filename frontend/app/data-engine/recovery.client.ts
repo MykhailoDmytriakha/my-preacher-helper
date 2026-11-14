@@ -10,6 +10,7 @@ import { orderActionProjections } from './atomicCommits';
 import { isCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
 import { autosaveFieldTargets } from './documentFieldAction';
 import { readManualScopeIdentity } from './editorIdentity';
+import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
@@ -21,7 +22,7 @@ import { json, serviceOrderPlacementComparison, snapshotSchema } from './transpo
 import type { CommitRequest } from './commits';
 import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, ConflictDetail, FieldValue, ResourceRef } from './types';
+import type { DocumentData, ConflictDetail, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 
 const id = z.string().refine(isValidIdentifier);
 const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }), z.object({ exists: z.literal(true), value: json })]);
@@ -275,6 +276,25 @@ function withoutInvalidProof(fields: Fields, schemas: Record<string, z.ZodTypeAn
   return kept;
 }
 
+function recoverPointEvidence(checkpoint: Fields, raw: unknown, confirmed: ResourceSnapshot,
+  pendingOpening: DocumentData | undefined, dropped: string[]): Fields {
+  const list = Array.isArray(raw) && raw.length <= 32 ? raw : undefined;
+  const points = list?.map(item => {
+    if (nestsDeeperThan(item, MAX_PROOF_DEPTH)) return {};
+    const draft = exegeticalPointDraft.safeParse(withoutUnreadableClock(item));
+    const address = unreadableExegeticalProof.safeParse(item);
+    return { draft: draft.success ? draft.data : undefined, address: address.success ? address.data : undefined };
+  }) ?? [];
+  const recovered = recoverExegeticalPointProofs(confirmed, checkpoint.draft as DocumentData, pendingOpening, points, !list);
+  if (!recovered?.damaged) return checkpoint;
+  dropped.push('exegeticalPointDrafts');
+  const held = unreadableExegeticalProof.array().max(32).safeParse(checkpoint.unreadableExegeticalProofs ?? []);
+  const addresses = new Map((held.success ? held.data : []).map(address => [address.nodeId, address]));
+  for (const address of recovered.held) addresses.set(address.nodeId, address);
+  return { ...checkpoint, exegeticalPointDrafts: recovered.readable.length ? recovered.readable : undefined,
+    unreadableExegeticalProofs: addresses.size ? [...addresses.values()].slice(0, 32) : undefined };
+}
+
 /** Validate recovered disk data before it can enter a controller or another account. */
 export function validateRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
   const dropped: string[] = [];
@@ -307,11 +327,14 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         || (dropped.includes(target.draft) && checkpoint[target.draft] === undefined)).map(target => target.field) : [];
       if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
     }
+    const rawExegeticalProofs = value.checkpoint.exegeticalPointDrafts;
+    const checkPointProofs = collection === 'sermons' && rawExegeticalProofs !== undefined;
     if (typeof collection === 'string' && isFields(checkpoint.draft)) {
       const original = value.checkpoint;
       const rowKeys = Object.keys(original).filter(key => original[key] !== undefined && hasRowProofTarget(collection, key));
-      const parsed = rowKeys.length ? snapshotSchema.safeParse(checkpoint.confirmed) : undefined;
-      const latestPending = rowKeys.length && isFields(checkpoint.pending) ? Object.values(checkpoint.pending)
+      const checkOpening = rowKeys.length > 0 || checkPointProofs;
+      const parsed = checkOpening ? snapshotSchema.safeParse(confirmed) : undefined;
+      const latestPending = checkOpening && isFields(checkpoint.pending) ? Object.values(checkpoint.pending)
         .filter(isFields).reduce<Fields | undefined>((latest, intent) =>
           typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined)
         : undefined;
@@ -331,23 +354,7 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         const distinct = new Map([...existing, ...rows].filter(isFields).map(row => [JSON.stringify([row.field, row.rowId, row.birth, row.generation]), row]));
         checkpoint = { ...checkpoint, unreadableRowProofs: [...distinct.values()] };
       }
-    }
-    if (collection === 'sermons' && dropped.includes('exegeticalPointDrafts') && checkpoint.exegeticalPointDrafts === undefined
-      && Array.isArray(value.checkpoint.exegeticalPointDrafts) && value.checkpoint.exegeticalPointDrafts.length <= 32) {
-      const readable = [], existing = Array.isArray(checkpoint.unreadableExegeticalProofs) ? checkpoint.unreadableExegeticalProofs : [];
-      const addresses = [...existing];
-      for (const item of value.checkpoint.exegeticalPointDrafts) {
-        if (nestsDeeperThan(item, MAX_PROOF_DEPTH)) continue;
-        const proof = exegeticalPointDraft.safeParse(withoutUnreadableClock(item));
-        if (proof.success) {
-          readable.push(proof.data);
-        } else {
-          const address = unreadableExegeticalProof.safeParse(item);
-          if (address.success && !addresses.some(held => isFields(held) && held.nodeId === address.data.nodeId)) addresses.push(address.data);
-        }
-      }
-      if (readable.length || addresses.length) checkpoint = { ...checkpoint, exegeticalPointDrafts: readable.length ? readable : undefined,
-        unreadableExegeticalProofs: addresses.length ? addresses.slice(0, 32) : undefined };
+      if (checkPointProofs && parsed?.success) checkpoint = recoverPointEvidence(checkpoint, rawExegeticalProofs, parsed.data, pendingOpening, dropped);
     }
     if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };
   }

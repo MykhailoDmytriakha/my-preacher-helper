@@ -21,6 +21,79 @@ function matchesResult(plan: NonNullable<ReturnType<typeof exegeticalPlan>>, act
 }
 
 export type UnreadableExegeticalProof = Pick<Draft, 'nodeId' | 'kind' | 'generation' | 'ancestors'>;
+type RecoveryPoint = { address?: UnreadableExegeticalProof; draft?: Draft };
+type Plan = NonNullable<ReturnType<typeof exegeticalPlan>>;
+type RecoveredPoint =
+  | { kind: 'readable'; action: Draft }
+  | { kind: 'held'; address: UnreadableExegeticalProof }
+  | { kind: 'unidentified'; damaged: boolean };
+
+function addressedPoint(plan: Plan, address: UnreadableExegeticalProof) {
+  const point = exegeticalPointVersion(plan, address.nodeId);
+  return point && equalValues(point.ancestors, address.ancestors) ? point : undefined;
+}
+
+function recoverPoint({ address, draft: action }: RecoveryPoint, opening: Plan, local: Plan, pending: Plan | undefined,
+  metadata: NonNullable<ResourceSnapshot['metadata']>): RecoveredPoint {
+  if (!address || address.generation !== metadata.generation) return { kind: 'unidentified', damaged: true };
+  const current = exegeticalPointVersion(local, address.nodeId);
+  const before = addressedPoint(opening, address), queued = pending && addressedPoint(pending, address);
+  const changedTitle = (basis: typeof before) => basis && current?.point.title !== basis.point.title;
+  const explainsDraft = address.kind === 'remove' ? before || queued : changedTitle(before) || changedTitle(queued);
+  const matches = action && action.observedRevision <= metadata.revision && matchesResult(local, action);
+  if (action && matches && explainsDraft) return { kind: 'readable', action };
+  // An ACK can leave an observation for words already in the opening. Only an unexplained edit needs review.
+  if (action && address.kind === 'title' && (before || queued) && !explainsDraft) return { kind: 'unidentified', damaged: !matches };
+  const sameAddress = address.kind === 'remove' ? !current : current && equalValues(current.ancestors, address.ancestors);
+  return before && sameAddress ? { kind: 'held', address } : { kind: 'unidentified', damaged: true };
+}
+
+function unobservedPointChanges(opening: Plan, local: Plan, pending: Plan | undefined, generation: string,
+  known: ReadonlySet<string>): UnreadableExegeticalProof[] {
+  const addresses: UnreadableExegeticalProof[] = [];
+  for (const [nodeId, point] of opening.points.entries) {
+    if (known.has(nodeId) || !boundedRowId(nodeId)) continue;
+    // A missing parent owns its removed subtree. Its children never become separate choices.
+    if (point.parent !== null && !local.points.entries.has(point.parent)) continue;
+    const kind = changedExegeticalPoint(opening, local, nodeId);
+    if (!kind || (pending && changedExegeticalPoint(pending, local, nodeId) !== kind)) continue;
+    const { ancestors } = exegeticalPointVersion(opening, nodeId)!;
+    addresses.push({ nodeId, kind, generation, ancestors });
+  }
+  return addresses;
+}
+
+export function recoverExegeticalPointProofs(confirmed: ResourceSnapshot, draft: DocumentData,
+  pendingOpening: DocumentData | undefined, proofs: readonly RecoveryPoint[], wholeListUnreadable: boolean) {
+  const metadata = confirmed.metadata;
+  const opening = exegeticalPlan(confirmed.value?.preparation), local = exegeticalPlan(draft.preparation);
+  if (!metadata || metadata.deleted || !opening || !local) return undefined;
+  const pending = exegeticalPlan(pendingOpening?.preparation);
+  const readable = new Map<string, Draft>();
+  const held = new Map<string, UnreadableExegeticalProof>();
+  let findLostAddress = wholeListUnreadable;
+  let damaged = wholeListUnreadable;
+  for (const proof of proofs) {
+    const point = recoverPoint(proof, opening, local, pending, metadata);
+    if (point.kind === 'readable') readable.set(point.action.nodeId, point.action);
+    if (point.kind === 'held') {
+      held.set(point.address.nodeId, point.address);
+      damaged = true;
+    }
+    if (point.kind === 'unidentified') {
+      findLostAddress = true;
+      damaged ||= point.damaged;
+    }
+  }
+  if (findLostAddress) {
+    const changes = unobservedPointChanges(opening, local, pending, metadata.generation, new Set([...readable.keys(), ...held.keys()]));
+    for (const address of changes) held.set(address.nodeId, address);
+    damaged ||= changes.length > 0;
+  }
+  for (const nodeId of readable.keys()) held.delete(nodeId);
+  return { damaged, readable: [...readable.values()], held: [...held.values()] };
+}
+
 export const UNREADABLE_EXEGETICAL_PROOF = 'unreadable-exegetical-proof';
 
 export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, address: UnreadableExegeticalProof) {

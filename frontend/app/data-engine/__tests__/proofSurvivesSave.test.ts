@@ -659,6 +659,55 @@ it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row ed
   expect(reopened.checkpoint()).toMatchObject({ conflicts: [], draft: { description: 'Independent words', templates } });
 });
 
+it.each(['wrong id', 'same-title neighbor', 'different-title neighbor', 'wrong branch', 'wrong generation', 'wrong words', 'broken list'] as const)('holds an exegetical title when its stored address has %s', async mode => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'sermons', id: 'damaged-exegetical-address' };
+  const point = { id: 'point', title: 'Saved title' };
+  const second = { id: 'other', title: mode === 'same-title neighbor' ? 'Private title' : 'Independent point' };
+  const value = { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-13', thoughts: [],
+    preparation: { exegeticalPlan: [point, second], authorIntent: 'Independent words' } };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  session.edit({ ...value, preparation: { ...value.preparation, exegeticalPlan: [{ ...point, title: 'Private title' }, second] } },
+    undefined, { field: 'exegetical-point', nodeId: point.id, intent: 'title', time: null });
+  const checkpoint = session.checkpoint();
+  const item = loose(checkpoint.exegeticalPointDrafts?.[0]);
+  if (mode === 'wrong id') item.nodeId = 'wrong-but-readable-point';
+  else if (mode === 'same-title neighbor' || mode === 'different-title neighbor') item.nodeId = second.id;
+  else if (mode === 'wrong branch') item.ancestors = ['other'];
+  else if (mode === 'wrong generation') item.generation = 'old-generation';
+  else if (mode === 'wrong words') item.title = 'Unrelated title';
+  else loose(checkpoint).exegeticalPointDrafts = 'unreadable';
+  db.documents.set('sermons/' + resource.id, { ...value, _dataEngine: { ...metadata, revision: 3 } });
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] })).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  expect(recovered.unreadableExegeticalProofs).toEqual([{ nodeId: point.id, kind: 'title', generation: 'g', ancestors: [] }]);
+  expect((await save(recovered)).code).toBe('resolve-version-first');
+  expect((await readDocument('owner', resource)).value?.preparation).toEqual(value.preparation);
+});
+
+it('asks about the whole removed branch when the stored proof points to its child', async () => {
+  const resource = { collection: 'sermons', id: 'damaged-exegetical-removal' };
+  const child = { id: 'child', title: 'Nested point' };
+  const branch = { id: 'branch', title: 'Removed point', children: [child] };
+  const sibling = { id: 'sibling', title: 'Independent point' };
+  const value = { userId: 'owner', preparation: { exegeticalPlan: [branch, sibling], authorIntent: 'Opening words' } };
+  const draft = { ...value, preparation: { exegeticalPlan: [sibling], authorIntent: 'Private words' } };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const session = new DataSession({ resource, value, metadata });
+  session.edit({ ...draft, preparation: { ...draft.preparation, authorIntent: 'Opening words' } },
+    undefined, { field: 'exegetical-point', nodeId: branch.id, intent: 'remove', time: null });
+  session.edit(draft);
+  const checkpoint = session.checkpoint();
+  loose(checkpoint.exegeticalPointDrafts?.[0]).nodeId = child.id;
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] })).checkpoint;
+  takeDroppedProof('exegeticalPointDrafts');
+  expect(recovered.conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:branch']]);
+  const restored = DataSession.restore(recovered);
+  restored.acceptRemote(restored.checkpoint().draft);
+  expect(restored.checkpoint().draft?.preparation).toEqual({ exegeticalPlan: [branch, sibling], authorIntent: 'Private words' });
+});
+
 it.each(['title', 'remove'] as const)('holds a recovered exegetical %s when the original point revision is unreadable', async kind => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'sermons', id: 'sermon-point-proof' };
