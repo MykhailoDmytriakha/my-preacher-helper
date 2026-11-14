@@ -45,7 +45,7 @@ type PlacementRetryKey = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlaceme
 type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs' | 'unreadableExegeticalProofs'
   | PlacementRetryKey>;
 const evidence = {
-  groupTitleDraft: fieldDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
+  groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
   groupStepTitleDrafts: rowDrafts, groupBlockStatusDrafts: rowDrafts, groupStepDurationDrafts: rowDrafts,
@@ -65,7 +65,7 @@ const placementRetries = {
 type Pending = SessionCheckpoint['pending'][string];
 type PendingEvidenceKey = Exclude<keyof Pending, 'generation' | 'value' | 'operations' | 'borrowedManualScope'>;
 const pendingEvidence = {
-  groupTitleAction: observation, groupStatusAction: observation, councilTitleAction: observation,
+  groupTitleAction: observation, groupDescriptionAction: optionalObservation, groupStatusAction: observation, councilTitleAction: observation,
   councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
   councilOutcomeActions: [row], councilTopicTitleActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtPlacementActions: [row],

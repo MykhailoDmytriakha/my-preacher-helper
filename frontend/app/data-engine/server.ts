@@ -891,7 +891,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
       : readField(primarySnapshot.value, documentFieldPath(target));
     if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
-    if (target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction') {
+    if (target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction') {
       if (!primarySnapshot.metadata) continue;
       const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
       const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');

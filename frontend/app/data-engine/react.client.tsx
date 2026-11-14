@@ -944,7 +944,7 @@ export function projectCapturedGroupStep(...args: Parameters<typeof projectGroup
 
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
-  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
+  action?: 'group-title' | 'group-status' | 'group-description' | 'council-title' | 'council-date'
     | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] }
     | { kind: 'outline-title'; opening: OutlineTitleOpening };
 }
@@ -1252,8 +1252,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     update: (updater: (current: DocumentData | null) => DocumentData | null, options?: DocumentUpdateOptions) => {
       const action = options?.action;
       const time = action && owner ? actionClock.capture(owner) : undefined;
-      const field = action === 'council-date' ? 'date' : action === 'group-status' ? 'status' : 'title';
-      const observeWithoutClock = owner && (action === 'council-title' || action === 'council-date');
+      const field = action === 'council-date' ? 'date' : action === 'group-status' ? 'status' : action === 'group-description' ? 'description' : 'title';
+      const observeWithoutClock = owner && (action === 'council-title' || action === 'council-date' || action === 'group-description');
       let refused: { error: unknown } | null = null;
       return run(editor => {
         const live = editor.getState().checkpoint, shown = current?.state.checkpoint;

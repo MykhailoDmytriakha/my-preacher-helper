@@ -299,6 +299,7 @@ export type DataCommand = CommandBase & (
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldObservation;
       groupStatusAction?: DocumentFieldObservation;
+      groupDescriptionAction?: DocumentFieldStamp;
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
       councilLifecycleAction?: DocumentFieldStamp;

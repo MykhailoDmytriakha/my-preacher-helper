@@ -36,8 +36,8 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const placement = checkpoint?.confirmed.resource.collection === 'groups' && anchoredStepComparison(checkpoint, 'serviceOrders.stepPosition', t);
   if (placement) return placement;
   const unreadable = checkpoint && readUnreadableScalarComparison(checkpoint);
-  if (unreadable && (unreadable.field === 'title' || unreadable.field === 'status')) {
-    const field = unreadable.field === 'title' ? 'title' : 'groupStatus';
+  if (unreadable && (unreadable.field === 'title' || unreadable.field === 'status' || unreadable.field === 'description')) {
+    const field = unreadable.field === 'status' ? 'groupStatus' : unreadable.field;
     return { identity: unreadable.identity, title: t(fields[field]), valueKind: 'field', scopedChoice: true,
       mine: groupFlowFieldText(t, field, unreadable.mine), stored: groupFlowFieldText(t, field, unreadable.stored) };
   }

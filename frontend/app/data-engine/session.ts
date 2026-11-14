@@ -783,6 +783,8 @@ export class DataSession {
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
       this.stageOutlineReviewTitles(titles, choiceTime);
+      if (reviewingUnreadableProof && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF
+        && equalValues(conflict.path, ['description']))) this.stageReviewedGroupDescription(choiceTime);
     }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
@@ -797,6 +799,14 @@ export class DataSession {
 
   retainOutlineTitleActions(source: SessionCheckpoint): void {
     carryOutlineTitleActions(source, this.state);
+  }
+
+  stageReviewedGroupDescription(time: ActionTime | null): void {
+    const target = autosaveFieldTargets(this.state.confirmed.resource.collection).find(field => field.field === 'description');
+    if (!target) return;
+    const confirmed = { ...this.state, draft: this.state.confirmed.value };
+    const action = stageAutosaveField(confirmed, this.state.draft, undefined, target, { field: 'description', time });
+    if (action) this.state[target.draft] = action;
   }
 
   clearGroupTextReview(): void { delete this.state.groupTextReview; }

@@ -945,6 +945,9 @@ export class EditorController {
           session.clearGroupTextReview();
           session.edit(chosen);
           session.retainUnreviewedAutosaveActions(decided, review.fields);
+          if (decisions.some(decision => decision.side === 'local' && equalValues(decision.path, ['description']))) {
+            session.stageReviewedGroupDescription(choiceTime ?? null);
+          }
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint());
           if (replacement) session.applyCommit(replacement);
           projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
@@ -1088,6 +1091,7 @@ export class EditorController {
             const reviewed = writeGroupFlowTextChoice(session.checkpoint().draft, groupText, 'mine');
             if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
             session.edit(reviewed);
+            if (groupText.field === 'description') session.stageReviewedGroupDescription(choiceTime ?? null);
           }
           if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;

@@ -137,6 +137,53 @@ describe.each(SCALARS)('a scalar draft keeps its proof across device storage: %s
   });
 });
 
+it.each(['an empty description', 'a previously absent description', 'existing words'] as const)('keeps a deliberate return to %s after a delayed group edit', async opening => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'group-description-return' };
+  const root = { userId: 'owner', title: 'Independent title', status: 'draft', templates: [], flow: [], meetingDates: [] };
+  const description = opening === 'existing words' ? 'Original description' : opening === 'an empty description' ? '' : undefined;
+  const initial = description === undefined ? root : { ...root, description };
+  const snapshot: ResourceSnapshot = { resource, value: initial, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set('groups/' + resource.id, { ...initial, _dataEngine: snapshot.metadata });
+  const session = new DataSession(snapshot);
+  session.edit({ ...initial, description: 'Earlier offline description' }, undefined, { field: 'description', time: null });
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+  const reopened = (await throughDeviceStorage(record)).checkpoint;
+  const temporary = { ...initial, description: 'Temporary desktop description' };
+  const desktop = (operationId: string, before: DocumentData, after: DocumentData) => processCommand('owner', {
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update', changes: diffFields(before, after),
+  });
+  expect((await desktop('away', initial, temporary)).kind).toBe('acknowledged');
+  expect((await desktop('return', temporary, initial)).kind).toBe('acknowledged');
+  const outcome = await save(reopened);
+  expect(outcome.kind).toBe('conflict');
+  expect(outcome.commands[0]).toHaveProperty('groupDescriptionAction.observedRevision', 1);
+  expect((await readDocument('owner', resource)).value).toMatchObject({ title: root.title });
+  expect((await readDocument('owner', resource)).value?.description).toBe(description);
+  expect((await desktop('legacy-phone', initial, { ...initial, description: 'Delayed from an older client' })).kind).toBe('conflict');
+});
+
+it('orders a timed group description and retains the displaced words once', async () => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'timed-group-description' };
+  const initial = { userId: 'owner', title: 'Independent title', description: 'Original', status: 'draft', templates: [], flow: [], meetingDates: [] };
+  db.documents.set('groups/' + resource.id, { ...initial, _dataEngine: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+  const change = (operationId: string, before: string, after: string, observedRevision: number, offset: number): DataCommand => ({
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+    changes: diffFields({ ...initial, description: before }, { ...initial, description: after }),
+    groupDescriptionAction: { observedRevision, time: { earliestMs: T + offset, latestMs: T + offset + 1 } },
+  });
+  const old = change('earlier', 'Original', 'Earlier device words', 1, 10);
+  expect((await processCommand('owner', change('away', 'Original', 'Later words', 1, 100))).kind).toBe('acknowledged');
+  expect((await processCommand('owner', change('return', 'Later words', 'Original', 2, 200))).kind).toBe('acknowledged');
+  for (let delivery = 0; delivery < 2; delivery++) {
+    expect(await processCommand('owner', old)).toMatchObject({ kind: 'acknowledged', snapshot: { value: initial } });
+  }
+  const history = [...db.documents].filter(([key]) => key.startsWith('groups/timed-group-description/_metadataHistory/'));
+  expect(history).toHaveLength(1);
+  expect(history[0][1]).toMatchObject({ fields: [{ field: 'description', value: 'Earlier device words', winnerDigest: expect.any(String) }] });
+});
+
 it.each(['none', 'acknowledged', 'cancelled'] as const)('asks before sending a recovered council title with unreadable revision after %s earlier work', async earlier => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'councils', id: 'council-with-unreadable-proof' };

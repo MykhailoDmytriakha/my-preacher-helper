@@ -40,7 +40,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.action === 'studyNoteContentAction' || 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
 const presentWordList = (value: FieldValue): FieldValue => value.exists ? value : { exists: true, value: [] };
 const sameFieldOpening = (first: FieldValue, second: FieldValue, target: DocumentFieldTarget) =>
   target.action === 'sermonRepeatedWordsAction' ? equalValues(presentWordList(first), presentWordList(second)) : equalValues(first, second);
@@ -65,7 +65,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction';
+  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction';
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
   : createHash('sha256').update(JSON.stringify(word)).digest('base64url');
@@ -207,7 +207,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (uncertain) return { command, uncertain: [uncertain] };
     if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
   }
-  if (!action && tracksOpeningReturns(target) && sameFieldOpening(stored, change.before, target)) {
+  if (!action && tracksOpeningReturns(target) && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot tell a returned word from an untouched opening.
     if (past === null || past?.includes(fieldDigest(stored, target))) {
@@ -242,7 +242,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     }
     return order;
   }
-  if (target.action === 'studyNoteContentAction' && !previous && action.observedRevision < current.metadata.revision
+  if ((target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction') && !previous && action.observedRevision < current.metadata.revision
     && equalValues(action.before, stored) && !equalValues(action.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     if (past === null || past?.includes(fieldDigest(stored, target))) {

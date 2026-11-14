@@ -60,10 +60,10 @@ export type ServiceOrderTitleHistoryPage = {
   owner: string; orderId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
 };
 
-export type GroupTimedField = 'title' | 'status';
+export type GroupTimedField = 'title' | 'status' | 'description';
 
 type TextDocumentFieldTarget = {
-  field: GroupTimedField | 'verse' | 'name' | 'color' | 'type';
+  field: Exclude<GroupTimedField, 'description'> | 'verse' | 'name' | 'color' | 'type';
   action: 'studyNoteTypeAction' | 'studyNoteTitleAction' | 'planTemplateNameAction' | 'tagColorAction' | 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
   proof: 'studyNoteType' | 'studyNoteTitle' | 'planTemplateName' | 'tagColor' | 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
   accepts: (value: unknown) => value is string;
@@ -71,7 +71,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof GROUP_DESCRIPTION | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
@@ -169,7 +169,9 @@ const TAG_COLOR = { field: 'color', action: 'tagColorAction', proof: 'tagColor',
 } as const satisfies TextDocumentFieldTarget;
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', causal: true, accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', causal: true, accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
-export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
+const GROUP_DESCRIPTION = { field: 'description', action: 'groupDescriptionAction', proof: 'groupDescription', causal: true, optional: true,
+  accepts: (value: unknown): value is string => typeof value === 'string', draft: 'groupDescriptionDraft' } as const;
+export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS, GROUP_DESCRIPTION] as const;
 const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
@@ -459,7 +461,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | PrayerStatusTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -470,7 +472,7 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
       || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
-        : target.field === 'church' || target.field === 'date' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
+        : target.field === 'church' || target.field === 'date' || target.field === 'description' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -658,10 +660,10 @@ export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
-type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation };
+type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation; groupDescriptionAction?: DocumentFieldObservation<FieldValue> };
 export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions;
 type GroupFieldTarget = TextDocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
-type AutosaveFieldTarget = GroupFieldTarget | CouncilFieldTarget;
+type AutosaveFieldTarget = GroupFieldTarget | typeof GROUP_DESCRIPTION | CouncilFieldTarget;
 export type AutosaveFieldDrafts = Partial<Record<AutosaveFieldTarget['draft'], AutosaveFieldDraft>>;
 
 export function autosaveFieldTargets(collection: string): readonly AutosaveFieldTarget[] {
@@ -671,7 +673,7 @@ export function autosaveFieldTargets(collection: string): readonly AutosaveField
 }
 
 function autosaveFieldValue(document: DocumentData | null | undefined, target: AutosaveFieldTarget): AutosaveFieldValue | undefined {
-  if (target.field === 'date') return readField(document ?? {}, [target.field]);
+  if (target.field === 'date' || target.field === 'description') return readField(document ?? {}, [target.field]);
   if (target.field === 'heldAt') return councilLifecycleValue(document);
   const value = document?.[target.field];
   return typeof value === 'string' ? value : undefined;
@@ -816,7 +818,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return action.paragraph ? { ...command, commentPlaceAction: { ...stamp, paragraph: action.paragraph, ...(action.compound && { compound: true }), ...(action.reviewed && { reviewed: true }) } } : command;
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
-  if ('path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
   if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };

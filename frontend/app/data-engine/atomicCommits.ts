@@ -268,6 +268,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       || (timedReference && conflict.path[0] === 'scriptureRefs')
       || (record.studyNoteContentAction && conflict.path.length === 1 && conflict.path[0] === 'content'
         && equalValues(conflict.mine, record.studyNoteContentAction.after))
+      || (record.groupDescriptionAction && conflict.path.length === 1 && conflict.path[0] === 'description'
+        && equalValues(conflict.mine, record.groupDescriptionAction.after))
       || (record.groupFirstMeetingChange && conflict.path[0] === 'meetingDates')
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
