@@ -1,7 +1,9 @@
 import Placeholder from '@tiptap/extension-placeholder';
+import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor } from '@tiptap/react';
 import React, { useEffect } from 'react';
 
+import { retireHistory } from './foreignHistory';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { syncClickedTextSelection } from './syncClickedTextSelection';
@@ -11,6 +13,8 @@ import { useStickyEditorViewport } from './useStickyEditorViewport';
 interface RichMarkdownEditorProps {
     value: string;
     onChange: (value: string) => void;
+    /** Opt in only when the supplied value is this editor user's requested edit. */
+    valueIsUserAction?: boolean;
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
@@ -23,6 +27,7 @@ interface RichMarkdownEditorProps {
 export function RichMarkdownEditor({
     value,
     onChange,
+    valueIsUserAction = false,
     placeholder = '',
     minHeight = '150px',
     autoFocus = false,
@@ -57,16 +62,24 @@ export function RichMarkdownEditor({
         },
     });
 
-    // Effect to sync external prop changes back into the editor (e.g., initial load or cancel changes)
+    // ACCEPTED LIMITATION: a foreign value retires this editor's entire Undo/Redo history.
+    // Until the person acts again, Undo and Redo do nothing, including for earlier own typing.
+    // Later own actions are undoable as usual; Undo/Redo cannot cross the arrival boundary.
+    // Use production's full-document setContent for both origins, including its selection and
+    // composition behavior. Only an explicit own action enters history; neither origin emits an update.
     useEffect(() => {
         // @ts-expect-error - type
         const currentMarkdown = editor ? (editor.storage.markdown).getMarkdown() : '';
-        if (editor && draft !== currentMarkdown) {
-            // Rendering observed content is not a user edit. In TipTap 3 the default
-            // emits onUpdate, which would send a remote snapshot back as local intent.
-            editor.commands.setContent(draft, { emitUpdate: false });
-        }
-    }, [draft, editor]);
+        if (!editor || editor.isDestroyed || draft === currentMarkdown) return;
+        editor.chain()
+            .command(({ tr }) => {
+                closeHistory(tr).setMeta('addToHistory', valueIsUserAction);
+                return true;
+            })
+            .setContent(draft, { emitUpdate: false })
+            .run();
+        if (!valueIsUserAction) retireHistory(editor);
+    }, [draft, editor, valueIsUserAction]);
 
     useEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user

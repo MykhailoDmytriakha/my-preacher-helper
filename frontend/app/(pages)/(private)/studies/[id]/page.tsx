@@ -1,5 +1,6 @@
 'use client';
 
+
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
@@ -22,6 +23,7 @@ import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { TagHistory } from '@/components/ui/TagHistory';
+import { useEditorValue } from '@/components/ui/useEditorValue';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -741,7 +743,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, []);
-    const [content, setContent] = useState('');
+    const { value: content, observe: setContent, act: changeContent, isUserAction: contentIsUserAction } = useEditorValue('');
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
@@ -1010,7 +1012,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
@@ -1029,7 +1031,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
         setTitle(unsavedRecovery.title);
-        setContent(unsavedRecovery.content);
+        changeContent(unsavedRecovery.content);
         setTags(unsavedRecovery.tags);
         setScriptureRefs(unsavedRecovery.scriptureRefs);
         setType(unsavedRecovery.type);
@@ -1040,7 +1042,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // copy at all.
         acceptRecovered();
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, changeContent]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1124,7 +1126,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         resendVoiceBlob, voiceController,
         pendingAnalysisResult, pendingAnalysisKey, dismissAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
+        noteId, recordingContextId, content, availableTags, setTitle, setContent: changeContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
@@ -1570,6 +1572,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 value={content}
+                                valueIsUserAction={contentIsUserAction}
                                 onChange={setContent}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"

@@ -1,3 +1,4 @@
+import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
@@ -13,6 +14,7 @@ import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
 import type { DocumentData, EngineMetadata } from '@/data-engine/types';
 
+let mockRealEditor = false;
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
@@ -232,13 +234,20 @@ jest.mock('@/components/FloatingTextScaleControls', () => () => <div data-testid
 jest.mock('@components/ui/RichMarkdownEditor', () => {
   const React = require('react');
   return {
-    RichMarkdownEditor: ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) => (
+    RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+      if (mockRealEditor) {
+        const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+        return <RichMarkdownEditor {...props} />;
+      }
+      const { value, onChange, placeholder } = props;
+      return (
       <textarea
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
-    ),
+    );
+    },
   };
 });
 
@@ -1204,6 +1213,42 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.getByTestId('export-result')).not.toHaveTextContent('> Test Verse');
   });
 
+  it('regression pin: keeps a second requested generated-plan draft replacement undoable in the mounted editor', async () => {
+    mockRealEditor = true;
+    localStorage.clear();
+    try {
+      saveDraft(draftKey('test-user', 'test-sermon-id', 'plan:intro-p1', 'first'), 'First requested words.', undefined, false, 1);
+      saveDraft(draftKey('test-user', 'test-sermon-id', 'plan:intro-p1', 'second'), 'Second requested words.', undefined, false, 2);
+      const view = renderWithQueryClient(<SermonPlanPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      fireEvent.click(screen.getAllByTitle('Edit Mode')[0]);
+      const editor = mountedEditor(view.container);
+      const before = markdown(editor);
+      fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      expect(markdown(editor)).not.toBe(before);
+      expect(undo(editor)).toBe(true);
+      expect(markdown(editor)).toBe(before);
+      view.unmount();
+    } finally { mockRealEditor = false; localStorage.clear(); }
+  });
+
+  it('regression pin: keeps generated text undoable in the same mounted plan cell', async () => {
+    mockRealEditor = true;
+    try {
+      const view = renderWithQueryClient(<SermonPlanPage />);
+      await screen.findByTestId('plan-introduction-left-section');
+      fireEvent.click(screen.getAllByTitle('Edit Mode')[0]);
+      const editor = mountedEditor(view.container);
+      const before = markdown(editor);
+      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      await waitFor(() => expect(markdown(editor)).toBe('Mock Generated Content'));
+      expect(mountedEditor(view.container)).toBe(editor);
+      expect(undo(editor)).toBe(true);
+      expect(markdown(editor)).toBe(before);
+      view.unmount();
+    } finally { mockRealEditor = false; }
+  });
+
 });
 
 /**
@@ -1255,4 +1300,6 @@ describe('sub-point text on the paired plan screen', () => {
     expect(await within(editorColumn).findByText('Перепись в ВЗ')).toBeInTheDocument();
     expect(await within(editorColumn).findByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
   });
+
+
 });

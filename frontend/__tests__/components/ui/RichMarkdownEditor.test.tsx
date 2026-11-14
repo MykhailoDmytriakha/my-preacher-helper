@@ -4,13 +4,22 @@ import { render, screen, act } from '@testing-library/react';
 // CRITICAL: All jest.mock calls must come before imports.
 // Mock TipTap and extension modules to prevent JSDOM crashes.
 jest.mock('@tiptap/react', () => {
+    const { Schema } = jest.requireActual('@tiptap/pm/model');
+    const { EditorState } = jest.requireActual('@tiptap/pm/state');
+    const schema = new Schema({ nodes: { doc: { content: 'paragraph+' }, paragraph: { content: 'text*', parseDOM: [{ tag: 'p' }], toDOM: () => ['p', 0] }, text: {} } });
     const mockEditor = {
+        schema,
+        options: {},
+        state: EditorState.create({ schema }),
+        view: { dispatch: jest.fn() },
         chain: jest.fn().mockReturnThis(),
         focus: jest.fn().mockReturnThis(),
+        command: jest.fn().mockReturnThis(),
+        setContent: jest.fn().mockReturnThis(),
         run: jest.fn().mockReturnValue(true),
         isActive: jest.fn().mockReturnValue(false),
         commands: { setContent: jest.fn() },
-        storage: { markdown: { getMarkdown: jest.fn().mockReturnValue('') } },
+        storage: { markdown: { getMarkdown: jest.fn().mockReturnValue(''), parser: { parse: (value: string) => `<p>${value}</p>` } } },
         isEditable: true,
         setEditable: jest.fn(),
     };
@@ -137,7 +146,7 @@ describe('RichMarkdownEditor', () => {
             jest.runAllTimers();
         });
 
-        expect(mockEditor.commands.setContent).toHaveBeenCalledWith('new value', { emitUpdate: false });
+        expect(mockEditor.setContent).toHaveBeenCalledWith('new value', { emitUpdate: false });
         jest.useRealTimers();
     });
 
@@ -148,14 +157,14 @@ describe('RichMarkdownEditor', () => {
         editor.storage.markdown.getMarkdown.mockReturnValue('A');
         const { rerender, unmount } = render(<RichMarkdownEditor value="A" onChange={onChange} />);
         rerender(<RichMarkdownEditor value="remote" onChange={onChange} />);
-        editor.commands.setContent.mockClear();
+        editor.setContent.mockClear();
         editor.storage.markdown.getMarkdown.mockReturnValue('remote plus typing');
         act(() => {
             const calls = (TiptapReact.useEditor as jest.Mock).mock.calls;
             calls[calls.length - 1][0].onUpdate({ editor });
         });
         act(() => { jest.runAllTimers(); });
-        expect(editor.commands.setContent).not.toHaveBeenCalled();
+        expect(editor.setContent).not.toHaveBeenCalled();
         expect(onChange).toHaveBeenLastCalledWith('remote plus typing');
         unmount();
         jest.useRealTimers();

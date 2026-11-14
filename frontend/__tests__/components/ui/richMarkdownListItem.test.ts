@@ -1,3 +1,5 @@
+import { listBlockFixtures as fixtures } from '@test-utils/richMarkdownCorpus';
+
 import { Editor } from '@tiptap/core';
 import { ListItem } from '@tiptap/extension-list';
 import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
@@ -8,19 +10,7 @@ const markdownOf = (editor: Editor) => (editor.storage as unknown as {
   markdown: { getMarkdown(): string };
 }).markdown.getMarkdown();
 
-const fixtures = [
-  ['bullet code', 'codeBlock', '- ```\n  # Code in item\n  ```'],
-  ['ordered code', 'codeBlock', '3. ```js\n   const a = 1;\n   ```'],
-  ['quote', 'blockquote', '- > Quoted words'],
-  ['heading', 'heading', '- # Heading'],
-  ['nested list', 'bulletList', '- - Nested item'],
-  ['horizontal rule', 'horizontalRule', '-\n  ---'],
-  ['code in quoted list', 'codeBlock', '> - ```\n>   code\n>   ```'],
-  ['code in nested list', 'codeBlock', '- Parent\n  - ```\n    code\n    ```'],
-  ['code before another item', 'codeBlock', '- ```\n  code\n  ```\n- Next'],
-  ['nested rule', 'horizontalRule', '- Parent\n\n  -\n    ---'],
-  ['long fence', 'codeBlock', '- ````\n  ```\n  # Still code\n  ```\n  ````'],
-] as const;
+
 
 describe('list block save and reload (BUG-20261015-list-code-paste-loses-container)', () => {
   it.each(fixtures)('keeps %s inside the same item across repeated saves', (_name, blockType, source) => {

@@ -27,6 +27,8 @@ import { COMMENT_SENTENCES, measureComment } from '@/utils/commentLength';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
+import { useEditorValue } from './ui/useEditorValue';
+
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 import type { BibleId } from '@/utils/bibles';
 
@@ -298,7 +300,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const kindBasis = useRef(openingKind);
   // Where this window's edits began: the version it opened with, or the other device's once that was taken.
   const mine = useRef<StudyNote | undefined>(found);
-  const [text, setText] = useState<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
+  const { value: text, observe: setText, act: changeText, isUserAction: textIsUserAction } = useEditorValue<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
   // The name it takes past five sentences, as a note (the owner, 2026-10-28: «без имени толку нету»).
   const [title, setTitle] = useState(found?.title ?? '');
   // What it is in the reader — a paragraph or a comment — as the person chooses it here (`paragraphChoice`).
@@ -369,7 +371,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const { held: deciding, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, writerId]), waiting !== null);
   const restore = () => {
     if (!waiting) return;
-    setText(waiting.text);
+    changeText(waiting.text);
     setTitle(waiting.title ?? '');
     kind.restore(waiting.paragraph);
     setRestoredWithoutTitle(waiting.title === undefined);
@@ -591,7 +593,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
         {/* The verses are chosen for what the switch says now: a comment's keep no paragraphs' rule (Codex review, 2026-11-07). */}
         <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} onChooseVerses={onChooseVerses ? (here, moveTo) => onChooseVerses(here, moveTo, asWritten.offered ? kind.asParagraph : undefined) : undefined} versesRefusal={versesRefusal} />
         {/* Still while a save is accepted — words typed then would be closed away with the window — and while words from last time wait for an answer. */}
-        {text === null ? null : <RichMarkdownEditor value={text} onChange={setText} placeholder={t('comment.placeholder')} minHeight="11rem" autoFocus editable={!saving && !deciding} />}
+        {text === null ? null : <RichMarkdownEditor valueIsUserAction={textIsUserAction} value={text} onChange={setText} placeholder={t('comment.placeholder')} minHeight="11rem" autoFocus editable={!saving && !deciding} />}
         <CommentWayBar text={written} paragraph={asWritten.heading} />
         {isNote ? (
           <div className="space-y-3">

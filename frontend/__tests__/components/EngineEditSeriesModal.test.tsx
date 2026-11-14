@@ -1,3 +1,4 @@
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { EngineEditSeriesModal } from '@/components/series/EngineEditSeriesModal';
@@ -9,8 +10,14 @@ import { documentEngineHarness, settleEngine } from '../../test-utils/documentEn
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
-  <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
+let mockRealEditor = false;
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+  if (mockRealEditor) {
+    const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+    return <RichMarkdownEditor {...props} />;
+  }
+  return <textarea aria-label="Description" value={props.value} onChange={event => props.onChange(event.target.value)} />;
+} }));
 const resource = { collection: 'series', id: 'series' };
 function setup(theme = 'Opening title', description = 'Opening description', bookOrTopic = 'Romans', hasTitle = true) {
   const harness = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
@@ -143,4 +150,60 @@ it('offers unsent metadata after restart and restores it only by explicit choice
   fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
   fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
   await screen.findByDisplayValue('Recovered metadata'); expect(harness.transport.send).not.toHaveBeenCalled(); restored.unmount();
+});
+
+it('regression pin: keeps explicitly recovered series description text undoable in the mounted editor', async () => {
+  const originalNow = Date.now;
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    typeAtEnd(mountedEditor(view.baseElement), ' Requested draft.');
+    await act(async () => { await settleEngine(); });
+    view.unmount();
+    const restored = render(<Workspace />);
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    const editor = mountedEditor(restored.baseElement);
+    const choice = await screen.findByRole('option', { name: 'Opening title' });
+    fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
+    // Separate the requested restore from the initial load in production's 500 ms history group.
+    const restoredAt = Date.now() + 1000;
+    Date.now = () => restoredAt;
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    await waitFor(() => expect(markdown(editor)).toBe('Opening description Requested draft.'));
+    expect(mountedEditor(restored.baseElement)).toBe(editor);
+    expect(undo(editor)).toBe(true);
+    expect(markdown(editor)).toBe('Opening description');
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    restored.unmount();
+  } finally { Date.now = originalNow; mockRealEditor = false; jest.restoreAllMocks(); }
+});
+
+it('C30 explicit recovery to the opening description is one undoable action over current local text', async () => {
+  const originalNow = Date.now;
+  mockRealEditor = true;
+  try {
+    const { harness, Workspace, view } = setup();
+    const title = await screen.findByDisplayValue('Opening title'); await waitFor(() => expect(title).toBeEnabled());
+    fireEvent.change(title, { target: { value: 'Recovered title' } });
+    await act(async () => { await settleEngine(); }); view.unmount();
+    const restored = render(<Workspace />);
+    await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
+    const editor = mountedEditor(restored.baseElement);
+    const choice = await screen.findByRole('option', { name: 'Opening title' });
+    typeAtEnd(editor, ' Current typed words.');
+    await act(async () => { await settleEngine(); });
+    const before = markdown(editor);
+    fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
+    const restoredAt = Date.now() + 1000;
+    Date.now = () => restoredAt;
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Recovered title')).toBeEnabled());
+    const arrived = markdown(editor); const result = undo(editor); const afterUndo = markdown(editor);
+    expect(arrived).toBe('Opening description');
+    expect(result).toBe(true);
+    expect(mountedEditor(restored.baseElement)).toBe(editor);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    expect(afterUndo).toBe(before); restored.unmount();
+  } finally { Date.now = originalNow; mockRealEditor = false; jest.restoreAllMocks(); }
 });

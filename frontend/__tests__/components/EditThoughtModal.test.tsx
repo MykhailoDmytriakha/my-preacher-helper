@@ -1,3 +1,4 @@
+import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
@@ -10,6 +11,7 @@ import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
+let mockRealEditor = false;
 jest.mock('react-dom', () => {
   return {
     ...jest.requireActual('react-dom'),
@@ -30,14 +32,21 @@ jest.mock('@/providers/ConnectionProvider', () => ({
 
 // Mock the new RichMarkdownEditor which uses TipTap
 jest.mock('@components/ui/RichMarkdownEditor', () => ({
-  RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+  RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+      if (mockRealEditor) {
+        const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+        return <RichMarkdownEditor {...props} />;
+      }
+      const { value, onChange, placeholder } = props;
+      return (
     <textarea
       data-testid="mock-rich-editor"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
     />
-  ),
+  );
+  },
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
@@ -601,6 +610,22 @@ describe('EditThoughtModal Component', () => {
     const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
     fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('regression pin: keeps a recorded passage insertion undoable in the mounted legacy thought editor', async () => {
+    mockRealEditor = true;
+    try {
+      mockTranscribeAudioWithRetry.mockResolvedValueOnce({ polishedText: 'Dictated passage.', originalText: 'Dictated passage.' });
+      const view = render(<EditThoughtModal {...mockProps} />);
+      const editor = mountedEditor(view.container);
+      const before = markdown(editor);
+      fireEvent.click(screen.getByTestId('focus-recorder-record'));
+      await waitFor(() => expect(markdown(editor)).toBe(before + '\n\nDictated passage.'));
+      expect(mountedEditor(view.container)).toBe(editor);
+      expect(undo(editor)).toBe(true);
+      expect(markdown(editor)).toBe(before);
+      view.unmount();
+    } finally { mockRealEditor = false; }
   });
 
 });
