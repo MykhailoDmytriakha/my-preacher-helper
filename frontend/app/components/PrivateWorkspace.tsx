@@ -19,6 +19,7 @@ import { OfflinePageMemory } from '@/components/OfflinePageMemory';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
+import { UnreadableDraftNotice } from '@/components/UnreadableDraftNotice';
 import { DataEngineWorkspace } from '@/data-engine/react.client';
 import { useWorkspacePanes } from '@/hooks/useWorkspacePanes';
 import { UserSettingsProvider, UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
@@ -57,7 +58,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       new URLSearchParams(search).get('planView') === 'preaching'
   );
 
-  const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} withSettingsNotice /></>;
+  const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} withSettingsNotice /><UnreadableDraftNotice /></>;
   const recovery = <><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></>;
   return (
     // The page root itself moves under a swipe or a pull, so the gestures render it.

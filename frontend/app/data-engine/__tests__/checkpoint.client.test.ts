@@ -35,6 +35,34 @@ it('discovers owner-scoped recovery and creates a fork without overwriting an ed
   storage.readFailure = true; await expect(store.listRecoverable('owner')).rejects.toThrow('read failed');
 });
 
+it('finds healthy drafts even when another checkpoint of the same owner has an unreadable core', async () => {
+  const store = createIndexedDbCheckpoints();
+  await store.put(record());
+  storage.rows.set(JSON.stringify(['checkpoint', 'owner', 'unreadable']), {
+    owner: 'owner', editorId: 'unreadable',
+    checkpoint: { confirmed: { resource: { collection: 'studyNotes', id: 'other-note' } },
+      draft: { userId: 'owner', content: 'Words still on the device' }, editGeneration: 'future-format' },
+  });
+  storage.rows.set(JSON.stringify(['checkpoint', 'owner', 'unparseable']), {});
+  storage.rows.set(JSON.stringify(['checkpoint', 'owner', 'foreign']), {
+    owner: 'owner', editorId: 'foreign',
+    checkpoint: { confirmed: { resource: { collection: 'studyNotes', id: 'another-note' } },
+      draft: { userId: 'other', content: 'A different owner\'s words' }, editGeneration: 'future-format' },
+  });
+  const drafts = await store.listRecoverable('owner', snapshot.resource);
+  expect(drafts.map(copy => copy.record.checkpoint.draft?.content)).toEqual(['mine']);
+  const damaged = await store.listUnreadable!('owner');
+  expect(damaged).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: '["owner","unreadable"]', text: expect.stringContaining('Words still on the device') }),
+    { id: '["owner","unparseable"]' }, { id: '["owner","foreign"]' },
+  ]));
+  expect(damaged.find(copy => copy.id === '["owner","unreadable"]')?.text).not.toContain('userId');
+  expect(await store.listUnreadable!('other')).toEqual([]);
+  await expect(store.read('owner', 'unreadable')).rejects.toThrow();
+  await expect(store.create({ ...record(), editorId: 'separate' })).resolves.toBeUndefined();
+  expect(storage.rows.get(JSON.stringify(['checkpoint', 'owner', 'unparseable']))).toEqual({});
+});
+
 it('releases committed transactions while retaining two application callbacks in order', async () => {
   const store = createIndexedDbCheckpoints();
   storage.holdCompletionAfterCommit = (_rows, mode) => mode === 'readwrite';

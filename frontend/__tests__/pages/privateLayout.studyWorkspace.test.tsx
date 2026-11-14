@@ -26,6 +26,7 @@ jest.mock('@/components/navigation/PageGestures', () => ({ children, enabled: _e
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => <div>Guest notice</div> }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => <div>Unsent changes</div> }));
 jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => <div data-testid="engine-conflicts" /> }));
+jest.mock('@/components/UnreadableDraftNotice', () => ({ UnreadableDraftNotice: () => <div data-testid="unreadable-draft-notice" /> }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => <div data-testid="outbox-drain" /> }));
 
 describe('bounded study workspace routing', () => {

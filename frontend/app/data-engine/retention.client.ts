@@ -55,9 +55,17 @@ export function readCommitIdentities(store: IDBObjectStore, read: StorageRead, o
   });
 }
 
-export function checkpointCommitReferences(record: EditorRecord): string[] {
+export function checkpointCommitReferences(record: unknown): string[] {
   // Prepared legacy commands belong to the older journal, not the request store.
-  return Object.keys(record.checkpoint.pending).filter(id => id !== record.prepared?.operationId);
+  const value = record as Partial<EditorRecord> | undefined;
+  const pending = checkpointPending(record);
+  if (!pending) return [];
+  return Object.keys(pending).filter(id => id !== value?.prepared?.operationId);
+}
+
+function checkpointPending(record: unknown) {
+  const pending = (record as Partial<EditorRecord> | undefined)?.checkpoint?.pending;
+  return typeof pending === 'object' && pending !== null && !Array.isArray(pending) ? pending : undefined;
 }
 
 function retainAtomicParticipants(requests: readonly CommitRequest[], references: Set<string>): void {
@@ -110,8 +118,8 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
     }
   };
   readCommitRows(store, read, owner, values => { requests = values; finish(); });
-  read(store.getAll(engineOwnerRange('checkpoint', owner)), values => {
-    for (const record of values as EditorRecord[]) for (const id of checkpointCommitReferences(record)) references.add(id);
+  read(store.getAll(engineOwnerRange('checkpoint', owner)), (values: unknown[]) => {
+    for (const record of values) for (const id of checkpointCommitReferences(record)) references.add(id);
     finish();
   });
   for (const kind of ['manual', 'reference']) {

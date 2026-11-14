@@ -173,7 +173,7 @@ describe('Explicit checkpoint recovery', () => {
     const session = DataSession.restore(source.checkpoint); session.keepLocal(); const prepared = session.prepare('operation', 'owner')!;
     const wrongCommand = { ...source, prepared: { ...prepared, owner: 'other' }, checkpoint: session.checkpoint() };
     expect(() => validateRecoveryRecord(wrongCommand, 'owner', 'source')).toThrow('Prepared checkpoint identity mismatch');
-    expect(() => selectRecoverableCheckpoints([['["owner","source"]', {}]], 'owner')).toThrow();
+    expect(selectRecoverableCheckpoints([['["owner","source"]', {}]], 'owner')).toEqual([]);
   });
 
   it('rejects another account in confirmed, draft, remote and pending values and applies the canonical owner field', () => {

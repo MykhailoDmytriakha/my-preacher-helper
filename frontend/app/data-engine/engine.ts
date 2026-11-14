@@ -1157,6 +1157,13 @@ export class DataEngine {
     return this.discoverRecoverable(resource);
   }
 
+  async listUnreadableCheckpoints() {
+    const owner = this.requireOwner(), generation = this.generation;
+    const rows = await this.recoveryStore().listUnreadable?.(owner) ?? [];
+    this.assertCurrent(owner, generation);
+    return rows;
+  }
+
   private async discoverRecoverable(resource: ResourceRef | undefined, forRecoveryChoices = false): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner();
     if (resource) this.validateResource(resource, owner);

@@ -120,6 +120,7 @@ export interface RecoveryCheckpoint {
 export interface CheckpointRecoveryStore extends CheckpointStore {
   listRecoverable(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   listManualChoiceCopies?(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
+  listUnreadable?(owner: string): Promise<UnreadableCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
   create(record: EditorRecord): Promise<void>;
   /** Removes only the exact explicitly selected closed copy, never an unresolved Save. */
@@ -128,6 +129,13 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   pinRecovery?(record: EditorRecord): Promise<string | null>;
   /** Closed editors' copies whose Saves were all answered; unsupported stores keep them. */
   settleClosed?(owner: string, entries: readonly SettledCheckpoint[]): Promise<void>;
+}
+
+export interface UnreadableCheckpoint {
+  id: string;
+  title?: string;
+  /** Display only, and copy only after the person requests it. */
+  text?: string;
 }
 
 /** A stored copy as it was read, and the same copy with its answered Saves applied. */

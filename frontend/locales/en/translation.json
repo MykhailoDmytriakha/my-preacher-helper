@@ -345,6 +345,10 @@
     "wholeActionDraftBody": "Open the original screen to decide what to do with the whole transfer. Your text is kept until you choose.",
     "openToDecide": "Open and decide",
     "screenDraftsUndecidable": "Changes made on several screens wait for a decision, and no screen can choose between them. Copy what you need, then use the server version.",
+    "unreadableDraftHeading": "Drafts that need a copy",
+    "unreadableDraftDescription": "This version could not open these drafts. They are still on this device. You can copy the readable text below.",
+    "unreadableDraftUntitled": "Draft without a readable title",
+    "unreadableDraftShow": "Show preserved text",
     "documentFailed": "Something went wrong with this record. Please try again.",
     "failure": {
       "serverUnavailable": "The server is not answering right now. Try again a little later.",

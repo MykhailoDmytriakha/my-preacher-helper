@@ -2,6 +2,8 @@
 
 import { z } from 'zod';
 
+import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
+
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
@@ -432,17 +434,42 @@ export function reconcileRecoveryRecord(record: EditorRecord, requests: readonly
 }
 
 /** Owner filtering happens before reading another owner's record contents. */
-export function selectRecoverableCheckpoints(records: readonly (readonly [unknown, unknown])[], owner: string, resource?: ResourceRef): RecoveryCheckpoint[] {
+export function examineRecoveryCheckpoints(records: readonly (readonly [unknown, unknown])[], owner: string, resource?: ResourceRef) {
   const selected: RecoveryCheckpoint[] = [];
+  const unreadable: string[] = [];
   for (const [key, value] of records) {
     const editorId = recoveryCheckpointEditorId(owner, key);
     if (editorId === null || typeof key !== 'string') continue;
-    const record = validateRecoveryRecord(value, owner, editorId);
-    if ((!resource || sameResource(resource, record.checkpoint.confirmed.resource)) && isRecoverableCheckpoint(record)) {
-      selected.push({ id: key, record });
+    try {
+      const record = validateRecoveryRecord(value, owner, editorId);
+      if ((!resource || sameResource(resource, record.checkpoint.confirmed.resource)) && isRecoverableCheckpoint(record)) {
+        selected.push({ id: key, record });
+      }
+    } catch {
+      unreadable.push(key);
     }
   }
-  return selected;
+  return { selected, unreadable };
+}
+
+export function selectRecoverableCheckpoints(records: readonly (readonly [unknown, unknown])[], owner: string, resource?: ResourceRef): RecoveryCheckpoint[] {
+  return examineRecoveryCheckpoints(records, owner, resource).selected;
+}
+
+/** Readable words from a damaged record are a copy for the owner, never a live editor or a Save. */
+export function unreadableCheckpointDraft(value: unknown, owner: string, editorId: string): Record<string, unknown> | undefined {
+  if (!isFields(value) || value.owner !== owner || value.editorId !== editorId || !isFields(value.checkpoint)) return;
+  const { confirmed, draft } = value.checkpoint;
+  if (!isFields(confirmed) || !isFields(draft) || !isFields(confirmed.resource)) return;
+  const { collection, id } = confirmed.resource;
+  if (typeof collection !== 'string' || !isValidIdentifier(id) || nestsDeeperThan(draft, 64)) return;
+  try {
+    const policy = getResourcePolicy(collection);
+    if (policy.ownerField === 'id' ? id !== owner || (draft.id !== undefined && draft.id !== owner) : draft[policy.ownerField] !== owner) return;
+    const parsed = json.safeParse(draft);
+    if (!parsed.success) return;
+    return Object.fromEntries(Object.entries(draft).filter(([field]) => field !== policy.ownerField && !DOCUMENT_BOOKKEEPING_FIELDS.has(field)));
+  } catch { return; }
 }
 
 function checkpointForkRecord(original: EditorRecord, sourceId: string, editorId: string, version: string | null): EditorRecord {

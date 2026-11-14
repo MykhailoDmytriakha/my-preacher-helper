@@ -26,6 +26,7 @@ jest.mock('@/components/navigation/PageGestures', () => ({ children }: { childre
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => null }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => null }));
 jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => null }));
+jest.mock('@/components/UnreadableDraftNotice', () => ({ UnreadableDraftNotice: () => null }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => null }));
 
 function SermonPage() {
