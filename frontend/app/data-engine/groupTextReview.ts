@@ -2,7 +2,7 @@ import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
-import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
+import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { groupPlacementSteps } from './groupFlowTopology';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { mergeDocumentFields } from './protocol';
@@ -17,12 +17,8 @@ const groupFlowFields = {
   step: { birth: GROUP_STEP_TITLE_POLICY.birth, target: GROUP_STEP_TITLE_POLICY.target('title') },
   status: { birth: GROUP_BLOCK_STATUS_POLICY.birth, target: GROUP_BLOCK_STATUS_POLICY.target('status') },
   duration: { birth: GROUP_STEP_DURATION_POLICY.birth, target: GROUP_STEP_DURATION_POLICY.target('durationMin') },
-  content: { birth: GROUP_BLOCK_TITLE_POLICY.birth, target: {
-    field: 'templates', leaf: 'content', accepts: (value: unknown): value is string => typeof value === 'string',
-  } },
-  notes: { birth: GROUP_STEP_TITLE_POLICY.birth, target: {
-    field: 'flow', leaf: 'instanceNotes', missing: null, accepts: (value: unknown): value is string => typeof value === 'string',
-  } },
+  content: { birth: GROUP_BLOCK_CONTENT_POLICY.birth, target: GROUP_BLOCK_CONTENT_POLICY.target('content') },
+  notes: { birth: GROUP_STEP_NOTES_POLICY.birth, target: GROUP_STEP_NOTES_POLICY.target('instanceNotes') },
 } as const;
 
 function groupFlowFieldVersions(checkpoint: SessionCheckpoint, draft: DocumentData | null, path = checkpoint.conflicts[0]?.path) {

@@ -12,6 +12,7 @@ import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp,
 import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
+import type { GroupFlowTextStamp } from './groupFlowTitleAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -300,6 +301,8 @@ export type DataCommand = CommandBase & (
       groupTitleAction?: DocumentFieldObservation;
       groupStatusAction?: DocumentFieldObservation;
       groupDescriptionAction?: DocumentFieldStamp;
+      groupBlockContentActions?: GroupFlowTextStamp[];
+      groupStepNotesActions?: GroupFlowTextStamp[];
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
       councilLifecycleAction?: DocumentFieldStamp;
@@ -309,7 +312,7 @@ export type DataCommand = CommandBase & (
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions'>
+      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions' | 'groupBlockContentActions' | 'groupStepNotesActions'>
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

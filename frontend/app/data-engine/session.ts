@@ -29,7 +29,7 @@ import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './o
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
+import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
@@ -783,6 +783,7 @@ export class DataSession {
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
       this.stageOutlineReviewTitles(titles, choiceTime);
+      if (reviewingRows) this.stageReviewedGroupFlowText(this.state.conflicts.filter(issue => issue.code === UNREADABLE_ROW_PROOF).map(issue => issue.path), choiceTime);
       if (reviewingUnreadableProof && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF
         && equalValues(conflict.path, ['description']))) this.stageReviewedGroupDescription(choiceTime);
     }
@@ -799,6 +800,10 @@ export class DataSession {
 
   retainOutlineTitleActions(source: SessionCheckpoint): void {
     carryOutlineTitleActions(source, this.state);
+  }
+
+  stageReviewedGroupFlowText(paths: readonly (readonly string[])[], time: ActionTime | null): void {
+    stageReviewedGroupFlowText(this.state, paths, time);
   }
 
   stageReviewedGroupDescription(time: ActionTime | null): void {

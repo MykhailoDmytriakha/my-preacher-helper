@@ -48,7 +48,7 @@ const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
-  groupStepTitleDrafts: rowDrafts, groupBlockStatusDrafts: rowDrafts, groupStepDurationDrafts: rowDrafts,
+  groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: rowDrafts, groupStepDurationDrafts: rowDrafts,
   thoughtLockDrafts: rowDrafts, thoughtPlacementDrafts: rowDrafts,
   exegeticalPointDrafts: [{ nodeId: 'point', kind: 'title', observedRevision: 1, time, predecessorOperationId: 'earlier-save',
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
@@ -68,7 +68,7 @@ const pendingEvidence = {
   groupTitleAction: observation, groupDescriptionAction: optionalObservation, groupStatusAction: observation, councilTitleAction: observation,
   councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
   councilOutcomeActions: [row], councilTopicTitleActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
-  groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtPlacementActions: [row],
+  groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], groupFlowStepPlacement: groupPlacement,
   councilTopicPlacement: councilPlacement, commentPlaceAction,
 } satisfies Record<PendingEvidenceKey, unknown>;

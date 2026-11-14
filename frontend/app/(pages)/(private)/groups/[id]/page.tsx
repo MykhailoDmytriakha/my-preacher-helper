@@ -54,7 +54,7 @@ import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
-import { GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
+import { GroupBlockTemplate, GroupBlockTemplateType } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { groupLanguage } from '@/utils/documentLanguage';
 import { GROUP_BLOCK_STATUSES } from '@/utils/groupDocument';
@@ -99,7 +99,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const fitEditorToWindow = useWindowFittedPanel(editorTop, '--flow-editor-max-h');
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
-    templates, flow, setFlow, updateFlowPlan, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
+    templates, flow, updateFlowPlan, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled, meetingHistory, meetingFieldHistory, titleHistory, statusHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
@@ -231,21 +231,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     const next = GROUP_BLOCK_STATUSES[(GROUP_BLOCK_STATUSES.indexOf(template.status) + 1) % GROUP_BLOCK_STATUSES.length];
     void editor.setBlockStatus(template, next)
       .catch(() => undefined);
-  };
-
-  const updateFlowItem = (itemId: string, updates: Partial<GroupFlowItem>) => {
-    setFlow((prev) =>
-      normalizeFlow(
-        prev.map((flowItem) =>
-          flowItem.id === itemId
-            ? {
-              ...flowItem,
-              ...updates,
-            }
-            : flowItem
-        )
-      )
-    );
   };
 
   const handleDeleteGroup = async () => {
@@ -562,7 +547,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 onSetStatus={status => editor.setBlockStatus(selectedTemplate, status)}
                 onRenameStep={title => editor.renameStep(selectedFlowItem, title)}
                 onSetDuration={duration => editor.setStepDuration(selectedFlowItem, duration)}
-                onUpdateFlowItem={(updates) => updateFlowItem(selectedFlowItem.id, updates)}
+                onUpdateFlowItem={({ instanceNotes }) => { void editor.setStepNotes(selectedFlowItem, instanceNotes).catch(() => undefined); }}
                 onClose={() => setSelectedFlowItemId(null)}
               />
             </div>

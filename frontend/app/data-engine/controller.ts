@@ -945,6 +945,7 @@ export class EditorController {
           session.clearGroupTextReview();
           session.edit(chosen);
           session.retainUnreviewedAutosaveActions(decided, review.fields);
+          session.stageReviewedGroupFlowText(decisions.filter(decision => decision.side === 'local').map(decision => decision.path), choiceTime ?? null);
           if (decisions.some(decision => decision.side === 'local' && equalValues(decision.path, ['description']))) {
             session.stageReviewedGroupDescription(choiceTime ?? null);
           }
@@ -1092,6 +1093,7 @@ export class EditorController {
             if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
             session.edit(reviewed);
             if (groupText.field === 'description') session.stageReviewedGroupDescription(choiceTime ?? null);
+            else session.stageReviewedGroupFlowText([groupText.path], choiceTime ?? null);
           }
           if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;

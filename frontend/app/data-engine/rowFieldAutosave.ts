@@ -4,7 +4,7 @@ import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindActio
 import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { equalValues, object } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
-import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
+import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
@@ -25,9 +25,9 @@ import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action; reviewed?: true };
-type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts';
-type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions' | 'outlineTitleActions';
-export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement' | 'outline-title';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions' | 'outlineTitleActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement' | 'outline-title';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string; titleOpening?: OutlineTitleOpening } | { rowIds: readonly string[] }
 );
@@ -51,6 +51,8 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(COUNCIL_TOPIC_TITLE_POLICY, 'title', 'council-topic-title', 'councilTopicTitleDrafts', 'councilTopicTitleActions'),
   autosaveTarget(GROUP_BLOCK_TITLE_POLICY, 'title', 'group-block-title', 'groupBlockTitleDrafts', 'groupBlockTitleActions'),
   autosaveTarget(GROUP_STEP_TITLE_POLICY, 'title', 'group-step-title', 'groupStepTitleDrafts', 'groupStepTitleActions'),
+  autosaveTarget(GROUP_BLOCK_CONTENT_POLICY, 'content', 'group-block-content', 'groupBlockContentDrafts', 'groupBlockContentActions'),
+  autosaveTarget(GROUP_STEP_NOTES_POLICY, 'instanceNotes', 'group-step-notes', 'groupStepNotesDrafts', 'groupStepNotesActions'),
   autosaveTarget(GROUP_BLOCK_STATUS_POLICY, 'status', 'group-block-status', 'groupBlockStatusDrafts', 'groupBlockStatusActions'),
   autosaveTarget(GROUP_STEP_DURATION_POLICY, 'durationMin', 'group-step-duration', 'groupStepDurationDrafts', 'groupStepDurationActions'),
   autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
@@ -196,6 +198,25 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
     return [[rowId, { generation, reviewed: true, action: { rowId, rowCreatedAt, before, after, time: null, observedRevision } }]] as const;
   });
   if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
+}
+
+export function stageReviewedGroupFlowText(checkpoint: SessionCheckpoint, paths: readonly (readonly string[])[], time: ActionTime | null): void {
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  if (confirmed.resource.collection !== 'groups' || !metadata || metadata.deleted || !draft) return;
+  for (const target of targetsFor('groups').filter(item => item.stamp === 'group-block-content' || item.stamp === 'group-step-notes')) {
+    const field = target.policy.target(target.field);
+    for (const path of paths) {
+      const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
+      if (!rowId || !equalValues(path, rowConflictPath(rowId, field))) continue;
+      const before = fieldAt(confirmed.value, rowId, target), after = fieldAt(draft, rowId, target);
+      const rowCreatedAt = birthAt(confirmed.value, rowId, target);
+      if (before === undefined || after === undefined || equalValues(before, after) || rowCreatedAt === undefined
+        || birthAt(draft, rowId, target) !== rowCreatedAt) continue;
+      checkpoint[target.draft] = { ...checkpoint[target.draft],
+        [rowId]: { generation: metadata.generation, action: { rowId, rowCreatedAt, before, after, observedRevision: metadata.revision, time } } };
+    }
+  }
 }
 
 /** A title choice sees the exact saved revision, even when it contains a repeated title. */

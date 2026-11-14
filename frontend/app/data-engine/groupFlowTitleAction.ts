@@ -1,4 +1,4 @@
-import type { RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
+import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { RowFieldTarget } from './rowFieldAction';
 
 const isText = (value: unknown): value is string => typeof value === 'string';
@@ -23,6 +23,22 @@ export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = 
   target: () => GROUP_STEP_TITLE,
   proofs: 'groupStepTitleProofs', actions: 'groupStepTitleActions', history: '_stepTitleHistory',
   repeatedFields: ['title'], allowUnclocked: true,
+};
+
+export type GroupFlowTextStamp = Omit<RowDetailObservation<string | null>, 'before' | 'after'>;
+
+export const GROUP_BLOCK_CONTENT_POLICY: RowDetailPolicy<'content', string> = {
+  collection: 'groups', fields: ['content'], birth: GROUP_BLOCK_TITLE_POLICY.birth,
+  target: () => ({ field: 'templates', leaf: 'content', accepts: isText }),
+  proofs: 'groupBlockContentProofs', actions: 'groupBlockContentActions', history: '_blockContentHistory',
+  repeatedFields: ['content'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
+};
+
+export const GROUP_STEP_NOTES_POLICY: RowDetailPolicy<'instanceNotes', string | null> = {
+  collection: 'groups', fields: ['instanceNotes'], birth: GROUP_STEP_TITLE_POLICY.birth,
+  target: () => ({ field: 'flow', leaf: 'instanceNotes', missing: null, accepts: (value): value is string | null => value === null || isText(value) }),
+  proofs: 'groupStepNotesProofs', actions: 'groupStepNotesActions', history: '_stepNotesHistory',
+  repeatedFields: ['instanceNotes'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
 };
 
 export type GroupFlowHistoryPage = {

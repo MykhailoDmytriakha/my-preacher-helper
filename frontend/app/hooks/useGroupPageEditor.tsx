@@ -59,7 +59,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const renameBlock: GroupPageEditor['renameBlock'] = (block, title) => editBlock(block, 'group-block-title', row => ({ ...row, title }));
   const setBlockStatus: GroupPageEditor['setBlockStatus'] = (block, status) =>
     editBlock(block, 'group-block-status', row => ({ ...row, status }));
-  const editStep = (step: Pick<GroupFlowItem, 'id' | 'templateId'>, kind: 'group-step-title' | 'group-step-duration',
+  const editStep = (step: Pick<GroupFlowItem, 'id' | 'templateId'>, kind: 'group-step-title' | 'group-step-duration' | 'group-step-notes',
     mutate: (row: GroupFlowItem) => GroupFlowItem) => data.update(current => {
     if (!current.flow.some(row => row.id === step.id && row.templateId === step.templateId)) {
       throw Object.assign(new Error('The step that was shown changed'), { code: 'decision-changed' });
@@ -70,6 +70,8 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     editStep(step, 'group-step-title', row => ({ ...row, instanceTitle: title || undefined }));
   const setStepDuration: GroupPageEditor['setStepDuration'] = (step, durationMin) =>
     editStep(step, 'group-step-duration', row => ({ ...row, durationMin }));
+  const setStepNotes: GroupPageEditor['setStepNotes'] = (step, instanceNotes) =>
+    editStep(step, 'group-step-notes', row => ({ ...row, instanceNotes }));
   const checkpoint = data.document.state?.checkpoint;
   const flowComparison = useGroupFlowComparison(manual ? undefined : checkpoint, t);
   const reviewedMeeting = manual && meeting.form.comparison?.kind === 'first-group-meeting' ? meeting.form.comparison : undefined;
@@ -105,7 +107,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     description: group?.description ?? '', setDescription: next => { void data.update(current => ({ ...current, description: nextValue(next, current.description ?? '') }),
       { action: 'group-description' }).catch(() => undefined); },
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
-    renameBlock, renameStep, setBlockStatus, setStepDuration, flowTitleScope: historyScope,
+    renameBlock, renameStep, setBlockStatus, setStepDuration, setStepNotes, flowTitleScope: historyScope,
     setBlockContent: data.setBlockContent, holdBlockContent: data.holdBlockContent,
     flow: group?.flow ?? [], setFlow: field('flow'),
     updateFlowPlan: mutate => {

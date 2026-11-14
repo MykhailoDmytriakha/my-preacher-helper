@@ -44,7 +44,8 @@ export function useGroupDataDocument(groupId: string) {
     await (options ? document.update(change, options) : document.update(change));
   }, [document, changeGroup]);
   const setBlockContent = (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) =>
-    update(current => ({ ...current, templates: patchGroupBlockContent(current.templates, block, content, new Date().toISOString()) }));
+    update(current => ({ ...current, templates: patchGroupBlockContent(current.templates, block, content, new Date().toISOString()) }),
+      { action: { kind: 'group-block-content', rowId: block.id } });
   const holdBlockContent = (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) =>
     document.holdDraftAlternative(confirmed => ({
       ...confirmed,

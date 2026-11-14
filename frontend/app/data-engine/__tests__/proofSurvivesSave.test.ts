@@ -184,6 +184,94 @@ it('orders a timed group description and retains the displaced words once', asyn
   expect(history[0][1]).toMatchObject({ fields: [{ field: 'description', value: 'Earlier device words', winnerDigest: expect.any(String) }] });
 });
 
+it.each(['block content', 'leader notes'] as const)('holds delayed %s after the same group row returns to its earlier words', async surface => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'group-flow-text-return' };
+  const isBlock = surface === 'block content';
+  const field = isBlock ? 'content' : 'instanceNotes';
+  const root = isBlock ? 'templates' : 'flow';
+  const opening = isBlock ? 'Opening words' : undefined;
+  const block = { id: 'block', title: 'Meeting block', type: 'custom', content: 'Opening words', status: 'filled', createdAt: 'born', updatedAt: 'born' };
+  const step = { id: 'step', order: 1, durationMin: 12, templateId: 'block' };
+  const value = { userId: 'owner', title: 'Independent title', status: 'draft', templates: [block], flow: [step], meetingDates: [] };
+  const snapshot: ResourceSnapshot = { resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set('groups/' + resource.id, { ...value, _dataEngine: snapshot.metadata });
+  const withWords = (text: string) => ({ ...value, [root]: [{ ...(isBlock ? block : step), [field]: text }] });
+  const session = new DataSession(snapshot);
+  session.edit(withWords('Earlier words'), undefined, { field: isBlock ? 'group-block-content' : 'group-step-notes', rowId: isBlock ? 'block' : 'step', time: null });
+  const record = { owner: 'owner', editorId: 'old-editor', checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+  const reopened = (await throughDeviceStorage(record)).checkpoint;
+  const temporary = withWords('Temporary desktop words');
+  const desktop = (operationId: string, before: DocumentData, after: DocumentData) => processCommand('owner', {
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update', changes: diffFields(before, after),
+  });
+  expect((await desktop('away', value, temporary)).kind).toBe('acknowledged');
+  expect((await desktop('return', temporary, value)).kind).toBe('acknowledged');
+  const outcome = await save(reopened);
+  expect(outcome.kind).toBe('conflict');
+  const action = isBlock ? 'groupBlockContentActions' : 'groupStepNotesActions';
+  expect(outcome.commands[0]).toHaveProperty(action + '.0.observedRevision', 1);
+  expect(outcome.commands[0]).not.toHaveProperty(action + '.0.before');
+  expect(outcome.commands[0]).not.toHaveProperty(action + '.0.after');
+  const live = await readDocument('owner', resource);
+  expect(live.value).toMatchObject({ title: value.title, [root]: value[root] });
+  expect((live.value?.[root] as DocumentData[])[0][field]).toBe(opening);
+  expect((await desktop('legacy-phone', value, withWords('Legacy delayed text'))).kind).toBe('conflict');
+});
+
+it('retains the exact displaced group row texts once when known action order keeps the later words', async () => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'timed-group-row-text' };
+  const value = (content: string, instanceNotes: string): DocumentData => ({
+    userId: 'owner', title: 'Group', status: 'draft', meetingDates: [],
+    templates: [{ id: 'block', title: 'Meeting block', type: 'custom', content, status: 'filled', createdAt: 'born', updatedAt: 'born' }],
+    flow: [{ id: 'step', order: 1, durationMin: 12, templateId: 'block', instanceNotes }],
+  });
+  const opening = value('Opening content', 'Opening notes');
+  const temporary = value('Later content', 'Later notes');
+  const earlier = value('Earlier offline content', 'Earlier offline notes');
+  db.documents.set('groups/' + resource.id, { ...opening, _dataEngine: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+  const change = (operationId: string, before: DocumentData, after: DocumentData, observedRevision: number, offset: number): DataCommand => {
+    const proof = { observedRevision, time: { earliestMs: T + offset, latestMs: T + offset + 1 } };
+    return { protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+      changes: diffFields(before, after),
+      groupBlockContentActions: [{ ...proof, rowId: 'block', rowCreatedAt: 'born' }],
+      groupStepNotesActions: [{ ...proof, rowId: 'step', rowCreatedAt: 'block' }] };
+  };
+  expect((await processCommand('owner', change('away', opening, temporary, 1, 100))).kind).toBe('acknowledged');
+  expect((await processCommand('owner', change('return', temporary, opening, 2, 200))).kind).toBe('acknowledged');
+  const phone = change('earlier', opening, earlier, 1, 10);
+  for (let delivery = 0; delivery < 2; delivery++) {
+    expect(await processCommand('owner', phone)).toMatchObject({ kind: 'acknowledged', snapshot: { value: opening } });
+  }
+  const history = (kind: string) => [...db.documents].filter(([key]) => key.startsWith('groups/' + resource.id + '/' + kind + '/')).map(([, entry]) => entry);
+  expect(history('_blockContentHistory')).toEqual([{ generation: 'g', fields: [
+    expect.objectContaining({ rowId: 'block', field: 'content', value: 'Earlier offline content', winnerDigest: expect.any(String) }),
+  ] }]);
+  expect(history('_stepNotesHistory')).toEqual([{ generation: 'g', fields: [
+    expect.objectContaining({ rowId: 'step', field: 'instanceNotes', value: 'Earlier offline notes', winnerDigest: expect.any(String) }),
+  ] }]);
+});
+
+it('does not apply a delayed block edit to a replacement with the same ID and opening text', async () => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'reused-block' };
+  const original = { id: 'block', title: 'Meeting block', type: 'custom', content: 'Opening words', status: 'filled', createdAt: 'original', updatedAt: 'original' };
+  const value = { userId: 'owner', title: 'Group', status: 'draft', templates: [original], flow: [], meetingDates: [] };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const replacement = { ...original, createdAt: 'replacement', updatedAt: 'replacement' };
+  db.documents.set('groups/' + resource.id, { ...value, templates: [replacement], _dataEngine: { ...metadata, revision: 3 } });
+  const session = new DataSession({ resource, value, metadata });
+  session.edit({ ...value, templates: [{ ...original, content: 'Earlier words' }] }, undefined, {
+    field: 'group-block-content', rowId: 'block', time: null,
+  });
+
+  const outcome = await save(session.checkpoint());
+
+  expect(outcome.kind).toBe('conflict');
+  expect((await readDocument('owner', resource)).value?.templates).toEqual([replacement]);
+});
+
 it.each(['none', 'acknowledged', 'cancelled'] as const)('asks before sending a recovered council title with unreadable revision after %s earlier work', async earlier => {
   const db = installWorldFirestore(() => T + 1000);
   const resource = { collection: 'councils', id: 'council-with-unreadable-proof' };

@@ -30,6 +30,7 @@ export interface GroupPageEditor {
     (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   setBlockStatus: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, status: GroupBlockStatus) => Promise<void>;
   renameBlock: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, title: string) => Promise<void>;
+  setStepNotes: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, instanceNotes: string | undefined) => Promise<void>;
   setStepDuration: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, durationMin: number | null) => Promise<void>;
   renameStep: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, title: string | null) => Promise<void>;
   flow: Group['flow'];
