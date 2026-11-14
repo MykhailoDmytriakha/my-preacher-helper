@@ -15,7 +15,7 @@ import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
-import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
+import { mergeExegeticalPointChoice, stageExegeticalPoint, UNREADABLE_EXEGETICAL_PROOF, unreadableExegeticalChoice, type UnreadableExegeticalProof } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
@@ -60,6 +60,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   /** Private scalar edits whose saved observation no longer establishes an opening. */
   unreadableScalarProof?: string[];
   unreadableRowProofs?: UnreadableRowProof[];
+  unreadableExegeticalProofs?: UnreadableExegeticalProof[];
   groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
@@ -75,9 +76,10 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
 export const UNREADABLE_ROW_PROOF = 'unreadable-row-proof';
+const unreadablePointPlanPath = ['preparation', 'exegeticalPlan'];
 
 export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
-  return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length);
+  return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length);
 }
 
 /** An active earlier Save owns its words even if the dependent whole action is discarded. */
@@ -126,10 +128,10 @@ export class DataSession {
   }
 
   private refreshUnreadableComparisons(): void {
-    const { unreadableScalarProof, unreadableRowProofs, confirmed, draft, pending } = this.state;
+    const { unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, confirmed, draft, pending } = this.state;
     if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
-    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF;
+    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
       const path = [field];
@@ -142,7 +144,15 @@ export class DataSession {
       const { path, base, mine, theirs, available } = choice;
       return available && equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_ROW_PROOF }];
     });
-    const questions = [...scalars, ...rows];
+    const pointChoices = (unreadableExegeticalProofs ?? []).flatMap(address => {
+      const choice = unreadableExegeticalChoice(this.state, address);
+      return choice ? [choice.conflict] : [];
+    });
+    const points = unreadableExegeticalProofs?.length && pointChoices.length !== unreadableExegeticalProofs.length
+      ? [{ path: unreadablePointPlanPath, base: readField(confirmed.value ?? {}, unreadablePointPlanPath),
+        mine: readField(draft ?? {}, unreadablePointPlanPath), theirs: readField(target.value ?? {}, unreadablePointPlanPath),
+        code: UNREADABLE_EXEGETICAL_PROOF }, ...pointChoices] : pointChoices;
+    const questions = [...scalars, ...rows, ...points];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
@@ -152,6 +162,7 @@ export class DataSession {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.unreadableScalarProof;
       delete this.state.unreadableRowProofs;
+      delete this.state.unreadableExegeticalProofs;
     }
   }
 
@@ -568,9 +579,9 @@ export class DataSession {
 
   /** A choice about a private unreadable edit owns only its displayed fields. */
   private acceptStoredUnreadableFields(atChoice: DocumentData | null | undefined): boolean {
-    const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, conflicts } = this.state;
+    const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, conflicts } = this.state;
     if (!confirmed.value || !remoteCandidate?.value || !draft || !hasUnreadableDraftProof(this.state)
-      || !conflicts.length || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF)
+      || !conflicts.length || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF && conflict.code !== UNREADABLE_EXEGETICAL_PROOF)
       || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return false;
     const source = this.checkpoint();
     const shown = atChoice ?? draft;
@@ -585,7 +596,17 @@ export class DataSession {
       const reviewed = unreadableRowChoice({ ...this.state, draft: shown }, address);
       return current && reviewed && equalValues(current.mine, reviewed.mine) ? current.apply(value, 'opening') : value;
     }, scalars);
-    const result = mergeDocumentFields(confirmed.value, reduced, remoteCandidate.value);
+    let withPoints = reduced;
+    const remainingPoints: UnreadableExegeticalProof[] = [];
+    for (const address of unreadableExegeticalProofs ?? []) {
+      const current = unreadableExegeticalChoice(this.state, address);
+      const reviewed = unreadableExegeticalChoice({ ...this.state, draft: shown }, address);
+      const neutral = current && reviewed && current.reviewedTogether(reviewed.conflict) && current.apply(withPoints, 'opening');
+      if (neutral) withPoints = neutral;
+      else remainingPoints.push(address);
+    }
+    if (remainingPoints.length && remainingPoints.length === unreadableExegeticalProofs?.length) return false;
+    const result = mergeDocumentFields(confirmed.value, withPoints, remoteCandidate.value);
     this.state.confirmed = copy(remoteCandidate);
     this.state.draft = result.value.exists ? copy(result.value.value as DocumentData) : null;
     this.state.conflicts = copy(result.conflicts);
@@ -594,8 +615,10 @@ export class DataSession {
     this.state.editGeneration = this.reserveEditGeneration();
     delete this.state.unreadableScalarProof;
     delete this.state.unreadableRowProofs;
+    this.state.unreadableExegeticalProofs = remainingPoints.length ? remainingPoints : undefined;
     carryAnchoredDraftChronology(source, this.state, conflicts);
     this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+    this.refreshUnreadableComparisons();
     return true;
   }
 
@@ -603,6 +626,12 @@ export class DataSession {
   acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
     if (!this.state.remoteCandidate || this.acceptStoredUnreadableFields(atChoice)) return;
+    if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) {
+      if (this.state.unreadableExegeticalProofs?.some(address => unreadableExegeticalChoice(this.state, address))) {
+        throw Object.assign(new Error('Other changes in the plan need review'), { code: 'other-changes-first' });
+      }
+      delete this.state.unreadableExegeticalProofs;
+    }
     if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_ROW_PROOF)) delete this.state.unreadableRowProofs;
     if (atChoice === undefined || this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF)) delete this.state.unreadableScalarProof;
     const referenceChoice = chooseStudyNoteReferences(this.state, 'stored');
@@ -653,17 +682,28 @@ export class DataSession {
     const reviewingPrivate = !choiceSource || Object.keys(choiceSource.pending).length === 0;
     const reviewingUnreadableProof = reviewingPrivate && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF);
     const reviewingRows = reviewingPrivate && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_ROW_PROOF);
+    const unavailablePoint = () => Object.assign(new Error('The edited plan point has changed places or was removed'), { code: 'decision-changed' });
+    const pointChoices = (this.state.unreadableExegeticalProofs ?? []).map(address => {
+      const choice = unreadableExegeticalChoice(this.state, address);
+      if (!choice?.localAvailable) throw unavailablePoint();
+      return choice;
+    });
+    const independentPointProofs = pointChoices.length ? this.state.exegeticalPointDrafts : undefined;
     const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
     if (candidate) {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
-      const pointIds = this.state.conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
+      const pointIds = this.state.conflicts.flatMap(({ path, code }) => code === UNREADABLE_EXEGETICAL_PROOF ? [] : exegeticalPointConflictId(path) ?? []);
       const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
       const outline = outlineTitleChoiceFrames(this.state.confirmed, this.state.draft, candidate, this.state.conflicts);
       const basis = marks?.baseline ?? outline.basis;
-      const draft = marks?.value ?? outline.draft;
+      const draft = pointChoices.reduce((value, choice) => {
+        const neutral = value && choice.apply(value, 'opening');
+        if (!neutral) throw unavailablePoint();
+        return neutral;
+      }, marks?.value ?? outline.draft);
       const recoveringCopy = candidate.resource.collection === 'groups'
         && this.state.conflicts.some(conflict => conflict.code === GROUP_FLOW_COPY_CONTENT_MISSING);
       const merged = point?.rebased ?? (recoveringCopy ? mergeGroupFlowRebase(basis, draft, candidate.value)
@@ -700,7 +740,12 @@ export class DataSession {
         if (row && !row.available) throw Object.assign(new Error('The edited row is gone'), { code: 'decision-changed' });
         return row?.apply(value, 'mine') ?? value;
       }, withScalars) ?? withScalars : withScalars;
-      const resolved = recoveringCopy ? keepGroupFlowCopyContent(withReviewedRows, draft, this.state.conflicts) : withReviewedRows;
+      const withPoints = pointChoices.reduce((value, choice) => {
+        const projected = value && choice.apply(value, 'mine');
+        if (!projected) throw unavailablePoint();
+        return projected;
+      }, withReviewedRows);
+      const resolved = recoveringCopy ? keepGroupFlowCopyContent(withPoints, draft, this.state.conflicts) : withPoints;
       const meeting = candidate.resource.collection === 'groups' && firstGroupMeetingReview(this.state.conflicts);
       const meetingChoice = meeting && candidate.value && projectFirstGroupMeetingChoice(candidate.value, meeting, 'local');
       if (meeting && !meetingChoice) throw Object.assign(new Error('The first meeting comparison changed'), { code: 'decision-changed' });
@@ -715,7 +760,12 @@ export class DataSession {
     }
     if (reviewingUnreadableProof) delete this.state.unreadableScalarProof;
     if (reviewingRows) delete this.state.unreadableRowProofs;
+    if (reviewingPrivate && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) delete this.state.unreadableExegeticalProofs;
     this.clearAutosaveFieldDrafts();
+    if (independentPointProofs?.length) {
+      this.state.exegeticalPointDrafts = stageExegeticalPoint({ ...this.state, exegeticalPointDrafts: independentPointProofs },
+        this.state.draft, undefined, undefined);
+    }
     if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
     if (candidate) {
       this.retainOutlineTitleActions(titleSource);

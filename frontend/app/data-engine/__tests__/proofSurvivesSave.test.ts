@@ -291,6 +291,88 @@ it.each(['replacement row', 'deleted row'] as const)('keeps an unreadable row ed
   expect(reopened.checkpoint()).toMatchObject({ conflicts: [], draft: { description: 'Independent words', templates } });
 });
 
+it.each(['title', 'remove'] as const)('holds a recovered exegetical %s when the original point revision is unreadable', async kind => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'sermons', id: 'sermon-point-proof' };
+  const point = { id: 'point', title: 'Opening title', children: [{ id: 'child', title: 'Opening child' }] };
+  const sibling = { id: 'sibling', title: 'Independent point', children: [] };
+  const document = (exegeticalPlan: typeof point[]) => ({ userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-13',
+    thoughts: [], preparation: { exegeticalPlan, authorIntent: 'Independent words' } });
+  const opening = document([point, sibling]);
+  const snapshot: ResourceSnapshot = { resource, value: opening, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set(resource.collection + '/' + resource.id, { ...opening, _dataEngine: snapshot.metadata });
+  const session = new DataSession(snapshot);
+  const proposed = document(kind === 'remove' ? [sibling] : [{ ...point, title: 'Private point words' }, sibling]);
+  session.edit(proposed, undefined, { field: 'exegetical-point', nodeId: point.id, intent: kind, time: null });
+  const checkpoint = session.checkpoint();
+  expect(checkpoint.exegeticalPointDrafts).toHaveLength(1);
+  loose(checkpoint.exegeticalPointDrafts?.[0]).observedRevision = 'unreadable';
+  const restored = await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] });
+  takeDroppedProof('exegeticalPointDrafts');
+  const edit = (operationId: string, before: typeof point, after: typeof point, observedRevision: number) => processCommand('owner', {
+    protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+    changes: diffFields(document([before, sibling]), document([after, sibling])),
+    exegeticalPlanActions: [{ nodeId: point.id, kind: 'title', observedRevision, time: null }],
+  });
+  const desktop = { ...point, title: 'Desktop title' };
+  expect((await edit('desktop-title', point, desktop, 1)).kind).toBe('acknowledged');
+  expect((await edit('desktop-return', desktop, point, 2)).kind).toBe('acknowledged');
+  const outcome = await save(restored.checkpoint);
+  expect(outcome.commands).toHaveLength(0);
+  expect(outcome.code).toBe('resolve-version-first');
+  expect(restored.checkpoint.draft?.preparation).toEqual(proposed.preparation);
+  const stored = await readDocument('owner', resource);
+  expect(stored.value?.preparation).toEqual(opening.preparation);
+  const reopened = DataSession.restore(restored.checkpoint);
+  reopened.observe(stored, { source: 'server' });
+  const branch = { ...point, children: [{ id: 'child', title: 'Private nested words' }] };
+  const localPlan = kind === 'title' ? [{ ...branch, title: 'Private point words' }, sibling] : [sibling];
+  reopened.edit({ ...proposed, preparation: { exegeticalPlan: localPlan, authorIntent: 'New independent words' } });
+  const storedChoice = DataSession.restore(reopened.checkpoint());
+  storedChoice.acceptRemote(storedChoice.checkpoint().draft);
+  expect(storedChoice.checkpoint()).toMatchObject({ conflicts: [], draft: { preparation: {
+    exegeticalPlan: [kind === 'title' ? branch : point, sibling], authorIntent: 'New independent words' } } });
+  reopened.keepLocal();
+  expect(reopened.checkpoint()).toMatchObject({ conflicts: [], draft: { preparation: { exegeticalPlan: localPlan, authorIntent: 'New independent words' } } });
+  expect(reopened.checkpoint()).not.toHaveProperty('unreadableExegeticalProofs');
+  if (kind === 'title') {
+    for (const moved of [[{ ...sibling, children: [point] }], [sibling]]) {
+      // Start with the original unreadable title again, before seeing the changed plan.
+      const selection = DataSession.restore(restored.checkpoint);
+      selection.edit({ ...proposed, preparation: { ...proposed.preparation, authorIntent: 'New independent words' } });
+      selection.observe({ ...stored, value: document(moved), metadata: { ...stored.metadata!, revision: 4 } }, { source: 'server' });
+      expect(() => selection.keepLocal()).toThrow('The edited plan point has changed places or was removed');
+      expect(selection.checkpoint().draft?.preparation).toMatchObject({ exegeticalPlan: proposed.preparation.exegeticalPlan });
+      selection.acceptRemote(selection.checkpoint().draft);
+      expect(selection.checkpoint()).toMatchObject({ conflicts: [], draft: { preparation: { exegeticalPlan: moved, authorIntent: 'New independent words' } } });
+    }
+  }
+});
+
+it('retains a readable sibling proof when another exegetical opening cannot be read', async () => {
+  const resource = { collection: 'sermons', id: 'sermon-sibling-proof' };
+  const opening = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
+  const value = { userId: 'owner', preparation: { exegeticalPlan: opening } };
+  const session = new DataSession({ resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+  const edit = (nodeId: string, nodes: typeof opening) => session.edit({ ...value, preparation: { exegeticalPlan: nodes } },
+    undefined, { field: 'exegetical-point', nodeId, intent: 'title', time: null });
+  const privateA = { ...opening[0], title: 'New A' };
+  edit('a', [privateA, opening[1]]);
+  edit('b', [privateA, { ...opening[1], title: 'New B' }]);
+  const checkpoint = session.checkpoint();
+  loose(checkpoint.exegeticalPointDrafts?.find(proof => proof.nodeId === 'a')).observedRevision = 'unreadable';
+  const recovered = await throughDeviceStorage({ owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] });
+  takeDroppedProof('exegeticalPointDrafts');
+  expect(recovered.checkpoint.unreadableExegeticalProofs).toEqual([{ nodeId: 'a', kind: 'title', generation: 'g', ancestors: [] }]);
+  expect(recovered.checkpoint.exegeticalPointDrafts).toEqual([expect.objectContaining({ nodeId: 'b', observedRevision: 1 })]);
+  for (const side of ['mine', 'stored']) {
+    const reopened = DataSession.restore(recovered.checkpoint);
+    if (side === 'mine') reopened.keepLocal();
+    else reopened.acceptRemote(reopened.checkpoint().draft);
+    expect(reopened.checkpoint().exegeticalPointDrafts).toEqual(recovered.checkpoint.exegeticalPointDrafts);
+  }
+});
+
 /*
  * BUG-20261113-placement-retry-submits-unsent-words: a placement retry is an instruction to resend a move, not proof,
  * and device storage does not keep it, as before. A recovered draft that still holds the move — or has undone it —

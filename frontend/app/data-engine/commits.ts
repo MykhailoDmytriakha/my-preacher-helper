@@ -691,7 +691,7 @@ export class CommitQueue {
         : intent.outlinePointPlacementRetry ? { kind: 'outline-point-placement', move: intent.outlinePointPlacementRetry } as const
           : intent.groupFlowStepPlacementRetry ? { kind: 'group-flow-step-placement', move: intent.groupFlowStepPlacementRetry } as const
             : intent.councilTopicPlacementRetry ? { kind: 'council-topic-placement', move: intent.councilTopicPlacementRetry } as const : undefined);
-    if (intent.conflicts.length || intent.unreadableScalarProof?.length || intent.unreadableRowProofs?.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
+    if (intent.conflicts.length || intent.unreadableScalarProof?.length || intent.unreadableRowProofs?.length || intent.unreadableExegeticalProofs?.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title }
         : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture }

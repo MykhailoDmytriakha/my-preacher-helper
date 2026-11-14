@@ -8,6 +8,7 @@ import { COUNCIL_OUTCOME, councilOutcomeRow } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { exegeticalPlan, exegeticalPointConflictId, readExegeticalPointChoice } from './exegeticalPointAction';
+import { readUnreadableExegeticalChoice, UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object } from './fieldValues';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
@@ -131,20 +132,32 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
 export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const { conflicts, draft, remoteCandidate } = checkpoint;
   if (!conflicts.length || !draft || !remoteCandidate?.value) return undefined;
-  const pointIds = conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
-  if (pointIds.length) {
+  const points = conflicts.flatMap(({ path, code }) => {
+    const id = exegeticalPointConflictId(path);
+    return id ? [{ id, unreadable: code === UNREADABLE_EXEGETICAL_PROOF }] : [];
+  });
+  if (points.length) {
     const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
     const local = exegeticalPlan(draft.preparation), saved = exegeticalPlan(remoteCandidate.value.preparation);
     if (!opening || !local || !saved || checkpoint.confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return undefined;
-    const versions = pointIds.flatMap(id => {
+    const versions = points.flatMap(({ id, unreadable }) => {
+      if (unreadable) {
+        const choice = readUnreadableExegeticalChoice(checkpoint, id);
+        if (!choice) return [];
+        const { mine, theirs } = choice.conflict;
+        const title = (value: typeof mine) => (value.value as DocumentData | undefined)?.title as string | undefined;
+        return [{ mine: title(mine) ?? null, stored: title(theirs) ?? null, localAvailable: choice.localAvailable }];
+      }
       const choice = readExegeticalPointChoice(opening, local, saved, id);
       if (!choice) return [];
       return [{ mine: (choice.mine?.point.title as string | undefined) ?? null,
-        stored: (choice.saved?.point.title as string | undefined) ?? null }];
+        stored: (choice.saved?.point.title as string | undefined) ?? null, localAvailable: true }];
     });
-    if (versions.length !== pointIds.length) return undefined;
-    const identity = JSON.stringify([pointIds, versions, remoteCandidate.metadata, checkpoint.editGeneration]);
-    return { kind: 'exegetical-point' as const, identity, versions, scoped: conflicts.length === 1 };
+    if (versions.length !== points.length) return undefined;
+    const identity = JSON.stringify([points, versions, remoteCandidate.metadata, checkpoint.editGeneration]);
+    const localAvailable = versions.every(version => version.localAvailable)
+      && !conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF && !exegeticalPointConflictId(conflict.path));
+    return { kind: 'exegetical-point' as const, identity, versions, localAvailable, scoped: conflicts.length === 1 };
   }
   if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];

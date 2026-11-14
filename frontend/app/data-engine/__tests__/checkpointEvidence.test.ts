@@ -42,7 +42,7 @@ const groupTextReview = { requestId: 'request', revision: 1, decisions: [
 const commentPlaceAction = { before: { exists: true, value: [] }, after: { exists: true, value: [] },
   paragraph: { exists: false }, observedRevision: 1, time };
 type PlacementRetryKey = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry' | 'outlinePointPlacementRetry';
-type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs'
+type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs' | 'unreadableExegeticalProofs'
   | PlacementRetryKey>;
 const evidence = {
   groupTitleDraft: fieldDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,

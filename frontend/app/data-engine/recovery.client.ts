@@ -65,6 +65,7 @@ const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
   title: z.string().nullable(), ancestors: z.array(z.string().min(1)),
 });
+const unreadableExegeticalProof = exegeticalPointDraft.pick({ nodeId: true, kind: true, generation: true, ancestors: true });
 const accountPreferenceField = z.custom<AccountPreferenceField>(field => ACCOUNT_PREFERENCE_TARGETS.some(target => target.field === field));
 const checkpointConflict = z.object({
   path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema, code: z.string().optional(),
@@ -122,6 +123,7 @@ const recordSchema = z.object({
       'groupStepTitleDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'outlineTitleDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
+    unreadableExegeticalProofs: z.array(unreadableExegeticalProof).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
     groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(), decisions: z.array(z.object({
@@ -159,7 +161,7 @@ export function recoveryCheckpointEditorId(owner: string, sourceId: unknown): st
 
 const { confirmed: _confirmed, draft: _draft, dirty: _dirty, editGeneration: _generation,
   remoteCandidate: _remote, conflicts: _conflicts, pending: _pending, unreadableScalarProof: _unreadableScalars,
-  unreadableRowProofs: _unreadableRows, ...checkpointEvidence } = recordSchema.shape.checkpoint.shape;
+  unreadableRowProofs: _unreadableRows, unreadableExegeticalProofs: _unreadablePoints, ...checkpointEvidence } = recordSchema.shape.checkpoint.shape;
 const { generation: _intentGeneration, value: _intentValue, operations: _operations,
   borrowedManualScope: _borrow, ...pendingEvidence } = pendingShape;
 
@@ -293,6 +295,23 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         checkpoint = { ...checkpoint, unreadableRowProofs: [...distinct.values()] };
       }
     }
+    if (collection === 'sermons' && dropped.includes('exegeticalPointDrafts') && checkpoint.exegeticalPointDrafts === undefined
+      && Array.isArray(value.checkpoint.exegeticalPointDrafts) && value.checkpoint.exegeticalPointDrafts.length <= 32) {
+      const readable = [], existing = Array.isArray(checkpoint.unreadableExegeticalProofs) ? checkpoint.unreadableExegeticalProofs : [];
+      const addresses = [...existing];
+      for (const item of value.checkpoint.exegeticalPointDrafts) {
+        if (nestsDeeperThan(item, MAX_PROOF_DEPTH)) continue;
+        const proof = exegeticalPointDraft.safeParse(withoutUnreadableClock(item));
+        if (proof.success) {
+          readable.push(proof.data);
+        } else {
+          const address = unreadableExegeticalProof.safeParse(item);
+          if (address.success && !addresses.some(held => isFields(held) && held.nodeId === address.data.nodeId)) addresses.push(address.data);
+        }
+      }
+      if (readable.length || addresses.length) checkpoint = { ...checkpoint, exegeticalPointDrafts: readable.length ? readable : undefined,
+        unreadableExegeticalProofs: addresses.length ? addresses.slice(0, 32) : undefined };
+    }
     if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };
   }
   if (dropped.length) reportDroppedEvidence([...new Set(dropped)]);
@@ -366,7 +385,7 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   })) };
   const checkpoint = { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
   return clone({ ...record, retainedManualChoice, prepared,
-    checkpoint: checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length ? DataSession.restore(checkpoint).checkpoint() : checkpoint });
+    checkpoint: checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length ? DataSession.restore(checkpoint).checkpoint() : checkpoint });
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {

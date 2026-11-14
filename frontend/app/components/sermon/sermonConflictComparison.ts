@@ -34,7 +34,8 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     const removed = t('dataSync.exegeticalPointRemoved');
     const versions = { identity, valueKind: 'field' as const, title: t('dataSync.exegeticalPointTitle'),
       mine: comparison.versions.map(version => version.mine ?? removed).join('\n'),
-      stored: comparison.versions.map(version => version.stored ?? removed).join('\n') };
+      stored: comparison.versions.map(version => version.stored ?? removed).join('\n'),
+      keepMineDisabled: !comparison.localAvailable };
     if (!comparison.scoped) {
       return { ...versions, description: t('dataSync.exegeticalPointMultipleConflicts'),
         actions: { local: t('dataSync.useLocalVersion'), stored: t('dataSync.useStoredVersion'), confirmStored: 'common.discardChanges' } };

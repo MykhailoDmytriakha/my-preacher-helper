@@ -1,5 +1,5 @@
 import { boundedActionTime } from './actionClock';
-import { changedExegeticalPoint, exegeticalPlan, exegeticalPlanChange, exegeticalPointVersion, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
+import { changedExegeticalPoint, exegeticalPlan, exegeticalPointConflict, exegeticalPlanChange, exegeticalPointVersion, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { boundedRowId } from './rowFieldAction';
@@ -18,6 +18,47 @@ const LIMIT = 32;
 function matchesResult(plan: NonNullable<ReturnType<typeof exegeticalPlan>>, action: Draft) {
   const point = exegeticalPointVersion(plan, action.nodeId);
   return action.kind === 'remove' ? !point : point?.point.title === action.title && equalValues(point.ancestors, action.ancestors);
+}
+
+export type UnreadableExegeticalProof = Pick<Draft, 'nodeId' | 'kind' | 'generation' | 'ancestors'>;
+export const UNREADABLE_EXEGETICAL_PROOF = 'unreadable-exegetical-proof';
+
+export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, address: UnreadableExegeticalProof) {
+  const { confirmed, draft, remoteCandidate } = checkpoint;
+  if (confirmed.resource.collection !== 'sermons' || address.generation !== confirmed.metadata?.generation) return;
+  const opening = exegeticalPlan(confirmed.value?.preparation), local = exegeticalPlan(draft?.preparation);
+  const stored = remoteCandidate ?? confirmed;
+  const live = exegeticalPlan(stored.value?.preparation);
+  if (!opening || !local) return;
+  const { nodeId, ancestors, kind } = address;
+  const before = exegeticalPointVersion(opening, nodeId), mine = exegeticalPointVersion(local, nodeId);
+  const saved = live ? exegeticalPointVersion(live, nodeId) : null;
+  if (!before || !equalValues(before.ancestors, ancestors) || (kind === 'remove' ? mine : !mine || !equalValues(mine.ancestors, ancestors))) return;
+  const apply = (value: DocumentData, side: 'opening' | 'mine'): DocumentData | undefined => {
+    const tree = exegeticalPlan(value.preparation);
+    if (!tree) return;
+    const point = exegeticalPointVersion(tree, nodeId);
+    const selected = side === 'opening' ? before : mine;
+    // A title choice owns the title only. A removal owns the original branch.
+    if (kind === 'title' && !point) return;
+    const version = kind === 'title' && point && selected
+      ? { ...point, point: { ...point.point, title: selected.point.title } } : selected;
+    const preparation = projectExegeticalPoint(value.preparation, tree, nodeId, ancestors, version);
+    return preparation && writeField(value, ['preparation'], preparation);
+  };
+  const sameBranch = saved && equalValues(saved.ancestors, ancestors);
+  const localAvailable = Boolean(stored.metadata?.generation === address.generation && live &&
+    (kind === 'title' ? sameBranch : (!saved || (sameBranch && equalValues(saved.point.children, before.point.children)))
+      && !before.ancestors.some(id => !live.points.entries.has(id))));
+  const conflict = { ...exegeticalPointConflict(nodeId, before, mine, saved), code: UNREADABLE_EXEGETICAL_PROOF };
+  return { conflict, localAvailable, apply,
+    reviewedTogether: (reviewed: typeof conflict) => kind === 'title'
+      ? (reviewed.mine.value as DocumentData)?.title === mine?.point.title : equalValues(reviewed.mine, conflict.mine) };
+}
+
+export function readUnreadableExegeticalChoice(checkpoint: SessionCheckpoint, nodeId: string) {
+  const address = checkpoint.unreadableExegeticalProofs?.find(item => item.nodeId === nodeId);
+  return address && unreadableExegeticalChoice(checkpoint, address);
 }
 
 export function stageExegeticalPoint(checkpoint: SessionCheckpoint, next: DocumentData | null, shown: ShownCopy | undefined,

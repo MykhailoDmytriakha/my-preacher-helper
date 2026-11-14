@@ -4,6 +4,7 @@ import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/u
 
 import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
+import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { projectOutlineParentChoice } from './outlineParentChoice';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
@@ -109,6 +110,7 @@ function rebaseStoredThoughtPlacement(base: DocumentData, draft: DocumentData, s
 export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]): DocumentData | undefined {
   if (basis.resource.collection !== 'sermons' || !conflicts.length) return undefined;
+  if (conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) return undefined;
   if (conflicts.length === 1 && outlineTitleConflictTarget(conflicts[0].path)) {
     return keepUncontestedOutlineTitle(basis, draft, stored, conflicts);
   }
