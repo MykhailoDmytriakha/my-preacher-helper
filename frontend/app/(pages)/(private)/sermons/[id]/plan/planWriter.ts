@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react';
 import type { Sermon, SermonOutline, Thought } from '@/models/models';
 
 export type PlanMode = NonNullable<Sermon['planMode']>;
-export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<string, string | null>; orphaned?: true }
+export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<string, string | null>; revisionsByNodeId?: Record<string, number | null>; orphaned?: true }
 
 /**
  * EVERY WRITE THE PLAN SCREENS MAKE, BEHIND ONE SEAM — the same arrangement as the structure

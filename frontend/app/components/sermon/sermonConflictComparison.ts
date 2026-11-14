@@ -18,8 +18,10 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   const comparison = readSermonConflict(checkpoint);
   if (!comparison) return undefined;
   const { identity, kind } = comparison;
-  if (kind === 'note-text') {
-    return { identity, valueKind: 'field', title: t(comparison.scratch ? 'scratch.card.label' : 'planEditor.note.label'),
+  if (kind === 'note-text' || kind === 'plan-cell') {
+    const title = kind === 'plan-cell' ? fieldLabel(t, 'planText')
+      : t(comparison.scratch ? 'scratch.card.label' : 'planEditor.note.label');
+    return { identity, valueKind: 'field', title,
       mine: comparison.mine ?? t('dataSync.emptyField'), stored: comparison.stored ?? t('dataSync.emptyField'), scopedChoice: true };
   }
   if (kind === 'verse') {

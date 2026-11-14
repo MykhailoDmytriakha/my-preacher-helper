@@ -303,7 +303,8 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
   const [timerState, setTimerState] = useState<PlanTimerState | null>(null);
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
-  const conspectus = useManualConspectus({ sermon, t, mode: noteMode ? 'note' : 'manual' });
+  const confirmedRevision = source.document.confirmed?.metadata?.revision;
+  const conspectus = useManualConspectus({ sermon, confirmedRevision, t, mode: noteMode ? 'note' : 'manual' });
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
   /**
@@ -534,6 +535,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       subject={JSON.stringify([sermon?.userId, sermonId])}
         cells={orphans}
         storedSermon={source.confirmedSermon}
+        storedRevision={confirmedRevision}
         liveIds={livePlanNodes}
         readOnly={readOnly}
         onDiscard={(cells) => {

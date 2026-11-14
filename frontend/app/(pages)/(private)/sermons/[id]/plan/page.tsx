@@ -198,6 +198,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const { sermon, loading: isLoadingRaw, error: sermonError } = source;
   /** What the server held for each plan cell when this screen took it — see `planTextBaseline.ts`. */
   const planTextBaseline = usePlanTextBaseline(sermon?.id);
+  const confirmedRevision = source.document.confirmed?.metadata?.revision;
 
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
@@ -548,7 +549,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     const queuedCells = pendingPlanCells.refresh();
     planTextBaseline.adopt(
       sermon,
-      (nodeId) => Boolean(modifiedContent[nodeId]) || queuedCells.has(nodeId)
+      (nodeId) => Boolean(modifiedContent[nodeId]) || queuedCells.has(nodeId),
+      confirmedRevision,
     );
 
     const storedText = readPlanText(sermon);
@@ -567,7 +569,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     const keepScreen = (nodeId: string) => Boolean(modifiedContent[nodeId]);
     setGeneratedContent((prev) => mergeStoredPlanText(prev, storedText, keepScreen));
     setSavedSermonPoints((prev) => mergeStoredSavedFlags(prev, storedText, keepScreen));
-  }, [sermon, modifiedContent, pendingPlanCells, planTextBaseline]);
+  }, [confirmedRevision, sermon, modifiedContent, pendingPlanCells, planTextBaseline]);
 
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
@@ -973,6 +975,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       subject={JSON.stringify([sermon?.userId, sermonId])}
       cells={planOrphans}
       storedSermon={source.confirmedSermon}
+        storedRevision={confirmedRevision}
       liveIds={livePlanNodes}
       readOnly={readOnly}
       onDiscard={(cells) => {

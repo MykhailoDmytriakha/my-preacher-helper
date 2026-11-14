@@ -10,6 +10,7 @@ import { captureGroupFlowCommandProofs } from './groupFlowTopology';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { isSermonTextRoot } from './sermonTextOpenings';
 
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
@@ -185,6 +186,10 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
     && confirmed.value?.type === 'analysis' && draft?.type === 'analysis' && confirmed.metadata
     && !sameAnalysisFrame(confirmed.value, draft)) {
     prepared.command.analysisFrameObservedRevision = confirmed.metadata.revision;
+  }
+  if (prepared.command.kind === 'update' && confirmed.resource.collection === 'sermons' && confirmed.metadata
+    && prepared.command.changes.some(change => isSermonTextRoot(change.path[0]))) {
+    prepared.command.sermonTextObservedRevision = confirmed.metadata.revision;
   }
   const command = confirmed.resource.collection === 'sermons' && prepared.command.kind === 'update'
     ? withPlanTextEvidence(prepared.command, planTextEvidence ?? capturePlanTextEvidence({ before: confirmed.value, after: draft }))

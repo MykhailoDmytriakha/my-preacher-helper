@@ -60,6 +60,7 @@ import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from '.
 import { existingRowField } from './rowFieldAction';
 import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
+import { compareReturnedSermonText, metadataAfterSermonText } from './sermonTextOrder.server';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand, tagNameIsTaken, type RelationReader } from './serverRelations';
 import { metadataAfterServiceOrderPlacement, SERVICE_ORDER_PLACEMENT_HISTORY, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
@@ -781,8 +782,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const analysisMetadata = snapshot.resource.collection === 'studyNotes' && snapshot.value?.type === 'analysis'
       ? metadataAfterAnalysisFrame({ ...snapshot, metadata: referenceMetadata ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
       : referenceMetadata;
+    const withTitles = boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata);
+    const sermonMetadata = snapshot.resource.collection === 'sermons'
+      ? metadataAfterSermonText({ ...snapshot, metadata: withTitles ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
+      : withTitles;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
-      _dataEngine: { ...boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata), ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
+      _dataEngine: { ...sermonMetadata, ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
         ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }
   for (const [index, addition] of (listOrder?.discarded ?? []).entries()) {
@@ -1136,7 +1141,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       });
       const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
-      uncertain.push(...compareReturnedAnalysisFrame(command, current, raw?._dataEngine));
+      uncertain.push(...compareReturnedAnalysisFrame(command, current, raw?._dataEngine),
+        ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine));
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled, ...(outlineTitleOrder?.settled ?? [])] : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'

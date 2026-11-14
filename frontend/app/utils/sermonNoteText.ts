@@ -18,6 +18,7 @@ export type SermonNoteOpening = {
   generation: string | null;
   legacyBirth?: string;
   pending: string[];
+  observedRevision?: number | null;
   target: SermonNoteTarget;
   text: string | null;
 };

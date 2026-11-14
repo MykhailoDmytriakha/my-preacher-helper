@@ -12,6 +12,7 @@ import { readUnreadableExegeticalChoice, UNREADABLE_EXEGETICAL_PROOF } from './e
 import { equalValues, object } from './fieldValues';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
+import { isPlanCellPath } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { readThoughtPlacementChoice } from './thoughtPlacementAction';
@@ -172,6 +173,13 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const identity = JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);
   if (JSON.stringify(mine) === JSON.stringify(stored)) return undefined;
   const [field, rowId, property] = path;
+  if (isPlanCellPath(path) && checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation
+    && equalValues(mine, conflicts[0].mine) && equalValues(stored, conflicts[0].theirs)
+    && (!mine.exists || typeof mine.value === 'string') && (!stored.exists || typeof stored.value === 'string')) {
+    return { kind: 'plan-cell' as const, identity,
+      mine: typeof mine.value === 'string' ? mine.value : undefined,
+      stored: typeof stored.value === 'string' ? stored.value : undefined };
+  }
   if (path.length === 1 && field === 'verse' && typeof mine.value === 'string' && typeof stored.value === 'string') {
     return { kind: 'verse' as const, identity, mine: mine.value, stored: stored.value };
   }

@@ -44,6 +44,7 @@ import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCa
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -165,6 +166,10 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   tagMembershipActions?: TagMembershipAction[];
   sourceNoteLink?: SourceNoteLinkCapture;
   sermonNoteText?: SermonNoteOpening;
+  sermonTextOpenings?: SermonTextOpenings;
+  sermonTextPredecessorRevision?: number;
+  sermonTextContinuation?: SermonTextOpenings;
+  committedSermonText?: CommittedSermonText;
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   rebasedGroupCopySources?: DocumentData[];
   rebasedGroupRetirements?: DocumentData[];
@@ -310,6 +315,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
     || !equalValues(current.sermonNoteText ?? null, incoming.sermonNoteText ?? null)
+    || !equalValues(current.sermonTextOpenings ?? null, incoming.sermonTextOpenings ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.homileticTitleActions ?? null, incoming.homileticTitleActions ?? null)
     || !equalValues(current.homileticMoveActions ?? null, incoming.homileticMoveActions ?? null)
@@ -906,6 +912,9 @@ export class CommitQueue {
       ...(studyNoteReferenceEvidence && { studyNoteReferenceEvidence: clone(studyNoteReferenceEvidence) }),
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
+      ...(editorAction?.kind === 'sermon-plan-text' && { sermonTextOpenings: Object.fromEntries(
+        Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision])),
+      }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(firstMeeting && { groupFirstMeetingChange: firstMeeting }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
@@ -1507,6 +1516,19 @@ export class CommitQueue {
       && record.analysisFramePredecessorRevision !== undefined) {
       command.analysisFrameObservedRevision = record.analysisFramePredecessorRevision;
     }
+    if (command.kind === 'update' && command.resource.collection === 'sermons' && record.sequence === 0) {
+      if (record.sermonTextPredecessorRevision !== undefined && command.sermonTextObservedRevision !== undefined) {
+        command.sermonTextObservedRevision = record.sermonTextPredecessorRevision;
+      }
+      const note = record.sermonNoteText;
+      const target = note?.target;
+      const openings = selectSermonTextOpenings(command.changes,
+        note && target ? { ...record.sermonTextOpenings,
+          [target.kind === 'scratch' ? sermonTextKey('scratch', target.id, target.createdAt) : sermonTextKey('outline', target.id)]:
+            note.observedRevision ?? null, ...record.sermonTextContinuation }
+          : { ...record.sermonTextOpenings, ...record.sermonTextContinuation });
+      if (openings) command.sermonTextOpenings = openings;
+    }
     if (record.sequence === 0 && command.kind === 'update' && record.studyNoteReferenceChange) {
       const referenceChange = record.studyNoteReferenceChange;
       command.changes = command.changes.map(change => equalValues(change.path, referenceChange.path) ? clone(referenceChange) : change);
@@ -1637,8 +1659,9 @@ export class CommitQueue {
     if (rebased.conflicts.length) return commit({ ...record, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot: result.snapshot, conflicts: rebased.conflicts } });
     const intended = rebased.value.exists ? rebased.value.value as DocumentData : null;
     const complete = equalValues(intended, result.snapshot.value);
+    const sermonText = committedSermonText(record.command, result);
     // The durable request owns projection; an editor is not needed to retire ACKs.
-    return commit({ ...record, working: clone(result.snapshot), intended,
+    return commit({ ...record, working: clone(result.snapshot), intended, committedSermonText: sermonText,
       command: null, submitted: null, sequence: record.sequence + 1,
       state: complete ? 'acknowledged' : 'queued', result: complete ? { ...result, operationId: record.id } : null,
       unfinalized: [...record.unfinalized, record.command!.operationId] });

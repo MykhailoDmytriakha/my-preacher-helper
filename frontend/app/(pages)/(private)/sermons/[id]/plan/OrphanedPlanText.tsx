@@ -39,6 +39,7 @@ export function mergeOrphans(inSession: PlanOrphanCell[], stored: PlanOrphanCell
 export function OrphanedPlanText({
   cells,
   storedSermon,
+  storedRevision,
   liveIds,
   onDiscard,
   readOnly = false,
@@ -46,6 +47,7 @@ export function OrphanedPlanText({
 }: {
   cells: PlanOrphanCell[];
   storedSermon?: Sermon | null;
+  storedRevision?: number;
   liveIds?: ReadonlySet<string>;
   onDiscard: (cells: PlanOrphanCell[]) => void;
   /** A copy for reading: the words stay in sight and copyable, and letting them go waits. */
@@ -69,6 +71,7 @@ export function OrphanedPlanText({
       if (cell.stored && storedSermon) {
         void writer.savePlanText(storedSermon.id, { [cell.id]: "" }, [], {
           orphaned: true, baselineByNodeId: { [cell.id]: cell.text },
+          revisionsByNodeId: { [cell.id]: storedRevision ?? null },
         }).catch(() => toast.error(t("common.saveError")));
       } else onDiscard([cell]);
     }, () => current.current.subject === subject && !current.current.readOnly

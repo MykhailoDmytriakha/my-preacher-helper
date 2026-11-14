@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { Sermon } from "@/models/models";
-import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
+import { isOfflineQueuedError, isStaleWriteError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
@@ -164,6 +164,7 @@ export default function usePlanActions({
         await planWriter.savePlanText(sermon.id, contentByNodeId, [], {
           userId: sermon.userId,
           baselineByNodeId: planTextBaseline?.forNodes(Object.keys(contentByNodeId)),
+          revisionsByNodeId: planTextBaseline?.revisionsForNodes(Object.keys(contentByNodeId)),
         });
         planTextBaseline?.confirm(contentByNodeId);
       };
@@ -219,7 +220,8 @@ export default function usePlanActions({
           action: {
             label: t("plan.saveRefusedKeepMine"),
             onClick: () => {
-              planTextBaseline?.observe(theirs);
+              const revision = isStaleWriteError(error) ? error.engineRevision ?? null : null;
+              planTextBaseline?.observe(theirs, Object.fromEntries(Object.keys(theirs).map(id => [id, revision])));
               /**
                * THE TEXT AS IT IS NOW, not as it was when the refusal arrived.
                *

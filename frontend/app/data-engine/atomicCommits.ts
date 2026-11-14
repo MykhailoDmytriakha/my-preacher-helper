@@ -29,6 +29,7 @@ import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, MA
 import { isCapturedRowConflict } from './rowFieldAction';
 import { isCapturedAutosaveRowFieldConflict, retainQueuedThoughtPlacements } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
+import { SERMON_TEXT_ROOTS, sermonTextLeaves } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -296,7 +297,23 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       && authored?.type === 'analysis' && predecessor.value?.type === 'analysis' && earlierRevision !== undefined
       && snapshot.metadata && snapshot.metadata.revision > earlierRevision
       && sameAnalysisFrame(predecessor.value, snapshot.value) ? earlierRevision : undefined;
+    // An ACK can return the newer head. Start from what this editor actually observed.
+    const sermonTextRebase = snapshot.resource.collection === 'sermons' && sameGeneration;
+    const sermonTextPredecessorRevision = sermonTextRebase ? record.baseline.metadata?.revision : undefined;
+    const ownPriorText = sermonTextRebase && predecessor.committedSermonText
+      && committed && committed.operationId === predecessor.committedSermonText.operationId
+      && committed.generation === snapshot.metadata?.generation && record.editorId === predecessor.editorId
+      && (sermonTextPredecessorRevision ?? 0) < committed.revision;
+    const sermonTextContinuation = ownPriorText ? Object.fromEntries(SERMON_TEXT_ROOTS.flatMap(root => {
+      const shown = sermonTextLeaves(root, predecessor.value?.[root]), live = sermonTextLeaves(root, snapshot.value?.[root]);
+      return predecessor.committedSermonText!.changes.filter(({ key, path, after }) => path[0] === root
+        && equalValues(shown.get(key)?.value ?? { exists: false }, after)
+        && equalValues(live.get(key)?.value ?? { exists: false }, after))
+        .map(({ key }) => [key, committed.revision]);
+    })) : undefined;
     return { ...record, initialized: true, working: snapshot, ...legacyLineage,
+      ...(sermonTextPredecessorRevision !== undefined && { sermonTextPredecessorRevision }),
+      ...(sermonTextContinuation && Object.keys(sermonTextContinuation).length && { sermonTextContinuation }),
       ...(studyNoteReferenceChange && { studyNoteReferenceChange }),
       ...(analysisFramePredecessorRevision !== undefined && { analysisFramePredecessorRevision }),
       intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,

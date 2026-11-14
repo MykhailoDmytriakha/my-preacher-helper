@@ -1301,7 +1301,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         && readSermonNoteText(checkpoint.draft, target)?.text === (text ?? null)
         ? { sermonId: checkpoint.confirmed.resource.id, generation: checkpoint.confirmed.metadata?.generation ?? null,
           ...(checkpoint.confirmed.metadata === null && typeof birth === 'string' && birth.length && { legacyBirth: birth }),
-          pending: Object.keys(checkpoint.pending), target, text: text ?? null } : undefined;
+          pending: Object.keys(checkpoint.pending), observedRevision: checkpoint.confirmed.metadata?.revision ?? null,
+          target, text: text ?? null } : undefined;
       return (next: string | undefined) => {
         cancelScheduledSave();
         return run(editor => {
@@ -1320,11 +1321,11 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       return seen ? { seen, time: actionClock.capture(owner) ?? null } : undefined;
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
-    commit: (updater: (current: DocumentData | null) => DocumentData | null,
+    commit: (updater: (current: DocumentData | null, confirmed?: ResourceSnapshot) => DocumentData | null,
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'sermon-plan-text' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement' || action?.kind === 'council-topic-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;

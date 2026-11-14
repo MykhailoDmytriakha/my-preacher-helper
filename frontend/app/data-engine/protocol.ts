@@ -25,6 +25,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
+import { isSermonTextRoot } from './sermonTextOpenings';
 import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
@@ -213,6 +214,14 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.analysisFrameObservedRevision !== undefined && (command.resource.collection !== 'studyNotes'
       || !Number.isSafeInteger(command.analysisFrameObservedRevision) || command.analysisFrameObservedRevision < 1
       || !ANALYSIS_RESHAPE_FRAME.every(field => paths.some(path => path[0] === field)))) fail('Invalid analysis frame revision');
+    const sermonRevision = command.sermonTextObservedRevision;
+    const sermonOpenings = command.sermonTextOpenings;
+    if ((sermonRevision !== undefined || sermonOpenings !== undefined)
+      && (command.resource.collection !== 'sermons' || !paths.some(([root]) => isSermonTextRoot(root))
+        || (sermonRevision !== undefined && (!Number.isSafeInteger(sermonRevision) || sermonRevision < 1))
+        || (sermonOpenings !== undefined && (!object(sermonOpenings)
+          || !Object.values(sermonOpenings).every(revision => revision === null
+            || (typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0)))))) fail('Invalid sermon text opening');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');

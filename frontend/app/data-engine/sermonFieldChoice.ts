@@ -9,6 +9,7 @@ import { equalValues, object, readField, writeField } from './fieldValues';
 import { projectOutlineParentChoice } from './outlineParentChoice';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { mergeDocumentFields } from './protocol';
+import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
@@ -19,7 +20,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
-    || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
+    || isPlanCellPath(path) || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -152,6 +153,10 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
       if (!note) return undefined;
       if (note.mine !== conflicts[0].mine.value || note.stored !== conflicts[0].theirs.value) throw changed();
       corrected = withSermonNoteText(draft, note.target, note.stored ?? null);
+    } else if (isPlanCellPath(path)) {
+      const local = readField(draft, path), saved = readField(stored.value, path);
+      if (!equalValues(local, conflicts[0].mine) || !equalValues(saved, conflicts[0].theirs)) throw changed();
+      corrected = writeField(draft, path, saved);
     } else if (pointId) {
       const before = exegeticalPlan(basis.value.preparation), local = exegeticalPlan(draft.preparation), remote = exegeticalPlan(stored.value.preparation);
       if (!before || !local || !remote) throw changed();

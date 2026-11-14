@@ -1,5 +1,5 @@
-import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
+import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { isSermonPlanMode, useDataEngine } from '@/data-engine/react.client';
@@ -12,10 +12,10 @@ import type { useDataDocument } from '@/data-engine/react.client';
 type SermonDocument = ReturnType<typeof useDataDocument>;
 
 export function PlanModeStatus({ document }: { document: SermonDocument }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   if (document.readOnly) return null;
   const checkpoint = document.state?.checkpoint;
-  const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t, (side, titles) =>
+  const comparison = checkpoint && (sermonConflictComparison(checkpoint, t, language, (side, titles) =>
     side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)) ?? planModeComparison(checkpoint, t));
   return <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity}
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}

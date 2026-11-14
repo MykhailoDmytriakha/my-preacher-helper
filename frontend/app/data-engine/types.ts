@@ -22,6 +22,7 @@ import type { AutosaveRowFieldActions } from './rowFieldAutosave';
 import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SermonChurchFill } from './sermonChurchFill';
+import type { SermonTextOpenings } from './sermonTextOpenings';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepScriptureActions, ServiceOrderStepScriptureCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
 import type { SourceNoteLinkAction } from './sourceNoteLinkAction';
@@ -112,6 +113,7 @@ export type EditorCommitAction =
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'sermon-source-note-links'; selection: SourceNoteLinkCapture }
   | { kind: 'sermon-note-text'; opening: SermonNoteOpening }
+  | { kind: 'sermon-plan-text'; openings: SermonTextOpenings }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
@@ -300,6 +302,9 @@ export type DataCommand = CommandBase & (
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
       councilLifecycleAction?: DocumentFieldStamp;
+      /** Revision of the shown sermon and explicit openings for cells edited over a refresh. */
+      sermonTextObservedRevision?: number;
+      sermonTextOpenings?: SermonTextOpenings;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

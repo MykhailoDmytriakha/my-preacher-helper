@@ -5,10 +5,12 @@ import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_PLAN_AGGREGATE } from '@/services/sermons.client';
 import { liveNodeIds, readPlanText } from '@/utils/planText';
 
-import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
+import { createEngineStructureWriter, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
 import type { PlanMode, PlanWriter } from './planWriter';
 import type { StructureWriter } from '@/components/sermon/structureWriter';
+import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
+import type { Sermon } from '@/models/models';
 
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
@@ -43,7 +45,10 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
     savePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode)(),
     initializePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode, true)(),
     savePlanText: async (_sermonId, changedText, removedNodeIds = [], context = {}) => {
-      const conflicts = await editEngineSermon(document, owner, current => {
+      const openings = context.revisionsByNodeId;
+      const update = (value: DocumentData | null, confirmed?: ResourceSnapshot) => {
+        if (!value || !owner || value.userId !== owner) throw new Error('Sermon editor is unavailable');
+        const current = value as unknown as Sermon;
         const stored = current.planText ?? {};
         const baseline = context.baselineByNodeId;
         const compared = context.orphaned ? readPlanText(current) : stored;
@@ -51,13 +56,18 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
         const refused = Object.keys(changedText).filter(nodeId => live?.has(nodeId)
           || (baseline && (compared[nodeId] ?? null) !== (baseline[nodeId] ?? null) && (compared[nodeId] ?? null) !== changedText[nodeId]));
         if (refused.length) {
-          return { next: current, result: Object.fromEntries(refused.map(nodeId => [`planText.${nodeId}`, compared[nodeId] ?? null])) };
+          const fields = Object.fromEntries(refused.map(nodeId => [`planText.${nodeId}`, compared[nodeId] ?? null]));
+          const confirmedSermon = confirmed?.value as unknown as Sermon | undefined;
+          const saved = context.orphaned ? readPlanText(confirmedSermon) : confirmedSermon?.planText;
+          const exact = confirmedSermon && refused.every(id => (saved?.[id] ?? null) === (compared[id] ?? null));
+          throw new StaleWriteError(SERMON_PLAN_AGGREGATE, 0, 0, fields, [], undefined, exact ? confirmed?.metadata?.revision : undefined);
         }
         const planText = { ...stored, ...changedText };
         removedNodeIds.forEach(nodeId => { delete planText[nodeId]; });
-        return { next: { ...current, planText }, result: null };
-      });
-      if (conflicts) throw new StaleWriteError(SERMON_PLAN_AGGREGATE, 0, 0, conflicts);
+        return { ...value, planText };
+      };
+      if (openings) await document.commit(update, { kind: 'sermon-plan-text', openings });
+      else await document.update(update);
     },
   };
 }

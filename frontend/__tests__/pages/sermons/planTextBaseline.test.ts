@@ -23,4 +23,12 @@ describe('the plan text baseline', () => {
 
     expect(result.current.forNodes(['p1'])).toEqual({ p1: 'Opened with' });
   });
+  it('freezes revision per dirty cell and advances it when the displayed refusal is answered', () => {
+    const { result } = renderHook(() => usePlanTextBaseline('s1'));
+    result.current.adopt(sermonWith({ p1: 'Opening', p2: 'Neighbour' }), nothingModified, 1);
+    result.current.adopt(sermonWith({ p1: 'Opening', p2: 'New neighbour' }), (nodeId) => nodeId === 'p1', 3);
+    expect(result.current.revisionsForNodes(['p1', 'p2'])).toEqual({ p1: 1, p2: 3 });
+    result.current.observe({ p1: 'Opening' }, { p1: 3 });
+    expect(result.current.revisionsForNodes(['p1', 'p2'])).toEqual({ p1: 3, p2: 3 });
+  });
 });

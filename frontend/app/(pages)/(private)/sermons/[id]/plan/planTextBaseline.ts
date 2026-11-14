@@ -2,6 +2,8 @@
 
 import { useCallback, useMemo, useRef } from "react";
 
+import { liveNodeIds } from '@/utils/planTextStorage';
+
 import type { Sermon } from "@/models/models";
 
 /**
@@ -28,7 +30,7 @@ export interface PlanTextBaseline {
    * being typed into keeps the one it was opened with — that is what the eventual save is
    * judged against, and moving it would silently license overwriting the other device.
    */
-  adopt: (sermon: Sermon | null | undefined, isModified: (nodeId: string) => boolean) => void;
+  adopt: (sermon: Sermon | null | undefined, isModified: (nodeId: string) => boolean, revision?: number) => void;
   /** The server accepted exactly this text, so this is what it now holds. */
   confirm: (sent: Record<string, string>) => void;
   /**
@@ -40,15 +42,18 @@ export interface PlanTextBaseline {
    * somewhere and reloading. With the truth adopted, a second deliberate press means "mine
    * wins" — a decision the person makes, having been told, instead of a wall.
    */
-  observe: (serverByNodeId: Record<string, string | null>) => void;
+  observe: (serverByNodeId: Record<string, string | null>, revisions?: Record<string, number | null>) => void;
   /** These nodes are gone; remembering what they held only invites a false comparison. */
   forget: (nodeIds: string[]) => void;
   /** The baseline to state for a write covering these nodes. */
   forNodes: (nodeIds: string[]) => Record<string, string | null>;
+  revisionsForNodes: (nodeIds: string[]) => Record<string, number | null>;
 }
 
 export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTextBaseline {
   const baselineRef = useRef<Record<string, string | null>>({});
+  const revisionsRef = useRef(new Map<string, number | null>());
+  const latestAdoptedRevision = useRef<number | null>(null);
   /**
    * Whose baseline this is. Kept beside the values rather than reset by an effect: an effect
    * runs after the render that already handed the new sermon to the screen, so a save fired
@@ -58,22 +63,31 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
   if (ownerRef.current !== sermonId) {
     ownerRef.current = sermonId;
     baselineRef.current = {};
+    revisionsRef.current.clear();
+    latestAdoptedRevision.current = null;
   }
 
   const adopt = useCallback((
     sermon: Sermon | null | undefined,
-    isModified: (nodeId: string) => boolean
+    isModified: (nodeId: string) => boolean,
+    revision?: number,
   ) => {
     if (!sermon) return;
     const stored = sermon.planText ?? {};
+    const previousRevision = latestAdoptedRevision.current;
+    latestAdoptedRevision.current = revision ?? null;
     /**
      * A cell this screen remembers and storage no longer holds has `null` for a baseline — the
      * truth about it now. Visiting only the stored keys kept the text it once had, and the next
      * save of its point was refused as a change from another device
      * (BUG-20261003-plan-seeding-keeps-removed-cell).
      */
-    new Set([...Object.keys(stored), ...Object.keys(baselineRef.current)]).forEach((nodeId) => {
-      if (isModified(nodeId)) return;
+    new Set([...liveNodeIds(sermon.outline), ...Object.keys(stored), ...Object.keys(baselineRef.current)]).forEach((nodeId) => {
+      if (isModified(nodeId)) {
+        if (!revisionsRef.current.has(nodeId)) revisionsRef.current.set(nodeId, previousRevision);
+        return;
+      }
+      revisionsRef.current.set(nodeId, revision ?? null);
       baselineRef.current[nodeId] = stored[nodeId] ?? null;
     });
   }, []);
@@ -84,15 +98,17 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
     });
   }, []);
 
-  const observe = useCallback((serverByNodeId: Record<string, string | null>) => {
+  const observe = useCallback((serverByNodeId: Record<string, string | null>, revisions?: Record<string, number | null>) => {
     Object.entries(serverByNodeId).forEach(([nodeId, text]) => {
       baselineRef.current[nodeId] = text;
+      revisionsRef.current.set(nodeId, revisions?.[nodeId] ?? null);
     });
   }, []);
 
   const forget = useCallback((nodeIds: string[]) => {
     nodeIds.forEach((nodeId) => {
       delete baselineRef.current[nodeId];
+      revisionsRef.current.delete(nodeId);
     });
   }, []);
 
@@ -106,6 +122,10 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
     Object.fromEntries(nodeIds.map((nodeId) => [nodeId, baselineRef.current[nodeId] ?? null])),
   []);
 
+  const revisionsForNodes = useCallback((nodeIds: string[]): Record<string, number | null> =>
+    Object.fromEntries(nodeIds.map(nodeId => [nodeId, revisionsRef.current.has(nodeId)
+      ? revisionsRef.current.get(nodeId)! : latestAdoptedRevision.current])), []);
+
   /**
    * ONE OBJECT FOR THE LIFE OF THE SCREEN. Both editors call `adopt` from an effect that
    * lists this among its dependencies, and a fresh object literal per render made that effect
@@ -113,7 +133,7 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
    * of an exhausted heap before anything reached storage.
    */
   return useMemo(
-    () => ({ adopt, confirm, observe, forget, forNodes }),
-    [adopt, confirm, observe, forget, forNodes]
+    () => ({ adopt, confirm, observe, forget, forNodes, revisionsForNodes }),
+    [adopt, confirm, observe, forget, forNodes, revisionsForNodes]
   );
 }

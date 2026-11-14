@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
+import { isOfflineQueuedError, isStaleWriteError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
@@ -39,6 +39,7 @@ const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
 
 interface UseManualConspectusParams {
   sermon: Sermon | null;
+  confirmedRevision?: number;
   mode?: 'manual' | 'note';
   t: (key: string, options?: Record<string, unknown>) => string;
 }
@@ -72,6 +73,7 @@ const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclus
 
 export function useManualConspectus({
   sermon,
+  confirmedRevision,
   t,
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
@@ -148,7 +150,8 @@ export function useManualConspectus({
     const queued = refreshPending();
     baseline.adopt(
       sermonRef.current,
-      (nodeId) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId)
+      (nodeId) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId),
+      confirmedRevision,
     );
 
     const stored = readPlanText(sermonRef.current);
@@ -173,7 +176,7 @@ export function useManualConspectus({
     const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId);
     setContentByNodeId((previous) => mergeStoredPlanText(previous, stored, keepScreen));
     setSavedNodeIds((previous) => mergeStoredSavedFlags(previous, stored, keepScreen));
-  }, [baseline, refreshPending, sermon?.planText, sermon?.plan]);
+  }, [baseline, confirmedRevision, refreshPending, sermon?.planText, sermon?.plan]);
 
   /**
    * WHAT THE SERVER TURNED OUT TO HOLD, kept until the person decides what to do about it.
@@ -185,12 +188,15 @@ export function useManualConspectus({
    * the button below is.
    */
   const contestedRef = useRef<Record<string, string | null>>({});
+  const contestedRevisions = useRef<Record<string, number | null>>({});
 
   /** Is this a conflict rather than an ordinary failure? Remembers what the server holds. */
   const isConflict = useCallback((error: unknown): boolean => {
     const theirs = planTextConflictValues(error);
     if (!theirs) return false;
     contestedRef.current = { ...contestedRef.current, ...theirs };
+    const revision = isStaleWriteError(error) ? error.engineRevision ?? null : null;
+    Object.keys(theirs).forEach(nodeId => { contestedRevisions.current[nodeId] = revision; });
     debugLog("Manual plan save refused: another device holds newer text", { nodes: Object.keys(theirs) });
     return true;
   }, []);
@@ -208,8 +214,9 @@ export function useManualConspectus({
         onClick: () => {
           // NOW the baseline moves — because the person read the message and chose. The next
           // write states what the server really holds, so it is accepted and theirs is replaced.
-          baseline.observe(contestedRef.current);
+          baseline.observe(contestedRef.current, contestedRevisions.current);
           contestedRef.current = {};
+          contestedRevisions.current = {};
           void saveModifiedRef.current?.();
         },
       },
@@ -237,6 +244,7 @@ export function useManualConspectus({
     await planWriter.savePlanText(currentSermon.id, changedText, [], {
       userId: currentSermon.userId,
       baselineByNodeId: baseline.forNodes(Object.keys(changedText)),
+      revisionsByNodeId: baseline.revisionsForNodes(Object.keys(changedText)),
     });
 
     /**
@@ -259,7 +267,10 @@ export function useManualConspectus({
      * them, the retry then saves the innocent ones, and "keep mine" would roll their baseline
      * back to a value that is two saves old — refusing this screen's own next edit.
      */
-    Object.keys(changedText).forEach((nodeId) => { delete contestedRef.current[nodeId]; });
+    Object.keys(changedText).forEach(nodeId => {
+      delete contestedRef.current[nodeId];
+      delete contestedRevisions.current[nodeId];
+    });
     refreshPending();
   }, [baseline, mode, planWriter, refreshPending]);
 
