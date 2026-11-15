@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Bridge a text control to a delayed render of its document draft. The document owns
@@ -23,8 +23,11 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
     if (pending.current === null) setDraft(value);
   }, [value]);
 
+  const getPending = useCallback((): string | null => pending.current, []);
+
   return {
     draft,
+    getPending,
     change: (next: string) => {
       pending.current = next === latest.current ? null : next;
       const attempt = ++attempts.current;

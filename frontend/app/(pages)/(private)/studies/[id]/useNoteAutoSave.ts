@@ -76,7 +76,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, contentRoot, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -110,6 +110,8 @@ export function useNoteAutoSave({
     t: ReturnType<typeof useTranslation>['t'];
     /** Baseline owned by the page so both autosave and "load newer" can move it. */
     baselineRef: React.MutableRefObject<NoteDraftPayload | null>;
+    /** The editor lineage differs from a row adopted before its document was rendered. */
+    contentRoot?: React.MutableRefObject<string>;
     /** Revision this text was built from; null keeps the write unguarded. */
     revisionRef: React.MutableRefObject<number | null>;
     /**
@@ -150,6 +152,12 @@ export function useNoteAutoSave({
     // both create the same new note.
     const inFlightRef = useRef(false);
     const atOnceRef = saveAtOnceRef ?? ownAtOnceRef;
+
+    // Only a submitted payload advances the editor lineage; row adoption cannot prove what was drawn.
+    const advanceSubmittedBaseline = useCallback((payload: NoteDraftPayload) => {
+        baselineRef.current = payload;
+        if (contentRoot) contentRoot.current = payload.content;
+    }, [baselineRef, contentRoot]);
 
     const saveNewNote = useCallback(async () => {
         if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
@@ -219,12 +227,12 @@ export function useNoteAutoSave({
             if (acceptance.kind === 'persisted') {
                 retirePersistedCreateDraft();
                 announceIfPersisted(acceptance, () => {
-                    baselineRef.current = confirmedPayload;
+                    advanceSubmittedBaseline(confirmedPayload);
                     onSaved?.(confirmedPayload);
                     setLastSaved(new Date());
                 });
             } else if (acceptance.kind === 'queued') {
-                baselineRef.current = confirmedPayload;
+                advanceSubmittedBaseline(confirmedPayload);
                 // Local handoff is not acceptance. The later whole-write proof
                 // confirms only this payload; newer typing keeps its own baseline.
                 void submission.persistence.then(() => {
@@ -245,7 +253,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -340,7 +348,7 @@ export function useNoteAutoSave({
                 // refusal, which is exactly the "yes, replace that" statement.
                 expectedBaseline: deliberateOverwriteRef.current
                     ? null
-                    : (baselineRef.current as unknown as Record<string, unknown>),
+                    : ({ ...baselineRef.current, ...(contentRoot && 'content' in updates ? { content: contentRoot.current } : {}) } as unknown as Record<string, unknown>),
             });
             if (titleCapture && titleEdit && titleEditRef && submission.capture) {
                 void submission.capture.then(receipt => {
@@ -409,7 +417,7 @@ export function useNoteAutoSave({
                  * note and can exhaust storage the later typing depends on.
                  */
                 if (acceptance.kind === 'queued') {
-                    baselineRef.current = submittedPayload;
+                    advanceSubmittedBaseline(submittedPayload);
                     // A deliberate overwrite is one send; left armed, every later save
                     // would go out unguarded until the next persisted one.
                     if (wasDeliberate) deliberateOverwriteRef.current = false;
@@ -437,7 +445,7 @@ export function useNoteAutoSave({
             }
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.
-            baselineRef.current = submittedPayload;
+            advanceSubmittedBaseline(submittedPayload);
             if (wasDeliberate) deliberateOverwriteRef.current = false;
             acknowledge(saved);
             announceIfPersisted(acceptance, () => setLastSaved(new Date()));
@@ -464,7 +472,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, contentRoot, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

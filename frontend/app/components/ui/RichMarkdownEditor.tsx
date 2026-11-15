@@ -13,6 +13,8 @@ import { useStickyEditorViewport } from './useStickyEditorViewport';
 interface RichMarkdownEditorProps {
     value: string;
     onChange: (value: string) => void;
+    /** Witness the applied document once, before its first subsequent edit. */
+    onEditAfterForeignValue?: (value: string) => void;
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
     /** A foreign value coalesced with the own action; apply its boundary first. */
@@ -29,6 +31,7 @@ interface RichMarkdownEditorProps {
 export function RichMarkdownEditor({
     value,
     onChange,
+    onEditAfterForeignValue,
     valueIsUserAction = false,
     valueBeforeUserAction,
     placeholder = '',
@@ -37,7 +40,9 @@ export function RichMarkdownEditor({
     stickyToolbarTop,
     editable = true,
 }: RichMarkdownEditorProps) {
-    const { draft, change } = useBufferedText(value, onChange);
+    const foreignEditMark = useRef<string | null>(value);
+    const lastEmittedText = useRef<string | null>(null);
+    const { draft, change, getPending } = useBufferedText(value, onChange);
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
     const editor = useEditor({
         extensions: [
@@ -60,8 +65,14 @@ export function RichMarkdownEditor({
             },
         },
         onUpdate: ({ editor }) => {
+            // An echo is not an application: consume only the last document actually installed.
+            const mark = foreignEditMark.current;
+            foreignEditMark.current = null;
+            if (mark !== null) onEditAfterForeignValue?.(mark);
             // @ts-expect-error - tiptap-markdown types don't extend core storage types properly
-            change((editor.storage.markdown).getMarkdown());
+            const next = (editor.storage.markdown).getMarkdown();
+            lastEmittedText.current = next;
+            change(next);
         },
     });
 
@@ -73,10 +84,14 @@ export function RichMarkdownEditor({
     // Use production's full-document setContent for both origins, including its selection and
     // composition behavior. Only an explicit own action enters history; neither origin emits an update.
     useEffect(() => {
-        if (!editor || editor.isDestroyed) return;
+        // Input may have landed after this render; replacing now would erase its Undo history.
+        if (!editor || editor.isDestroyed || getPending() !== null) return;
         const replace = (next: string, own: boolean) => {
             // @ts-expect-error - tiptap-markdown storage is not declared by core
-            if (next === editor.storage.markdown.getMarkdown()) return;
+            if (next === editor.storage.markdown.getMarkdown()) {
+                if (!own && next !== lastEmittedText.current) foreignEditMark.current = next;
+                return;
+            }
             editor.chain()
                 .command(({ tr }) => {
                     closeHistory(tr).setMeta('addToHistory', own);
@@ -84,6 +99,8 @@ export function RichMarkdownEditor({
                 })
                 .setContent(next, { emitUpdate: false })
                 .run();
+            lastEmittedText.current = null;
+            foreignEditMark.current = own ? null : next;
             if (!own) retireHistory(editor);
         };
         // The buffer can still contain the previous render's draft. Wait for its value echo,
@@ -94,7 +111,7 @@ export function RichMarkdownEditor({
             if (valueBeforeUserAction.value !== null) replace(valueBeforeUserAction.value, false);
         }
         replace(draft, valueIsUserAction && valueBeforeUserAction?.value !== null);
-    }, [draft, editor, value, valueIsUserAction, valueBeforeUserAction]);
+    }, [draft, editor, value, valueIsUserAction, valueBeforeUserAction, getPending]);
 
     useEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user

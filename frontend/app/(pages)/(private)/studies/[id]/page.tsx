@@ -722,6 +722,17 @@ function StudyNoteEditorPage() {
     </>;
 }
 
+// Adoption can run after input from a newer task; mirror setters so its guards never use a clean render that has already become dirty.
+function useLiveState<T>(initial: T): [T, React.Dispatch<React.SetStateAction<T>>, React.MutableRefObject<T>] {
+    const [value, setValue] = useState(initial);
+    const live = useRef(value);
+    const set = useCallback((next: React.SetStateAction<T>) => {
+        live.current = typeof next === 'function' ? (next as (value: T) => T)(live.current) : next;
+        setValue(live.current);
+    }, []);
+    return [value, set, live];
+}
+
 function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: string; openingRecoveryKey?: string | null }) {
     const { t } = useTranslation();
     const router = useRouter();
@@ -737,17 +748,32 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
     // Local state for the editor
-    const [title, setTitleState] = useState('');
+    const baselineRef = useRef<NoteDraftPayload | null>(null);
+    const contentRoot = useRef('');
+    const [title, setTitleState, liveTitle] = useLiveState('');
     const titleEditRef = useRef<NoteTitleEdit | null>(null);
     const setTitle = useCallback((value: string) => {
         titleEditRef.current = null;
         setTitleState(value);
-    }, []);
-    const { value: content, observe: setContent, act: changeContent, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
-    const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
-    const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
+    }, [setTitleState]);
+    const { value: content, observe: observeContent, act: actContent, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
+    const liveContent = useRef('');
+    const setContent = useCallback((next: React.SetStateAction<string>) => {
+        liveContent.current = typeof next === 'function' ? next(liveContent.current) : next;
+        observeContent(liveContent.current);
+    }, [observeContent]);
+    const changeContent = useCallback((next: React.SetStateAction<string>) => {
+        // A clean page action starts at the submitted text; adopting a row alone is no such witness.
+        if (liveContent.current === baselineRef.current?.content) contentRoot.current = baselineRef.current.content;
+        liveContent.current = typeof next === 'function' ? next(liveContent.current) : next;
+        actContent(liveContent.current);
+    }, [actContent]);
+    // Only the editor can witness which foreign document the next edit actually follows.
+    const editAfterForeignValue = useCallback((value: string) => { contentRoot.current = value; }, []);
+    const [dictationSourceIds, setDictationSourceIds, liveDictation] = useLiveState<string[]>([]);
+    const [recordingSourceIds, setRecordingSourceIds, liveRecording] = useLiveState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
-    const [tags, setTagState] = useState<string[]>([]);
+    const [tags, setTagState, liveTags] = useLiveState<string[]>([]);
     const tagEditsRef = useRef(new Map<string, NoteTagEdit>());
     const submittedTagsRef = useRef(new Map<string, SubmittedNoteTag>());
     const shownTagBasis = useRef<{ owner: string; id: string; basis: DocumentTagBasis } | null>(null);
@@ -755,16 +781,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         tagEditsRef.current.clear();
         submittedTagsRef.current.clear();
         setTagState(next);
-    }, []);
-    const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
-    const [type, setTypeState] = useState<StudyNoteType>('note');
+    }, [setTagState]);
+    const [scriptureRefs, setScriptureRefs, liveRefs] = useLiveState<ScriptureReference[]>([]);
+    const [type, setTypeState, liveType] = useLiveState<StudyNoteType>('note');
     const typeEditRef = useRef<NoteTypeEdit | null>(null);
     const submittedTypeRef = useRef<SubmittedNoteType | null>(null);
     const setType = useCallback((value: StudyNoteType) => {
         typeEditRef.current = null;
         submittedTypeRef.current = null;
         setTypeState(value);
-    }, []);
+    }, [setTypeState]);
     // What the person asked for; the page writes only once nothing waits for an answer (`isEditing` below).
     const [editingWanted, setIsEditing] = useState(isNew);
 
@@ -851,7 +877,6 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         serverRevisionRef.current = existingNote.rev?.[NOTE_AGGREGATE] ?? 0;
     }
 
-    const baselineRef = useRef<NoteDraftPayload | null>(null);
     const rememberShownTags = useCallback((shown: string[]) => {
         const basis = !isNew && uid ? observeTagBasis?.(noteId, shown) : undefined;
         if (uid && basis) shownTagBasis.current = { owner: uid, id: noteId, basis };
@@ -897,12 +922,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         baselineNoteIdRef.current = noteId;
         if (!adoptingCreatedId) {
             baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
+            // A new opening starts at its initialized baseline; create continuation keeps its submitted root.
+            contentRoot.current = baselineRef.current.content;
             rememberShownTags(tags);
         }
     }
     useEffect(() => {
         if (isInitialized && !createdNoteId) setConfirmedDraft(baselineRef.current);
-    }, [isInitialized, noteId, createdNoteId]);
+    }, [isInitialized, noteId, createdNoteId, setConfirmedDraft]);
 
     // Everything the editor owns, in one value — this is what the durable draft
     // stores and what a successful save confirms.
@@ -934,7 +961,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         if (!recoveredDraft || !isRecordingOnlyNoteDraft(recoveredDraft)) return;
         setRecordingSourceIds(previous => [...new Set([...previous, ...recoveredDraft.recordingSourceIds!])]);
         acceptRecovered();
-    }, [recoveredDraft, acceptRecovered]);
+    }, [recoveredDraft, acceptRecovered, setRecordingSourceIds]);
     const offeredWords = recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) ? recoveredDraft : null;
     const unsavedRecovery = useNoteDraftOffer(offeredWords, draftPayload, isInitialized, settleRecovered, recoveredKey);
     const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
@@ -948,7 +975,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         draftWriterId,
         draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
-        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
+        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, contentRoot, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
@@ -1012,21 +1039,24 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent, setConfirmedDraft, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
-        const hasUnsubmittedEdits = submitted !== null && !sameNoteDraft(submitted, draftPayload);
+        const livePayload = { title: liveTitle.current, content: liveContent.current, tags: liveTags.current,
+            scriptureRefs: liveRefs.current, type: liveType.current, ...noteRecordingMetadata(liveDictation.current, liveRecording.current) };
+        const hasUnsubmittedEdits = submitted !== null && !sameNoteDraft(submitted, livePayload);
+        const liveDirty = confirmedDraft ? !sameNoteDraft(confirmedDraft, livePayload) : false;
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
             && edit.before !== edit.present && edit.predecessorRequestId);
-        if (editorIsDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        if (liveDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
         const edit = titleEditRef.current;
         // Returning to the confirmed words still edits the title that this device just queued.
-        if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === title && edit.capture.seen.title !== title) return;
+        if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === liveTitle.current && edit.capture.seen.title !== liveTitle.current) return;
         const typeEdit = typeEditRef.current;
-        if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === type && typeEdit.capture.seen.type !== type) return;
+        if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === liveType.current && typeEdit.capture.seen.type !== liveType.current) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow, dictationSourceIds, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -1042,7 +1072,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // copy at all.
         acceptRecovered();
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, changeContent]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, changeContent, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs, setTags, setType]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1574,6 +1604,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                 value={content}
                                 valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
                                 onChange={setContent}
+                                onEditAfterForeignValue={editAfterForeignValue}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"
                                 stickyToolbarTop={scrollLayout.toolbarTop}
