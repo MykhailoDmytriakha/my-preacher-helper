@@ -1274,8 +1274,15 @@ export async function recoverPlanPointContent(recovery: AiResultRecovery): Promi
   return assemblePlanPointMarkdown(result.data);
 }
 
+type NotePlanCapture = {
+  deadline: number;
+  publish: (result: NotePlanResult) => Promise<void>;
+};
+
 /** Generate editable cue cards from the full study and the preacher's placed reminders. */
-export async function generateNotePlanPoint(input: NotePlanInput, style: PlanStyle, userId: string): Promise<NotePlanResult> {
+export async function generateNotePlanPoint(
+  input: NotePlanInput, style: PlanStyle, userId: string, capture?: NotePlanCapture,
+): Promise<NotePlanResult> {
   const allowed = new Set(notePlanTargetNodes(input.point, input.targetNodeId).map((node) => node.nodeId));
   if (!allowed.size) throw new Error('No requested nodes');
   const userMessage = createNotePlanUserMessage(input);
@@ -1289,23 +1296,35 @@ export async function generateNotePlanPoint(input: NotePlanInput, style: PlanSty
   });
   const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
     formatName: 'note_plan_point', userId, promptBlueprint,
+    ...(capture && {
+      settleParsedResult: (parsed: unknown) => capture.publish(assembleNotePlanProposal(NotePlanResponseSchema.parse(parsed), allowed, input.revision)),
+      requestOptions: { timeout: Math.max(1, Math.floor(capture.deadline - performance.now())), maxRetries: 0 },
+    }),
   });
-  if (!result.success || !result.data) throw new Error('Note plan generation failed');
-  const seen = new Set(result.data.nodes.map((node) => node.nodeId));
-  if (seen.size !== allowed.size || result.data.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
+  if (!result.success || !result.data) {
+    if (result.error && isAiResultRecoveryError(result.error)) throw result.error;
+    throw new Error('Note plan generation failed');
+  }
+  return assembleNotePlanProposal(result.data, allowed, input.revision);
+}
+
+function assembleNotePlanProposal(
+  result: ReturnType<typeof NotePlanResponseSchema.parse>, allowed: Set<string>, revision: NotePlanInput['revision'],
+): NotePlanResult {
+  const seen = new Set(result.nodes.map((node) => node.nodeId));
+  if (seen.size !== allowed.size || result.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
     throw new Error('Generated plan does not match the requested nodes');
   }
   const contentByNodeId: Record<string, string> = {};
   const missingMaterial: Record<string, string> = {};
-  for (const node of result.data.nodes) {
-    const current = input.revision?.currentContentByNodeId[node.nodeId] ?? '';
-    contentByNodeId[node.nodeId] = input.revision?.mode === 'references'
+  for (const node of result.nodes) {
+    const current = revision?.currentContentByNodeId[node.nodeId] ?? '';
+    contentByNodeId[node.nodeId] = revision?.mode === 'references'
       ? node.missingMaterial && !node.refs.length ? current : replacePlanReferenceParagraphs(current, node.refs)
       : assemblePlanPointMarkdown({
-      // Note plans do not produce sets yet (their own prompt says nothing about them), so the
-      // field travels empty and the assembler renders exactly what it rendered before.
-      turn: node.turn, groups: [{ heading: null, cues: node.cues, sets: [], refs: node.refs }],
-    });
+        // Note plans do not produce sets; both routes share the same cue renderer.
+        turn: node.turn, groups: [{ heading: null, cues: node.cues, sets: [], refs: node.refs }],
+      });
     if (node.missingMaterial) missingMaterial[node.nodeId] = node.missingMaterial;
   }
   return { contentByNodeId, missingMaterial };

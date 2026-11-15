@@ -36,6 +36,7 @@ const view = (enabled = true) => render(<NotePlanWorkspace enabled={enabled} ser
 </NotePlanWorkspace>);
 
 beforeEach(() => {
+  localStorage.clear();
   jest.clearAllMocks(); mockOnline = true; mockBlocked = false; mockLoading = false; mockMissing = [];
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p: '- Extracted people', sub: '' }, missingMaterial: { sub: 'No detail in source' } });
 });
@@ -197,7 +198,7 @@ it('reviews a targeted proposal inside its child and applies only that child', a
   fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generateSubPoint' }));
   expect(await within(screen.getByTestId('child-actions')).findByText('- Selected child')).toBeVisible();
   expect(within(screen.getByTestId('parent-actions')).queryByText('plan.fromNote.proposal')).not.toBeInTheDocument();
-  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub' }), expect.any(AbortSignal));
+  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub' }), undefined, expect.objectContaining({ operationId: expect.any(String) }));
   fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.fromNote.apply' }));
   expect(conspectus.restoreCells).toHaveBeenCalledWith({ sub: '- Selected child' });
 });

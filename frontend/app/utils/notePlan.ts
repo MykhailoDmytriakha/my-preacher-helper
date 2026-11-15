@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
+import { serializeContent } from '@/utils/contentFingerprint';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 
-import type { Sermon, SermonPoint } from '@/models/models';
+import type { Sermon, SermonPoint, StudyNote } from '@/models/models';
 
 export const NOTE_PLAN_INSTRUCTION_LIMIT = 2000;
 export const NotePlanRevisionSchema = z.object({
@@ -18,15 +20,34 @@ export const NotePlanRequestSchema = z.object({
   targetNodeId: z.string().min(1).optional(),
   style: z.enum(['memory', 'narrative', 'exegetical']),
   expectedContext: z.string().min(1),
+  expectedSourceKey: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   revision: NotePlanRevisionSchema.optional(),
 });
+
+export type NotePlanRequest = z.infer<typeof NotePlanRequestSchema>;
 
 export const NotePlanResultSchema = z.object({
   contentByNodeId: z.record(z.string()),
   missingMaterial: z.record(z.string()),
+  sourceKey: z.string().optional(),
+  sourceChanged: z.boolean().optional(),
 });
 
 export type NotePlanResult = z.infer<typeof NotePlanResultSchema>;
+
+/** The ordered note material used by the generator, in one Scripture numbering. */
+export function notePlanSourceMaterial(notes: StudyNote[]) {
+  return notes.map(note => ({
+    id: note.id,
+    title: note.title ?? '',
+    content: note.content,
+    scriptureRefs: (note.scriptureRefs ?? []).map(ref => formatScriptureReference(ref, { style: 'canonical' })),
+  }));
+}
+
+export function notePlanSourceText(notes: StudyNote[]): string {
+  return serializeContent(notePlanSourceMaterial(notes));
+}
 
 /** One explicit cell, or the existing whole-point scope when no target is supplied. */
 export function notePlanTargetNodes(point: SermonPoint, targetNodeId?: string) {

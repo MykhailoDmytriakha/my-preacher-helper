@@ -5,8 +5,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { AiResultUnavailableError } from '@/api/errors/aiResultRecovery.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
-import { studiesRepository } from '@/api/repositories/studies.repository';
-import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { ThoughtInStructure } from '@/models/models';
 import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest, aiResultRecoveryRefusal } from '@/services/recoverableAiResult.server';
@@ -14,12 +12,12 @@ import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/se
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { AI_RESULT_NOT_STARTED, AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
 import { requestLanguage } from '@/utils/appLocale';
-import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
-import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
-import { generateNotePlanPoint, generatePlanPointContent, recoverPlanPointContent, PlanStyle } from '@clients/openAI.client';
+import { generatePlanPointContent, recoverPlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
+
+import { handleNotePlanProposal, NotePlanRefusal } from './notePlanProposal.server';
 
 export const dynamic = 'force-dynamic';
 const PLAN_POINT_MODEL_BUDGET_MS = 45_000;
@@ -197,72 +195,19 @@ async function generateSermonPointContent(
 
 /** Generate a note-backed proposal. Only the editor can accept and save the text. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
-  // The author's interface language: the source notes' old references are read in their Bible.
-  const language = requestLanguage(request);
   if (!uid) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
+  const { id } = await params;
   try {
-    const parsed = NotePlanRequestSchema.safeParse(await request.json());
-    if (!parsed.success) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });
-    const { id } = await params;
-    const sermon = await withStore(() => sermonsRepository.fetchSermonById(id));
-    if (!sermon) return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
-    if (sermon.userId !== uid) return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    const { outlinePointId, targetNodeId, style, expectedContext, revision } = parsed.data;
-    const sections = ['introduction', 'main', 'conclusion'] as const;
-    const section = sections.find((key) => sermon.outline?.[key]?.some((point) => point.id === outlinePointId));
-    const point = section && sermon.outline?.[section]?.find((candidate) => candidate.id === outlinePointId);
-    if (!point || !section) return jsonNoStore({ error: 'Point not found' }, { status: 404 });
-    if (!notePlanTargetNodes(point, targetNodeId).length) return jsonNoStore({ error: 'Target node not found' }, { status: 404 });
-    if (revision) {
-      const selectedIds = notePlanTargetNodes(point, targetNodeId).map((node) => node.nodeId);
-      const draftIds = Object.keys(revision.currentContentByNodeId);
-      if (draftIds.length !== selectedIds.length || draftIds.some((nodeId) => !selectedIds.includes(nodeId))) {
-        return jsonNoStore({ error: 'Revision draft must match selected nodes' }, { status: 400 });
-      }
-    }
-    if (expectedContext !== notePlanContextKey(sermon, outlinePointId)) {
-      return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
-    }
-    const sourceIds = [...new Set(sermon.sourceNoteIds ?? [])];
-    if (!sourceIds.length) return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
-    const notes = await Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId, language)));
-    if (notes.some((note) => !note || note.userId !== uid || !note.content?.trim())) {
-      return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
-    }
-    const input: NotePlanInput = {
-      title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision,
-      outline: sections.flatMap((key) => (sermon.outline?.[key] ?? []).map((item) => ({
-        section: key, title: item.text,
-        subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => sub.text),
-      }))),
-      notes: notes.map((note) => ({
-        id: note!.id, title: note!.title ?? '', content: note!.content,
-        // One numbering for the model, whatever Bible each reference was written in: "Psalms 51:10".
-        scriptureRefs: (note!.scriptureRefs ?? []).map((ref) => formatScriptureReference(ref, { style: 'canonical' })),
-      })),
-      thoughts: getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId).map((thought) => ({
-        text: thought.text, subPointId: thought.subPointId, keyFragments: thought.keyFragments,
-      })),
-    };
-    // Keep the entire study or refuse explicitly; never silently feed a truncated source.
-    if (createNotePlanUserMessage(input).length > 200_000) {
-      return jsonNoStore({ error: 'sourceTooLarge' }, { status: 413 });
-    }
-    const result = await generateNotePlanPoint(input, style, uid);
-    const [latestSermon, latestNotes] = await Promise.all([
-      sermonsRepository.fetchSermonById(id),
-      Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId, language))),
-    ]);
-    const sourceChanged = latestNotes.some((note, index) => !note || note.userId !== uid
-      || note.content !== notes[index]!.content
-      || JSON.stringify(note.scriptureRefs) !== JSON.stringify(notes[index]!.scriptureRefs));
-    if (!latestSermon || latestSermon.userId !== uid || sourceChanged
-      || notePlanContextKey(latestSermon, outlinePointId) !== expectedContext) {
-      return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
-    }
-    return jsonNoStore(result);
+    return jsonNoStore(await handleNotePlanProposal(request, uid, id, requestLanguage(request), startedAt));
   } catch (error) {
+    if (error instanceof NotePlanRefusal) return jsonNoStore({ error: error.message }, { status: error.status });
+    if (error instanceof AiResultUnavailableError && error.reason === 'missing') {
+      return jsonNoStore({ code: AI_RESULT_NOT_STARTED, error: 'The plan generation has not registered yet' }, { status: 409 });
+    }
+    const recoveryFailure = aiResultRecoveryRefusal(error);
+    if (recoveryFailure) return jsonNoStore(recoveryFailure.body, { status: recoveryFailure.status });
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof SyntaxError) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });

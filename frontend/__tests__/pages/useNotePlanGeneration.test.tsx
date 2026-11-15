@@ -23,7 +23,7 @@ function setup(initial: Record<string, string> = {}, blocked = false) {
   return { ...hook, options, cells, restoreCells };
 }
 
-beforeEach(() => { jest.resetAllMocks(); jest.mocked(generateNotePlanContent).mockResolvedValue(generated); });
+beforeEach(() => { localStorage.clear(); jest.resetAllMocks(); jest.mocked(generateNotePlanContent).mockResolvedValue(generated); });
 
 it('reviews a proposal without changing existing text, then accepts it into the editable draft', async () => {
   const view = setup({ p: 'My writing' });
@@ -47,7 +47,91 @@ it.each(['text', 'outline', 'sermon'])('protects a %s change while generation ru
   view.rerender();
   await act(async () => { resolve(generated); await request; });
   expect(view.restoreCells).not.toHaveBeenCalled();
-  expect(view.result.current.errors.p).toBe('contextChanged');
+  if (change === 'sermon') {
+    expect(view.result.current.proposals.p).toBeUndefined();
+    expect(view.result.current.errors.p).toBeUndefined();
+    expect(setup().result.current.proposals.p?.contentByNodeId).toEqual(generated.contentByNodeId);
+  } else {
+    expect(view.result.current.errors.p).toBe('contextChanged');
+    expect(view.result.current.proposalChanged(view.result.current.proposals.p)).toBe(true);
+  }
+});
+
+it('offers the delayed multi-cell proposal when the plan is reopened', async () => {
+  let resolve!: (value: NotePlanResult) => void;
+  jest.mocked(generateNotePlanContent).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const opening = { p: 'My opening words', sub: 'My detail' };
+  const original = setup(opening);
+  let request!: Promise<void>;
+  act(() => { request = original.result.current.generate(point); });
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
+  original.unmount();
+
+  await act(async () => { resolve(generated); await request; });
+
+  const reopened = setup(opening);
+  expect(reopened.cells).toEqual(opening);
+  expect(reopened.result.current.proposals.p?.contentByNodeId).toEqual(generated.contentByNodeId);
+  act(() => { expect(reopened.result.current.accept('p')).toBe(true); });
+  expect(reopened.cells).toEqual(generated.contentByNodeId);
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
+});
+
+it('checks and resumes the same request after losing the connection', async () => {
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new TypeError('Network offline'));
+  const original = setup({ p: 'Original' });
+  await act(async () => { await original.result.current.generate(point); });
+  const [body, , operation] = jest.mocked(generateNotePlanContent).mock.calls[0];
+  original.unmount();
+
+  const reopened = setup({ p: 'Original' });
+  const pending = reopened.result.current.pending[0];
+  const unavailable = Object.assign(new Error('Not registered'), { code: 'ai-result-not-started' });
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(unavailable);
+  await act(async () => { await reopened.result.current.recover(pending.id); });
+  expect(generateNotePlanContent).toHaveBeenLastCalledWith(body, undefined, { ...operation, recoverOnly: true });
+  expect(reopened.result.current.canResume(reopened.result.current.pending[0])).toBe(true);
+  await act(async () => { await reopened.result.current.recover(pending.id, true); });
+  expect(generateNotePlanContent).toHaveBeenLastCalledWith(body, undefined, { ...operation, recoverOnly: false });
+  expect(reopened.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+});
+
+it('lets newer words start a new request while an unregistered earlier request stays available to check', async () => {
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new TypeError('Network offline'));
+  const view = setup({ p: 'Original' });
+  await act(async () => { await view.result.current.generate(point); });
+  const earlier = view.result.current.pending[0];
+  const unavailable = Object.assign(new Error('Not registered'), { code: 'ai-result-not-started' });
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(unavailable);
+  await act(async () => { await view.result.current.recover(earlier.id); });
+  view.cells.p = 'Later writing';
+  expect(view.result.current.canResume(view.result.current.pending[0])).toBe(false);
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.result.current.pending[0].id).toBe(earlier.id);
+  expect(view.result.current.proposals.p.before.p).toBe('Later writing');
+  expect(view.result.current.proposals.p.id).not.toBe(earlier.id);
+});
+
+it('retains a source-stale result for review and leaves the current words alone', async () => {
+  jest.mocked(generateNotePlanContent).mockResolvedValueOnce({ ...generated, sourceChanged: true });
+  const original = setup({ p: 'Current' });
+  await act(async () => { await original.result.current.generate(point); });
+  original.unmount();
+  const reopened = setup({ p: 'Current' });
+  expect(reopened.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+  act(() => { expect(reopened.result.current.accept('p')).toBe(false); });
+  expect(reopened.cells.p).toBe('Current');
+});
+
+it('keeps the full proposal if the editor cannot back up every accepted cell', async () => {
+  const view = setup({ p: 'Existing point', sub: 'Existing child' });
+  const applyGeneratedCells = jest.fn().mockReturnValue(false);
+  Object.assign(view.options.conspectus, { applyGeneratedCells });
+  await act(async () => { await view.result.current.generate(point); });
+  act(() => { expect(view.result.current.accept('p')).toBe(false); });
+  expect(applyGeneratedCells).toHaveBeenCalledWith(generated.contentByNodeId);
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+  expect(view.restoreCells).not.toHaveBeenCalled();
 });
 
 it('rechecks edits made after the proposal arrived before applying it', async () => {
@@ -98,15 +182,17 @@ it('keeps a failure local while another point succeeds and permits retry', async
   expect(view.result.current.proposals.p.contentByNodeId.p).toBe('- New');
 });
 
-it('aborts every active request on unmount', async () => {
+it('keeps both sent requests addressable when their editor unmounts', () => {
   jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
   const view = setup();
   act(() => { void view.result.current.generate(point); });
   act(() => { void view.result.current.generate(sermon.outline!.main[1]); });
-  const signals = jest.mocked(generateNotePlanContent).mock.calls.map((call) => call[1]);
-  expect(signals).toHaveLength(2);
+  const sends = jest.mocked(generateNotePlanContent).mock.calls;
+  expect(sends).toHaveLength(2);
   view.unmount();
-  signals.forEach((signal) => expect(signal?.aborted).toBe(true));
+  const reopened = setup();
+  expect(reopened.result.current.pending.map(draft => draft.id).sort()).toEqual(sends.map(([, , operation]) => operation!.operationId).sort());
+  expect(reopened.result.current.busy).toBe(false);
 });
 
 it('runs different points together and keeps their results isolated when they finish out of order', async () => {
@@ -187,7 +273,7 @@ it('regenerates only the selected child and preserves concurrent writing in its 
   const view = setup({ p: 'Parent draft', sub: 'Child draft' });
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- New child' }, missingMaterial: {} });
   await act(async () => { await view.result.current.generate(point, 'sub'); });
-  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ outlinePointId: 'p', targetNodeId: 'sub' }), expect.any(AbortSignal));
+  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ outlinePointId: 'p', targetNodeId: 'sub' }), undefined, expect.objectContaining({ operationId: expect.any(String) }));
   expect(view.cells).toEqual({ p: 'Parent draft', sub: 'Child draft' });
   view.cells.p = 'Parent edited during review';
   act(() => { expect(view.result.current.accept('sub')).toBe(true); });
@@ -235,18 +321,18 @@ it('blocks a child request while its whole point is generating', () => {
   expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
 });
 
-it('supersedes an overlapping whole-point proposal when requesting one child', async () => {
+it('retains earlier paid proposals when a later generation overlaps their cells', async () => {
   const view = setup();
   await act(async () => { await view.result.current.generate(point); });
-  expect(view.result.current.proposals.p).toBeDefined();
+  const older = view.result.current.proposals.p;
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Child only' }, missingMaterial: {} });
   await act(async () => { await view.result.current.generate(point, 'sub'); });
-  expect(view.result.current.proposals.p).toBeUndefined();
+  expect(view.result.current.proposals.p.id).toBe(older.id);
   expect(view.result.current.proposals.sub).toBeDefined();
-  jest.mocked(generateNotePlanContent).mockResolvedValue(generated);
-  await act(async () => { await view.result.current.generate(point); });
-  expect(view.result.current.proposals.sub).toBeUndefined();
-  expect(view.result.current.proposals.p).toBeDefined();
+
+  act(() => { expect(view.result.current.accept('sub')).toBe(true); });
+  expect(view.result.current.proposalChanged(view.result.current.proposals.p)).toBe(true);
+  expect(view.result.current.proposals.p.id).toBe(older.id);
 });
 
 it('rejects a widened child response and foreign missing-material keys', async () => {
@@ -279,7 +365,7 @@ it('captures current selected draft content with a revision and closes the compo
   expect(view.cells.sub).toBe('Unsaved child');
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Refined' }, missingMaterial: {} });
   await act(async () => { await view.result.current.generate(point, 'sub', intent); });
-  expect(generateNotePlanContent).toHaveBeenLastCalledWith(expect.objectContaining({ revision: { ...intent, currentContentByNodeId: { sub: 'Unsaved child' } } }), expect.any(AbortSignal));
+  expect(generateNotePlanContent).toHaveBeenLastCalledWith(expect.objectContaining({ revision: { ...intent, currentContentByNodeId: { sub: 'Unsaved child' } } }), undefined, expect.objectContaining({ operationId: expect.any(String) }));
   expect(view.result.current.refiningIds.sub).toBe(false);
   expect(view.cells.sub).toBe('Unsaved child');
   act(() => { view.result.current.accept('sub'); });

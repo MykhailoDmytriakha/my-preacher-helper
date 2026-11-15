@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 import { POST } from '@/api/sermons/[id]/plan/route';
+import { aiResultReceipt } from '@/data-engine/aiOperations.server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
 import { studiesRepository } from '@/api/repositories/studies.repository';
@@ -10,6 +11,7 @@ import { notePlanContextKey } from '@/utils/notePlan';
 import type { Sermon } from '@/models/models';
 
 jest.mock('@/api/auth/requireAuthenticatedUid.server');
+jest.mock('@/data-engine/aiOperations.server', () => ({ aiResultReceipt: jest.fn() }));
 jest.mock('@/api/repositories/sermons.repository', () => ({ sermonsRepository: { fetchSermonById: jest.fn() } }));
 jest.mock('@/api/repositories/studies.repository', () => ({ studiesRepository: { getNote: jest.fn() } }));
 jest.mock('@/api/clients/openAI.client', () => ({ generateNotePlanPoint: jest.fn() }));
@@ -73,6 +75,55 @@ it.each([
 it('refuses a proposal if the source changes during generation', async () => {
   jest.mocked(studiesRepository.getNote).mockResolvedValueOnce(note as never).mockResolvedValue({ ...note, content: 'Revised study' } as never);
   expect((await POST(request(), params)).status).toBe(409);
+});
+
+it('settles a single scoped proposal and returns it for review when the source changed', async () => {
+  const content = { contentByNodeId: { p: '- Saved cue', sub: '- Saved detail' }, missingMaterial: {} };
+  const operationId = 'f0e5b194-b526-4747-9068-8e86df3ef302';
+  const withOperation = (recoverOnly = false) => ({
+    ...request(),
+    headers: new Headers({ 'X-AI-Operation-Id': operationId, ...(recoverOnly && { 'X-AI-Recover-Only': '1' }) }),
+  }) as NextRequest;
+
+  let saved: unknown;
+  const save = jest.fn(async (value: unknown) => { saved = value; });
+  const fail = jest.fn();
+  const claim = jest.fn().mockResolvedValue({ state: 'claimed', save, fail });
+  const read = jest.fn().mockResolvedValue(undefined);
+  const settle = jest.fn(async () => ({ value: saved, completedAtMs: 1 }));
+  jest.mocked(aiResultReceipt).mockReturnValue({ claim, read, settle, expireRunning: jest.fn() });
+
+  const early = await POST(withOperation(true), params);
+  expect(early.status).toBe(409);
+  expect(await early.json()).toMatchObject({ code: 'ai-result-not-started' });
+  expect(generateNotePlanPoint).not.toHaveBeenCalled();
+  expect(studiesRepository.getNote).not.toHaveBeenCalled();
+
+  jest.mocked(generateNotePlanPoint).mockImplementationOnce(async (_input, _style, _owner, capture) => {
+    await capture!.publish(content);
+    return content;
+  });
+  const original = await POST(withOperation(), params);
+  expect(original.status).toBe(200);
+  const originalResult = await original.json();
+  expect(originalResult).toEqual({ ...content, sourceKey: expect.any(String), sourceChanged: false });
+
+  read.mockResolvedValueOnce({ state: 'settled', startedAtMs: Date.now() });
+  jest.mocked(studiesRepository.getNote).mockResolvedValue({ ...note, content: 'New owner text' } as never);
+  const recovered = await POST(withOperation(true), params);
+  expect(recovered.status).toBe(200);
+  expect(await recovered.json()).toEqual({ ...originalResult, sourceChanged: true });
+  expect(generateNotePlanPoint).toHaveBeenCalledTimes(1);
+  expect(claim).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(fail).not.toHaveBeenCalled();
+  const originalReceipt = jest.mocked(aiResultReceipt).mock.calls[1][0];
+  const recoveryReceipt = jest.mocked(aiResultReceipt).mock.calls[2][0];
+  expect(recoveryReceipt).toMatchObject({ ownerId: 'u', operationId, fingerprint: originalReceipt.fingerprint });
+
+  jest.mocked(getRequiredAuthenticatedUid).mockResolvedValueOnce('someone-else');
+  expect((await POST(withOperation(true), params)).status).toBe(403);
+  expect(read).toHaveBeenCalledTimes(2);
 });
 
 it('reports provider failure and malformed JSON', async () => {

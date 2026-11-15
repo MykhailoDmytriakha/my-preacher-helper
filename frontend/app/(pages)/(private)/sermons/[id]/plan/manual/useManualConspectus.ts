@@ -69,6 +69,7 @@ export interface ManualConspectus {
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
   restoreCells: (cells: Record<string, string>) => boolean;
+  applyGeneratedCells: (cells: Record<string, string>) => boolean;
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
@@ -800,6 +801,14 @@ export function useManualConspectus({
    */
   const restoreCells = changeOwnCells;
 
+  const applyGeneratedCells = (cells: Record<string, string>) => {
+    const entries = Object.entries(cells);
+    if (entries.some(([id]) => busyNodes.current.has(id))) return false;
+    // The proposal stays in storage unless every accepted cell has its own durable copy.
+    if (!entries.every(([id, text]) => draft.keepGeneratedCell(id, text))) return false;
+    return changeOwnCells(cells);
+  };
+
   return {
     draft,
     livePlanNodes,
@@ -815,6 +824,7 @@ export function useManualConspectus({
     pendingText,
     setNodeContent,
     restoreCells,
+    applyGeneratedCells,
     discardCells,
     savePoint,
     addPoint,

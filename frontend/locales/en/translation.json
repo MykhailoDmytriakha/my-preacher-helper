@@ -2729,6 +2729,7 @@
       "generatePointWithSubPoints": "Generate point and all subpoints",
       "generating": "Generating…",
       "proposal": "Review the proposed content",
+      "detachedProposal": "Proposal for a removed plan point",
       "current": "Current text",
       "suggested": "From the note",
       "empty": "No text yet",
