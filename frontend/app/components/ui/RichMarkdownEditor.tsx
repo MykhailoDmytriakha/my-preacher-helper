@@ -1,11 +1,12 @@
 import Placeholder from '@tiptap/extension-placeholder';
-import { closeHistory } from '@tiptap/pm/history';
+import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { applyForeignContent } from './foreignContent';
+import { applyForeignContent, canonicalForeignTarget } from './foreignContent';
 import { retireHistory } from './foreignHistory';
-import { decideComposition, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
+import { mapForeignMarkdownSelection } from './foreignMarkdownSelection';
+import { appendToComposition, decideComposition, rebaseParagraphAppend, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
@@ -13,13 +14,21 @@ import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
 
+import type { Node as DocumentNode } from '@tiptap/pm/model';
+
 interface RichMarkdownEditorProps {
     value: string;
-    onChange: (value: string) => void | Promise<unknown>;
+    onChange: (value: string, editOpening?: string) => void | Promise<unknown>;
+    /** Include the displayed pre-edit text for callers that track save ancestry. */
+    includeEditOpening?: boolean;
     /** Let the document keep a confirmed alternative before the user chooses a version. */
     onHoldText?: (typed: string) => ((keep: boolean, chosenWrite?: void | Promise<unknown>) => void) | undefined;
     /** A proven append from a document action, including an append to an empty draft. */
     observedAppend?: ObservedTextAppend;
+    /** Read an authored append before its controlled value reaches this view. */
+    readAppend?: () => ObservedTextAppend | undefined;
+    /** A newer accepted body to use when Undo only cancels unsubmitted text. */
+    readAcceptedAfterUndo?: (restored: string, opening: string) => string | undefined;
     /** Text now owned by this cell after an accepted deletion elsewhere in the document. */
     confirmedTextTransfer?: ObservedTextAppend;
     /** Witness the applied document once, before its first subsequent edit. */
@@ -52,16 +61,29 @@ function readMarkdown(editor: Editor): string {
     return editor.storage.markdown.getMarkdown();
 }
 
-function showDraft(editor: Editor, draft: string, userAction?: boolean): void {
+function readOpeningMarkdown(editor: Editor, doc: DocumentNode): string {
+    // @ts-expect-error - tiptap-markdown does not augment the core storage type.
+    return editor.storage.markdown.serializer.serialize(doc);
+}
+
+function showDraft(editor: Editor, draft: string, userAction?: boolean, keepSelection = false): void {
     if (editor.isDestroyed || draft === readMarkdown(editor)) return;
-    editor.chain()
+    const chain = editor.chain()
         .command(({ tr }) => {
             if (userAction !== undefined) closeHistory(tr);
             tr.setMeta('addToHistory', userAction === true);
             return true;
         })
-        .setContent(draft, { emitUpdate: false })
-        .run();
+        .setContent(draft, { emitUpdate: false });
+    if (keepSelection) {
+        const { selection, storedMarks } = editor.state;
+        chain.command(({ tr }) => {
+            const mapped = mapForeignMarkdownSelection(selection, tr.doc);
+            if (mapped) tr.setSelection(mapped).setStoredMarks(storedMarks);
+            return true;
+        });
+    }
+    chain.run();
     if (userAction === false) retireHistory(editor);
     if (userAction === true) editor.view.dispatch(closeHistory(editor.state.tr));
 }
@@ -85,8 +107,11 @@ interface DeferredArrival {
 export function RichMarkdownEditor({
     value,
     onChange,
+    includeEditOpening = false,
     onHoldText,
     observedAppend: appendedText,
+    readAppend,
+    readAcceptedAfterUndo,
     confirmedTextTransfer,
     onEditAfterForeignValue,
     valueIsUserAction = false,
@@ -109,12 +134,12 @@ export function RichMarkdownEditor({
         if (replaced) lastEmittedText.current = null;
         return true;
     }, []);
-    const publish = (text: string) => {
+    const publish = (text: string, editOpening?: string) => {
         const opening = foreignEditMark.current;
         foreignEditMark.current = null;
         if (opening !== null) onEditAfterForeignValue?.(opening);
         lastEmittedText.current = text;
-        return change(text);
+        return change(text, editOpening);
     };
     const acceptedTransfer = useRef<ObservedTextAppend | undefined>(undefined);
     const deferredArrival = useRef<DeferredArrival | null>(null);
@@ -151,7 +176,7 @@ export function RichMarkdownEditor({
         immediatelyRender: false,
         autofocus: autoFocus ? 'end' : false,
         editorProps,
-        onUpdate: ({ editor }) => {
+        onUpdate: ({ editor, transaction }) => {
             if (heldText.current !== null || composition.current?.editor === editor || editor.view?.composing) return;
             const typed = readMarkdown(editor);
             if (deferredArrival.current?.editor === editor) {
@@ -164,7 +189,24 @@ export function RichMarkdownEditor({
                 }
                 heldText.current = { settle: onHoldText?.(typed) };
                 setChoice(typed);
-            } else publish(typed);
+                return;
+            }
+            const editOpening = includeEditOpening ? readOpeningMarkdown(editor, transaction.before) : undefined;
+            const append = readAppend?.();
+            // When dictation and a native key share a task, the page can already
+            // hold the append while the key still edits the old ProseMirror tree.
+            if (append && canonicalForeignTarget(editor, append.before).eq(transaction.before)) {
+                const accepted = isHistoryTransaction(transaction) && editOpening !== undefined
+                    ? readAcceptedAfterUndo?.(typed, editOpening) : undefined;
+                const merged = rebaseParagraphAppend(append, accepted ?? typed);
+                if (merged !== undefined && merged !== typed) {
+                    if (accepted !== undefined) adoptForeign(editor, accepted);
+                    showDraft(editor, merged, true, true);
+                    publish(merged, accepted ?? editOpening);
+                    return;
+                }
+            }
+            publish(typed, editOpening);
         },
     });
 
@@ -323,6 +365,15 @@ export function RichMarkdownEditor({
                             composition.current = null;
                             const confirmed = cancelled ? active.opening.markdown : readMarkdown(editor);
                             const update = current.current;
+                            // This can run before the transcription's controlled value reaches React.
+                            const ownAppend = active.pendingForeign ? undefined
+                                : appendToComposition(active.opening.markdown, update.value, confirmed, readAppend?.());
+                            if (ownAppend !== undefined) {
+                                deferredArrival.current = null;
+                                showDraft(editor, ownAppend, true, true);
+                                publish(ownAppend, active.opening.markdown);
+                                return;
+                            }
                             const result = decideComposition(active.opening, update.value, confirmed, update.observedAppend);
                             const boundary = update.valueIsUserAction ? active.pendingForeign : undefined;
                             const adoptOwn = () => {

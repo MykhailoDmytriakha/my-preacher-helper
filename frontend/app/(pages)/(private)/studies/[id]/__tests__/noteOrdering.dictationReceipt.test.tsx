@@ -1,4 +1,4 @@
-import { stand, start, original, insert, settle, finish, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { stand, start, original, insert, settle, finish, hasNoteQuestion, md } from '@test-utils/noteOrdering';
 import { act } from '@testing-library/react';
 import { processCommand } from '@/data-engine/server';
 import { diffFields } from '@/data-engine/protocol';
@@ -30,9 +30,13 @@ it.each([0, 1])('retains a persisted source dictation receipt after transcript a
   }
   await finish();
 
+  const accepted = (await stand.world.snapshot(noteRef)).value!;
+  expect(accepted.content).toBe(original + '\n\nArrivedword\n\nDictatedword');
+  expect(accepted.title).toBe('Remote title');
+  expect(md()).toBe(accepted.content);
   expect({
     pageReceipt: stand.autosave.dictationSourceIds,
-    storedReceipt: (await stand.world.snapshot(noteRef)).value!.dictationSourceIds,
+    storedReceipt: accepted.dictationSourceIds,
     question: hasNoteQuestion(),
     notices: stand.notices,
   }).toEqual({ pageReceipt: ['source-1'], storedReceipt: ['source-1'], question: false, notices: [] });

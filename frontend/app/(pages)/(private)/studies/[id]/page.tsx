@@ -757,7 +757,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = null;
         setTitleState(value);
     }, [setTitleState]);
-    const { value: content, observe: observeEditorContent, act: actEditorContent, append: appendContent,
+    const { value: content, observe: observeEditorContent, act: actEditorContent, append: appendContent, readAppend: readContentAppend,
         appended: contentAppend, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
     const liveContent = useRef('');
     const setContent = useCallback((next: React.SetStateAction<string>) => {
@@ -768,9 +768,19 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         liveContent.current = value;
         actEditorContent(value);
     }, [actEditorContent]);
-    const editAfterForeignValue = useCallback((value: string) => { contentRoot.current = value; }, []);
     const contentOpeningRef = useRef<Omit<StudyNoteContentCapture, 'time'> | undefined>(undefined);
-    const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture } | null>(null);
+    const editAfterForeignValue = useCallback((value: string) => {
+        // A remounted editor can display private words that never left this
+        // page. A matching observed revision makes the displayed opening usable
+        // as a save basis, even if it also happens to equal those private words.
+        const previous = contentOpeningRef.current;
+        const observed = observeContent?.(noteId, value) ?? (previous?.opening === value && !previous.requestId ? previous : undefined);
+        if (observed) {
+            contentRoot.current = observed.opening;
+            contentOpeningRef.current = observed;
+        }
+    }, [noteId, observeContent]);
+    const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture; displayedOpening?: string } | null>(null);
     const [dictationSourceIds, setDictationSourceIds, liveDictation] = useLiveState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds, liveRecording] = useLiveState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
@@ -911,16 +921,31 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         titleEditRef.current = uid && seen ? { owner: uid, id: noteId, value, capture: { seen, time: captureActionTime?.() ?? null } } : null;
         setTitleState(value);
     };
-    const changeContent = (value: string) => {
+    const changeContent = (value: string, editOpening?: string) => {
         if (value === liveContent.current) return;
         const previous = contentEditRef.current;
+        const sameNote = previous?.owner === uid && previous?.id === noteId ? previous : undefined;
         const opening = contentRoot.current;
-        const seen = previous?.owner === uid && previous?.id === noteId && previous.capture.opening === opening
-            ? previous.capture : contentOpeningRef.current?.opening === opening ? contentOpeningRef.current : observeContent?.(noteId, opening);
+        const seen = sameNote?.capture.opening === opening
+            ? sameNote.capture : contentOpeningRef.current?.opening === opening ? contentOpeningRef.current : observeContent?.(noteId, opening);
+        // Keep the exact visible basis through a string of edits while a save
+        // of that basis is still on its way back.
+        const displayedOpening = sameNote && editOpening === sameNote.value
+            ? sameNote.displayedOpening ?? editOpening : editOpening;
         contentEditRef.current = uid && !isNew && seen
-            ? { owner: uid, id: noteId, value, capture: { ...seen, time: captureActionTime?.() ?? null } } : null;
+            ? { owner: uid, id: noteId, value, capture: { ...seen, time: captureActionTime?.() ?? null }, displayedOpening } : null;
         // The native editor already installed this text and its Undo step.
         setContent(value);
+    };
+    const readAcceptedAfterUndo = (restored: string, opening: string) => {
+        const previous = contentEditRef.current;
+        if (isSaving || !noteIsAccepted || previous?.owner !== uid || previous?.id !== noteId
+            || previous.value !== opening || previous.capture.opening !== restored
+            || previous.capture.requestId || baselineRef.current?.content !== restored) return;
+        const stored = existingNote?.content;
+        const accepted = stored !== undefined && stored !== restored ? observeContent?.(noteId, stored) : undefined;
+        if (accepted && accepted.generation === previous.capture.generation
+            && accepted.observedRevision > previous.capture.observedRevision) return accepted.opening;
     };
     const appendDictation = (text: string, recovered: boolean) => {
         if (liveContent.current === baselineRef.current?.content) contentRoot.current = liveContent.current;
@@ -1077,7 +1102,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             }
         },
         onContentAcknowledged: (saved, proof) => {
-            if (proof) contentOpeningRef.current = { generation: proof.generation, observedRevision: proof.revision, opening: saved };
+            if (!proof) return;
+            const accepted = { generation: proof.generation, observedRevision: proof.revision, opening: saved };
+            contentOpeningRef.current = accepted;
+            const pending = contentEditRef.current;
+            if (pending?.owner === uid && pending?.id === noteId && pending.capture.generation === proof.generation
+                && pending.displayedOpening === saved && pending.value === liveContent.current && pending.value !== saved
+                && pending.capture.observedRevision < proof.revision) {
+                contentEditRef.current = { ...pending, capture: { ...accepted, time: pending.capture.time } };
+                draftSnapshot.current = null;
+            }
         },
         onSaved: (saved, replacedTitle, replacedTags, replacedType, replacedContent, replacedDictation) => {
             if (replacedDictation) releaseUnconfirmedDictation(replacedDictation, saved.dictationSourceIds ?? []);
@@ -1917,8 +1951,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             <RichMarkdownEditor
                                 value={content}
                                 observedAppend={contentAppend}
+                                readAppend={readContentAppend} readAcceptedAfterUndo={readAcceptedAfterUndo}
                                 valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
-                                onChange={changeContent}
+                                onChange={changeContent} includeEditOpening
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 onEditAfterForeignValue={editAfterForeignValue}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}

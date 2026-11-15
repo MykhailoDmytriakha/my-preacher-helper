@@ -37,7 +37,8 @@ export function useEditorValue<T>(initial: T) {
   const observe = useCallback((next: SetStateAction<T>) => { apply(next, 'observed'); }, [apply]);
   const act = useCallback((next: SetStateAction<T>) => { apply(next, 'action'); }, [apply]);
   const append = useCallback((extend: (previous: T) => T) => apply(extend, 'append'), [apply]);
-  return { ...change, observe, act, append };
+  const readAppend = useCallback(() => latest.current.appended, []);
+  return { ...change, observe, act, append, readAppend };
 }
 
 /** Each cell retains its own foreign baseline when observations and actions share a render. */

@@ -9,7 +9,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
  * A change the document refuses (`onChange` rejects) will never echo: the field keeps the refused
  * words in view but no longer holds them over the document's next value.
  */
-export function useBufferedText(value: string, onChange: (next: string) => void | Promise<unknown>, acceptedInput?: string) {
+export function useBufferedText(value: string, onChange: (next: string, editOpening?: string) => void | Promise<unknown>, acceptedInput?: string) {
   const [draft, setDraft] = useState(value);
   const pending = useRef<string | null>(null);
   const attempts = useRef(0);
@@ -33,12 +33,12 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
       attempts.current++;
       setDraft(latest.current);
     },
-    change: (next: string) => {
+    change: (next: string, editOpening?: string) => {
       pending.current = next === latest.current ? null : next;
       const opening = latest.current;
       const attempt = ++attempts.current;
       setDraft(next);
-      const outcome = onChange(next);
+      const outcome = editOpening === undefined ? onChange(next) : onChange(next, editOpening);
       if (!(outcome instanceof Promise)) return;
       // A refused change keeps its words on screen — they may be the only copy — but the field stops
       // guarding them, so the next change of the document shows as usual. Only the latest change
