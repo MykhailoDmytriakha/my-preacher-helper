@@ -5,6 +5,8 @@ import { matchesSermonNoteOpening, withSermonNoteText, type SermonNoteOpening } 
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 
+import { boundedActionTime, type ActionTime } from './actionClock';
+import { sameAnalysisFrame } from './analysisReshapeFields';
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
@@ -145,6 +147,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
   /** Original acknowledged frame revision when a replay includes a newer head. */
   analysisFramePredecessorRevision?: number;
+  analysisFrameActionTime?: ActionTime;
+  analysisFrameOpeningMatches?: boolean;
   studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
   commentKindAction?: CommentKindObservation;
   commentPlaceAction?: CommentPlaceObservation;
@@ -304,6 +308,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.studyNoteTypeAction ?? null, incoming.studyNoteTypeAction ?? null)
     || !equalValues(current.studyNoteTitleAction ?? null, incoming.studyNoteTitleAction ?? null)
     || !equalValues(current.studyNoteContentAction ?? null, incoming.studyNoteContentAction ?? null)
+    || !equalValues(current.analysisFrameActionTime ?? null, incoming.analysisFrameActionTime ?? null)
     || !equalValues(current.planTemplateNameAction ?? null, incoming.planTemplateNameAction ?? null)
     || !equalValues(current.tagColorAction ?? null, incoming.tagColorAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
@@ -837,6 +842,10 @@ export class CommitQueue {
     const noteType = captureStudyNoteType(baseline, intent.draft, noteTypeCapture, Boolean(noteTypeCapture && noteTypeRequestId
       && matchesStudyNoteTypeRequest(records.find(record => record.id === noteTypeRequestId), owner, baseline.resource, noteTypeCapture.seen)));
     const noteContent = captureStudyNoteContent(baseline, intent.draft, predecessor, frozenOptions?.noteContent, records);
+    const analysisOpening = predecessor ? predecessor.value : baseline.value;
+    const analysisFrameActionTime = editorAction?.kind === 'analysis-frame' && baseline.resource.collection === 'studyNotes'
+      && analysisOpening?.type === 'analysis' && intent.draft?.type === 'analysis' && !sameAnalysisFrame(analysisOpening, intent.draft)
+      ? boundedActionTime(editorAction.time) : undefined;
     const planModeCapture = editorAction?.kind === 'sermon-plan-mode' ? editorAction.mode : undefined;
     const planModeRequestId = planModeCapture?.seen.requestId;
     const planMode = planModeCapture && captureSermonPlanMode(baseline, intent.draft, planModeCapture,
@@ -918,6 +927,7 @@ export class CommitQueue {
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...(noteTitle && { studyNoteTitleAction: noteTitle }),
       ...(noteContent && { studyNoteContentAction: noteContent }),
+      ...(analysisFrameActionTime && { analysisFrameActionTime }),
       ...(noteType && { studyNoteTypeAction: noteType }),
       ...(planMode && { sermonPlanModeAction: planMode }),
       ...(commentKind && { commentKindAction: commentKind }),
@@ -1540,9 +1550,11 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
-    if (command.kind === 'update' && command.analysisFrameObservedRevision !== undefined
-      && record.analysisFramePredecessorRevision !== undefined) {
-      command.analysisFrameObservedRevision = record.analysisFramePredecessorRevision;
+    if (command.kind === 'update' && command.analysisFrameObservedRevision !== undefined) {
+      if (record.analysisFramePredecessorRevision !== undefined) command.analysisFrameObservedRevision = record.analysisFramePredecessorRevision;
+      // A rebase that changes either frame no longer carries the exact authored action.
+      if (record.sequence === 0 && record.analysisFrameActionTime && (!record.predecessor || record.analysisFrameOpeningMatches)
+        && sameAnalysisFrame(record.value, intended)) command.analysisFrameActionTime = record.analysisFrameActionTime;
     }
     if (command.kind === 'update' && command.resource.collection === 'sermons' && record.sequence === 0) {
       if (record.sermonTextPredecessorRevision !== undefined && command.sermonTextObservedRevision !== undefined) {

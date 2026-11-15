@@ -1330,7 +1330,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'sermon-plan-text' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'sermon-plan-text' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' | 'analysis-frame' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement' || action?.kind === 'council-topic-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;

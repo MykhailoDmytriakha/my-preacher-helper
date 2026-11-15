@@ -112,6 +112,7 @@ export type EditorCommitAction =
   | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
   | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
+  | { kind: 'analysis-frame'; time: ActionTime | null }
   | { kind: 'study-note-references'; referenceEvidence: StudyNoteReferenceEvidence; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'comment-kind'; commentKind: CommentKindCapture }
   | { kind: 'comment-place'; commentPlace: CommentPlaceCapture }
@@ -267,6 +268,7 @@ export type DataCommand = CommandBase & (
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteContentAction?: DocumentFieldStamp;
       analysisFrameObservedRevision?: number;
+      analysisFrameActionTime?: ActionTime | null;
       studyNoteTypeAction?: DocumentFieldStamp;
       studyNoteReferenceTimes?: Record<string, ActionTime>;
       studyNoteReferenceObservedRevisions?: Record<string, number>;

@@ -14,6 +14,7 @@ import { analysisPassage, analysisSourceMatches, studyAnalysisSource } from '@/u
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PickedPassage } from '../verseCopy/passagePick';
+import type { ActionTime } from '@/data-engine/actionClock';
 import type { DocumentData } from '@/data-engine/types';
 import type { ScriptureReference, StudyAnalysis, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
@@ -176,10 +177,11 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
 
   const valueOf = useCallback((next: AnalysisState) => ({ analysis: storedAnalysis(next, bible, total), content: analysisMarkdown(words, next) }), [bible, total, words]);
   // A change made while the note just made here has no open form yet waits for it; it goes when the form opens.
-  const waiting = useRef<AnalysisState | null>(null);
-  const lay = useCallback((next: AnalysisState) => {
+  const waiting = useRef<{ state: AnalysisState; time: ActionTime | null } | null>(null);
+  const captureTime = engine.captureActionTime;
+  const lay = useCallback((next: AnalysisState, time = captureTime?.() ?? null) => {
     if (!sourceMatches) return;
-    if (!writable) { waiting.current = next; return; }
+    if (!writable) { waiting.current = { state: next, time }; return; }
     onTheWay.current += 1;
     const fields = valueOf(next) as unknown as DocumentData;
     const base = seen.current;
@@ -192,7 +194,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
         return value;
       }
       return { ...value, ...fields, updatedAt: new Date().toISOString() };
-    })
+    }, { kind: 'analysis-frame', time })
       .catch(() => undefined) // the form says it: `sync`
       .finally(() => {
         onTheWay.current -= 1;
@@ -202,12 +204,12 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
         }
         takeIn();
       });
-  }, [bible, bookId, form, sourceMatches, takeIn, text, total, valueOf, writable]);
+  }, [bible, bookId, captureTime, form, sourceMatches, takeIn, text, total, valueOf, writable]);
   useEffect(() => {
     if (!writable || !waiting.current) return;
     const next = waiting.current;
     waiting.current = null;
-    lay(next);
+    lay(next.state, next.time);
   }, [lay, writable]);
 
   useEffect(() => {
@@ -313,10 +315,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     // These marks were already authored before the first form opened. Capture their
     // successor behind the refused create; never deliver them as a second creation.
     const next = waiting.current; waiting.current = null; onTheWay.current += 1;
-    const fields = valueOf(next) as unknown as DocumentData;
+    const fields = valueOf(next.state) as unknown as DocumentData;
     setCombining(true);
     void form.commit(value => value && analysisSourceMatches(value, bookId, bible, text)
-      ? { ...value, ...fields, updatedAt: new Date().toISOString() } : value)
+      ? { ...value, ...fields, updatedAt: new Date().toISOString() } : value, { kind: 'analysis-frame', time: next.time })
       .catch(() => { waiting.current ??= next; setCreationReview(true); })
       .finally(() => { onTheWay.current -= 1; setCombining(false); setWaitingCapture(value => value + 1); });
   }, [bible, bookId, combinationRetry, duplicateRefusal, form, ownId, text, valueOf]);
@@ -371,7 +373,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     const next = waiting.current;
     if (!next || !noteId.current || !sourceMatches) return;
     waiting.current = null;
-    void engine.updateNote({ id: noteId.current, updates: valueOf(next) }).result.catch(() => undefined);
+    void engine.updateNote({ id: noteId.current, updates: valueOf(next.state) }).result.catch(() => undefined);
   }, [engine, sourceMatches, valueOf]);
   const flushRef = useRef(flush);
   flushRef.current = flush;

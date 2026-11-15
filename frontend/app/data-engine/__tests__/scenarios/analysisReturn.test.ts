@@ -1,9 +1,12 @@
 /** @jest-environment node */
 import { DeviceWorld, noteRef, noteValue } from '@test-utils/deviceWorld';
+import { request } from '@test-utils/checkpointFixtures';
 
 import { analysisMarkdown, cutAt, EMPTY_ANALYSIS, passageWords, storedAnalysis } from '@/utils/passageAnalysis';
+import { ANALYSIS_RESHAPE_FRAME } from '../../analysisReshapeFields';
 import { initializeCommit } from '../../atomicCommits';
-import { request } from '@test-utils/checkpointFixtures';
+import { readField } from '../../fieldValues';
+import { processCommand } from '../../server';
 
 import john from '../../../../public/bible-text/kjv/v1/john.json';
 
@@ -43,6 +46,46 @@ describe('Delayed first delivery of an analysis after a deliberate return', () =
     expect(await world.questions()).toEqual([expect.objectContaining({
       device: 'tablet', document: 'studyNotes/note-x', kind: 'conflict', fields: ['analysis', 'content', 'scriptureRefs'],
     })]);
+  });
+
+  it.each([
+    { label: 'earlier', offset: 1000, kind: 'acknowledged', offlineLater: false },
+    { label: 'later', offset: 9000, kind: 'acknowledged', offlineLater: true },
+    { label: 'overlapping time', offset: 8001, kind: 'conflict', offlineLater: false },
+  ])('orders a returned frame with $label action evidence', async ({ offset, kind, offlineLater }) => {
+    world = new DeviceWorld();
+    await world.seed(noteRef, opening);
+    const seeded = await world.snapshot(noteRef);
+    const phone = { ...opening, ...stored(withCut(5)) };
+    const desktop = { ...opening, ...stored(withCut(8)) };
+    const send = (operationId: string, before: DocumentData, after: DocumentData, observedRevision: number, at: number) => {
+      const command = { protocol: 1, kind: 'update', owner: 'owner', operationId, resource: noteRef,
+        generation: seeded.metadata!.generation, dependsOn: [],
+        changes: ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(before, [field]), after: readField(after, [field]) })),
+        analysisFrameObservedRevision: observedRevision, analysisFrameActionTime: { earliestMs: at, latestMs: at + 3 },
+      };
+      return processCommand('owner', command);
+    };
+    const first = world.now;
+    await world.advance(10_000);
+    expect((await send('desktop-edit', opening, desktop, 1, first + 5000)).kind).toBe('acknowledged');
+    expect((await send('desktop-return', desktop, opening, 2, first + 8000)).kind).toBe('acknowledged');
+    const reply = await send('offline-first-delivery', opening, phone, 1, first + offset);
+    expect(reply.kind).toBe(kind);
+    expect((await world.snapshot(noteRef)).value).toMatchObject(offlineLater ? stored(withCut(5)) : stored(EMPTY_ANALYSIS));
+    const archived = world.history(noteRef).filter(item => item.path.includes('/_analysisFrameHistory/'));
+    if (kind === 'conflict') {
+      expect(reply).toMatchObject({ conflicts: ANALYSIS_RESHAPE_FRAME.map(field => expect.objectContaining({ path: [field] })) });
+      expect(archived).toHaveLength(0);
+      return;
+    }
+    expect(archived).toHaveLength(1);
+    expect(archived[0]).toMatchObject({ fields: expect.arrayContaining([
+      { field: 'analysis', value: { exists: true, value: offlineLater ? opening.analysis : phone.analysis },
+        winnerDigest: expect.any(String), time: expect.any(Object), winnerTime: expect.any(Object) },
+      { field: 'content', value: { exists: true, value: offlineLater ? opening.content : phone.content },
+        winnerDigest: expect.any(String), time: expect.any(Object), winnerTime: expect.any(Object) },
+    ]) });
   });
 
   it('allows an offline split after only the title changed, including a queued undo and a fresh split', async () => {

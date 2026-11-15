@@ -12,7 +12,8 @@ import { TAG_NAME_EXISTS } from '@/utils/tagName';
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
-import { compareReturnedAnalysisFrame, metadataAfterAnalysisFrame } from './analysisFrameOrder.server';
+import { metadataAfterAnalysisFrame, orderAnalysisFrame } from './analysisFrameOrder.server';
+import { ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
 import { metadataAfterAuthoredListRemovals, orderAuthoredListAdditions } from './authoredListOrder.server';
 import { isAuthoredListComparison } from './authoredStringList';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
@@ -686,7 +687,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration, content, notes };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -719,6 +720,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
   sourceNoteOrder?: ReturnType<typeof orderSourceNoteLinks>;
   studyNoteReferenceOrder?: ReturnType<typeof planStudyNoteReferenceOrder>;
+  analysisFrameOrder?: ReturnType<typeof orderAnalysisFrame>;
   serviceOrderPlacement?: ServiceOrderPlacementWrite;
   serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
   groupFlowStepPlacement?: StepPlacementWrite;
@@ -802,7 +804,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
         primary ? studyNoteReferenceOrder : undefined)
       : bounded;
     const analysisMetadata = snapshot.resource.collection === 'studyNotes' && snapshot.value?.type === 'analysis'
-      ? metadataAfterAnalysisFrame({ ...snapshot, metadata: referenceMetadata ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
+      ? metadataAfterAnalysisFrame({ ...snapshot, metadata: referenceMetadata ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine,
+        primary ? analysisFrameOrder?.accepted : undefined)
       : referenceMetadata;
     const withTitles = boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata);
     const sermonMetadata = snapshot.resource.collection === 'sermons'
@@ -873,6 +876,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     persistChunkedHistory(transaction, primarySnapshot, command.operationId, SOURCE_NOTE_LINK_HISTORY, 'entries', sourceNoteHistory);
   }
   persistStudyNoteReferenceHistory(transaction, command, primarySnapshot, studyNoteReferenceOrder);
+  const displacedAnalysis = analysisFrameOrder?.displaced;
+  if (displacedAnalysis && primarySnapshot.metadata) {
+    const { values, ...proof } = displacedAnalysis;
+    persistChunkedHistory(transaction, primarySnapshot, command.operationId, '_analysisFrameHistory', 'fields',
+      values.map((value, index) => ({ field: ANALYSIS_RESHAPE_FRAME[index], value, ...proof })));
+  }
   const documentTagHistory = documentTagOrder?.displaced.filter(entry =>
     tagMembership(tagField(primarySnapshot.value), entry.tag) === entry.winnerValue);
   if (documentTagHistory?.length && primarySnapshot.metadata && primarySnapshot.value) {
@@ -1091,6 +1100,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
     let sourceNoteOrder: ReturnType<typeof orderSourceNoteLinks> | undefined;
+    let analysisFrameOrder: ReturnType<typeof orderAnalysisFrame> | undefined;
     let studyNoteReferenceOrder: ReturnType<typeof planStudyNoteReferenceOrder>;
     let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
     let serviceOrderStepPlacement: ServiceOrderStepPlacementWrite | undefined;
@@ -1141,7 +1151,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       homileticOrder = orderHomileticPlans(exegeticalOrder.command, current, raw?._dataEngine, serverMs);
       outlineTitleOrder = orderOutlineTitles(homileticOrder.command, current, raw?._dataEngine, serverMs);
-      const orderedCommand = outlineTitleOrder?.command ?? homileticOrder.command;
+      analysisFrameOrder = orderAnalysisFrame(outlineTitleOrder?.command ?? homileticOrder.command, current, raw?._dataEngine, serverMs);
+      const orderedCommand = analysisFrameOrder.command;
       studyNoteReferenceOrder = planStudyNoteReferenceOrder(orderedCommand, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(orderedCommand, current, {
         guardedTagCleanupName: tagCleanup?.absentTagName,
@@ -1174,7 +1185,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       });
       const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepBodyOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilTopicSummaryOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtTextOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
-      uncertain.push(...compareReturnedAnalysisFrame(command, current, raw?._dataEngine),
+      uncertain.push(...analysisFrameOrder.conflicts,
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine));
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled, ...(outlineTitleOrder?.settled ?? [])] : uncertain);
@@ -1216,7 +1227,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       cleanup = { name: command.baseline.name, after: null, completed: !detachedTagName };
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     if (result.kind === 'conflict') {
       // Keep a proven earlier value even if another field blocks the command. Mark a result that

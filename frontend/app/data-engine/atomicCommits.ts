@@ -323,6 +323,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       ...(sermonTextContinuation && Object.keys(sermonTextContinuation).length && { sermonTextContinuation }),
       ...(studyNoteReferenceChange && { studyNoteReferenceChange }),
       ...(analysisFramePredecessorRevision !== undefined && { analysisFramePredecessorRevision }),
+      ...(record.analysisFrameActionTime && { analysisFrameOpeningMatches: sameGeneration && sameAnalysisFrame(ancestor, snapshot.value) }),
       intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
       ...(groupCopies.length && { rebasedGroupCopySources: groupCopies }),

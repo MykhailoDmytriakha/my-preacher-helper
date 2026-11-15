@@ -214,6 +214,8 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     if (command.analysisFrameObservedRevision !== undefined && (command.resource.collection !== 'studyNotes'
       || !Number.isSafeInteger(command.analysisFrameObservedRevision) || command.analysisFrameObservedRevision < 1
       || !ANALYSIS_RESHAPE_FRAME.every(field => paths.some(path => path[0] === field)))) fail('Invalid analysis frame revision');
+    if (command.analysisFrameActionTime !== undefined && (command.analysisFrameObservedRevision === undefined
+      || (command.analysisFrameActionTime !== null && !boundedActionTime(command.analysisFrameActionTime)))) fail('Invalid analysis action time');
     const sermonRevision = command.sermonTextObservedRevision;
     const sermonOpenings = command.sermonTextOpenings;
     if ((sermonRevision !== undefined || sermonOpenings !== undefined)
