@@ -19,6 +19,7 @@ import { deletionConflicts } from './deletionContent';
 import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pendingStandaloneCreation, type PendingRemovalOpening } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
+import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText, readDocumentTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
@@ -35,7 +36,6 @@ import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceC
 import { projectOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
-import { keepUncontestedPrayerText, readPrayerTextChoice } from './prayerTextChoice';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
@@ -953,7 +953,9 @@ export class EditorController {
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
-        const prayerTextChoice = !selection && !correction ? readPrayerTextChoice(decided) : undefined;
+        const reviewedSeriesDescription = selection && choice === 'remote'
+          && isManualSeriesDescriptionChoice(decided.confirmed, decided.remoteCandidate, decided.conflicts, selection);
+        const documentTextChoice = (!selection || reviewedSeriesDescription) && !correction ? readDocumentTextChoice(decided) : undefined;
         const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
         const scriptureRows = scriptureRow ? [scriptureRow]
           : !selection && !correction ? reviewedServiceStepScriptureRows(decided) : [];
@@ -1174,11 +1176,13 @@ export class EditorController {
           const retainedMeeting = meeting && decided.remoteCandidate?.value
             ? projectFirstGroupMeetingChoice(decided.remoteCandidate.value, meeting, 'remote') : undefined;
           const retainedOutline = projectOutlineParentChoice(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote', titles);
-          const retained = retainedMeeting ?? retainedOutline ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+          const retainedDocumentFields = documentTextChoice?.complete && decided.confirmed.value && decided.draft && decided.remoteCandidate?.value
+            ? keepUncontestedDocumentText(decided.confirmed.value, decided.draft, decided.remoteCandidate.value, Object.keys(documentTextChoice.openings))
+            : undefined;
+          const retained = retainedMeeting ?? retainedOutline ?? retainedDocumentFields ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? (prayerTextChoice?.complete ? keepUncontestedPrayerText(decided, prayerTextChoice.openings) : undefined)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1197,8 +1201,12 @@ export class EditorController {
           }
         }
         const replacements: CommitRequest[] = [];
-        if (prayerTextChoice && (choice === 'local' || prayerTextChoice.complete) && session.checkpoint().dirty) {
-          const action = choice === 'local' ? { kind: 'prayer-text' as const, text: { time: choiceTime ?? null, openings: prayerTextChoice.openings } } : undefined;
+        if (documentTextChoice && (choice === 'local' || documentTextChoice.complete) && session.checkpoint().dirty) {
+          const time = choiceTime ?? null;
+          const action = decided.confirmed.resource.collection === 'series'
+            ? { kind: 'document-metadata' as const, time: choice === 'local' ? time : null }
+            : choice === 'remote' ? undefined
+              : { kind: 'prayer-text' as const, text: { time, openings: documentTextChoice.openings } };
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }

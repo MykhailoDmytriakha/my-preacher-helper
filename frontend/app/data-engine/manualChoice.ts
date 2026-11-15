@@ -6,6 +6,7 @@ import { isAuthoredListComparison } from './authoredStringList';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { autosaveFieldTargets } from './documentFieldAction';
+import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText } from './documentTextChoice';
 import { manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
@@ -160,7 +161,11 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       request.result?.kind === 'conflict' ? request.result.conflicts : [], decision.value);
     draft = projectManualSelection(stored.value!, chosen!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
-    const retained = keepUncontestedSermonFields(basis, reviewed, stored, request.result.conflicts);
+    const conflicts = request.result.conflicts;
+    const retained = basis.value && reviewed && stored.value
+      && isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, decision.selection)
+      ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, ['description'])
+      : keepUncontestedSermonFields(basis, reviewed, stored, conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }
   const resolved = afterChoice(decision.stored, draft, checkpoint.editGeneration + 1);

@@ -1330,29 +1330,31 @@ describe('Durable commit requests', () => {
     }));
   });
 
-  it('keeps exact series title and color predecessors through an unrelated status Save', async () => {
+  it('keeps exact series title, color and description predecessors through an unrelated status Save', async () => {
     const opening: ResourceSnapshot = {
       resource: { collection: 'series', id: 'series' },
       metadata: { protocol: 1, generation: 'series', revision: 1, deleted: false },
       value: { userId: 'owner', title: 'Original', theme: 'Legacy theme', bookOrTopic: 'Romans',
-        status: 'draft', color: '#3B82F6', items: [], sermonIds: [], createdAt: 'now', updatedAt: 'now' },
+        status: 'draft', color: '#3B82F6', description: 'Opening words', items: [], sermonIds: [], createdAt: 'now', updatedAt: 'now' },
     };
     const { queue } = setup({ opening }).makeQueue();
     const session = new DataSession(opening);
     const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
     const metadata = { documentMetadataTime: time };
-    const renamed = { ...opening.value, title: 'First title', theme: 'First title', color: '#10B981' };
+    const renamed = { ...opening.value, title: 'First title', theme: 'First title', color: '#10B981', description: 'First words' };
     session.edit(renamed);
     const first = (await queue.save('series', session.checkpoint(), metadata))!;
     session.applyCommit(first);
     session.edit({ ...renamed, status: 'active' });
     const middle = (await queue.save('series', session.checkpoint(), { ...metadata, predecessorId: first.id }))!;
     session.applyCommit(middle);
-    session.edit({ ...renamed, status: 'active', title: 'Last title', theme: 'Last title', color: '#F59E0B' });
+    session.edit({ ...renamed, status: 'active', title: 'Last title', theme: 'Last title', color: '#F59E0B', description: 'Last words' });
     const last = (await queue.save('series', session.checkpoint(), { ...metadata, predecessorId: middle.id }))!;
     expect(last.seriesFieldActions).toEqual({
       title: { before: { exists: true, value: 'First title' }, after: { exists: true, value: 'Last title' },
         time, observedRevision: 1, predecessorOperationId: first.id, openingTheme: 'First title' },
+      description: { before: { exists: true, value: 'First words' }, after: { exists: true, value: 'Last words' },
+        time, observedRevision: 1, predecessorOperationId: first.id },
       color: { before: { exists: true, value: '#10B981' }, after: { exists: true, value: '#F59E0B' },
         time, observedRevision: 1, predecessorOperationId: first.id },
     });

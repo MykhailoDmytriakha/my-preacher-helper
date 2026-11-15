@@ -18,6 +18,7 @@ import { readCouncilSummaryChoice } from './councilPrivateFields';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
+import { isManualSeriesDescriptionChoice } from './documentTextChoice';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -2853,10 +2854,12 @@ export class DataEngine {
         if (choice === 'local' || controller.getState().checkpoint.dirty) {
           const positionReview = request.result?.kind === 'conflict' ? reviewedHomileticList(
             request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
+          const keepSeriesFields = choice === 'remote' && request.result?.kind === 'conflict'
+            && isManualSeriesDescriptionChoice(request.baseline, stored, request.result.conflicts, selection);
           const checkedAction: EditorCommitAction | undefined = positionReview ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             homileticPositionReview: positionReview,
-          } : action;
+          } : keepSeriesFields ? { kind: 'document-metadata', time: null } : action;
           await controller.save(undefined, selection, undefined, undefined, checkedAction); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
@@ -2886,6 +2889,8 @@ export class DataEngine {
           await controller.acceptRemote(selection, expectedParent, titles); active();
           if ((meeting || readOutlineParentComparison(shown)) && controller.getState().checkpoint.dirty) {
             await controller.save(undefined, selection); active();
+            this.prepareCommitsInBackground(); this.backgroundDrain();
+          } else if (isManualSeriesDescriptionChoice(shown.confirmed, shown.remoteCandidate, shown.conflicts, selection)) {
             this.prepareCommitsInBackground(); this.backgroundDrain();
           }
           if (amendment && scope) await scope.cancel();

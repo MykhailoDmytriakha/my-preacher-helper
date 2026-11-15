@@ -6,7 +6,7 @@ import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
-type HistoryField<Field extends string, Value> = { field: Field; value: Value; winner: Value };
+type HistoryField<Field extends string, Value> = { field: Field; value: Value; winner?: Value };
 type MetadataHistoryPage<Field extends string, Value> = {
   owner: string; generation: string; seriesId?: string; councilId?: string; prayerId?: string; tagId?: string; userId?: string; nextCursor: string | null;
   entries: { id: string; fields: HistoryField<Field, Value>[] }[];
@@ -59,7 +59,7 @@ export function DocumentMetadataHistory<Field extends string, Value = string | n
             <div className="min-w-0 break-words">
               <p className="font-medium">{t(field.label)}</p>
               <p>{describeValue(field.field, field.value)}</p>
-              <p>{t(prefix + '.kept', { value: describeValue(field.field, field.winner) })}</p>
+              {field.winner !== undefined && <p>{t(prefix + '.kept', { value: describeValue(field.field, field.winner) })}</p>}
             </div>
             <button type="button" disabled={disabled(field.field, field.value) || restoring || same || (field.value === null && !nullable.includes(field.field))}
               className="min-h-8 font-medium text-blue-700 hover:underline disabled:opacity-50 dark:text-blue-400"

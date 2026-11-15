@@ -11,6 +11,7 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
+import { seriesDescriptionComparison } from './seriesDescriptionComparison';
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
 
 import type { SeriesTimedField } from '@/data-engine/seriesFieldAction';
@@ -33,6 +34,9 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       discard: () => form.discardRecovery(source) })),
     recover: form.recover });
   const generation = form.openingGeneration;
+  const shown = form.comparison;
+  const comparison = shown && shown.stored.metadata?.generation === generation && seriesDescriptionComparison(shown.conflictPaths, shown.mine, shown.stored.value,
+    shown.identity, t('workspaces.series.form.description'), t('dataSync.emptyField'));
   const values = seriesFormValues(form.data as unknown as Series | undefined);
   // An empty required field is the form's own message; the sync status speaks only of delivery.
   // Kept as words, so a language switch re-says it (BUG-20261003-said-refusal-keeps-old-language).
@@ -74,9 +78,9 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       </fieldset>
       {owner && generation && <DocumentMetadataHistory<SeriesTimedField> key={JSON.stringify([owner, seriesId, generation])}
         owner={owner} generation={generation} collection="series" id={seriesId} current={form.data}
-        prefix="workspaces.series.history" nullable={['color']}
+        prefix="workspaces.series.history" nullable={['color', 'description']}
         labels={{ title: 'workspaces.series.form.title', bookOrTopic: 'workspaces.series.form.bookOrTopic',
-          status: 'workspaces.series.form.status', color: 'workspaces.series.form.color' }}
+          status: 'workspaces.series.form.status', color: 'workspaces.series.form.color', description: 'workspaces.series.form.description' }}
         describeValue={(field, value) => {
           if (value === null) return t('workspaces.series.history.notSet');
           return field === 'status' ? String(storedFieldValue(t, 'series', 'status', value)) : value;
@@ -92,8 +96,8 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
           return next;
         })} />}
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{sayFailure(missing, t)}</p>}
-      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-      onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
+      <DataSyncStatus comparison={comparison || undefined} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
+      onKeepLocal={() => form.keepLocal(undefined, form.captureDocumentMetadataAction())} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
     </div>

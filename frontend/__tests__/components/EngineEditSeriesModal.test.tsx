@@ -1,6 +1,6 @@
 import { closeHistory } from '@tiptap/pm/history';
 import { markdown, mountedEditor, redo, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { EngineEditSeriesModal } from '@/components/series/EngineEditSeriesModal';
 import { actionClock } from '@/data-engine/actionClock.client';
@@ -112,7 +112,7 @@ it('saves the displayed default color when the person actually chooses it', asyn
   view.unmount();
 });
 
-it('captures one explicit Save time for the four short fields and excludes the description', async () => {
+it('captures one explicit Save time for description and the other authored fields', async () => {
   const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
   const capture = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
   const { harness, onClose, view } = setup();
@@ -133,6 +133,7 @@ it('captures one explicit Save time for the four short fields and excludes the d
     expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({ seriesFieldActions: {
       title: { observedRevision: 1, time, openingTheme: 'Opening title' }, bookOrTopic: { observedRevision: 1, time },
       status: { observedRevision: 1, time }, color: { observedRevision: 1, time },
+      description: { observedRevision: 1, time },
     } }));
   } finally {
     capture.mockRestore();
@@ -180,14 +181,24 @@ it('regression pin: keeps explicitly recovered series description text undoable 
   } finally { Date.now = originalNow; mockRealEditor = false; jest.restoreAllMocks(); }
 });
 
-it('cannot Undo and resave the local description after taking the other deviceâ€™s version', async () => {
+it.each([false, true])('keeps the selected series description outside Undo (saved words returned to opening: %s)', async returned => {
   mockRealEditor = true;
   try {
     const { harness, Workspace, view } = setup();
     await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
     typeAtEnd(mountedEditor(view.baseElement), ' Laptop.');
+    fireEvent.change(screen.getByDisplayValue('Romans'), { target: { value: 'Independent book' } });
     await act(async () => { await settleEngine(); });
-    await act(async () => { await harness.remote({ description: 'Opening description PHONE.' }); });
+    const stored = returned ? 'Opening description' : 'Opening description PHONE.';
+    await act(async () => {
+      await harness.remote({ description: 'Opening description PHONE.' });
+      if (returned) await harness.remote({ description: stored });
+    });
+    if (returned) jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: harness.server,
+      conflicts: [{ path: ['description'], base: { exists: true, value: stored }, mine: { exists: true, value: 'Opening description Laptop.' },
+        theirs: { exists: true, value: stored } }],
+    }));
     fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
     await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
     expect(screen.getByTestId('parent-state')).toHaveTextContent('conflict');
@@ -197,17 +208,25 @@ it('cannot Undo and resave the local description after taking the other deviceâ€
     await waitFor(() => expect(screen.getByDisplayValue('Opening title')).toBeEnabled());
     const editor = mountedEditor(reopened.baseElement);
     expect(markdown(editor)).toBe('Opening description Laptop.');
-    fireEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
-    await waitFor(() => expect(markdown(editor)).toBe('Opening description PHONE.'));
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent('Opening description Laptop.');
+    expect(within(comparison).getByLabelText('dataSync.storedVersion')).toHaveTextContent(stored);
+    fireEvent.click(within(comparison).getByRole('button', { name: 'dataSync.useStoredVersion' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    await waitFor(() => expect(markdown(editor)).toBe(stored));
     expect(mountedEditor(reopened.baseElement)).toBe(editor);
+    await waitFor(() => expect(harness.server.value).toMatchObject({ description: stored, bookOrTopic: 'Independent book' }));
+    expect(harness.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      changes: [expect.objectContaining({ path: ['bookOrTopic'] })],
+      seriesFieldActions: { bookOrTopic: { observedRevision: returned ? 3 : 2, time: null } },
+    }));
     const undone = undo(editor);
     await act(async () => { await settleEngine(); });
     fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
     await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
     expect(undone).toBe(false);
-    expect(markdown(editor)).toBe('Opening description PHONE.');
-    expect(harness.server.value).toMatchObject({ description: 'Opening description PHONE.', bookOrTopic: 'Romans' });
+    expect(markdown(editor)).toBe(stored);
+    expect(harness.server.value).toMatchObject({ description: stored, bookOrTopic: 'Independent book' });
     reopened.unmount();
   } finally { mockRealEditor = false; jest.restoreAllMocks(); }
 });

@@ -30,6 +30,7 @@ import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer 
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
 import { makeDocumentTagIntents, observeDocumentTagBasis, validDocumentTagIntents } from './documentTagCapture';
 import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
+import { readDocumentTextChoice } from './documentTextChoice';
 import { ACTION_SLOT, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
@@ -42,7 +43,6 @@ import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentCom
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
-import { readPrayerTextChoice } from './prayerTextChoice';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -148,7 +148,7 @@ export function readTagOpening(...args: Parameters<typeof observeDocumentTagBasi
 export function captureTagIntents(...args: Parameters<typeof makeDocumentTagIntents>) { return makeDocumentTagIntents(...args); }
 export function validTagIntents(...args: Parameters<typeof validDocumentTagIntents>) { return validDocumentTagIntents(...args); }
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
-export function readPrayerTextComparison(checkpoint: SessionCheckpoint) { return readPrayerTextChoice(checkpoint); }
+export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export function readSourceNoteLinkComparison(checkpoint: SessionCheckpoint) { return sourceNoteLinkComparison(checkpoint); }
 export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
 export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }
@@ -608,7 +608,7 @@ export function useDocumentActions() {
       const comparedSourceNotes = scope?.records.some(({ owner: recordOwner, checkpoint }) => recordOwner === owner
         && checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.confirmed.resource.id === resource.id
         && sourceNoteLinkComparison(checkpoint));
-      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && resource.collection === 'prayerRequests'))
+      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && ['prayerRequests', 'series'].includes(resource.collection)))
         ? actionClock.capture(owner) ?? null : undefined;
       const key = documentChoiceKey(owner, resource);
       let applying = applyingDocumentChoices.get(browser);
@@ -1372,8 +1372,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
-      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
-        || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison))
+      const time = owner && (collection === 'series' || compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+        || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time, titles));
     },

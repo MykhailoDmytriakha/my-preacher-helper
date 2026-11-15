@@ -5055,6 +5055,37 @@ describe('transactional DataEngine server', () => {
       expect((await history()).entries).toHaveLength(1);
     });
 
+    it.each([
+      { label: 'earlier phone action', opening: original.description, offset: 20, proof: true, expected: original.description },
+      { label: 'later phone action', opening: original.description, offset: 80, proof: true, expected: 'Phone description' },
+      { label: 'unknown phone time', opening: original.description, offset: null, proof: true, expected: null },
+      { label: 'older client and absent opening', opening: undefined, offset: null, proof: false, expected: null },
+    ])('protects a return to the original description with $label', async ({ opening, offset, proof, expected }) => {
+      const { description: _description, ...unchanged } = original;
+      const created = await processCommand(base.owner, { ...base, operationId: 'series-seed', kind: 'create', generation: null,
+        value: { ...unchanged, ...(opening !== undefined && { description: opening }) } });
+      if (created.kind !== 'acknowledged') throw new Error(JSON.stringify(created));
+      const field = (value: string | undefined) => value === undefined ? { exists: false } : { exists: true, value };
+      const descriptionEdit = (operationId: string, from: string | undefined, to: string | undefined, revision: number, at: number | null) => ({
+        ...base, kind: 'update', operationId, generation: 'series-seed',
+        changes: [{ path: ['description'], before: field(from), after: field(to) }],
+        ...(proof && { seriesFieldActions: { description: { observedRevision: revision,
+          time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at } } } }),
+      });
+      expect((await processCommand(base.owner, descriptionEdit('series-desk', opening, 'Temporary words', 1, 40))).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, descriptionEdit('series-return', 'Temporary words', opening, 2, 60))).kind).toBe('acknowledged');
+      const command = descriptionEdit('series-phone', opening, 'Phone description', 1, offset);
+      const result = await processCommand(base.owner, command);
+      expect(result).toMatchObject({ kind: expected === null ? 'conflict' : 'acknowledged',
+        snapshot: { value: { title: original.title, bookOrTopic: original.bookOrTopic, status: original.status } } });
+      if (result.kind !== 'conflict' && result.kind !== 'acknowledged') throw new Error(JSON.stringify(result));
+      expect(result.snapshot.value?.description).toBe(expected ?? opening);
+      if (result.kind === 'conflict') {
+        expect(result.conflicts).toMatchObject([{ path: ['description'], mine: field('Phone description'), theirs: field(opening) }]);
+      }
+      expect(await processCommand(base.owner, command)).toEqual(result);
+    });
+
     it('orders a later custom CSS color and retains a displaced absence for restoration', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       const deskColor = edit('series-desk', { color: desk.color }, 40);

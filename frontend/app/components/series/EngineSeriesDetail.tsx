@@ -21,10 +21,12 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { EngineEditSeriesModal, SERIES_METADATA_SELECTION } from './EngineEditSeriesModal';
 import { RetainedSeriesMetadata } from './RetainedSeriesMetadata';
+import { seriesDescriptionComparison } from './seriesDescriptionComparison';
 import { SeriesDetailView } from './SeriesDetailView';
 import SeriesItemCard from './SeriesItemCard';
 import { SeriesMembershipDialog, type SeriesMembershipDialogMode } from './SeriesMembershipDialog';
 
+import type { SessionCheckpoint } from '@/data-engine/session';
 import type { Series, SeriesItem } from '@/models/models';
 
 const SERIES_LABEL = 'navigation.series';
@@ -32,8 +34,9 @@ const SERIES_LABEL = 'navigation.series';
 type MembershipDialog = { mode: SeriesMembershipDialogMode; member?: Pick<SeriesItem, 'type' | 'refId'>; recoveryId?: string };
 
 /** This screen has no autosave: a deliberate conflict choice must submit its replacement. */
-async function saveKeptSeries(document: Pick<ReturnType<typeof useDataDocument>, 'keepLocal' | 'save'>): Promise<void> {
-  await document.keepLocal();
+async function saveKeptSeries(document: Pick<ReturnType<typeof useDataDocument>, 'keepLocal' | 'save'>, compared?: SessionCheckpoint): Promise<void> {
+  if (compared) await document.keepLocal(compared);
+  else await document.keepLocal();
   await document.save();
 }
 
@@ -68,8 +71,15 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       title: String(source.record.checkpoint.draft?.title ?? source.record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)),
       discard: () => document.discardRecovery(source) })),
     recover: document.recover });
-  const sync = <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
-    onKeepLocal={() => saveKeptSeries(document)} onAcceptRemote={document.acceptRemote}
+  const checkpoint = document.state?.checkpoint;
+  const comparison = checkpoint && checkpoint.remoteCandidate?.metadata?.generation === checkpoint.confirmed.metadata?.generation
+    ? seriesDescriptionComparison(
+    checkpoint.conflicts.map(conflict => conflict.path), checkpoint.draft, checkpoint.remoteCandidate?.value ?? null,
+    JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.revision]),
+    t('workspaces.series.form.description'), t('dataSync.emptyField')) : undefined;
+  const compared = comparison ? checkpoint : undefined;
+  const sync = <DataSyncStatus comparison={editing ? undefined : comparison} subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
+    onKeepLocal={() => saveKeptSeries(document, compared)} onAcceptRemote={() => compared ? document.acceptRemote(compared) : document.acceptRemote()}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />;
   const retainedMetadata = unavailable && (metadata.active || metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <>

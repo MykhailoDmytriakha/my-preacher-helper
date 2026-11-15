@@ -190,10 +190,12 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   return [];
 }
 
-type LongTextDocumentFieldTarget = typeof STUDY_NOTE_CONTENT | typeof GROUP_DESCRIPTION | PrayerTextTarget;
+type LongTextDocumentFieldTarget = typeof STUDY_NOTE_CONTENT | typeof GROUP_DESCRIPTION | PrayerTextTarget
+  | Extract<SeriesFieldTarget, { field: 'description' }>;
 
 export function isLongTextDocumentField(target: DocumentFieldTarget): target is LongTextDocumentFieldTarget {
-  return target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction' || target.action === 'prayerTextActions';
+  return target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction' || target.action === 'prayerTextActions'
+    || (target.action === 'seriesFieldActions' && target.field === 'description');
 }
 
 export function acceptsDocumentField(value: FieldValue, target: DocumentFieldTarget): boolean {
