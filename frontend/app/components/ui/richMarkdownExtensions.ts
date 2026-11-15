@@ -6,6 +6,7 @@ import { MarkdownSourcePaste } from '@/utils/markdownPaste';
 
 import { MarkdownCodeBlock } from './markdownCodeBlock';
 import { MarkdownListItem } from './markdownListItem';
+import { MarkdownRangeEnter } from './markdownRangeEnter';
 import { MarkdownTable } from './markdownTable';
 
 /** What the rich Markdown editor is made of, apart from its placeholder — one list for the editor and its tests. */
@@ -15,6 +16,7 @@ export function richMarkdownExtensions() {
         StarterKit.configure({ codeBlock: false, listItem: false }),
         MarkdownCodeBlock,
         MarkdownListItem,
+        MarkdownRangeEnter,
         TableKit.configure({ table: false }),
         MarkdownTable,
         // transformPastedText: parse pasted plain-text markdown (e.g. **bold**, # heading)

@@ -99,19 +99,22 @@ it('preserves the arrived table through two inherited Backspaces exactly as prod
   } finally { editors.forEach(editor => editor.destroy()); }
 });
 
-it('matches the inherited cross-list Enter exception without an arrival in the identical production state', () => {
-  const editors = [0, 1].map(() => new Editor({ extensions: richMarkdownExtensions(), content: 'Start' }));
+it('keeps the blocks outside an Enter replacement in the original shuffled list fixture', () => {
+  const editor = new Editor({ extensions: richMarkdownExtensions(), content: 'Start' });
   try {
-    const errors = editors.map(editor => {
-      editor.view.setProps({ handleScrollToSelection: () => true });
-      const doc = editor.schema.nodeFromJSON(inheritedEnter.doc);
-      editor.view.updateState(EditorState.create({ doc, schema: editor.schema, plugins: editor.state.plugins,
-        selection: Selection.fromJSON(doc, inheritedEnter.selection) }));
-      try { nextAction(editor, 'Enter'); return undefined; } catch (error) { return String(error); }
-    });
-    expect(errors[0]).toContain('Inserted content deeper than insertion position');
-    expect(errors[0]).toBe(errors[1]);
-    expect(editors[0].state.doc.toJSON()).toEqual(editors[1].state.doc.toJSON());
-    expect(editors[0].state.selection.toJSON()).toEqual(editors[1].state.selection.toJSON());
-  } finally { editors.forEach(editor => editor.destroy()); }
+    editor.view.setProps({ handleScrollToSelection: () => true });
+    const original = editor.schema.nodeFromJSON(inheritedEnter.doc);
+    const selection = Selection.fromJSON(original, inheritedEnter.selection);
+    editor.view.updateState(EditorState.create({ doc: original, schema: editor.schema, plugins: editor.state.plugins, selection }));
+
+    expect(nextAction(editor, 'Enter')).toBe(true);
+
+    expect(editor.state.doc.firstChild?.textContent).toBe('');
+    expect(editor.state.selection.$head.parent).toBe(editor.state.doc.firstChild);
+    expect(nodes(editor.state.doc).slice(1).map(node => node.toJSON()))
+      .toEqual(nodes(original).slice(1).map(node => node.toJSON()));
+    expect(editor.commands.undo()).toBe(true);
+    expect(editor.state.doc.toJSON()).toEqual(original.toJSON());
+    expect(editor.state.selection.toJSON()).toEqual(selection.toJSON());
+  } finally { editor.destroy(); }
 });
