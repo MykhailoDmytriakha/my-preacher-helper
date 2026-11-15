@@ -212,15 +212,18 @@ it.each(['confirmed', 'cancelled'])('retains transcription when composition is %
   expect((await stand.world.snapshot(noteRef)).value?.dictationSourceIds).toEqual(['source-1']);
 });
 
-it('keeps the accepted paragraph and later dictation when the earlier save is refused', async () => {
+it.each(['dictation-first', 'undo-first', 'overlap-keep', 'overlap-stored', 'overlap-typed-again', 'arrival-after-replacement'])('handles later dictation after a refused save (%s)', async mode => {
   await start();
   expect(stand.laptop.clock.capture('owner')).toBeDefined();
   jest.spyOn(actionClock, 'capture').mockImplementation(owner => stand.laptop.clock.capture(owner));
   act(() => stand.voice.onSourcePersisted?.('source-1'));
   const deliver = stand.laptop.transport.send.bind(stand.laptop.transport);
-  const arrived = original + '\n\nArrivedword';
-  let interleaved = false;
-  jest.spyOn(stand.laptop.transport, 'send').mockImplementationOnce(async command => {
+  const overlapping = mode.startsWith('overlap');
+  const arrived = overlapping ? original.replace('Second paragraph.', 'Arrivedword.') : original + '\n\nArrivedword';
+  let firstOutcome: string | undefined;
+  let replacementOutcome: string | undefined;
+  const laterBody = arrived + '\n\nLater paragraph';
+  const send = jest.spyOn(stand.laptop.transport, 'send').mockImplementationOnce(async command => {
     const before = await stand.world.snapshot(noteRef);
     expect((await processCommand('owner', {
       protocol: 1, kind: 'update', owner: 'owner', operationId: stand.world.id('phone'), resource: noteRef,
@@ -229,16 +232,69 @@ it('keeps the accepted paragraph and later dictation when the earlier save is re
     })).kind).toBe('acknowledged');
     await stand.laptop.run(() => stand.laptop.engine.refreshCollection('studyNotes'));
     expect(md()).toBe(original + ' Privateword');
-    void stand.voice.onText('Dictatedword', 'source-1');
+    if (mode === 'dictation-first') void stand.voice.onText('Dictatedword', 'source-1');
     expect(stand.editor.commands.undo()).toBe(true);
-    interleaved = true;
-    return deliver(command);
+    if (mode !== 'dictation-first') void stand.voice.onText('Dictatedword', 'source-1');
+    const refusal = await deliver(command);
+    firstOutcome = refusal.kind;
+    return refusal;
+  });
+  if (mode === 'arrival-after-replacement') send.mockImplementationOnce(async command => {
+    const before = await stand.world.snapshot(noteRef);
+    expect((await processCommand('owner', {
+      protocol: 1, kind: 'update', owner: 'owner', operationId: stand.world.id('phone'), resource: noteRef,
+      generation: before.metadata!.generation, dependsOn: [],
+      changes: diffFields(before.value!, { ...before.value!, content: laterBody }),
+    })).kind).toBe('acknowledged');
+    const outcome = await deliver(command);
+    replacementOutcome = outcome.kind;
+    return outcome;
   });
   type('Privateword');
   await finish();
 
-  expect(interleaved).toBe(true);
-  expect(await stored()).toContain('Arrivedword');
-  expect(md()).toContain('Dictatedword');
+  expect(firstOutcome).toBe('conflict');
   expect(md()).not.toContain('Privateword');
+  if (mode === 'arrival-after-replacement') {
+    expect(replacementOutcome).toBe('conflict');
+    expect(await stored()).toBe(laterBody);
+    expect(md()).toContain('Dictatedword');
+    return;
+  }
+  if (overlapping) {
+    expect(await stored()).toBe(arrived);
+    expect(md()).toContain('Dictatedword');
+    const compare = screen.getByRole('region', { name: 'dataSync.versionComparison' });
+    expect(compare).toHaveTextContent('Dictatedword');
+    expect(compare).toHaveTextContent('Arrivedword');
+    expect(compare).not.toHaveTextContent('Privateword');
+    if (mode === 'overlap-typed-again') {
+      type('Newestword');
+      await finish();
+      expect(screen.getByRole('region', { name: 'dataSync.versionComparison' })).toHaveTextContent('Newestword');
+    }
+    const chosenDraft = md();
+    const keep = mode !== 'overlap-stored';
+    fireEvent.click(screen.getByRole('button', { name: keep ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    await settle();
+    if (!keep) {
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+      await settle();
+    }
+    await finish();
+    const chosen = keep ? chosenDraft : arrived;
+    expect(await stored()).toBe(chosen);
+    expect(md()).toBe(chosen);
+    expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument();
+    type('AfterChoice');
+    const nextBody = md();
+    expect(nextBody).toContain('AfterChoice');
+    await finish();
+    expect(await stored()).toBe(nextBody);
+    return;
+  }
+  const expected = arrived + '\n\nDictatedword';
+  expect(await stored()).toBe(expected);
+  expect(md()).toBe(expected);
+  expect((await stand.world.snapshot(noteRef)).value?.dictationSourceIds).toEqual(['source-1']);
 });

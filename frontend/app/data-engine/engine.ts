@@ -36,6 +36,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { continueRefusedNote, reviewRefusedNote, type NoteBodyContinuation } from './noteRefusalContinuation';
 import { OpenEditorJournal, OpenEditorRequests } from './openEditorRequests';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, singleFieldAnswerScopes, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
@@ -1368,6 +1369,44 @@ export class DataEngine {
     }
   }
 
+  async continueRefusedNote(resource: ResourceRef, editorId: string, captureScope: string,
+    waiting: readonly EditorRecord[], attempt: NoteBodyContinuation): Promise<DocumentWriteReceipt | null> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    const writer = noteCaptureWriter(captureScope, owner, resource);
+    const [record] = waiting;
+    if (!writer || !isResourceActionEditor(editorId, resource) || waiting.length !== 1
+      || record.owner !== owner || !sameResource(record.checkpoint.confirmed.resource, resource) || !isResourceActionEditor(record.editorId, resource)) return null;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    const unsettled = requests.filter(request => request.owner === owner && sameResource(request.baseline.resource, resource)
+      && request.state !== 'cancelled' && request.state !== 'acknowledged');
+    const [source] = unsettled;
+    if (unsettled.length !== 1 || source.editorId !== record.editorId
+      || noteCaptureWriter(source.retentionScope, owner, resource) !== writer) return null;
+    const held = record.checkpoint.pending[source.id];
+    if (Object.keys(record.checkpoint.pending).length !== 1 || !held || held.generation !== source.editGeneration
+      || !equalValues(held.value, source.value)) return null;
+    const automatic = continueRefusedNote(source, attempt);
+    const known = await this.knownSnapshot(owner, generation, resource);
+    this.assertCurrent(owner, generation);
+    if (known && (!known.value || known.metadata?.generation !== source.working.metadata?.generation)) return null;
+    const currentOpening = automatic && (!known || (known.metadata?.revision ?? 0) < automatic.content.observedRevision
+      || (known.metadata?.revision === automatic.content.observedRevision && known.value?.content === automatic.content.opening));
+    const replacement = currentOpening ? automatic : reviewRefusedNote(source, attempt);
+    if (!replacement) return null;
+
+    const session = new DataSession(replacement.confirmed);
+    session.edit(replacement.value);
+    const receipt = await this.commits.replaceNoteRequest(source, editorId, captureScope, session.checkpoint(), request => {
+      session.applyCommit(request);
+      return { owner, editorId, checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+    }, replacement.content);
+    this.assertCurrent(owner, generation);
+    if (receipt) { this.prepareCommitsInBackground(); this.backgroundDrain(); }
+    return receipt;
+  }
+
   /** The same note draft may correct its sole definitive body-size refusal. */
   async shortenRefusedNote(resource: ResourceRef, editorId: string, captureScope: string,
     waiting: readonly EditorRecord[], update: (opening: DocumentData | null, confirmed: ResourceSnapshot, sizeRefusedDraft: DocumentData) => DocumentData | null,
@@ -1412,7 +1451,8 @@ export class DataEngine {
    * them may still be open in another tab. Optional IDs pin the reviewed roots; an empty selection
    * cancels nothing. Omitted IDs retain the resource-wide API. Resolves to the requests taken back.
    */
-  async takeStoredVersion(resource: ResourceRef, operationIds?: readonly string[]): Promise<number> {
+  async takeStoredVersion(resource: ResourceRef, operationIds?: readonly string[],
+    onStored?: (snapshot: ResourceSnapshot) => void): Promise<number> {
     const owner = this.requireOwner();
     this.validateResource(resource, owner);
     const generation = this.generation;
@@ -1462,6 +1502,12 @@ export class DataEngine {
         && sameResource(entry.controller.getState().checkpoint.confirmed.resource, resource)).map(entry => entry.controller!.settled()));
       this.assertCurrent(owner, generation);
       await this.commits.finishCancellation('', ids); this.assertCurrent(owner, generation);
+      if (onStored && chosen) {
+        const stored = await this.knownSnapshot(owner, generation, resource);
+        if (!stored || stored.metadata?.generation === chosen.metadata?.generation) {
+          onStored(stored && canReplaceSnapshot(chosen, stored) ? stored : chosen);
+        }
+      }
     }
     return answered.length;
   }

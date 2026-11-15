@@ -26,6 +26,7 @@ import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { TagHistory } from '@/components/ui/TagHistory';
 import { useEditorValue } from '@/components/ui/useEditorValue';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
+import { useStudyNoteBodyChoice } from '@/data-engine/react.client';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -63,7 +64,7 @@ import { formatScriptureReference, studyNoteSearchText } from '@/utils/scripture
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
-import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
+import { appendNoteParagraph, noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 import { isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
 import { formatStudyNoteForCopy, studyNoteOwnName } from '@/utils/studyNoteUtils';
@@ -95,6 +96,7 @@ import { useNoteScrollPosition } from './useNoteScrollPosition';
 import type { SheetReference } from '@/components/bible/VerseSheet';
 import type { DocumentTagBasis } from '@/data-engine/documentTagCapture';
 import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
+import type { NoteDictationAfterUndo } from '@/data-engine/noteRefusalContinuation';
 import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { StudyNoteContentCapture } from '@/data-engine/types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -249,7 +251,7 @@ function useNoteAIAssistant({
     setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
-    setTitle: (t: string) => void; appendDictation: (text: string, recovered: boolean) => void;
+    setTitle: (t: string) => void; appendDictation: (text: string, recovered: boolean, sourceId: string) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Text the app inserts whole — dictation, an applied analysis — is saved at once, not after the typing pause. */
@@ -376,7 +378,7 @@ function useNoteAIAssistant({
             if (dictationSourceIds.includes(sourceId)) return;
             setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
             saveAtOnceRef.current = true;
-            appendDictation(text, recovered === true);
+            appendDictation(text, recovered === true, sourceId);
         },
         onEmpty: () => toast.error(t('errors.audioProcessing')),
         onError: words => toast.error(sayFailure(words, t)),
@@ -780,6 +782,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             contentOpeningRef.current = observed;
         }
     }, [noteId, observeContent]);
+    const bodyCapture = useRef<{ noteId: string; owner: string | undefined; id: string; content: string; witness?: NoteDictationAfterUndo } | null>(null);
+    const typingAfterCapture = useRef<{ id: string; content: string } | null>(null);
     const contentEditRef = useRef<{ owner: string; id: string; value: string; capture: StudyNoteContentCapture; displayedOpening?: string } | null>(null);
     const [dictationSourceIds, setDictationSourceIds, liveDictation] = useLiveState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds, liveRecording] = useLiveState<string[]>([]);
@@ -930,6 +934,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             ? sameNote.capture : contentOpeningRef.current?.opening === opening ? contentOpeningRef.current : observeContent?.(noteId, opening);
         // Keep the exact visible basis through a string of edits while a save
         // of that basis is still on its way back.
+        const submitted = bodyCapture.current;
+        if (submitted?.noteId === noteId && submitted.owner === uid && submitted.witness
+            && (submitted.content === editOpening || (typingAfterCapture.current?.id === submitted.id && typingAfterCapture.current.content === editOpening))) {
+            typingAfterCapture.current = { id: submitted.id, content: value };
+        } else typingAfterCapture.current = null;
         const displayedOpening = sameNote && editOpening === sameNote.value
             ? sameNote.displayedOpening ?? editOpening : editOpening;
         contentEditRef.current = uid && !isNew && seen
@@ -947,9 +956,25 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         if (accepted && accepted.generation === previous.capture.generation
             && accepted.observedRevision > previous.capture.observedRevision) return accepted.opening;
     };
-    const appendDictation = (text: string, recovered: boolean) => {
+    const historyText = useRef<{ id: string; owner: typeof uid; opening: string; restored: string } | null>(null);
+    const authoredTranscription = useRef<{ id: string; owner: typeof uid; before: string; text: string; sourceId: string } | null>(null);
+    const witnessedDictationAfterUndo = (value: string) => {
+        const undo = historyText.current;
+        const transcription = authoredTranscription.current;
+        if (undo?.id !== noteId || undo.owner !== uid || transcription?.id !== noteId || transcription.owner !== uid
+            || (transcription.before !== undo.restored && transcription.before !== undo.opening)) return;
+        const displayed = appendNoteParagraph(undo.restored, transcription.text);
+        if (value === displayed) return { opening: undo.opening, restored: undo.restored, appended: transcription.text, sourceId: transcription.sourceId };
+        const capture = bodyCapture.current;
+        if (capture?.noteId === noteId && capture.owner === uid && capture.witness?.sourceId === transcription.sourceId
+            && typingAfterCapture.current?.id === capture.id && typingAfterCapture.current.content === value) {
+            return { ...capture.witness, previousBody: capture.content };
+        }
+    };
+    const appendDictation = (text: string, recovered: boolean, sourceId: string) => {
+        if (!recovered) authoredTranscription.current = { id: noteId, owner: uid, before: liveContent.current, text, sourceId };
         if (liveContent.current === baselineRef.current?.content) contentRoot.current = liveContent.current;
-        const next = appendContent(previous => previous ? `${previous}\n\n${text}` : text);
+        const next = appendContent(previous => appendNoteParagraph(previous, text));
         liveContent.current = next;
         if (!recovered) return;
         // Restoring a recording from this note is a fresh choice on the shown words.
@@ -1029,6 +1054,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const bodyEdit = contentEditRef.current;
         const contentCapture = bodyEdit?.owner === uid && bodyEdit?.id === noteId && bodyEdit.value === content ? bodyEdit.capture : undefined;
         const origin = opening && !reviewingLegacyDraft.current && noteDraftOrigin(opening, authoredDraft, titleCapture, typeCapture, contentCapture);
+        const dictationAfterUndo = witnessedDictationAfterUndo(content);
+        if (origin && dictationAfterUndo) origin.dictationAfterUndo = dictationAfterUndo;
         const recoveryMeta = restoredGeneration.current !== undefined && { targetGeneration: restoredGeneration.current };
         const payload = reviewingLegacyDraft.current ? { ...authoredDraft, ...recoveryMeta, reviewLegacyFields: true as const }
             : origin ? { ...authoredDraft, ...recoveryMeta, origin } : authoredDraft;
@@ -1073,6 +1100,40 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         voiceHandoffRef.current?.()?.release(rejected);
         setDictationSourceIds(previous => previous.some(id => rejected.has(id)) ? previous.filter(id => !rejected.has(id)) : previous);
     };
+    const shownBodyCapture = () => {
+        const capture = bodyCapture.current;
+        return capture?.noteId === noteId && capture.owner === uid ? capture : undefined;
+    };
+    useStudyNoteBodyChoice(noteId, {
+        currentRequest: () => {
+            const capture = shownBodyCapture();
+            return capture && witnessedDictationAfterUndo(liveContent.current)
+                ? { id: capture.id, stillShown: liveContent.current === capture.content } : undefined;
+        },
+        useStored: (requestId, stored) => {
+            const capture = shownBodyCapture();
+            const value = stored.value;
+            const saved = value?.content;
+            if (!capture || capture.id !== requestId || capture.content !== liveContent.current || typeof saved !== 'string'
+                || !value || !stored.metadata || !baselineRef.current
+                || (presence?.snapshot?.metadata && presence.snapshot.metadata.generation !== stored.metadata.generation)) return;
+            const acceptedSources = Array.isArray(value.dictationSourceIds)
+                ? value.dictationSourceIds.filter((id): id is string => typeof id === 'string') : [];
+            const opening = { generation: stored.metadata.generation, observedRevision: stored.metadata.revision, opening: saved };
+            bodyCapture.current = null;
+            contentOpeningRef.current = opening;
+            contentEditRef.current = null;
+            contentRoot.current = saved;
+            historyText.current = null;
+            authoredTranscription.current = null;
+            releaseUnconfirmedDictation(liveDictation.current, acceptedSources);
+            setDictationSourceIds(acceptedSources);
+            baselineRef.current = { ...baselineRef.current, content: saved, dictationSourceIds: acceptedSources };
+            setConfirmedDraft(previous => previous ? { ...previous, content: saved, dictationSourceIds: acceptedSources } : previous);
+            setContent(saved);
+        },
+    });
+
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
         creationId,
@@ -1096,6 +1157,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             if (engineRevision) shownReferenceVersion.current = { references: accepted, revision: engineRevision };
             dispatchReferences({ type: 'acknowledge', submitted, accepted, aliases, revision, engineRevision });
         },
+        onBodyCaptured: (id, content) => {
+            bodyCapture.current = { noteId, owner: uid, id, content, witness: draftPayload.origin?.dictationAfterUndo };
+        },
         onContentCaptured: opening => {
             if (baselineRef.current?.content === opening.opening || contentEditRef.current?.value === opening.opening) {
                 contentOpeningRef.current = opening;
@@ -1117,7 +1181,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             if (replacedDictation) releaseUnconfirmedDictation(replacedDictation, saved.dictationSourceIds ?? []);
             if (replacedContent !== undefined) {
                 const pendingContent = contentEditRef.current;
-                if (pendingContent?.owner !== uid || pendingContent?.id !== noteId || pendingContent?.value === replacedContent) {
+                const continued = draftPayload.origin?.dictationAfterUndo;
+                const acceptedContinuation = continued && saved.dictationSourceIds?.includes(continued.sourceId)
+                    && appendNoteParagraph(continued.restored, continued.appended) === replacedContent;
+                if (acceptedContinuation || pendingContent?.owner !== uid || pendingContent?.id !== noteId || pendingContent?.value === replacedContent) {
                     setContent(current => current === replacedContent ? saved.content : current);
                 }
             }
@@ -1954,6 +2021,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                 readAppend={readContentAppend} readAcceptedAfterUndo={readAcceptedAfterUndo}
                                 valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
                                 onChange={changeContent} includeEditOpening
+                                onHistoryText={(opening, restored) => { historyText.current = { id: noteId, owner: uid, opening, restored }; }}
                                 onHoldText={typed => holdAlternative(holdNoteDraftText(draftPayload, typed, !isNew ? baselineRef.current?.content : undefined))}
                                 onEditAfterForeignValue={editAfterForeignValue}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}

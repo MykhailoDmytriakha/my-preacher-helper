@@ -17,6 +17,7 @@ import type { CommentKindCapture, CommentKindSeen } from '@/data-engine/commentK
 import type { CommentPlaceCapture, CommentPlaceSeen } from '@/data-engine/commentPlaceAction';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTitleSeen, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
+import type { NoteDictationAfterUndo } from '@/data-engine/noteRefusalContinuation';
 import type { DocumentData, ResourceSnapshot, StudyNoteContentCapture, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
@@ -88,6 +89,7 @@ type NoteUpdate = {
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
   noteContent?: StudyNoteContentCapture | null;
+  dictationAfterUndo?: NoteDictationAfterUndo;
   typeCapture?: StudyNoteTypeCapture;
   commentKindCapture?: CommentKindCapture;
   commentPlaceCapture?: CommentPlaceCapture;
@@ -269,7 +271,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedGeneration, expectedBaseline, captureScope, titleCapture, noteContent, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedGeneration, expectedBaseline, captureScope, titleCapture, noteContent, dictationAfterUndo, typeCapture, commentKindCapture, commentPlaceCapture, tagMembership, referenceEvidence }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedStudyNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedStudyNote>;
@@ -380,7 +382,8 @@ export function useStudyNotesEngine(enabled: boolean) {
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             return next;
           } }, captureScope || action || patch.content !== undefined ? { ...(captureScope && { captureScope }), ...(action && { action }),
-            ...(patch.content !== undefined && { noteContent: noteContent ?? null }) } : undefined);
+            ...(patch.content !== undefined && { noteContent: noteContent ?? null }),
+            ...(dictationAfterUndo && typeof patch.content === 'string' && expectedBaseline && { noteContinuation: { expectedBody: expectedBaseline.content, proof: dictationAfterUndo, patch: { ...patch, updatedAt: now() } } }) } : undefined);
         } catch (error) {
           if (staleTimedField && error && typeof error === 'object' && 'code' in error
             && (error.code === 'study-note-title-basis-changed' || error.code === 'study-note-type-basis-changed' || error.code === 'comment-kind-basis-changed' || error.code === 'comment-place-basis-changed')) throw staleTimedField;

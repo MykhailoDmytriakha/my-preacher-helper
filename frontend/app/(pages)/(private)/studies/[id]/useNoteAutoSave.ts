@@ -80,7 +80,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, contentRoot, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, contentRoot, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onBodyCaptured, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -107,6 +107,7 @@ export function useNoteAutoSave({
         captureScope?: string;
         titleCapture?: StudyNoteTitleCapture;
         noteContent?: StudyNoteContentCapture;
+        dictationAfterUndo?: NonNullable<NoteDraftPayload['origin']>['dictationAfterUndo'];
         typeCapture?: StudyNoteTypeCapture;
         tagMembership?: readonly DocumentTagIntent[];
         referenceEvidence?: StudyNoteReferenceEvidence;
@@ -143,6 +144,7 @@ export function useNoteAutoSave({
      */
     onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType, replacedContent?: string, replacedDictation?: readonly string[]) => void;
     referenceEdits?: ReadonlyMap<string, NoteReferenceEdit>;
+    onBodyCaptured?: (requestId: string, body: string) => void;
     onContentCaptured?: (opening: Omit<StudyNoteContentCapture, 'time'>) => void;
     onContentAcknowledged?: (content: string, proof: { generation: string; revision: number } | undefined) => void;
     onReferenceAcknowledged?: (submitted: ScriptureReference[], accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[], revision?: number, engineRevision?: number) => void;
@@ -360,6 +362,7 @@ export function useNoteAutoSave({
                 id: noteId,
                 captureScope,
                 ...(noteContent && { noteContent }),
+                ...(draftOrigin?.dictationAfterUndo && { dictationAfterUndo: draftOrigin.dictationAfterUndo }),
                 ...(titleCapture && { titleCapture }),
                 ...(typeCapture && { typeCapture }),
                 ...(tagMembership.length && { tagMembership }),
@@ -381,11 +384,11 @@ export function useNoteAutoSave({
                     ? null
                     : ({ ...baselineRef.current, ...(contentRoot && 'content' in updates ? { content: contentRoot.current } : {}) } as unknown as Record<string, unknown>),
             });
-            if (noteContent && submission.capture) {
-                const { generation, observedRevision } = noteContent;
+            if (updates.content !== undefined && submission.capture) {
                 void submission.capture.then(receipt => {
                     if (receipt.kind === 'submitted' && receipt.requestId) {
-                        onContentCaptured?.({ generation, observedRevision, opening: submittedPayload.content, requestId: receipt.requestId });
+                        onBodyCaptured?.(receipt.requestId, submittedPayload.content);
+                        if (noteContent) onContentCaptured?.({ ...noteContent, opening: submittedPayload.content, requestId: receipt.requestId });
                     }
                 }).catch(() => undefined);
             }
@@ -536,7 +539,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, contentRoot, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, contentRoot, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onBodyCaptured, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

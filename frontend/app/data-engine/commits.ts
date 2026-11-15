@@ -643,23 +643,30 @@ export class CommitQueue {
     });
   }
 
-  /** Replace an exact terminal size refusal and capture the corrected draft in one transaction. */
   async replaceOversizedNote(source: CommitRequest, editorId: string, captureScope: string, corrected: SessionCheckpoint,
     project: (saved: CommitRequest) => EditorRecord, content?: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
+    if (!oversizedNoteOpening(source) || !corrected.draft || !equalValues(corrected.confirmed, source.working)
+      || !shortenedNoteContent(source.value, corrected.draft)) return null;
+    return this.replaceNoteRequest(source, editorId, captureScope, corrected, project, noteCorrectionOpening(source, content));
+  }
+
+  /** Replace a pinned terminal request and capture its continuation in one local transaction. */
+  async replaceNoteRequest(source: CommitRequest, editorId: string, captureScope: string, corrected: SessionCheckpoint,
+    project: (saved: CommitRequest) => EditorRecord, noteContent: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
     const owner = this.owner, generation = this.generation;
     const store = this.options.store;
-    if (!owner || owner !== source.owner || !oversizedNoteOpening(source) || !store.compareAndSetWithCheckpoint
-      || !corrected.draft || !equalValues(corrected.confirmed, source.working) || !shortenedNoteContent(source.value, corrected.draft)) return null;
-    const replacement = this.buildRequest(owner, editorId, corrected, [], undefined, {
-      retentionScope: captureScope, noteContent: noteCorrectionOpening(source, content),
-    });
+    if (!owner || owner !== source.owner || !store.compareAndSetWithCheckpoint
+      || !['conflict', 'refused'].includes(source.state) || !corrected.draft
+      || source.baseline.resource.collection !== 'studyNotes'
+      || !resourceMatches(source.baseline.resource, corrected.confirmed.resource)) return null;
+    const replacement = this.buildRequest(owner, editorId, corrected, [], undefined, { retentionScope: captureScope, noteContent });
     if (!replacement) return null;
     const prepared = this.prepareIndependentUpdate({ ...replacement, initialized: true }, owner);
     if (!prepared || getUtf8ByteLength(JSON.stringify(prepared.command)) > MAX_COMMAND_BYTES) return null;
     const scope = await this.planCancellation('', [source.id], false);
     this.assertCurrent(owner, generation);
     const [previous] = scope.records;
-    if (scope.records.length !== 1 || previous.id !== source.id || previous.revision !== source.revision || !oversizedNoteOpening(previous)) return null;
+    if (scope.records.length !== 1 || previous.id !== source.id || previous.revision !== source.revision || previous.state !== source.state) return null;
 
     const { receipt } = await this.receipts.capture(owner, editorId, corrected, async () => {
       const saved = await store.compareAndSetWithCheckpoint!([

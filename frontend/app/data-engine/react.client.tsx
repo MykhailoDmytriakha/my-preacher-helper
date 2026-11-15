@@ -75,6 +75,7 @@ import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction, MembershipRef } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
+import type { NoteBodyContinuation } from './noteRefusalContinuation';
 import type { PreachStatusIntent } from './preachStatusAction';
 import type { RowFieldActionKind } from './rowFieldAutosave';
 import type { SeriesHistorySelection, SeriesMembershipComparison } from './seriesMembershipHistory';
@@ -466,6 +467,52 @@ const decisionRequired = () => Object.assign(new Error('An earlier change to thi
 // A banner and an editor can share a document without sharing a hook instance.
 const applyingDocumentChoices = new WeakMap<BrowserDataEngine, Map<string, Promise<number>>>();
 const documentChoiceKey = (owner: string, { collection, id }: ResourceRef) => JSON.stringify([owner, collection, id]);
+
+interface OpenStudyNoteBody {
+  currentRequest(): { id: string; stillShown: boolean } | undefined;
+  useStored(requestId: string, stored: ResourceSnapshot): void;
+}
+
+const studyNoteBodies = new WeakMap<BrowserDataEngine, Map<string, Set<OpenStudyNoteBody>>>();
+
+/** Keep the live note aligned with a choice about its exact captured body. */
+export function useStudyNoteBodyChoice(noteId: string, observer: OpenStudyNoteBody): void {
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const latest = useRef(observer);
+  latest.current = observer;
+  useEffect(() => {
+    if (!browser || !owner) return;
+    const key = documentChoiceKey(owner, { collection: 'studyNotes', id: noteId });
+    let notes = studyNoteBodies.get(browser);
+    if (!notes) studyNoteBodies.set(browser, notes = new Map());
+    const active = notes.get(key) ?? new Set();
+    notes.set(key, active);
+    const entry: OpenStudyNoteBody = {
+      currentRequest: () => latest.current.currentRequest(),
+      useStored: (id, snapshot) => latest.current.useStored(id, snapshot),
+    };
+    active.add(entry);
+    return () => {
+      active.delete(entry);
+      if (!active.size) notes.delete(key);
+    };
+  }, [browser, owner, noteId]);
+}
+
+function observeStudyNoteChoices(browser: BrowserDataEngine, key: string, scope?: RecoveryChoiceScope) {
+  const active = studyNoteBodies.get(browser)?.get(key);
+  if (!active || !scope) return [];
+  return [...active].flatMap(note => {
+    const capture = note.currentRequest();
+    const comparison = capture && scope.records.find(({ checkpoint }) => checkpoint.pending[capture.id]
+      && checkpoint.conflicts.length === 1 && checkpoint.conflicts[0].path.length === 1 && checkpoint.conflicts[0].path[0] === 'content');
+    if (!comparison || !capture) return [];
+    if (!capture.stillShown) throw decisionRequired();
+    const generation = comparison.checkpoint.remoteCandidate?.metadata?.generation;
+    return generation ? [{ note, requestId: capture.id, generation }] : [];
+  });
+}
+
 const remoteDeleted = (record: EditorRecord) => {
   const candidate = record.checkpoint.remoteCandidate;
   return Boolean(candidate && (candidate.value === null || candidate.metadata?.deleted));
@@ -577,11 +624,17 @@ export function useDocumentActions() {
     },
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
-    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction; noteContent?: StudyNoteContentCapture | null }) => {
+    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction; noteContent?: StudyNoteContentCapture | null; noteContinuation?: NoteBodyContinuation }) => {
       const scope = options?.captureScope;
       const correction = action.kind === 'update' && resource.collection === 'studyNotes' && scope && !options?.action && browser
-        ? (waiting: readonly EditorRecord[]) => browser.engine.shortenRefusedNote(resource, browser.editorId(resource, ACTION_SLOT),
-          scope, waiting, action.update, options?.noteContent) : undefined;
+        ? async (waiting: readonly EditorRecord[]) => {
+          const editorId = browser.editorId(resource, ACTION_SLOT);
+          if (options?.noteContinuation) {
+            const receipt = await browser.engine.continueRefusedNote(resource, editorId, scope, waiting, options.noteContinuation);
+            if (receipt) return receipt;
+          }
+          return browser.engine.shortenRefusedNote(resource, editorId, scope, waiting, action.update, options?.noteContent);
+        } : undefined;
       return withEditor(resource, editor => action.kind === 'delete'
         ? editor.removeWithReceipt(options)
         : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create', correction);
@@ -617,6 +670,13 @@ export function useDocumentActions() {
         applyingDocumentChoices.set(browser, applying);
       }
       const applyChoice = async () => {
+        const noteChoices = observeStudyNoteChoices(browser, key, scope);
+        const publishStoredBody = noteChoices.length && choice === 'theirs'
+          ? (snapshot: ResourceSnapshot) => {
+            for (const { note, requestId, generation } of noteChoices) {
+              if (snapshot.metadata?.generation === generation) note.useStored(requestId, snapshot);
+            }
+          } : undefined;
         if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
         let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
         const sharedAnswer = (comparedSourceNotes && sourceNoteChoiceRecord(waiting))
@@ -632,7 +692,7 @@ export function useDocumentActions() {
         }
         if (scope && choice === 'theirs' && !exactField) {
           // Modern copies settle through the same request-scoped projection as screen drafts.
-          taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
+          taken = await browser.engine.takeStoredVersion(resource, scope.operationIds, publishStoredBody);
           // Only directly owned legacy commands still need an editor; never reopen cancelled modern work.
           waiting = waiting.filter(({ record }) => shown(record) && record.prepared
             && isDirectLegacyDocumentIntent(Object.keys(record.checkpoint.pending), record.prepared.operationId)
@@ -667,6 +727,7 @@ export function useDocumentActions() {
             await editor.acceptRemote(scope ? shown(record) : undefined);
             if (comparedSourceNotes || capturedByChoice) continue;
             const { checkpoint } = editor.getState();
+            if (exactField) publishStoredBody?.(checkpoint.confirmed);
             if (Object.keys(checkpoint.pending).length) continue;
             if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
               || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();

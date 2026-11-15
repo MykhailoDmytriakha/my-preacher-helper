@@ -1,3 +1,5 @@
+import type { ResourceRef } from '@/data-engine/types';
+import { ACTION_SLOT, editorIdentity, retirableEditorIdentity } from '@/data-engine/editorIdentity';
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -29,7 +31,7 @@ jest.mock('@/hooks/useTags', () => ({ useTags: () => ({ tags: { requiredTags: []
 jest.mock('@/hooks/useSermonNoteLinks', () => ({ useSermonsBuiltOnNote: () => ({ sermons: [] }) }));
 jest.mock('@/hooks/useWideViewport', () => ({ useWideViewport: () => true, useRoomyHeader: () => true }));
 jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => ({ aiBlocked: false, blocked: () => false, blockedLabelKey: () => '', refresh: jest.fn() }) }));
-jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: (args: Parameters<typeof useTextDictation>[0]) => { mockVoice = args; return { captureAcceptance: () => async () => {  }, carryTo: async () => undefined, canChangeDestination: () => true }; } }));
+jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: (args: Parameters<typeof useTextDictation>[0]) => { mockVoice = args; return { captureAcceptance: () => async () => {  }, carryTo: async () => undefined, canChangeDestination: () => true, releaseApplied: () => undefined }; } }));
 jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: () => null }));
 jest.mock('@/components/audio-recorder/RecordingDraftBanner', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/ui/FoldableMarkdown', () => ({ FoldableMarkdown: ({ content }: { content: string }) => <div data-testid="read-note">{content}</div> }));
@@ -111,7 +113,9 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   await world.seed(noteRef, { ...noteValue(), type: 'note', content: initialContent });
   laptop = await world.device('laptop');
   jest.mocked(watchedStore).mockImplementation(database => laptop.storage.store(database));
-  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: () => world.id('opening') };
+  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: (resource: ResourceRef, slot = 'default') => slot === ACTION_SLOT
+    ? editorIdentity('laptop', resource, slot, world.id('opening'))
+    : retirableEditorIdentity('laptop', resource, slot, world.id('opening')) };
   jest.spyOn(window, 'confirm').mockImplementation(() => { notices.push('window.confirm'); return false; });
   jest.spyOn(window, 'alert').mockImplementation(() => { notices.push('window.alert'); });
   observer = new MutationObserver(captureNotices);

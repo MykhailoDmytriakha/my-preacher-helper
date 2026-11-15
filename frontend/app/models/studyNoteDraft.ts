@@ -1,4 +1,5 @@
 import type { StudyNoteTitleCapture, StudyNoteTypeCapture } from '@/data-engine/documentFieldAction';
+import type { NoteDictationAfterUndo } from '@/data-engine/noteRefusalContinuation';
 import type { StudyNoteContentCapture } from '@/data-engine/types';
 import type { ScriptureReference, StudyNoteType } from '@/models/models';
 
@@ -15,6 +16,7 @@ export interface NoteDraftOrigin {
     fields: Partial<Pick<NoteDraftPayload, 'title' | 'content' | 'tags' | 'scriptureRefs' | 'type'>>;
     title?: StudyNoteTitleCapture;
     content?: StudyNoteContentCapture;
+    dictationAfterUndo?: NoteDictationAfterUndo;
     type?: StudyNoteTypeCapture;
 }
 

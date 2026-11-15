@@ -7,3 +7,7 @@ export function noteRecordingMetadata(dictationSourceIds: readonly string[] = []
     ...(recordingSourceIds.length ? { recordingSourceIds: [...recordingSourceIds] } : {}),
   };
 }
+
+export function appendNoteParagraph(body: string, paragraph: string): string {
+  return body ? body + '\n\n' + paragraph : paragraph;
+}

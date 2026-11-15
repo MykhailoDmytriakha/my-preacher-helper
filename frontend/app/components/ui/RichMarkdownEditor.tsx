@@ -29,6 +29,7 @@ interface RichMarkdownEditorProps {
     readAppend?: () => ObservedTextAppend | undefined;
     /** A newer accepted body to use when Undo only cancels unsubmitted text. */
     readAcceptedAfterUndo?: (restored: string, opening: string) => string | undefined;
+    onHistoryText?: (opening: string, restored: string) => void;
     /** Text now owned by this cell after an accepted deletion elsewhere in the document. */
     confirmedTextTransfer?: ObservedTextAppend;
     /** Witness the applied document once, before its first subsequent edit. */
@@ -112,6 +113,7 @@ export function RichMarkdownEditor({
     observedAppend: appendedText,
     readAppend,
     readAcceptedAfterUndo,
+    onHistoryText,
     confirmedTextTransfer,
     onEditAfterForeignValue,
     valueIsUserAction = false,
@@ -192,11 +194,13 @@ export function RichMarkdownEditor({
                 return;
             }
             const editOpening = includeEditOpening ? readOpeningMarkdown(editor, transaction.before) : undefined;
+            const fromHistory = editOpening !== undefined && isHistoryTransaction(transaction);
+            if (fromHistory) onHistoryText?.(editOpening, typed);
             const append = readAppend?.();
             // When dictation and a native key share a task, the page can already
             // hold the append while the key still edits the old ProseMirror tree.
             if (append && canonicalForeignTarget(editor, append.before).eq(transaction.before)) {
-                const accepted = isHistoryTransaction(transaction) && editOpening !== undefined
+                const accepted = fromHistory
                     ? readAcceptedAfterUndo?.(typed, editOpening) : undefined;
                 const merged = rebaseParagraphAppend(append, accepted ?? typed);
                 if (merged !== undefined && merged !== typed) {
