@@ -3,7 +3,7 @@ import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor } from '@tiptap/react';
 import React, { useEffect, useRef } from 'react';
 
-import { retireHistory } from './foreignHistory';
+import { applyForeignContent } from './foreignContent';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { syncClickedTextSelection } from './syncClickedTextSelection';
@@ -81,8 +81,8 @@ export function RichMarkdownEditor({
     // ACCEPTED LIMITATION: a foreign value retires this editor's entire Undo/Redo history.
     // Until the person acts again, Undo and Redo do nothing, including for earlier own typing.
     // Later own actions are undoable as usual; Undo/Redo cannot cross the arrival boundary.
-    // Use production's full-document setContent for both origins, including its selection and
-    // composition behavior. Only an explicit own action enters history; neither origin emits an update.
+    // Foreign values replace differing top-level nodes and retain the person's typing place.
+    // Only an explicit own action enters history; neither origin emits an update.
     useEffect(() => {
         // Input may have landed after this render; replacing now would erase its Undo history.
         if (!editor || editor.isDestroyed || getPending() !== null) return;
@@ -90,6 +90,12 @@ export function RichMarkdownEditor({
             // @ts-expect-error - tiptap-markdown storage is not declared by core
             if (next === editor.storage.markdown.getMarkdown()) {
                 if (!own && next !== lastEmittedText.current) foreignEditMark.current = next;
+                return;
+            }
+            if (!own) {
+                applyForeignContent(editor, next);
+                lastEmittedText.current = null;
+                foreignEditMark.current = next;
                 return;
             }
             editor.chain()
@@ -100,8 +106,7 @@ export function RichMarkdownEditor({
                 .setContent(next, { emitUpdate: false })
                 .run();
             lastEmittedText.current = null;
-            foreignEditMark.current = own ? null : next;
-            if (!own) retireHistory(editor);
+            foreignEditMark.current = null;
         };
         // The buffer can still contain the previous render's draft. Wait for its value echo,
         // and consume this baseline once so an origin-only render cannot replay it over typing.

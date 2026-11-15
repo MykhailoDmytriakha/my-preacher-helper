@@ -1,3 +1,6 @@
+import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
+import * as foreignContent from '@/components/ui/foreignContent';
+import { baseTyping } from '@test-utils/foreignSelection';
 import { deferred } from '@test-utils/deferred';
 import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,6 +20,10 @@ import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 import type { DocumentData, EngineMetadata } from '@/data-engine/types';
 
 let mockRealEditor = false;
+jest.mock('@/components/ui/foreignContent', () => ({
+  ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true,
+}));
+
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
@@ -1332,6 +1339,61 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     }
   });
 
+  it('stores the production result after an adjacent arrival in the generated plan', async () => {
+    mockRealEditor = true;
+    const initial = 'First words\n\nLast words\n\nTail';
+    openSermon({ ...defaultSermon(), planText: { 'intro-p1': initial } });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      const intro = await screen.findByTestId('plan-introduction-right-section');
+      fireEvent.click(within(intro).getByTitle('Edit Mode'));
+      const editor = mountedEditor(intro);
+      const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+      act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+      jest.mocked(harness.transport.send).mockClear();
+      const adopted = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
+      const expected = baseTyping(editor, adopted);
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': adopted } }); });
+      await waitFor(() => expect(markdown(editor)).toBe(adopted));
+
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      const paths = arrivalPath.mock.results.map(result => result.value);
+      arrivalPath.mockRestore();
+      writeForeignEvidence('caller-generated-adjacent', paths);
+      expect(paths.every(result => result.fallback)).toBe(true);
+      expect(editor.state.doc.toJSON()).toEqual(expected.document);
+      expect(editor.state.selection.toJSON()).toEqual(expected.selection);
+      act(() => { editor.commands.insertContent('X'); });
+      expect(markdown(editor)).toBe(expected.typed);
+      fireEvent.click(within(intro).getByTitle('Save'));
+      await waitFor(() => expect(storedPlanText()['intro-p1']).toBe(markdown(editor)));
+    } finally { view.unmount(); mockRealEditor = false; }
+  });
+
+  it('keeps the generated plan caret and next character in an unchanged paragraph', async () => {
+    mockRealEditor = true;
+    const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
+    openSermon({ ...defaultSermon(), planText: { 'intro-p1': initial } });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      const intro = await screen.findByTestId('plan-introduction-right-section');
+      fireEvent.click(within(intro).getByTitle('Edit Mode'));
+      const editor = mountedEditor(intro);
+      const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+      act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
+      const adopted = initial.replace('Tail', 'PHONE Tail');
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': adopted } }); });
+      await waitFor(() => expect(markdown(editor)).toBe(adopted));
+      const paths = arrivalPath.mock.results.map(result => result.value);
+      arrivalPath.mockRestore();
+      writeForeignEvidence('caller-generated-far', paths);
+      expect(editor.state.selection.head).toBe(10);
+      expect(paths).toEqual([{ fallback: false }]);
+      act(() => { editor.commands.insertContent('X'); });
+      expect(markdown(editor)).toBe('Alpha abcXdef END\n\nMiddle unchanged\n\nPHONE Tail');
+    } finally { view.unmount(); mockRealEditor = false; }
+  });
+
   it('G01 keeps other-device text shown and stored when it arrives during generation', async () => {
     mockRealEditor = true;
     const answer = deferred<Response>();
@@ -1447,6 +1509,5 @@ describe('sub-point text on the paired plan screen', () => {
     expect(await within(editorColumn).findByText('Перепись в ВЗ')).toBeInTheDocument();
     expect(await within(editorColumn).findByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
   });
-
 
 });

@@ -1,3 +1,6 @@
+import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
+import * as foreignContent from '@/components/ui/foreignContent';
+import { baseTyping } from '@test-utils/foreignSelection';
 // The real react-markdown, not the global stub in jest.setup.js: a section's reference must become a link.
 jest.unmock('react-markdown');
 jest.unmock('remark-gfm');
@@ -10,11 +13,16 @@ import React from 'react';
 import CouncilDetailPage from '@/(pages)/(private)/care/council/[id]/page';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { markdown, mountedEditor } from '@test-utils/richMarkdownHistory';
 import type { CouncilTopic } from '@/models/models';
 
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 
 import type { Json, ResourceSnapshot } from '@/data-engine/types';
+
+jest.mock('@/components/ui/foreignContent', () => ({
+  ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true,
+}));
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
@@ -22,7 +30,13 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), us
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('@/data-engine/react.client', () => ({ ...jest.requireActual('@/data-engine/react.client'), isCollectionOnEngine: () => true }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () => null }));
+let mockRealEditor = false;
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+  if (!mockRealEditor) return null;
+  const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
+  return <RichMarkdownEditor {...props} />;
+} }));
+jest.mock('@/components/ui/RichMarkdownToolbar', () => ({ RichMarkdownToolbar: () => null }));
 jest.mock('@/components/FloatingTextScaleControls', () => ({ __esModule: true, default: () => null }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -227,4 +241,56 @@ it('links a reference in a question and its answer, read in the language of the 
   // Ohienko's 1 Kings under a Russian interface: the mark beside the link names its Bible.
   expect(view.container.querySelector('[data-scripture-bible]')).not.toBeNull();
   view.unmount();
+});
+
+
+it('keeps the council summary caret and next character through an unsolicited refresh', async () => {
+  mockRealEditor = true;
+  const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
+  try {
+    const harness = await renderCouncilWithTopics([{ ...topic, summary: initial }]);
+    fireEvent.click(screen.getByTestId('council-topic-edit-topic-1'));
+    const editor = mountedEditor(document.body);
+    const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+    act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
+    await act(async () => { await harness.remote({ topics: asJson([{ ...topic, summary: initial.replace('Tail', 'PHONE Tail') }]) }); await settleEngine(); });
+    await waitFor(() => expect(markdown(editor)).toContain('PHONE Tail'));
+    const paths = arrivalPath.mock.results.map(result => result.value);
+    arrivalPath.mockRestore();
+    writeForeignEvidence('caller-council-far', paths);
+    expect(editor.state.selection.head).toBe(10);
+    expect(paths).toEqual([{ fallback: false }]);
+    act(() => { editor.commands.insertContent('X'); });
+    expect(markdown(editor)).toBe('Alpha abcXdef END\n\nMiddle unchanged\n\nPHONE Tail');
+  } finally { mockRealEditor = false; }
+});
+
+
+it('stores the production result after an adjacent arrival in the council summary', async () => {
+  mockRealEditor = true;
+  const initial = 'First words\n\nLast words\n\nTail';
+  try {
+    const harness = await renderCouncilWithTopics([{ ...topic, summary: initial }]);
+    fireEvent.click(screen.getByTestId('council-topic-edit-topic-1'));
+    const editor = mountedEditor(document.body);
+    const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+    act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+    jest.mocked(harness.transport.send).mockClear();
+    const adopted = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
+    const expected = baseTyping(editor, adopted);
+    await act(async () => { await harness.remote({ topics: asJson([{ ...topic, summary: adopted }]) }); await settleEngine(); });
+    await waitFor(() => expect(markdown(editor)).toContain('PHONEARRIVAL'));
+
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    const paths = arrivalPath.mock.results.map(result => result.value);
+    arrivalPath.mockRestore();
+    writeForeignEvidence('caller-council-adjacent', paths);
+    expect(paths.every(result => result.fallback)).toBe(true);
+    expect(editor.state.doc.toJSON()).toEqual(expected.document);
+    expect(editor.state.selection.toJSON()).toEqual(expected.selection);
+    act(() => { editor.commands.insertContent('X'); });
+    expect(markdown(editor)).toBe(expected.typed);
+    await act(async () => { await settleEngine(); });
+    await waitFor(() => expect((harness.server.value?.topics as { summary: string }[])[0].summary).toBe(markdown(editor)));
+  } finally { mockRealEditor = false; }
 });

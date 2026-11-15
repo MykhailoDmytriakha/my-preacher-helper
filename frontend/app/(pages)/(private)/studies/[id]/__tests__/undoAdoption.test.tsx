@@ -1,3 +1,6 @@
+import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
+import * as foreignContent from '@/components/ui/foreignContent';
+import { baseTyping } from '@test-utils/foreignSelection';
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -13,6 +16,10 @@ import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import type { Editor } from '@tiptap/core';
 import type { useTextDictation } from '@/hooks/useTextDictation';
 import type { useNoteAutoSave } from '@/(pages)/(private)/studies/[id]/useNoteAutoSave';
+
+jest.mock('@/components/ui/foreignContent', () => ({
+  ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true,
+}));
 
 jest.mock('@/services/storeAvailability.server', () => ({ storeRetryHeaders: () => ({}) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: () => mockBrowser }));
@@ -246,5 +253,59 @@ it('C12 preserves the production table shape through foreign adoption, later typ
   await settle(1600); await settle(2000);
   expect(String(await stored()).trim()).toBe(remote);
   expect(mockEditor).toBe(editor);
+  expect(notices).toEqual([]);
+});
+
+
+it('keeps the note caret at its words through a far arrival and autosave', async () => {
+  const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
+  await start(initial);
+  const editor = mockEditor;
+  const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+  act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
+  const arrived = initial.replace('Tail', 'PHONE Tail');
+  await phoneSave(arrived);
+  expect(mockEditor).toBe(editor);
+  expect(editor.state.selection.anchor).toBe(10);
+  const paths = arrivalPath.mock.results.map(result => result.value);
+  arrivalPath.mockRestore();
+  writeForeignEvidence('caller-note-far', paths);
+  expect(paths).toEqual([{ fallback: false }]);
+  expect(editor.state.selection.head).toBe(10);
+  expect(editorUpdates).toEqual([]);
+  expect(await stored()).toBe(arrived);
+  act(() => { editor.commands.insertContent('X'); });
+  await settle(1600); await settle(2000);
+  const expected = 'Alpha abcXdef END\n\nMiddle unchanged\n\nPHONE Tail';
+  expect(md()).toBe(expected);
+  expect(await stored()).toBe(expected);
+  expect(notices).toEqual([]);
+});
+
+
+it('stores the production result after an adjacent arrival in note autosave', async () => {
+  const initial = 'First words\n\nLast words\n\nTail';
+  await start(initial);
+  const editor = mockEditor;
+  const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+  act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+  const arrived = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
+  const expected = baseTyping(editor, arrived);
+  await phoneSave(arrived);
+  expect(mockEditor).toBe(editor);
+
+  expect(editorUpdates).toEqual([]);
+  expect(await stored()).toBe(arrived);
+  const paths = arrivalPath.mock.results.map(result => result.value);
+  arrivalPath.mockRestore();
+  writeForeignEvidence('caller-note-adjacent', paths);
+  expect(paths.every(result => result.fallback)).toBe(true);
+  expect(editor.state.doc.toJSON()).toEqual(expected.document);
+  expect(editor.state.selection.toJSON()).toEqual(expected.selection);
+  act(() => { editor.commands.insertContent('X'); });
+  await settle(1600); await settle(2000);
+  expect(md()).toBe(expected.typed);
+  expect(await stored()).toBe(md());
+
   expect(notices).toEqual([]);
 });

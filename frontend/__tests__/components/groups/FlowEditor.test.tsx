@@ -1,8 +1,17 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
+import * as foreignContent from '@/components/ui/foreignContent';
+import { baseTyping } from '@test-utils/foreignSelection';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
+
+import { markdown, mountedEditor } from '@test-utils/richMarkdownHistory';
 
 import FlowEditor from '@/components/groups/FlowEditor';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+
+jest.mock('@/components/ui/foreignContent', () => ({
+  ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true,
+}));
 
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -10,14 +19,19 @@ jest.mock('react-i18next', () => ({
     }),
 }));
 
+let mockRealEditor = false;
+jest.mock('@/components/ui/RichMarkdownToolbar', () => ({ RichMarkdownToolbar: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+      if (mockRealEditor) { const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor'); return <RichMarkdownEditor {...props} />; }
+      const { value, onChange, placeholder } = props;
+      return (
         <textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
         />
-    ),
+    ); },
 }));
 
 let mockWide = true;
@@ -60,6 +74,52 @@ describe('FlowEditor', () => {
         onRenameStep,
         onClose,
     };
+
+    it('keeps the group block caret and next character when its template refreshes', () => {
+        mockRealEditor = true;
+        const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
+        try {
+            const view = render(<FlowEditor {...defaultProps} template={{ ...mockTemplate, content: initial }} />);
+            const editor = mountedEditor(view.container);
+            const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+            act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
+            view.rerender(<FlowEditor {...defaultProps} template={{ ...mockTemplate, content: initial.replace('Tail', 'PHONE Tail') }} />);
+            const paths = arrivalPath.mock.results.map(result => result.value);
+            arrivalPath.mockRestore();
+            writeForeignEvidence('caller-group-far', paths);
+            expect(editor.state.selection.head).toBe(10);
+            expect(paths).toEqual([{ fallback: false }]);
+            expect(onUpdateTemplate).not.toHaveBeenCalled();
+            act(() => { editor.commands.insertContent('X'); });
+            expect(markdown(editor)).toBe('Alpha abcXdef END\n\nMiddle unchanged\n\nPHONE Tail');
+            expect(onUpdateTemplate).toHaveBeenCalledWith({ content: markdown(editor) });
+        } finally { mockRealEditor = false; }
+    });
+
+    it('stores the production result after an adjacent arrival in the group block', () => {
+        mockRealEditor = true;
+        const initial = 'First words\n\nLast words\n\nTail';
+        try {
+            const view = render(<FlowEditor {...defaultProps} template={{ ...mockTemplate, content: initial }} />);
+            const editor = mountedEditor(view.container);
+            const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+            act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+            const adopted = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
+            const expected = baseTyping(editor, adopted);
+            view.rerender(<FlowEditor {...defaultProps} template={{ ...mockTemplate, content: adopted }} />);
+
+            expect(onUpdateTemplate).not.toHaveBeenCalled();
+            const paths = arrivalPath.mock.results.map(result => result.value);
+            arrivalPath.mockRestore();
+            writeForeignEvidence('caller-group-adjacent', paths);
+            expect(paths.every(result => result.fallback)).toBe(true);
+            expect(editor.state.doc.toJSON()).toEqual(expected.document);
+            expect(editor.state.selection.toJSON()).toEqual(expected.selection);
+            act(() => { editor.commands.insertContent('X'); });
+            expect(markdown(editor)).toBe(expected.typed);
+            expect(onUpdateTemplate).toHaveBeenCalledWith({ content: markdown(editor) });
+        } finally { mockRealEditor = false; }
+    });
 
     it.each([false, true])('gives the block editor a keyboard boundary only on a narrow screen (wide=%s)', wide => {
         mockWide = wide;
@@ -181,4 +241,3 @@ describe('FlowEditor', () => {
         expect(fields).toHaveClass('overscroll-contain');
     });
 });
-
