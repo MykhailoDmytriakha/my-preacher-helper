@@ -4,6 +4,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { retireHistory } from './foreignHistory';
+import { adoptOutsideMarkdownSelection, mapForeignMarkdownSelection } from './foreignMarkdownSelection';
 import { decideComposition, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -11,6 +12,8 @@ import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
+
+import type { Node as DocumentNode } from '@tiptap/pm/model';
 
 interface RichMarkdownEditorProps {
     value: string;
@@ -44,21 +47,44 @@ function readMarkdown(editor: Editor): string {
     return editor.storage.markdown.getMarkdown();
 }
 
-function showDraft(editor: Editor, draft: string, userAction?: boolean) {
-    if (editor.isDestroyed || draft === readMarkdown(editor)) return;
-    editor.chain()
+function showDraft(editor: Editor, draft: string, userAction?: boolean, protectPlace = false): boolean {
+    if (editor.isDestroyed || draft === readMarkdown(editor)) return true;
+    const chain = editor.chain()
         .command(({ tr }) => {
             if (userAction !== undefined) closeHistory(tr);
             tr.setMeta('addToHistory', userAction === true);
             return true;
         })
-        .setContent(draft, { emitUpdate: false })
-        .run();
-    // Only an external value retires prior Undo and Redo. Restoring a composition's
-    // display does not establish a new observed document.
+        .setContent(draft, { emitUpdate: false });
+    if (protectPlace && editor.isEditable && editor.view.hasFocus()) {
+        let unresolved: DocumentNode | undefined;
+        chain.command(({ tr }) => {
+            const selection = mapForeignMarkdownSelection(editor.state.selection, tr.doc);
+            if (selection) tr.setSelection(selection);
+            else unresolved = tr.doc;
+            return true;
+        });
+        if (unresolved) {
+            const outside = adoptOutsideMarkdownSelection(editor.state.tr, unresolved);
+            if (outside.docChanged) {
+                closeHistory(outside);
+                editor.view.dispatch(outside.setMeta('addToHistory', false).setMeta('preventUpdate', true));
+                retireHistory(editor);
+            }
+            return false;
+        }
+    }
+    chain.run();
+    // Keep the established history boundary for an adopted external value.
     if (userAction === false) retireHistory(editor);
-    // Keystrokes after an explicit insertion start their own group too.
     if (userAction === true) editor.view.dispatch(closeHistory(editor.state.tr));
+    return true;
+}
+
+interface DeferredArrival {
+    editor: Editor;
+    target: string;
+    shown: string;
 }
 
 export function RichMarkdownEditor({
@@ -78,6 +104,7 @@ export function RichMarkdownEditor({
     const observedAppend = confirmedTextTransfer ?? appendedText;
     const { draft, change, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
     const acceptedTransfer = useRef<ObservedTextAppend | undefined>(undefined);
+    const deferredArrival = useRef<DeferredArrival | null>(null);
     const composition = useRef<Composition | null>(null);
     const appliedForeignValue = useRef(valueBeforeUserAction);
     const current = useRef({ draft, value, observedAppend, valueIsUserAction });
@@ -109,32 +136,73 @@ export function RichMarkdownEditor({
         autofocus: autoFocus ? 'end' : false,
         editorProps,
         onUpdate: ({ editor }) => {
-            if (heldText.current === null && composition.current?.editor !== editor && !editor.view?.composing) {
-                change(readMarkdown(editor));
-            }
+            if (heldText.current !== null || composition.current?.editor === editor || editor.view?.composing) return;
+            const typed = readMarkdown(editor);
+            if (deferredArrival.current?.editor === editor) {
+                deferredArrival.current = null;
+                // The displayed opening may now differ from the observed document. Do not send
+                // its untouched old text back to autosave along with this keystroke.
+                if (typed === current.current.value) {
+                    takeObserved();
+                    return;
+                }
+                heldText.current = { settle: onHoldText?.(typed) };
+                setChoice(typed);
+            } else change(typed);
         },
     });
 
     useLayoutEffect(() => { current.current = { draft, value, observedAppend, valueIsUserAction }; }, [draft, value, observedAppend, valueIsUserAction]);
 
     useEffect(() => {
-        if (editor && heldText.current === null && composition.current?.editor !== editor && !editor.view?.composing) {
-            const transferred = confirmedTextTransfer && confirmedTextTransfer !== acceptedTransfer.current &&
-                confirmedTextTransfer.after === value && draft === value;
-            if (transferred) {
-                acceptedTransfer.current = confirmedTextTransfer;
-                if (draft === readMarkdown(editor)) retireHistory(editor);
-                else showDraft(editor, draft, false);
-            } else {
-                if (draft === value && valueIsUserAction && valueBeforeUserAction && appliedForeignValue.current !== valueBeforeUserAction) {
-                    appliedForeignValue.current = valueBeforeUserAction;
-                    if (valueBeforeUserAction.value !== null) showDraft(editor, valueBeforeUserAction.value, false);
-                }
-                const ownValue = valueIsUserAction && valueBeforeUserAction?.value !== null;
-                showDraft(editor, draft, draft === value ? ownValue : undefined);
-            }
+        if (!editor || heldText.current !== null || composition.current?.editor === editor || editor.view?.composing) return;
+        const transferred = confirmedTextTransfer && confirmedTextTransfer !== acceptedTransfer.current &&
+            confirmedTextTransfer.after === value && draft === value;
+        if (transferred) {
+            acceptedTransfer.current = confirmedTextTransfer;
+            deferredArrival.current = null;
+            if (draft === readMarkdown(editor)) retireHistory(editor);
+            else showDraft(editor, draft, false);
+            return;
         }
+        if (draft === value && valueIsUserAction && valueBeforeUserAction && appliedForeignValue.current !== valueBeforeUserAction) {
+            appliedForeignValue.current = valueBeforeUserAction;
+            deferredArrival.current = null;
+            if (valueBeforeUserAction.value !== null) showDraft(editor, valueBeforeUserAction.value, false);
+        }
+        const ownValue = valueIsUserAction && valueBeforeUserAction?.value !== null;
+        // The buffer can still expose the previous arrival in the render where a newer one
+        // arrives. It is not a local draft and must not be shown between the two observations.
+        if (draft !== value && deferredArrival.current?.editor === editor) return;
+        if (draft !== value || ownValue) {
+            deferredArrival.current = null;
+            showDraft(editor, draft, draft === value ? ownValue : undefined);
+            return;
+        }
+        deferredArrival.current = showDraft(editor, draft, false, true)
+            ? null : { editor, shown: readMarkdown(editor), target: draft };
     }, [confirmedTextTransfer, draft, editor, value, valueIsUserAction, valueBeforeUserAction]);
+
+    useEffect(() => {
+        if (!editor) return;
+        const retryArrival = () => {
+            const deferred = deferredArrival.current;
+            if (deferred?.editor !== editor) return;
+            queueMicrotask(() => {
+                if (deferredArrival.current !== deferred || heldText.current || editor.isDestroyed ||
+                    composition.current?.editor === editor || editor.view.composing ||
+                    current.current.draft !== deferred.target || current.current.value !== deferred.target) return;
+                if (showDraft(editor, deferred.target, false, true)) deferredArrival.current = null;
+            });
+        };
+        editor.on('selectionUpdate', retryArrival);
+        editor.on('blur', retryArrival);
+        return () => {
+            editor.off('selectionUpdate', retryArrival);
+            editor.off('blur', retryArrival);
+            if (deferredArrival.current?.editor === editor) deferredArrival.current = null;
+        };
+    }, [editor]);
 
     useLayoutEffect(() => {
         const container = editorContainer.current;
@@ -142,12 +210,14 @@ export function RichMarkdownEditor({
         // ProseMirror can remove a multi-block selection before marking the view as composing.
         // React dispatches its synthetic composition listeners after the native target handlers.
         const begin = () => {
+            const deferred = deferredArrival.current;
+            const shown = deferred?.editor === editor ? deferred.shown : undefined;
             composition.current = {
                 editor,
                 opening: {
                     markdown: readMarkdown(editor),
-                    draft: current.current.draft,
-                    observed: current.current.value,
+                    draft: shown ?? current.current.draft,
+                    observed: shown ?? current.current.value,
                     append: current.current.observedAppend,
                 },
             };
@@ -206,13 +276,16 @@ export function RichMarkdownEditor({
                             composition.current = null;
                             const confirmed = cancelled ? active.opening.markdown : readMarkdown(editor);
                             const result = decideComposition(active.opening, current.current.value, confirmed, current.current.observedAppend);
+                            deferredArrival.current = null;
                             switch (result.kind) {
                                 case 'restore':
                                     if (cancelled) showDraft(editor, result.text);
                                     break;
                                 case 'adopt':
                                     takeObserved();
-                                    showDraft(editor, result.text, current.current.valueIsUserAction);
+                                    if (!showDraft(editor, result.text, current.current.valueIsUserAction, !current.current.valueIsUserAction)) {
+                                        deferredArrival.current = { editor, shown: readMarkdown(editor), target: result.text };
+                                    }
                                     break;
                                 case 'publish': {
                                     const currentValue = current.current;
