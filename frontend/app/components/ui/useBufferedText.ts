@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Bridge a text control to a delayed render of its document draft. The document owns
@@ -23,8 +23,11 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
     if (pending.current === null) setDraft(value);
   }, [value, acceptedInput]);
 
+  const getPending = useCallback((): string | null => pending.current, []);
+
   return {
     draft,
+    getPending,
     takeObserved: () => {
       pending.current = null;
       attempts.current++;
@@ -32,6 +35,7 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
     },
     change: (next: string) => {
       pending.current = next === latest.current ? null : next;
+      const opening = latest.current;
       const attempt = ++attempts.current;
       setDraft(next);
       const outcome = onChange(next);
@@ -40,7 +44,9 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
       // guarding them, so the next change of the document shows as usual. Only the latest change
       // counts: an older refusal says nothing about newer typing.
       outcome.catch(() => {
-        if (attempt === attempts.current) pending.current = null;
+        if (attempt !== attempts.current) return;
+        pending.current = null;
+        if (latest.current !== opening) setDraft(latest.current);
       });
       return outcome;
     },

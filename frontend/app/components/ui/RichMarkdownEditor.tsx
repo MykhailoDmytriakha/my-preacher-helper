@@ -1,7 +1,7 @@
 import Placeholder from '@tiptap/extension-placeholder';
 import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { retireHistory } from './foreignHistory';
 import { adoptOutsideMarkdownSelection, mapForeignMarkdownSelection } from './foreignMarkdownSelection';
@@ -24,6 +24,8 @@ interface RichMarkdownEditorProps {
     observedAppend?: ObservedTextAppend;
     /** Text now owned by this cell after an accepted deletion elsewhere in the document. */
     confirmedTextTransfer?: ObservedTextAppend;
+    /** Witness the applied document once, before its first subsequent edit. */
+    onEditAfterForeignValue?: (value: string) => void;
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
     /** A foreign value coalesced with the own action; apply its boundary first. */
@@ -108,6 +110,7 @@ export function RichMarkdownEditor({
     onHoldText,
     observedAppend: appendedText,
     confirmedTextTransfer,
+    onEditAfterForeignValue,
     valueIsUserAction = false,
     valueBeforeUserAction,
     placeholder = '',
@@ -117,7 +120,23 @@ export function RichMarkdownEditor({
     editable = true,
 }: RichMarkdownEditorProps) {
     const observedAppend = confirmedTextTransfer ?? appendedText;
-    const { draft, change, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
+    const { draft, change, getPending, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
+    const foreignEditMark = useRef<string | null>(valueIsUserAction ? null : value);
+    const lastEmittedText = useRef<string | null>(null);
+    const adoptForeign = useCallback((editor: Editor, text: string, protectPlace = false) => {
+        const replaced = text !== readMarkdown(editor);
+        if (!showDraft(editor, text, false, protectPlace)) return false;
+        if (replaced || text !== lastEmittedText.current) foreignEditMark.current = text;
+        if (replaced) lastEmittedText.current = null;
+        return true;
+    }, []);
+    const publish = (text: string) => {
+        const opening = foreignEditMark.current;
+        foreignEditMark.current = null;
+        if (opening !== null) onEditAfterForeignValue?.(opening);
+        lastEmittedText.current = text;
+        return change(text);
+    };
     const acceptedTransfer = useRef<ObservedTextAppend | undefined>(undefined);
     const deferredArrival = useRef<DeferredArrival | null>(null);
     const composition = useRef<Composition | null>(null);
@@ -166,7 +185,7 @@ export function RichMarkdownEditor({
                 }
                 heldText.current = { settle: onHoldText?.(typed) };
                 setChoice(typed);
-            } else change(typed);
+            } else publish(typed);
         },
     });
 
@@ -183,11 +202,13 @@ export function RichMarkdownEditor({
     }, [draft, editor, value, observedAppend, valueIsUserAction, valueBeforeUserAction]);
 
     useEffect(() => {
-        if (!editor || heldText.current !== null || composition.current?.editor === editor || editor.view?.composing) return;
+        if (!editor || getPending() !== null || heldText.current !== null
+            || composition.current?.editor === editor || editor.view?.composing) return;
         const transferred = confirmedTextTransfer && confirmedTextTransfer !== acceptedTransfer.current &&
             confirmedTextTransfer.after === value && draft === value;
         if (transferred) {
             acceptedTransfer.current = confirmedTextTransfer;
+            foreignEditMark.current = null;
             deferredArrival.current = null;
             if (draft === readMarkdown(editor)) retireHistory(editor);
             else showDraft(editor, draft, false);
@@ -198,6 +219,7 @@ export function RichMarkdownEditor({
         const boundary = foreign ?? (deferred?.editor === editor ? { value: deferred.target } : undefined);
         if (draft === value && valueIsUserAction && boundary) {
             appliedForeignValue.current = valueBeforeUserAction;
+            foreignEditMark.current = null;
             deferredArrival.current = null;
             showOwnTextWithBoundary(editor, draft, boundary);
             return;
@@ -208,12 +230,13 @@ export function RichMarkdownEditor({
         if (draft !== value && deferredArrival.current?.editor === editor) return;
         if (draft !== value || ownValue) {
             deferredArrival.current = null;
+            if (ownValue) foreignEditMark.current = null;
             showDraft(editor, draft, draft === value ? ownValue : undefined);
             return;
         }
-        deferredArrival.current = showDraft(editor, draft, false, true)
+        deferredArrival.current = adoptForeign(editor, draft, true)
             ? null : { editor, shown: readMarkdown(editor), target: draft };
-    }, [confirmedTextTransfer, draft, editor, value, valueIsUserAction, valueBeforeUserAction]);
+    }, [adoptForeign, confirmedTextTransfer, draft, editor, getPending, value, valueIsUserAction, valueBeforeUserAction]);
 
     useEffect(() => {
         if (!editor) return;
@@ -221,10 +244,10 @@ export function RichMarkdownEditor({
             const deferred = deferredArrival.current;
             if (deferred?.editor !== editor) return;
             queueMicrotask(() => {
-                if (deferredArrival.current !== deferred || heldText.current || editor.isDestroyed ||
+                if (deferredArrival.current !== deferred || heldText.current || getPending() !== null || editor.isDestroyed ||
                     composition.current?.editor === editor || editor.view.composing ||
                     current.current.draft !== deferred.target || current.current.value !== deferred.target) return;
-                if (showDraft(editor, deferred.target, false, true)) deferredArrival.current = null;
+                if (adoptForeign(editor, deferred.target, true)) deferredArrival.current = null;
             });
         };
         editor.on('selectionUpdate', retryArrival);
@@ -234,7 +257,7 @@ export function RichMarkdownEditor({
             editor.off('blur', retryArrival);
             if (deferredArrival.current?.editor === editor) deferredArrival.current = null;
         };
-    }, [editor]);
+    }, [adoptForeign, editor, getPending]);
 
     useLayoutEffect(() => {
         const container = editorContainer.current;
@@ -280,9 +303,9 @@ export function RichMarkdownEditor({
         setChoice(null);
         if (keepTyped) {
             // Undo of the decision returns to the adopted version, not the old editor frame.
-            showDraft(editor, value, false);
+            adoptForeign(editor, value);
             showDraft(editor, choice, true);
-            const chosenWrite = change(choice);
+            const chosenWrite = publish(choice);
             settle?.(true, chosenWrite);
         } else {
             settle?.(false);
@@ -293,8 +316,12 @@ export function RichMarkdownEditor({
                 ? foreign : pendingOwn?.foreign;
             if (boundary) {
                 if (boundary === foreign) appliedForeignValue.current = boundary;
+                foreignEditMark.current = null;
                 showOwnTextWithBoundary(editor, value, boundary);
-            } else showDraft(editor, value, pendingOwn !== undefined);
+            } else if (pendingOwn) {
+                foreignEditMark.current = null;
+                showDraft(editor, value, true);
+            } else adoptForeign(editor, value);
         }
     };
 
@@ -322,6 +349,7 @@ export function RichMarkdownEditor({
                             const adoptOwn = () => {
                                 if (!boundary) return;
                                 if (boundary === update.valueBeforeUserAction) appliedForeignValue.current = boundary;
+                                foreignEditMark.current = null;
                                 showOwnTextWithBoundary(editor, update.value, boundary);
                             };
                             deferredArrival.current = null;
@@ -335,7 +363,10 @@ export function RichMarkdownEditor({
                                 case 'adopt':
                                     takeObserved();
                                     if (boundary) adoptOwn();
-                                    else if (!showDraft(editor, result.text, update.valueIsUserAction, !update.valueIsUserAction)) {
+                                    else if (update.valueIsUserAction) {
+                                        foreignEditMark.current = null;
+                                        showDraft(editor, result.text, true);
+                                    } else if (!adoptForeign(editor, result.text, true)) {
                                         deferredArrival.current = { editor, shown: readMarkdown(editor), target: result.text };
                                     }
                                     break;
@@ -346,10 +377,10 @@ export function RichMarkdownEditor({
                                         showDraft(editor, result.text, true);
                                     } else if (merged && !update.valueIsUserAction) {
                                         // Undo can remove the newly composed words while keeping the foreign append.
-                                        showDraft(editor, update.value, false);
+                                        adoptForeign(editor, update.value);
                                         showDraft(editor, result.text, true);
                                     }
-                                    change(result.text);
+                                    publish(result.text);
                                     break;
                                 }
                                 case 'compare':
