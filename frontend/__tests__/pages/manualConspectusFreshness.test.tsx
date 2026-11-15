@@ -1,3 +1,5 @@
+import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
+import * as foreignContent from '@/components/ui/foreignContent';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
@@ -39,6 +41,10 @@ let mockSermon: Sermon | null = null;
 let mockNoteMode = false;
 const mockPush = jest.fn();
 let harness: ReturnType<typeof documentEngineHarness>;
+
+jest.mock('@/components/ui/foreignContent', () => ({
+  ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true,
+}));
 
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
 
@@ -1310,7 +1316,11 @@ it('C13 manual plan saves the arriving table without changing its shape', async 
   await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.trim()).toBe(markdown(editor).trim()));
   const remote = '| A | B |\n| --- | --- |\n| abef | Keep |';
   await act(async () => { await harness.remote({ planText: { p1: remote } }); });
-  const arrived = { text: markdown(editor), json: editor.getJSON(), tables: editor.view.dom.querySelectorAll('table').length };
+  // The active table remains available until the user leaves its editing place.
+  expect(markdown(editor).trim()).toBe(original);
+  await act(async () => { editor.view.dom.blur(); });
+  await waitFor(() => expect(markdown(editor).trim()).toBe(remote));
+  const arrived = { text: markdown(editor), tables: editor.view.dom.querySelectorAll('table').length };
   expect(undo(editor)).toBe(false);
   act(() => { expect(editor.commands.redo()).toBe(false); });
   typeAtEnd(editor, ' Own.');
@@ -1322,4 +1332,56 @@ it('C13 manual plan saves the arriving table without changing its shape', async 
   expect(markdown(editor).trim()).toBe(remote);
   fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
   await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1.trim()).toBe(remote));
+});
+
+
+it('keeps the manual plan caret and next character in an unchanged paragraph', async () => {
+  localStorage.clear();
+  const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
+  mockSermon = sermon({ p1: initial });
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+  act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
+  const adopted = initial.replace('Tail', 'PHONE Tail');
+  await act(async () => { await harness.remote({ planText: { p1: adopted } }); });
+  await waitFor(() => expect(markdown(editor)).toBe(adopted));
+  const paths = arrivalPath.mock.results.map(result => result.value);
+  arrivalPath.mockRestore();
+  writeForeignEvidence('caller-manual-far', paths);
+  expect(editor.state.selection.head).toBe(10);
+  expect(paths).toEqual([{ fallback: false }]);
+  expect(harness.server.value?.planText).toEqual({ p1: adopted });
+  act(() => { editor.commands.insertContent('X'); });
+  expect(markdown(editor)).toBe('Alpha abcXdef END\n\nMiddle unchanged\n\nPHONE Tail');
+});
+
+
+it('stores the next keystroke at the retained caret after an adjacent arrival in the manual plan', async () => {
+  localStorage.clear();
+  const initial = 'First words\n\nLast words\n\nTail';
+  mockSermon = sermon({ p1: initial });
+  const view = await render();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  const editor = mountedEditor(view.container);
+  const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
+  act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+  jest.mocked(harness.transport.send).mockClear();
+  const adopted = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
+  const expected = adopted.replace('First words', 'FirXst words');
+  await act(async () => { await harness.remote({ planText: { p1: adopted } }); });
+  await waitFor(() => expect(markdown(editor)).toBe(adopted));
+
+  expect(harness.server.value?.planText).toEqual({ p1: adopted });
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  const paths = arrivalPath.mock.results.map(result => result.value);
+  arrivalPath.mockRestore();
+  writeForeignEvidence('caller-manual-adjacent', paths);
+  expect(paths).toEqual([{ fallback: false }]);
+  expect(editor.state.selection.toJSON()).toEqual({ type: 'text', anchor: 4, head: 4 });
+  act(() => { editor.commands.insertContent('X'); });
+  expect(markdown(editor)).toBe(expected);
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
+  await waitFor(() => expect((harness.server.value?.planText as Record<string, string>).p1).toBe(markdown(editor)));
 });

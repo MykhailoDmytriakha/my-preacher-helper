@@ -128,3 +128,48 @@ it('shows a disjoint arriving edit while protecting the changed active paragraph
     paragraphs[2], paragraphs[2].slice(0, 25) + 'OWN' + paragraphs[2].slice(25),
   ));
 });
+
+it('keeps a pending Bold choice when a distant arrival is followed by typing and Undo', () => {
+  const onChange = jest.fn();
+  const onEditAfterForeignValue = jest.fn();
+  const view = render(<RichMarkdownEditor value={original} onChange={onChange} onEditAfterForeignValue={onEditAfterForeignValue} />);
+  const editor = mountedEditor(view.container);
+  selectText(editor, paragraphs[2], 25);
+  act(() => { editor.commands.toggleBold(); });
+  expect(editor.state.storedMarks?.map(mark => mark.type.name)).toEqual(['bold']);
+
+  view.rerender(<RichMarkdownEditor value={withArrival} onChange={onChange} onEditAfterForeignValue={onEditAfterForeignValue} />);
+
+  expect(editor.state.storedMarks?.map(mark => mark.type.name)).toEqual(['bold']);
+  expect(onEditAfterForeignValue).not.toHaveBeenCalled();
+  act(() => { editor.view.dispatch(editor.state.tr.insertText('X')); });
+  expect(markdown(editor)).toContain(paragraphs[2].slice(0, 25) + '**X**' + paragraphs[2].slice(25));
+  expect(onEditAfterForeignValue.mock.calls).toEqual([[withArrival]]);
+  act(() => { expect(editor.commands.undo()).toBe(true); });
+  expect(markdown(editor)).toBe(withArrival);
+  expect(onEditAfterForeignValue.mock.calls).toEqual([[withArrival]]);
+});
+
+it('keeps an arriving adjacent table out of reach of an in-flight Backspace', async () => {
+  const original = 'Work here.\n\nTail.';
+  const arrived = '| Heading |\n| --- |\n| PHONE ARRIVAL |\n\n' + original;
+  const onChange = jest.fn();
+  const view = render(<RichMarkdownEditor value={original} onChange={onChange} />);
+  const editor = mountedEditor(view.container);
+  selectText(editor, 'Work here.', 0);
+
+  view.rerender(<RichMarkdownEditor value={arrived} onChange={onChange} />);
+
+  expect(markdown(editor)).toBe(original);
+  expect(position(editor).anchorOffset).toBe(0);
+  act(() => {
+    editor.view.someProp('handleKeyDown', handle => handle(editor.view, new KeyboardEvent('keydown', { key: 'Backspace' })));
+  });
+  expect(markdown(editor)).toBe(original);
+  expect(onChange).not.toHaveBeenCalled();
+  selectText(editor, 'Work here.', 4);
+  await act(async () => {});
+  expect(markdown(editor)).toContain('PHONE ARRIVAL');
+  expect(position(editor).anchorOffset).toBe(4);
+  expect(onChange).not.toHaveBeenCalled();
+});

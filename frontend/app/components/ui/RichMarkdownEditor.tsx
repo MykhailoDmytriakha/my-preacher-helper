@@ -3,8 +3,8 @@ import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { applyForeignContent } from './foreignContent';
 import { retireHistory } from './foreignHistory';
-import { adoptOutsideMarkdownSelection, mapForeignMarkdownSelection } from './foreignMarkdownSelection';
 import { decideComposition, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -12,8 +12,6 @@ import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
-
-import type { Node as DocumentNode } from '@tiptap/pm/model';
 
 interface RichMarkdownEditorProps {
     value: string;
@@ -54,38 +52,18 @@ function readMarkdown(editor: Editor): string {
     return editor.storage.markdown.getMarkdown();
 }
 
-function showDraft(editor: Editor, draft: string, userAction?: boolean, protectPlace = false): boolean {
-    if (editor.isDestroyed || draft === readMarkdown(editor)) return true;
-    const chain = editor.chain()
+function showDraft(editor: Editor, draft: string, userAction?: boolean): void {
+    if (editor.isDestroyed || draft === readMarkdown(editor)) return;
+    editor.chain()
         .command(({ tr }) => {
             if (userAction !== undefined) closeHistory(tr);
             tr.setMeta('addToHistory', userAction === true);
             return true;
         })
-        .setContent(draft, { emitUpdate: false });
-    if (protectPlace && editor.isEditable && editor.view.hasFocus()) {
-        let unresolved: DocumentNode | undefined;
-        chain.command(({ tr }) => {
-            const selection = mapForeignMarkdownSelection(editor.state.selection, tr.doc);
-            if (selection) tr.setSelection(selection);
-            else unresolved = tr.doc;
-            return true;
-        });
-        if (unresolved) {
-            const outside = adoptOutsideMarkdownSelection(editor.state.tr, unresolved);
-            if (outside.docChanged) {
-                closeHistory(outside);
-                editor.view.dispatch(outside.setMeta('addToHistory', false).setMeta('preventUpdate', true));
-                retireHistory(editor);
-            }
-            return false;
-        }
-    }
-    chain.run();
-    // Keep the established history boundary for an adopted external value.
+        .setContent(draft, { emitUpdate: false })
+        .run();
     if (userAction === false) retireHistory(editor);
     if (userAction === true) editor.view.dispatch(closeHistory(editor.state.tr));
-    return true;
 }
 
 function showOwnTextWithBoundary(editor: Editor, ownText: string, foreign: ForeignValue) {
@@ -124,8 +102,9 @@ export function RichMarkdownEditor({
     const foreignEditMark = useRef<string | null>(valueIsUserAction ? null : value);
     const lastEmittedText = useRef<string | null>(null);
     const adoptForeign = useCallback((editor: Editor, text: string, protectPlace = false) => {
+        if (editor.isDestroyed) return true;
         const replaced = text !== readMarkdown(editor);
-        if (!showDraft(editor, text, false, protectPlace)) return false;
+        if (replaced && applyForeignContent(editor, text, protectPlace).deferred) return false;
         if (replaced || text !== lastEmittedText.current) foreignEditMark.current = text;
         if (replaced) lastEmittedText.current = null;
         return true;

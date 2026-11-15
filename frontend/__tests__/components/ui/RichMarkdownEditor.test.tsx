@@ -4,27 +4,7 @@ import { render, screen, act, fireEvent, within } from '@testing-library/react';
 // CRITICAL: All jest.mock calls must come before imports.
 // Mock TipTap and extension modules to prevent JSDOM crashes.
 jest.mock('@tiptap/react', () => {
-    const { Schema } = jest.requireActual('@tiptap/pm/model');
-    const { EditorState } = jest.requireActual('@tiptap/pm/state');
-    const schema = new Schema({ nodes: { doc: { content: 'paragraph+' }, paragraph: { content: 'text*', parseDOM: [{ tag: 'p' }], toDOM: () => ['p', 0] }, text: {} } });
-    const mockEditor = {
-        schema,
-        options: {},
-        state: EditorState.create({ schema }),
-        view: { dispatch: jest.fn(), composing: false, hasFocus: jest.fn().mockReturnValue(false) },
-        on: jest.fn(),
-        off: jest.fn(),
-        chain: jest.fn().mockReturnThis(),
-        focus: jest.fn().mockReturnThis(),
-        command: jest.fn().mockReturnThis(),
-        setContent: jest.fn().mockReturnThis(),
-        run: jest.fn().mockReturnValue(true),
-        isActive: jest.fn().mockReturnValue(false),
-        commands: { setContent: jest.fn() },
-        storage: { markdown: { getMarkdown: jest.fn().mockReturnValue(''), parser: { parse: (value: string) => `<p>${value}</p>` } } },
-        isEditable: true,
-        setEditable: jest.fn(),
-    };
+    const mockEditor = require('@test-utils/richEditorMock').createRichEditorMock();
     return {
         useEditor: jest.fn(() => mockEditor),
         EditorContent: ({ editor, onCompositionEnd }: {
