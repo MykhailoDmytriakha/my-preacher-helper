@@ -27,7 +27,7 @@ interface RichMarkdownEditorProps {
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
     /** A foreign value coalesced with the own action; apply its boundary first. */
-    valueBeforeUserAction?: { value: string | null };
+    valueBeforeUserAction?: ForeignValue;
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
@@ -37,9 +37,14 @@ interface RichMarkdownEditorProps {
     editable?: boolean;
 }
 
+interface ForeignValue {
+    value: string | null;
+}
+
 interface Composition {
     editor: Editor;
     opening: CompositionOpening;
+    pendingForeign?: ForeignValue;
 }
 
 function readMarkdown(editor: Editor): string {
@@ -81,6 +86,16 @@ function showDraft(editor: Editor, draft: string, userAction?: boolean, protectP
     return true;
 }
 
+function showOwnTextWithBoundary(editor: Editor, ownText: string, foreign: ForeignValue) {
+    if (foreign.value === null) {
+        showDraft(editor, ownText, false);
+        return;
+    }
+    if (foreign.value === readMarkdown(editor)) retireHistory(editor);
+    else showDraft(editor, foreign.value, false);
+    showDraft(editor, ownText, true);
+}
+
 interface DeferredArrival {
     editor: Editor;
     target: string;
@@ -107,8 +122,11 @@ export function RichMarkdownEditor({
     const deferredArrival = useRef<DeferredArrival | null>(null);
     const composition = useRef<Composition | null>(null);
     const appliedForeignValue = useRef(valueBeforeUserAction);
-    const current = useRef({ draft, value, observedAppend, valueIsUserAction });
-    const heldText = useRef<{ settle?: (keep: boolean, chosenWrite?: void | Promise<unknown>) => void } | null>(null);
+    const current = useRef({ draft, value, observedAppend, valueIsUserAction, valueBeforeUserAction });
+    const heldText = useRef<{
+        settle?: (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
+        pendingOwn?: { value: string; foreign?: ForeignValue };
+    } | null>(null);
     const [choice, setChoice] = useState<string | null>(null);
     const editorContainer = useRef<HTMLDivElement>(null);
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
@@ -152,7 +170,17 @@ export function RichMarkdownEditor({
         },
     });
 
-    useLayoutEffect(() => { current.current = { draft, value, observedAppend, valueIsUserAction }; }, [draft, value, observedAppend, valueIsUserAction]);
+    useLayoutEffect(() => {
+        const active = composition.current;
+        if (active && active.editor === editor) {
+            // React can commit a foreign value while ProseMirror is still composing the old one.
+            if (!valueIsUserAction && value !== current.current.value) active.pendingForeign = { value };
+            if (valueIsUserAction && valueBeforeUserAction && valueBeforeUserAction !== appliedForeignValue.current) {
+                active.pendingForeign = valueBeforeUserAction;
+            }
+        }
+        current.current = { draft, value, observedAppend, valueIsUserAction, valueBeforeUserAction };
+    }, [draft, editor, value, observedAppend, valueIsUserAction, valueBeforeUserAction]);
 
     useEffect(() => {
         if (!editor || heldText.current !== null || composition.current?.editor === editor || editor.view?.composing) return;
@@ -165,10 +193,14 @@ export function RichMarkdownEditor({
             else showDraft(editor, draft, false);
             return;
         }
-        if (draft === value && valueIsUserAction && valueBeforeUserAction && appliedForeignValue.current !== valueBeforeUserAction) {
+        const deferred = deferredArrival.current;
+        const foreign = valueBeforeUserAction !== appliedForeignValue.current ? valueBeforeUserAction : undefined;
+        const boundary = foreign ?? (deferred?.editor === editor ? { value: deferred.target } : undefined);
+        if (draft === value && valueIsUserAction && boundary) {
             appliedForeignValue.current = valueBeforeUserAction;
             deferredArrival.current = null;
-            if (valueBeforeUserAction.value !== null) showDraft(editor, valueBeforeUserAction.value, false);
+            showOwnTextWithBoundary(editor, draft, boundary);
+            return;
         }
         const ownValue = valueIsUserAction && valueBeforeUserAction?.value !== null;
         // The buffer can still expose the previous arrival in the render where a newer one
@@ -214,6 +246,7 @@ export function RichMarkdownEditor({
             const shown = deferred?.editor === editor ? deferred.shown : undefined;
             composition.current = {
                 editor,
+                pendingForeign: deferred?.editor === editor ? { value: deferred.target } : undefined,
                 opening: {
                     markdown: readMarkdown(editor),
                     draft: shown ?? current.current.draft,
@@ -241,7 +274,8 @@ export function RichMarkdownEditor({
 
     const choose = (keepTyped: boolean) => {
         if (choice === null || current.current.value !== value) return;
-        const settle = heldText.current?.settle;
+        const held = heldText.current;
+        const settle = held?.settle;
         heldText.current = null;
         setChoice(null);
         if (keepTyped) {
@@ -253,7 +287,14 @@ export function RichMarkdownEditor({
         } else {
             settle?.(false);
             takeObserved();
-            showDraft(editor, value, current.current.valueIsUserAction);
+            const foreign = current.current.valueBeforeUserAction;
+            const pendingOwn = held?.pendingOwn?.value === value ? held.pendingOwn : undefined;
+            const boundary = foreign && foreign !== appliedForeignValue.current && current.current.valueIsUserAction
+                ? foreign : pendingOwn?.foreign;
+            if (boundary) {
+                if (boundary === foreign) appliedForeignValue.current = boundary;
+                showOwnTextWithBoundary(editor, value, boundary);
+            } else showDraft(editor, value, pendingOwn !== undefined);
         }
     };
 
@@ -275,24 +316,37 @@ export function RichMarkdownEditor({
                             if (composition.current !== active || editor.isDestroyed) return;
                             composition.current = null;
                             const confirmed = cancelled ? active.opening.markdown : readMarkdown(editor);
-                            const result = decideComposition(active.opening, current.current.value, confirmed, current.current.observedAppend);
+                            const update = current.current;
+                            const result = decideComposition(active.opening, update.value, confirmed, update.observedAppend);
+                            const boundary = update.valueIsUserAction ? active.pendingForeign : undefined;
+                            const adoptOwn = () => {
+                                if (!boundary) return;
+                                if (boundary === update.valueBeforeUserAction) appliedForeignValue.current = boundary;
+                                showOwnTextWithBoundary(editor, update.value, boundary);
+                            };
                             deferredArrival.current = null;
                             switch (result.kind) {
                                 case 'restore':
-                                    if (cancelled) showDraft(editor, result.text);
+                                    if (boundary) {
+                                        takeObserved();
+                                        adoptOwn();
+                                    } else if (cancelled) showDraft(editor, result.text);
                                     break;
                                 case 'adopt':
                                     takeObserved();
-                                    if (!showDraft(editor, result.text, current.current.valueIsUserAction, !current.current.valueIsUserAction)) {
+                                    if (boundary) adoptOwn();
+                                    else if (!showDraft(editor, result.text, update.valueIsUserAction, !update.valueIsUserAction)) {
                                         deferredArrival.current = { editor, shown: readMarkdown(editor), target: result.text };
                                     }
                                     break;
                                 case 'publish': {
-                                    const currentValue = current.current;
-                                    const merged = result.text !== confirmed && result.text !== currentValue.value;
-                                    if (merged && !currentValue.valueIsUserAction) {
+                                    const merged = result.text !== confirmed && result.text !== update.value;
+                                    if (boundary) {
+                                        adoptOwn();
+                                        showDraft(editor, result.text, true);
+                                    } else if (merged && !update.valueIsUserAction) {
                                         // Undo can remove the newly composed words while keeping the foreign append.
-                                        showDraft(editor, currentValue.value, false);
+                                        showDraft(editor, update.value, false);
                                         showDraft(editor, result.text, true);
                                     }
                                     change(result.text);
@@ -300,7 +354,10 @@ export function RichMarkdownEditor({
                                 }
                                 case 'compare':
                                     showDraft(editor, result.text);
-                                    heldText.current = { settle: onHoldText?.(result.text) };
+                                    heldText.current = {
+                                        settle: onHoldText?.(result.text),
+                                        pendingOwn: update.valueIsUserAction ? { value: update.value, foreign: boundary } : undefined,
+                                    };
                                     setChoice(result.text);
                                     break;
                             }

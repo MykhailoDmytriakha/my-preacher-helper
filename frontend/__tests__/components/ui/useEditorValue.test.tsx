@@ -1,10 +1,10 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { redoDepth, undoDepth } from '@tiptap/pm/history';
 
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useEditorValue, useEditorValues } from '@/components/ui/useEditorValue';
-import { markdown, mountedEditor, undo } from '@test-utils/richMarkdownHistory';
+import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 
 jest.mock('@/components/ui/RichMarkdownToolbar', () => ({ RichMarkdownToolbar: () => null }));
 
@@ -32,6 +32,81 @@ it.each([false, true])('C08 applies a batched foreign value before one own step,
   expect(redoDepth(editor.state)).toBe(1);
   act(() => { expect(editor.commands.redo()).toBe(true); });
   expect(markdown(editor)).toBe('Original.\n\nPHONE.\n\nDictation.');
+});
+
+it.each([false, true])('preserves the incoming Undo boundary while composition delays drawing, separate renders=%s', async separate => {
+  let change: ReturnType<typeof useEditorValue<string>>;
+  function Host() {
+    change = useEditorValue('Original.');
+    return <RichMarkdownEditor value={change.value} valueIsUserAction={change.isUserAction}
+      valueBeforeUserAction={change.foreignValueBeforeAction} onChange={change.observe} />;
+  }
+  const view = render(<Host />);
+  const editor = mountedEditor(view.container);
+  fireEvent.compositionStart(editor.view.dom);
+  const observe = () => change.observe('Original.\n\nPHONE.');
+  const append = () => change.append(previous => previous + '\n\nDictation.');
+  if (separate) {
+    act(observe);
+    act(append);
+  } else {
+    act(() => { observe(); append(); });
+  }
+  expect(markdown(editor)).toBe('Original.');
+  await act(async () => { fireEvent.compositionEnd(editor.view.dom, { data: '' }); });
+  expect(markdown(editor)).toBe('Original.\n\nPHONE.\n\nDictation.');
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe('Original.\n\nPHONE.');
+  expect(undo(editor)).toBe(false);
+  act(() => { expect(editor.commands.redo()).toBe(true); });
+  expect(markdown(editor)).toBe('Original.\n\nPHONE.\n\nDictation.');
+});
+
+it.each([false, true])('keeps incoming words when undoing dictation after confirmed composition, overlap=%s', async overlap => {
+  let change: ReturnType<typeof useEditorValue<string>>;
+  function Host() {
+    change = useEditorValue('Original.');
+    return <RichMarkdownEditor value={change.value} valueIsUserAction={change.isUserAction} observedAppend={change.appended}
+      valueBeforeUserAction={change.foreignValueBeforeAction} onChange={change.observe} />;
+  }
+  const view = render(<Host />);
+  const editor = mountedEditor(view.container);
+  const incoming = overlap ? 'PHONE.' : 'Original.\n\nPHONE.';
+  const withDictation = incoming + '\n\nDictation.';
+  fireEvent.compositionStart(editor.view.dom);
+  typeAtEnd(editor, ' 日本語');
+  act(() => change.observe(incoming));
+  act(() => change.append(previous => previous + '\n\nDictation.'));
+  await act(async () => { fireEvent.compositionEnd(editor.view.dom, { data: '日本語' }); });
+  if (overlap) {
+    fireEvent.click(screen.getByRole('button', { name: 'richEditor.compositionChoice.keepUpdated' }));
+  } else {
+    expect(markdown(editor)).toBe('Original. 日本語\n\nPHONE.\n\nDictation.');
+    expect(undo(editor)).toBe(true);
+  }
+  expect(markdown(editor)).toBe(withDictation);
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe(incoming);
+  expect(undo(editor)).toBe(false);
+});
+
+it('preserves the incoming Undo boundary while a changed editing paragraph delays drawing', () => {
+  let change: ReturnType<typeof useEditorValue<string>>;
+  function Host() {
+    change = useEditorValue('Original.\n\nOther paragraph.');
+    return <RichMarkdownEditor value={change.value} valueIsUserAction={change.isUserAction}
+      valueBeforeUserAction={change.foreignValueBeforeAction} onChange={change.observe} />;
+  }
+  const view = render(<Host />);
+  const editor = mountedEditor(view.container);
+  act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+  act(() => change.observe('PHONE.\n\nOther paragraph.'));
+  expect(markdown(editor)).toBe('Original.\n\nOther paragraph.');
+  act(() => change.append(previous => previous + '\n\nDictation.'));
+  expect(markdown(editor)).toBe('PHONE.\n\nOther paragraph.\n\nDictation.');
+  expect(undo(editor)).toBe(true);
+  expect(markdown(editor)).toBe('PHONE.\n\nOther paragraph.');
+  expect(undo(editor)).toBe(false);
 });
 
 it.each([false, true])('D05 batches unrelated foreign and own cells in either order, own first=%s', ownFirst => {
