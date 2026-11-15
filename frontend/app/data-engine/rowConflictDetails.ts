@@ -14,6 +14,7 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
+import { readServiceStepBodyChoice } from './serviceOrderStepChoice';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { readThoughtPlacementChoice } from './thoughtPlacementAction';
 import { readThoughtTagChoice } from './thoughtTagAction';
@@ -100,6 +101,10 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   const target = serviceOrderStepField(conflicts[0]?.path);
   if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
   const { id, field } = target;
+  if (field === 'body') {
+    const comparison = readServiceStepBodyChoice(checkpoint);
+    return comparison && { field, mine: comparison.mine, stored: comparison.stored };
+  }
   if (field === 'scriptureRefs') {
     const conflict = conflicts[0];
     const mine = isAuthoredListComparison(conflict.code) && isAuthoredStringList(conflict.mine.value)

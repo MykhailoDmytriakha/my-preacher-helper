@@ -2111,6 +2111,42 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it('sends the later offline service step words with the predecessor whose text they replaced', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const step = { id: 'opening', title: 'Opening', body: 'Original words', scriptureRefs: [] };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps: [step], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const firstWords = 'First offline words', lastWords = 'Last offline words';
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    editor.edit({ ...base.value, steps: [{ ...step, body: firstWords }] });
+    const first = (await queue.save('order', editor.checkpoint(), { action: { kind: 'service-order-step-body',
+      body: { rowId: step.id, generation: 'order', observedRevision: 1, before: step.body, after: firstWords, time: null },
+    } }))!;
+    editor.edit({ ...base.value, steps: [{ ...step, body: lastWords }] });
+    const last = (await queue.save('order', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'service-order-step-body',
+      body: { rowId: step.id, generation: 'order', observedRevision: 1, before: firstWords, after: lastWords, time },
+    } }))!;
+    const stamp = { rowId: step.id, rowCreatedAt: step.id, observedRevision: 1, time, predecessorOperationId: first.id };
+    expect(last.serviceOrderStepBodyActions?.body).toEqual({ ...stamp, before: firstWords, after: lastWords });
+    const accepted = { ...base, value: { ...base.value, steps: [{ ...step, title: 'Independent title', body: 'Later computer words' }] },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: last.id,
+      serviceOrderStepBodyActions: [stamp],
+      changes: expect.arrayContaining([expect.objectContaining({ path: ['steps'],
+        before: { exists: true, value: [{ ...step, title: 'Independent title', body: firstWords }] },
+        after: { exists: true, value: [{ ...step, title: 'Independent title', body: lastWords }] },
+      })]),
+    }));
+  });
+
   it('replays the next title with the exact local predecessor after its ACK retained a different title', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

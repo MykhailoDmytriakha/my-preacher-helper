@@ -30,7 +30,7 @@ import { isCapturedRowConflict } from './rowFieldAction';
 import { isCapturedAutosaveRowFieldConflict, retainQueuedThoughtPlacements } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { SERMON_TEXT_ROOTS, sermonTextLeaves } from './sermonTextOpenings';
-import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
+import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { sourceNoteQueueRebase } from './sourceNoteLinkCapture';
@@ -261,6 +261,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const flag = record.preachStatusActions?.length ? explicitPreachedFlag(intended?.preachDates, false) : undefined;
     const stepFlag = record.serviceOrderFlagActions?.flagged;
     const stepTitle = record.serviceOrderStepTitleActions?.title;
+    const stepBody = record.serviceOrderStepBodyActions?.body;
     const assembly = record.councilAssemblyActions?.forAssembly;
     const topicKind = record.councilTopicKindActions?.kind;
     const timedReference = sameGeneration && Boolean(record.studyNoteReferenceEvidence) && hasStudyNoteReferenceReview(rebased.conflicts);
@@ -279,6 +280,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)
       || (stepFlag && isCapturedRowConflict(conflict, stepFlag, SERVICE_ORDER_FLAG_TARGET))
       || (stepTitle && isCapturedRowConflict(conflict, stepTitle, SERVICE_ORDER_STEP_TITLE_TARGET))
+      || (stepBody && isCapturedRowConflict(conflict, stepBody, SERVICE_ORDER_STEP_BODY_TARGET))
       || (assembly && isCapturedRowConflict(conflict, assembly, COUNCIL_ASSEMBLY))
       || (topicKind && isCapturedRowConflict(conflict, topicKind, COUNCIL_TOPIC_KIND))
       || isCapturedAutosaveRowFieldConflict(conflict, record)

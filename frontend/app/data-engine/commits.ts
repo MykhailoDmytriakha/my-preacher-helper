@@ -46,7 +46,7 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
-import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
+import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_BODY_POLICY, SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepBodyActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
@@ -138,6 +138,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   councilAssemblyActions?: CouncilAssemblyActions;
   councilTopicKindActions?: CouncilTopicKindActions;
   serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
+  serviceOrderStepBodyActions?: ServiceOrderStepBodyActions;
   serviceOrderStepScriptureActions?: ServiceOrderStepScriptureActions;
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
@@ -291,6 +292,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.serviceOrderFlagActions ?? null, incoming.serviceOrderFlagActions ?? null)
     || !equalValues(current.serviceOrderStepTitleActions ?? null, incoming.serviceOrderStepTitleActions ?? null)
+    || !equalValues(current.serviceOrderStepBodyActions ?? null, incoming.serviceOrderStepBodyActions ?? null)
     || !equalValues(current.serviceOrderStepScriptureActions ?? null, incoming.serviceOrderStepScriptureActions ?? null)
     || !sameAutosaveRowFieldCaptures(current, incoming)
     || !equalValues(current.councilAssemblyActions ?? null, incoming.councilAssemblyActions ?? null)
@@ -451,6 +453,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderFlagActions, SERVICE_ORDER_FLAG_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
+    ...pendingRowDetailRebases(record, record.serviceOrderStepBodyActions, SERVICE_ORDER_STEP_BODY_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepScriptureActions, SERVICE_ORDER_STEP_SCRIPTURE_POLICY),
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
     ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
@@ -763,6 +766,7 @@ export class CommitQueue {
     if (intent.conflicts.length || intent.unreadableScalarProof?.length || intent.unreadableRowProofs?.length || intent.unreadableExegeticalProofs?.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title }
+        : editorAction?.kind === 'service-order-step-body' ? { field: 'body' as const, change: editorAction.body }
         : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture }
           : editorAction?.kind === 'service-order-step-scripture-review' ? { field: 'scriptureReview' as const, changes: editorAction.scriptures } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
@@ -1600,6 +1604,10 @@ export class CommitQueue {
       if (flags && matchesServiceOrderStep(command.changes, SERVICE_ORDER_FLAG_TARGET, flags.flagged)) command.serviceOrderFlagActions = flags;
       const stepTitles = record.serviceOrderStepTitleActions;
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
+      const stepBody = record.serviceOrderStepBodyActions?.body;
+      if (stepBody && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_BODY_TARGET, stepBody)) {
+        command.serviceOrderStepBodyActions = compactRowTextStamps([stepBody]);
+      }
       const stepScripture = record.serviceOrderStepScriptureActions;
       const reviewed = stepScripture?.reviewed?.filter(action => matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_SCRIPTURE_LIST, action));
       if (reviewed?.length) command.serviceOrderStepScriptureActions = { reviewed };

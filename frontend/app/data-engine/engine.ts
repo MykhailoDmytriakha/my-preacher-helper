@@ -2085,6 +2085,7 @@ export class DataEngine {
           new Error('Finish comparing the group fields before saving another action'), { code: 'resolve-version-first' });
         const rowVersion = action?.kind === 'service-order-flag' || action?.kind === 'council-assembly' ? action.flag
           : action?.kind === 'service-order-step-title' ? action.title
+            : action?.kind === 'service-order-step-body' ? action.body
             : action?.kind === 'service-order-step-scripture' ? action.scripture
               : action?.kind === 'council-topic-kind' ? action.topicKind : undefined;
         if (rowVersion && checkpoint.confirmed.metadata?.generation !== rowVersion.generation) {

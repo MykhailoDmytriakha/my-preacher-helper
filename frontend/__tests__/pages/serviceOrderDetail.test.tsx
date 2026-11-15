@@ -104,19 +104,22 @@ describe('One service', () => {
     }));
   });
 
-  it('saves the original step title and last input time together after a burst of typing', async () => {
+  it.each([
+    { field: 'title', label: 'serviceOrders.stepTitle', before: 'Opening', next: 'Opening revised' },
+    { field: 'body', label: 'serviceOrders.stepWords', before: 'Original words', next: 'Text revised' },
+  ])('saves the original step $field and last input time together after a burst of typing', async ({ field, label, before, next }) => {
     state.orders = [{ ...order([step('s1', 'Opening', 'Original words')]), rev: { steps: 1 } }];
     mockStepVersion.mockReturnValue({ generation: 'g', observedRevision: 5 });
     const finalTime = { earliestMs: 20, latestMs: 21 };
     mockCaptureTitleTime.mockReturnValueOnce({ earliestMs: 10, latestMs: 11 }).mockReturnValueOnce(finalTime);
     render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
-    const input = screen.getByRole('textbox', { name: 'serviceOrders.stepTitle' });
-    fireEvent.change(input, { target: { value: 'Op' } });
-    fireEvent.change(input, { target: { value: 'Opening revised' } });
+    const input = screen.getByRole('textbox', { name: label });
+    fireEvent.change(input, { target: { value: 'Ed' } });
+    fireEvent.change(input, { target: { value: next } });
     fireEvent.blur(input);
     await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledWith('order-1', expect.any(Function), {
-      field: 'title', change: { rowId: 's1', generation: 'g', observedRevision: 5, before: 'Opening', after: 'Opening revised', time: finalTime },
+      field, change: { rowId: 's1', generation: 'g', observedRevision: 5, before, after: next, time: finalTime },
     }));
   });
 

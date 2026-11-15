@@ -928,14 +928,27 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     return patchStep(step.id, 'flagged', { flagged }, change && { field: 'flagged', change });
   };
 
-  const stepTitleCapture = (step: ServiceOrderStep, title: string): ServiceOrderStepTitleCapture | undefined => {
+  const stepTextCapture = (step: ServiceOrderStep, field: 'title' | 'body', text: string): ServiceOrderStepTitleCapture | undefined => {
     const version = shownStepVersion();
-    return version && { ...version, rowId: step.id, before: step.title, after: title, time: captureTitleTime?.() ?? null };
+    return version && { ...version, rowId: step.id, before: step[field] ?? '', after: text, time: captureTitleTime?.() ?? null };
   };
-  const setStepTitle = (id: string, title: string, change?: ServiceOrderStepTitleCapture) =>
-    patchStep(id, 'title', { title }, change && { field: 'title', change });
-  const restoreStepTitle = (step: ServiceOrderStep, title: string) =>
-    setStepTitle(step.id, title, stepTitleCapture(step, title));
+  const editStepText = (step: ServiceOrderStep, field: 'title' | 'body', text: string) => {
+    const key = `${step.id}:${field}`;
+    const waiting = pending.current.get(key);
+    const opening = waiting?.step?.field === field ? waiting.step.change : undefined;
+    // A pause or blur saves one burst with its first displayed value and last input time.
+    const change = waiting
+      ? opening && { ...opening, after: text, time: captureTitleTime?.() ?? null }
+      : stepTextCapture(step, field, text);
+    const capture = change && { field, change };
+    const patch = { [field]: text };
+    mirror(steps => steps.map(entry => entry.id === step.id ? { ...entry, ...patch } : entry));
+    schedule(key, () => patchStep(step.id, field, patch, capture), capture);
+  };
+  const restoreStepTitle = (step: ServiceOrderStep, title: string) => {
+    const change = stepTextCapture(step, 'title', title);
+    return patchStep(step.id, 'title', { title }, change && { field: 'title', change });
+  };
 
   /**
    * The id is minted ONCE, outside the mutator. It used to be created inside, so a write that
@@ -1133,20 +1146,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                       value={step.title}
                       placeholder={t('serviceOrders.stepTitle') as string}
                       aria-label={t('serviceOrders.stepTitle') as string}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        const key = `${step.id}:title`;
-                        const waiting = pending.current.get(key);
-                        const opening = waiting?.step?.field === 'title' ? waiting.step.change : undefined;
-                        // A pause or blur saves one typing burst. Its last input time goes with the original displayed value.
-                        const capture = waiting
-                          ? opening && { ...opening, after: next, time: captureTitleTime?.() ?? null }
-                          : stepTitleCapture(step, next);
-                        mirror((steps) =>
-                          steps.map((entry) => (entry.id === step.id ? { ...entry, title: next } : entry))
-                        );
-                        schedule(key, () => setStepTitle(step.id, next, capture), capture && { field: 'title', change: capture });
-                      }}
+                      onChange={(event) => editStepText(step, 'title', event.target.value)}
                       onBlur={() => flush(`${step.id}:title`)}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
                     />
@@ -1155,13 +1155,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                       rows={3}
                       placeholder={t('serviceOrders.stepWords') as string}
                       aria-label={t('serviceOrders.stepWords') as string}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        mirror((steps) =>
-                          steps.map((entry) => (entry.id === step.id ? { ...entry, body: next } : entry))
-                        );
-                        schedule(`${step.id}:body`, () => patchStep(step.id, 'body', { body: next }));
-                      }}
+                      onChange={(event) => editStepText(step, 'body', event.target.value)}
                       onBlur={() => flush(`${step.id}:body`)}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
                     />

@@ -243,6 +243,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
         };
         const action: EditorCommitAction | undefined = step?.field === 'flagged' ? { kind: 'service-order-flag', flag: step.change }
           : step?.field === 'title' ? { kind: 'service-order-step-title', title: step.change }
+            : step?.field === 'body' ? { kind: 'service-order-step-body', body: step.change }
             : step?.field === 'scriptureRefs' ? { kind: 'service-order-step-scripture', scripture: step.change }
               : step?.field === 'placement' ? { kind: 'service-order-step-placement', move: step.change } : undefined;
         if (action) await actions.commit(resource(id), update, action);

@@ -3608,6 +3608,48 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'earlier', at: 15, kind: 'acknowledged', winner: 'Opening words' },
+    { label: 'later', at: 100, kind: 'acknowledged', winner: 'Offline words' },
+    { label: 'uncertain', at: null, kind: 'conflict', winner: 'Opening words' },
+    { label: 'legacy request', at: undefined, kind: 'conflict', winner: 'Opening words' },
+    { label: 'earlier with an empty legacy opening', at: 15, kind: 'acknowledged', winner: '', missing: true },
+  ])('orders a service step body after a return to its opening: $label', async ({ at, kind, winner, missing }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-body-return' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', title: 'Opening', scriptureRefs: [], ...(missing ? {} : { body: 'Opening words' }) };
+    const other = { id: 'other', title: 'Prayer', body: 'Other step words', flagged: true };
+    const initial = [opening, other];
+    const computerEdit = [{ ...opening, body: 'Computer words', title: 'Independent title' }, other];
+    const restored = [{ ...computerEdit[0], body: opening.body ?? '' }, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: initial },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof initial, after: typeof initial, observedRevision: number, time: number | null | undefined) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      ...(time !== undefined && { serviceOrderStepBodyActions: [{ rowId: opening.id, rowCreatedAt: opening.id, observedRevision,
+        time: time === null ? null : { earliestMs: 1_800_000_000_000 + time, latestMs: 1_800_000_000_004 + time } }] }),
+    });
+    expect((await processCommand(base.owner, edit('computer', initial, computerEdit, 1, 55))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('restore', computerEdit, restored, 2, 75))).kind).toBe('acknowledged');
+    const command = edit('offline', initial, [{ ...opening, body: 'Offline words' }, other], 1, at);
+    const answer = await processCommand(base.owner, command);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { steps: [{ ...restored[0], body: winner }, other] } } });
+    if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['steps', 'id:opening', 'body'] }] });
+    expect(await processCommand(base.owner, command)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('serviceOrders/step-body-return/_stepBodyHistory/'));
+    if (kind === 'conflict') {
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{
+        rowId: opening.id, field: 'body', value: at === 100 ? 'Opening words' : 'Offline words', winnerDigest: expect.any(String),
+      }] });
+    }
+  });
+
+  it.each([
     { label: 'earlier', mobileAt: 15, title: 'Computer opening', kind: 'acknowledged' },
     { label: 'later', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged' },
     { label: 'unclocked', mobileAt: null, title: 'Computer opening', kind: 'conflict' },
