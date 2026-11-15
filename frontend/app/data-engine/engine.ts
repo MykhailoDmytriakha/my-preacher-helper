@@ -2105,7 +2105,7 @@ export class DataEngine {
           throw Object.assign(new Error('The shown sermon changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft, checkpoint.confirmed);
-        let captured = next === checkpoint.draft && (action?.kind === 'document-tags'
+        let captured = next === checkpoint.draft && (action?.kind === 'document-tags' || action?.kind === 'prayer-text'
           || action?.kind === 'sermon-plan-text' && action.transfer) ? undefined : action;
         if (action?.kind === 'service-order-placement'
           && (frozen.collection !== 'serviceOrders' || !next || next.rank !== action.move.rank
@@ -2121,14 +2121,17 @@ export class DataEngine {
           const title = validatedTitleCapture(checkpoint.confirmed, checkpoint.draft, next, action.title, known);
           captured = title ? { kind: 'service-order-title', title } : undefined;
         }
-        if (action?.kind === 'prayer-title') {
-          const { seen } = action.title;
+        const prayerTitle = action?.kind === 'prayer-title' || action?.kind === 'prayer-text' ? action.title : undefined;
+        if (prayerTitle) {
+          const { seen } = prayerTitle;
           const known = Boolean(seen.requestId && matchesPrayerTitleRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
-          if (!capturePrayerTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
+          if (!capturePrayerTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, prayerTitle, known)) {
             if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.title !== seen.title)) {
               throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
             }
-            captured = next !== checkpoint.draft && action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
+            if (captured?.kind === 'prayer-text') captured = { ...captured, title: undefined };
+            else captured = next !== checkpoint.draft && tagMembership?.length
+              ? { kind: 'document-tags', tagMembership } : undefined;
           }
         }
         if (action?.kind === 'plan-template-name') {
@@ -2213,9 +2216,10 @@ export class DataEngine {
             throw Object.assign(new Error('The comment move opening changed'), { code: 'comment-place-basis-changed' });
           }
         }
-        if (action?.kind === 'prayer-status') {
+        const prayerStatus = action?.kind === 'prayer-status' || action?.kind === 'prayer-text' ? action.status : undefined;
+        if (prayerStatus) {
           if (next === checkpoint.draft) captured = undefined;
-          else if (action.status.opening && !matchesPrayerStatusOpening(checkpoint.confirmed, action.status.opening)) {
+          else if (prayerStatus.opening && !matchesPrayerStatusOpening(checkpoint.confirmed, prayerStatus.opening)) {
             throw Object.assign(new Error('The prayer status opening changed'), { code: 'prayer-status-basis-changed' });
           }
         }

@@ -4904,6 +4904,47 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('prayer text returned to the original', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'prayerRequests', id: 'restored-prayer-text' };
+    const title = 'Keep the prayer title';
+    const added = '2026-11-08T00:00:00.000Z';
+    const updates = [{ id: 'update-1', text: 'Keep the update', createdAt: added }];
+
+    it.each([
+      { field: 'description', openingText: 'The current prayer description' },
+      { field: 'description', openingText: undefined },
+      { field: 'answerText', openingText: 'The current answer' },
+    ] as const)('keeps a later return in $field with opening $openingText when the earlier legacy packet first arrives', async ({ field, openingText }) => {
+      const seed = await processCommand(owner, {
+        protocol: 1, owner, resource, operationId: 'prayer-text-created', kind: 'create', generation: null, dependsOn: [],
+        value: {
+          userId: owner, title, status: 'answered', answeredAt: added, createdAt: added, updatedAt: added, updates,
+          ...(openingText === undefined ? {} : { [field]: openingText }),
+        },
+      });
+      if (seed.kind !== 'acknowledged') throw new Error(JSON.stringify(seed));
+      const edit = (from: typeof seed.snapshot, next: string | undefined, id: string) => {
+        const draft = { ...from.value };
+        if (next === undefined) delete draft[field];
+        else draft[field] = next;
+        return prepareDomainCommand(owner, id, from, draft).command;
+      };
+      const queued = edit(seed.snapshot, 'Earlier offline words', 'prayer-phone-early');
+      const changed = await processCommand(owner, edit(seed.snapshot, 'Temporary computer words', 'prayer-computer-change'));
+      if (changed.kind !== 'acknowledged') throw new Error(JSON.stringify(changed));
+      const restored = await processCommand(owner, edit(changed.snapshot, openingText, 'prayer-computer-return'));
+      if (restored.kind !== 'acknowledged') throw new Error(JSON.stringify(restored));
+
+      expect(restored.snapshot.value?.[field]).toBe(openingText);
+      const late = await processCommand(owner, queued);
+      expect(late).toMatchObject({ kind: 'conflict', conflicts: [{ path: [field] }], snapshot: { value: { title, updates, answeredAt: added } } });
+      if (late.kind !== 'conflict') throw new Error(JSON.stringify(late));
+      expect(late.snapshot.value?.[field]).toBe(openingText);
+      expect(await processCommand(owner, queued)).toEqual(late);
+    });
+  });
+
   describe('prayer status chronology', () => {
     const owner = 'owner-1';
     const resource = { collection: 'prayerRequests', id: 'prayer-status' };

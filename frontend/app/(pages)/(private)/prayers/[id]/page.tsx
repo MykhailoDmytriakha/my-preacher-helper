@@ -50,6 +50,7 @@ import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagOpening } from '@/data-engine/documentTagCapture';
 import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
 import type { PrayerStatusField, PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
+import type { PrayerTextOpening } from '@/data-engine/prayerTextAction';
 
 import '@locales/i18n';
 
@@ -67,6 +68,7 @@ export default function PrayerDetailPage() {
     loading,
     updatePrayer,
     observeTitle,
+    observeText,
     observeTagBasis,
     observeStatus,
     restoreStatusField,
@@ -110,9 +112,10 @@ export default function PrayerDetailPage() {
    */
   const [editBaseContent, setEditBaseContent] = useState<Record<string, unknown> | null>(null);
   const [editTitleSeen, setEditTitleSeen] = useState<PrayerTitleSeen>();
+  const [editDescriptionSeen, setEditDescriptionSeen] = useState<PrayerTextOpening>();
   const [editTagBasis, setEditTagBasis] = useState<DocumentTagOpening>();
   const [showAddUpdate, setShowAddUpdate] = useState(false);
-  const [answerOpening, setAnswerOpening] = useState<{ prayer: PrayerRequest; status?: PrayerStatusOpening } | null>(null);
+  const [answerOpening, setAnswerOpening] = useState<{ prayer: PrayerRequest; status?: PrayerStatusOpening; text?: PrayerTextOpening } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sortedUpdates = useMemo(
@@ -206,7 +209,8 @@ export default function PrayerDetailPage() {
       editBaseRevision ?? prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
       editBaseContent,
       editTitleSeen,
-      editTagBasis
+      editTagBasis,
+      editDescriptionSeen
     );
   };
 
@@ -229,7 +233,7 @@ export default function PrayerDetailPage() {
     return addUpdate(prayer.id, text);
   };
 
-  const openAnswer = () => setAnswerOpening({ prayer, status: observeStatus(prayer) });
+  const openAnswer = () => setAnswerOpening({ prayer, status: observeStatus(prayer), text: observeText(prayer, 'answerText') });
 
   const handleSetStatus = (status: PrayerStatus) => {
     if (status === 'answered') {
@@ -246,10 +250,10 @@ export default function PrayerDetailPage() {
 
   const handleMarkAnswered = (answerText?: string) => {
     if (!answerOpening) return skippedWrite();
-    const { prayer: opening, status } = answerOpening;
+    const { prayer: opening, status, text } = answerOpening;
     // The answer stays anchored to the text that was visible when the modal opened.
     return setStatus(opening.id, 'answered', answerText, opening.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
-      { status: opening.status, answerText: opening.answerText ?? null }, ...(status ? [status] : []));
+      { status: opening.status, answerText: opening.answerText ?? null }, status, text);
   };
 
   const titleHistory = observeTitle(prayer);
@@ -394,6 +398,7 @@ export default function PrayerDetailPage() {
               onClick={() => {
                 setEditBaseRevision(prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
                 setEditTitleSeen(observeTitle(prayer));
+                setEditDescriptionSeen(observeText(prayer, 'description'));
                 setEditTagBasis(observeTagBasis(prayer));
                 setEditBaseContent({
                   title: prayer.title,

@@ -1242,6 +1242,45 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it.each(['description', 'answerText'] as const)('replays an exact second prayer %s action after an earlier one lost', async field => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Keep the prayer', status: 'answered', [field]: 'Opening words',
+        updates: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const value = (text: string) => ({ exists: true, value: text });
+    const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+    const s = setup({ opening });
+    const queue = s.makeQueue().queue;
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, [field]: 'First phone words' }), {
+      kind: 'prayer-text', text: { time: time(20), openings: { [field]: { value: value('Opening words'), generation: 'prayer', revision: 1 } } },
+    });
+    const [first] = await queue.list();
+    const [shown] = collectionDocumentViews('owner', 'prayerRequests', [opening], [first]);
+    const seen = shown.submittedPrayerText?.[field];
+    expect(seen).toEqual({ value: value('First phone words'), generation: 'prayer', revision: 1, requestId: first.id });
+    await editor.commit(current => ({ ...current, [field]: 'Last phone words' }), {
+      kind: 'prayer-text', text: { time: time(80), openings: { [field]: seen } },
+    });
+    const second = (await queue.list()).find(request => request.id !== first.id)!;
+    expect(second.prayerTextActions?.[field]).toEqual({
+      before: value('First phone words'), after: value('Last phone words'),
+      predecessorOperationId: first.id, observedRevision: 1, time: time(80),
+    });
+    const accepted = { ...opening, value: { ...opening.value, [field]: 'Computer words' },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-edit' } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: second.id,
+      prayerTextActions: { [field]: { observedRevision: 1, time: time(80), predecessorOperationId: first.id } },
+      changes: [{ path: [field], before: value('First phone words'), after: value('Last phone words') }],
+    }));
+  });
+
   it('pins a prayer status shown by an exact queued reactivation before the modal opens', async () => {
     const date = '2026-10-03T10:00:00.000Z';
     const opening: ResourceSnapshot = { resource: { collection: 'prayerRequests', id: 'prayer' },

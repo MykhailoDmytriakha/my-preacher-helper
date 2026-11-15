@@ -49,7 +49,7 @@ jest.mock('@/providers/AuthProvider', () => ({
 }));
 
 jest.mock('@/hooks/usePrayerRequests', () => ({
-  usePrayerRequests: () => ({ observeTitle: () => undefined, observeTagBasis: () => ({ generation: 'prayer', revision: 1 }), observeStatus: () => undefined, ...mockUsePrayerRequests() }),
+  usePrayerRequests: () => ({ observeTitle: () => undefined, observeText: () => undefined, observeTagBasis: () => ({ generation: 'prayer', revision: 1 }), observeStatus: () => undefined, ...mockUsePrayerRequests() }),
 }));
 
 jest.mock('@/hooks/usePrayerDetail', () => ({
@@ -363,7 +363,8 @@ describe('PrayerDetailPage', () => {
         // construction, and the check would protect nothing.
         { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] },
         undefined,
-        { generation: 'prayer', revision: 1 }
+        { generation: 'prayer', revision: 1 },
+        undefined
       );
       expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
@@ -372,7 +373,7 @@ describe('PrayerDetailPage', () => {
       expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      });
+      }, undefined, undefined);
       expect(deletePrayer).toHaveBeenCalledWith('p1');
       // replace, not push — the deleted prayer must not stay one Back away (BUG-20260905).
       expect(mockReplace).toHaveBeenCalledWith('/prayers');

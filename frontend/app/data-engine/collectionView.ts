@@ -1,7 +1,7 @@
 import { submittedCommentKind, type CommentKindSeen } from './commentKindAction';
 import { submittedCommentPlace, type CommentPlaceSeen } from './commentPlaceAction';
 import { followsStandaloneCreation, isRemovalAfterStandaloneCreation, pendingRemovalGeneration } from './deletionOrdering';
-import { submittedDocumentTitle, submittedPrayerStatus, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
+import { submittedDocumentTitle, submittedPrayerStatus, submittedPrayerText, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -11,6 +11,7 @@ import type { CommitRequest } from './commits';
 import type { DocumentTitleSeen, StudyNoteTypeSeen, TagColorSeen } from './documentFieldAction';
 import type { DocumentTagOpening } from './documentTagCapture';
 import type { PrayerStatusOpening } from './prayerStatusAction';
+import type { PrayerTextOpenings } from './prayerTextAction';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
 
 /** Read-only presentation; its value must never be used as an editor's confirmed baseline. */
@@ -33,6 +34,7 @@ export interface CollectionDocumentView {
   submittedCommentPlace?: CommentPlaceSeen;
   submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
+  submittedPrayerText?: PrayerTextOpenings;
   submittedPrayerTagBasis?: DocumentTagOpening;
 }
 
@@ -101,6 +103,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const commentPlace = !needsAttention && collection === 'studyNotes' && submittedCommentPlace(owner, checkpoint, unsettled);
     const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
+    const prayerText = submittedPrayerText(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
     const submittedColor = submittedTagColor(checkpoint, unsettled, needsAttention);
     // An initialized removal retains its creation ID even after the queue compacts that creation.
@@ -121,6 +124,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       ...(commentPlace && { submittedCommentPlace: commentPlace }),
       ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
+      ...(prayerText && { submittedPrayerText: prayerText }),
       ...(prayerTagBasis && { submittedPrayerTagBasis: prayerTagBasis }),
       ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
       ...(checkpoint && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata && checkpoint.draft !== null

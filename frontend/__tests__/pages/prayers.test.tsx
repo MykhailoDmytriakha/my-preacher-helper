@@ -63,7 +63,7 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
   // The ARGUMENTS matter: the second one addresses the durable slot a refusal is
   // stored in, and dropping it here would hide the whole class of "the refused text
   // is on disk but nothing on screen can reach it" defects.
-  usePrayerRequests: (...args: unknown[]) => ({ observeTitle: () => undefined, observeTagBasis: () => ({ generation: 'prayer', revision: 1 }), observeStatus: () => undefined, ...mockUsePrayerRequests(...args) }),
+  usePrayerRequests: (...args: unknown[]) => ({ observeTitle: () => undefined, observeText: () => undefined, observeTagBasis: () => ({ generation: 'prayer', revision: 1 }), observeStatus: () => undefined, ...mockUsePrayerRequests(...args) }),
 }));
 
 jest.mock('@/components/prayer/PrayerRequestCard', () => {
@@ -371,7 +371,8 @@ describe('Prayer Page', () => {
         0,
         { title: 'Pray for church', description: 'Sunday service', tags: ['church'] },
         undefined,
-        { generation: 'prayer', revision: 1 }
+        { generation: 'prayer', revision: 1 },
+        undefined
       );
       expect(deletePrayer).toHaveBeenCalledWith('active-1');
       expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note');
@@ -379,7 +380,7 @@ describe('Prayer Page', () => {
       expect(setStatus).toHaveBeenCalledWith('active-1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      });
+      }, undefined, undefined);
     });
 
     // The page delegates editor-owned confirmation to the modal. It must not add a

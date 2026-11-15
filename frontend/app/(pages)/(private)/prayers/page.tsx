@@ -54,6 +54,7 @@ import { useTranslation } from '@locales/useTranslation';
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagOpening } from '@/data-engine/documentTagCapture';
 import type { PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
+import type { PrayerTextOpening } from '@/data-engine/prayerTextAction';
 
 import '@locales/i18n';
 
@@ -95,6 +96,8 @@ export default function PrayerPage() {
    * guard would then approve exactly the overwrite it exists to refuse.
    */
   const [markingAnswered, setMarkingAnswered] = useState<PrayerRequest | null>(null);
+  const [editingDescriptionSeen, setEditingDescriptionSeen] = useState<PrayerTextOpening>();
+  const [markingTextSeen, setMarkingTextSeen] = useState<PrayerTextOpening>();
   const [markingStatusOpening, setMarkingStatusOpening] = useState<PrayerStatusOpening>();
   /**
    * WHICH prayer a refusal belongs to — and it must OUTLIVE the modal.
@@ -128,6 +131,7 @@ export default function PrayerPage() {
     createPrayer,
     updatePrayer,
     observeTitle,
+    observeText,
     observeTagBasis,
     observeStatus,
     deletePrayer,
@@ -305,7 +309,8 @@ export default function PrayerPage() {
         tags: editingPrayer.tags ?? [],
       },
       editingTitleSeen,
-      editingTagBasis
+      editingTagBasis,
+      editingDescriptionSeen
     );
   };
 
@@ -321,6 +326,7 @@ export default function PrayerPage() {
       const prayer = prayerRequests.find(candidate => candidate.id === id);
       setMarkingAnswered(prayer ?? null);
       setMarkingStatusOpening(prayer ? observeStatus(prayer) : undefined);
+      setMarkingTextSeen(prayer ? observeText(prayer, 'answerText') : undefined);
       return skippedWrite('awaiting-confirmation');
     }
 
@@ -342,7 +348,8 @@ export default function PrayerPage() {
       answerText,
       markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
       { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null },
-      ...(markingStatusOpening ? [markingStatusOpening] : [])
+      markingStatusOpening,
+      markingTextSeen
     );
   };
 
@@ -785,7 +792,7 @@ export default function PrayerPage() {
               onSetStatus={handleSetStatus}
               onDelete={handleDelete}
               onAddUpdate={(id) => setAddingUpdateForId(id)}
-              onEdit={(selectedPrayer) => { setEditingTitleSeen(observeTitle(selectedPrayer)); setEditingTagBasis(observeTagBasis(selectedPrayer)); setEditingPrayer(selectedPrayer); }}
+              onEdit={(selectedPrayer) => { setEditingTitleSeen(observeTitle(selectedPrayer)); setEditingDescriptionSeen(observeText(selectedPrayer, 'description')); setEditingTagBasis(observeTagBasis(selectedPrayer)); setEditingPrayer(selectedPrayer); }}
             />
           ))}
         </div>

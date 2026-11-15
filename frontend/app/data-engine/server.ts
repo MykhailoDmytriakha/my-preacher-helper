@@ -26,7 +26,7 @@ import { COUNCIL_TOPIC_PLACEMENT_HISTORY, metadataAfterCouncilTopicPlacement } f
 import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { documentFieldPath, documentFieldValue, isSermonPlanMode } from './documentFieldAction';
+import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode } from './documentFieldAction';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
@@ -915,7 +915,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
       : readField(primarySnapshot.value, documentFieldPath(target));
     if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
-    if (target.action === 'sermonRepeatedWordsAction' || target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction') {
+    if (target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target)) {
       if (!primarySnapshot.metadata) continue;
       const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
       const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');

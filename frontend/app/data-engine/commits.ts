@@ -19,7 +19,7 @@ import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopi
 import { councilTopicPlacementPredecessor, councilTopicWitness, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, captureRemovalLineage, deleteOrderReady, replayDeleteOrder, type PendingRemovalOpening } from './deletionOrdering';
-import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerText, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
@@ -66,6 +66,7 @@ import type { GroupTextReviewStage } from './groupTextReview';
 import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservations } from './prayerStatusAction';
+import type { PrayerTextObservations } from './prayerTextAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
 import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
 import type { AutosaveRowFieldActions } from './rowFieldAutosave';
@@ -178,6 +179,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   studyNoteReferenceEvidence?: StudyNoteReferenceEvidence;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
+  prayerTextActions?: PrayerTextObservations;
   groupTitleAction?: DocumentFieldObservation;
   groupStatusAction?: DocumentFieldObservation;
   groupDescriptionAction?: DocumentFieldObservation<FieldValue>;
@@ -329,6 +331,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.homileticPositionReviews ?? null, incoming.homileticPositionReviews ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
+    || !equalValues(current.prayerTextActions ?? null, incoming.prayerTextActions ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
     || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
@@ -462,7 +465,7 @@ function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.prayerTextActions || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -764,7 +767,7 @@ export class CommitQueue {
           : editorAction?.kind === 'service-order-step-scripture-review' ? { field: 'scriptureReview' as const, changes: editorAction.scriptures } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     const baseline = clone(intent.confirmed);
     const removalLineage = frozenOptions?.pendingRemoval && captureRemovalLineage(frozenOptions.pendingRemoval, baseline, predecessor, records);
@@ -816,7 +819,8 @@ export class CommitQueue {
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
     const councilAssemblyActions = captureCouncilAssembly(baseline, predecessor, intent.draft, assembly, records);
     const councilTopicKindActions = captureCouncilTopicKind(baseline, predecessor, intent.draft, topicKind, records);
-    const prayerCapture = editorAction?.kind === 'prayer-title' ? editorAction.title : undefined;
+    const prayerTextCapture = editorAction?.kind === 'prayer-text' ? editorAction : undefined;
+    const prayerCapture = editorAction?.kind === 'prayer-title' ? editorAction.title : prayerTextCapture?.title;
     const prayerPredecessor = prayerCapture?.seen.requestId
       ? matchesPrayerTitleRequest(records.find(record => record.id === prayerCapture.seen.requestId), owner, baseline.resource, prayerCapture.seen) : false;
     const prayerTitle = capturePrayerTitle(baseline, intent.draft, prayerCapture, prayerPredecessor);
@@ -856,7 +860,11 @@ export class CommitQueue {
     const tagColor = captureTagColor(baseline, intent.draft, colorCapture, Boolean(colorCapture && colorRequestId
       && matchesTagColorRequest(records.find(record => record.id === colorRequestId), owner, baseline.resource, colorCapture.seen)));
     const prayerStatus = capturePrayerStatusFields(baseline, predecessor, intent.draft,
-      editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
+      editorAction?.kind === 'prayer-status' ? editorAction.status : prayerTextCapture?.status, records, owner);
+    const prayerTextActions = prayerTextCapture && capturePrayerText(baseline, intent.draft, prayerTextCapture.text, records, owner);
+    if (prayerTextCapture && !prayerTextActions) {
+      throw Object.assign(new Error('The prayer text opening changed'), { code: 'prayer-text-basis-changed' });
+    }
     const preparationChecks = editorAction?.kind === 'sermon-preparation-check'
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
     const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
@@ -913,6 +921,7 @@ export class CommitQueue {
       ...(templateName && { planTemplateNameAction: templateName }),
       ...(tagColor && { tagColorAction: tagColor }),
       ...prayerStatus,
+      ...(prayerTextActions && { prayerTextActions }),
       ...metadataFields,
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
       ...(exegeticalPlanActions && { exegeticalPlanActions }),

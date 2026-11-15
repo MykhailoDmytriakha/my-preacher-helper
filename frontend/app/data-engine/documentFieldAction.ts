@@ -10,12 +10,14 @@ import { commentPlaceValue, placeOfCommentChange, replaceCommentReference } from
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
+import { PRAYER_TEXT_TARGETS } from './prayerTextAction';
 import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { PrayerStatusCapture, PrayerStatusObservations, PrayerStatusOpening, PrayerStatusTarget } from './prayerStatusAction';
+import type { PrayerTextCapture, PrayerTextObservations, PrayerTextOpenings, PrayerTextTarget } from './prayerTextAction';
 import type { SeriesFieldObservation, SeriesFieldTarget } from './seriesFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
@@ -71,7 +73,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof GROUP_DESCRIPTION | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof GROUP_DESCRIPTION | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
@@ -182,10 +184,16 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'tags') return [TAG_COLOR];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
-  if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
+  if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS, ...PRAYER_TEXT_TARGETS];
   if (collection === 'councils') return COUNCIL_FIELDS;
   if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE, SERMON_PLAN_MODE, SERMON_REPEATED_WORDS, ...SERMON_THESIS_TARGETS, ...PREPARATION_CONFIRMATION_TARGETS];
   return [];
+}
+
+type LongTextDocumentFieldTarget = typeof STUDY_NOTE_CONTENT | typeof GROUP_DESCRIPTION | PrayerTextTarget;
+
+export function isLongTextDocumentField(target: DocumentFieldTarget): target is LongTextDocumentFieldTarget {
+  return target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction' || target.action === 'prayerTextActions';
 }
 
 export function acceptsDocumentField(value: FieldValue, target: DocumentFieldTarget): boolean {
@@ -197,6 +205,7 @@ export function acceptsDocumentField(value: FieldValue, target: DocumentFieldTar
 export function capturedDocumentField(record: CommitRequest, target: DocumentFieldTarget) {
   if (target.action === 'accountPreferenceActions') return record.accountPreferenceActions?.[target.field];
   if (target.action === 'seriesFieldActions') return record.seriesFieldActions?.[target.field];
+  if (target.action === 'prayerTextActions') return record.prayerTextActions?.[target.field];
   if (target.action === 'sermonPreparationCheckActions') return record.sermonPreparationCheckActions?.[target.field];
   if (target.action === 'sermonThesisFieldActions') return record.sermonThesisFieldActions?.[target.field];
   return record[target.action];
@@ -461,7 +470,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | PrayerStatusTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -472,7 +481,7 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
       || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
-        : target.field === 'church' || target.field === 'date' || target.field === 'description' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
+        : target.field === 'church' || target.field === 'date' || target.field === 'description' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'prayerTextActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -537,6 +546,45 @@ export function submittedPrayerStatus(checkpoint: SessionCheckpoint | null, requ
   }));
   if (!Object.keys(submitted).length) return undefined;
   return { generation: metadata.generation, revision: metadata.revision, status, answeredAt, submitted };
+}
+
+export function submittedPrayerText(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
+  needsAttention: boolean): PrayerTextOpenings | undefined {
+  if (!checkpoint || needsAttention || checkpoint.confirmed.resource.collection !== 'prayerRequests') return undefined;
+  const { metadata } = checkpoint.confirmed;
+  const draft = checkpoint.draft;
+  const tip = requests.find(request => request.id === Object.keys(checkpoint.pending).at(-1));
+  if (!draft || !metadata || metadata.deleted || !tip) return undefined;
+  const submitted = PRAYER_TEXT_TARGETS.flatMap(target => {
+    const value = readField(draft, [target.field]);
+    const requestId = knownMetadataFieldPredecessor(checkpoint.confirmed, tip, target, value, requests);
+    const action = requestId && requests.find(request => request.id === requestId)?.prayerTextActions?.[target.field];
+    return action ? [[target.field, { value, generation: metadata.generation, revision: action.observedRevision, requestId }]] : [];
+  });
+  return submitted.length ? Object.fromEntries(submitted) : undefined;
+}
+
+export function capturePrayerText(baseline: ResourceSnapshot, draft: DocumentData | null, capture: PrayerTextCapture,
+  records: readonly CommitRequest[], owner: string): PrayerTextObservations | undefined {
+  const { metadata } = baseline;
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
+  if (!draft || !metadata || metadata.deleted || baseline.resource.collection !== 'prayerRequests' || time === undefined) return undefined;
+  const actions = PRAYER_TEXT_TARGETS.flatMap(target => {
+    const seen = capture.openings[target.field];
+    const after = readField(draft, [target.field]);
+    if (!seen || seen.generation !== metadata.generation || !Number.isSafeInteger(seen.revision)
+      || seen.revision < 1 || seen.revision > metadata.revision || !acceptsDocumentField(seen.value, target)
+      || !acceptsDocumentField(after, target) || equalValues(seen.value, after)) return [];
+    const request = seen.requestId && records.find(row => row.id === seen.requestId);
+    const action = request && request.prayerTextActions?.[target.field];
+    const known = action && request && request.owner === owner && equalValues(request.baseline.resource, baseline.resource)
+      && request.baseline.metadata?.generation === seen.generation && action.observedRevision === seen.revision
+      && equalValues(action.after, seen.value) && !['conflict', 'refused', 'cancelled'].includes(request.state);
+    if (seen.requestId && !known && !equalValues(readField(baseline.value ?? {}, [target.field]), seen.value)) return [];
+    return [[target.field, { before: seen.value, after, observedRevision: seen.revision, time,
+      ...(known && { predecessorOperationId: seen.requestId }) }]];
+  });
+  return actions.length ? Object.fromEntries(actions) : undefined;
 }
 
 export function matchesPrayerStatusOpening(snapshot: ResourceSnapshot, opening: PrayerStatusOpening): boolean {
@@ -805,7 +853,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions') {
+  if (target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'prayerTextActions') {
     return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };
   }
   if (target.action === 'sermonPlanModeAction') {

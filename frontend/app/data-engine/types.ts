@@ -16,6 +16,7 @@ import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusCapture } from './prayerStatusAction';
+import type { PrayerTextCapture, PrayerTextStamps } from './prayerTextAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { RowTextStamp } from './rowDetailAction';
@@ -106,6 +107,7 @@ export type EditorCommitAction =
   | { kind: 'council-lifecycle'; time: ActionTime | null }
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
+  | { kind: 'prayer-text'; text: PrayerTextCapture; title?: PrayerTitleCapture; status?: PrayerStatusCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
   | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[]; referenceEvidence?: StudyNoteReferenceEvidence }
@@ -258,6 +260,7 @@ export type DataCommand = CommandBase & (
       councilTopicKindActions?: CouncilTopicKindActions;
       councilTopicQueue?: string;
       councilOutcomeActions?: CouncilOutcomeWire[];
+      prayerTextActions?: PrayerTextStamps;
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteContentAction?: DocumentFieldStamp;

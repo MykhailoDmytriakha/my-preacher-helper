@@ -14,7 +14,8 @@ import { useTranslation } from '@locales/useTranslation';
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagIntent, DocumentTagOpening } from '@/data-engine/documentTagCapture';
 import type { PrayerStatusField, PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
-import type { DocumentData, EditorCommitAction } from '@/data-engine/types';
+import type { PrayerTextField, PrayerTextOpening } from '@/data-engine/prayerTextAction';
+import type { DocumentData, EditorCommitAction, FieldValue } from '@/data-engine/types';
 import type { PrayerRequest, PrayerStatus } from '@/models/models';
 
 type CreatePrayerPayload = Pick<PrayerRequest, 'userId' | 'title'> &
@@ -31,6 +32,10 @@ type StatusConflictPayload = { id: string; status: PrayerStatus; answerText?: st
 const resource = (id: string) => ({ collection: 'prayerRequests', id });
 const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+const prayerTextValue = (text: string | undefined): FieldValue => text === undefined
+  ? { exists: false } : { exists: true, value: text };
+const matchesPrayerText = (field: FieldValue, text: unknown) => field.exists ? field.value === text : text === undefined;
 
 function authoredPrayerFields(updates: Partial<PrayerRequest>, baseline?: Record<string, unknown> | null): Partial<PrayerRequest> {
   if (!baseline) return updates;
@@ -100,6 +105,19 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     return metadata ? { title: prayer.title, generation: metadata.generation, revision: metadata.revision } : undefined;
   };
 
+  const observeText = (prayer: PrayerRequest, field: PrayerTextField): PrayerTextOpening | undefined => {
+    const text = prayer[field];
+    if (text !== undefined && typeof text !== 'string') return;
+    const value = prayerTextValue(text);
+    const row = collection.state?.documents?.find(item => item.resource.id === prayer.id);
+    const submitted = row?.submittedPrayerText?.[field];
+    if (submitted && matchesPrayerText(submitted.value, text)) return submitted;
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(item => item.resource.id === prayer.id)]
+      .find(item => item?.value && item.metadata && !item.metadata.deleted && matchesPrayerText(value, item.value[field]));
+    const metadata = observed?.metadata;
+    return metadata ? { value, generation: metadata.generation, revision: metadata.revision } : undefined;
+  };
+
   const observeTagBasis = (prayer: PrayerRequest) => readTagOpening(collection.state, prayer.id, prayer.tags ?? []);
 
   const observeStatus = (prayer: PrayerRequest): PrayerStatusOpening | undefined => {
@@ -116,10 +134,12 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
 
   /** One edit that honours an optional per-field baseline; resolves to the refusal, if any. */
   const guardedEdit = useCallback(async (id: string, aggregate: string, patch: DocumentData,
-    baseline?: Record<string, unknown> | null, action?: Extract<EditorCommitAction, { kind: 'prayer-title' | 'prayer-status' | 'document-tags' }>): Promise<StaleWriteError | null> => {
+    baseline?: Record<string, unknown> | null, action?: Extract<EditorCommitAction, { kind: 'prayer-title' | 'prayer-status' | 'prayer-text' | 'document-tags' }>): Promise<StaleWriteError | null> => {
     let refusal: StaleWriteError | null = null;
     let staleField: StaleWriteError | null = null;
-    const timedField = action?.kind === 'prayer-title' ? 'title' : action?.kind === 'prayer-status' && action.status.opening ? 'status' : undefined;
+    const timedFields = new Set(action?.kind === 'prayer-text' ? Object.keys(action.text.openings) : []);
+    if (action?.kind === 'prayer-title' || (action?.kind === 'prayer-text' && action.title)) timedFields.add('title');
+    if ((action?.kind === 'prayer-status' || action?.kind === 'prayer-text') && action.status?.opening) timedFields.add('status');
     const tagMembership = action && 'tagMembership' in action ? action.tagMembership : undefined;
     const matches = (field: string, left: unknown, right: unknown) =>
       field === 'tags' ? same(left ?? [], right ?? []) : same(left, right);
@@ -127,10 +147,11 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       if (!current) throw new Error('The prayer was deleted');
       const revision = (current.rev as Record<string, number> | undefined)?.[aggregate] ?? 0;
       const guarded = baseline ? Object.keys(baseline).filter(field =>
-        field !== timedField && !(field === 'tags' && tagMembership)
+        !timedFields.has(field) && !(field === 'tags' && tagMembership)
         && !matches(field, current[field], baseline[field]) && !matches(field, current[field], patch[field])) : [];
-      if (timedField) {
-        staleField = new StaleWriteError(aggregate, revision, revision, { [timedField]: current[timedField] ?? null });
+      if (timedFields.size) {
+        staleField = new StaleWriteError(aggregate, revision, revision,
+          Object.fromEntries([...timedFields].map(field => [field, current[field] ?? null])));
       }
       if (guarded.length) {
         refusal = new StaleWriteError(aggregate, revision, revision,
@@ -154,7 +175,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       else await actions.commit(resource(id), update);
     } catch (error) {
       if (staleField && error && typeof error === 'object' && 'code' in error
-        && (error.code === 'prayer-title-basis-changed' || error.code === 'prayer-status-basis-changed')) return staleField;
+        && (error.code === 'prayer-title-basis-changed' || error.code === 'prayer-status-basis-changed' || error.code === 'prayer-text-basis-changed')) return staleField;
       throw error;
     }
     return refusal;
@@ -170,16 +191,21 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   };
 
   const updatePrayer = (id: string, updates: Partial<PrayerRequest>, _expectedRevision?: number | null,
-    expectedBaseline?: Record<string, unknown> | null, seenTitle?: PrayerTitleSeen, seenTags?: DocumentTagOpening): Promise<void> => {
+    expectedBaseline?: Record<string, unknown> | null, seenTitle?: PrayerTitleSeen, seenTags?: DocumentTagOpening, seenDescription?: PrayerTextOpening): Promise<void> => {
     const patch = authoredPrayerFields(updates, expectedBaseline);
     if (!Object.keys(patch).length) return Promise.resolve();
     const baseline = expectedBaseline && Object.fromEntries(Object.entries(expectedBaseline).filter(([field]) => Object.hasOwn(patch, field)));
     const title = seenTitle && baseline?.title === seenTitle.title && typeof patch.title === 'string' ? seenTitle : undefined;
     const observedTags = seenTags && Array.isArray(baseline?.tags) && Object.hasOwn(patch, 'tags') ? seenTags : undefined;
-    const time = title || observedTags ? actions.captureActionTime() ?? null : null;
+    const openingDescription = typeof baseline?.description === 'string' ? baseline.description : undefined;
+    const description = seenDescription && Object.hasOwn(patch, 'description')
+      && matchesPrayerText(seenDescription.value, openingDescription) ? seenDescription : undefined;
+    const time = title || observedTags || description ? actions.captureActionTime() ?? null : null;
     const tagMembership = observedTags ? captureTagIntents(baseline?.tags, patch.tags, observedTags, time) : undefined;
-    const action = title ? { kind: 'prayer-title' as const, title: { seen: title, time }, ...(tagMembership && { tagMembership }) }
-      : tagMembership ? { kind: 'document-tags' as const, tagMembership } : undefined;
+    const titleCapture = title && { seen: title, time };
+    const action = description ? { kind: 'prayer-text' as const, text: { time, openings: { description } }, title: titleCapture, tagMembership }
+      : titleCapture ? { kind: 'prayer-title' as const, title: titleCapture, ...(tagMembership && { tagMembership }) }
+        : tagMembership ? { kind: 'document-tags' as const, tagMembership } : undefined;
     return once(`prayer:update:${id}:${JSON.stringify(patch)}`, async () => {
       const held = saveConflictRef.current;
       const cleared = clearablePrayerFields.filter(field => Object.hasOwn(patch, field) && patch[field] === undefined);
@@ -208,12 +234,15 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   });
 
   const setStatus = (id: string, status: PrayerStatus, answerText?: string, _expectedRevision?: number | null,
-    expectedBaseline?: Record<string, unknown> | null, opening?: PrayerStatusOpening): Promise<void> => {
+    expectedBaseline?: Record<string, unknown> | null, opening?: PrayerStatusOpening, seenAnswer?: PrayerTextOpening): Promise<void> => {
     const answerOnly = status === 'answered' && expectedBaseline?.status === 'answered';
     if (answerOnly && (answerText === undefined || same(answerText, expectedBaseline.answerText))) return Promise.resolve();
     const patch = answerOnly ? { answerText: answerText! } : statusPatch(status, answerText);
     const visible = !expectedBaseline ? prayerRequests.find(prayer => prayer.id === id) : undefined;
-    const action = answerOnly ? undefined : statusAction(fieldsForStatus(status), opening ?? (visible ? observeStatus(visible) : undefined));
+    const statusEdit = answerOnly ? undefined : statusAction(fieldsForStatus(status), opening ?? (visible ? observeStatus(visible) : undefined));
+    const answer = seenAnswer && answerText !== undefined && !matchesPrayerText(seenAnswer.value, answerText) ? seenAnswer : undefined;
+    const action = answer ? { kind: 'prayer-text' as const, status: statusEdit?.status,
+      text: { time: statusEdit ? statusEdit.status.time : actions.captureActionTime() ?? null, openings: { answerText: answer } } } : statusEdit;
     const baseline = expectedBaseline && Object.fromEntries(Object.entries(expectedBaseline).filter(([field]) => Object.hasOwn(patch, field)));
     return once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
       const held = statusConflictRef.current;
@@ -243,6 +272,23 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     try { if (!(await run())) clear(); } catch (error) { if (!isStaleWriteError(error)) throw error; } finally { setResolvingConflict(false); }
   };
 
+  const reviewedText = (id: string, field: PrayerTextField, patch: DocumentData) => {
+    const prayer = prayerRequests.find(candidate => candidate.id === id);
+    if (!prayer || !Object.hasOwn(patch, field) || same(patch[field], prayer[field])) return;
+    return observeText(prayer, field);
+  };
+
+  const keepMineOnConflict = () => {
+    if (!saveConflict) return Promise.resolve();
+    const { id, tagMembership } = saveConflict.payload;
+    const patch = persistedPrayerPatch(saveConflict.payload);
+    const description = reviewedText(id, 'description', patch);
+    const action = description ? { kind: 'prayer-text' as const, tagMembership,
+      text: { time: actions.captureActionTime() ?? null, openings: { description } } }
+      : tagMembership ? { kind: 'document-tags' as const, tagMembership } : undefined;
+    return resolve(() => guardedEdit(id, PRAYER_CORE_AGGREGATE, patch, null, action), () => setSaveConflict(null, id, saveConflict));
+  };
+
   return {
     prayerRequests,
     loading: Boolean(userId) && collection.loading,
@@ -260,6 +306,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     },
     updatePrayer,
     observeTitle,
+    observeText,
     observeTagBasis,
     observeStatus,
     restoreStatusField,
@@ -269,10 +316,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     statusConflictChoices,
     resolvingConflict,
     // A confirmed text overwrite still carries only the tags authored in that Save.
-    keepMineOnConflict: () => saveConflict ? resolve(() => guardedEdit(saveConflict.payload.id, PRAYER_CORE_AGGREGATE,
-      persistedPrayerPatch(saveConflict.payload), null, saveConflict.payload.tagMembership
-        ? { kind: 'document-tags', tagMembership: saveConflict.payload.tagMembership } : undefined),
-    () => setSaveConflict(null, saveConflict.payload.id, saveConflict)) : Promise.resolve(),
+    keepMineOnConflict,
     // The engine rows are already the current copy: taking theirs only retires the held text.
     takeTheirsOnConflict: async () => {
       const held = saveConflictRef.current;
@@ -293,7 +337,10 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       if (!statusConflict) return Promise.resolve();
       const { id, status, answerText, answerOnly } = statusConflict.payload;
       const patch = answerOnly ? { answerText: answerText! } : statusPatch(status, answerText);
-      const action = answerOnly ? undefined : statusAction(fieldsForStatus(status));
+      const statusEdit = answerOnly ? undefined : statusAction(fieldsForStatus(status));
+      const answer = reviewedText(id, 'answerText', patch);
+      const action = answer ? { kind: 'prayer-text' as const, status: statusEdit?.status,
+        text: { time: statusEdit ? statusEdit.status.time : actions.captureActionTime() ?? null, openings: { answerText: answer } } } : statusEdit;
       return resolve(() => guardedEdit(id, PRAYER_STATUS_AGGREGATE, patch, null, action),
         () => setStatusConflict(null, id, statusConflict));
     },
