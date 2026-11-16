@@ -15,6 +15,7 @@ import { BibleSearch } from '@/components/bible/search/BibleSearch';
 import { closeFound, showFound, useFoundSearch } from '@/components/bible/search/foundInBible';
 import { rememberOpened, resetLastSearchForTests } from '@/components/bible/search/lastSearch';
 import { rememberSearch, resetSearchHistoryForTests } from '@/components/bible/searchHistoryStore';
+import { SermonScripturePicker } from '@/components/sermon/SermonScripturePicker';
 import { resetSearchIndexesForTests } from '@/utils/bibleSearch/searchIndexStore';
 import { bookSlug } from '@/utils/bibleText';
 
@@ -44,6 +45,31 @@ beforeEach(() => {
   resetSearchHistoryForTests();
   resetLastSearchForTests();
   closeFound();
+});
+
+it.each([false, true])('opens sermon verse selection without focusing an input (wide: %s)', async (wide) => {
+  const media = jest.mocked(window.matchMedia).getMockImplementation()!;
+  jest.mocked(window.matchMedia).mockImplementation(query => ({
+    ...media(query),
+    matches: query === '(pointer: coarse)' || (wide && query === '(min-width: 640px)'),
+  }));
+  render(<><input aria-label="Sermon draft" /><SermonScripturePicker disabled={false} onPick={jest.fn()} /></>);
+  const draft = screen.getByRole('textbox', { name: 'Sermon draft' });
+  const trigger = screen.getByRole('button', { name: 'addSermon.chooseFromBible' });
+  act(() => draft.focus());
+  fireEvent.click(trigger);
+
+  const picker = screen.getByRole('dialog', { name: 'bible.chooseBook' });
+  const search = within(picker).getByRole('combobox');
+  expect(picker).toContainElement(document.activeElement as HTMLElement);
+  expect(draft).not.toHaveFocus();
+  expect(search).not.toHaveFocus();
+  await userEvent.click(search);
+  expect(search).toHaveFocus();
+
+  fireEvent.keyDown(search, { key: 'Escape' });
+  expect(picker).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
 });
 
 // Many rows: the options are read from the page itself — a role query names each of a hundred rows and alone

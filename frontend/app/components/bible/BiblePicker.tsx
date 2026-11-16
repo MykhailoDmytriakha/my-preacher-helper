@@ -563,6 +563,8 @@ export type NavigatorProps = {
   label?: string;
   /** The word on a found place's button while choosing (`BibleSearchProps.actionLabel`). */
   actionLabel?: string;
+  /** Start typing immediately by default in a wide navigator. Forms can leave search inactive. */
+  autoFocusSearch?: boolean;
   /** The picker stays open while its caller loads the chosen passage. */
   selectionPending?: boolean;
   /** In the middle of the screen on a computer (`PickerWindowProps.centered`). */
@@ -574,7 +576,7 @@ export type NavigatorProps = {
  * chapters of a book chosen there and the verses of a chapter (`PlaceSteps`). A book held opens at its
  * start. Mounted only while open, so each opening starts where its button says.
  */
-export function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, text, locale, wide, anchorRef, onClose, onOpen, choosing, layerClassName, label: booksLabel, actionLabel, selectionPending, centered }: NavigatorProps) {
+export function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, text, locale, wide, anchorRef, onClose, onOpen, choosing, layerClassName, label: booksLabel, actionLabel, autoFocusSearch = wide, selectionPending, centered }: NavigatorProps) {
   const { t } = useTranslation();
   const firstChapter = (book: string) => (chapterCount(bible, book) === 1 ? 1 : null);
   const [step, setStep] = useState<{ bookId: string; text: BookText | null; chapter: number | null } | null>(
@@ -606,7 +608,7 @@ export function BookNavigator({ start, bookId, bible, currentChapter, currentVer
         wide={wide}
         surface="window"
         hereBook={bookId}
-        autoFocus={wide}
+        autoFocus={autoFocusSearch}
         actionLabel={actionLabel}
         onOpen={({ bookId: chosen, chapter, verse, toVerse }, fromSearch) => onOpen(chosen, { chapter, verse, toVerse }, fromSearch)}
       >

@@ -60,7 +60,11 @@ export function SermonScripturePicker({ disabled, onPick }: { disabled: boolean;
       aria-haspopup="dialog"
       aria-expanded={bible !== null}
       disabled={disabled}
-      onClick={() => setBible(readTranslation(locale))}
+      onClick={(event) => {
+        // Touch browsers can leave the previous text field focused when a button is tapped.
+        event.currentTarget.focus({ preventScroll: true });
+        setBible(readTranslation(locale));
+      }}
       className="mt-1 inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
     >
       <BookOpenIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -69,7 +73,7 @@ export function SermonScripturePicker({ disabled, onPick }: { disabled: boolean;
     {bible && <BookNavigator
       start="books" bookId="Genesis" bible={bible} currentChapter={1} currentVerse={1} text={null}
       locale={locale} wide={wide} anchorRef={trigger} choosing="verse" centered layerClassName="z-[140]"
-      actionLabel={t('addSermon.usePassage')} selectionPending={pending} onClose={close}
+      actionLabel={t('addSermon.usePassage')} autoFocusSearch={false} selectionPending={pending} onClose={close}
       onOpen={(book, place) => { void pick(book, place); }}
     />}
   </>;
