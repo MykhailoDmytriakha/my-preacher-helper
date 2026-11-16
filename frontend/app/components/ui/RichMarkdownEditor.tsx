@@ -1,20 +1,19 @@
 import Placeholder from '@tiptap/extension-placeholder';
-import { closeHistory } from '@tiptap/pm/history';
 import { EditorContent, useEditor } from '@tiptap/react';
 import React, { useEffect, useRef } from 'react';
 
 import { applyForeignContent } from './foreignContent';
+import { ownedTextDocument, replaceOwnContent } from './ownedTextDocument';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
 
-interface RichMarkdownEditorProps {
-    value: string;
-    onChange: (value: string) => void;
-    /** Witness the applied document once, before its first subsequent edit. */
-    onEditAfterForeignValue?: (value: string) => void;
+import type { EditorTextOwner } from './useEditorOwnedText';
+import type { Editor } from '@tiptap/core';
+
+interface EditorAppearance {
     /** Opt in only when the supplied value is this editor user's requested edit. */
     valueIsUserAction?: boolean;
     /** A foreign value coalesced with the own action; apply its boundary first. */
@@ -28,10 +27,36 @@ interface RichMarkdownEditorProps {
     editable?: boolean;
 }
 
-export function RichMarkdownEditor({
-    value,
-    onChange,
-    onEditAfterForeignValue,
+type ValueProps = {
+    value: string;
+    onChange: (value: string) => void;
+    ownedBy?: never;
+};
+type OwnedProps = { ownedBy: EditorTextOwner; value?: never; onChange?: never };
+export type RichMarkdownEditorProps = EditorAppearance & (ValueProps | OwnedProps);
+type BufferedValue = ReturnType<typeof useBufferedText> & {
+    appliedForeignValue: React.MutableRefObject<EditorAppearance['valueBeforeUserAction']>;
+};
+
+export function RichMarkdownEditor(props: EditorAppearance & OwnedProps): React.JSX.Element;
+export function RichMarkdownEditor(props: RichMarkdownEditorProps): React.JSX.Element;
+export function RichMarkdownEditor(props: EditorAppearance & ValueProps): React.JSX.Element;
+export function RichMarkdownEditor(props: RichMarkdownEditorProps) {
+    return props.ownedBy ? <MarkdownEditor {...props} /> : <BufferedMarkdownEditor {...props} />;
+}
+
+/** Only legacy callers have a prop echo and its installation effect. */
+function BufferedMarkdownEditor(props: EditorAppearance & ValueProps) {
+    const buffer = useBufferedText(props.value, props.onChange);
+    // Keep the legacy boundary from the first render, even before useEditor returns an instance.
+    const appliedForeignValue = useRef(props.valueBeforeUserAction);
+    return <MarkdownEditor {...props} buffer={{ ...buffer, appliedForeignValue }} />;
+}
+
+function MarkdownEditor({
+    ownedBy,
+    value = '',
+    buffer,
     valueIsUserAction = false,
     valueBeforeUserAction,
     placeholder = '',
@@ -39,10 +64,7 @@ export function RichMarkdownEditor({
     autoFocus = false,
     stickyToolbarTop,
     editable = true,
-}: RichMarkdownEditorProps) {
-    const foreignEditMark = useRef<string | null>(value);
-    const lastEmittedText = useRef<string | null>(null);
-    const { draft, change, getPending } = useBufferedText(value, onChange);
+}: RichMarkdownEditorProps & { buffer?: BufferedValue }) {
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
     const editor = useEditor({
         extensions: [
@@ -64,59 +86,22 @@ export function RichMarkdownEditor({
                     'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td>p]:my-0 [&_th>p]:my-0',
             },
         },
+        onBeforeCreate: ({ editor }) => {
+            if (!ownedBy) return;
+            // Tiptap 3.20 emits beforeCreate after extension setup, before createDoc/createView.
+            // tiptap-markdown's beforeCreate has already made its parser available.
+            const markdown = editor.storage as unknown as { markdown: { parser: { parse(value: string): string } } };
+            editor.options.content = markdown.markdown.parser.parse(ownedBy.live());
+            const unregister = ownedBy.register(ownedTextDocument(editor));
+            editor.on('destroy', unregister);
+        },
         onUpdate: ({ editor }) => {
-            // An echo is not an application: consume only the last document actually installed.
-            const mark = foreignEditMark.current;
-            foreignEditMark.current = null;
-            if (mark !== null) onEditAfterForeignValue?.(mark);
             // @ts-expect-error - tiptap-markdown types don't extend core storage types properly
             const next = (editor.storage.markdown).getMarkdown();
-            lastEmittedText.current = next;
-            change(next);
+            if (ownedBy) ownedBy.emit(next);
+            else buffer!.change(next);
         },
     });
-
-    const appliedForeignValue = useRef(valueBeforeUserAction);
-
-    // ACCEPTED LIMITATION: a foreign value retires this editor's entire Undo/Redo history.
-    // Until the person acts again, Undo and Redo do nothing, including for earlier own typing.
-    // Later own actions are undoable as usual; Undo/Redo cannot cross the arrival boundary.
-    // Foreign values replace differing top-level nodes and retain the person's typing place.
-    // Only an explicit own action enters history; neither origin emits an update.
-    useEffect(() => {
-        // Input may have landed after this render; replacing now would erase its Undo history.
-        if (!editor || editor.isDestroyed || getPending() !== null) return;
-        const replace = (next: string, own: boolean) => {
-            // @ts-expect-error - tiptap-markdown storage is not declared by core
-            if (next === editor.storage.markdown.getMarkdown()) {
-                if (!own && next !== lastEmittedText.current) foreignEditMark.current = next;
-                return;
-            }
-            if (!own) {
-                applyForeignContent(editor, next);
-                lastEmittedText.current = null;
-                foreignEditMark.current = next;
-                return;
-            }
-            editor.chain()
-                .command(({ tr }) => {
-                    closeHistory(tr).setMeta('addToHistory', own);
-                    return true;
-                })
-                .setContent(next, { emitUpdate: false })
-                .run();
-            lastEmittedText.current = null;
-            foreignEditMark.current = null;
-        };
-        // The buffer can still contain the previous render's draft. Wait for its value echo,
-        // and consume this baseline once so an origin-only render cannot replay it over typing.
-        if (valueIsUserAction && valueBeforeUserAction && draft === value
-            && appliedForeignValue.current !== valueBeforeUserAction) {
-            appliedForeignValue.current = valueBeforeUserAction;
-            if (valueBeforeUserAction.value !== null) replace(valueBeforeUserAction.value, false);
-        }
-        replace(draft, valueIsUserAction && valueBeforeUserAction?.value !== null);
-    }, [draft, editor, value, valueIsUserAction, valueBeforeUserAction, getPending]);
 
     useEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user
@@ -130,6 +115,8 @@ export function RichMarkdownEditor({
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
+            {buffer && <LegacyValueInstallation editor={editor} buffer={buffer} value={value}
+                valueIsUserAction={valueIsUserAction} valueBeforeUserAction={valueBeforeUserAction} />}
             <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
@@ -144,4 +131,40 @@ export function RichMarkdownEditor({
             </div>
         </div>
     );
+}
+
+function LegacyValueInstallation({ editor, buffer, value, valueIsUserAction, valueBeforeUserAction }: {
+    editor: Editor; buffer: BufferedValue; value: string;
+    valueIsUserAction: boolean; valueBeforeUserAction?: { value: string | null };
+}) {
+    const { draft, getPending, appliedForeignValue } = buffer;
+
+    // ACCEPTED LIMITATION: a foreign value retires this editor's entire Undo/Redo history.
+    // Until the person acts again, Undo and Redo do nothing, including for earlier own typing.
+    // Later own actions are undoable as usual; Undo/Redo cannot cross the arrival boundary.
+    // Foreign values replace differing top-level nodes and retain the person's typing place.
+    // Only an explicit own action enters history; neither origin emits an update.
+    useEffect(() => {
+        // Input may have landed after this render; replacing now would erase its Undo history.
+        if (!editor || editor.isDestroyed || getPending() !== null) return;
+        const replace = (next: string, own: boolean) => {
+            // @ts-expect-error - tiptap-markdown storage is not declared by core
+            if (next === editor.storage.markdown.getMarkdown()) return;
+            if (!own) {
+                applyForeignContent(editor, next);
+                return;
+            }
+            replaceOwnContent(editor, next);
+        };
+        // The buffer can still contain the previous render's draft. Wait for its value echo,
+        // and consume this baseline once so an origin-only render cannot replay it over typing.
+        if (valueIsUserAction && valueBeforeUserAction && draft === value
+            && appliedForeignValue.current !== valueBeforeUserAction) {
+            appliedForeignValue.current = valueBeforeUserAction;
+            if (valueBeforeUserAction.value !== null) replace(valueBeforeUserAction.value, false);
+        }
+        replace(draft, valueIsUserAction && valueBeforeUserAction?.value !== null);
+    }, [draft, editor, value, valueIsUserAction, valueBeforeUserAction, getPending, appliedForeignValue]);
+
+    return null;
 }

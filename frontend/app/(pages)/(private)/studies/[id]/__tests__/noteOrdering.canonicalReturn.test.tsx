@@ -6,9 +6,8 @@ import { finish, hasNoteQuestion, md, phoneSave, stand, start, stored } from '@t
 
 jest.mock('@/components/ui/foreignContent', () => ({ ...jest.requireActual('@/components/ui/foreignContent'), __esModule: true }));
 
-// The node path installs an arrival without a whole-document replacement. It must forget the editor's
-// last emission exactly as that replacement does: otherwise the same text returning from the other
-// device is mistaken for the echo of the person's typing and the stale spelling stays as the root.
+// A node-path installation and a later byte-equal arrival both become the page's content base.
+// Neither requires an editor mark or an echo witness.
 it('saves after the last emitted text returns as an arrival that follows a node-path installation', async () => {
   const initial = 'Alpha words\n\nSpacer one\n\nWorking words\n\nSpacer two\n\nTail words';
   await start(initial);

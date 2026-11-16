@@ -1,6 +1,7 @@
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { appendFileSync } from 'node:fs';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
@@ -11,8 +12,10 @@ import { watchedStore } from '@/utils/deviceStorage';
 
 import { undoDepth } from '@tiptap/pm/history';
 import type { Editor } from '@tiptap/core';
+import type { StudyNote } from '@/models/models';
 import type { useTextDictation } from '@/hooks/useTextDictation';
 import type { useNoteAutoSave } from '@/(pages)/(private)/studies/[id]/useNoteAutoSave';
+import type { NoteDraftPayload } from '@/(pages)/(private)/studies/[id]/noteDraft';
 
 jest.mock('@/services/storeAvailability.server', () => ({ storeRetryHeaders: () => ({}) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: () => mockBrowser }));
@@ -43,11 +46,19 @@ jest.mock('@/components/bible/useBookTexts', () => ({ useBookTexts: () => new Ma
 jest.mock('@tiptap/react', () => {
   const actual = jest.requireActual<typeof import('@tiptap/react')>('@tiptap/react');
   return { ...actual, useEditor: (...args: Parameters<typeof actual.useEditor>) => {
-    const editor = actual.useEditor(...args);
+    const editor = actual.useEditor(...(mockStaleCreation ? [{ ...args[0], content: original }] : args) as Parameters<typeof actual.useEditor>);
     if (editor) mockEditor = editor;
+    React.useLayoutEffect(() => {
+      if (!editor || !mockEarlyInput) return;
+      mockEarlyInput = false;
+      editor.view.dispatch(editor.state.tr.insertText(' Typedword', editor.state.doc.content.size - 1));
+    }, [editor]);
     return editor;
   } };
 });
+
+let mockStaleCreation = false;
+let mockEarlyInput = false;
 
 jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
   const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
@@ -70,6 +81,7 @@ let view: ReturnType<typeof render>;
 let observer: MutationObserver;
 let notices: string[];
 let editorUpdates: string[];
+let activeHistory = false;
 
 const original = 'Original paragraph.\n\nSecond paragraph.';
 const noticeKeys = ['freshness.title', 'freshness.conflictTitle', 'unsavedDraft.title',
@@ -101,6 +113,7 @@ async function settle(ms = 0) {
 }
 async function start(initialContent = original, allowEquivalentSerialization = false) {
   localStorage.clear();
+  activeHistory = true;
   notices = []; editorUpdates = [];
   globalThis.Headers = class {
     constructor(private values: Record<string, string> = {}) {}
@@ -128,11 +141,11 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   if (mockRouteId !== 'new' && !allowEquivalentSerialization) expect(md().trim()).toBe(initialContent.trim());
   if (initialContent === original) expect(undoDepth(mockEditor.state)).toBe(0);
 }
-async function phoneSave(content: string) {
+async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title' | 'type' | 'tags' | 'dictationSourceIds' | 'recordingSourceIds'>> = {}) {
   const before = await world.snapshot(noteRef);
   const result = await processCommand('owner', { protocol: 1, kind: 'update', owner: 'owner', operationId: world.id('phone'),
     resource: noteRef, generation: before.metadata!.generation, dependsOn: [],
-    changes: diffFields(before.value!, { ...before.value!, content }) });
+    changes: diffFields(before.value!, { ...before.value!, ...fields, content }) });
   expect(result.kind).toBe('acknowledged');
   await act(async () => {
     await laptop.run(() => laptop.engine.refreshCollection('studyNotes'));
@@ -141,12 +154,15 @@ async function phoneSave(content: string) {
   await settle();
 }
 afterEach(() => {
-  observer?.disconnect(); view?.unmount(); world?.dispose();
-  localStorage.clear(); jest.restoreAllMocks(); mockRouteId = 'note-x'; mockAfterMarkSaved = undefined;
+  disposeHistory();
+  mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null;
 });
 
 
 export const stand = {
+  get staleCreation() { return mockStaleCreation; },
+  set recovery(value: NoteDraftPayload | null) { mockRecovery = value; },
+  forceStaleCreation() { mockStaleCreation = true; mockEarlyInput = true; },
   set afterMarkSaved(callback: ((content: string) => void) | undefined) { mockAfterMarkSaved = callback; },
   get editor() { return mockEditor; },
   get autosave() { return mockAutosave; },
@@ -162,9 +178,10 @@ export function insert(text: string) {
   mockEditor.view.dispatch(mockEditor.state.tr.insertText(text, mockEditor.state.doc.content.size - 1));
 }
 export async function finish() { for (const ms of [0, 1600, 2000, 5000, 30000]) await settle(ms); }
-export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate'; word?: string };
+export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate' | 'doneEdit' | 'typeDictate' | 'dictateType'; word?: string };
 let mockAfterMarkSaved: ((content: string) => void) | undefined;
 let mockConfirmed: { content: string } | null;
+let mockRecovery: NoteDraftPayload | null = null;
 jest.mock('@/hooks/useDurableDraft', () => {
   const actual = jest.requireActual('@/hooks/useDurableDraft');
   return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as { content: string } | null; const result = actual.useDurableDraft(args);
@@ -173,7 +190,9 @@ jest.mock('@/hooks/useDurableDraft', () => {
       mark(value);
       mockAfterMarkSaved?.((value as { content: string }).content);
     }, [mark]);
-    return { ...result, markSaved }; } };
+    return { ...result, markSaved, ...(mockRecovery ? { recovered: mockRecovery,
+      acceptRecovered: () => { mockRecovery = null; result.acceptRecovered(); },
+    } : {}) }; } };
 });
 
 
@@ -182,7 +201,13 @@ export function rng(seed: number) {
   return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
 }
 function disposeHistory() {
-  observer?.disconnect(); view?.unmount(); world?.dispose(); localStorage.clear(); jest.restoreAllMocks();
+  if (!activeHistory) return;
+  observer?.disconnect(); view?.unmount(); cleanup();
+  // Tiptap destroys unmounted instances after 1 ms. Let it release DOM observers before
+  // DeviceWorld clears timers; otherwise a long hunt retains thousands of live views.
+  jest.advanceTimersByTime(1);
+  world?.dispose(); localStorage.clear(); jest.restoreAllMocks(); jest.clearAllMocks();
+  activeHistory = false;
 }
 async function pulse(ms = 0) {
   jest.advanceTimersByTime(ms);
@@ -206,7 +231,26 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const arrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
   async function refresh() { if (laptop.online) await laptop.run(() => laptop.engine.refreshCollection('studyNotes')); }
   for (const event of events) {
-    if (event.kind === 'type') {
+    if (event.kind === 'doneEdit') {
+      fireEvent.click(screen.getByTitle('common.done')); await pulse();
+      fireEvent.click(screen.getByTitle('common.edit')); await pulse();
+      mockEditor.view.setProps({ handleScrollToSelection: () => true });
+    } else if (event.kind === 'typeDictate' || event.kind === 'dictateType') {
+      const key = event.word! + 'K', dictated = event.word! + 'D';
+      typed.push(key, dictated);
+      setTimeout(() => {
+        if (event.kind === 'typeDictate') {
+          insert(' ' + key);
+          void Promise.resolve().then(() => mockVoice.onText(dictated, 'source-' + dictated));
+        } else {
+          void Promise.resolve().then(() => {
+            void mockVoice.onText(dictated, 'source-' + dictated);
+            insert(' ' + key);
+          });
+        }
+      }, 0);
+      await pulse();
+    } else if (event.kind === 'type') {
       typed.push(event.word!);
       setTimeout(() => {
         const state = mockEditor.state;
@@ -251,7 +295,9 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const unsaved = final.page !== final.confirmed && !final.saved;
   const missingArrived = arrived.filter(word => !final.stored.includes(word) && !question);
   const missingTyped = typed.filter(word => !final.stored.includes(word) && !(final.editor.includes(word) && final.dom.includes(word) && unsaved) && !question);
-  const record = { id, events, arrived, typed, final, missingArrived, missingTyped, steps, requests };
+  const falseQuestion = (question || final.blocked) && !events.some(event => event.kind === 'arriveSame' || event.kind === 'arriveOther');
+  const record = { id, events, arrived, typed, final, missingArrived, missingTyped, falseQuestion, steps, requests };
+  if (process.env.NOTE_ORDERING_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_OUTPUT, JSON.stringify(record) + '\n');
   disposeHistory();
   return record;
 }

@@ -27,7 +27,7 @@ import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { TagHistory } from '@/components/ui/TagHistory';
-import { useEditorValue } from '@/components/ui/useEditorValue';
+import { useEditorOwnedText } from '@/components/ui/useEditorOwnedText';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -232,18 +232,18 @@ function useNoteDeletion({ confirm, noteId, isNew, uid, deleteNote, router }: an
 
 
 function useNoteAIAssistant({
-    noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
+    noteId, recordingContextId, content, availableTags, setTitle, appendContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, liveDictation, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
 }: {
     noteId: string;
     recordingContextId: string;
     uid?: string;
-    dictationSourceIds: string[];
+    liveDictation: React.MutableRefObject<string[]>;
     linkedRecordingSourceIds: readonly string[];
     acceptedDictationSourceIds?: readonly string[];
     setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
-    setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
+    setTitle: (t: string) => void; appendContent: (block: string) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Text the app inserts whole — dictation, an applied analysis — is saved at once, not after the typing pause. */
@@ -374,10 +374,10 @@ function useNoteAIAssistant({
         onText: async (text, sourceId) => {
             if (!sourceId || !uid) throw new Error('The note recording owner is not available');
             // Projected IDs prevent duplicate insertion; only confirmed IDs permit source retirement.
-            if (dictationSourceIds.includes(sourceId)) return;
+            if (liveDictation.current.includes(sourceId)) return;
             setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
             saveAtOnceRef.current = true;
-            setContent(previous => previous ? `${previous}\n\n${text}` : text);
+            appendContent(text);
         },
         onEmpty: () => toast.error(t('errors.audioProcessing')),
         onError: words => toast.error(sayFailure(words, t)),
@@ -737,27 +737,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     // Local state for the editor
     const baselineRef = useRef<NoteDraftPayload | null>(null);
-    const contentRoot = useRef('');
     const [title, setTitleState, liveTitle] = useLiveState('');
     const titleEditRef = useRef<NoteTitleEdit | null>(null);
     const setTitle = useCallback((value: string) => {
         titleEditRef.current = null;
         setTitleState(value);
     }, [setTitleState]);
-    const { value: content, observe: observeContent, act: actContent, isUserAction: contentIsUserAction, foreignValueBeforeAction: contentForeignValue } = useEditorValue('');
-    const liveContent = useRef('');
-    const setContent = useCallback((next: React.SetStateAction<string>) => {
-        liveContent.current = typeof next === 'function' ? next(liveContent.current) : next;
-        observeContent(liveContent.current);
-    }, [observeContent]);
-    const changeContent = useCallback((next: React.SetStateAction<string>) => {
-        // A clean page action starts at the submitted text; adopting a row alone is no such witness.
-        if (liveContent.current === baselineRef.current?.content) contentRoot.current = baselineRef.current.content;
-        liveContent.current = typeof next === 'function' ? next(liveContent.current) : next;
-        actContent(liveContent.current);
-    }, [actContent]);
-    // Only the editor can witness which foreign document the next edit actually follows.
-    const editAfterForeignValue = useCallback((value: string) => { contentRoot.current = value; }, []);
+    const { text: content, live: liveContent, follow: setContent, append: appendContent, replace: changeContent, ownedBy } = useEditorOwnedText('');
     const [dictationSourceIds, setDictationSourceIds, liveDictation] = useLiveState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds, liveRecording] = useLiveState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
@@ -910,8 +896,6 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         baselineNoteIdRef.current = noteId;
         if (!adoptingCreatedId) {
             baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
-            // A new opening starts at its initialized baseline; create continuation keeps its submitted root.
-            contentRoot.current = baselineRef.current.content;
             rememberShownTags(tags);
         }
     }
@@ -955,15 +939,22 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
     const isEditing = writesNow(editingWanted, draftHeld ? unsavedRecovery : null);
 
+    const liveValues = useCallback((): NoteDraftPayload => ({
+        title: liveTitle.current, content: liveContent(), tags: liveTags.current,
+        scriptureRefs: liveRefs.current, type: liveType.current,
+        ...noteRecordingMetadata(liveDictation.current, liveRecording.current),
+    }), [liveTitle, liveContent, liveTags, liveRefs, liveType, liveDictation, liveRecording]);
+
     const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
+        liveValues,
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
         creationId,
         draftDocId,
         draftWriterId,
         draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
-        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, contentRoot, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
+        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
@@ -1015,8 +1006,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     } : null, [existingNote]);
     const adoptRow = useCallback(() => {
         if (!rowPayload) return;
-        setTitle(rowPayload.title);
         setContent(rowPayload.content);
+        setTitle(rowPayload.title);
         setTags(rowPayload.tags);
         rememberShownTags(rowPayload.tags);
         setScriptureRefs(rowPayload.scriptureRefs);
@@ -1031,8 +1022,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
-        const livePayload = { title: liveTitle.current, content: liveContent.current, tags: liveTags.current,
-            scriptureRefs: liveRefs.current, type: liveType.current, ...noteRecordingMetadata(liveDictation.current, liveRecording.current) };
+        const livePayload = liveValues();
+        // A content match proves only content. Other dirty fields keep their own bases.
+        if (submitted && rowPayload.content === livePayload.content && submitted.content !== rowPayload.content) {
+            baselineRef.current = { ...submitted, content: rowPayload.content };
+        }
         const hasUnsubmittedEdits = submitted !== null && !sameNoteDraft(submitted, livePayload);
         const liveDirty = confirmedDraft ? !sameNoteDraft(confirmedDraft, livePayload) : false;
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
@@ -1044,7 +1038,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const typeEdit = typeEditRef.current;
         if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === liveType.current && typeEdit.capture.seen.type !== liveType.current) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow, dictationSourceIds, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow, liveValues, dictationSourceIds, liveContent, liveDictation, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -1144,7 +1138,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         resendVoiceBlob, voiceController,
         pendingAnalysisResult, pendingAnalysisKey, dismissAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, recordingContextId, content, availableTags, setTitle, setContent: changeContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
+        noteId, recordingContextId, content, availableTags, setTitle, appendContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, liveDictation, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
@@ -1589,10 +1583,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                     {isEditing ? (
                         <div className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
-                                value={content}
-                                valueIsUserAction={contentIsUserAction} valueBeforeUserAction={contentForeignValue}
-                                onChange={setContent}
-                                onEditAfterForeignValue={editAfterForeignValue}
+                                ownedBy={ownedBy}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"
                                 stickyToolbarTop={scrollLayout.toolbarTop}

@@ -114,17 +114,17 @@ jest.mock('../../components/SermonsBuiltOnNote', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: (props: React.ComponentProps<typeof import('@/components/ui/RichMarkdownEditor').RichMarkdownEditor>) => {
+    RichMarkdownEditor: (props: import('@/components/ui/RichMarkdownEditor').RichMarkdownEditorProps) => {
       if (mockRealEditor) {
         const { RichMarkdownEditor } = jest.requireActual('@/components/ui/RichMarkdownEditor');
         return <RichMarkdownEditor {...props} />;
       }
-      const { value, onChange, placeholder } = props;
+      const { value, onChange, ownedBy, placeholder } = props;
       return (
         <textarea
             data-testid="rich-markdown-editor"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            value={ownedBy ? ownedBy.live() : value}
+            onChange={(e) => ownedBy ? ownedBy.emit(e.target.value) : onChange!(e.target.value)}
             placeholder={placeholder}
         />
     );

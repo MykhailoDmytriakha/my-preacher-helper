@@ -1,27 +1,26 @@
 import { stand, start, original, md, stored, phoneSave, insert, finish, settle } from '@test-utils/noteOrdering';
-import React from 'react';
 import { act } from '@testing-library/react';
 import { undoDepth } from '@tiptap/pm/history';
-import type { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import type { RichMarkdownEditorProps } from '@/components/ui/RichMarkdownEditor';
 
 let mockW3Target: string | null = null;
 let mockW3Fired = false;
 jest.mock('@/components/ui/RichMarkdownEditor', () => {
   const actual = jest.requireActual<typeof import('@/components/ui/RichMarkdownEditor')>('@/components/ui/RichMarkdownEditor');
   const React = jest.requireActual<typeof import('react')>('react');
-  return { ...actual, RichMarkdownEditor: (props: React.ComponentProps<typeof RichMarkdownEditor>) => {
+  return { ...actual, RichMarkdownEditor: (props: RichMarkdownEditorProps) => {
     React.useLayoutEffect(() => {
-      if (mockW3Target !== props.value) return;
+      if (mockW3Target !== (props.ownedBy?.live() ?? props.value)) return;
       mockW3Target = null; mockW3Fired = true;
       insert(' Typedword');
-    }, [props.value]);
+    });
     return <actual.RichMarkdownEditor {...props} />;
   } };
 });
 
 afterEach(() => { mockW3Target = null; mockW3Fired = false; });
 
-it('injected W1 keeps the arrived words and asks before saving the old document', async () => {
+it('injected W1 types over the synchronously adopted document', async () => {
   await start();
   const target = original + '\n\nArrivedword';
   const sends = jest.spyOn(stand.laptop.transport, 'send');
@@ -31,14 +30,14 @@ it('injected W1 keeps the arrived words and asks before saving the old document'
   };
   await phoneSave(target); await finish();
   expect(fired).toBe(true);
-  expect(md()).toBe(original + ' Typedword');
-  expect(await stored()).toBe(target);
-  expect(stand.autosave.saveBlocked).toBe(true);
-  expect(stand.notices).toContain('freshness.conflictTitle');
-  expect(sends).toHaveBeenCalledTimes(0);
+  expect(md()).toBe(target + ' Typedword');
+  expect(await stored()).toBe(target + ' Typedword');
+  expect(stand.autosave.saveBlocked).toBe(false);
+  expect(stand.notices).toEqual([]);
+  expect(sends).toHaveBeenCalledTimes(1);
 });
 
-it('directed W3 on the page preserves words and Undo without passive replacements', async () => {
+it('directed W3 on the page edits the synchronously installed arrival', async () => {
   await start();
   const replacements: string[] = [];
   stand.editor.on('transaction', ({ transaction }) => {
@@ -48,12 +47,12 @@ it('directed W3 on the page preserves words and Undo without passive replacement
   const target = original + '\n\nArrivedword'; mockW3Target = target;
   await phoneSave(target); await finish();
   expect(mockW3Fired).toBe(true);
-  expect(md()).toBe(original + ' Typedword');
-  expect(await stored()).toBe(target);
-  expect(stand.autosave.saveBlocked).toBe(true);
-  expect(stand.notices).toContain('freshness.conflictTitle');
-  expect(sends).toHaveBeenCalledTimes(0);
-  expect(replacements).toEqual([]);
+  expect(md()).toBe(target + ' Typedword');
+  expect(await stored()).toBe(target + ' Typedword');
+  expect(stand.autosave.saveBlocked).toBe(false);
+  expect(stand.notices).toEqual([]);
+  expect(sends).toHaveBeenCalledTimes(1);
+  expect(replacements.length).toBeGreaterThan(0);
   expect(undoDepth(stand.editor.state)).toBe(1);
 });
 
@@ -69,7 +68,7 @@ it('Undo to saved text then typing in one task saves normally without a question
   expect(sends).toHaveBeenCalledTimes(1);
 });
 
-it('create acknowledgement advances the root while continued typing is already dirty', async () => {
+it('create acknowledgement advances the baseline while continued typing is already dirty', async () => {
   stand.routeId = 'new'; await start('');
   const requests: Parameters<typeof stand.laptop.transport.send>[0][] = [];
   const waiting: Array<() => void> = [];
@@ -105,11 +104,11 @@ it('two dictations each save once without a question', async () => {
   expect(stand.notices).toEqual([]);
 });
 
-it('an own action drops a pending foreign mark before acknowledgement and later typing', async () => {
+it('dictation follows an adopted arrival before acknowledgement and later typing', async () => {
   await start();
   const target = original + '\n\nArrivedword';
   await phoneSave(target);
-  // No keystroke has consumed the foreign mark. Dictation replaces it as an own action.
+  // Adoption has already installed the document before this own append.
   await act(async () => { await stand.voice.onText('Dictatedword', 'source-1'); });
   await finish();
   act(() => insert(' Laterword')); await finish();

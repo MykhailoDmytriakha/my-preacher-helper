@@ -90,11 +90,11 @@ jest.mock('../../components/SermonsBuiltOnNote', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    RichMarkdownEditor: ({ value, onChange, ownedBy, placeholder }: import('@/components/ui/RichMarkdownEditor').RichMarkdownEditorProps) => (
         <textarea
             data-testid="rich-markdown-editor"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            value={ownedBy ? ownedBy.live() : value}
+            onChange={(e) => ownedBy ? ownedBy.emit(e.target.value) : onChange!(e.target.value)}
             placeholder={placeholder}
         />
     ),
