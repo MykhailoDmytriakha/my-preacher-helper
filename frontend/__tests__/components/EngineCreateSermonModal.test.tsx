@@ -5,6 +5,7 @@ import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonM
 import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { fetchBookText } from '@/utils/bibleText';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { holdWhileOpen } from '@/utils/openInTab';
 
@@ -14,6 +15,13 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'o
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/components/bible/BiblePicker', () => ({
+  BookNavigator: ({ onOpen, onClose }: { onOpen: (book: string, place: { chapter: number; verse: number }) => void; onClose: () => void }) => <>
+    <button type="button" onClick={() => onOpen('John', { chapter: 1, verse: 1 })}>Pick John 1:1</button>
+    <button type="button" onClick={onClose}>Close the picker</button>
+  </>,
+}));
+jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn() }));
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} /> }));
 
@@ -50,6 +58,43 @@ beforeEach(() => {
   heldLocks.clear(); Object.defineProperty(navigator, 'locks', { configurable: true, value: webLocks });
 });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; Reflect.deleteProperty(navigator, 'locks'); });
+
+it('fills and saves the selected Bible verse through the existing sermon form', async () => {
+  const expected = 'John 1:1: "In the beginning was the Word."';
+  jest.mocked(fetchBookText).mockResolvedValue({ id: 'John', chapters: [['In the beginning was the Word.']] });
+  const { harness, queued } = setup();
+  await typeSermon();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.chooseFromBible' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Pick John 1:1' }));
+  const verse = screen.getByLabelText('addSermon.verseLabel');
+  await waitFor(() => expect(verse).toHaveValue(expected));
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+  await waitFor(() => expect(queued).toHaveBeenCalledTimes(1));
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.read({ collection: 'sermons', id: queued.mock.calls[0][0] }).value?.verse).toBe(expected);
+});
+
+it('keeps manual scripture when a pending Bible selection is cancelled', async () => {
+  let release!: (book: Awaited<ReturnType<typeof fetchBookText>>) => void;
+  jest.mocked(fetchBookText).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+  const { harness } = setup();
+  await typeSermon();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.chooseFromBible' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Pick John 1:1' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close the picker' }));
+  await act(async () => { release({ id: 'John', chapters: [['In the beginning was the Word.']] }); });
+  expect(screen.getByLabelText('addSermon.verseLabel')).toHaveValue('Romans 1');
+  expect(harness.transport.send).not.toHaveBeenCalled();
+});
+
+it('inserts the reference when the verse text cannot be loaded', async () => {
+  jest.mocked(fetchBookText).mockRejectedValueOnce(new Error('Unavailable'));
+  setup();
+  await typeSermon();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.chooseFromBible' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Pick John 1:1' }));
+  await waitFor(() => expect(screen.getByLabelText('addSermon.verseLabel')).toHaveValue('John 1:1'));
+});
 
 it('stages typing and a planned date, then creates the sermon and selected series link in one command', async () => {
   const { harness, queued, view } = setup(); await typeSermon();

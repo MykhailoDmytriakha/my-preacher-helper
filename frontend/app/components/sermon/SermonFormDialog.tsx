@@ -12,6 +12,8 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import DatePickerField from '@components/ui/DatePickerField';
 import { useTranslation } from '@locales/useTranslation';
 
+import { SermonScripturePicker } from './SermonScripturePicker';
+
 import type { Church } from '@/models/models';
 
 /**
@@ -83,6 +85,7 @@ interface SermonFormDialogProps {
   detailsHint?: string;
   titleMaxRows?: number;
   verseMaxRows?: number;
+  enableScripturePicker?: boolean;
   /** Under the verse, in the caller's words: what the new sermon brings with it (an analysis it is made from). */
   verseNote?: React.ReactNode;
   /** The window's layer over another window (`FormDialog`). */
@@ -114,6 +117,7 @@ export default function SermonFormDialog({
   detailsHint,
   titleMaxRows = 4,
   verseMaxRows = 10,
+  enableScripturePicker = false,
   verseNote,
   layerClassName,
 }: SermonFormDialogProps) {
@@ -250,6 +254,7 @@ export default function SermonFormDialog({
               aria-required="true"
               aria-invalid={missingFieldRef.current === 'verse' || undefined}
             />
+            {enableScripturePicker && <SermonScripturePicker disabled={locked} onPick={(verse) => onChange({ verse })} />}
             {verseHistory}
             {verseNote}
           </div>

@@ -113,7 +113,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   return (
     <div className={containerClass}>
       {isEditing ? (
-        <div className="flex items-center gap-2 w-full">
+        <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
           <input
             ref={inputRef}
             type="text"
@@ -124,7 +124,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
               else setEditedTitle(value);
             }}
             onKeyDown={handleKeyDown}
-            className={`flex-grow px-2 py-1 font-bold border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 ${inputSizeClass} ${error ? 'border-red-500 focus:ring-red-500' : 'border-blue-500 focus:ring-blue-500'}`}
+            className={`w-full min-w-0 px-2 py-1 font-bold border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 ${inputSizeClass} ${error ? 'border-red-500 focus:ring-red-500' : 'border-blue-500 focus:ring-blue-500'}`}
             disabled={isSaving || disabled}
             aria-label={t('common.editTitleInput')}
             aria-invalid={!!error}
@@ -153,7 +153,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           >
             <XMarkIcon className={buttonSizeClass} />
           </button>
-          {error && <p id="title-error" className="text-red-500 text-xs ml-2">{sayFailure(error, t)}</p>}
+          {error && <p id="title-error" className="col-span-full text-red-500 text-xs">{sayFailure(error, t)}</p>}
         </div>
       ) : (
         <div className="flex items-center gap-2 group min-w-0">
@@ -162,7 +162,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           </h1>
           <button
             onClick={handleEditClick}
-            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
+            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
             disabled={editDisabled}
             title={t('common.edit')}
           >
@@ -175,4 +175,4 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   );
 };
 
-export default EditableTitle; 
+export default EditableTitle;

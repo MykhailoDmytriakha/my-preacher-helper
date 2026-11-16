@@ -30,6 +30,7 @@ interface OptionMenuProps {
   onUpdate?: (updatedSermon: Sermon) => void;
   /** When provided, the menu also offers series actions (add / move / remove). */
   series?: Series[];
+  alignStartOnPhone?: boolean;
 }
 
 
@@ -37,7 +38,8 @@ export default function OptionMenu({
   sermon,
   onDelete,
   onUpdate,
-  series
+  series,
+  alignStartOnPhone = false,
 }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -189,13 +191,15 @@ export default function OptionMenu({
         onClick={handleToggle}
         className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200"
         aria-label={t('optionMenu.options')}
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         <DotsVerticalIcon className="w-5 h-5" />
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
-          <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+        <div className={`absolute ${alignStartOnPhone ? 'left-0 sm:left-auto sm:right-0' : 'right-0'} mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50`}>
+          <div className="py-1" role="menu" aria-orientation="vertical" aria-label={t('optionMenu.options')}>
             <button
               onClick={handleEdit}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
