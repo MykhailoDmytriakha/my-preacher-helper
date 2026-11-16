@@ -27,3 +27,33 @@ it('does not accept a real conflict banner outside the current note workspace', 
   render(<SaveConflictBanner entityKey="entitySermon" onKeepMine={() => undefined} onTakeTheirs={() => undefined} />);
   expect(hasNoteQuestion()).toBe(false);
 });
+
+import { evaluateQuestionHistory, classifySend, type QuestionSnapshot, type ProductionOutcome } from '@test-utils/noteOrderingOracles';
+
+const values = { title: 'Original', content: 'Words', tags: [], scriptureRefs: [], type: 'note' as const };
+const snapshot = (overrides: Partial<QuestionSnapshot> = {}): QuestionSnapshot => ({ eventIndex: 0,
+  pageValues: values, storedValues: values, question: false, blocked: false, ...overrides });
+
+it('I3 permits a real question to persist after later equality and counts the stale final state', () => {
+  expect(evaluateQuestionHistory([{ kind: 'arriveOther' }, { kind: 'arriveLive' }], [
+    snapshot(), snapshot({ question: true, blocked: true, storedValues: { ...values, content: 'Different' } }),
+    snapshot({ eventIndex: 1, question: true, blocked: true }),
+  ])).toEqual({ falseQuestion: false, staleQuestion: true });
+});
+it.each(['question', 'blocked'] as const)('I3 rejects a newly arising %s at equality, including a later rise', field => {
+  expect(evaluateQuestionHistory([{ kind: 'arriveOther' }], [snapshot(), snapshot({ [field]: true })]).falseQuestion).toBe(true);
+  expect(evaluateQuestionHistory([{ kind: 'arriveOther' }], [
+    snapshot({ [field]: true, storedValues: { ...values, title: 'Different' } }), snapshot(), snapshot({ [field]: true }),
+  ]).falseQuestion).toBe(true);
+});
+it('I3 rejects refusals in a history without any other-device arrival', () => {
+  expect(evaluateQuestionHistory([{ kind: 'type' }], [
+    snapshot({ question: true, storedValues: { ...values, content: 'Different' } }),
+  ]).falseQuestion).toBe(true);
+});
+it('the send gate gives EXTRA WRITE priority over every claimed cause', () => {
+  const production: ProductionOutcome = { events: [], stored: 'Words', sends: 1, question: false, blocked: false,
+    unconverged: false, dropped: ['Words'], falseRefusal: 'claimed' };
+  expect(classifySend({ ...production, sends: 2 }, production)).toBe('EXTRA WRITE');
+  expect(classifySend({ ...production, stored: 'New', sends: 2 }, { ...production, falseRefusal: '' })).toBe('unclassified');
+});

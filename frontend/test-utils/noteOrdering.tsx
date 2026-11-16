@@ -11,6 +11,7 @@ import { diffFields } from '@/data-engine/protocol';
 import { watchedStore } from '@/utils/deviceStorage';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
+import { evaluateQuestionHistory, type QuestionSnapshot } from './noteOrderingOracles';
 
 import { undoDepth } from '@tiptap/pm/history';
 import type { Editor } from '@tiptap/core';
@@ -84,6 +85,7 @@ let observer: MutationObserver;
 let notices: string[];
 let editorUpdates: string[];
 let activeHistory = false;
+let observeQuestion: (() => void) | undefined;
 
 const original = 'Original paragraph.\n\nSecond paragraph.';
 const noticeKeys = ['freshness.title', 'freshness.conflictTitle', 'unsavedDraft.title',
@@ -97,6 +99,7 @@ function captureNotices() {
     found.push(element.textContent ?? '');
   }
   notices.push(...found.filter(value => !notices.includes(value)));
+  observeQuestion?.();
 }
 // This stand mounts one note. Only its rendered version/draft choices count as safety.
 export function hasNoteQuestion() {
@@ -211,6 +214,7 @@ function disposeHistory() {
   jest.advanceTimersByTime(1);
   world?.dispose(); localStorage.clear(); jest.restoreAllMocks(); jest.clearAllMocks();
   activeHistory = false;
+  observeQuestion = undefined;
 }
 async function pulse(ms = 0) {
   jest.advanceTimersByTime(ms);
@@ -222,6 +226,21 @@ async function pulse(ms = 0) {
 }
 export async function runHistory(events: OrderingEvent[], id: string) {
   await start();
+  const questionSteps: QuestionSnapshot[] = [];
+  let eventIndex = -1;
+  const values = (note: Partial<NoteDraftPayload>): NoteDraftPayload => ({
+    title: note.title || '', content: note.content || '', tags: note.tags || [],
+    scriptureRefs: note.scriptureRefs || [], type: note.type || 'note',
+    ...noteRecordingMetadata(note.dictationSourceIds, note.recordingSourceIds),
+  });
+  observeQuestion = () => {
+    const raw = world.server.documents.get('studyNotes/note-x');
+    if (!raw) throw new Error('Missing stored note in question monitor');
+    const step = { eventIndex, pageValues: values(mockAutosave), storedValues: values(raw),
+      question: hasNoteQuestion(), blocked: !!mockAutosave.saveBlocked };
+    if (serializeContent(step) !== serializeContent(questionSteps.at(-1))) questionSteps.push(step);
+  };
+  observeQuestion();
   const requests: { kind: string; operationId: string }[] = [];
   const waiting: Array<() => void> = [];
   let hold = true;
@@ -234,6 +253,7 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const arrived: string[] = [], supersededArrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
   async function refresh() { if (laptop.online) await laptop.run(() => laptop.engine.refreshCollection('studyNotes')); }
   for (const event of events) {
+    eventIndex++;
     if (event.kind === 'doneEdit') {
       fireEvent.click(screen.getByTitle('common.done')); await pulse();
       fireEvent.click(screen.getByTitle('common.edit')); await pulse();
@@ -314,10 +334,10 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const unsaved = final.unsaved;
   const missingArrived = arrived.filter(word => !final.stored.includes(word) && !question);
   const missingTyped = typed.filter(word => !final.stored.includes(word) && !(final.editor.includes(word) && final.dom.includes(word) && unsaved) && !question);
-  const falseQuestion = (question || final.blocked) && (!events.some(event => ['arriveSame', 'arriveOther', 'arriveLive'].includes(event.kind))
-    || serializeContent(pageValues) === serializeContent(storedValues));
+  observeQuestion();
+  const { falseQuestion, staleQuestion } = evaluateQuestionHistory(events, questionSteps);
   const unconverged = !question && (final.stored !== final.page || final.page !== final.editor || final.unsaved);
-  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, unconverged, steps, requests };
+  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, staleQuestion, unconverged, questionSteps, steps, requests };
   if (process.env.NOTE_ORDERING_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_OUTPUT, JSON.stringify(record) + '\n');
   disposeHistory();
   return record;

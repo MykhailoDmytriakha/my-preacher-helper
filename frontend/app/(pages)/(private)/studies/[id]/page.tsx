@@ -1019,18 +1019,27 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
     }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent, setConfirmedDraft, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs]);
+    // Content confirmation cannot grant authority over the rest of that same row.
+    // Release this boundary on a real edit, acknowledgement or changed row, not its own render.
+    const contentConfirmationRef = useRef<{ row: NoteDraftPayload; live: NoteDraftPayload; confirmed: NoteDraftPayload } | null>(null);
     useEffect(() => {
         const confirmed = liveConfirmed.current;
         if (isNew || !isInitialized || !rowPayload || !confirmed) return;
         const submitted = baselineRef.current;
         const livePayload = liveValues();
+        const promotion = contentConfirmationRef.current;
+        if (promotion && (promotion.confirmed !== confirmed || !sameNoteDraft(promotion.row, rowPayload)
+            || !sameNoteDraft(promotion.live, livePayload))) contentConfirmationRef.current = null;
         // A content match proves only content. Other dirty fields keep their own bases.
         if (submitted && noteIsAccepted && !isSaving && rowPayload.content === livePayload.content
             && (submitted.content !== rowPayload.content || confirmed.content !== rowPayload.content)) {
-            const contentConfirmed = { ...confirmed, content: rowPayload.content };
+            const contentConfirmed = confirmed.content === rowPayload.content ? confirmed : { ...confirmed, content: rowPayload.content };
             baselineRef.current = { ...submitted, content: rowPayload.content };
-            setConfirmedDraft(contentConfirmed);
-            markSaved(contentConfirmed);
+            contentConfirmationRef.current = { row: rowPayload, live: livePayload, confirmed: contentConfirmed };
+            if (contentConfirmed !== confirmed) {
+                setConfirmedDraft(contentConfirmed);
+                markSaved(contentConfirmed);
+            }
         }
         // Adoption still judges the values before this arrival's content confirmation.
         // Confirming content grants no authority to adopt its other fields on a dirty page.
@@ -1038,17 +1047,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const liveDirty = !sameNoteDraft(confirmed, livePayload);
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
             && edit.before !== edit.present && edit.predecessorRequestId);
-        if (liveDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmed)) return;
+        if (contentConfirmationRef.current || liveDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmed)) return;
         const edit = titleEditRef.current;
         // Returning to the confirmed words still edits the title that this device just queued.
         if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === liveTitle.current && edit.capture.seen.title !== liveTitle.current) return;
         const typeEdit = typeEditRef.current;
         if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === liveType.current && typeEdit.capture.seen.type !== liveType.current) return;
         adoptRow();
-        // Confirmation alone is not another arrival or edit. Reconsider adoption only
-        // when its inputs change; the engine's observation callbacks change every render.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isNew, isInitialized, rowPayload, draftPayload, isSaving, saveConflict, uid, noteId, noteIsAccepted]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow, dictationSourceIds, liveRecording, liveRefs, liveTags, liveTitle, liveType, noteIsAccepted, liveConfirmed, liveValues, setConfirmedDraft, markSaved]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;

@@ -1,5 +1,6 @@
 import { runHistory, rng, type OrderingEvent } from '@test-utils/noteOrdering';
-import { productionFalseRefusals, productionOutcomes, shortestWitnesses } from '@test-utils/noteOrderingProduction';
+import { compareProduction } from '@test-utils/noteOrderingComparison';
+import { productionOutcomes, shortestWitnesses } from '@test-utils/noteOrderingProduction';
 
 const full = process.env.NOTE_ORDERING_HUNT === 'full';
 const baseline = process.env.NOTE_ORDERING_BASELINE === '1';
@@ -25,17 +26,15 @@ for (const mode of modes) {
       const row = await runHistory(events, `${seed}:${h}`);
       const [sends, question, blocked] = productionOutcomes[mode][seed][h];
       const increased = row.final.engineWrites > sends;
-      // An extra send is allowed only when production refused this very history with a false question.
-      const productionFalseQuestion = !!(question || blocked) && (!events.some(event => ['arriveSame', 'arriveOther', 'arriveLive'].includes(event.kind))
-        || (mode === 'extended' && productionFalseRefusals.has(row.id)));
+      const comparison = compareProduction(mode, row);
       sum.histories++; sum.I1 += Number(!!row.missingArrived.length); sum.I2 += Number(!!row.missingTyped.length); sum.I3 += Number(row.falseQuestion); sum.I4 += Number(row.unconverged);
       sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question); sum.productionSends += sends; sum.productionQuestions += question;
       if (increased) sum.increased.push(row.id);
       if (observe) continue;
       if (baseline) expect([row.final.engineWrites, Number(row.final.question), Number(row.final.blocked)]).toEqual([sends, question, blocked]);
-      else if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || row.unconverged || (increased && !productionFalseQuestion)) failures.push({
+      else if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || comparison.convergenceRegression || comparison.sendFailure) failures.push({
         id: row.id, I1: row.missingArrived, I2: row.missingTyped, I3: row.falseQuestion, I4: row.unconverged,
-        increased: increased && !productionFalseQuestion,
+        convergenceRegression: comparison.convergenceRegression, sendCause: comparison.sendCause,
       });
     }
     expect(failures).toEqual([]);
@@ -77,8 +76,10 @@ exhaustive.each(prefixes)('checks every sequence up to length four starting with
     const row = await runHistory(events, `exhaustive:${prefix ?? 'empty'}:${sum.histories}`);
     sum.histories++; sum.I1 += Number(!!row.missingArrived.length); sum.I2 += Number(!!row.missingTyped.length); sum.I3 += Number(row.falseQuestion); sum.I4 += Number(row.unconverged);
     sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question);
-    if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || row.unconverged) failures.push({
+    const comparison = compareProduction('exhaustive', row);
+    if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || comparison.convergenceRegression || comparison.sendFailure) failures.push({
       id: row.id, I1: row.missingArrived, I2: row.missingTyped, I3: row.falseQuestion, I4: row.unconverged,
+      convergenceRegression: comparison.convergenceRegression, sendCause: comparison.sendCause,
     });
     if (prefix !== null && kinds.length < 4) for (const kind of extendedAlphabet) await visit([...kinds, kind]);
   }
