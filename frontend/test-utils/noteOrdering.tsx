@@ -9,6 +9,8 @@ import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { processCommand } from '@/data-engine/server';
 import { diffFields } from '@/data-engine/protocol';
 import { watchedStore } from '@/utils/deviceStorage';
+import { serializeContent } from '@/utils/contentFingerprint';
+import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 
 import { undoDepth } from '@tiptap/pm/history';
 import type { Editor } from '@tiptap/core';
@@ -141,11 +143,11 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   if (mockRouteId !== 'new' && !allowEquivalentSerialization) expect(md().trim()).toBe(initialContent.trim());
   if (initialContent === original) expect(undoDepth(mockEditor.state)).toBe(0);
 }
-async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title' | 'type' | 'tags' | 'dictationSourceIds' | 'recordingSourceIds'>> = {}) {
+async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title' | 'type' | 'tags' | 'scriptureRefs' | 'dictationSourceIds' | 'recordingSourceIds'>> = {}) {
   const before = await world.snapshot(noteRef);
   const result = await processCommand('owner', { protocol: 1, kind: 'update', owner: 'owner', operationId: world.id('phone'),
     resource: noteRef, generation: before.metadata!.generation, dependsOn: [],
-    changes: diffFields(before.value!, { ...before.value!, ...fields, content }) });
+    changes: diffFields(before.value!, JSON.parse(JSON.stringify({ ...before.value!, ...fields, content }))) });
   expect(result.kind).toBe('acknowledged');
   await act(async () => {
     await laptop.run(() => laptop.engine.refreshCollection('studyNotes'));
@@ -166,6 +168,7 @@ export const stand = {
   set afterMarkSaved(callback: ((content: string) => void) | undefined) { mockAfterMarkSaved = callback; },
   get editor() { return mockEditor; },
   get autosave() { return mockAutosave; },
+  get confirmed() { return mockConfirmed; },
   get voice() { return mockVoice; },
   get world() { return world; },
   get laptop() { return laptop; },
@@ -178,13 +181,13 @@ export function insert(text: string) {
   mockEditor.view.dispatch(mockEditor.state.tr.insertText(text, mockEditor.state.doc.content.size - 1));
 }
 export async function finish() { for (const ms of [0, 1600, 2000, 5000, 30000]) await settle(ms); }
-export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate' | 'doneEdit' | 'typeDictate' | 'dictateType'; word?: string };
+export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'arriveLive' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate' | 'doneEdit' | 'typeDictate' | 'dictateType'; word?: string };
 let mockAfterMarkSaved: ((content: string) => void) | undefined;
-let mockConfirmed: { content: string } | null;
+let mockConfirmed: NoteDraftPayload | null;
 let mockRecovery: NoteDraftPayload | null = null;
 jest.mock('@/hooks/useDurableDraft', () => {
   const actual = jest.requireActual('@/hooks/useDurableDraft');
-  return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as { content: string } | null; const result = actual.useDurableDraft(args);
+  return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as NoteDraftPayload | null; const result = actual.useDurableDraft(args);
     const mark = result.markSaved;
     const markSaved = React.useCallback((value: unknown) => {
       mark(value);
@@ -228,7 +231,7 @@ export async function runHistory(events: OrderingEvent[], id: string) {
     if (hold) await new Promise<void>(resolve => waiting.push(resolve));
     return deliver(command);
   });
-  const arrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
+  const arrived: string[] = [], supersededArrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
   async function refresh() { if (laptop.online) await laptop.run(() => laptop.engine.refreshCollection('studyNotes')); }
   for (const event of events) {
     if (event.kind === 'doneEdit') {
@@ -257,16 +260,24 @@ export async function runHistory(events: OrderingEvent[], id: string) {
         mockEditor.view.dispatch(state.tr.insertText(' ' + event.word, state.doc.content.size - 1));
       }, 0);
       await pulse();
-    } else if (event.kind === 'arriveSame' || event.kind === 'arriveOther') {
-      arrived.push(event.word!);
+    } else if (event.kind === 'arriveSame' || event.kind === 'arriveOther' || event.kind === 'arriveLive') {
+      if (event.kind !== 'arriveLive') arrived.push(event.word!);
       const before = await world.snapshot(noteRef);
       const paragraphs = String(before.value!.content).split('\n\n');
       const index = event.kind === 'arriveSame' ? paragraphs.length - 1 : 0;
       paragraphs[index] += ' ' + event.word;
-      const result = await processCommand('owner', { protocol: 1, kind: 'update', owner: 'owner', operationId: world.id('phone'),
-        resource: noteRef, generation: before.metadata!.generation, dependsOn: [],
-        changes: diffFields(before.value!, { ...before.value!, content: paragraphs.join('\n\n') }) });
-      expect(result.kind).toBe('acknowledged');
+      const content = event.kind === 'arriveLive' ? md() : paragraphs.join('\n\n');
+      if (event.kind === 'arriveLive') {
+        // This explicit phone replacement supersedes its earlier words absent from the chosen text.
+        supersededArrived.push(...arrived.filter(word => !content.includes(word)));
+        arrived.splice(0, arrived.length, ...arrived.filter(word => content.includes(word)));
+      }
+      const changes = diffFields(before.value!, { ...before.value!, content });
+      if (changes.length) {
+        const result = await processCommand('owner', { protocol: 1, kind: 'update', owner: 'owner', operationId: world.id('phone'),
+          resource: noteRef, generation: before.metadata!.generation, dependsOn: [], changes });
+        expect(result.kind).toBe('acknowledged');
+      }
       await refresh();
       // No act flush: the next public event may race the clean render's passive adoption.
     } else if (event.kind === 'timer') await pulse(1500);
@@ -289,14 +300,24 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   captureNotices();
   const body = document.body.textContent ?? '';
   const question = hasNoteQuestion();
+  const storedNote = (await world.snapshot(noteRef)).value! as unknown as StudyNote;
+  const pageValues: NoteDraftPayload = { title: mockAutosave.title, content: mockAutosave.content,
+    tags: mockAutosave.tags, scriptureRefs: mockAutosave.scriptureRefs, type: mockAutosave.type,
+    ...noteRecordingMetadata(mockAutosave.dictationSourceIds, mockAutosave.recordingSourceIds) };
+  const storedValues: NoteDraftPayload = { title: storedNote.title || '', content: storedNote.content,
+    tags: storedNote.tags, scriptureRefs: storedNote.scriptureRefs, type: storedNote.type || 'note',
+    ...noteRecordingMetadata(storedNote.dictationSourceIds, storedNote.recordingSourceIds) };
   const final = { stored: String(await stored()), editor: md(), dom: mockEditor.view.dom.textContent ?? '', page: mockAutosave.content,
     baseline: mockAutosave.baselineRef.current?.content, confirmed: mockConfirmed?.content, saved: body.includes('common.saved'), blocked: mockAutosave.saveBlocked,
+    pageValues, storedValues, unsaved: serializeContent(pageValues) !== serializeContent(mockConfirmed) || !body.includes('common.saved'),
     question, notices: [...notices], engineWrites: sends.mock.calls.length, errors: laptop.errors.map(String), pending: laptop.engine.getPending() };
-  const unsaved = final.page !== final.confirmed && !final.saved;
+  const unsaved = final.unsaved;
   const missingArrived = arrived.filter(word => !final.stored.includes(word) && !question);
   const missingTyped = typed.filter(word => !final.stored.includes(word) && !(final.editor.includes(word) && final.dom.includes(word) && unsaved) && !question);
-  const falseQuestion = (question || final.blocked) && !events.some(event => event.kind === 'arriveSame' || event.kind === 'arriveOther');
-  const record = { id, events, arrived, typed, final, missingArrived, missingTyped, falseQuestion, steps, requests };
+  const falseQuestion = (question || final.blocked) && (!events.some(event => ['arriveSame', 'arriveOther', 'arriveLive'].includes(event.kind))
+    || serializeContent(pageValues) === serializeContent(storedValues));
+  const unconverged = !question && (final.stored !== final.page || final.page !== final.editor || final.unsaved);
+  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, unconverged, steps, requests };
   if (process.env.NOTE_ORDERING_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_OUTPUT, JSON.stringify(record) + '\n');
   disposeHistory();
   return record;

@@ -33,6 +33,7 @@ export function useEditorOwnedText(initial: string) {
     },
   }), [live, publish]);
   const follow = useCallback((value: string) => {
+    if (value === current.current) return;
     document.current?.install(value);
     publish(value);
   }, [publish]);

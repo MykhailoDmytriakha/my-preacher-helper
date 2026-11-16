@@ -62,3 +62,15 @@ it('appends to an empty note without a leading paragraph separator', () => {
   act(() => result.current.append('Voice'));
   expect(result.current.text).toBe('Voice');
 });
+
+it('does not operate on the document or publish an identical follow', () => {
+  let renders = 0;
+  const { result } = renderHook(() => { renders++; return useEditorOwnedText('Opening'); });
+  const document = { install: jest.fn(), append: jest.fn(), replace: jest.fn() };
+  result.current.ownedBy.register(document);
+  const before = renders;
+  act(() => result.current.follow('Opening'));
+  expect(document.install).not.toHaveBeenCalled();
+  expect(renders).toBe(before);
+  expect(result.current.live()).toBe('Opening');
+});
