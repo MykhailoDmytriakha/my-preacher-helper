@@ -38,7 +38,7 @@ it('I3 permits a real question to persist after later equality and counts the st
   expect(evaluateQuestionHistory([{ kind: 'arriveOther' }, { kind: 'arriveLive' }], [
     snapshot(), snapshot({ question: true, blocked: true, storedValues: { ...values, content: 'Different' } }),
     snapshot({ eventIndex: 1, question: true, blocked: true }),
-  ])).toEqual({ falseQuestion: false, staleQuestion: true });
+  ])).toEqual({ falseQuestion: false, staleQuestion: true, lateRefusalQuestion: false });
 });
 it.each(['question', 'blocked'] as const)('I3 rejects a newly arising %s at equality, including a later rise', field => {
   expect(evaluateQuestionHistory([{ kind: 'arriveOther' }], [snapshot(), snapshot({ [field]: true })]).falseQuestion).toBe(true);
@@ -51,9 +51,27 @@ it('I3 rejects refusals in a history without any other-device arrival', () => {
     snapshot({ question: true, storedValues: { ...values, content: 'Different' } }),
   ]).falseQuestion).toBe(true);
 });
-it('the send gate gives EXTRA WRITE priority over every claimed cause', () => {
+it('G2 counts a proven late refusal separately without exempting no-arrival histories', () => {
+  const steps = [snapshot({ sequence: 1, storedValues: { ...values, content: 'Different' } }),
+    snapshot({ sequence: 3 }), snapshot({ sequence: 5, question: true, blocked: true, refusedRequests: [{ issued: 2, refused: 4 }] })];
+  expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], steps)).toEqual({ falseQuestion: false, staleQuestion: false, lateRefusalQuestion: true });
+  expect(evaluateQuestionHistory([{ kind: 'type' }], steps).falseQuestion).toBe(true);
+  // G2 bounds issuance, not refusal delivery: rendering may lag a refusal received before equality.
+  expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], [
+    steps[0], steps[1], { ...steps[2], refusedRequests: [{ issued: 2, refused: 2.5 }] },
+  ]).lateRefusalQuestion).toBe(true);
+  expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], [steps[0], steps[1], { ...steps[2], refusedRequests: [{ issued: 3, refused: 4 }] }]).falseQuestion).toBe(true);
+});
+it('G4 permits exactly the five recorded causes and rejects every other send increase', () => {
   const production: ProductionOutcome = { events: [], stored: 'Words', sends: 1, question: false, blocked: false,
-    unconverged: false, dropped: ['Words'], falseRefusal: 'claimed' };
-  expect(classifySend({ ...production, sends: 2 }, production)).toBe('EXTRA WRITE');
-  expect(classifySend({ ...production, stored: 'New', sends: 2 }, { ...production, falseRefusal: '' })).toBe('unclassified');
+    unconverged: false, dropped: [], falseRefusal: '' };
+  const candidate = { ...production, sends: 2 };
+  expect(classifySend(candidate, production)).toBe('EXTRA WRITE');
+  expect(classifySend(candidate, { ...production, falseRefusal: 'recorded refusal' })).toBe('false-question');
+  expect(classifySend(candidate, { ...production, dropped: ['Words'] })).toBe('stored-dropped-words');
+  expect(classifySend(candidate, { ...production, unconverged: true })).toBe('converged');
+  expect(classifySend(candidate, { ...production, question: true, blocked: true })).toBe('converged');
+  expect(classifySend({ ...candidate, question: true }, { ...production, unconverged: true })).toBe('EXTRA WRITE');
+  expect(classifySend({ ...candidate, keptWordsLateRefusal: true }, production)).toBe('kept-words-late-refusal');
+  expect(classifySend({ ...candidate, splitDictations: true }, production)).toBe('split-dictations');
 });

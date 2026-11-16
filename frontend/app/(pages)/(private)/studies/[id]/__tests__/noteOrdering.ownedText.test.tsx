@@ -85,7 +85,17 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
   await finish(); await snap('settled');
   const final = { id, stored: String(await stored()), page: stand.autosave.content, editor: md(), question: hasNoteQuestion(), sends: sends.mock.calls.length, steps };
   records.push(final);
-  if (id === 'K-5' || id === 'K-7') {
+  if (id === 'C-1') {
+    // Production saves this coincidence by accident; v2.2 deliberately asks before replacing it.
+    expect(final.question).toBe(true);
+    expect(final.stored).toBe(original + ' Typedword');
+    expect(final.page).toBe(original + ' Typedword Laterword');
+    expect(final.editor).toBe(final.page);
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await finish();
+    expect(hasNoteQuestion()).toBe(false);
+    expect(await stored()).toBe(final.page);
+  } else if (id === 'K-5' || id === 'K-7') {
     expect(final.question).toBe(true); expect(final.stored).toContain('Arrivedword'); expect(final.page).toContain('Typedword');
   } else if (id === 'W2') {
     expect(final.stored).toContain('Arrivedword');
@@ -99,12 +109,18 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
   }
 }, 60000);
 
-it('C-1 promotes only content when an equal-content row meets a dirty page', async () => {
+it('C-1 leaves the complete baseline unchanged while an equal-content row waits behind dirty text', async () => {
   await start();
   act(() => insert(' Typedword'));
   const before = stand.autosave.baselineRef.current!;
   await phoneSave(md(), { title: 'Remote title', type: 'question', tags: ['remote'], dictationSourceIds: ['remote-source'] });
-  expect(stand.autosave.baselineRef.current).toEqual({ ...before, content: md() });
+  expect(stand.autosave.baselineRef.current).toEqual(before);
+  expect(stand.confirmed?.content).toBe(original);
+  await finish();
+  expect(stand.autosave.title).toBe('Remote title');
+  expect(stand.autosave.type).toBe('question');
+  expect(stand.autosave.tags).toEqual(['remote']);
+  expect(hasNoteQuestion()).toBe(false);
 });
 
 it.each(['comment', 'image'])('keeps raw %s source through dictation-only saving', async kind => {

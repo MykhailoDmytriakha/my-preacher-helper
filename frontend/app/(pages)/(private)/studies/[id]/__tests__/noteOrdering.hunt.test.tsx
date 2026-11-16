@@ -1,6 +1,6 @@
 import { runHistory, rng, type OrderingEvent } from '@test-utils/noteOrdering';
-import { compareProduction } from '@test-utils/noteOrderingComparison';
-import { productionOutcomes, shortestWitnesses } from '@test-utils/noteOrderingProduction';
+import { compareProduction, hasFullProductionCorpus } from '@test-utils/noteOrderingComparison';
+import { shortestWitnesses } from '@test-utils/noteOrderingProduction';
 
 const full = process.env.NOTE_ORDERING_HUNT === 'full';
 const baseline = process.env.NOTE_ORDERING_BASELINE === '1';
@@ -10,9 +10,13 @@ const count = full ? 512 : 64;
 export const extendedAlphabet: OrderingEvent['kind'][] = ['type', 'arriveSame', 'arriveOther', 'timer', 'ack', 'offline', 'online', 'dictate', 'doneEdit', 'typeDictate', 'dictateType', 'arriveLive'];
 const modes = process.env.NOTE_ORDERING_ALPHABET ? [process.env.NOTE_ORDERING_ALPHABET] : ['random', 'extended'];
 const totals: Record<string, { histories: number; I1: number; I2: number; I3: number; I4: number; sends: number; questions: number; productionSends: number; productionQuestions: number; increased: string[] }> = {};
+if ((full || process.env.NOTE_ORDERING_EXHAUSTIVE === '1') && !hasFullProductionCorpus) {
+  process.stderr.write('Full/exhaustive comparisons skipped: set NOTE_ORDERING_PRODUCTION_CORPUS to the production corpus path.\n');
+}
+const seeded = full && !hasFullProductionCorpus ? it.skip : it;
 for (const mode of modes) {
   const sum: (typeof totals)[string] = totals[mode] = { histories: 0, I1: 0, I2: 0, I3: 0, I4: 0, sends: 0, questions: 0, productionSends: 0, productionQuestions: 0, increased: [] };
-  it.each(seeds)(`${mode} preserves words and avoids false questions, seed %i`, async seed => {
+  seeded.each(seeds)(`${mode} preserves words and avoids false questions, seed %i`, async seed => {
     const next = rng(seed);
     const kinds = mode === 'extended' ? ['type', ...extendedAlphabet] : ['type', ...extendedAlphabet.slice(0, 8)];
     const failures: unknown[] = [];
@@ -24,14 +28,14 @@ for (const mode of modes) {
         events.push({ kind, ...(['type', 'arriveSame', 'arriveOther', 'dictate', 'typeDictate', 'dictateType'].includes(kind) ? { word: `W${seed}H${h}E${e}X` } : {}) });
       }
       const row = await runHistory(events, `${seed}:${h}`);
-      const [sends, question, blocked] = productionOutcomes[mode][seed][h];
-      const increased = row.final.engineWrites > sends;
       const comparison = compareProduction(mode, row);
+      const { sends, question, blocked } = comparison.production;
+      const increased = row.final.engineWrites > sends;
       sum.histories++; sum.I1 += Number(!!row.missingArrived.length); sum.I2 += Number(!!row.missingTyped.length); sum.I3 += Number(row.falseQuestion); sum.I4 += Number(row.unconverged);
-      sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question); sum.productionSends += sends; sum.productionQuestions += question;
+      sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question); sum.productionSends += sends; sum.productionQuestions += Number(question);
       if (increased) sum.increased.push(row.id);
       if (observe) continue;
-      if (baseline) expect([row.final.engineWrites, Number(row.final.question), Number(row.final.blocked)]).toEqual([sends, question, blocked]);
+      if (baseline) expect([row.final.engineWrites, Number(row.final.question), Number(row.final.blocked)]).toEqual([sends, Number(question), Number(blocked)]);
       else if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || comparison.convergenceRegression || comparison.sendFailure) failures.push({
         id: row.id, I1: row.missingArrived, I2: row.missingTyped, I3: row.falseQuestion, I4: row.unconverged,
         convergenceRegression: comparison.convergenceRegression, sendCause: comparison.sendCause,
@@ -51,7 +55,7 @@ it('I3 rejects a question about fully adopted values after a clean arrival', asy
 it('I4 converges after the other device stores the live text and silence', async () => {
   const row = await runHistory([{ kind: 'type', word: 'Equalword' }, { kind: 'arriveLive' }], 'I4:equal-arrival');
   expect(row.unconverged).toBe(false);
-  expect(row.final.engineWrites).toBe(0);
+  expect(row.final.engineWrites).toBe(1);
 });
 
 it.each(shortestWitnesses)('preserves the shortest $invariant witness and every proper subsequence', async witness => {
@@ -65,7 +69,7 @@ it.each(shortestWitnesses)('preserves the shortest $invariant witness and every 
   if (!baseline) expect(outcomes).toEqual(outcomes.map(row => ({ ...row, missing: [] })));
 }, 30000);
 
-const exhaustive = process.env.NOTE_ORDERING_EXHAUSTIVE === '1' ? it : it.skip;
+const exhaustive = process.env.NOTE_ORDERING_EXHAUSTIVE === '1' && hasFullProductionCorpus ? it : it.skip;
 const prefixes = [null, ...extendedAlphabet].filter((_, index) => !process.env.NOTE_ORDERING_EXHAUSTIVE_SHARD
   || index === Number(process.env.NOTE_ORDERING_EXHAUSTIVE_SHARD));
 exhaustive.each(prefixes)('checks every sequence up to length four starting with %s', async prefix => {

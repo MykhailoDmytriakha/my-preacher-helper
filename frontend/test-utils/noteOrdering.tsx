@@ -14,6 +14,7 @@ import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { evaluateQuestionHistory, type QuestionSnapshot } from './noteOrderingOracles';
 
 import { undoDepth } from '@tiptap/pm/history';
+import type { DataCommand, CommandResult } from '@/data-engine/types';
 import type { Editor } from '@tiptap/core';
 import type { StudyNote } from '@/models/models';
 import type { useTextDictation } from '@/hooks/useTextDictation';
@@ -227,6 +228,8 @@ async function pulse(ms = 0) {
 export async function runHistory(events: OrderingEvent[], id: string) {
   await start();
   const questionSteps: QuestionSnapshot[] = [];
+  let sequence = 0;
+  const requests: { kind: string; operationId: string; issued: number; refused?: number; command: DataCommand; response?: CommandResult }[] = [];
   let eventIndex = -1;
   const values = (note: Partial<NoteDraftPayload>): NoteDraftPayload => ({
     title: note.title || '', content: note.content || '', tags: note.tags || [],
@@ -238,17 +241,23 @@ export async function runHistory(events: OrderingEvent[], id: string) {
     if (!raw) throw new Error('Missing stored note in question monitor');
     const step = { eventIndex, pageValues: values(mockAutosave), storedValues: values(raw),
       question: hasNoteQuestion(), blocked: !!mockAutosave.saveBlocked };
-    if (serializeContent(step) !== serializeContent(questionSteps.at(-1))) questionSteps.push(step);
+    const previous = questionSteps.at(-1);
+    if (serializeContent(step) !== serializeContent(previous && { eventIndex: previous.eventIndex, pageValues: previous.pageValues, storedValues: previous.storedValues, question: previous.question, blocked: previous.blocked })) {
+      questionSteps.push({ ...step, sequence: ++sequence, refusedRequests: requests.filter(request => request.refused !== undefined).map(request => ({ issued: request.issued, refused: request.refused! })) });
+    }
   };
   observeQuestion();
-  const requests: { kind: string; operationId: string }[] = [];
   const waiting: Array<() => void> = [];
   let hold = true;
   const deliver = laptop.transport.send.bind(laptop.transport);
   const sends = jest.spyOn(laptop.transport, 'send').mockImplementation(async command => {
-    requests.push({ kind: command.kind, operationId: command.operationId });
+    const request = { kind: command.kind, operationId: command.operationId, issued: ++sequence, command } as (typeof requests)[number];
+    requests.push(request);
     if (hold) await new Promise<void>(resolve => waiting.push(resolve));
-    return deliver(command);
+    const response = await deliver(command);
+    request.response = response;
+    if (response.kind !== 'acknowledged') request.refused = ++sequence;
+    return response;
   });
   const arrived: string[] = [], supersededArrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
   async function refresh() { if (laptop.online) await laptop.run(() => laptop.engine.refreshCollection('studyNotes')); }
@@ -335,9 +344,9 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const missingArrived = arrived.filter(word => !final.stored.includes(word) && !question);
   const missingTyped = typed.filter(word => !final.stored.includes(word) && !(final.editor.includes(word) && final.dom.includes(word) && unsaved) && !question);
   observeQuestion();
-  const { falseQuestion, staleQuestion } = evaluateQuestionHistory(events, questionSteps);
+  const { falseQuestion, staleQuestion, lateRefusalQuestion } = evaluateQuestionHistory(events, questionSteps);
   const unconverged = !question && (final.stored !== final.page || final.page !== final.editor || final.unsaved);
-  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, staleQuestion, unconverged, questionSteps, steps, requests };
+  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, staleQuestion, lateRefusalQuestion, unconverged, questionSteps, steps, requests };
   if (process.env.NOTE_ORDERING_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_OUTPUT, JSON.stringify(record) + '\n');
   disposeHistory();
   return record;
