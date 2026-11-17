@@ -46,8 +46,10 @@ it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice
     expect(choiceSends).toBe(before + Number(choice === 'keep'));
   }, 60000);
 
-it.each(choices)('Q3: newer words survive %s and get their own saving decision', async choice => {
+it.each(choices.flatMap(choice => [false, true].map(reload => ({ choice, reload }))))(
+  'Q3: newer words survive $choice and get their own saving decision (reload=$reload)', async ({ choice, reload }) => {
   await runHistory(histories[0].events, `Q3:${choice}`, { keepMounted: true });
+  if (reload) await reloadPage();
   const submitted = md();
   act(() => insert(' Pendingword'));
   await finish();
@@ -79,8 +81,9 @@ it.each(choices)('Q3: newer words survive %s and get their own saving decision',
   expectConfirmed(newer + ' Nextword');
 }, 60000);
 
-it.each(choices)('reload after late refusal: %s and the next edit complete', async choice => {
-  await runHistory(histories[0].events, `reload:${choice}`, { keepMounted: true });
+it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice }))))(
+  '$name reload after late refusal: $choice follows the existing recovery path', async ({ name, events, choice }) => {
+  await runHistory(events, `reload:${name}:${choice}`, { keepMounted: true });
   const chosen = choice === 'keep' ? md() : String(await stored());
   const oldEngine = stand.laptop.engine;
   await reloadPage();

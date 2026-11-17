@@ -73,6 +73,7 @@ jest.mock('@/hooks/useWideViewport', () => ({
     useRoomyHeader: () => mockViewport.roomy,
 }));
 jest.mock('@/hooks/useStudyNotes');
+const mockSubscribeNoteChoiceSettled = () => () => undefined;
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
 // The page asks this to decide whether the collapsed rail shows its "a sermon uses
@@ -194,7 +195,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
-            notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+            subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
             loading: false,
             createNote: jest.fn(),
             updateNote: jest.fn(),
@@ -223,7 +224,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             const other = { title: 'Current Note', content: 'Later words from another opening', tags: [], scriptureRefs: [], type: 'note' };
             if (otherDraft) localStorage.setItem(key, JSON.stringify({ value: other, savedAt: Date.now() + 1 }));
             mockAuthState.user = { uid: 'user-2' };
-            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-2', notes: [], loading: false,
+            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-2', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false,
                 notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'note-1' }, value: null, metadata: null } }),
                 createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
             view.rerender(<StudyNoteEditorPage />);
@@ -301,7 +302,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', `/studies/new?draft=new~A&draftOwner=user-1&draftCopy=${encodeURIComponent(scopedKey)}`);
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(`draft=new~A&draftOwner=user-1&draftCopy=${encodeURIComponent(scopedKey)}`));
         const createNote = jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'A' }), persistence: new Promise<void>(() => undefined), note: { id: 'A' } }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, confirmedCreationIds: new Set(), createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, confirmedCreationIds: new Set(), createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(screen.getByRole('status')).toHaveTextContent(scoped.content);
@@ -328,7 +329,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new?draft=new~A&draftOwner=user-1');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A&draftOwner=user-1'));
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, confirmedCreationIds: new Set(['A']),
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, confirmedCreationIds: new Set(['A']),
             notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'A' }, value: null, metadata: null } }),
             createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
@@ -348,7 +349,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const source = draftKey('user-1', 'new~note-1', 'note');
         const copy = { title: 'Still unfinished', content: 'Unsent words from a resumed opening', tags: [], scriptureRefs: [], type: 'note' };
         localStorage.setItem(source, JSON.stringify({ value: copy, savedAt: 1, creationTargetId: 'note-1' }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
             confirmedCreationIds: new Set(['note-1']), loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -372,7 +373,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             (useParams as jest.Mock).mockReturnValue({ id: 'new' });
             window.history.replaceState(null, '', '/studies/new?draft=new~A&draftOwner=user-1');
             (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A&draftOwner=user-1'));
-            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false,
+            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false,
                 createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         }
         let view: ReturnType<typeof render> | undefined;
@@ -394,7 +395,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('waits for the owner collection before exposing a new note editor', async () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-        const collection = { uid: undefined, notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() };
+        const collection = { uid: undefined, subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() };
         (useStudyNotes as jest.Mock).mockReturnValue(collection);
         const view = render(<StudyNoteEditorPage />);
         expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
@@ -411,7 +412,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('keeps an already opened note readable while the collection checks again', () => {
         const view = render(<StudyNoteEditorPage />);
         expect(screen.getByText('Current Note')).toBeVisible();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes,
             noteDelivery: acceptedNoteDelivery(), loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         view.rerender(<StudyNoteEditorPage />);
         expect(screen.getByText('Current Note')).toBeVisible();
@@ -420,7 +421,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('keeps confirmed absence visible even during another collection check', () => {
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: true,
             notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'note-1' }, value: null, metadata: null } }),
             refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         render(<StudyNoteEditorPage />);
@@ -429,7 +430,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('names a server-confirmed missing note and offers a route back', async () => {
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false,
             notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'note-1' }, value: null, metadata: null } }),
             refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         render(<StudyNoteEditorPage />);
@@ -443,7 +444,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             scriptureRefs: [{ id: 'kept-reference', book: 'John', chapter: 3, fromVerse: 16, bible: 'kjv' }], type: 'note' };
         const key = draftKey('user-1', 'note-1', 'note');
         localStorage.setItem(key, JSON.stringify({ value: kept, savedAt: Date.now() - 1000 }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: true,
             notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
             refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
@@ -471,7 +472,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
             (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false,
+            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false,
                 createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
             const copies = () => findNewNoteDrafts('user-1', new Set(), new Set())
                 .map(copy => ({ key: copy.key, record: copy }));
@@ -496,7 +497,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~deleted-note&draftOwner=user-1'));
         const createNote = jest.fn();
-        const collection = { uid: 'user-1', notes: [], loading: false, confirmedCreationIds: new Set(initiallyKnown ? ['deleted-note'] : []), createNote, updateNote: jest.fn(), deleteNote: jest.fn() };
+        const collection = { uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, confirmedCreationIds: new Set(initiallyKnown ? ['deleted-note'] : []), createNote, updateNote: jest.fn(), deleteNote: jest.fn() };
         (useStudyNotes as jest.Mock).mockReturnValue(collection);
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -518,7 +519,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             const address = new URL(window.location.href).searchParams;
@@ -544,7 +545,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             act(() => { jest.advanceTimersByTime(400); });
@@ -564,7 +565,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A'));
         const createNote = jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'A' }), persistence: new Promise<void>(() => undefined), note: { id: 'A' } }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             act(() => { jest.advanceTimersByTime(400); });
@@ -588,7 +589,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A'));
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(screen.getByRole('status')).toHaveTextContent('Only A');
@@ -617,7 +618,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A&draftOwner=user-1'));
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn(), noteDelivery: new Map([['A', { pending: true, needsAttention: false }]]) });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [note], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn(), noteDelivery: new Map([['A', { pending: true, needsAttention: false }]]) });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(screen.getByText(note.content)).toBeInTheDocument();
@@ -636,7 +637,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new'));
         const createNote = jest.fn((_input, options: { id: string }) => ({ ...persistedWrite(Promise.resolve()), note: { id: options.id } }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             act(() => { jest.advanceTimersByTime(400); });
@@ -655,7 +656,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~foreign-target&draftOwner=another-owner'));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'My independent words' } });
@@ -673,7 +674,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~A&draftOwner=user-1'));
         const createNote = jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'A' }), persistence: new Promise<void>(() => undefined), note: { id: 'A' } }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
@@ -703,7 +704,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         }));
         const updateNote = jest.fn();
         const collection = {
-            uid: 'user-1', notes: [], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote, deleteNote: jest.fn(),
             confirmedCreationIds: new Set<string>(),
             notePresence: jest.fn((id: string): RecordPresence => ({
                 kind: 'absent', source: 'server',
@@ -753,7 +754,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~guest-note&draftOwner=guest-owner'));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'guest-owner', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'guest-owner', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(screen.getByRole('button', { name: 'unsavedDraft.restore' })).toBeInTheDocument();
@@ -842,7 +843,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('shows the note\'s silhouette, not a spinner, while the notes come and while the route loads', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'silhouette-loading-note' });
         window.history.replaceState(null, '', '/studies/silhouette-loading-note');
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const { container, unmount } = render(<StudyNoteEditorPage />);
         expect(screen.getByTestId('note-detail-skeleton')).toHaveAttribute('aria-busy', 'true');
         expect(container.querySelector('.animate-spin')).toBeNull();
@@ -879,7 +880,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it.each(['pending', 'needs-attention', 'unknown'] as const)('does not call a restored %s row Saved from its timestamp', async delivery => {
         const queued = { ...mockNotes[1], content: 'Words retained locally before reload' };
         const updateNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [queued], loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [queued], loading: false,
             noteDelivery: delivery === 'unknown' ? new Map() : new Map([[queued.id, { pending: true, needsAttention: delivery === 'needs-attention' }]]),
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
         render(<StudyNoteEditorPage />);
@@ -893,7 +894,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         let pending = true;
         const queued = { ...mockNotes[1], content: 'Restored queued words' };
         const updateNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [queued], loading: false,
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [queued], loading: false,
             noteDelivery: new Map([[queued.id, { pending, needsAttention: false }]]),
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
         const view = render(<StudyNoteEditorPage />);
@@ -907,7 +908,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('keeps an accepted current note Saved while a different note waits', async () => {
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, loading: false,
             noteDelivery: new Map(mockNotes.map(note => [note.id, { pending: note.id === 'note-2', needsAttention: false }])),
             createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         render(<StudyNoteEditorPage />);
@@ -925,7 +926,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             return { acceptance: Promise.resolve({ kind: 'persisted' }), persistence: Promise.resolve(),
                 result: Promise.resolve({ id: 'note-1', revision: 2 }) };
         });
-        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: projectedNotes, loading: false,
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: projectedNotes, loading: false,
             noteDelivery: new Map(projectedNotes.map(note => [note.id, { pending: note.id === 'note-1' && pending, needsAttention: false }])),
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
         try {
@@ -953,7 +954,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 capture: Promise.resolve({ kind: 'submitted', requestId: 'local-title', persistence }) };
         });
         (useStudyNotes as jest.Mock).mockImplementation(() => ({
-            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
             noteDelivery: new Map([[original.id, { pending: projected !== original, needsAttention: false }]]),
             observeTitle: (_id: string, value: string) => value === firstTitle
                 ? { ...opening, title: firstTitle, requestId: 'local-title' } : opening,
@@ -996,7 +997,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 capture: Promise.resolve({ kind: 'submitted', requestId: id, persistence }) };
         });
         (useStudyNotes as jest.Mock).mockImplementation(() => ({
-            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
             observeTagBasis: () => basis, captureActionTime,
             noteDelivery: new Map([[original.id, { pending: projected !== original, needsAttention: false }]]),
         }));
@@ -1045,7 +1046,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 capture: Promise.resolve({ kind: 'submitted', requestId: 'first-tag', persistence }) };
         });
         (useStudyNotes as jest.Mock).mockImplementation(() => ({
-            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
             observeTagBasis: () => ({ generation: 'generation', revision: 1 }), captureActionTime,
             noteDelivery: new Map([[original.id, { pending: true, needsAttention: false }]]),
         }));
@@ -1089,7 +1090,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 capture: Promise.resolve({ kind: 'submitted', requestId: 'earlier-tag', persistence }) };
         });
         (useStudyNotes as jest.Mock).mockImplementation(() => ({
-            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
             observeTagBasis: () => basis, captureActionTime: () => time,
             noteDelivery: new Map([[original.id, { pending: true, needsAttention: false }]]),
         }));
@@ -1126,7 +1127,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             result: persistence.then(() => ({ ...original, title: typedTitle, content: newBody, revision: 2 })),
         }));
         (useStudyNotes as jest.Mock).mockImplementation(() => ({
-            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
             noteDelivery: acceptedNoteDelivery(), observeTitle: () => opening,
             captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }),
         }));
@@ -1180,7 +1181,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
-            notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+            subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
             loading: false,
             createNote: jest.fn(),
             updateNote,
@@ -1217,7 +1218,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const persistence = new Promise<void>(resolve => { finish = resolve; });
         const createNote = jest.fn((note: Partial<StudyNote>) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: id }), persistence, note: { ...note, id } }));
         const delivery = new Map([[id, { pending: true, needsAttention: false }]]);
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], noteDelivery: delivery, loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], noteDelivery: delivery, loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, polishedText: 'New dictated sentence' }) });
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -1252,7 +1253,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             result: Promise.resolve({ id: 'note-2', revision: 2 }),
         });
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
         });
 
         render(<StudyNoteEditorPage />);
@@ -1318,7 +1319,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('leaves an arrow typed into a field to the field, and keeps the arrows while the comment\'s window is open', () => {
         const comment: StudyNote = { ...mockNotes[1], type: 'comment' };
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
         });
         render(<StudyNoteEditorPage />);
 
@@ -1338,7 +1339,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('names a comment\'s page by its place, not «untitled», and shows it no tags or outline to fill', () => {
         const comment: StudyNote = { ...mockNotes[1], type: 'comment', title: '', tags: [], scriptureRefs: [{ id: 'r', bible: 'rst', book: 'Isaiah', chapter: 40, fromVerse: 31 }] };
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
         });
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
         render(<StudyNoteEditorPage />);
@@ -1550,7 +1551,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new?draft=new~first-audio-note&draftOwner=user-1');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn();
         const first = render(<StudyNoteEditorPage />);
         try {
@@ -1584,7 +1585,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', `/studies/new?draft=${docId}&draftOwner=user-1`);
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(await screen.findByRole('button', { name: 'unsavedDraft.restore' })).toBeVisible();
@@ -1602,7 +1603,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new?draft=new~audio-question&draftOwner=user-1');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(await screen.findByRole('button', { name: 'unsavedDraft.restore' })).toBeVisible();
@@ -1621,7 +1622,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', '/studies/new');
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
         const createNote = jest.fn();
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -1639,7 +1640,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'parked-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'parked-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
         let finishPark!: () => void; const parked = new Promise<void>(resolve => { finishPark = resolve; });
         const idb = await import('idb-keyval');
@@ -1666,7 +1667,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'active-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'active-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -1684,7 +1685,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'new-raw-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'created-raw-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         window.history.replaceState(null, '', '/studies/new');
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'raw-words' }), persistence: new Promise<void>(() => undefined), result: new Promise(() => undefined) })), deleteNote: jest.fn() });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [], loading: false, createNote, updateNote: jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'raw-words' }), persistence: new Promise<void>(() => undefined), result: new Promise(() => undefined) })), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA transcription refused', retryable: false }) });
         const view = render(<StudyNoteEditorPage />);
         fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
@@ -1707,7 +1708,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
     it('does not append a cached recording whose source is already part of the restored note', async () => {
         const note = Object.assign({ ...mockNotes[1], content: 'Already dictated words' }, { dictationSourceIds: ['source-restored'] });
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], confirmedDictationSources: new Map([['note-1', ['source-restored']]]), loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [note], confirmedDictationSources: new Map([['note-1', ['source-restored']]]), loading: false,
             createNote: jest.fn(), updateNote: jest.fn(() => persistedWrite(Promise.resolve())), deleteNote: jest.fn() });
         const blob = new Blob(['original voice'], { type: 'audio/webm' });
         mockRecordingRows.set('source-restored', { id: 'source-restored', ownerId: 'user-1', context: 'study', contextId: 'note-1',
@@ -1724,7 +1725,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
     it('keeps cached audio when its transcript identity is only projected by a pending note', async () => {
         const note = Object.assign({ ...mockNotes[1], content: 'Already dictated words' }, { dictationSourceIds: ['source-restored'] });
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], noteDelivery: new Map([['note-1', { pending: true, needsAttention: false }]]), confirmedDictationSources: new Map(), loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [note], noteDelivery: new Map([['note-1', { pending: true, needsAttention: false }]]), confirmedDictationSources: new Map(), loading: false,
             createNote: jest.fn(), updateNote: jest.fn(() => persistedWrite(Promise.resolve())), deleteNote: jest.fn() });
         const blob = new Blob(['original voice'], { type: 'audio/webm' });
         mockRecordingRows.set('source-restored', { id: 'source-restored', ownerId: 'user-1', context: 'study', contextId: 'note-1',
@@ -1768,7 +1769,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
             window.history.replaceState(null, '', '/studies/new');
         }
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: kind === 'existing' ? mockNotes : [],
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: kind === 'existing' ? mockNotes : [],
             noteDelivery: acceptedNoteDelivery(), loading: false, createNote, updateNote, deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -1807,7 +1808,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             stored = { ...stored, ...updates };
             return persistedWrite(Promise.resolve({ id: stored.id, revision: 5 }));
         });
-        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [stored], noteDelivery: new Map([[stored.id, { pending: false, needsAttention: false }]]), loading: false,
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [stored], noteDelivery: new Map([[stored.id, { pending: false, needsAttention: false }]]), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -1831,7 +1832,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('restores the typed draft and then its cached voice after a refused save without appending twice', async () => {
         window.localStorage.clear();
         const updateNote = jest.fn((_args: { updates: Partial<StudyNote> }) => persistedWrite(Promise.reject(new Error('Local note write refused'))));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: true,
             json: async () => ({ success: true, polishedText: 'One durable voice fragment' }) });
@@ -1859,7 +1860,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.localStorage.clear();
         const updateNote = jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'voice-save' }),
             persistence: new Promise<void>(() => undefined), result: new Promise(() => undefined) }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, polishedText: 'Same words' }) });
         const view = render(<StudyNoteEditorPage />);
@@ -1936,7 +1937,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             }));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+                subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: mockCreateNote,
                 updateNote: jest.fn(),
@@ -1972,7 +1973,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 }));
                 (useStudyNotes as jest.Mock).mockReturnValue({
                     uid: 'user-1',
-                    notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+                    subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                     loading: false,
                     createNote: mockCreateNote,
                     updateNote: jest.fn(),
@@ -2004,7 +2005,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             const mockDeleteShareLink = jest.fn(() => persistedWrite(Promise.resolve()));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+                subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: jest.fn(),
                 updateNote: jest.fn(),
@@ -2097,7 +2098,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             });
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
+                subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: jest.fn(),
                 updateNote: mockUpdateNote,
@@ -2129,7 +2130,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                     const result = Promise.reject(refusal);
                     return { ...persistedWrite(result), result };
                 });
-                (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
+                (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
 
                 render(<StudyNoteEditorPage />);
                 fireEvent.click(screen.getByTitle('common.edit'));
@@ -2166,7 +2167,7 @@ describe('StudyNoteEditorPage — where the outline and properties are reachable
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
+            uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
         });
         (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
@@ -2223,7 +2224,7 @@ describe('an analysis named by its page in Studies', () => {
         (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
-            notes: [...mockNotes, { ...createMockNote('a1', 'Разбор · Еф 1:3–14'), type: 'analysis', content: '- Благословен Бог' }],
+            subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [...mockNotes, { ...createMockNote('a1', 'Разбор · Еф 1:3–14'), type: 'analysis', content: '- Благословен Бог' }],
             loading: false,
             createNote: jest.fn(),
             updateNote,

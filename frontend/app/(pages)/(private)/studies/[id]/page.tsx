@@ -727,7 +727,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, subscribeNoteChoiceSettled, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -1019,6 +1019,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
     }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent, setConfirmedDraft, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs]);
+    const choiceAdoptionArmed = useRef(false);
+    const [settledChoice, setSettledChoice] = useState(0);
+    useEffect(() => {
+        choiceAdoptionArmed.current = false;
+        return subscribeNoteChoiceSettled(noteId, () => {
+            choiceAdoptionArmed.current = true;
+            setSettledChoice(count => count + 1);
+        });
+    }, [noteId, subscribeNoteChoiceSettled]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
@@ -1028,15 +1037,22 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
             && edit.before !== edit.present && edit.predecessorRequestId);
         const delivery = noteDelivery?.get(noteId);
-        const submittedWork = delivery?.pending !== false || delivery?.needsAttention === true;
-        if ((liveDirty && submittedWork) || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        if (hasUnsubmittedEdits) choiceAdoptionArmed.current = false;
+        const settledAdoption = choiceAdoptionArmed.current && !hasUnsubmittedEdits
+            && delivery?.pending === false && !delivery.needsAttention;
+        if (settledAdoption) {
+            if (hasUnsubmittedEdits || pendingTags || isSaving || saveConflict) return;
+        } else {
+            if (liveDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        }
         const edit = titleEditRef.current;
         // Returning to the confirmed words still edits the title that this device just queued.
         if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === liveTitle.current && edit.capture.seen.title !== liveTitle.current) return;
         const typeEdit = typeEditRef.current;
         if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === liveType.current && typeEdit.capture.seen.type !== liveType.current) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, noteDelivery, title, type, adoptRow, liveValues, dictationSourceIds, liveContent, liveDictation, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
+        choiceAdoptionArmed.current = false;
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, noteDelivery, settledChoice, title, type, adoptRow, liveValues, dictationSourceIds, liveContent, liveDictation, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
