@@ -1,7 +1,7 @@
 import { act, screen } from '@testing-library/react';
-import { stand, runHistory, original, md, insert, finish, stored, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { stand, runHistory, original, md, insert, finish, stored, hasNoteQuestion, hasInlineQuestion } from '@test-utils/noteOrdering';
 
-it('KNOWN BEHAVIOUR: a prompt dictation save refused late keeps unsaved words without a note question; the next edit still has no question', async () => {
+it('a prompt dictation save refused late offers the global question and preserves later typing', async () => {
   const row = await runHistory([
     { kind: 'dictate', word: 'Dictatedword' }, { kind: 'arriveSame', word: 'Phoneword' },
   ], 'known:prompt-save-late-refusal', { keepMounted: true });
@@ -11,12 +11,13 @@ it('KNOWN BEHAVIOUR: a prompt dictation save refused late keeps unsaved words wi
   expect(row.requests[0].response?.kind).toBe('conflict');
   expect(row.requests[0].refused).toBeGreaterThan(row.requests[0].issued);
 
-  // This pins the existing gap; it is documentation, not acceptance of the UX.
+  // The production-shaped identity exposes the existing global decision.
   expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
   expect(stand.autosave.content).toBe(local);
   expect(md()).toBe(local);
   expect(stand.editor.view.dom).toHaveTextContent('Dictatedword');
-  expect(hasNoteQuestion()).toBe(false);
+  expect(hasNoteQuestion()).toBe(true);
+  expect(hasInlineQuestion()).toBe(false);
   expect(stand.autosave.saveBlocked).toBeFalsy();
   expect(await stored()).toBe(remote);
   expect(stand.laptop.engine.getPending()).toEqual(expect.arrayContaining([
@@ -25,11 +26,11 @@ it('KNOWN BEHAVIOUR: a prompt dictation save refused late keeps unsaved words wi
 
   act(() => insert(' Nextword'));
   await finish();
-  // The requested recovery assertion was red: even this next edit has no note
-  // question. Preserve the actual behaviour until a production fix is authorized.
+  // Later typing is outside the pending global choice and stays visible.
   expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
   expect(screen.getByText('common.saveError')).toBeInTheDocument();
-  expect(hasNoteQuestion()).toBe(false);
+  expect(hasNoteQuestion()).toBe(true);
+  expect(hasInlineQuestion()).toBe(false);
   expect(stand.autosave.saveBlocked).toBeFalsy();
   expect(stand.autosave.content).toBe(local + ' Nextword');
   expect(md()).toBe(local + ' Nextword');

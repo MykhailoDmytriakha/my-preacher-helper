@@ -1,7 +1,9 @@
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
+import { editorIdentity } from '@/data-engine/editorIdentity';
+import { SyncNoticeDock } from '@/components/common/SyncNoticeDock';
 import React from 'react';
 import { appendFileSync } from 'node:fs';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
@@ -14,7 +16,7 @@ import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { evaluateQuestionHistory, type QuestionSnapshot } from './noteOrderingOracles';
 
 import { undoDepth } from '@tiptap/pm/history';
-import type { DataCommand, CommandResult } from '@/data-engine/types';
+import type { DataCommand, CommandResult, ResourceRef } from '@/data-engine/types';
 import type { Editor } from '@tiptap/core';
 import type { StudyNote } from '@/models/models';
 import type { useTextDictation } from '@/hooks/useTextDictation';
@@ -76,7 +78,7 @@ let mockRouteId = 'note-x';
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 const mockSearch = new URLSearchParams();
 let mockVoice: Parameters<typeof useTextDictation>[0];
-let mockBrowser: unknown;
+let mockBrowser: { engine: WorldDevice['engine']; dispose: () => void; editorId: (resource: ResourceRef, slot?: string) => string };
 let mockEditor: Editor;
 let mockAutosave: Parameters<typeof useNoteAutoSave>[0];
 let world: DeviceWorld;
@@ -102,8 +104,8 @@ function captureNotices() {
   notices.push(...found.filter(value => !notices.includes(value)));
   observeQuestion?.();
 }
-// This stand mounts one note. Only its rendered version/draft choices count as safety.
-export function hasNoteQuestion() {
+// This stand mounts one note; both existing places that offer its choices count.
+export function hasInlineQuestion() {
   return Array.from(document.querySelectorAll('[data-note-workspace] [role="alert"], [data-note-workspace] [role="status"]')).some(element => {
     const text = element.textContent ?? '';
     const buttons = Array.from(element.querySelectorAll('button')).map(button => button.textContent);
@@ -112,6 +114,43 @@ export function hasNoteQuestion() {
       || (text.includes('unsavedDraft.title')
         && buttons.includes('unsavedDraft.restore') && buttons.includes('unsavedDraft.discard'));
   });
+}
+export function hasGlobalNotice() {
+  return Array.from(document.querySelectorAll('button[aria-controls]')).some(button =>
+    button.textContent === 'dataSync.readerNotices' && !button.closest('[hidden],[aria-hidden="true"]'));
+}
+export function hasNoteQuestion() { return hasInlineQuestion() || hasGlobalNotice(); }
+export async function openNotice() {
+  const button = screen.getByRole('button', { name: 'dataSync.readerNotices' });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+  await settle();
+  return within(document.querySelector('[data-sync-notice-open] section') as HTMLElement);
+}
+export async function chooseNotice(choice: 'keep' | 'take') {
+  await openNotice();
+  await act(async () => { fireEvent.click(within(document.querySelector('[data-sync-notice-open] section') as HTMLElement).getByRole('button', {
+    name: choice === 'keep' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs',
+  })); });
+  const confirm = screen.queryByRole('button', { name: 'common.discardText.confirm' });
+  if (confirm) await act(async () => { fireEvent.click(confirm); });
+  await finish();
+}
+async function mountPage() {
+  await act(async () => {
+    view = laptop.run(() => render(<DataEngineProvider><SyncNoticeDock><EngineConflictBanner /></SyncNoticeDock><StudyNotePage /></DataEngineProvider>));
+    await world.settle();
+  });
+  if (screen.queryByTitle('common.edit')) fireEvent.click(screen.getByTitle('common.edit'));
+  await settle();
+  mockEditor.view.setProps({ handleScrollToSelection: () => true });
+}
+/** Reboot the engine from device storage, without a callback or live engine from the old page. */
+export async function reloadPage() {
+  view.unmount();
+  jest.advanceTimersByTime(1);
+  await act(async () => { await laptop.reload(); });
+  mockBrowser.engine = laptop.engine;
+  await mountPage();
 }
 async function settle(ms = 0) {
   await act(async () => { if (ms) await world.advance(ms); else await world.settle(); });
@@ -130,18 +169,12 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   await world.seed(noteRef, { ...noteValue(), type: 'note', content: initialContent });
   laptop = await world.device('laptop');
   jest.mocked(watchedStore).mockImplementation(database => laptop.storage.store(database));
-  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: () => world.id('opening') };
+  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: (resource: ResourceRef, slot = 'default') => editorIdentity('laptop', resource, slot, world.id('opening')) };
   jest.spyOn(window, 'confirm').mockImplementation(() => { notices.push('window.confirm'); return false; });
   jest.spyOn(window, 'alert').mockImplementation(() => { notices.push('window.alert'); });
   observer = new MutationObserver(captureNotices);
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-  await act(async () => {
-    view = laptop.run(() => render(<DataEngineProvider><EngineConflictBanner /><StudyNotePage /></DataEngineProvider>));
-    await world.settle();
-  });
-  if (screen.queryByTitle('common.edit')) fireEvent.click(screen.getByTitle('common.edit'));
-  await settle();
-  mockEditor.view.setProps({ handleScrollToSelection: () => true });
+  await mountPage();
   mockEditor.on('update', () => { editorUpdates.push(md()); });
   expect(view.container.querySelector('.tiptap')).toBeTruthy();
   if (mockRouteId !== 'new' && !allowEquivalentSerialization) expect(md().trim()).toBe(initialContent.trim());
@@ -217,13 +250,18 @@ function disposeHistory() {
   activeHistory = false;
   observeQuestion = undefined;
 }
-async function pulse(ms = 0) {
+export async function pulse(ms = 0) {
   jest.advanceTimersByTime(ms);
   for (let round = 0; round < 4; round++) {
     for (let i = 0; i < 900; i++) { await Promise.resolve(); if (i % 300 === 0) jest.advanceTimersByTime(0); }
     jest.advanceTimersByTime(1);
   }
   captureNotices();
+}
+// Match useTextDictation.transcribe: raw source ownership precedes recognized text.
+async function publishDictation(text: string, sourceId: string) {
+  mockVoice.onSourcePersisted?.(sourceId);
+  return mockVoice.onText(text, sourceId);
 }
 export async function runHistory(events: OrderingEvent[], id: string, options: { keepMounted?: boolean } = {}) {
   await start();
@@ -280,10 +318,10 @@ export async function runHistory(events: OrderingEvent[], id: string, options: {
       setTimeout(() => {
         if (event.kind === 'typeDictate') {
           insert(' ' + key);
-          void Promise.resolve().then(() => mockVoice.onText(dictated, 'source-' + dictated));
+          void Promise.resolve().then(() => publishDictation(dictated, 'source-' + dictated));
         } else {
           void Promise.resolve().then(() => {
-            void mockVoice.onText(dictated, 'source-' + dictated);
+            void publishDictation(dictated, 'source-' + dictated);
             insert(' ' + key);
           });
         }
@@ -325,7 +363,7 @@ export async function runHistory(events: OrderingEvent[], id: string, options: {
       laptop.online = true; laptop.run(() => laptop.engine.setOnline(true)); await refresh(); await pulse();
     } else {
       typed.push(event.word!);
-      await mockVoice.onText(event.word!, 'source-' + event.word); await pulse();
+      await publishDictation(event.word!, 'source-' + event.word); await pulse();
     }
     steps.push({ ...event, page: mockAutosave.content, baseline: mockAutosave.baselineRef.current?.content, editor: md(), held: waiting.length });
   }

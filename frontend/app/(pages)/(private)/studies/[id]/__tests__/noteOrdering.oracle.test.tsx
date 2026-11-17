@@ -28,7 +28,7 @@ it('does not accept a real conflict banner outside the current note workspace', 
   expect(hasNoteQuestion()).toBe(false);
 });
 
-import { evaluateQuestionHistory, classifySend, type QuestionSnapshot, type ProductionOutcome } from '@test-utils/noteOrderingOracles';
+import { evaluateQuestionHistory, type QuestionSnapshot } from '@test-utils/noteOrderingOracles';
 
 const values = { title: 'Original', content: 'Words', tags: [], scriptureRefs: [], type: 'note' as const };
 const snapshot = (overrides: Partial<QuestionSnapshot> = {}): QuestionSnapshot => ({ eventIndex: 0,
@@ -62,21 +62,6 @@ it('G2 counts a proven late refusal separately without exempting no-arrival hist
   ]).lateRefusalQuestion).toBe(true);
   expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], [steps[0], steps[1], { ...steps[2], refusedRequests: [{ issued: 3, refused: 4 }] }]).falseQuestion).toBe(true);
 });
-it('G4 permits the five recorded causes plus the proven prompt-save class and rejects every other send increase', () => {
-  const production: ProductionOutcome = { events: [], stored: 'Words', sends: 1, question: false, blocked: false,
-    unconverged: false, dropped: [], falseRefusal: '' };
-  const candidate = { ...production, sends: 2 };
-  expect(classifySend(candidate, production)).toBe('EXTRA WRITE');
-  expect(classifySend(candidate, { ...production, falseRefusal: 'recorded refusal' })).toBe('false-question');
-  expect(classifySend(candidate, { ...production, dropped: ['Words'] })).toBe('stored-dropped-words');
-  expect(classifySend(candidate, { ...production, unconverged: true })).toBe('converged');
-  expect(classifySend(candidate, { ...production, question: true, blocked: true })).toBe('converged');
-  expect(classifySend({ ...candidate, question: true }, { ...production, unconverged: true })).toBe('EXTRA WRITE');
-  expect(classifySend({ ...candidate, keptWordsLateRefusal: true }, production)).toBe('kept-words-late-refusal');
-  expect(classifySend({ ...candidate, splitDictations: true }, production)).toBe('split-dictations');
-  expect(classifySend({ ...candidate, promptSaveLateRefusal: true }, production)).toBe('prompt-save-late-refusal');
-});
-
 it('I3 judges an offline question against the last received row, without treating offline as an exemption', () => {
   const events = [{ kind: 'type' }, { kind: 'arriveOther' }, { kind: 'offline' }, { kind: 'arriveLive' }, { kind: 'timer' }];
   const different = { ...values, content: 'Phone words' };

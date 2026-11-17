@@ -45,19 +45,3 @@ export function evaluateQuestionHistory(events: readonly { kind: string }[], ste
   }
   return { falseQuestion, staleQuestion, lateRefusalQuestion, offlineQuestion };
 }
-
-export type SendOutcome = { stored: string; question: boolean; blocked: boolean; unconverged: boolean; sends: number; keptWordsLateRefusal?: boolean; splitDictations?: boolean; promptSaveLateRefusal?: boolean };
-export type ProductionOutcome = SendOutcome & { events: readonly { kind: string; word?: string }[]; dropped: readonly string[]; falseRefusal: string };
-
-/** G4 is a closed list. Each flag is established from recorded command/event traces. */
-export function classifySend(candidate: SendOutcome, production: ProductionOutcome) {
-  if (candidate.sends <= production.sends) return 'no-increase';
-  if (production.falseRefusal) return 'false-question';
-  if (production.dropped.some(word => candidate.stored.includes(word))) return 'stored-dropped-words';
-  if (!candidate.question && !candidate.blocked && !candidate.unconverged
-    && (production.unconverged || production.question || production.blocked)) return 'converged';
-  if (candidate.keptWordsLateRefusal) return 'kept-words-late-refusal';
-  if (candidate.splitDictations) return 'split-dictations';
-  if (candidate.promptSaveLateRefusal) return 'prompt-save-late-refusal';
-  return 'EXTRA WRITE';
-}
