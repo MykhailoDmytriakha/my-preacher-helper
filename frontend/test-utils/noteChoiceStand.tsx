@@ -5,7 +5,7 @@ import { SyncNoticeDock } from '@/components/common/SyncNoticeDock';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-import { DataEngineProvider, useDocumentActions, useDocumentChoiceSubscription } from '@/data-engine/react.client';
+import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { watchedStore } from '@/utils/deviceStorage';
@@ -79,7 +79,6 @@ let mockHeldCollection = false;
 let mockCollectionCallbacks: Array<() => void> = [];
 let mockObserve: (() => void) | undefined;
 let mockEditorObserve: (() => void) | undefined;
-let mockChoiceSettled: (() => void) | undefined;
 let mockRouteId = 'note-x';
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 const mockSearch = new URLSearchParams();
@@ -98,8 +97,6 @@ let observeQuestion: (() => void) | undefined;
 let choiceActions: ReturnType<typeof useDocumentActions>;
 function ChoiceActions() {
   choiceActions = useDocumentActions();
-  const subscribe = useDocumentChoiceSubscription();
-  React.useEffect(() => subscribe(noteRef, () => mockChoiceSettled?.()), [subscribe]);
   return null;
 }
 
@@ -225,7 +222,6 @@ export const stand = {
     const callbacks = mockCollectionCallbacks.splice(0);
     for (const callback of mode === 'latest' ? callbacks.slice(-1) : callbacks) callback();
   },
-  onChoiceSettled(callback: (() => void) | undefined) { mockChoiceSettled = callback; },
   observe(callback: (() => void) | undefined) { mockObserve = callback; mockEditorObserve = callback; },
   get staleCreation() { return mockStaleCreation; },
   set recovery(value: NoteDraftPayload | null) { mockRecovery = value; },
@@ -284,7 +280,7 @@ function disposeHistory() {
   world?.dispose(); localStorage.clear(); jest.restoreAllMocks(); jest.clearAllMocks();
   activeHistory = false;
   observeQuestion = undefined;
-  mockObserve = undefined; mockEditorObserve = undefined; mockChoiceSettled = undefined;
+  mockObserve = undefined; mockEditorObserve = undefined;
   mockHeldCollection = false; mockCollectionCallbacks = []; mockRenderCount = 0;
 }
 export async function pulse(ms = 0) {

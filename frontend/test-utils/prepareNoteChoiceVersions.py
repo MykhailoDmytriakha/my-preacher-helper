@@ -1,19 +1,22 @@
 from pathlib import Path
-import subprocess,re,json
+import subprocess,re,json,shutil
 # Run from the repository root. Git is read only; generated modules live in the evidence archive.
-root=Path(__file__).resolve().parents[2];q=root/'.cases/2026-11-12-dvizhok-dannyh-do-ideala/research/125-probes'
+root=Path(__file__).resolve().parents[2];q=root/'.cases/2026-11-12-dvizhok-dannyh-do-ideala/research/127-probes'
 q.mkdir(parents=True,exist_ok=True)
 paths=['frontend/app/(pages)/(private)/studies/[id]/page.tsx','frontend/app/(pages)/(private)/studies/[id]/useNoteAutoSave.ts','frontend/app/components/ui/RichMarkdownEditor.tsx']
 def frozen(rev,path):
+ retained=root/'.cases/2026-11-12-dvizhok-dannyh-do-ideala/research/125-probes'/(rev+'-'+Path(path).name)
+ if retained.exists():
+  dest=q/retained.name;shutil.copyfile(retained,dest);return str(dest)
  raw=subprocess.check_output(['git','show',rev+':'+path],text=True)
  def norm(m):
   dest=(root/Path(path).parent/m[2]).resolve().relative_to(root/'frontend/app')
   return m[1]+'@/'+str(dest)+m[3]
  raw=re.sub(r"(from\s*['\"])(\.[^'\"]+)(['\"])",norm,raw)
  dest=q/(rev+'-'+Path(path).name);dest.write_text(raw);return str(dest)
-for name,rev in [('production','38ce9c1f6'),('candidate','751f5a0ef'),('head','0565dcc24')]:
+for name,rev in [('production','38ce9c1f6'),('candidate','751f5a0ef'),('head','0565dcc24'),('worktree',None)]:
  mapping={'^@lib/(.*)$':str(root/'frontend/lib/$1')}
- for path in paths if name=='production' else paths[:1]:
+ for path in ([] if name=='worktree' else paths if name=='production' else paths[:1]):
   alias='@/'+str(Path(path).relative_to('frontend/app')).rsplit('.',1)[0]
   mapping['^'+re.escape(alias)+'$']=frozen(rev,path)
  config='''import base from '../../../../frontend/jest.config';

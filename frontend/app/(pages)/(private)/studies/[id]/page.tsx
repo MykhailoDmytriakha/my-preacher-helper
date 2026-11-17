@@ -3,7 +3,7 @@
 
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -727,7 +727,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, subscribeNoteChoiceSettled, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, subscribeNoteVersionTaken, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -1019,18 +1019,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
     }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags, setContent, setConfirmedDraft, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs]);
-    const choiceAdoptionArmed = useRef(false);
-    const [settledChoice, setSettledChoice] = useState(0);
-    useEffect(() => {
-        choiceAdoptionArmed.current = false;
-        return subscribeNoteChoiceSettled(noteId, () => {
-            choiceAdoptionArmed.current = true;
-            setSettledChoice(count => count + 1);
-        });
-    }, [noteId, subscribeNoteChoiceSettled]);
-    useEffect(() => {
-        const delivery = noteDelivery?.get(noteId);
-        if (delivery?.needsAttention) choiceAdoptionArmed.current = false;
+    const takenVersionAdoptionArmed = useRef(false);
+    const evaluateRowAdoption = useCallback(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
         const livePayload = liveValues();
@@ -1038,10 +1028,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const liveDirty = confirmedDraft ? !sameNoteDraft(confirmedDraft, livePayload) : false;
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
             && edit.before !== edit.present && edit.predecessorRequestId);
-        if (hasUnsubmittedEdits) choiceAdoptionArmed.current = false;
-        const settledAdoption = choiceAdoptionArmed.current && !hasUnsubmittedEdits
+        const delivery = noteDelivery?.get(noteId);
+        if (hasUnsubmittedEdits) takenVersionAdoptionArmed.current = false;
+        const takenVersionAdoption = takenVersionAdoptionArmed.current && !hasUnsubmittedEdits
             && delivery?.pending === false && !delivery.needsAttention;
-        if (settledAdoption) {
+        if (takenVersionAdoption) {
             if (hasUnsubmittedEdits || pendingTags || isSaving || saveConflict) return;
         } else {
             if (liveDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
@@ -1052,8 +1043,20 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const typeEdit = typeEditRef.current;
         if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === liveType.current && typeEdit.capture.seen.type !== liveType.current) return;
         adoptRow();
-        choiceAdoptionArmed.current = false;
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, noteDelivery, settledChoice, title, type, adoptRow, liveValues, dictationSourceIds, liveContent, liveDictation, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
+        takenVersionAdoptionArmed.current = false;
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, noteDelivery, title, type, adoptRow, liveValues, dictationSourceIds, liveContent, liveDictation, liveRecording, liveRefs, liveTags, liveTitle, liveType]);
+    const committedRowAdoption = useRef(evaluateRowAdoption);
+    useLayoutEffect(() => {
+        committedRowAdoption.current = evaluateRowAdoption;
+    });
+    useEffect(() => {
+        takenVersionAdoptionArmed.current = false;
+        return subscribeNoteVersionTaken(noteId, () => {
+            takenVersionAdoptionArmed.current = true;
+            committedRowAdoption.current();
+        });
+    }, [noteId, subscribeNoteVersionTaken]);
+    useEffect(evaluateRowAdoption, [evaluateRowAdoption]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;

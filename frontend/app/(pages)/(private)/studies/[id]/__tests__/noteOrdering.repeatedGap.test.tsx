@@ -101,7 +101,13 @@ it.each([false, true])('second keep after replacement refusal protects every gap
   expect(sends.mock.calls.some(([command]) => JSON.stringify(command).includes('Newergapword'))).toBe(false);
   if (typing) expect(hasInlineQuestion()).toBe(true);
   else {
-    expect(stand.confirmed?.content).toBe(local);
+    expect(await stored()).toBe(md());
+    expect(stand.versionTaken).not.toHaveBeenCalled();
+    expect(hasNoteQuestion()).toBe(false);
+    act(() => insert(' Nextword'));
+    await finish();
+    expect(md()).toBe(local + ' Nextword');
+    expect(await stored()).toBe(md());
     expect(hasNoteQuestion()).toBe(false);
   }
 }, 60000);
@@ -122,9 +128,15 @@ it('three keep mine replacements are each refused before a final keep', async ()
   expect(shown.every(value => value === local)).toBe(true);
   expect(md()).toBe(local);
   expect(await stored()).toBe(local);
-  expect(stand.confirmed?.content).toBe(local);
+  expect(await stored()).toBe(md());
+  expect(stand.versionTaken).not.toHaveBeenCalled();
   expect(hasNoteQuestion()).toBe(false);
   expect(stand.laptop.transport.send).toHaveBeenCalledTimes(5);
+  act(() => insert(' Nextword'));
+  await finish();
+  expect(md()).toBe(local + ' Nextword');
+  expect(await stored()).toBe(md());
+  expect(hasNoteQuestion()).toBe(false);
 }, 60000);
 
 it('take the other version after a refused keep adopts it and saves the next word', async () => {

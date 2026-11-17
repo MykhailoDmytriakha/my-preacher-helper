@@ -13,12 +13,15 @@ const histories: { name: string; events: OrderingEvent[] }[] = [
   { name: 'Q2', events: [{ kind: 'offline' }, { kind: 'dictate', word: 'Voice' }, { kind: 'timer' }, { kind: 'arriveSame', word: 'Phone' }, { kind: 'online' }] },
 ];
 const choices = ['keep', 'take'] as const;
-function expectConfirmed(content: string) {
+function expectChosen(content: string) {
   expect(stand.autosave.content).toBe(content);
   expect(md()).toBe(content);
   expect(stand.autosave.baselineRef.current?.content).toBe(content);
-  expect(stand.confirmed?.content).toBe(content);
   expect(hasNoteQuestion()).toBe(false);
+}
+function expectConfirmed(content: string) {
+  expectChosen(content);
+  expect(stand.confirmed?.content).toBe(content);
 }
 
 it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice }))))(
@@ -28,6 +31,9 @@ it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice
     expect(hasGlobalNotice()).toBe(true);
     expect(hasInlineQuestion()).toBe(false);
     const chosen = choice === 'keep' ? md() : String(await stored());
+    const shown: string[] = [];
+    const observe = () => { shown.push(md()); };
+    stand.editor.on('transaction', observe);
     const before = jest.mocked(stand.laptop.transport.send).mock.calls.length;
     await chooseNotice(choice);
     if (process.env.NOTE_ORDERING_DECISIONS_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_DECISIONS_OUTPUT, JSON.stringify({
@@ -35,7 +41,11 @@ it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice
       stored: await stored(), before, requests: jest.mocked(stand.laptop.transport.send).mock.calls,
     }) + '\n');
     expect(await stored()).toBe(chosen);
-    expectConfirmed(chosen);
+    expectChosen(chosen);
+    if (choice === 'take') expect(stand.confirmed?.content).toBe(chosen);
+    expect(stand.versionTaken).toHaveBeenCalledTimes(Number(choice === 'take'));
+    if (choice === 'keep') expect(shown.every(value => value === chosen)).toBe(true);
+    stand.editor.off('transaction', observe);
     const choiceSends = jest.mocked(stand.laptop.transport.send).mock.calls.length;
     act(() => insert(' Nextword'));
     await finish();
@@ -91,7 +101,9 @@ it.each(histories.flatMap(history => choices.map(choice => ({ ...history, choice
   expect(hasGlobalNotice()).toBe(true);
   await chooseNotice(choice);
   expect(await stored()).toBe(chosen);
-  expectConfirmed(chosen);
+  expectChosen(chosen);
+  if (choice === 'take') expect(stand.confirmed?.content).toBe(chosen);
+  expect(stand.versionTaken).toHaveBeenCalledTimes(Number(choice === 'take'));
   act(() => insert(' Nextword'));
   await finish();
   expect(await stored()).toBe(chosen + ' Nextword');

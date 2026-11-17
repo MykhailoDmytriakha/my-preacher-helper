@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { captureRecoveryChoice, DataEngineProvider, useDocumentActions, useDocumentChoiceSubscription } from '@/data-engine/react.client';
+import { captureRecoveryChoice, DataEngineProvider, useDocumentActions, useStoredVersionTaken } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -19,9 +19,9 @@ function setup() {
   const notified = jest.fn();
   return { harness, notified, ...renderHook(() => {
     const actions = useDocumentActions();
-    const subscribeChoice = useDocumentChoiceSubscription();
-    React.useEffect(() => subscribeChoice(resource, notified), [subscribeChoice]);
-    return { ...actions, subscribeChoice };
+    const subscribeVersionTaken = useStoredVersionTaken();
+    React.useEffect(() => subscribeVersionTaken(resource, notified), [subscribeVersionTaken]);
+    return { ...actions, subscribeVersionTaken };
   }, { wrapper }) };
 }
 
@@ -202,18 +202,19 @@ describe('one action on a document no screen has open', () => {
 });
 
 
-describe('resource choice completion announcements', () => {
-  it.each(['mine', 'theirs'] as const)('announces the successful empty %s return exactly once', async choice => {
+describe('stored version taken announcements', () => {
+  it.each(['mine', 'theirs'] as const)('announces only the stored-version choice on an empty %s return', async choice => {
     const { result, notified } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => { expect(await result.current.resolve(resource, choice)).toBe(0); });
-    expect(notified).toHaveBeenCalledTimes(1);
+    expect(notified).toHaveBeenCalledTimes(Number(choice === 'theirs'));
   });
 
   it.each([
     { choice: 'mine' as const, scoped: false }, { choice: 'theirs' as const, scoped: false },
     { choice: 'mine' as const, scoped: true }, { choice: 'theirs' as const, scoped: true },
-  ])('announces after $choice completes (scoped=$scoped)', async ({ choice, scoped }) => {
+    { choice: 'theirs' as const, scoped: true, exactField: true },
+  ])('announces only after theirs completes: $choice (scoped=$scoped, exactField=$exactField)', async ({ choice, scoped, exactField }) => {
     const { harness, result, notified } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));
     harness.silentRemote({ title: 'Phone' });
@@ -222,8 +223,8 @@ describe('resource choice completion announcements', () => {
     const records = (await harness.engine.listRecoverable(resource)).map(item => item.record);
     const scope = scoped ? captureRecoveryChoice(records) : undefined;
     expect(notified).not.toHaveBeenCalled();
-    await act(async () => { expect(await result.current.resolve(resource, choice, scope)).toBe(1); });
-    expect(notified).toHaveBeenCalledTimes(1);
+    await act(async () => { expect(await result.current.resolve(resource, choice, scope, exactField)).toBe(1); });
+    expect(notified).toHaveBeenCalledTimes(Number(choice === 'theirs'));
     await settleEngine();
     expect(harness.server.value?.title).toBe(choice === 'mine' ? 'Laptop' : 'Phone');
   });
@@ -246,17 +247,38 @@ describe('resource choice completion announcements', () => {
     expect(notified).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('does not announce when taking the stored version throws (exactField=%s)', async exactField => {
+    const { harness, result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    harness.silentRemote({ title: 'Phone' });
+    await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 'Laptop' })); });
+    await waitFor(async () => { await settleEngine(); expect(await harness.engine.listRecoverable(resource)).toHaveLength(1); });
+    const scope = captureRecoveryChoice((await harness.engine.listRecoverable(resource)).map(item => item.record));
+    const open = harness.engine.openEditor.bind(harness.engine);
+    const spy = exactField
+      ? jest.spyOn(harness.engine, 'openEditor').mockImplementation(async (...args) => {
+        const editor = await open(...args);
+        editor.acceptRemote = async () => { throw new Error('Take failed'); };
+        return editor;
+      })
+      : jest.spyOn(harness.engine, 'takeStoredVersion').mockRejectedValue(new Error('Take failed'));
+    try {
+      await act(async () => { await expect(result.current.resolve(resource, 'theirs', scope, exactField)).rejects.toThrow('Take failed'); });
+      expect(notified).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+
   it('filters collection and id, unsubscribes, and does not replay an earlier completion', async () => {
     const { result, notified } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));
     const wrongCollection = jest.fn(), wrongId = jest.fn(), stopped = jest.fn(), late = jest.fn();
     const stops = [
-      result.current.subscribeChoice({ ...resource, collection: 'studyNotes' }, wrongCollection),
-      result.current.subscribeChoice({ ...resource, id: 'other' }, wrongId),
+      result.current.subscribeVersionTaken({ ...resource, collection: 'studyNotes' }, wrongCollection),
+      result.current.subscribeVersionTaken({ ...resource, id: 'other' }, wrongId),
     ];
-    result.current.subscribeChoice(resource, stopped)();
+    result.current.subscribeVersionTaken(resource, stopped)();
     await act(async () => { await result.current.resolve(resource, 'theirs'); });
-    const stopLate = result.current.subscribeChoice(resource, late);
+    const stopLate = result.current.subscribeVersionTaken(resource, late);
     expect(notified).toHaveBeenCalledTimes(1);
     expect(wrongCollection).not.toHaveBeenCalled();
     expect(wrongId).not.toHaveBeenCalled();

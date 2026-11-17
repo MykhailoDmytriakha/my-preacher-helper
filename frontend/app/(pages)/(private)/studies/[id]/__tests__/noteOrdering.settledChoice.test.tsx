@@ -53,7 +53,13 @@ it.each([false, true])('actual keep button preserves text before replacement cap
   stand.editor.off('transaction', observe);
   if (typing) expect(hasInlineQuestion()).toBe(true);
   else {
-    expect(stand.confirmed?.content).toBe(local);
+    expect(await stored()).toBe(md());
+    expect(stand.versionTaken).not.toHaveBeenCalled();
+    expect(hasNoteQuestion()).toBe(false);
+    act(() => insert(' Nextword'));
+    await finish();
+    expect(md()).toBe(local + ' Nextword');
+    expect(await stored()).toBe(md());
     expect(hasNoteQuestion()).toBe(false);
   }
 }, 60000);

@@ -5,7 +5,7 @@ import React from 'react';
 import { appendFileSync } from 'node:fs';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
+import { DataEngineProvider, useDocumentActions, useStoredVersionTaken } from '@/data-engine/react.client';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { processCommand } from '@/data-engine/server';
@@ -69,11 +69,14 @@ let mockEarlyInput = false;
 jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
   const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
   return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0]) => {
-    mockAutosave = args;
+    mockRenderCount++; mockAutosave = args;
     return actual.useNoteAutoSave(args);
   } };
 });
 
+let mockHoldCollection = false;
+let mockDelayedCollection: Array<() => void> = [];
+let mockRenderCount = 0;
 let mockRouteId = 'note-x';
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 const mockSearch = new URLSearchParams();
@@ -90,8 +93,11 @@ let editorUpdates: string[];
 let activeHistory = false;
 let observeQuestion: (() => void) | undefined;
 let choiceActions: ReturnType<typeof useDocumentActions>;
+const mockVersionTaken = jest.fn();
 function ChoiceActions() {
   choiceActions = useDocumentActions();
+  const subscribeVersionTaken = useStoredVersionTaken();
+  React.useEffect(() => subscribeVersionTaken(noteRef, mockVersionTaken), [subscribeVersionTaken]);
   return null;
 }
 
@@ -179,6 +185,10 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   jest.spyOn(window, 'alert').mockImplementation(() => { notices.push('window.alert'); });
   observer = new MutationObserver(captureNotices);
   observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  const watch = laptop.engine.watchCollection.bind(laptop.engine);
+  laptop.engine.watchCollection = (collection, notify) => watch(collection, state => {
+    if (mockHoldCollection) mockDelayedCollection.push(() => notify(state)); else notify(state);
+  });
   await mountPage();
   mockEditor.on('update', () => { editorUpdates.push(md()); });
   expect(view.container.querySelector('.tiptap')).toBeTruthy();
@@ -199,11 +209,16 @@ async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title
 }
 afterEach(() => {
   disposeHistory();
+  mockHoldCollection = false; mockDelayedCollection = []; mockRenderCount = 0;
   mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null;
 });
 
 
 export const stand = {
+  get versionTaken() { return mockVersionTaken; },
+  get renderCount() { return mockRenderCount; },
+  holdCollection() { mockHoldCollection = true; },
+  releaseCollection() { mockHoldCollection = false; mockDelayedCollection.at(-1)?.(); mockDelayedCollection = []; },
   get staleCreation() { return mockStaleCreation; },
   set recovery(value: NoteDraftPayload | null) { mockRecovery = value; },
   forceStaleCreation() { mockStaleCreation = true; mockEarlyInput = true; },

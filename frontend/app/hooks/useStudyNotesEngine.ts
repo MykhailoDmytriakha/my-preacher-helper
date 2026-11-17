@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-import { isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions, useDocumentChoiceSubscription, type DocumentWriteReceipt } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions, useStoredVersionTaken, type DocumentWriteReceipt } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
@@ -107,9 +107,9 @@ export function useStudyNotesEngine(enabled: boolean) {
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useDataCollection(enabled && uid ? 'studyNotes' : null);
   const actions = useDocumentActions();
-  const subscribeChoice = useDocumentChoiceSubscription();
-  const subscribeNoteChoiceSettled = useCallback((id: string, notify: () => void) =>
-    enabled && uid ? subscribeChoice(resource(id), notify) : () => undefined, [enabled, uid, subscribeChoice]);
+  const subscribeVersionTaken = useStoredVersionTaken();
+  const subscribeNoteVersionTaken = useCallback((id: string, notify: () => void) =>
+    enabled && uid ? subscribeVersionTaken(resource(id), notify) : () => undefined, [enabled, uid, subscribeVersionTaken]);
   const [updating, setUpdating] = useState(0);
   const inFlight = useRef(new Set<string>());
 
@@ -196,7 +196,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     uid,
     notes,
     noteDelivery,
-    subscribeNoteChoiceSettled,
+    subscribeNoteVersionTaken,
     observeTitle,
     observeType,
     observeCommentKind,

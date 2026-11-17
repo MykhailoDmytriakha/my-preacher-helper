@@ -14,7 +14,7 @@ import subprocess
 import sys
 sys.dont_write_bytecode = True
 
-from runNoteChoiceMatrix import ARCHIVE, FRONTEND, TEST, VERSIONS, ORACLES, compare, rows, settled_verdicts
+from runNoteChoiceMatrix import ARCHIVE, RETAINED, FRONTEND, TEST, VERSIONS, ORACLES, compare, rows, settled_verdicts
 
 
 def violated(row, oracle):
@@ -211,7 +211,8 @@ def main():
     parser.add_argument('--warm-minima', type=Path)
     parser.add_argument('--keys', nargs='*')
     args = parser.parse_args()
-    data = {version: [json.loads(line) for line in (ARCHIVE / f'{version}-{args.label}-paired.ndjson').read_text().splitlines()]
+    source = ARCHIVE if (ARCHIVE / f'head-{args.label}-paired.ndjson').exists() else RETAINED
+    data = {version: [json.loads(line) for line in (source / f'{version}-{args.label}-paired.ndjson').read_text().splitlines()]
             for version in VERSIONS}
     if args.limit:
         data = {version: records[:args.limit] for version, records in data.items()}

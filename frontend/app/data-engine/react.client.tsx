@@ -380,23 +380,23 @@ export function useRemotePeek(options?: EngineReadOptions): ((resource: Resource
   return useMemo(() => browser ? (resource: ResourceRef) => (fresh ? browser.engine.peekRemote(resource, { fresh: true }) : browser.engine.peekRemote(resource)) : null, [browser, fresh]);
 }
 
-// Local, transient completion notices: no persisted state, replay, DOM event or cross-tab delivery.
+// The person took the stored version: a local, transient fact with no persistence or replay.
 // Engine identity and owner scope observers; only a mounted subscriber for this resource hears it.
-type ChoiceObserver = { owner: string; resource: ResourceRef; notify: () => void };
-const choiceObservers = new WeakMap<BrowserDataEngine['engine'], Set<ChoiceObserver>>();
-function announceSettledChoice(browser: BrowserDataEngine, owner: string, resource: ResourceRef) {
-  for (const observer of choiceObservers.get(browser.engine) ?? []) {
+type StoredVersionTakenObserver = { owner: string; resource: ResourceRef; notify: () => void };
+const storedVersionTakenObservers = new WeakMap<BrowserDataEngine['engine'], Set<StoredVersionTakenObserver>>();
+function announceStoredVersionTaken(browser: BrowserDataEngine, owner: string, resource: ResourceRef) {
+  for (const observer of storedVersionTakenObservers.get(browser.engine) ?? []) {
     if (observer.owner === owner && observer.resource.collection === resource.collection && observer.resource.id === resource.id) observer.notify();
   }
 }
 
-/** Subscribe to successful resolve completion for one resource in this mounted engine/owner. */
-export function useDocumentChoiceSubscription() {
+/** Hear when the person took the stored version for this resource in this engine/owner. */
+export function useStoredVersionTaken() {
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   return useCallback((resource: ResourceRef, notify: () => void) => {
     if (!browser || !owner) return () => undefined;
-    let observers = choiceObservers.get(browser.engine);
-    if (!observers) { observers = new Set(); choiceObservers.set(browser.engine, observers); }
+    let observers = storedVersionTakenObservers.get(browser.engine);
+    if (!observers) { observers = new Set(); storedVersionTakenObservers.set(browser.engine, observers); }
     const observer = { owner, resource, notify };
     observers.add(observer);
     return () => { observers.delete(observer); };
@@ -535,7 +535,7 @@ export function useDocumentActions() {
         }
         return taken + waiting.length;
       })();
-      announceSettledChoice(browser, owner, resource);
+      if (choice === 'theirs') announceStoredVersionTaken(browser, owner, resource);
       return settled;
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);

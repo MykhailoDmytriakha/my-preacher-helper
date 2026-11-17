@@ -19,7 +19,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), useParams: jest.fn()
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'ru' } }) }));
 jest.mock('@/hooks/useWideViewport', () => ({ useWideViewport: () => true, useRoomyHeader: () => true }));
 jest.mock('@/hooks/useStudyNotes');
-const mockSubscribeNoteChoiceSettled = () => () => undefined;
+const mockSubscribeNoteVersionTaken = () => () => undefined;
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
 jest.mock('@/hooks/useSermonNoteLinks', () => ({ useSermonsBuiltOnNote: () => ({ sermons: [] }) }));
@@ -41,7 +41,7 @@ const open = (notes: StudyNote[]) => {
   (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn(), back: jest.fn() });
   (useParams as jest.Mock).mockReturnValue({ id: 'note-1' });
   (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-  (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes, loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+  (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes, loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
   (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
   (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], loading: false, deleteShareLink: jest.fn() });
   render(<StudyNoteEditorPage />);

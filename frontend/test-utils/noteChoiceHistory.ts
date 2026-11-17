@@ -20,7 +20,7 @@ export type ChoiceActionKind = 'holdTransport' | 'releaseTransport' | 'phoneOthe
 export type ChoiceAction = { kind: ChoiceActionKind; word?: string };
 type Send = { command: DataCommand; issued: number; event: number; renderAtSend: number; response?: CommandResult; refused?: number; renderAtRefusal?: number };
 export type ChoiceRun = ChoiceObservation & { id: string; actions: ChoiceAction[]; valid: boolean;
-  invalid?: string; requests: Send[]; verdicts: ReturnType<typeof choiceVerdicts>; terminal: ChoiceSnapshot; checkpoints: { event: number; sends: number; quiescent: boolean; editor: string; stored: string; confirmed?: string; verdicts: Record<ChoiceOracle, Verdict> }[] };
+  invalid?: string; requests: Send[]; verdicts: ReturnType<typeof choiceVerdicts>; terminal: ChoiceSnapshot; checkpoints: { event: number; sends: number; quiescent: boolean; editor: string; stored: string; confirmed?: string; page: string; question: boolean; editorMounted: boolean; saved: boolean; renders: number; verdicts: Record<ChoiceOracle, Verdict> }[] };
 const button = (name: string) => screen.queryByRole('button', { name });
 const enabled = (element: HTMLElement | null) => !!element && !(element as HTMLButtonElement).disabled;
 const names = { keep: 'freshness.conflictKeepMine', take: 'freshness.conflictTakeTheirs', confirm: 'common.discardText.confirm' };
@@ -61,17 +61,39 @@ export class ChoiceMachine {
     await start();
     this.received = values(stand.world.server.documents.get('studyNotes/note-x')!);
     this.originalConfirmed = stand.confirmed?.content ?? this.received.content;
-    stand.onChoiceSettled(() => {
-      const answer = this.answers.findLast(candidate => candidate.surface === 'notice' && !candidate.completed);
-      if (answer) answer.completed = true;
-    });
     const engine = stand.laptop.engine, open = engine.openEditor.bind(engine);
+    const take = engine.takeStoredVersion.bind(engine);
+    jest.spyOn(engine, 'takeStoredVersion').mockImplementation(async (...args) => {
+      const answer = this.answers.at(-1);
+      const result = await take(...args);
+      // A fulfilled cancellation completes the modern path, including a
+      // successful no-op. Opening the legacy editor below reinstates its gate.
+      if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = true;
+      return result;
+    });
     this.editorSpy = jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => {
+      const openingAnswer = this.answers.at(-1);
+      if (openingAnswer?.surface === 'notice' && openingAnswer.kind === 'take'
+        && [...this.canonical.values()].some(request => request.editorId === args[1]
+          && this.captureSequences.get(request.id) === openingAnswer.captureSequence)) openingAnswer.completed = false;
       const editor = await open(...args), save = editor.save.bind(editor);
       const commit = editor.commitWithReceipt.bind(editor);
       editor.commitWithReceipt = (...commitArgs) => {
         if (this.activeKeep?.surface === 'inline' && !this.activeKeep.replacementEditorId) this.activeKeep.replacementEditorId = args[1];
         return commit(...commitArgs);
+      };
+      let kept: Answer | undefined;
+      const keep = editor.keepLocal.bind(editor), accept = editor.acceptRemote.bind(editor);
+      editor.keepLocal = async (...keepArgs) => {
+        kept = this.answers.at(-1);
+        return keep(...keepArgs);
+      };
+      editor.acceptRemote = async (...acceptArgs) => {
+        const answer = this.answers.at(-1);
+        if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = false;
+        const result = await accept(...acceptArgs);
+        if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = true;
+        return result;
       };
       editor.save = async () => {
         const answer = this.answers.at(-1);
@@ -79,7 +101,9 @@ export class ChoiceMachine {
         // This is the only capture-delay injection. keepLocal has already retired
         // the exact refused request; its real save has not captured a replacement.
         if (this.pauseArmed) await new Promise<void>(resolve => this.captureReleases.push(resolve));
-        return save();
+        const result = await save();
+        if (kept?.surface === 'notice' && kept.kind === 'keep') kept.completed = true;
+        return result;
       };
       return editor;
     });
@@ -255,8 +279,7 @@ export class ChoiceMachine {
       fireEvent.click(button(names.confirm)!);
     }
     await this.tick(kind === 'timer' ? 1600 : 0);
-    // Capture/announcement occurs asynchronously; completion is observable through the
-    // absence of this answer's pause and through delivery/recovery, never synthesized.
+    // Inline answers retain their existing disappearance rule.
     for (const answer of this.answers) if (answer.surface === 'inline' && !hasInlineQuestion()) answer.completed = true;
     this.assessCheckpoint();
   }
@@ -273,7 +296,8 @@ export class ChoiceMachine {
       const key = name as ChoiceOracle;
       (this.violatedAtSteps[key] ??= []).push(this.actions.length - 1);
     }
-    this.checkpoints.push({ event: this.actions.length - 1, sends: this.requests.length, quiescent, editor: final.editor, stored: final.stored, confirmed: final.confirmed, verdicts });
+    this.checkpoints.push({ event: this.actions.length - 1, sends: this.requests.length, quiescent, editor: final.editor, stored: final.stored, confirmed: final.confirmed,
+      page: final.page, question: final.question, editorMounted: final.editorMounted, saved: final.saved, renders: final.renders, verdicts });
   }
   resume() {
     this.pauseArmed = false;
@@ -318,7 +342,7 @@ export class ChoiceMachine {
     }
     row.continuation = { nextSaved, cleanArrival, nextStored, nextEditor, question, arrivalEditor, arrivalStored, arrivalQuestion };
   }
-  close() { stand.onChoiceSettled(undefined); stand.observe(undefined); this.resume(); this.editorSpy?.mockRestore(); this.releases.splice(0).forEach(release => release()); disposeHistory(); }
+  close() { stand.observe(undefined); this.resume(); this.editorSpy?.mockRestore(); this.releases.splice(0).forEach(release => release()); disposeHistory(); }
 }
 
 export async function runChoiceHistory(actions: ChoiceAction[], id: string): Promise<ChoiceRun> {

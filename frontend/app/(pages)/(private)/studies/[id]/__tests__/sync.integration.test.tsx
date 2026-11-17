@@ -45,7 +45,7 @@ jest.mock('@/hooks/useWideViewport', () => ({
     useRoomyHeader: () => mockViewport.roomy,
 }));
 jest.mock('@/hooks/useStudyNotes');
-const mockSubscribeNoteChoiceSettled = () => () => undefined;
+const mockSubscribeNoteVersionTaken = () => () => undefined;
 // Match the authenticated opening to this suite's current mocked owner.
 jest.mock('@/hooks/useResolvedUid', () => ({
   useResolvedUid: () => ({ uid: require('@/hooks/useStudyNotes').useStudyNotes().uid, isAuthLoading: false }),
@@ -149,7 +149,7 @@ describe('note editor sync integration', () => {
     (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [mockCache], noteDelivery: new Map([[mockCache.id, { pending: false, needsAttention: false }]]), loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], noteDelivery: new Map([[mockCache.id, { pending: false, needsAttention: false }]]), loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
@@ -160,7 +160,7 @@ describe('note editor sync integration', () => {
   it('keeps both independent openings when the older editor loses its owner with a write waiting', () => {
     let uid: string | undefined = 'user-1';
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid, subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid, subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     const edit = (view: ReturnType<typeof render>, text: string) => {
       const page = within(view.container);
@@ -270,7 +270,7 @@ describe('note editor on the engine', () => {
     (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', subscribeNoteChoiceSettled: mockSubscribeNoteChoiceSettled, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
