@@ -1029,6 +1029,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         });
     }, [noteId, subscribeNoteChoiceSettled]);
     useEffect(() => {
+        const delivery = noteDelivery?.get(noteId);
+        if (delivery?.needsAttention) choiceAdoptionArmed.current = false;
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
         const livePayload = liveValues();
@@ -1036,7 +1038,6 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const liveDirty = confirmedDraft ? !sameNoteDraft(confirmedDraft, livePayload) : false;
         const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
             && edit.before !== edit.present && edit.predecessorRequestId);
-        const delivery = noteDelivery?.get(noteId);
         if (hasUnsubmittedEdits) choiceAdoptionArmed.current = false;
         const settledAdoption = choiceAdoptionArmed.current && !hasUnsubmittedEdits
             && delivery?.pending === false && !delivery.needsAttention;

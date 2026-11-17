@@ -5,7 +5,7 @@ import React from 'react';
 import { appendFileSync } from 'node:fs';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-import { DataEngineProvider } from '@/data-engine/react.client';
+import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { processCommand } from '@/data-engine/server';
@@ -89,6 +89,11 @@ let notices: string[];
 let editorUpdates: string[];
 let activeHistory = false;
 let observeQuestion: (() => void) | undefined;
+let choiceActions: ReturnType<typeof useDocumentActions>;
+function ChoiceActions() {
+  choiceActions = useDocumentActions();
+  return null;
+}
 
 const original = 'Original paragraph.\n\nSecond paragraph.';
 const noticeKeys = ['freshness.title', 'freshness.conflictTitle', 'unsavedDraft.title',
@@ -137,7 +142,7 @@ export async function chooseNotice(choice: 'keep' | 'take') {
 }
 async function mountPage() {
   await act(async () => {
-    view = laptop.run(() => render(<DataEngineProvider><SyncNoticeDock><EngineConflictBanner /></SyncNoticeDock><StudyNotePage /></DataEngineProvider>));
+    view = laptop.run(() => render(<DataEngineProvider><ChoiceActions /><SyncNoticeDock><EngineConflictBanner /></SyncNoticeDock><StudyNotePage /></DataEngineProvider>));
     await world.settle();
   });
   if (screen.queryByTitle('common.edit')) fireEvent.click(screen.getByTitle('common.edit'));
@@ -211,6 +216,13 @@ export const stand = {
   get laptop() { return laptop; },
   get notices() { return notices; },
   get view() { return view; },
+  get actions() { return choiceActions; },
+  async remount(id: string) {
+    view.unmount();
+    jest.advanceTimersByTime(1);
+    mockRouteId = id;
+    await mountPage();
+  },
   set routeId(value: string) { mockRouteId = value; },
 };
 export { original, md, stored, start, settle, phoneSave, captureNotices };
