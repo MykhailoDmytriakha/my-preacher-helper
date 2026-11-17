@@ -225,24 +225,26 @@ async function pulse(ms = 0) {
   }
   captureNotices();
 }
-export async function runHistory(events: OrderingEvent[], id: string) {
+export async function runHistory(events: OrderingEvent[], id: string, options: { keepMounted?: boolean } = {}) {
   await start();
   const questionSteps: QuestionSnapshot[] = [];
   let sequence = 0;
   const requests: { kind: string; operationId: string; issued: number; refused?: number; command: DataCommand; response?: CommandResult }[] = [];
   let eventIndex = -1;
+  let receivedValues: NoteDraftPayload;
   const values = (note: Partial<NoteDraftPayload>): NoteDraftPayload => ({
     title: note.title || '', content: note.content || '', tags: note.tags || [],
     scriptureRefs: note.scriptureRefs || [], type: note.type || 'note',
     ...noteRecordingMetadata(note.dictationSourceIds, note.recordingSourceIds),
   });
+  receivedValues = values(world.server.documents.get('studyNotes/note-x')!);
   observeQuestion = () => {
     const raw = world.server.documents.get('studyNotes/note-x');
     if (!raw) throw new Error('Missing stored note in question monitor');
-    const step = { eventIndex, pageValues: values(mockAutosave), storedValues: values(raw),
+    const step = { eventIndex, online: laptop.online, receivedValues, pageValues: values(mockAutosave), storedValues: values(raw),
       question: hasNoteQuestion(), blocked: !!mockAutosave.saveBlocked };
     const previous = questionSteps.at(-1);
-    if (serializeContent(step) !== serializeContent(previous && { eventIndex: previous.eventIndex, pageValues: previous.pageValues, storedValues: previous.storedValues, question: previous.question, blocked: previous.blocked })) {
+    if (serializeContent(step) !== serializeContent(previous && { eventIndex: previous.eventIndex, online: previous.online, receivedValues: previous.receivedValues, pageValues: previous.pageValues, storedValues: previous.storedValues, question: previous.question, blocked: previous.blocked })) {
       questionSteps.push({ ...step, sequence: ++sequence, refusedRequests: requests.filter(request => request.refused !== undefined).map(request => ({ issued: request.issued, refused: request.refused! })) });
     }
   };
@@ -255,12 +257,17 @@ export async function runHistory(events: OrderingEvent[], id: string) {
     requests.push(request);
     if (hold) await new Promise<void>(resolve => waiting.push(resolve));
     const response = await deliver(command);
+    if ('snapshot' in response && response.snapshot.value) receivedValues = values(response.snapshot.value);
     request.response = response;
     if (response.kind !== 'acknowledged') request.refused = ++sequence;
     return response;
   });
   const arrived: string[] = [], supersededArrived: string[] = [], typed: string[] = [], steps: unknown[] = [];
-  async function refresh() { if (laptop.online) await laptop.run(() => laptop.engine.refreshCollection('studyNotes')); }
+  async function refresh() {
+    if (!laptop.online) return;
+    await laptop.run(() => laptop.engine.refreshCollection('studyNotes'));
+    receivedValues = values(world.server.documents.get('studyNotes/note-x')!);
+  }
   for (const event of events) {
     eventIndex++;
     if (event.kind === 'doneEdit') {
@@ -344,10 +351,10 @@ export async function runHistory(events: OrderingEvent[], id: string) {
   const missingArrived = arrived.filter(word => !final.stored.includes(word) && !question);
   const missingTyped = typed.filter(word => !final.stored.includes(word) && !(final.editor.includes(word) && final.dom.includes(word) && unsaved) && !question);
   observeQuestion();
-  const { falseQuestion, staleQuestion, lateRefusalQuestion } = evaluateQuestionHistory(events, questionSteps);
+  const { falseQuestion, staleQuestion, lateRefusalQuestion, offlineQuestion } = evaluateQuestionHistory(events, questionSteps);
   const unconverged = !question && (final.stored !== final.page || final.page !== final.editor || final.unsaved);
-  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, staleQuestion, lateRefusalQuestion, unconverged, questionSteps, steps, requests };
+  const record = { id, events, arrived, supersededArrived, typed, final, missingArrived, missingTyped, falseQuestion, staleQuestion, lateRefusalQuestion, offlineQuestion, unconverged, questionSteps, steps, requests };
   if (process.env.NOTE_ORDERING_OUTPUT) appendFileSync(process.env.NOTE_ORDERING_OUTPUT, JSON.stringify(record) + '\n');
-  disposeHistory();
+  if (!options.keepMounted) disposeHistory();
   return record;
 }

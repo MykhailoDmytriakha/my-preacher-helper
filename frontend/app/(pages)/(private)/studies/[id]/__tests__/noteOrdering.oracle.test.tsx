@@ -1,4 +1,4 @@
-import { hasNoteQuestion } from '@test-utils/noteOrdering';
+import { hasNoteQuestion, runHistory } from '@test-utils/noteOrdering';
 import { render } from '@testing-library/react';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { NoteDraftRecovery } from '../NoteDraftRecovery';
@@ -38,7 +38,7 @@ it('I3 permits a real question to persist after later equality and counts the st
   expect(evaluateQuestionHistory([{ kind: 'arriveOther' }, { kind: 'arriveLive' }], [
     snapshot(), snapshot({ question: true, blocked: true, storedValues: { ...values, content: 'Different' } }),
     snapshot({ eventIndex: 1, question: true, blocked: true }),
-  ])).toEqual({ falseQuestion: false, staleQuestion: true, lateRefusalQuestion: false });
+  ])).toEqual({ falseQuestion: false, staleQuestion: true, lateRefusalQuestion: false, offlineQuestion: false });
 });
 it.each(['question', 'blocked'] as const)('I3 rejects a newly arising %s at equality, including a later rise', field => {
   expect(evaluateQuestionHistory([{ kind: 'arriveOther' }], [snapshot(), snapshot({ [field]: true })]).falseQuestion).toBe(true);
@@ -54,7 +54,7 @@ it('I3 rejects refusals in a history without any other-device arrival', () => {
 it('G2 counts a proven late refusal separately without exempting no-arrival histories', () => {
   const steps = [snapshot({ sequence: 1, storedValues: { ...values, content: 'Different' } }),
     snapshot({ sequence: 3 }), snapshot({ sequence: 5, question: true, blocked: true, refusedRequests: [{ issued: 2, refused: 4 }] })];
-  expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], steps)).toEqual({ falseQuestion: false, staleQuestion: false, lateRefusalQuestion: true });
+  expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], steps)).toEqual({ falseQuestion: false, staleQuestion: false, lateRefusalQuestion: true, offlineQuestion: false });
   expect(evaluateQuestionHistory([{ kind: 'type' }], steps).falseQuestion).toBe(true);
   // G2 bounds issuance, not refusal delivery: rendering may lag a refusal received before equality.
   expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], [
@@ -62,7 +62,7 @@ it('G2 counts a proven late refusal separately without exempting no-arrival hist
   ]).lateRefusalQuestion).toBe(true);
   expect(evaluateQuestionHistory([{ kind: 'arriveLive' }], [steps[0], steps[1], { ...steps[2], refusedRequests: [{ issued: 3, refused: 4 }] }]).falseQuestion).toBe(true);
 });
-it('G4 permits exactly the five recorded causes and rejects every other send increase', () => {
+it('G4 permits the five recorded causes plus the proven prompt-save class and rejects every other send increase', () => {
   const production: ProductionOutcome = { events: [], stored: 'Words', sends: 1, question: false, blocked: false,
     unconverged: false, dropped: [], falseRefusal: '' };
   const candidate = { ...production, sends: 2 };
@@ -74,4 +74,28 @@ it('G4 permits exactly the five recorded causes and rejects every other send inc
   expect(classifySend({ ...candidate, question: true }, { ...production, unconverged: true })).toBe('EXTRA WRITE');
   expect(classifySend({ ...candidate, keptWordsLateRefusal: true }, production)).toBe('kept-words-late-refusal');
   expect(classifySend({ ...candidate, splitDictations: true }, production)).toBe('split-dictations');
+  expect(classifySend({ ...candidate, promptSaveLateRefusal: true }, production)).toBe('prompt-save-late-refusal');
+});
+
+it('I3 judges an offline question against the last received row, without treating offline as an exemption', () => {
+  const events = [{ kind: 'type' }, { kind: 'arriveOther' }, { kind: 'offline' }, { kind: 'arriveLive' }, { kind: 'timer' }];
+  const different = { ...values, content: 'Phone words' };
+  const steps = [snapshot({ eventIndex: 1, storedValues: different }),
+    snapshot({ eventIndex: 2, online: false, receivedValues: different, storedValues: different }),
+    snapshot({ eventIndex: 4, online: false, receivedValues: different, question: true, blocked: true })];
+  expect(evaluateQuestionHistory(events, steps)).toEqual({ falseQuestion: false, staleQuestion: false,
+    lateRefusalQuestion: false, offlineQuestion: true });
+  // Offline is no exemption: asking about the row this device knows to be equal fails.
+  expect(evaluateQuestionHistory(events, [snapshot({ eventIndex: 2, storedValues: values }),
+    snapshot({ eventIndex: 4, online: false, receivedValues: values, question: true })]).falseQuestion).toBe(true);
+});
+
+it('I3 records the five-event offline question against the last known row', async () => {
+  const row = await runHistory([{ kind: 'type', word: 'Localword' }, { kind: 'arriveOther', word: 'Phoneword' },
+    { kind: 'offline' }, { kind: 'arriveLive' }, { kind: 'timer' }], 'I3:offline-last-known');
+  expect(row.falseQuestion).toBe(false);
+  expect(row.offlineQuestion).toBe(true);
+  expect(row.final.question).toBe(true);
+  expect(row.final.editor).toContain('Localword');
+  expect(row.final.stored).toBe(row.final.page);
 });

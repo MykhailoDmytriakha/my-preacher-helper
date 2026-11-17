@@ -1,6 +1,8 @@
 // The default fixture contains only the 256 reduced histories. Full data is external.
 import { readFileSync } from 'node:fs';
 import measured from './noteOrdering.production.json';
+import promptSaveTraces from './noteOrdering.promptSave.production.json';
+import { provePromptSaveLateRefusal, type PromptSaveProductionTrace } from './noteOrderingPromptSave';
 import { classifySend, type ProductionOutcome } from './noteOrderingOracles';
 import type { runHistory } from './noteOrdering';
 
@@ -32,10 +34,16 @@ export function compareProduction(mode: string, row: Awaited<ReturnType<typeof r
   const splitDictations = dictations.length === 2 && sends === 1 && row.requests.length === 2
     && row.final.stored === stored && sourceLists[0].includes(dictationSources[0])
     && !sourceLists[0].includes(dictationSources[1]) && sourceLists[1].includes(dictationSources[1]);
-  const candidate = { stored: row.final.stored, question: row.final.question, blocked: !!row.final.blocked,
+  const trace = (promptSaveTraces as unknown as Record<string, PromptSaveProductionTrace>)[`${mode}:${row.id}`];
+  // Verify the supplemental trace also agrees with the selected frozen corpus.
+  const promptSaveReason = trace && trace.final.stored === stored && trace.final.engineWrites === sends
+    && trace.final.question === !!question && trace.final.blocked === !!blocked
+    ? provePromptSaveLateRefusal(row, trace) : undefined;
+  const candidate = { promptSaveLateRefusal: !!promptSaveReason, stored: row.final.stored, question: row.final.question, blocked: !!row.final.blocked,
     unconverged: row.unconverged, sends: row.final.engineWrites, keptWordsLateRefusal, splitDictations };
   const sendCause = classifySend(candidate, production);
-  return { production, sendCause, extraWrite: sendCause === 'EXTRA WRITE', sendFailure: sendCause === 'EXTRA WRITE',
+  return { production, sendCause, promptSaveReason,
+    promptSaveLateRefusal: candidate.unconverged && !production.unconverged && !!promptSaveReason, extraWrite: sendCause === 'EXTRA WRITE', sendFailure: sendCause === 'EXTRA WRITE',
     keptWordsLateRefusal: candidate.unconverged && !production.unconverged && keptWordsLateRefusal,
-    convergenceRegression: candidate.unconverged && !production.unconverged && !keptWordsLateRefusal };
+    convergenceRegression: candidate.unconverged && !production.unconverged && !keptWordsLateRefusal && !promptSaveReason };
 }
