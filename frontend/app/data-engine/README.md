@@ -209,6 +209,12 @@ updater)`, `remove(resource)` and `create(resource, value)` open an editor on th
 baseline, capture exactly that change as one durable request and close. It is tolerant of a
 missing provider (`ready` is false), because such menus render in both deployments.
 
+`useStoredVersionTaken()` returns `subscribe(resource, notify)` for a screen that keeps its own
+copy of a document's text. `notify` runs when the person's "take the stored version" choice
+(`useDocumentActions().resolve(resource, 'theirs')`) has completed for that same collection/id, in
+this engine and owner; it is a transient local fact, never persisted or replayed, so only a
+mounted subscriber hears it. A refused or interrupted choice does not announce.
+
 Such an action is accepted once the engine holds it on this device. If the server then answers
 with a conflict or a refusal, the list shows the stored version while this device's words wait
 in closed checkpoints. `listRecoverable` derives an optional `answer` through `savedDocumentAnswer`
