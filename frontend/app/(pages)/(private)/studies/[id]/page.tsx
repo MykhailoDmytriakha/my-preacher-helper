@@ -17,6 +17,10 @@ import { CommentIcon } from '@/components/Icons';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
+import { NoteMobileSheet } from '@/components/studies/NoteMobileSheet';
+import { NoteSidePanel } from '@/components/studies/NoteSidePanel';
+import { noteTitleSizeClass } from '@/components/studies/noteTitleSize';
+import ScriptureRefBadge from '@/components/studies/ScriptureRefBadge';
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
@@ -71,15 +75,12 @@ import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfir
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
 import UnreadableNoteDrafts from '../components/UnreadableNoteDrafts';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
-import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
 import { NoteDraftRecovery } from './NoteDraftRecovery';
-import { NoteMobileSheet } from './NoteMobileSheet';
-import { NoteSidePanel } from './NoteSidePanel';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
 import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type NoteTypeEdit, type SubmittedNoteTag, type SubmittedNoteType } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
@@ -398,19 +399,6 @@ function useNoteAIAssistant({
     };
 }
 
-/**
- * A short title should read like a title; a long one must still fit the bar on one or
- * two lines. Stepping the size by length beats measuring: it is stable, has no layout
- * pass, and never lands between two sizes on a resize.
- */
-function titleSizeClass(title: string): string {
-    const length = (title || '').length;
-    if (length <= 24) return 'text-2xl';
-    if (length <= 40) return 'text-xl';
-    if (length <= 64) return 'text-lg';
-    if (length <= 100) return 'text-base';
-    return 'text-sm';
-}
 
 type EditorHeaderProps = {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
@@ -535,7 +523,7 @@ function EditorHeader({
                                 /* Stays an <h1>: it is still the page's title for heading
                                    navigation, and a title matching the search has to keep
                                    showing the hit. */
-                                <h1 className={`min-w-0 break-words font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
+                                <h1 className={`min-w-0 break-words font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${noteTitleSizeClass(title)}`}>
                                     {renderEditorTitle(title, searchQuery, t)}
                                 </h1>
                             )}
@@ -1813,11 +1801,11 @@ function EditorTitleField({ isEditing, title, setTitle, t, searchQuery }: Pick<E
             onChange={(e) => setTitle(e.target.value)}
             placeholder={t('studiesWorkspace.titlePlaceholder')}
             aria-label={t('studiesWorkspace.titlePlaceholder')}
-            className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${titleSizeClass(title)}`}
+            className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${noteTitleSizeClass(title)}`}
         />
     ) : (
         <h1
-            className={`break-words text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
+            className={`break-words text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${noteTitleSizeClass(title)}`}
             title={title || undefined}
         >
             {renderEditorTitle(title, searchQuery, t)}

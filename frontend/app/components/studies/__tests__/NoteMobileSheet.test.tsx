@@ -4,7 +4,7 @@ import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
 
-import { NoteMobileSheet } from '../NoteMobileSheet';
+import { NoteMobileSheet } from '@/components/studies/NoteMobileSheet';
 
 import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 

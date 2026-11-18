@@ -3,7 +3,7 @@ import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
 
-import { NoteSidePanel } from '../NoteSidePanel';
+import { NoteSidePanel } from '@/components/studies/NoteSidePanel';
 
 import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 
