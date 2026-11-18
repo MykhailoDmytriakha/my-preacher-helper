@@ -15,6 +15,7 @@ import { useLasting } from '@/hooks/useLasting';
 import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
 import { refusalKey, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { useQuietScreen } from '@/utils/quietScreen';
 import { useTranslation } from '@locales/useTranslation';
 
 import { isSyncTrouble } from './status';
@@ -140,6 +141,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // check, an unconfirmed copy, a delivery still unanswered — nor offers a Retry that can only be
   // refused again (BUG-20261019-outage-said-as-two-check-lines). Choices and refusals still speak.
   const serverNoticeShown = useServerUnavailableNotice();
+  // A sermon being preached is not interrupted; the status waits for the screen it returns to.
+  const quiet = useQuietScreen();
   const recordReadSummary = useRecordReadSummary();
   const claimedRead = Boolean(recordReadSummary && (recordReadSummary.subject === subject
     || recordReadSummary.relatedSubjects?.includes(subject)
@@ -201,7 +204,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
   const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
   const trouble = isSyncTrouble(status?.phase) && !(serverNoticeShown && status?.phase === 'unknown');
-  const troublePhase = trouble ? status?.phase : null;
+  const troublePhase = trouble && !quiet ? status?.phase : null;
   // Why the Save was refused — only a text too large for one save is explained here; other codes keep the phase alone.
   const refusalReason = trouble && status?.phase === 'refused' && status.refusalCode && STATUS_REFUSAL_REASONS.has(status.refusalCode)
     ? refusalKey(status.refusalCode) : undefined;
@@ -212,7 +215,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
   const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !(comparison && conflictBanner))));
   const said = [pendingDeletion, showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
-  if (!said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
+  if (quiet || !said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   const content = <>
   <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>

@@ -22,6 +22,7 @@ import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRe
 import { DataEngineWorkspace } from '@/data-engine/react.client';
 import { useWorkspacePanes } from '@/hooks/useWorkspacePanes';
 import { UserSettingsProvider, UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
+import { useHoldQuietScreen } from '@/utils/quietScreen';
 
 /**
  * THE WORKSPACE OF EVERY PRIVATE PAGE (BUG-20261004-offline-shell-without-engine-workspace).
@@ -57,6 +58,13 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       new URLSearchParams(search).get('planView') === 'preaching'
   );
 
+  // Leading a meeting — a group's or a council's — is in front of people too (owner, 2026-11-18).
+  const isLeadingMeeting = /^\/(?:groups|care\/council)\/[^/]+\/conduct\/?$/.test(pathname);
+  // While a sermon is preached or a meeting led, the screen says nothing but its own: every notice
+  // waits for the screen after it (`quietScreen`).
+  const quiet = isPreachingPlan || isLeadingMeeting;
+  useHoldQuietScreen(quiet);
+
   const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} /></>;
   const recovery = <><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></>;
   return (
@@ -72,16 +80,20 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
           <DashboardNav syncNotices={bibleReader ? <SyncNoticeDock>{syncNotices}{recovery}</SyncNoticeDock> : undefined} />
           <GuestBanner />
           <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-            {/* Long Bible books expose the same recovery controls from the pinned header. */}
-            {!bibleReader && syncNotices}
-            {/* Device storage that stopped answering: records are copies for reading until it does. */}
-            <DeviceStorageNotice />
-            <DraftStorageNotice />
+            {/* Hidden, not unmounted, while a meeting is led: the notices speak again on the next screen. */}
+            <div hidden={isLeadingMeeting}>
+              {/* Long Bible books expose the same recovery controls from the pinned header. */}
+              {!bibleReader && syncNotices}
+              {/* Device storage that stopped answering: records are copies for reading until it does. */}
+              <DeviceStorageNotice />
+              <DraftStorageNotice />
+            </div>
             <Breadcrumbs />
           </div>
         </>
       )}
-      {!bibleReader && <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">{recovery}</div>}
+      {/* Hidden, not unmounted, while the screen is quiet: the recovery work behind these prompts keeps running. */}
+      {!bibleReader && <div hidden={quiet} className="mx-auto w-full px-4 sm:px-6 lg:px-8">{recovery}</div>}
       <main
         ref={contentRef}
         id="main-content"

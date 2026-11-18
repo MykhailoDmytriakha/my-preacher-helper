@@ -12,6 +12,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
 import { reloadPage } from '@/utils/reloadPage';
+import { holdQuietScreen } from '@/utils/quietScreen';
 
 import type { SyncPhase, SyncStatus } from '../status';
 
@@ -576,5 +577,35 @@ describe('a refusal on a tab older than the server', () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     await act(async () => { await Promise.resolve(); });
     expect(screen.queryByText(en.dataSync.outdatedTab.body)).not.toBeInTheDocument();
+  });
+});
+
+// BUG-20261117-preaching-screen-shows-sync-notice: in the preaching mode the plan's own status block
+// said «Server version not checked yet. Could not check for updates. Retry» over the sermon text.
+// While a screen holds the app quiet, a status waits; it speaks again as soon as the hold ends.
+describe('while a screen holds the app quiet', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('says nothing over the preached sermon and speaks again once preaching ends', () => {
+    let release: () => void = () => undefined;
+    act(() => { release = holdQuietScreen(); });
+    const { container } = render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS * 2); });
+    expect(container).toBeEmptyDOMElement();
+    act(() => { release(); });
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS * 2); });
+    expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeInTheDocument();
+  });
+
+  it('keeps even a choice for later: the conflict is asked once preaching ends', () => {
+    let release: () => void = () => undefined;
+    act(() => { release = holdQuietScreen(); });
+    const { container } = render(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })}
+      onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+    act(() => { release(); });
+    expect(screen.getByRole('alert')).toHaveTextContent(en.freshness.conflictTitle);
   });
 });

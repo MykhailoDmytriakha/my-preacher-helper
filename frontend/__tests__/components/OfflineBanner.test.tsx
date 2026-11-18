@@ -4,6 +4,7 @@ import React from 'react';
 import { ServerUnavailableNoticeProvider } from '@/providers/ServerUnavailableNoticeProvider';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
+import { holdQuietScreen } from '@/utils/quietScreen';
 import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
 import en from '../../locales/en/translation.json';
@@ -99,5 +100,19 @@ describe('OfflineBanner while the server cannot give data', () => {
 
   it('has the line in every language', () => {
     for (const locale of [en, ru, uk]) expect(locale.connection.serverUnavailableBanner).toBeTruthy();
+  });
+});
+
+// BUG-20261117-preaching-screen-shows-sync-notice: the offline line appeared and went under the preaching
+// timer, moving the sermon text. While a screen holds the app quiet, the line waits.
+describe('OfflineBanner while a screen holds the app quiet', () => {
+  it('waits while the sermon is preached and speaks once preaching ends', () => {
+    mockIsOnline.mockReturnValue(false);
+    let release: () => void = () => undefined;
+    act(() => { release = holdQuietScreen(); });
+    const { container } = render(<OfflineBanner />);
+    expect(container).toBeEmptyDOMElement();
+    act(() => { release(); });
+    expect(screen.getByText('connection.offlineBanner')).toBeInTheDocument();
   });
 });

@@ -204,7 +204,10 @@ export class ResourceObserver {
   private restart(): void {
     for (const entry of this.entries.values()) {
       this.stop(entry);
-      entry.state = { ...entry.state, readiness: 'unknown', checking: false };
+      // Offline nothing is checked, and the app's offline line says why; a check that failed before the
+      // device lost its network is not news any more (BUG-20261117-preaching-screen-shows-sync-notice).
+      // The failure count stays, so the retry deadline it earned survives the trip offline.
+      entry.state = { ...entry.state, readiness: 'unknown', checking: false, error: this.online && entry.state.error };
       this.emit(entry);
       this.start(entry, true);
     }

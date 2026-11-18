@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { OutlineConflictScopeProvider, type OutlineConflictController } from '@/components/plan-editor/OutlineConflictScope';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { useQuietScreen } from '@/utils/quietScreen';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { useDataDocument } from '@/data-engine/react.client';
@@ -22,6 +23,7 @@ interface OutlineWriteRecoveryProps {
 
 export function OutlineWriteRecovery({ owner, sermonId, document, writer, recovery, children }: OutlineWriteRecoveryProps) {
   const { t } = useTranslation();
+  const quiet = useQuietScreen();
   const [openedFor, setOpenedFor] = useState<string | null>(null);
   const identity = JSON.stringify([owner, sermonId]);
   const isOpen = openedFor === identity;
@@ -34,7 +36,8 @@ export function OutlineWriteRecovery({ owner, sermonId, document, writer, recove
 
   return <StructureWriterContext.Provider value={writer}>
     <OutlineConflictScopeProvider owner={owner} sermonId={sermonId} controller={recovery}>
-      {canReview && pending && !recovery.editing && !isOpen && <section role="alert" className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+      {/* Over a sermon being preached it waits; the plan page says it after preaching. */}
+      {!quiet && canReview && pending && !recovery.editing && !isOpen && <section role="alert" className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
         <p className="font-medium text-amber-900 dark:text-amber-200">{t('freshness.conflictTitle')}</p>
         <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
           {t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
