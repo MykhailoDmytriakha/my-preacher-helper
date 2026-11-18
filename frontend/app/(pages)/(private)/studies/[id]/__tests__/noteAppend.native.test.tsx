@@ -50,6 +50,7 @@ it('accepts a transcript source only after composition permits its text, without
     expect(stand.autosave.dictationSourceIds).not.toContain('source-composing');
     expect(await stored()).toBe('');
     composing.mockReturnValue(false);
+    stand.editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
     await act(async () => { await jest.advanceTimersByTimeAsync(20); await Promise.all([receipt, duplicate]); });
     await finish();
     expect(md()).toBe('Voiceword');

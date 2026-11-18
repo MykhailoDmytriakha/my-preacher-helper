@@ -955,10 +955,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         ...noteRecordingMetadata(liveDictation.current, liveRecording.current),
     }), [liveTitle, liveContent, liveTags, liveRefs, liveType, liveDictation, liveRecording]);
 
-    const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
+    const voiceHandoffRef = useRef<((submittedSourceIds: readonly string[]) => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         liveValues,
-        captureRecordingHandoff: () => voiceHandoffRef.current?.(),
+        captureRecordingHandoff: sourceIds => voiceHandoffRef.current?.(sourceIds),
         creationId,
         draftDocId,
         draftWriterId,
@@ -1170,7 +1170,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
-    voiceHandoffRef.current = () => ({ accepted: voiceController.captureAcceptance(), carryTo: voiceController.carryTo,
+    voiceHandoffRef.current = sourceIds => ({ accepted: voiceController.captureAcceptance(sourceIds), carryTo: voiceController.carryTo,
         canChangeDestination: voiceController.canChangeDestination });
 
     useNoteInitialization({

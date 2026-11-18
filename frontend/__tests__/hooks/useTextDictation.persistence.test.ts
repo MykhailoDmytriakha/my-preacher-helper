@@ -295,3 +295,30 @@ it('does not offer the take as unfinished while it is transcribed, and offers it
   expect((await unfinished()).length).toBe(1);
   view.unmount();
 });
+
+it('keeps a pending transcript through an unrelated submitted save, then retries and retires its exact source', async () => {
+  transcribe.mockResolvedValue({ originalText: 'Waiting words', polishedText: '' } as never);
+  let rejectPublication!: (reason: Error) => void;
+  const onText = jest.fn<Promise<void>, [string, string?]>()
+    .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPublication = reject; }))
+    .mockResolvedValue(undefined);
+  const view = renderHook(() => useTextDictation({ ...options(), onText }));
+  act(() => view.result.current.complete(blob));
+  await waitFor(() => expect(onText).toHaveBeenCalledTimes(1));
+  const sourceId = onText.mock.calls[0][1]!;
+  await act(async () => { await view.result.current.captureAcceptance([])(); });
+  expect(kept()).toHaveLength(1);
+  expect(kept()[0]).toMatchObject({ id: sourceId, transcript: 'Waiting words' });
+  expect((kept()[0] as { blob: Blob }).blob).toBe(blob);
+  await act(async () => { rejectPublication(new Error('The editor closed')); });
+  expect(view.result.current.error).not.toBeNull();
+  expect(kept()).toHaveLength(1);
+  act(() => view.result.current.retry());
+  await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+  expect(onText).toHaveBeenCalledTimes(2);
+  expect(transcribe).toHaveBeenCalledTimes(1);
+  expect(onText.mock.calls[1]).toEqual(['Waiting words', sourceId]);
+  expect(kept()).toHaveLength(1);
+  await act(async () => { await view.result.current.captureAcceptance([sourceId])(); });
+  expect(kept()).toHaveLength(0);
+});

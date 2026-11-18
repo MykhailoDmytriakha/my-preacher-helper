@@ -94,8 +94,10 @@ export function useTextDictation(options: TextDictationOptions) {
       ownership.known.delete(id);
     }
   }, [ownerId, ownership]);
-  const captureAcceptance = () => {
-    const included = [...ownership.applied];
+  const captureAcceptance = (submittedSourceIds?: readonly string[]) => {
+    // Durable writers that carry source IDs acknowledge only their submitted payload.
+    // Legacy field writers snapshot locally applied sources at their own save entrance.
+    const included = [...(submittedSourceIds ?? ownership.applied)];
     return () => retireSources(included);
   };
   const accept = () => captureAcceptance()();

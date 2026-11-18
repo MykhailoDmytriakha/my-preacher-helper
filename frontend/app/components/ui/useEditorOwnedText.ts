@@ -4,8 +4,9 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 export interface OwnedTextDocument {
   install(value: string): void;
-  /** False means native input has not yet reached the document. */
+  /** False means the editor reports an active composition. */
   append(value: string): boolean | void;
+  waitForComposition?(): Promise<void>;
   replace(value: string): void;
 }
 
@@ -13,6 +14,8 @@ export interface OwnedTextDocument {
 export interface EditorTextOwner {
   live(): string;
   emit(value: string): void;
+  /** A native input event is still completing its ordinary observer turn. */
+  nativeInput?(): void;
   register(document: OwnedTextDocument): () => void;
 }
 
@@ -21,6 +24,12 @@ export function useEditorOwnedText(initial: string) {
   const current = useRef(initial);
   const document = useRef<OwnedTextDocument | null>(null);
   const pendingAppend = useRef<Promise<void> | null>(null);
+  const nativeTurn = useRef<Promise<void> | null>(null);
+  const nativeInput = useCallback(() => {
+    const turn = Promise.resolve();
+    nativeTurn.current = turn;
+    void turn.then(() => { if (nativeTurn.current === turn) nativeTurn.current = null; });
+  }, []);
   const live = useCallback(() => current.current, []);
   const publish = useCallback((value: string) => {
     current.current = value;
@@ -29,11 +38,12 @@ export function useEditorOwnedText(initial: string) {
   const ownedBy = useMemo<EditorTextOwner>(() => ({
     live,
     emit: publish,
+    nativeInput,
     register: instance => {
       document.current = instance;
       return () => { if (document.current === instance) document.current = null; };
     },
-  }), [live, publish]);
+  }), [live, publish, nativeInput]);
   const follow = useCallback((value: string) => {
     if (value === current.current) return;
     document.current?.install(value);
@@ -48,16 +58,20 @@ export function useEditorOwnedText(initial: string) {
       return true;
     };
     const previous = pendingAppend.current;
-    if (!previous && apply()) return;
+    const inputTurn = nativeTurn.current;
+    if (!inputTurn && !previous && apply()) return;
     const pendingDocument = document.current;
     const operation = (async () => {
-      // Keep receipt order while MutationObserver or composition admits the native input.
+      // The editor signals composition completion; receipt order belongs to this owner.
+      // This is an observed input event, not a document/DOM comparison. A browser's
+      // timer-deferred observer remains a separate, documented acceptance boundary.
+      if (inputTurn) await inputTurn;
       if (previous) await previous;
-      else await Promise.resolve();
+      else if (!inputTurn) await pendingDocument!.waitForComposition!();
       for (;;) {
         if (document.current !== pendingDocument) throw new Error('The note editor closed before text could be appended');
         if (apply()) return;
-        await new Promise<void>(resolve => setTimeout(resolve, 20));
+        await pendingDocument!.waitForComposition!();
       }
     })();
     pendingAppend.current = operation;

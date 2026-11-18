@@ -134,8 +134,8 @@ export function useNoteAutoSave({
     onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType) => void;
     /** Called only after an exact canonical request durably owns these words. */
     onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
-    /** Capture source IDs at submission time; later dictation belongs to a later save. */
-    captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
+    /** Snapshot only transcript IDs in this submitted create/update, never other applied sources. */
+    captureRecordingHandoff?: (submittedSourceIds: readonly string[]) => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
     /**
      * Set by the page right before a change that must not wait for the pause — dictated text
      * landing in the note. The next save goes at once; the flag clears when a save starts.
@@ -166,7 +166,7 @@ export function useNoteAutoSave({
     const saveNewNote = useCallback(async (confirmedPayload: NoteDraftPayload) => {
         const { title, content, tags, scriptureRefs } = confirmedPayload;
         if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
-        const recording = captureRecordingHandoff?.();
+        const recording = captureRecordingHandoff?.(confirmedPayload.dictationSourceIds ?? EMPTY_SOURCE_IDS);
         // Creation adopts a new destination and remounts the recorder; keep its sole source safe first.
         if (recording?.canChangeDestination?.() === false) return;
 
@@ -325,7 +325,7 @@ export function useNoteAutoSave({
         // indicator after the spinner ends.
         setLastSaved(null);
         try {
-            const recording = captureRecordingHandoff?.();
+            const recording = captureRecordingHandoff?.(updates.dictationSourceIds ?? EMPTY_SOURCE_IDS);
             const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,

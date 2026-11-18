@@ -59,3 +59,24 @@ it('uses live title, type and tags in capture predicates as well as the payload'
     tagMembership: [expect.objectContaining({ tag: 'live', before: false, after: true })],
   }));
 });
+
+it.each([false, true])('captures only source IDs carried in the submitted update, with new source=%s', async newSource => {
+  jest.useFakeTimers();
+  const baseline: NoteDraftPayload = { ...empty, content: 'Already represented', dictationSourceIds: ['prior-source'] };
+  const live: NoteDraftPayload = { ...baseline, title: 'Changed title',
+    ...(newSource && { content: 'Already represented\n\nNew words', dictationSourceIds: ['prior-source', 'new-source'] }),
+  };
+  const accepted = jest.fn(async () => undefined);
+  const capture = jest.fn((_ids: readonly string[]) => ({ accepted, carryTo: jest.fn(async () => undefined) }));
+  const updateNote = jest.fn(() => ({ ...persistedWrite(Promise.resolve()), result: Promise.resolve(live as never) }));
+  renderHook(() => useNoteAutoSave({ ...live, liveValues: () => live, captureRecordingHandoff: capture,
+    noteId: 'n1', isNew: false, isInitialized: true, createNote: jest.fn(), updateNote, uid: 'owner',
+    setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never, baselineRef: { current: baseline },
+    revisionRef: { current: null }, deliberateOverwriteRef: { current: false }, resaveNonce: 0,
+    saveBlocked: false, onConflict: jest.fn(),
+  }));
+  await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+  expect(capture).toHaveBeenCalledWith(newSource ? ['prior-source', 'new-source'] : []);
+  expect(accepted).toHaveBeenCalledTimes(1);
+  if (!newSource) expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { title: 'Changed title' } }));
+});

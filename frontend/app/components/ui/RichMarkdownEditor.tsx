@@ -66,6 +66,7 @@ function MarkdownEditor({
     editable = true,
 }: RichMarkdownEditorProps & { buffer?: BufferedValue }) {
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
+    const ownedDocument = useRef<ReturnType<typeof ownedTextDocument> | null>(null);
     const editor = useEditor({
         extensions: [
             ...richMarkdownExtensions(),
@@ -79,6 +80,11 @@ function MarkdownEditor({
         autofocus: autoFocus ? 'end' : false,
         editorProps: {
             ...scrollProps,
+            handleDOMEvents: {
+                input: () => { ownedBy?.nativeInput?.(); return false; },
+                compositionstart: () => { ownedDocument.current?.compositionStart(); return false; },
+                compositionend: () => { ownedDocument.current?.compositionEnd(); return false; },
+            },
             attributes: {
                 // A table scrolls inside its own box, as it does when the note is read (`MarkdownDisplay`): its longest
                 // word would otherwise widen the page on a phone. A cell holds one paragraph, without the prose margins.
@@ -92,7 +98,8 @@ function MarkdownEditor({
             // tiptap-markdown's beforeCreate has already made its parser available.
             const markdown = editor.storage as unknown as { markdown: { parser: { parse(value: string): string } } };
             editor.options.content = markdown.markdown.parser.parse(ownedBy.live());
-            const unregister = ownedBy.register(ownedTextDocument(editor));
+            ownedDocument.current = ownedTextDocument(editor);
+            const unregister = ownedBy.register(ownedDocument.current);
             editor.on('destroy', unregister);
         },
         onUpdate: ({ editor }) => {
