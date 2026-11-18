@@ -116,6 +116,10 @@ Moved to `.howto/` — each rule now lives in the recipe of its operation: `grep
 
 ## 🆕 Lessons (Inbox) — Extracted Principles
 
+### 2026-11-18 A Screen In Front Of People Is Quiet — Notices Ask `utils/quietScreen`
+
+While a sermon is preached (`/sermons/:id/plan?planView=preaching`) or a group/council meeting is led (`/groups/:id/conduct`, `/care/council/:id/conduct`), nothing pops up or moves the text (owner, 17–18.11). `PrivateChrome` is the only holder (`useHoldQuietScreen`); notice surfaces only read `useQuietScreen()` and wait — `DataSyncStatus`, `OfflineBanner`, the plan-version alert, the chrome's notices (hidden, never unmounted: workers behind them keep running), the feedback-refusal toast. A new notice that can appear on those screens reads the same flag; a new quiet screen is one predicate in `PrivateChrome`. Recipe: `.howto/keep-a-screen-quiet.md`.
+
 ### 2026-11-01 Outline Membership And Expected Refusals Keep Their Existing Owners
 
 Merge outline subpoints through `utils/outlinePointMerge.ts`: canonical ID/order/field merge before numeric positions; preserve global single ownership and explicit real collisions. Background writers retain the exact refused copy and share the existing comparison controller; passive wake must not replace the copy already being reviewed. An expected updater question uses the public document `handlesRefusal` option, forwarded by every adapter, before any storage capture. It must neither publish a generic document failure nor cancel an earlier autosave; actual storage failures still surface. Recipe: `.howto/compare-local-and-server-copies.md`; proof: `docs/verification/local-bug-fixes.md`, Unit268.
