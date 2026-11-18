@@ -20,10 +20,12 @@ jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => mockAuthState
 }));
 
+// The language the app speaks right now; a page may have set it (a shared note in its own language).
+let mockCurrentLanguage = 'en';
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     i18n: {
-      language: 'en',
+      language: mockCurrentLanguage,
       changeLanguage: mockChangeLanguage
     }
   })
@@ -33,8 +35,12 @@ jest.mock('@locales/getInitialLang', () => ({
   initializeLanguageFromDB: () => mockInitializeLanguageFromDB()
 }));
 
+// The device's stored choice; the app default is not a choice (`readLanguageCookie`). `null` lets a
+// test speak only of the cookie value, as the older tests here do.
+let mockStoredLanguage: string | undefined | null = null;
 jest.mock('@/services/userSettings.service', () => ({
-  getCookieLanguage: () => mockGetCookieLanguage()
+  getCookieLanguage: () => mockGetCookieLanguage(),
+  readLanguageCookie: () => (mockStoredLanguage === null ? mockGetCookieLanguage() : mockStoredLanguage),
 }));
 
 describe('LanguageInitializer Component', () => {
@@ -58,6 +64,20 @@ describe('LanguageInitializer Component', () => {
     mockChangeLanguage.mockClear();
     mockInitializeLanguageFromDB.mockClear();
     mockGetCookieLanguage.mockReturnValue('en');
+    mockStoredLanguage = null;
+    mockCurrentLanguage = 'en';
+  });
+
+  // BUG-20261118-shared-note-guest-reads-english-bible: a guest with no stored language opened a
+  // Russian shared note; the page spoke the note's language, and this initializer put the app default
+  // (English) back over it — the Bible opened in English. Without a stored choice there is nothing to apply.
+  test('leaves the page in its language when the device has no stored language', async () => {
+    mockCurrentLanguage = 'ru';
+    mockGetCookieLanguage.mockReturnValue('en');
+    mockStoredLanguage = undefined;
+    render(<LanguageInitializer />);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
   test('applies the device language right after hydration, without waiting for the account', async () => {

@@ -8,6 +8,7 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useAuth } from '@/providers/AuthProvider';
+import { readLanguageCookie } from '@/services/userSettings.service';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
@@ -32,10 +33,10 @@ interface ShareNotePayload {
 }
 
 export default function SharedNotePage() {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t, language: interfaceLanguage, i18n } = useTranslation();
   // The Bible page is behind sign-in: a reader with an account is offered it from the verse window,
   // a reader without one reads the passage in the window and stays on the note.
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const params = useParams<{ token?: string }>();
   const token = params?.token;
 
@@ -52,6 +53,16 @@ export default function SharedNotePage() {
   const passageRefs = title ? scriptureRefs : scriptureRefs.slice(1);
   const passages = formatScriptureReferences(passageRefs, { locale, style: 'long', limit: PASSAGE_PREVIEW });
   const hiddenPassages = Math.max(0, passageRefs.length - PASSAGE_PREVIEW);
+
+  // A reader who has chosen no language — no account, nothing stored on this device — reads the note's
+  // page in the note's language, and the verse window follows it to that language's Bible (the owner,
+  // 2026-11-18: a Russian note opened in a private window showed the passages in English). Nothing is
+  // stored: the reader's own choice, once made, still wins everywhere.
+  const noteLanguage = status === 'ready' ? studyNoteLanguage({ title, content }) : null;
+  useEffect(() => {
+    if (!noteLanguage || authLoading || user || readLanguageCookie()) return;
+    if (interfaceLanguage !== noteLanguage) void i18n.changeLanguage(noteLanguage);
+  }, [noteLanguage, authLoading, user, interfaceLanguage, i18n]);
 
   useEffect(() => {
     if (!token) return;

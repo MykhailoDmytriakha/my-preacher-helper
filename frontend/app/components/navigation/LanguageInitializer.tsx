@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useAuth } from '@/providers/AuthProvider';
-import { getCookieLanguage } from '@/services/userSettings.service';
+import { readLanguageCookie } from '@/services/userSettings.service';
 import { initializeLanguageFromDB } from '@locales/getInitialLang';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -19,11 +19,14 @@ export default function LanguageInitializer() {
 
   // Each translated consumer pins its own hydration snapshot, then catches up with the
   // live language. Apply the cookie after the root commits; later subscribers also catch it.
+  // Only a stored choice is applied: the app already starts in its default, and putting the default
+  // back would undo a page that speaks its document's language to a reader who chose none — a guest
+  // reading a Russian shared note (BUG-20261118-shared-note-guest-reads-english-bible).
   useEffect(() => {
     if (deviceLanguageApplied.current) return;
     deviceLanguageApplied.current = true;
-    const cookieLang = getCookieLanguage();
-    if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
+    const cookieLang = readLanguageCookie();
+    if (cookieLang && cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
   }, [i18n]);
 
   useEffect(() => {
@@ -36,8 +39,8 @@ export default function LanguageInitializer() {
         initializeLanguageFromDB()
           .catch((error: Error) => console.error('Failed to initialize language from DB:', error));
       } else {
-        const cookieLang = getCookieLanguage();
-        if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
+        const cookieLang = readLanguageCookie();
+        if (cookieLang && cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
       }
     }
   }, [user, loading, i18n]);
