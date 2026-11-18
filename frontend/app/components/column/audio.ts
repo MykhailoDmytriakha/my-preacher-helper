@@ -4,7 +4,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { logFailureOnce, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { newClientId } from '@/utils/clientId';
-import { deleteRecordingDraft, saveRecordingDraft, type RecordingDraft } from '@/utils/recordingDraftStore';
+import { claimRecordingDraftWork, deleteRecordingDraft, saveRecordingDraft, type RecordingDraft } from '@/utils/recordingDraftStore';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 
 import { isPointAudioSection } from './utils';
@@ -32,7 +32,6 @@ interface RecordAudioThoughtArgs {
   onDraftCaptured?: (id: string) => void;
 }
 const identities = new WeakMap<Blob, { id: string; scope: string }>();
-const working = new Set<string>();
 export const outlineRecordingContextId = (sermonId: string, sectionId: string) => JSON.stringify([sermonId, sectionId]);
 
 function sameRecordingDestination(source: RecordingDraft | undefined, ownerId: string, contextId: string, pointId?: string, subPointId?: string): boolean {
@@ -55,8 +54,10 @@ export const recordAudioThought = async ({
   const scope = JSON.stringify([ownerId, contextId, pointId, subPointId]);
   const prior = identities.get(audioBlob);
   const id = source?.id ?? prior?.id ?? newClientId();
-  if (working.has(id)) return null;
-  working.add(id);
+  // In work until this take ends here, which also keeps a second press from running it twice; the
+  // «unfinished recording» card does not offer it meanwhile (BUG-20261117-recording-card-during-transcription).
+  const releaseWork = claimRecordingDraftWork(id);
+  if (!releaseWork) return null;
   let preserving = true;
   try {
     if (!ownerId || (prior && prior.scope !== scope) || !sameRecordingDestination(source, ownerId, contextId, pointId, subPointId)) {
@@ -89,7 +90,7 @@ export const recordAudioThought = async ({
     const words = recordingFailureWords(error, preserving);
     setAudioError(words); toast.error(sayFailure(words, t)); return null;
   } finally {
-    working.delete(id);
+    releaseWork();
     if (isCurrent()) setIsRecordingAudio(false);
   }
 };

@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { UsageCapReachedError } from '@/services/usageLimits';
+import { listUnfinishedRecordingDrafts } from '@/utils/recordingDraftStore';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 
 const mockRows = new Map<string, unknown>();
@@ -277,4 +278,20 @@ it('retains another destination original despite a mismatched confirmed source i
   await act(async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); });
   expect(kept()).toHaveLength(1);
   expect(callbacks.onText).not.toHaveBeenCalled();
+});
+
+// BUG-20261117-recording-card-during-transcription: the take is parked before the provider is asked, and
+// the «unfinished recording» card listed it during «Processing…» as if transcription had failed.
+it('does not offer the take as unfinished while it is transcribed, and offers it once transcription failed', async () => {
+  let fail!: (error: Error) => void;
+  transcribe.mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+  const view = renderHook(() => useTextDictation(options()));
+  act(() => view.result.current.complete(blob));
+  await waitFor(() => expect(transcribe).toHaveBeenCalledTimes(1));
+  expect(kept().length).toBe(1);
+  const unfinished = () => listUnfinishedRecordingDrafts({ ownerId: 'alice', context: 'thought', contextId });
+  expect(await unfinished()).toEqual([]);
+  await act(async () => { fail(new Error('Transcription failed')); });
+  expect((await unfinished()).length).toBe(1);
+  view.unmount();
 });

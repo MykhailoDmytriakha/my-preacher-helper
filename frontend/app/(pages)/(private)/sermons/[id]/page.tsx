@@ -49,7 +49,7 @@ import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage'
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { sermonLanguage } from "@/utils/documentLanguage";
-import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
+import { claimRecordingDraftWork, deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { getSermonModeUrl } from '@/utils/urlUtils';
@@ -391,6 +391,9 @@ function SermonPageContent({ id }: { id: string }) {
     if (recordingOwner.held === held) recordingOwner.held = null;
   };
   const transcribeHeld = async (held: HeldSermonRecording, attempt: number): Promise<boolean> => {
+    // In work until this attempt ends: the «unfinished recording» card does not offer it meanwhile.
+    const releaseWork = claimRecordingDraftWork(held.draftId);
+    if (!releaseWork) return false;
     let preserving = true;
     try {
       await saveRecordingDraft({ id: held.draftId, ownerId: held.ownerId, blob: held.blob,
@@ -409,6 +412,8 @@ function SermonPageContent({ id }: { id: string }) {
       if (recordingIsCurrent()) setTranscriptionError(preserving ? { key: 'audio.draft.saveFailed' }
         : ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : transcriptionFailureWords(error, 'errors.audioProcessing'));
       return false;
+    } finally {
+      releaseWork();
     }
   };
   const handleNewRecording = async (audioBlob: Blob) => {

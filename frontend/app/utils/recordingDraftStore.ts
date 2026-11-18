@@ -2,6 +2,7 @@ import { entries, get } from 'idb-keyval';
 
 import { newClientId } from '@/utils/clientId';
 import { reconnectingStore } from '@/utils/deviceStorage';
+import { heldLockNames, holdUntilReleased } from '@/utils/openInTab';
 import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
@@ -191,4 +192,55 @@ export async function deleteRecordingDraft(id: string, ownerId: string): Promise
     return { id, ownerId, context: existing.context, contextId: existing.contextId ?? '', discarded: true };
   }, requireStore());
   publish();
+}
+
+/**
+ * A TAKE IN WORK IS NOT UNFINISHED (BUG-20261117-recording-card-during-transcription).
+ *
+ * Every microphone parks its take here before the provider works on it, so a dictated thought survives
+ * a closed tab. While a tab works on the take — transcribing it, retrying, saving its text — the take is
+ * in work: the «unfinished recording» card does not offer it, in this tab or in another tab of this
+ * browser, so it is neither mistaken for a failure nor sent a second time. The claim reaches other tabs
+ * as a Web Lock, which goes with its tab: a closed or crashed tab claims nothing, and its take shows as
+ * unfinished again. Without the Web Locks API only this tab's own work is known.
+ */
+const inWork = new Set<string>();
+const WORK_LOCK_PREFIX = 'recording-draft-in-work:';
+
+/**
+ * Claims the take for the work about to start; null when this tab already works on it. The returned
+ * function ends the claim — call it once the attempt ended, whatever its outcome; calling it again does
+ * nothing.
+ */
+export function claimRecordingDraftWork(id: string): (() => void) | null {
+  if (inWork.has(id)) return null;
+  inWork.add(id);
+  const releaseLock = holdUntilReleased(WORK_LOCK_PREFIX + id);
+  publish();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    inWork.delete(id);
+    publish();
+    // Other tabs look again once the lock is really gone, not while it is being let go.
+    void releaseLock().then(publish);
+  };
+}
+
+/** Whether this tab works on the take right now. */
+export function isRecordingDraftInWork(id: string): boolean {
+  return inWork.has(id);
+}
+
+/** The ids other tabs of this browser work on; empty when the browser cannot tell. */
+async function inWorkElsewhere(): Promise<Set<string>> {
+  const held = await heldLockNames();
+  return new Set(held.filter(name => name.startsWith(WORK_LOCK_PREFIX)).map(name => name.slice(WORK_LOCK_PREFIX.length)));
+}
+
+/** The parked takes no tab is working on: the ones the «unfinished recording» card offers. */
+export async function listUnfinishedRecordingDrafts(filter?: Parameters<typeof listRecordingDrafts>[0]): Promise<RecordingDraft[]> {
+  const [drafts, elsewhere] = await Promise.all([listRecordingDrafts(filter), inWorkElsewhere()]);
+  return drafts.filter(draft => !inWork.has(draft.id) && !elsewhere.has(draft.id));
 }

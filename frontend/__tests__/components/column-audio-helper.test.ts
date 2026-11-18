@@ -1,5 +1,7 @@
+import { waitFor } from "@testing-library/react";
 import { recordAudioThought as rawRecordAudioThought } from "@/components/column/audio";
 import { createAudioThought } from "@/services/thought.service";
+import { isRecordingDraftInWork } from "@/utils/recordingDraftStore";
 import { withStatus } from "@/utils/aiTimeFailure";
 import { UsageCapReachedError } from "@/services/usageLimits";
 import { toast } from "sonner";
@@ -18,6 +20,7 @@ jest.mock("@/services/thought.service", () => ({
 const mockParkRecording = jest.fn(async (_input: unknown) => 'source-1');
 const mockReleaseRecording = jest.fn(async (_id: string, _ownerId: string) => undefined);
 jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
   saveRecordingDraft: (...args: unknown[]) => mockParkRecording(...args as [unknown]),
   deleteRecordingDraft: (...args: unknown[]) => mockReleaseRecording(...args as [string, string]),
 }));
@@ -34,6 +37,23 @@ describe("column audio helper", () => {
     mockParkRecording.mockReset().mockResolvedValue('source-1');
     mockReleaseRecording.mockClear();
     jest.mocked(createAudioThought).mockReset();
+  });
+
+  // BUG-20261117-recording-card-during-transcription: the «unfinished recording» card listed the take
+  // from the first second of «Processing…». The take is in work until its attempt ends.
+  it("keeps the take in work while it is transcribed and lets it go when the attempt ends", async () => {
+    let fail!: (error: Error) => void;
+    jest.mocked(createAudioThought).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const pending = recordAudioThought({
+      audioBlob: new Blob(["audio"]), sectionId: "main", sermonId: "sermon-1", pointId: "point-1",
+      setIsRecordingAudio: jest.fn(), setAudioError: jest.fn(), t, errorContext: "record failed",
+    });
+    await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(1));
+    const parked = (mockParkRecording.mock.calls[0][0] as { id: string }).id;
+    expect(isRecordingDraftInWork(parked)).toBe(true);
+    fail(new Error("Transcription failed"));
+    await pending;
+    expect(isRecordingDraftInWork(parked)).toBe(false);
   });
 
   it("records an outline-point thought with pointId", async () => {
