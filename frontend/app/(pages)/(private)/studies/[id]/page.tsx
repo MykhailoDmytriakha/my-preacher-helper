@@ -243,7 +243,7 @@ function useNoteAIAssistant({
     setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
-    setTitle: (t: string) => void; appendContent: (block: string) => void;
+    setTitle: (t: string) => void; appendContent: (block: string) => void | Promise<void>;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Text the app inserts whole — dictation, an applied analysis — is saved at once, not after the typing pause. */
@@ -365,6 +365,7 @@ function useNoteAIAssistant({
         }
     };
 
+    const pendingDictation = useRef(new Map<string, Promise<void>>());
     const voice = useTextDictation({
         recordingContext: { context: 'study', contextId: recordingContextId },
         linkedSourceIds: linkedRecordingSourceIds,
@@ -375,9 +376,18 @@ function useNoteAIAssistant({
             if (!sourceId || !uid) throw new Error('The note recording owner is not available');
             // Projected IDs prevent duplicate insertion; only confirmed IDs permit source retirement.
             if (liveDictation.current.includes(sourceId)) return;
-            setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
+            const pending = pendingDictation.current.get(sourceId);
+            if (pending) return pending;
             saveAtOnceRef.current = true;
-            appendContent(text);
+            const appended = appendContent(text);
+            const accept = () => {
+                saveAtOnceRef.current = true;
+                setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
+            };
+            if (!appended) { accept(); return; }
+            const acceptance = appended.then(accept).finally(() => { pendingDictation.current.delete(sourceId); });
+            pendingDictation.current.set(sourceId, acceptance);
+            await acceptance;
         },
         onEmpty: () => toast.error(t('errors.audioProcessing')),
         onError: words => toast.error(sayFailure(words, t)),

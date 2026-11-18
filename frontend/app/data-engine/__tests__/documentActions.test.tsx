@@ -268,6 +268,40 @@ describe('stored version taken announcements', () => {
     } finally { spy.mockRestore(); }
   });
 
+  it('keeps a successful resolve and later observers when an observer throws', async () => {
+    const { result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const error = new Error('Observer failed');
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stopThrowing = result.current.subscribeVersionTaken(resource, () => { throw error; });
+    const later = jest.fn();
+    const stopLater = result.current.subscribeVersionTaken(resource, later);
+    try {
+      await act(async () => { await expect(result.current.resolve(resource, 'theirs')).resolves.toBe(0); });
+      expect(notified).toHaveBeenCalledTimes(1);
+      expect(later).toHaveBeenCalledTimes(1);
+      expect(logged).toHaveBeenCalledWith('DataEngine background operation failed', error);
+    } finally { stopThrowing(); stopLater(); logged.mockRestore(); }
+  });
+
+  it('announces to a snapshot despite subscriptions changing during notification', async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const late = jest.fn(), removed = jest.fn();
+    let stopLate = () => {};
+    let stopRemoved = () => {};
+    const stopChanging = result.current.subscribeVersionTaken(resource, () => {
+      stopRemoved();
+      stopLate = result.current.subscribeVersionTaken(resource, late);
+    });
+    stopRemoved = result.current.subscribeVersionTaken(resource, removed);
+    try {
+      await act(async () => { await result.current.resolve(resource, 'theirs'); });
+      expect(removed).toHaveBeenCalledTimes(1);
+      expect(late).not.toHaveBeenCalled();
+    } finally { stopChanging(); stopRemoved(); stopLate(); }
+  });
+
   it('filters collection and id, unsubscribes, and does not replay an earlier completion', async () => {
     const { result, notified } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));

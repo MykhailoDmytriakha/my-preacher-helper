@@ -4,7 +4,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 export interface OwnedTextDocument {
   install(value: string): void;
-  append(block: string): void;
+  /** False means native input has not yet reached the document. */
+  append(value: string): boolean | void;
   replace(value: string): void;
 }
 
@@ -19,6 +20,7 @@ export function useEditorOwnedText(initial: string) {
   const [text, setText] = useState(initial);
   const current = useRef(initial);
   const document = useRef<OwnedTextDocument | null>(null);
+  const pendingAppend = useRef<Promise<void> | null>(null);
   const live = useCallback(() => current.current, []);
   const publish = useCallback((value: string) => {
     current.current = value;
@@ -37,12 +39,34 @@ export function useEditorOwnedText(initial: string) {
     document.current?.install(value);
     publish(value);
   }, [publish]);
-  const append = useCallback((block: string) => {
-    document.current?.append(block);
-    // Dictation must not round-trip source that the editor cannot represent.
-    publish(current.current ? `${current.current}\n\n${block}` : block);
+  const append = useCallback((block: string): void | Promise<void> => {
+    const apply = () => {
+      // Recompute after native input has emitted; retain unsupported raw source otherwise.
+      const value = current.current ? `${current.current}\n\n${block}` : block;
+      if (document.current?.append(value) === false) return false;
+      publish(value);
+      return true;
+    };
+    const previous = pendingAppend.current;
+    if (!previous && apply()) return;
+    const pendingDocument = document.current;
+    const operation = (async () => {
+      // Keep receipt order while MutationObserver or composition admits the native input.
+      if (previous) await previous;
+      else await Promise.resolve();
+      for (;;) {
+        if (document.current !== pendingDocument) throw new Error('The note editor closed before text could be appended');
+        if (apply()) return;
+        await new Promise<void>(resolve => setTimeout(resolve, 20));
+      }
+    })();
+    pendingAppend.current = operation;
+    const release = () => { if (pendingAppend.current === operation) pendingAppend.current = null; };
+    void operation.then(release, release);
+    return operation;
   }, [publish]);
   const replace = useCallback((value: string) => {
+    if (value === current.current) return;
     document.current?.replace(value);
     publish(value);
   }, [publish]);

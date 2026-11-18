@@ -24,7 +24,7 @@ it('updates the registered document before publishing each page change without e
   const events: string[] = [];
   const document: OwnedTextDocument = {
     install: value => events.push(`install:${value}:${result.current.live()}`),
-    append: value => events.push(`append:${value}:${result.current.live()}`),
+    append: value => { events.push(`append:${value}:${result.current.live()}`); },
     replace: value => events.push(`replace:${value}:${result.current.live()}`),
   };
   const owner = result.current.ownedBy;
@@ -35,7 +35,7 @@ it('updates the registered document before publishing each page change without e
     result.current.replace('Recovered');
     owner.emit('Typed');
   });
-  expect(events).toEqual(['install:Arrival:Opening', 'append:Voice:Arrival', 'replace:Recovered:Arrival\n\nVoice']);
+  expect(events).toEqual(['install:Arrival:Opening', 'append:Arrival\n\nVoice:Arrival', 'replace:Recovered:Arrival\n\nVoice']);
   expect(result.current.text).toBe('Typed');
   expect(result.current.ownedBy).toBe(owner);
 });
@@ -49,7 +49,7 @@ it('unregisters only its own instance even when an old instance dies late', () =
   releaseOld();
   act(() => { result.current.follow('Arrival'); result.current.append('Voice'); });
   expect(current.install).toHaveBeenCalledWith('Arrival');
-  expect(current.append).toHaveBeenCalledWith('Voice');
+  expect(current.append).toHaveBeenCalledWith('Arrival\n\nVoice');
   expect(old.install).not.toHaveBeenCalled();
   releaseCurrent();
   act(() => result.current.replace('Reading'));
@@ -71,6 +71,18 @@ it('does not operate on the document or publish an identical follow', () => {
   const before = renders;
   act(() => result.current.follow('Opening'));
   expect(document.install).not.toHaveBeenCalled();
+  expect(renders).toBe(before);
+  expect(result.current.live()).toBe('Opening');
+});
+
+it('leaves an identical replacement unpublished and does not call the document', () => {
+  let renders = 0;
+  const { result } = renderHook(() => { renders++; return useEditorOwnedText('Opening'); });
+  const document = { install: jest.fn(), append: jest.fn(), replace: jest.fn() };
+  result.current.ownedBy.register(document);
+  const before = renders;
+  act(() => result.current.replace('Opening'));
+  expect(document.replace).not.toHaveBeenCalled();
   expect(renders).toBe(before);
   expect(result.current.live()).toBe('Opening');
 });

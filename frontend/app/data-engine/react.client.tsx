@@ -385,8 +385,10 @@ export function useRemotePeek(options?: EngineReadOptions): ((resource: Resource
 type StoredVersionTakenObserver = { owner: string; resource: ResourceRef; notify: () => void };
 const storedVersionTakenObservers = new WeakMap<BrowserDataEngine['engine'], Set<StoredVersionTakenObserver>>();
 function announceStoredVersionTaken(browser: BrowserDataEngine, owner: string, resource: ResourceRef) {
-  for (const observer of storedVersionTakenObservers.get(browser.engine) ?? []) {
-    if (observer.owner === owner && observer.resource.collection === resource.collection && observer.resource.id === resource.id) observer.notify();
+  for (const observer of [...storedVersionTakenObservers.get(browser.engine) ?? []]) {
+    if (observer.owner !== owner || observer.resource.collection !== resource.collection || observer.resource.id !== resource.id) continue;
+    try { observer.notify(); }
+    catch (error) { logFailureOnce(error, 'DataEngine background operation failed'); }
   }
 }
 
