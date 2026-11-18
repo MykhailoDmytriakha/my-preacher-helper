@@ -56,6 +56,8 @@ export interface FeedbackRequestPayload {
   images: string[];
   userId: string;
   diagnostics?: Record<string, unknown>;
+  /** The device's name for this feedback: a repeated send is stored and emailed once. */
+  feedbackId?: string;
 }
 
 export type FeedbackDiagnosticsCheck =

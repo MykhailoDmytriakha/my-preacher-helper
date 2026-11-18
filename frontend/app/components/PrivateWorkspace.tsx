@@ -8,6 +8,7 @@ import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { DraftStorageNotice } from '@/components/DraftStorageNotice';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
+import { FeedbackDelivery } from '@/components/FeedbackDelivery';
 import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
@@ -75,6 +76,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
           — the one a preacher keeps open for an hour — drained nothing at all. */}
       <OfflinePageMemory address={`${pathname}?${search}`} />
       <OutboxDrain />
+      <FeedbackDelivery />
       {!isPreachingPlan && (
         <>
           <DashboardNav syncNotices={bibleReader ? <SyncNoticeDock>{syncNotices}{recovery}</SyncNoticeDock> : undefined} />

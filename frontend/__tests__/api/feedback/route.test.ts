@@ -25,6 +25,28 @@ if (typeof Response.json !== 'function') {
 // Mock dependencies
 jest.mock('nodemailer');
 const mockAdd = jest.fn().mockResolvedValue({ id: 'new-feedback-id' });
+// Feedback named by the device lives in this map, as Firestore would keep it.
+const mockNamedDocs = new Map<string, Record<string, unknown>>();
+// Two sends of one feedback that both read before either stored it.
+let mockGetSeesNothing = false;
+const alreadyExists = () => Object.assign(new Error('6 ALREADY_EXISTS: Document already exists'), { code: 6 });
+const mockCreate = jest.fn(async (id: string, data: Record<string, unknown>) => {
+    if (mockNamedDocs.has(id)) throw alreadyExists();
+    mockNamedDocs.set(id, data);
+});
+const mockUpdate = jest.fn(async (id: string, patch: Record<string, unknown>) => {
+    mockNamedDocs.set(id, { ...mockNamedDocs.get(id), ...patch });
+});
+// A feedback named by the device is created under that name; an unnamed one (an older app) gets the
+// database's name — `mockAdd` stands for that creation, as it did when the route used `add`.
+const mockDoc = jest.fn((id?: string) => id
+    ? {
+        id,
+        get: async () => (mockGetSeesNothing ? { exists: false, data: () => undefined } : { exists: mockNamedDocs.has(id), data: () => mockNamedDocs.get(id) }),
+        create: (data: Record<string, unknown>) => mockCreate(id, data),
+        update: (patch: Record<string, unknown>) => mockUpdate(id, patch),
+    }
+    : { id: 'new-feedback-id', create: (...args: unknown[]) => mockAdd(...args) });
 const mockExpiredGet = jest.fn().mockResolvedValue({ empty: true, size: 0, docs: [] });
 const mockWhere = jest.fn(() => ({ limit: () => ({ get: () => mockExpiredGet() }) }));
 const mockBatchDelete = jest.fn();
@@ -33,6 +55,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
     adminDb: {
         collection: jest.fn().mockReturnValue({
             add: (...args: any[]) => mockAdd(...args),
+            doc: (id?: string) => mockDoc(id),
             where: (...args: unknown[]) => (mockWhere as (...a: unknown[]) => unknown)(...args),
         }),
         batch: () => ({ delete: (...args: unknown[]) => mockBatchDelete(...args), commit: () => mockBatchCommit() }),
@@ -68,6 +91,11 @@ describe('api/feedback/route', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockAdd.mockReset().mockResolvedValue({ id: 'new-feedback-id' });
+        mockNamedDocs.clear();
+        mockGetSeesNothing = false;
+        mockCreate.mockClear();
+        mockUpdate.mockClear();
+        mockDoc.mockClear();
         mockExpiredGet.mockReset().mockResolvedValue({ empty: true, size: 0, docs: [] });
         mockWhere.mockClear();
         mockBatchDelete.mockClear();
@@ -85,6 +113,97 @@ describe('api/feedback/route', () => {
             sendMail: mockSendMail,
         };
         (nodemailer.createTransport as jest.Mock).mockReturnValue(mockTransporter);
+    });
+
+    /*
+     * A feedback waits on the device until the server is reachable and is delivered from there; a lost
+     * answer makes the device send it again. The same feedback is stored and emailed once.
+     */
+    describe('delivery from the device queue', () => {
+        const request = (body: Record<string, unknown>) => new NextRequest('http://localhost/api/feedback', {
+            method: 'POST', body: JSON.stringify(body), headers: { 'user-agent': 'test-agent' },
+        });
+        const queued = { feedbackText: 'Said once', feedbackType: 'bug', images: [], userId: 'auth-user-1', feedbackId: 'feedback-0123456789' };
+
+        test('stores and emails a feedback sent twice with the same id only once, and spends one submission', async () => {
+            const first = await POST(request(queued));
+            const second = await POST(request(queued));
+            expect(first.status).toBe(200);
+            expect(await first.json()).toMatchObject({ success: true, id: 'feedback-0123456789' });
+            expect(second.status).toBe(200);
+            expect(await second.json()).toMatchObject({ success: true, id: 'feedback-0123456789', duplicate: true });
+            expect(mockCreate).toHaveBeenCalledTimes(1);
+            expect(mockNamedDocs.get('feedback-0123456789')).toMatchObject({ text: 'Said once', userId: 'auth-user-1', emailed: true });
+            expect(mockAdd).not.toHaveBeenCalled();
+            expect(mockSendMail).toHaveBeenCalledTimes(1);
+            expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+        });
+
+        // Codex review 2026-11-17: the document stored is not proof the letter left. The letter and its
+        // screenshots travel only by mail; a send repeated after the first one died before mailing
+        // must send the letter, not answer «already done».
+        test('sends the letter on a repeat when the first send stored the feedback but never mailed it', async () => {
+            mockCreate.mockImplementationOnce(async (id: string, data: Record<string, unknown>) => {
+                mockNamedDocs.set(id, data);
+                throw Object.assign(new Error('14 UNAVAILABLE: commit answer lost'), { code: 14 });
+            });
+            const first = await POST(request({ ...queued, images: ['data:image/png;base64,aW1nMQ=='] }));
+            expect(first.status).toBeGreaterThanOrEqual(500);
+            expect(mockSendMail).not.toHaveBeenCalled();
+            const second = await POST(request({ ...queued, images: ['data:image/png;base64,aW1nMQ=='] }));
+            expect(second.status).toBe(200);
+            expect(mockSendMail).toHaveBeenCalledTimes(1);
+            expect(mockSendMail.mock.calls[0][0].attachments.length).toBeGreaterThan(0);
+            expect(mockNamedDocs.get('feedback-0123456789')).toMatchObject({ emailed: true });
+            const third = await POST(request(queued));
+            expect(third.status).toBe(200);
+            expect(mockSendMail).toHaveBeenCalledTimes(1);
+        });
+
+        test('keeps the feedback on the device while the letter cannot be sent, and sends it on the repeat', async () => {
+            mockSendMail.mockRejectedValueOnce(new Error('SMTP down'));
+            const first = await POST(request(queued));
+            expect(first.status).toBe(503);
+            expect(first.headers.get('Retry-After')).toBeNull();
+            const second = await POST(request(queued));
+            expect(second.status).toBe(200);
+            expect(mockSendMail).toHaveBeenCalledTimes(2);
+            expect(mockCreate).toHaveBeenCalledTimes(1);
+            expect(mockNamedDocs.get('feedback-0123456789')).toMatchObject({ emailed: true });
+        });
+
+        // Codex review round 2, 2026-11-17: two tabs sent one feedback at once; the second heard «already
+        // stored» and dropped the device copy while the first one's letter failed.
+        test('keeps the feedback on the device when another send stored it a moment ago and its letter is not confirmed', async () => {
+            mockNamedDocs.set('feedback-0123456789', { userId: 'auth-user-1', emailed: false });
+            mockGetSeesNothing = true;
+            const late = await POST(request(queued));
+            expect(late.status).toBe(503);
+            expect(mockSendMail).not.toHaveBeenCalled();
+        });
+
+        // Codex review 2026-11-17: a queue drained after a sign-in to another account must not send the
+        // first account's words under the second one's name.
+        test('refuses a named feedback sent by another account than the one that wrote it', async () => {
+            const response = await POST(request({ ...queued, userId: 'someone-else' }));
+            expect(response.status).toBe(409);
+            expect(await response.json()).toMatchObject({ code: 'owner-mismatch' });
+            expect(mockCreate).not.toHaveBeenCalled();
+            expect(mockSendMail).not.toHaveBeenCalled();
+            mockNamedDocs.set('feedback-0123456789', { userId: 'someone-else', emailed: false });
+            const taken = await POST(request({ ...queued, userId: 'auth-user-1' }));
+            expect(taken.status).toBe(409);
+            expect(mockSendMail).not.toHaveBeenCalled();
+        });
+
+        test('refuses an id that cannot name a document', async () => {
+            for (const feedbackId of ['a/b-0123456789', 'short', 42, '']) {
+                const response = await POST(request({ ...queued, feedbackId }));
+                expect(response.status).toBe(400);
+            }
+            expect(mockCreate).not.toHaveBeenCalled();
+            expect(mockAdd).not.toHaveBeenCalled();
+        });
     });
 
     test('POST stores feedback and sends email (TRIZ+IFR validation)', async () => {

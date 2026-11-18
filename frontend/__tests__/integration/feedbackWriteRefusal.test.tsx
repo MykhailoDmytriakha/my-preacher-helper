@@ -21,7 +21,7 @@ const mockAdd = jest.fn();
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
-    collection: jest.fn(() => ({ add: (...args: unknown[]) => mockAdd(...args) })),
+    collection: jest.fn(() => ({ doc: (id?: string) => ({ id: id ?? 'feedback-1', get: async () => ({ exists: false }), create: (...args: unknown[]) => mockAdd(...args) }) })),
   },
 }));
 
