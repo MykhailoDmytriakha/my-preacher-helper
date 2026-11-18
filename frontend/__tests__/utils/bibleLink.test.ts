@@ -110,6 +110,19 @@ describe('leadingReference — the passage a sermon\'s verse names first', () =>
     expect(lead('1 Цар 3:10 Говори, Господи', 'ru')).toMatchObject({ book: '1-samuel', at: '3:10' });
   });
 
+  // BUG-20261117-scripture-list-shorthand-not-linked: "29:15, 17" opened 29:15–17 with verse 16, "Пс 22:1, 3–5" opened nothing.
+  it('ends the opening at a list mark and gives the rest of the list as its own places', () => {
+    const places = (text: string) => {
+      const found = leadingReference(text, { locale: 'ru' });
+      return found ? [[text.slice(0, found.end), query(found.href).at, query(found.href).to], ...(found.rest ?? []).map(each => [each.raw, query(each.href).at, query(each.href).to])] : null;
+    };
+    expect(places('Притч. 29:15, 17.')).toEqual([['Притч. 29:15', '29:15', '15'], ['17', '29:17', '17']]);
+    expect(places('Пс 22:1, 3–5')).toEqual([['Пс 22:1', '22:1', '1'], ['3–5', '22:3', '5']]);
+    expect(places('Притч. 1:23; 3:11–12 — обличение')).toEqual([['Притч. 1:23', '1:23', '23'], ['3:11–12', '3:11', '12']]);
+    // A comma right after a chapter is the older way to write its verse, not a list.
+    expect(lead('Ин 3,16 Ибо так возлюбил')).toMatchObject({ book: 'john', at: '3:16' });
+  });
+
   it('stops where the reference stops: a number after it is a word, a second reference is not the first', () => {
     expect(lead('Ин 3:16 2 ученика')).toMatchObject({ text: 'Ин 3:16', at: '3:16', to: '16' });
     expect(lead('Мф 5:3-12; Лк 6:20')).toMatchObject({ text: 'Мф 5:3-12', book: 'matthew' });
@@ -198,7 +211,53 @@ describe('referencesInText — every reference a text names', () => {
 
   it('stops where the reference stops', () => {
     expect(found('Ин 3:16 2 ученика')).toEqual([['Ин 3:16', 'John 3:16']]);
-    expect(found('Мф 5:3,4')).toEqual([['Мф 5:3', 'Matthew 5:3']]);
+  });
+
+  // BUG-20261117-scripture-list-shorthand-not-linked: only the first place of a list became a link.
+  it('reads the rest of a list in the same book: a chapter after a semicolon, a verse after a comma', () => {
+    expect(found('Притч. 1:23; 3:11–12; 9:8–9; 12:1; 13:1; 15:5; 15:31–32; 25:12; 27:5–6.')).toEqual([
+      ['Притч. 1:23', 'Proverbs 1:23'], ['3:11–12', 'Proverbs 3:11-12'], ['9:8–9', 'Proverbs 9:8-9'],
+      ['12:1', 'Proverbs 12:1'], ['13:1', 'Proverbs 13:1'], ['15:5', 'Proverbs 15:5'],
+      ['15:31–32', 'Proverbs 15:31-32'], ['25:12', 'Proverbs 25:12'], ['27:5–6', 'Proverbs 27:5-6'],
+    ]);
+    expect(found('Притч. 10:13; 13:24; 19:18–19; 20:30; 22:15; 23:13–14; 26:3; 29:15, 17.')).toEqual([
+      ['Притч. 10:13', 'Proverbs 10:13'], ['13:24', 'Proverbs 13:24'], ['19:18–19', 'Proverbs 19:18-19'],
+      ['20:30', 'Proverbs 20:30'], ['22:15', 'Proverbs 22:15'], ['23:13–14', 'Proverbs 23:13-14'],
+      ['26:3', 'Proverbs 26:3'], ['29:15', 'Proverbs 29:15'], ['17', 'Proverbs 29:17'],
+    ]);
+    expect(found('Пс 22:1, 3–5')).toEqual([['Пс 22:1', 'Psalms 22:1'], ['3–5', 'Psalms 22:3-5']]);
+    expect(found('Ин 3:16, 5:24')).toEqual([['Ин 3:16', 'John 3:16'], ['5:24', 'John 5:24']]);
+    expect(found('Мф 5:3,4')).toEqual([['Мф 5:3', 'Matthew 5:3'], ['4', 'Matthew 5:4']]);
+    expect(found('Рим 8; 12')).toEqual([['Рим 8', 'Romans 8'], ['12', 'Romans 12']]);
+    expect(found('Рим 12:1-2; Еф 4:1; 5:1')).toEqual([['Рим 12:1-2', 'Romans 12:1-2'], ['Еф 4:1', 'Ephesians 4:1'], ['5:1', 'Ephesians 5:1']]);
+    expect(found('Prov 1:23; 3:11-12', 'en')).toEqual([['Prov 1:23', 'Proverbs 1:23'], ['3:11-12', 'Proverbs 3:11-12']]);
+    // The next line is not what the numbers count: "Am" there is a word, not a time of day.
+    expect(found('John 3:16; 5:24\nAm I saved?', 'en')).toEqual([['John 3:16', 'John 3:16'], ['5:24', 'John 5:24']]);
+  });
+
+  it.each([
+    // After a whole chapter a comma is ambiguous: "Рим 13, 15" is Romans 13:15 in the older notation.
+    ['Рим 13, 15', [['Рим 13', 'Romans 13']]],
+    // A number followed by what it counts is a count.
+    ['Ин 3:16, 3 раза', [['Ин 3:16', 'John 3:16']]],
+    ['Ин 3:16, 2023 год', [['Ин 3:16', 'John 3:16']]],
+    // A place the book does not have ends the list.
+    ['Ин 3:16; 99:1; 4:1', [['Ин 3:16', 'John 3:16']]],
+    // Words between end the list: the numbers after them belong to no book.
+    ['Ин 3:16 и потом 3:30', [['Ин 3:16', 'John 3:16']]],
+    // A time of day, a share, a numbered point on the next line.
+    ['Ин 3:16; 10:30 утра встреча', [['Ин 3:16', 'John 3:16']]],
+    ['Read John 3:16; 10:30 am', [['John 3:16', 'John 3:16']]],
+    ['Обсудили Ин 3:16, 10% группы', [['Ин 3:16', 'John 3:16']]],
+    ['Ин 3:16;\n1. Любовь Бога', [['Ин 3:16', 'John 3:16']]],
+  ])('ends the list where it ends: %p', (text, expected) => {
+    expect(found(text)).toEqual(expected);
+  });
+
+  it('marks the rest of a list with the Bible of its first place, and only where the first is marked', () => {
+    // A Synodal Psalm read under an English interface: every place of the list is in the Synodal.
+    expect(referencesInText('Пс 22:1; 23:1', 'en').map(each => each.writtenIn)).toEqual(['rst', 'rst']);
+    expect(referencesInText('Притч. 1:23; 3:11–12', 'ru').map(each => each.writtenIn)).toEqual([undefined, undefined]);
   });
 
   it('reads a long text at once', () => {

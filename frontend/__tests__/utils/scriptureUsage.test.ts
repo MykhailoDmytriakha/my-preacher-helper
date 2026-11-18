@@ -30,6 +30,14 @@ describe('explicit Scripture uses across personal materials', () => {
     expect(search([note('structured', [target], body)])[0].excerpt).toContain('1 Chr 1:10');
   });
 
+  // BUG-20261117-scripture-list-shorthand-not-linked: a bare "17" lit the "17" of "2017".
+  it('points a place of a list written without its book to the list, where the book is named', () => {
+    const body = 'В 2017 году начали эту тему.\n\nПритч. 29:15, 17.';
+    const [result] = search([note('list', [], body)], [], [], { bible: 'rst', book: 'Proverbs', chapter: 29, fromVerse: 17 });
+    expect(result).toMatchObject({ match: 'text', mention: 'Притч. 29:15' });
+    expect(result.excerpt).toContain('Притч. 29:15, 17');
+  });
+
   it('reads the full HTML before centering an excerpt on a visible reference', () => {
     const body = `<p id="${'hidden-attribute-'.repeat(40)}">Read <strong>1 Chr 1:10</strong> together.</p>`;
     const [result] = search([note('html-mention', [target], body)]);
