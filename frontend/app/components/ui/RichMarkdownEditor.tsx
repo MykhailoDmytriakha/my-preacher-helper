@@ -82,7 +82,6 @@ function MarkdownEditor({
             ...scrollProps,
             handleDOMEvents: {
                 input: () => { ownedBy?.nativeInput?.(); return false; },
-                compositionstart: () => { ownedDocument.current?.compositionStart(); return false; },
                 compositionend: () => { ownedDocument.current?.compositionEnd(); return false; },
             },
             attributes: {
