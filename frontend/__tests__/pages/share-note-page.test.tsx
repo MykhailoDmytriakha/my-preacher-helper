@@ -10,7 +10,11 @@ global.fetch = mockFetch;
 
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(),
+  useRouter: () => ({ push: jest.fn() }),
+  usePathname: () => '/share/notes/token-1',
+  useSearchParams: () => new URLSearchParams(),
 }));
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: null, loading: false }) }));
 
 jest.mock('@components/MarkdownDisplay', () => ({
   __esModule: true,
