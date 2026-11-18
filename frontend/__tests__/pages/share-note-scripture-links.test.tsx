@@ -74,7 +74,9 @@ it('turns the passages named under the title into links too', async () => {
     json: async () => ({ title: 'Верность', content: 'Текст без ссылок.', scriptureRefs: [{ book: 'Ruth', chapter: 1, fromVerse: 2 }] }),
   });
   render(<SharedNotePage />);
-  fireEvent.click(await screen.findByRole('button', { name: /1:2/ }));
+  // The line under the title, not the passage's chip in the wide screen's panel.
+  const line = (await screen.findByText(/Руфь 1:2/, { selector: 'button' })).closest('p')!;
+  fireEvent.click(within(line).getByRole('button', { name: /1:2/ }));
   expect(await within(await screen.findByRole('dialog')).findByText(/Второй/)).toBeInTheDocument();
 });
 

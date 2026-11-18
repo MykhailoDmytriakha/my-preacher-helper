@@ -6,7 +6,7 @@ import { FOLDING_TAGS } from '@/utils/markdownFolding';
 import { sectionDisplayLabel } from '@/utils/markdownSections';
 import { useTranslation } from '@locales/useTranslation';
 
-import { FOLD_ARROW_TONE, foldArrowOffset, headingTone, sectionAir } from './foldableHeadingStyle';
+import { FOLD_ARROW_TONE, FOLD_ARROW_TOUCH, foldArrowOffset, headingTone, sectionAir } from './foldableHeadingStyle';
 
 import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import type { MarkdownSection } from '@/utils/markdownSections';
@@ -64,10 +64,10 @@ export const FOLDING_COMPONENTS = {
                     {filled ? (
                         <button type="button" onClick={() => control.toggleSection(section.id)} aria-expanded={!collapsed}
                             aria-label={t('textOutline.toggleSection', { title: label })}
-                            className={`${foldArrowOffset(section.level)} shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}>
-                            <ChevronRightIcon className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} />
+                            className={`${foldArrowOffset(section.level)} ${FOLD_ARROW_TOUCH.button} shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}>
+                            <ChevronRightIcon className={`${FOLD_ARROW_TOUCH.glyph} transition-transform ${collapsed ? '' : 'rotate-90'}`} />
                         </button>
-                    ) : <span className="shrink-0 w-7 sm:w-5" />}
+                    ) : <span className={`shrink-0 ${FOLD_ARROW_TOUCH.spacer}`} />}
                     <div onClick={filled ? event => {
                         if (event.target instanceof Element && event.target.closest('a, button')) return;
                         control.toggleSection(section.id);

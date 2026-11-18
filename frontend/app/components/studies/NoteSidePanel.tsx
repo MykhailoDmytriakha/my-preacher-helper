@@ -103,10 +103,13 @@ export function NoteSidePanel({
                         <TagIcon className="h-[17px] w-[17px]" />
                     </button>
                 ) : null}
-                <button type="button" onClick={onToggleCollapsed} title={t('notePanel.sermons')} aria-label={t('notePanel.sermons')} className={`relative ${RAIL_BUTTON}`}>
-                    <DocumentTextIcon className="h-[17px] w-[17px]" />
-                    {hasSermons && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-500" />}
-                </button>
+                {/* A guest reading a shared note has no sermons to look for: no block, no icon. */}
+                {sermons !== undefined ? (
+                    <button type="button" onClick={onToggleCollapsed} title={t('notePanel.sermons')} aria-label={t('notePanel.sermons')} className={`relative ${RAIL_BUTTON}`}>
+                        <DocumentTextIcon className="h-[17px] w-[17px]" />
+                        {hasSermons && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                    </button>
+                ) : null}
             </aside>
         );
     }

@@ -139,6 +139,7 @@ describe('NoteSidePanel', () => {
                 hasSermons
                 onToggleCollapsed={onToggleCollapsed}
                 outline={makeControl()}
+                sermons={<div>sermons slot</div>}
             />
         );
 
@@ -149,6 +150,13 @@ describe('NoteSidePanel', () => {
             fireEvent.click(screen.getByRole('button', { name }));
         });
         expect(onToggleCollapsed).toHaveBeenCalledTimes(5);
+    });
+
+    it('keeps no sermons icon on the rail for a reader who has no sermons — a guest on a shared note', () => {
+        render(<NoteSidePanel {...props} collapsed onToggleCollapsed={jest.fn()} outline={makeControl()} />);
+
+        expect(screen.getByRole('button', { name: 'Scripture' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Sermons on this note' })).not.toBeInTheDocument();
     });
 
     it('says so when the note has no headings at all', () => {

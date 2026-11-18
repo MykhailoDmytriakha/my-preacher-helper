@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { useParams } from 'next/navigation';
 
@@ -121,7 +121,9 @@ describe('SharedNotePage', () => {
 
     render(<SharedNotePage />);
 
-    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Faith that carries'));
+    // Two titles are drawn — the phone's bar and the wide screen's column — and CSS shows one of them.
+    await waitFor(() => expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(2));
+    screen.getAllByRole('heading', { level: 1 }).forEach((title) => expect(title).toHaveTextContent('Faith that carries'));
     expect(screen.getByText('Luke 5:17-26')).toBeInTheDocument();
   });
 
@@ -153,9 +155,87 @@ describe('SharedNotePage', () => {
 
     render(<SharedNotePage />);
 
-    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Luke 5:17-26'));
-    expect(screen.getAllByText(/Luke 5:17-26/)).toHaveLength(1);
-    expect(screen.getByText('John 3:16')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('Luke 5:17-26'));
+    // The passage that became the title is not repeated in the line of passages under it.
+    const line = screen.getByText('John 3:16').closest('p')!;
+    expect(line).not.toHaveTextContent('Luke 5:17-26');
+  });
+
+  it('puts the theme switch at the top — in the reading bar and beside the wide title — and none under the text', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ content: 'Body', title: 'Faith that carries', scriptureRefs: [] }),
+    });
+
+    render(<SharedNotePage />);
+
+    await waitFor(() => expect(screen.getByTestId('markdown')).toHaveTextContent('Body'));
+    const bar = screen.getByRole('button', { name: /Faith that carries/ }).closest('header')!;
+    expect(within(bar).getByTestId('theme-toggle')).toBeInTheDocument();
+    const wideTitle = screen.getAllByRole('heading', { level: 1 }).find((title) => !bar.contains(title))!;
+    expect(within(wideTitle.parentElement!).getByTestId('theme-toggle')).toBeInTheDocument();
+    expect(screen.getAllByTestId('theme-toggle')).toHaveLength(2);
+    expect(within(screen.getByRole('contentinfo')).queryByTestId('theme-toggle')).not.toBeInTheDocument();
+  });
+
+  it('opens the sheet on all the passages from "and N more" under the title', async () => {
+    const scriptureRefs = Array.from({ length: 9 }, (_, index) => ({ id: `r${index}`, book: 'Psalms', chapter: index + 1, fromVerse: 1 }));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ content: '# Part\n\nBody', title: 'Psalms', scriptureRefs }),
+    });
+
+    render(<SharedNotePage />);
+
+    // The note has an outline, so the sheet would open on it by default.
+    fireEvent.click(await screen.findByRole('button', { name: /shareNotes\.morePassages/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: /studiesWorkspace\.scriptureRefs/ })).toHaveAttribute('aria-pressed', 'true');
+    // Every passage is there, the ones the line under the title left out too.
+    expect(within(sheet).getAllByRole('button', { name: /Psalms|Ps/ }).length).toBeGreaterThanOrEqual(9);
+  });
+
+  it('opens the outline from the bar, and a section chosen there closes it', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ content: '# One\n\nFirst.\n\n# Two\n\nSecond.', title: 'Two parts', scriptureRefs: [] }),
+    });
+
+    render(<SharedNotePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Two parts/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: 'textOutline.collapseAll' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Two' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('closes the outline when the screen turns wide, so the hidden sheet does not keep the page from scrolling', async () => {
+    let wide = false;
+    const listeners: Array<(event: { matches: boolean }) => void> = [];
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('1024') ? wide : false,
+      media: query,
+      addEventListener: (_: string, listener: (event: { matches: boolean }) => void) => { if (query.includes('1024')) listeners.push(listener); },
+      removeEventListener: jest.fn(),
+    })) as unknown as typeof window.matchMedia;
+    try {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ content: '# One\n\nFirst.', title: 'Turned', scriptureRefs: [] }),
+      });
+      render(<SharedNotePage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: /Turned/ }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+      wide = true;
+      act(() => listeners.forEach((listener) => listener({ matches: true })));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('shows no heading when the note has no title', async () => {

@@ -46,9 +46,28 @@ export const headingTone = (level: number): string =>
  * line box grows with the level. Aligned to the top of the row, the arrow floated above the
  * cap of a first-level heading. These offsets drop it onto the first line's optical centre,
  * and they are full literals because Tailwind's JIT scans source text.
+ *
+ * Under a finger the glyph is 20px instead of 16 (`FOLD_ARROW_TOUCH`), so its box starts 2px
+ * higher and the centre stays where the mouse sees it. A finger is told by the pointer, not by
+ * the width: an iPad is wider than a phone and still pressed with a finger.
  */
 export const foldArrowOffset = (level: number): string =>
-    level <= 1 ? 'mt-2 sm:mt-2.5' : level === 2 ? 'mt-1.5 sm:mt-2' : 'mt-0.5 sm:mt-1';
+    level <= 1
+        ? 'mt-2.5 [@media(pointer:coarse)]:mt-2'
+        : level === 2
+          ? 'mt-2 [@media(pointer:coarse)]:mt-1.5'
+          : 'mt-1 [@media(pointer:coarse)]:mt-0.5';
+
+/**
+ * The arrow's size by pointer: a 20px glyph and a 40px reach for a finger (the reach is an
+ * invisible layer around the button, so the row does not move), a 16px glyph for a mouse.
+ */
+export const FOLD_ARROW_TOUCH = {
+    button: "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
+    glyph: 'h-4 w-4 [@media(pointer:coarse)]:h-5 [@media(pointer:coarse)]:w-5',
+    /** The room a heading with nothing to fold keeps, so its text lines up with its neighbours. */
+    spacer: 'w-5 [@media(pointer:coarse)]:w-6',
+};
 
 /** The fold arrow, so it does not stay grey beside a green heading. */
 export const FOLD_ARROW_TONE =

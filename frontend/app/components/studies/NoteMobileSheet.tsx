@@ -26,9 +26,16 @@ interface NoteMobileSheetProps {
     /** False where a text this short has no outline to offer (a comment): the sheet opens on its properties. */
     outlineShown?: boolean;
     sermons?: React.ReactNode;
+    /**
+     * The name of the second tab. A guest reading a shared note has nothing there but its
+     * passages, so the tab says that instead of the owner's "Properties".
+     */
+    propertiesLabel?: React.ReactNode;
+    /** The tab to show each time the sheet opens — "and 193 more" under a title opens it on the passages. */
+    openOn?: SheetTab;
 }
 
-type SheetTab = 'outline' | 'properties';
+export type SheetTab = 'outline' | 'properties';
 
 /**
  * Everything about the note that is not its text, on a phone: its table of contents,
@@ -50,6 +57,8 @@ export function NoteMobileSheet({
     scriptureRefs,
     tags,
     sermons,
+    propertiesLabel,
+    openOn,
 }: NoteMobileSheetProps) {
     const { t } = useTranslation();
     const hasOutline = outlineShown && outline.hasSections;
@@ -62,6 +71,10 @@ export function NoteMobileSheet({
         if (!hasOutline) setTab('properties');
     }, [hasOutline]);
 
+    useEffect(() => {
+        if (open && openOn) setTab(openOn === 'outline' && !hasOutline ? 'properties' : openOn);
+    }, [open, openOn, hasOutline]);
+
     // This reading sheet starts at its panel so its title precedes the outline controls.
     useEffect(() => {
         if (open) panelRef.current?.focus({ preventScroll: true });
@@ -71,7 +84,9 @@ export function NoteMobileSheet({
     // every control inside it — outline rows, tabs, "collapse all" — would otherwise still
     // be tabbable behind an `aria-hidden` that only lies to screen readers.
     return (
-        <div className="lg:hidden" inert={!open}>
+        // `aria-hidden` beside `inert`: a Safari older than 15.5 has no `inert`, and a closed sheet
+        // must not be read out there as a second dialog on the page.
+        <div className="lg:hidden" inert={!open} aria-hidden={!open || undefined}>
             <button
                 type="button"
                 aria-label={t('common.close')}
@@ -96,20 +111,9 @@ export function NoteMobileSheet({
                         </SheetTabButton>
                     )}
                     <SheetTabButton active={tab === 'properties'} onClick={() => setTab('properties')}>
-                        {t('notePanel.properties')}
+                        {propertiesLabel ?? t('notePanel.properties')}
                     </SheetTabButton>
                     <div className="ml-auto flex items-center gap-1">
-                        {tab === 'outline' && foldable && outline.sectionIds.length > 1 && (
-                            <button
-                                type="button"
-                                onClick={outline.toggleAll}
-                                className="whitespace-nowrap rounded-lg px-2 py-1.5 text-xs text-emerald-600 dark:text-emerald-400"
-                            >
-                                {outline.everythingCollapsed
-                                    ? t('textOutline.expandAll')
-                                    : t('textOutline.collapseAll')}
-                            </button>
-                        )}
                         <button
                             type="button"
                             onClick={onClose}
@@ -124,6 +128,22 @@ export function NoteMobileSheet({
                 <div data-note-sheet-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
                     {tab === 'outline' ? (
                         outline.hasSections ? (
+                            <>
+                            {/* In the list, not beside the tabs: a phone's header row holds the two tabs
+                                and the close button, and a longer tab name pushed this out of it. */}
+                            {foldable && outline.sectionIds.length > 1 && (
+                                <div className="flex justify-end px-1">
+                                    <button
+                                        type="button"
+                                        onClick={outline.toggleAll}
+                                        className="whitespace-nowrap rounded-lg px-2 py-1.5 text-xs text-emerald-600 dark:text-emerald-400"
+                                    >
+                                        {outline.everythingCollapsed
+                                            ? t('textOutline.expandAll')
+                                            : t('textOutline.collapseAll')}
+                                    </button>
+                                </div>
+                            )}
                             <NoteOutlineTree
                                 outline={outline}
                                 foldable={foldable}
@@ -131,6 +151,7 @@ export function NoteMobileSheet({
                                 onNavigate={onClose}
                                 compact
                             />
+                            </>
                         ) : (
                             <p className={`px-3 py-4 text-sm ${NEUTRAL_CAPTION}`}>
                                 {t('notePanel.outlineEmpty')}

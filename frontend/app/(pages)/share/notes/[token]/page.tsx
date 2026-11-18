@@ -4,9 +4,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import '@locales/i18n';
-import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
-import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useAuth } from '@/providers/AuthProvider';
 import { readLanguageCookie } from '@/services/userSettings.service';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -15,6 +13,8 @@ import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import ThemeModeToggle from '@components/navigation/ThemeModeToggle';
 import { useTranslation } from '@locales/useTranslation';
+
+import { SharedNoteReader } from './SharedNoteReader';
 
 import type { ScriptureReference } from '@/models/models';
 
@@ -101,31 +101,27 @@ export default function SharedNotePage() {
 
   // As in the app, the Scripture in the note is a link that opens the passage over the page (the owner,
   // 2026-11-17), read in the language the note is written in.
+  const writtenIn = studyNoteLanguage({ title, content });
   return (
-    <ScriptureLinksInWindow writtenIn={studyNoteLanguage({ title, content })} toBible={Boolean(user)}>
+    <ScriptureLinksInWindow writtenIn={writtenIn} toBible={Boolean(user)}>
     <div className={PAGE_CONTAINER_CLASS}>
+      {status === 'ready' && token ? (
+        <SharedNoteReader
+          token={token}
+          content={content}
+          heading={heading}
+          passages={passages}
+          hiddenPassages={hiddenPassages}
+          scriptureRefs={scriptureRefs}
+          writtenIn={writtenIn ?? locale}
+        />
+      ) : (
       <div className={CONTENT_WRAPPER_CLASS}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <header className="space-y-2">
-            <p className="text-sm text-gray-500 dark:text-gray-400" suppressHydrationWarning={true}>
-              {t('shareNotes.title')} · {t('shareNotes.subtitle')}
-            </p>
-            {status === 'ready' && heading && (
-              <h1 className="text-2xl font-semibold sm:text-3xl">{heading}</h1>
-            )}
-            {status === 'ready' && passages && (
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                <ScriptureText text={passages} tone="inherit" />
-                {hiddenPassages > 0 && (
-                  <span className="font-normal text-gray-500 dark:text-gray-400">
-                    {' · '}
-                    {t('shareNotes.morePassages', { count: hiddenPassages })}
-                  </span>
-                )}
-              </p>
-            )}
-          </header>
-          <ThemeModeToggle variant="compact" className="shrink-0 sm:mt-1" />
+          <p className="text-sm text-gray-500 dark:text-gray-400" suppressHydrationWarning={true}>
+            {t('shareNotes.title')} · {t('shareNotes.subtitle')}
+          </p>
+          <ThemeModeToggle variant="compact" className="shrink-0" />
         </div>
 
         {status === 'loading' && (
@@ -163,13 +159,8 @@ export default function SharedNotePage() {
             {t('shareNotes.error')}
           </div>
         )}
-
-        {status === 'ready' && (
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <FoldableMarkdown content={content} />
-          </div>
-        )}
       </div>
+      )}
     </div>
     </ScriptureLinksInWindow>
   );
