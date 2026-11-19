@@ -169,3 +169,33 @@ describe('a draft written by a build that did not keep what it was built from', 
     expect(sends).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a device with no room for the base beside the words', () => {
+  it('keeps the words alone, as a copy without its base: offered on return, asked about once, and «keep my text» stores them', async () => {
+    // The browser's room for this site: a long note's copy fits in it, the same copy with its base beside it does not.
+    const room = 40_000;
+    const long = Array.from({ length: 30 }, (_, index) => `Paragraph ${index} ` + 'word '.repeat(150).trim() + '.').join('\n\n');
+    const setItem = Storage.prototype.setItem;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, name: string, value: string) {
+      const used = Object.keys(this).filter(other => other !== name).reduce((sum, other) => sum + other.length + (this.getItem(other)?.length ?? 0), 0);
+      if (used + name.length + value.length > room) throw new DOMException('quota', 'QuotaExceededError');
+      return setItem.call(this, name, value);
+    });
+    await start(long, true); countCommands();
+    await typeAndLeaveInsidePause(' Leaveword');
+    expect(sends).not.toHaveBeenCalled();
+
+    await reopenAndRestore();
+    await finish();
+
+    // Kept without its base, the copy is asked about, as a copy written before copies kept their base.
+    expect(conflictShown()).toBe(true);
+    expect(sends).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await finish();
+
+    expect(await stored()).toContain('Leaveword');
+    expect(hasNoteQuestion()).toBe(false);
+    expect(sends).toHaveBeenCalledTimes(1);
+  });
+});

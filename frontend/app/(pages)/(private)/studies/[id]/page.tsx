@@ -169,8 +169,8 @@ function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
 /**
  * Whether a copy holds nothing beyond its own base: its words ARE what they were built from (`resumedNoteBaseline`,
  * compared as the editor compares what it sends, `changedFields`). Every copy keeps as its base what its words are built
- * on — the save its editor had already handed to the engine, once the words go beyond it — so such a copy was written
- * after its very words were handed over and stored by this device: the engine owns them, nothing in the copy is unsent.
+ * on as far as this device has stored it — the baseline, which moves to a save only once this device stored it — so such
+ * a copy was written after its very words were stored by this device: the engine owns them, nothing in the copy is unsent.
  * Resumed, it would show those words while sending nothing, even when the note was stored newer since; it is not
  * offered instead, and stays where it is. A copy without a readable base is never such a copy.
  */
@@ -939,14 +939,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    // Every copy of this opening keeps what its words were built from: the baseline the next save carries — or, while a
-    // save is handed to the engine and not yet stored by this device, that save, for words that go beyond it. Words
-    // equal to the handed save are still built on the baseline it is checked against, as its own immediate backup is.
-    const handedBaselineRef = useRef<NoteDraftPayload | null>(null);
-    const readDraftBase = useCallback((words: NoteDraftPayload) => {
-        const handed = handedBaselineRef.current;
-        return noteDraftBase(handed && !sameNoteDraft(handed, words) ? handed : baselineRef.current);
-    }, []);
+    // Every copy of this opening keeps what its words were built from as far as this device has stored it: the baseline
+    // the next save carries, which moves to a save only when this device has stored it — never a save merely handed to
+    // the engine, which a page killed before the device stored it takes with it. When a save is stored, the copy is
+    // written again with it (`useNoteAutoSave`, `NoteSaveStored`).
+    const readDraftBase = useCallback(() => noteDraftBase(baselineRef.current), []);
     const { recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, rewriteCopy, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
@@ -1020,7 +1017,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             // This text IS the server's now, so the tick may come back.
             setConfirmedDraft(saved);
         }
-    }, { handed: handedBaselineRef, returned: rewriteCopy });
+    }, { stored: rewriteCopy });
 
     // A matching first copy must not hide a different unfinished version.
     useEffect(() => {

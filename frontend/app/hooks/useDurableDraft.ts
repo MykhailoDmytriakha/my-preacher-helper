@@ -74,7 +74,7 @@ export interface UseDurableDraftResult<T> {
   /** The user chose to keep the server version — forget the draft (every copy of its session). */
   discardRecovered: () => void;
   /**
-   * What the words are built from moved while the words did not (a save the editor had handed over was refused):
+   * What the words are built from moved while the words did not (this device has just stored a save of earlier words):
    * write this writer's last copy again, with the base read now.
    */
   rewriteCopy: () => void;
@@ -418,8 +418,8 @@ export function useDurableDraft<T>({
 
   /**
    * Write this writer's last copy again, with the base `readBase` gives now. For a base that moved while the words did
-   * not: a save the editor had handed over was refused, so the words are built from the base before it again. Only the
-   * copy this writer last wrote, still stored exactly as written, is rewritten — the same words and the same edit.
+   * not: this device has just stored a save of the words before them, so they are built on that save from now on. Only
+   * the copy this writer last wrote, still stored exactly as written, is rewritten — the same words and the same edit.
    */
   const rewriteCopy = useCallback(() => {
     const ours = ourDraftRef.current;

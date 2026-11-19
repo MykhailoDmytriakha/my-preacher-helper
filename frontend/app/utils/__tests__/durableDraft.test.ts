@@ -416,6 +416,30 @@ describe('a copy keeps what its words were built from', () => {
     expect(readDraft(key)).toEqual(expect.objectContaining({ captureToken: token, base: typed }));
   });
 
+  it('keeps the words alone when the device has no room for the base beside them — never nothing', () => {
+    const key = draftKey('uid-1', 'note-1', 'note', 'opening');
+    const long = (word: string) => ({ content: `${word} `.repeat(400) });
+    const words = long('Typed');
+    // The browser's room: the words fit, the words with their base do not.
+    const room = 4000;
+    const setItem = Storage.prototype.setItem;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, name: string, value: string) {
+      const used = Object.keys(this).filter(other => other !== name).reduce((sum, other) => sum + other.length + (this.getItem(other)?.length ?? 0), 0);
+      if (used + name.length + value.length > room) throw new DOMException('quota', 'QuotaExceededError');
+      return setItem.call(this, name, value);
+    });
+
+    expect(saveDraft(key, words, undefined, false, 1, long('Opened'))).toBe(true);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ value: words, editedAt: 1 }));
+    expect(readDraft(key)).not.toHaveProperty('base');
+    expect(isDraftStorageRefused()).toBe(false);
+
+    // No room even for the words: refused and reported, as before.
+    expect(saveDraft(key, long('Typed much more words'), undefined, false, 2, long('Opened'))).toBe(false);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ value: words }));
+    expect(isDraftStorageRefused()).toBe(true);
+  });
+
   it('carries the base with the words when a new note moves to its created address', () => {
     const from = draftKey('uid-1', 'new~created', 'note', 'opening');
     const to = draftKey('uid-1', 'created', 'note', 'opening');

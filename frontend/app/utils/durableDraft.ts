@@ -158,12 +158,15 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
     : sameLineage && sameValue && Number.isFinite(previous?.editedAt) ? previous?.editedAt : undefined;
   // The base is read by the caller at this write, beside the words it belongs to; it never changes the
   // payload identity above, which binds the words alone.
-  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(actionTime !== undefined ? { editedAt: actionTime } : {}), ...(creationTargetId ? { creationTargetId } : {}),
-    ...(captureToken ? { captureToken } : {}), ...keptBase(base) } satisfies DurableDraft<T>);
+  const record = (kept: unknown) => JSON.stringify({ value, savedAt: Date.now(), ...(actionTime !== undefined ? { editedAt: actionTime } : {}), ...(creationTargetId ? { creationTargetId } : {}),
+    ...(captureToken ? { captureToken } : {}), ...keptBase(kept) } satisfies DurableDraft<T>);
 
-  try {
-    store.setItem(key, payload);
-  } catch {
+  // NO ROOM FOR THE BASE IS NOT NO ROOM FOR THE WORDS. The base can double a copy; a copy that does not fit with it is
+  // kept as the words alone — the record a copy had before copies kept their base, which «Restore» asks about once —
+  // rather than not at all. Only words that do not fit even alone are refused.
+  const write = (payload: string) => { try { store.setItem(key, payload); return true; } catch { return false; } };
+  const withBase = keptBase(base).base !== undefined;
+  if (!write(record(base)) && !(withBase && write(record(undefined)))) {
     console.error('durableDraft: no room to persist', key);
     recordDraftStorage(key, true, value, creationTargetId);
     return false;

@@ -963,6 +963,18 @@ describe('copies of one editing session — the same words built from the same b
     expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase]);
     view.unmount();
   });
+
+  it('settling the session (its words already shown) settles every copy of it: no identical copy is offered next, none is removed', () => {
+    const view = render('Server words', { writerId: 'current-opening' });
+    act(() => view.result.current.selectRecovered(first));
+    act(() => view.result.current.settleRecovered());
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase]);
+    expect(view.result.current.recoveredKey).toBe(otherBase);
+    // Hiding an offer is not proof that its words are stored: every copy stays where it is.
+    expect(readDraft(first)).not.toBeNull();
+    expect(readDraft(second)).not.toBeNull();
+    view.unmount();
+  });
 });
 
 describe('a base that moved while the words did not', () => {
@@ -971,29 +983,30 @@ describe('a base that moved while the words did not', () => {
   afterEach(() => { jest.useRealTimers(); });
 
   it('reads the base for the very words it writes, and rewrites its last copy with the base read now', () => {
-    let base = 'Handed save';
+    let base = 'Before the save';
     const asked: string[] = [];
     const view = render('Opened', { writerId: 'opening', readBase: words => { asked.push(words as string); return base; } });
-    view.rerender({ value: 'Typed after the hand-off' });
+    view.rerender({ value: 'Typed while the save was being stored' });
     act(() => { jest.advanceTimersByTime(300); });
-    expect(asked).toEqual(['Typed after the hand-off']);
+    expect(asked).toEqual(['Typed while the save was being stored']);
     const written = readDraft<string>(WRITER)!;
-    expect(written.base).toBe('Handed save');
+    expect(written.base).toBe('Before the save');
 
-    base = 'Before the refused save';
+    // The device has stored the save: the words typed meanwhile are built on it from now on.
+    base = 'The stored save';
     act(() => view.result.current.rewriteCopy());
-    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Typed after the hand-off', editedAt: written.editedAt, base: 'Before the refused save' }));
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Typed while the save was being stored', editedAt: written.editedAt, base: 'The stored save' }));
     view.unmount();
   });
 
   it('leaves a copy another writer has replaced since', () => {
-    let base = 'Handed save';
+    let base = 'Before the save';
     const view = render('Opened', { writerId: 'opening', readBase: () => base });
-    view.rerender({ value: 'Typed after the hand-off' });
+    view.rerender({ value: 'Typed while the save was being stored' });
     act(() => { jest.advanceTimersByTime(300); });
     saveDraft(WRITER, 'Words of another tab', undefined, false, Date.now() + 10_000, 'Their base');
     const replaced = localStorage.getItem(WRITER);
-    base = 'Before the refused save';
+    base = 'The stored save';
     act(() => view.result.current.rewriteCopy());
     expect(localStorage.getItem(WRITER)).toBe(replaced);
     view.unmount();

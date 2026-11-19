@@ -7,11 +7,13 @@ import { stand, start, original, stored, settle, phoneSave, insert, finish, hasN
 import type { CommandResult, DataCommand, ResourceRef } from '@/data-engine/types';
 
 /*
- * A save handed to the engine belongs to the editing session from that moment: words typed after it are built on it.
- * Until this device has stored the save (its local capture), a copy of those later words must already keep that save
- * as its base — otherwise «Restore» asks about his own earlier save. If the hand-off is refused, the previous base comes
- * back, so a refused save is asked about again. Every history here is driven by the person's actions on the real page
- * with the real engine; the stand counts this device's server commands.
+ * A copy's base is never ahead of what this device has stored. A save handed to the engine becomes the base of the
+ * words typed after it only when this device has stored it (its local capture): then the copy is written again with
+ * that save as its base, so «Restore» does not ask about his own earlier save. Until then the copy keeps the base before
+ * the save — if the page dies before the device stored it, the save is gone with the page, and the copy still holds
+ * everything that was not stored. A refused save leaves the base where it was, so it is asked about again. Every
+ * history here is driven by the person's actions on the real page with the real engine; the stand counts this
+ * device's server commands.
  */
 
 let sends: jest.SpyInstance<Promise<CommandResult>, [DataCommand]>;
@@ -35,7 +37,30 @@ async function spin(ms = 0) {
 }
 const conflictShown = () => (document.body.textContent ?? '').includes('freshness.conflictTitle');
 const storedAt = async (resource: ResourceRef) => (await stand.world.snapshot(resource)).value as unknown as
-  { content: string; scriptureRefs?: Array<{ book: string }> } | null;
+  { title?: string; content: string; scriptureRefs?: Array<{ book: string }> } | null;
+const typeTitle = (title: string) =>
+  fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder'), { target: { value: title } });
+
+/**
+ * The page goes away and is killed while device storage is still busy: device storage keeps only what it committed,
+ * the save waiting for it is gone with the page. The device starts again with a new engine; its commands count from here.
+ */
+async function killAndReload() {
+  stand.leave();
+  const committed = new DeviceStorage();
+  for (const [name, rows] of stand.laptop.storage.databases) committed.databases.set(name, new Map(rows));
+  (stand.laptop as unknown as { storage: DeviceStorage }).storage = committed;
+  await reloadPage();
+  countCommands();
+  await settle(5000);
+}
+
+/** «Text from last time» → «Restore», then the note's ordinary save runs to the end. */
+async function restoreAfterKill() {
+  expect(screen.getByText('unsavedDraft.title')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('unsavedDraft.restore'));
+  await finish();
+}
 
 async function reopenAndRestore(id = 'note-x') {
   await stand.reopen(id);
@@ -103,19 +128,10 @@ describe('words typed while his own save is still being stored on this device', 
     await spin(200);
     // His save is handed to the engine; nothing is typed after it; the page goes away and is killed before the
     // device stored the save: device storage keeps only what was committed, the save is lost with the page.
-    stand.leave();
-    const committed = new DeviceStorage();
-    for (const [name, rows] of stand.laptop.storage.databases) committed.databases.set(name, new Map(rows));
-    (stand.laptop as unknown as { storage: DeviceStorage }).storage = committed;
-    await reloadPage();
-    // The device starts again with a new engine: count its commands from here.
-    countCommands();
-    await settle(5000);
+    await killAndReload();
     expect(await stored()).toBe(original);
 
-    expect(screen.getByText('unsavedDraft.title')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('unsavedDraft.restore'));
-    await finish();
+    await restoreAfterKill();
 
     expect(hasNoteQuestion()).toBe(false);
     expect(await stored()).toBe(original + ' Firstword');
@@ -156,7 +172,7 @@ describe('words typed while his own save is still being stored on this device', 
     expect((document.body.textContent ?? '').includes('unsavedDraft.title')).toBe(false);
   });
 
-  it('a save refused while it was being stored: the copy gets its previous base back, so a page killed then still asks about it', async () => {
+  it('a save refused while it was being stored: the copy keeps the base before it, so a page killed then still asks about it', async () => {
     await start(); countCommands();
     // He adds a reference; before his pause ends the phone stores another one, and it reaches this device.
     const input = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
@@ -191,5 +207,95 @@ describe('words typed while his own save is still being stored on this device', 
     expect(note?.scriptureRefs?.map(ref => ref.book)).toEqual(['Psalms']);
     expect(note?.content).toBe(original);
     expect(sends).not.toHaveBeenCalled();
+  });
+});
+
+describe('the page is killed while the device is still storing his save, after he typed more', () => {
+  it('a) his new title was being stored when he typed in the text: «Restore» stores the title and the word, unasked', async () => {
+    await start(); countCommands();
+    typeTitle('Laptop title');
+    await spin(1400);
+    holdDeviceStorage();
+    await spin(200);
+    // The title's save is handed to the engine and waits for the device storage; he types a word in the text and the
+    // 250 ms copy is written; then the page is killed before the device stored the title.
+    act(() => insert(' Afterword'));
+    await spin(400);
+    await killAndReload();
+    expect(await storedAt(noteRef)).toEqual(expect.objectContaining({ content: original }));
+    expect((await storedAt(noteRef))?.title).not.toBe('Laptop title');
+
+    await restoreAfterKill();
+
+    expect(hasNoteQuestion()).toBe(false);
+    expect(await storedAt(noteRef)).toEqual(expect.objectContaining({ title: 'Laptop title', content: original + ' Afterword' }));
+    expect(stand.autosave.title).toBe('Laptop title');
+    expect(sends).toHaveBeenCalledTimes(1);
+  });
+
+  it('b) his words were being stored when he typed more words: «Restore» stores both, and asks nothing', async () => {
+    await start(); countCommands();
+    act(() => insert(' Firstword'));
+    await spin(1400);
+    holdDeviceStorage();
+    await spin(200);
+    act(() => insert(' Secondword'));
+    await spin(400);
+    await killAndReload();
+    expect(await stored()).toBe(original);
+
+    await restoreAfterKill();
+
+    expect(conflictShown()).toBe(false);
+    expect(hasNoteQuestion()).toBe(false);
+    expect(await stored()).toBe(original + ' Firstword Secondword');
+    expect(sends).toHaveBeenCalledTimes(1);
+  });
+
+  it('c) his title and words were being stored when he typed more words: «Restore» stores the title and both words', async () => {
+    await start(); countCommands();
+    typeTitle('Laptop title');
+    act(() => insert(' Firstword'));
+    await spin(1400);
+    holdDeviceStorage();
+    await spin(200);
+    act(() => insert(' Secondword'));
+    await spin(400);
+    await killAndReload();
+
+    await restoreAfterKill();
+    // Were he asked, his answer would be «Keep my text»: whatever he is asked, nothing he typed may be lost.
+    const asked = conflictShown();
+    if (asked) {
+      const workspace = within(document.querySelector('[data-note-workspace]') as HTMLElement);
+      fireEvent.click(workspace.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+      await finish();
+    }
+
+    expect(await storedAt(noteRef)).toEqual(expect.objectContaining({ title: 'Laptop title', content: original + ' Firstword Secondword' }));
+    expect(asked).toBe(false);
+    expect(hasNoteQuestion()).toBe(false);
+    expect(sends).toHaveBeenCalledTimes(1);
+  });
+
+  it('d) iPad: his new title was being stored, he typed one word and hid the app at once: «Restore» stores the title and the word', async () => {
+    await start(); countCommands();
+    typeTitle('Laptop title');
+    await spin(1400);
+    holdDeviceStorage();
+    await spin(200);
+    act(() => insert(' Afterword'));
+    // Home pressed before the 250 ms copy: the hide writes the copy at once; the frozen page is dropped later.
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    await killAndReload();
+
+    await restoreAfterKill();
+
+    expect(hasNoteQuestion()).toBe(false);
+    expect(await storedAt(noteRef)).toEqual(expect.objectContaining({ title: 'Laptop title', content: original + ' Afterword' }));
+    expect(stand.autosave.title).toBe('Laptop title');
+    expect(sends).toHaveBeenCalledTimes(1);
   });
 });
