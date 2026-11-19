@@ -80,6 +80,7 @@ import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
+import { noteDraftBase, resumedNoteBaseline } from './noteDraftBase';
 import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
 import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type NoteTypeEdit, type SubmittedNoteTag, type SubmittedNoteType } from './useNoteAutoSave';
@@ -920,7 +921,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
+    // Every copy of this opening keeps what its words were built from: the baseline the next save carries.
+    const readDraftBase = useCallback(() => noteDraftBase(baselineRef.current), []);
+    const { recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         writerId: draftWriterId,
@@ -933,6 +936,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         enabled: isInitialized,
         // The empty opening is a baseline, not a server acceptance or Saved claim.
         confirmedValue: isNew ? undefined : confirmedDraft,
+        readBase: readDraftBase,
     });
 
     // Recovery compares the complete shown payload; delivery remains owned by the shared draft mechanism.
@@ -1077,12 +1081,19 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setType(unsavedRecovery.type);
         setDictationSourceIds(unsavedRecovery.dictationSourceIds ?? []);
         setRecordingSourceIds(unsavedRecovery.recordingSourceIds ?? unsavedRecovery.dictationSourceIds ?? []);
+        // RESUME THE SESSION THESE WORDS WERE TYPED IN, not a new one on the row just opened. With the opened row as
+        // the baseline, old words passed as a fresh edit: another device's newer text was replaced, and fields this
+        // device never touched (a title changed on the phone) were sent back, all in one silent command. From the
+        // kept base the save sends only what the person changed, and the existing baseline check decides — accept,
+        // merge by field, or ask. A copy without a base asks (see `resumedNoteBaseline`). A new note has no stored
+        // version to replace: its create carries no baseline.
+        if (!isNew) baselineRef.current = resumedNoteBaseline(recoveredBase, unsavedRecovery, baselineRef.current, noteId, bibleLocale);
         // Hide the offer but KEEP the stored copy: this text is still unconfirmed
         // until a save lands. Deleting it here would leave a window with no durable
         // copy at all.
         acceptRecovered();
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle, changeContent, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs, setTags, setType]);
+    }, [unsavedRecovery, recoveredBase, isNew, noteId, bibleLocale, acceptRecovered, answerDraftQuestion, setTitle, changeContent, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs, setTags, setType]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,

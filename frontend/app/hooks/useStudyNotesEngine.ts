@@ -67,8 +67,12 @@ export function engineNote(value: DocumentData, id: string, locale: AppLocale): 
  */
 const readFrom = new WeakMap<object, unknown>();
 
-/** Recover the exact stored list behind a reading, including legacy references without a Bible. */
-const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
+/**
+ * Recover the exact stored list behind a reading, including legacy references without a Bible. Exported for a copy
+ * of an editor baseline that leaves memory (a note draft's base): JSON keeps the stored list, never this mapping, and
+ * `engineNote` reads it back into a reading that has the mapping again.
+ */
+export const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
   ? readFrom.get(references) ?? references : references;
 
 const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({

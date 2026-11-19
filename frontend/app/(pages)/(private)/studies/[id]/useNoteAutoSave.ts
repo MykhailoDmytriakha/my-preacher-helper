@@ -19,6 +19,8 @@ import { announceIfPersisted, awaitAcceptance } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
 
+import { noteDraftBase } from './noteDraftBase';
+
 import type { NoteDraftPayload } from './noteDraft';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
@@ -180,7 +182,9 @@ export function useNoteAutoSave({
             const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
             // Do not claim another creation's copy or an untagged legacy source for this ID.
             const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
-            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId, true, draftEditedAt) : false;
+            // The copy keeps the base it was typed against, as every writer of this key does (`noteDraftBase`).
+            const backupReady = sourceKey && ownsSource
+                ? saveDraft(sourceKey, confirmedPayload, creationId, true, draftEditedAt, noteDraftBase(baselineRef.current)) : false;
             const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
             const captureScope = sourceKey && backupReady && creationId
                 ? prepareDraftCapture(sourceKey, confirmedPayload, { collection: 'studyNotes', id: creationId }) : undefined;
@@ -254,7 +258,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
+    }, [createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, baselineRef, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -326,7 +330,8 @@ export function useNoteAutoSave({
         setLastSaved(null);
         try {
             const recording = captureRecordingHandoff?.(updates.dictationSourceIds ?? EMPTY_SOURCE_IDS);
-            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt);
+            // The copy keeps the base this save is checked against: the same `baselineRef` sent below.
+            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt, noteDraftBase(baselineRef.current));
             const submission = updateNote({
                 id: noteId,
                 captureScope,

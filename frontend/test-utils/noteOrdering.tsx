@@ -153,7 +153,8 @@ async function mountPage() {
   });
   if (screen.queryByTitle('common.edit')) fireEvent.click(screen.getByTitle('common.edit'));
   await settle();
-  mockEditor.view.setProps({ handleScrollToSelection: () => true });
+  // An opening that first offers unsaved text from last time mounts no editor until that is answered.
+  if (view.container.querySelector('.tiptap')) mockEditor.view.setProps({ handleScrollToSelection: () => true });
 }
 /** Reboot the engine from device storage, without a callback or live engine from the old page. */
 export async function reloadPage() {
@@ -210,7 +211,7 @@ async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title
 afterEach(() => {
   disposeHistory();
   mockHoldCollection = false; mockDelayedCollection = []; mockRenderCount = 0;
-  mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null;
+  mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null; mockRecoveryBase = undefined;
 });
 
 
@@ -238,6 +239,16 @@ export const stand = {
     mockRouteId = id;
     await mountPage();
   },
+  /** The person leaves the note inside the app: the page unmounts while the engine keeps running. */
+  leave() { view.unmount(); },
+  /** The person opens a note again after `leave`. */
+  async reopen(id = 'note-x') {
+    jest.advanceTimersByTime(1);
+    mockRouteId = id;
+    await mountPage();
+  },
+  /** What a planted `recovery` copy was built from; unset plants a copy written without one. */
+  set recoveryBase(value: NoteDraftPayload | undefined) { mockRecoveryBase = value; },
   set routeId(value: string) { mockRouteId = value; },
 };
 export { original, md, stored, start, settle, phoneSave, captureNotices };
@@ -249,6 +260,7 @@ export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'arr
 let mockAfterMarkSaved: ((content: string) => void) | undefined;
 let mockConfirmed: NoteDraftPayload | null;
 let mockRecovery: NoteDraftPayload | null = null;
+let mockRecoveryBase: NoteDraftPayload | undefined;
 jest.mock('@/hooks/useDurableDraft', () => {
   const actual = jest.requireActual('@/hooks/useDurableDraft');
   return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as NoteDraftPayload | null; const result = actual.useDurableDraft(args);
@@ -257,8 +269,8 @@ jest.mock('@/hooks/useDurableDraft', () => {
       mark(value);
       mockAfterMarkSaved?.((value as { content: string }).content);
     }, [mark]);
-    return { ...result, markSaved, ...(mockRecovery ? { recovered: mockRecovery,
-      acceptRecovered: () => { mockRecovery = null; result.acceptRecovered(); },
+    return { ...result, markSaved, ...(mockRecovery ? { recovered: mockRecovery, recoveredBase: mockRecoveryBase,
+      acceptRecovered: () => { mockRecovery = null; mockRecoveryBase = undefined; result.acceptRecovered(); },
     } : {}) }; } };
 });
 

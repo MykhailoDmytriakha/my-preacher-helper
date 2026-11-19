@@ -45,6 +45,12 @@ export interface UseDurableDraftOptions<T> {
   /** Logical editor identity across an optimistic document-id handoff. The draft
    * moves to docId, but recovery is inspected only once for this owner/identity. */
   recoveryIdentity?: string | null;
+  /**
+   * What the editor's current value is built from — the baseline its own save would compare against — read
+   * at every write, the debounced one and the departure flush alike, and kept beside the words (`DurableDraft.base`).
+   * Omitted: copies are written without a base, as before.
+   */
+  readBase?: () => unknown;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -55,6 +61,8 @@ export interface UseDurableDraftResult<T> {
    * Read ONCE at mount: it must not change under the user while typing.
    */
   recovered: T | null;
+  /** What the selected copy was built from, unvalidated; undefined for a copy written without one. */
+  recoveredBase: unknown;
   recoveredKey: string | null;
   recoveries: readonly DurableDraftCopy<T>[];
   selectRecovered: (key: string) => void;
@@ -129,6 +137,7 @@ export function useDurableDraft<T>({
   isRecoveredDraftSaved,
   preferredRecoveryKey,
   recoveryIdentity = docId,
+  readBase,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate, writerId) : null;
   const recoveryKey = uid && recoveryIdentity ? draftKey(uid, recoveryIdentity, aggregate) : null;
@@ -141,6 +150,8 @@ export function useDurableDraft<T>({
   enabledRef.current = enabled;
   const keyRef = useRef(key);
   keyRef.current = key;
+  const readBaseRef = useRef(readBase);
+  readBaseRef.current = readBase;
 
   const [recovery, setRecovery] = useState<{ identity: string | null; copies: DurableDraftCopy<T>[] }>({ identity: null, copies: [] });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -148,6 +159,7 @@ export function useDurableDraft<T>({
   const selected = recoveries.find(copy => copy.key === selectedKey)
     ?? recoveries.find(copy => copy.key === preferredRecoveryKey) ?? recoveries[0] ?? null;
   const recovered = selected?.value ?? null;
+  const recoveredBase = selected?.base;
   const recoveredKey = selected?.key ?? null;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -259,7 +271,8 @@ export function useDurableDraft<T>({
       }
       return;
     }
-    if (saveDraft(targetKey, next, creationTargetId, false, editedAt)) {
+    // The base as it is now, beside these words: the same baseline the editor's next save would carry.
+    if (saveDraft(targetKey, next, creationTargetId, false, editedAt, readBaseRef.current?.())) {
       const record = readDraft<T>(targetKey);
       if (record?.editedAt === editedAt && serializeContent(record.value) === serialised) {
         ourDraftRef.current = { key: targetKey, value: serialised, record };
@@ -407,5 +420,5 @@ export function useDurableDraft<T>({
     // A replacement at that address can never satisfy this old snapshot.
   }, [key, recoveryKey, retireKnownCopies, isRecoveredDraftSaved]);
 
-  return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
+  return { editedAt: editRef.current.editedAt, recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

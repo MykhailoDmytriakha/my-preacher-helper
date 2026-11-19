@@ -168,6 +168,8 @@ it('asks about dictation and typing when a dirty page cannot adopt the arrival',
 it('restores a draft through replacement and keeps later typing without a false question', async () => {
   await start();
   stand.recovery = { title: 'Original', content: original + '\n\nRecoveredword', tags: [], scriptureRefs: [], type: 'note' };
+  // Typed on the note as it is stored now. A copy without its base asks first (noteRecovery.draftSession).
+  stand.recoveryBase = { title: 'Original', content: original, tags: [], scriptureRefs: [], type: 'note' };
   act(() => insert(' Abandonedword'));
   expect(screen.getByText('unsavedDraft.restore')).toBeInTheDocument();
   fireEvent.click(screen.getByText('unsavedDraft.restore'));

@@ -882,3 +882,45 @@ describe('confirmed-copy cleanup retries preserve exact ownership', () => {
     finally { newer.unmount(); }
   });
 });
+
+describe('each write keeps the base its words were built from, read at that write', () => {
+  const WRITER = draftKey('uid-1', 'note-1', 'note', 'opening');
+  beforeEach(() => { window.localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('the delayed write records the base as it is when the write lands', () => {
+    let base = 'Opened';
+    const view = render('Opened', { writerId: 'opening', readBase: () => base });
+    view.rerender({ value: 'Opened and typed' });
+    // The editor's own save moved its baseline before the delayed write fired.
+    base = 'Opened and submitted';
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Opened and typed', base: 'Opened and submitted' }));
+    view.unmount();
+  });
+
+  it.each(['pagehide', 'unmount'] as const)('the %s flush records the base current at departure', departure => {
+    let base = 'Opened';
+    const view = render('Opened', { writerId: 'opening', readBase: () => base });
+    view.rerender({ value: 'Typed just before leaving' });
+    base = 'Submitted just before leaving';
+    if (departure === 'pagehide') act(() => { window.dispatchEvent(new Event('pagehide')); });
+    else view.unmount();
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Typed just before leaving', base: 'Submitted just before leaving' }));
+    if (departure === 'pagehide') view.unmount();
+  });
+
+  it('offers the selected copy with its base, and no base for a copy written without one', () => {
+    const kept = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+    const older = draftKey('uid-1', 'note-1', 'note', 'older-build');
+    saveDraft(kept, 'Kept words', undefined, false, 2, 'Kept base');
+    saveDraft(older, 'Older words', undefined, false, 1);
+    const view = render('Server words', { writerId: 'opening' });
+    expect(view.result.current.recovered).toBe('Kept words');
+    expect(view.result.current.recoveredBase).toBe('Kept base');
+    act(() => view.result.current.selectRecovered(older));
+    expect(view.result.current.recovered).toBe('Older words');
+    expect(view.result.current.recoveredBase).toBeUndefined();
+    view.unmount();
+  });
+});
