@@ -53,13 +53,12 @@ function useHarness({ copy, changedContent = false, addReference = false }: {
   const refs = useMemo(() => addReference ? [...copied, added] : copied, [copied, addReference]);
   const baselineRef = useRef<NoteDraftPayload | null>(initial);
   const revisionRef = useRef<number | null>(4);
-  const deliberateOverwriteRef = useRef(false);
   const autosave = useNoteAutoSave({
     noteId: 'n1', isNew: false, isInitialized: true, uid: 'u',
     title: initial.title, content: changedContent ? 'Own changed paragraph' : initial.content,
     tags: initial.tags, scriptureRefs: refs, type: initial.type,
     updateNote: engine.updateNote, createNote: engine.createNote, setCreatedNoteId: jest.fn(),
-    baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce: 0, saveBlocked: false,
+    baselineRef, revisionRef, resaveNonce: 0, saveBlocked: false,
     onConflict, onSaved, t: ((key: string) => key) as never,
   });
   return { autosave, baselineRef };

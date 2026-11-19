@@ -11,10 +11,10 @@ const WRITER='placeholder-opening';
 const SOURCE=draftKey(OWNER,'new','note',WRITER), DEST=draftKey(OWNER,TARGET,'note',WRITER);
 const value=(content:string):NoteDraftPayload=>({title:'',content,tags:[],scriptureRefs:[],type:'note'});
 function useEditor(content:string,createNote:jest.Mock){
- const [id,setId]=useState('new');const baselineRef=useRef<NoteDraftPayload|null>(null),revisionRef=useRef<number|null>(null),deliberateOverwriteRef=useRef(false);
+ const [id,setId]=useState('new');const baselineRef=useRef<NoteDraftPayload|null>(null),revisionRef=useRef<number|null>(null);
  const draftOptions={writerId:WRITER,uid:OWNER,docId:id,aggregate:'note',value:value(content),enabled:true,confirmedValue:null,creationTargetId:id==='new'?TARGET:undefined};
  const draft=useDurableDraft(draftOptions);
- const options={draftWriterId:WRITER,noteId:id,isNew:id==='new',creationId:TARGET,isInitialized:true,...value(content),updateNote:jest.fn(),createNote:createNote as never,uid:OWNER,setCreatedNoteId:setId,t:((s:string)=>s)as never,baselineRef,revisionRef,deliberateOverwriteRef,resaveNonce:0,saveBlocked:false,onConflict:jest.fn(),onSaved:draft.markSaved};
+ const options={draftWriterId:WRITER,noteId:id,isNew:id==='new',creationId:TARGET,isInitialized:true,...value(content),updateNote:jest.fn(),createNote:createNote as never,uid:OWNER,setCreatedNoteId:setId,t:((s:string)=>s)as never,baselineRef,revisionRef,resaveNonce:0,saveBlocked:false,onConflict:jest.fn(),onSaved:draft.markSaved};
  return {id,draft,save:useNoteAutoSave(options)};
 }
 function source(content:string,target:string|null=TARGET){localStorage.setItem(SOURCE,JSON.stringify({value:value(content),savedAt:1,...(target?{creationTargetId:target}:{})}));}

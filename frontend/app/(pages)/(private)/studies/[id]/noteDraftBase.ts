@@ -33,6 +33,29 @@ function readableBase(kept: unknown): kept is NoteDraftPayload {
         && isText(base.title) && isText(base.content) && isText(base.type) && isList(base.tags) && isList(base.scriptureRefs);
 }
 
+/** Stored references read as the screens read a note (`engineNote`): the reading maps back to this stored list in the check. */
+function readStoredReferences(references: unknown, type: unknown, noteId: string, locale: AppLocale): unknown {
+    return Array.isArray(references)
+        ? engineNote({ type: type ?? undefined, scriptureRefs: references } as unknown as DocumentData, noteId, locale).scriptureRefs
+        : references;
+}
+
+/**
+ * The baseline after «keep my text» in the note's version question: the version the question was about — what the
+ * refused save found stored for every field it compared — becomes what the person's text is built from. The next
+ * ordinary save then replaces exactly that version, and the existing check refuses (asks again) if another version was
+ * stored since. Fields the refusal did not compare keep the shown base, so what the person left untouched is not sent.
+ * The same base goes into every copy of the text, so a page that goes away before the send leaves a copy whose restore
+ * replaces that version without asking again.
+ */
+export function keepMineBaseline(shown: NoteDraftPayload, refused: Record<string, unknown>, noteId: string, locale: AppLocale): NoteDraftPayload {
+    const decided = Object.fromEntries(Object.entries(refused).filter(([field]) => field in shown));
+    const kept = { ...shown, ...decided } as NoteDraftPayload;
+    return 'scriptureRefs' in decided
+        ? { ...kept, scriptureRefs: readStoredReferences(decided.scriptureRefs, kept.type, noteId, locale) as NoteDraftPayload['scriptureRefs'] }
+        : kept;
+}
+
 /**
  * The baseline a restored draft resumes from.
  *
@@ -48,8 +71,7 @@ export function resumedNoteBaseline(kept: unknown, restored: NoteDraftPayload, s
     noteId: string, locale: AppLocale): NoteDraftPayload {
     if (readableBase(kept)) {
         if (!Array.isArray(kept.scriptureRefs)) return kept;
-        const reading = engineNote({ type: kept.type ?? undefined, scriptureRefs: kept.scriptureRefs } as unknown as DocumentData, noteId, locale).scriptureRefs;
-        return { ...kept, scriptureRefs: reading };
+        return { ...kept, scriptureRefs: readStoredReferences(kept.scriptureRefs, kept.type, noteId, locale) as NoteDraftPayload['scriptureRefs'] };
     }
     const current: Partial<Record<keyof NoteDraftPayload, unknown>> = shown ?? {};
     const unknown = (Object.keys(restored) as (keyof NoteDraftPayload)[])

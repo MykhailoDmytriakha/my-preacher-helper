@@ -78,7 +78,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    liveValues, noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    liveValues, noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     /** The page reads this same synchronous snapshot for adoption and submission. */
     liveValues?: () => NoteDraftPayload;
@@ -116,19 +116,16 @@ export function useNoteAutoSave({
     baselineRef: React.MutableRefObject<NoteDraftPayload | null>;
     /** Revision this text was built from; null keeps the write unguarded. */
     revisionRef: React.MutableRefObject<number | null>;
-    /**
-     * The next save is a DELIBERATE overwrite chosen by the person after a refusal.
-     * It suppresses the content check for that one send — otherwise the check
-     * compares their text against what the other device stored, mismatches by
-     * definition, and refuses the action they just confirmed, every time.
-     */
-    deliberateOverwriteRef: React.MutableRefObject<boolean>;
     /** Changes when the person asks to send the same text again after a refusal. */
     resaveNonce: number;
     /** While true the server already refused: stop saving until the person chooses. */
     saveBlocked: boolean;
-    /** Raised when the server refused a stale write — the text is NOT lost. */
-    onConflict: () => void;
+    /**
+     * Raised when the check refused a stale write — the text is NOT lost. It carries what the check found stored for
+     * every field it compared: the version the person is asked about. «Keep my text» makes it the baseline
+     * (`keepMineBaseline`), so the same check replaces exactly that version and asks again about a later one.
+     */
+    onConflict: (stored: Record<string, unknown>) => void;
     /**
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
@@ -285,10 +282,9 @@ export function useNoteAutoSave({
         // a stale tab silently reverts text edited elsewhere. The baseline advances
         // only after acceptance, so a failed write remains changed on the next pass.
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, payload);
-        const wasDeliberate = deliberateOverwriteRef.current;
         const titleEdit = titleEditRef?.current;
         const seen = titleEdit?.capture.seen;
-        const titleCapture = !wasDeliberate && titleEdit && titleEdit.owner === uid && titleEdit.id === noteId && titleEdit.value === title
+        const titleCapture = titleEdit && titleEdit.owner === uid && titleEdit.id === noteId && titleEdit.value === title
             && seen && (seen.requestId ? seen.title !== title : updates.title !== undefined && seen.title === baselineRef.current?.title)
             ? titleEdit.capture : undefined;
         // Returning to an already accepted string can still be a new, exact action after a local predecessor.
@@ -296,13 +292,13 @@ export function useNoteAutoSave({
 
         const typeEdit = typeEditRef?.current;
         const openingType = typeEdit?.capture.seen;
-        const typeCapture = !wasDeliberate && typeEdit && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === type
+        const typeCapture = typeEdit && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === type
             && openingType && (openingType.requestId ? openingType.type !== type : updates.type !== undefined && openingType.type === baselineRef.current?.type)
             ? typeEdit.capture : undefined;
         if (typeCapture) updates.type = type;
 
         const openingTags = baselineRef.current?.tags;
-        const tagEdits = !wasDeliberate && openingTags && tagEditsRef
+        const tagEdits = openingTags && tagEditsRef
             ? [...tagEditsRef.current].filter(([tag, edit]) => edit.owner === uid && edit.id === noteId && edit.before !== edit.present
                 && edit.present === tags.includes(tag) && (edit.present !== openingTags.includes(tag) || edit.predecessorRequestId)) : [];
         const tagMembership: DocumentTagIntent[] = tagEdits.map(([tag, edit]) => ({
@@ -344,15 +340,14 @@ export function useNoteAutoSave({
                 // to fingerprint the document it had just fetched, which compares the
                 // server with itself, always agrees, and let a stale save through.
                 // The baseline is the text last adopted or submitted by this page.
-                // ⚠️ OMITTED for a DELIBERATE overwrite. The person saw the conflict
-                // and chose their own text; carrying the opening values would compare
-                // them against what the other device stored, mismatch by definition,
-                // and refuse the very action they just confirmed — forever. Then the
-                // counter alone decides, and it was set to the revision seen at the
-                // refusal, which is exactly the "yes, replace that" statement.
-                expectedBaseline: deliberateOverwriteRef.current
-                    ? null
-                    : (baselineRef.current as unknown as Record<string, unknown>),
+                // ALWAYS SENT, «keep my text» included. That answer does not switch
+                // the check off — a decision sent later without it replaced whatever
+                // was stored by then, a version the person never saw, silently
+                // (BUG-20261117-note-kept-decision-sent-later-without-base-check).
+                // It moves this baseline to the version the person decided to
+                // replace (`keepMineBaseline`): the check passes for that version
+                // and asks again about any version stored after it.
+                expectedBaseline: baselineRef.current as unknown as Record<string, unknown>,
             });
             if (titleCapture && titleEdit && titleEditRef && submission.capture) {
                 void submission.capture.then(receipt => {
@@ -422,9 +417,6 @@ export function useNoteAutoSave({
                  */
                 if (acceptance.kind === 'queued') {
                     advanceSubmittedBaseline(submittedPayload);
-                    // A deliberate overwrite is one send; left armed, every later save
-                    // would go out unguarded until the next persisted one.
-                    if (wasDeliberate) deliberateOverwriteRef.current = false;
                     // Canonical capture may already own the backup. Confirmed UI
                     // still waits for the exact whole-write server result.
                     void submission.persistence.then(async () => {
@@ -450,7 +442,6 @@ export function useNoteAutoSave({
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.
             advanceSubmittedBaseline(submittedPayload);
-            if (wasDeliberate) deliberateOverwriteRef.current = false;
             acknowledge(saved);
             announceIfPersisted(acceptance, () => setLastSaved(new Date()));
         } catch (e) {
@@ -458,8 +449,8 @@ export function useNoteAutoSave({
                 // REFUSED, not failed. The server holds a newer version, so this text
                 // was NOT written — and it was NOT lost either: the durable draft
                 // already holds it and the inputs still show it. Stop hammering the
-                // server and hand the decision to the person.
-                onConflict();
+                // server and hand the decision to the person, with the version it is about.
+                onConflict(e.serverValues);
                 setSaveError(null);
                 return;
             }
@@ -476,7 +467,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, readValues, updateNote, baselineRef, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, readValues, updateNote, baselineRef, advanceSubmittedBaseline, revisionRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;
