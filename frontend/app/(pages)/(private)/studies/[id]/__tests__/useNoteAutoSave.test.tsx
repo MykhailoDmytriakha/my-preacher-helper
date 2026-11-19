@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { clearDraft, draftKey, isDraftStorageRefusedFor, readDraft, saveDraft } from '@/utils/durableDraft';
 import { persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 
@@ -34,6 +33,7 @@ const payload: NoteDraftPayload = {
 function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string; writerId?: string; draftEditedAt?: number }) {
   const baselineRef = useRef<NoteDraftPayload | null>(null);
   const revisionRef = useRef<number | null>(null);
+  const deliberateOverwriteRef = useRef(false);
   return useNoteAutoSave({
     noteId: 'new',
     creationId: creation?.id,
@@ -54,6 +54,7 @@ function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) =>
     t: ((key: string) => key) as never,
     baselineRef,
     revisionRef,
+    deliberateOverwriteRef,
     resaveNonce: 0,
     saveBlocked: false,
     onConflict: jest.fn(),
@@ -274,6 +275,7 @@ describe('creating a note keeps the durable draft at all times', () => {
       t: ((key: string) => key) as never,
       baselineRef,
       revisionRef: { current: 1 as number | null },
+      deliberateOverwriteRef: { current: false },
       resaveNonce: 0,
       onConflict: jest.fn(),
       onSaved: jest.fn(),
@@ -312,6 +314,7 @@ describe('creating a note keeps the durable draft at all times', () => {
      */
     const baselineRef = { current: null as NoteDraftPayload | null };
     const revisionRef = { current: 1 as number | null };
+    const deliberateOverwriteRef = { current: false };
     const updateNote = jest.fn(() => {
       const submission = queuedMutation('outbox:study-note:update:n1', Promise.resolve());
       return { ...submission, result: new Promise(() => undefined) };
@@ -338,6 +341,7 @@ describe('creating a note keeps the durable draft at all times', () => {
         t: ((key: string) => key) as never,
         baselineRef: baselineRef as never,
         revisionRef: revisionRef as never,
+        deliberateOverwriteRef: deliberateOverwriteRef as never,
         resaveNonce: 0,
         saveBlocked: false,
         onConflict: jest.fn(),
@@ -352,37 +356,23 @@ describe('creating a note keeps the durable draft at all times', () => {
     await act(async () => { jest.advanceTimersByTime(6000); });
     expect(updateNote).toHaveBeenCalledTimes(1);
   });
-  it('hands the page the version a refused save found stored, and the save asked for again carries the baseline it is given', async () => {
-    // «Keep my text» does not switch the check off: the page makes this version the baseline (`keepMineBaseline`)
-    // and asks for the save again, at once (BUG-20261117-note-kept-decision-sent-later-without-base-check).
-    const stored = { content: 'Phone words' };
-    const updateNote = jest.fn(() => {
-      const acceptance = Promise.reject(new StaleWriteError('note', 1, 2, stored));
-      const persistence = acceptance.then(() => undefined);
-      void acceptance.catch(() => undefined);
-      void persistence.catch(() => undefined);
-      return { acceptance, persistence, result: new Promise(() => undefined) };
-    });
-    const onConflict = jest.fn();
-    const baselineRef = { current: payload as NoteDraftPayload | null };
-    const saveAtOnceRef = { current: false };
-    const typed = 'kept on purpose';
-    const { rerender } = renderHook(({ resaveNonce }) => useNoteAutoSave({
-      noteId: 'n1', isNew: false, isInitialized: true, ...payload, content: typed,
-      updateNote: updateNote as never, createNote: jest.fn() as never, uid: 'u1', setCreatedNoteId: jest.fn(),
-      t: ((key: string) => key) as never, baselineRef, revisionRef: { current: 1 }, saveAtOnceRef,
-      resaveNonce, saveBlocked: false, onConflict,
-    }), { initialProps: { resaveNonce: 0 } });
-    await act(async () => { jest.advanceTimersByTime(1600); });
-    expect(onConflict).toHaveBeenCalledWith(stored);
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: typed }, expectedBaseline: payload }));
-
-    baselineRef.current = { ...payload, ...stored };
-    saveAtOnceRef.current = true;
-    rerender({ resaveNonce: 1 });
-    await act(async () => { jest.advanceTimersByTime(0); });
-    expect(updateNote).toHaveBeenCalledTimes(2);
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: typed }, expectedBaseline: { ...payload, ...stored } }));
+  it('disarms a deliberate overwrite once it is queued, so later saves are guarded again', async () => {
+    const deliberateOverwriteRef = { current: true };
+    const updateNote = jest.fn(() => ({ ...queuedMutation('outbox:study-note:update:n1', Promise.resolve()), result: new Promise(() => undefined) }));
+    const updated: NoteDraftPayload = { ...payload, content: 'kept on purpose' };
+    renderHook(() =>
+      useNoteAutoSave({
+        noteId: 'n1', isNew: false, isInitialized: true,
+        existingNote: { id: 'n1', ...payload } as unknown as StudyNote,
+        title: updated.title, content: updated.content, tags: updated.tags, scriptureRefs: updated.scriptureRefs, type: updated.type,
+        updateNote: updateNote as never, createNote: jest.fn() as never, uid: 'u1', setCreatedNoteId: jest.fn(),
+        t: ((key: string) => key) as never, baselineRef: { current: null } as never, revisionRef: { current: 1 } as never,
+        deliberateOverwriteRef: deliberateOverwriteRef as never, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(),
+      })
+    );
+    await waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ expectedBaseline: null }));
+    await waitFor(() => expect(deliberateOverwriteRef.current).toBe(false), { timeout: 4000 });
   });
 
   it.each([2, 1])('acknowledges a queued update only after actual persistence at revision %s', async (savedRevision) => {
@@ -395,7 +385,7 @@ describe('creating a note keeps the durable draft at all times', () => {
     const { result } = renderHook(() => useNoteAutoSave({
       noteId: 'n1', isNew: false, isInitialized: true, ...payload, content: saved.content,
       updateNote, createNote: jest.fn(), uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never,
-      baselineRef: { current: payload }, revisionRef,
+      baselineRef: { current: payload }, revisionRef, deliberateOverwriteRef: { current: false },
       resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), onSaved,
     }));
     await act(async () => jest.advanceTimersByTime(1600));
@@ -421,7 +411,7 @@ describe('timed study note title autosaves', () => {
     ...payload, noteId: 'n1', isNew: false, isInitialized: true, updateNote,
     createNote: jest.fn(), uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never,
     baselineRef: { current: payload as NoteDraftPayload | null }, revisionRef: { current: 1 as number | null },
-    resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), onSaved: jest.fn(),
+    deliberateOverwriteRef: { current: false }, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), onSaved: jest.fn(),
     titleEditRef: { current: { owner: 'u1', id: 'n1', value: 'Phone title', capture: { seen: opening, time } } },
   });
   beforeEach(() => jest.useFakeTimers());
@@ -556,7 +546,7 @@ describe('the note hands its text over at once when the page hides or dictation 
       title: payload.title, tags: payload.tags, scriptureRefs: payload.scriptureRefs, type: payload.type,
       updateNote: updateNote as never, createNote: jest.fn() as never, uid: 'u1', setCreatedNoteId: jest.fn(),
       t: ((key: string) => key) as never, baselineRef: { current: payload }, revisionRef: { current: 1 as number | null },
-      resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), saveAtOnceRef,
+      deliberateOverwriteRef: { current: false }, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), saveAtOnceRef,
     };
     return renderHook(({ content }) => useNoteAutoSave({ ...shared, content }), { initialProps: { content: payload.content } });
   }

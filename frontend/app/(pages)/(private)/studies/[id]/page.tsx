@@ -81,7 +81,7 @@ import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
-import { keepMineBaseline, noteDraftBase, resumedNoteBaseline } from './noteDraftBase';
+import { noteDraftBase, resumedNoteBaseline } from './noteDraftBase';
 import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
 import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type NoteTypeEdit, type SubmittedNoteTag, type SubmittedNoteType } from './useNoteAutoSave';
@@ -864,14 +864,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
      */
     const serverRevisionRef = useRef<number | null>(null);
     const [saveConflict, setSaveConflict] = useState(false);
-    /** What the refused save found stored, for every field it compared: the version the question is about. */
-    const refusedVersionRef = useRef<Record<string, unknown> | null>(null);
     /**
      * Bumped when the person insists on their text after a refusal. Without it the
      * banner would close and nothing would be sent until the next keystroke — the
      * same silence this whole effort is against.
      */
     const [resaveNonce, setResaveNonce] = useState(0);
+    /** Set by "keep my text", cleared once that send has been made. */
+    const deliberateOverwriteRef = useRef(false);
 
     // Establish the revision from the LOADED NOTE, not only from the listener. A
     // save that fired before the first server snapshot used to go out unguarded,
@@ -999,13 +999,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
         revisionRef: serverRevisionRef,
+        deliberateOverwriteRef,
         resaveNonce,
         saveAtOnceRef,
         saveBlocked: saveConflict || unavailable || draftHeld,
-        onConflict: (stored) => {
-            refusedVersionRef.current = stored;
-            setSaveConflict(true);
-        },
+        onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
         onSaved: (saved, replacedTitle, replacedTags, replacedType) => {
             const pendingTitle = titleEditRef.current;
@@ -1528,17 +1526,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         // No `pendingText`: unlike the sermon header, this editor stays
                         // open and still shows the refused text.
                         onKeepMine={() => {
-                            // KEEP MINE = REPLACE THE VERSION THE QUESTION WAS ABOUT, not "send without
-                            // the check". That version becomes what this text is built from, so the
-                            // ordinary save replaces exactly it and its check asks again about a version
-                            // stored since. Every copy of this text now keeps that base (`readDraftBase`):
-                            // a page gone before the send leaves a copy that restores without asking again.
-                            // Sent at once — the decision is made, there is no typing to wait for.
-                            const refused = refusedVersionRef.current;
-                            if (refused && baselineRef.current) {
-                                baselineRef.current = keepMineBaseline(baselineRef.current, refused, noteId, bibleLocale);
-                            }
-                            saveAtOnceRef.current = true;
+                            // Say plainly that this one send is deliberate, or the content
+                            // check refuses it again and the button never works.
+                            deliberateOverwriteRef.current = true;
                             setSaveConflict(false);
                             setResaveNonce((n) => n + 1);
                         }}

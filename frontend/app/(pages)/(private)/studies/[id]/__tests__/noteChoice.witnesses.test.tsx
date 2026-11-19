@@ -301,19 +301,8 @@ const u130Actions: ChoiceAction[] = [
   }
 ];
 
-it('U130-01 retains every word; a version stored after the kept answer is asked about once more, and the next answer converges', async () => {
-  // His inline «keep» (action 13) is about the version its question showed; it is refused «decision required» while the
-  // notice waits. The phone's copy of his live text (action 11, stored after that question) is a version the answer was
-  // not about, so his next save asks again instead of replacing it unchecked
-  // (BUG-20261117-note-kept-decision-sent-later-without-base-check); answering «keep» once more stores every word.
-  const asked = await runChoiceHistory(u130Actions, 'U130-01');
-  expect(asked.invalid).toBeUndefined();
-  expect(asked.terminal.editor).toBe('Original paragraph.\n\nSecond paragraph. S130E1X S130E7X S130E22X');
-  expect(asked.terminal.stored).toBe('Original paragraph.\n\nSecond paragraph. S130E1X S130E7X');
-  expect(asked.terminal.question).toBe(true);
-  expect(asked.terminal.sends).toBe(2);
-
-  const row = await runChoiceHistory([...u130Actions, { kind: 'inlineKeep' }, { kind: 'timer' }], 'U130-01');
+it('U130-01 retains every word and converges without a manufactured question', async () => {
+  const row = await runChoiceHistory(u130Actions, 'U130-01');
   const expected = 'Original paragraph.\n\nSecond paragraph. S130E1X S130E7X S130E22X';
   expect(row.invalid).toBeUndefined();
   expect(row.valid).toBe(true);

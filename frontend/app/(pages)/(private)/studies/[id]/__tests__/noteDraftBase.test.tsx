@@ -4,7 +4,7 @@ import { engineNote, storedReferences } from '@/hooks/useStudyNotesEngine';
 import { draftKey, readDraft } from '@/utils/durableDraft';
 import { queuedMutation } from '@/utils/recoverableWrite';
 
-import { keepMineBaseline, noteDraftBase, resumedNoteBaseline } from '../noteDraftBase';
+import { noteDraftBase, resumedNoteBaseline } from '../noteDraftBase';
 import { useNoteAutoSave } from '../useNoteAutoSave';
 
 import type { NoteDraftPayload } from '../noteDraft';
@@ -45,28 +45,11 @@ describe('what a note draft keeps as its base', () => {
   });
 });
 
-describe('what «keep my text» makes the base', () => {
-  it('the refused version for the fields the check compared, references read back as the screen reads them', () => {
-    const shown: NoteDraftPayload = { title: 'Opened title', content: 'Opened words', tags: ['kept'], scriptureRefs: [], type: 'note' };
-    // What the check reports is stored data: the old reference without its Bible.
-    const kept = keepMineBaseline(shown, { content: 'Phone words', scriptureRefs: [oldReference] }, 'n1', 'ru');
-    expect(kept).toEqual({ ...shown, content: 'Phone words', scriptureRefs: kept.scriptureRefs });
-    expect(kept.scriptureRefs[0]).toHaveProperty('bible');
-    expect(storedReferences(kept.scriptureRefs)).toEqual([oldReference]);
-  });
-
-  it('leaves the shown base for every field the check did not compare, and takes no field the editor does not own', () => {
-    const shown: NoteDraftPayload = { title: 'Opened title', content: 'Opened words', tags: ['kept'], scriptureRefs: [], type: 'note' };
-    // A note stored without words is reported as null, which the check reads as that absence.
-    expect(keepMineBaseline(shown, { content: null, analysis: { book: 'x' } }, 'n1', 'en')).toEqual({ ...shown, content: null });
-  });
-});
-
 describe('the note autosave keeps the base in every copy it writes itself', () => {
   beforeEach(() => { jest.useFakeTimers(); window.localStorage.clear(); });
   afterEach(() => { jest.useRealTimers(); });
   const common = { uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never, revisionRef: { current: 1 as number | null },
-    resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), draftWriterId: 'opening' };
+    deliberateOverwriteRef: { current: false }, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), draftWriterId: 'opening' };
   const never = () => new Promise<never>(() => undefined);
 
   it('the immediate backup of an update keeps the baseline that very update is checked against', async () => {
