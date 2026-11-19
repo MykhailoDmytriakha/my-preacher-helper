@@ -1,5 +1,6 @@
 'use client';
 
+import ScriptureRefBadge from '@/components/studies/ScriptureRefBadge';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -7,7 +8,6 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
 
-import ScriptureRefBadge from '../ScriptureRefBadge';
 
 import type { NoteDraftPayload } from './noteDraft';
 

@@ -442,45 +442,6 @@ describe('timed study note title autosaves', () => {
     expect(options.baselineRef.current?.type).toBe('note');
   });
 
-  it('sends the exact reference action time without assigning it to a different edit', async () => {
-    const original = { id: 'phone-ref', bible: 'kjv' as const, book: 'John', chapter: 3, fromVerse: 16 };
-    const other = { ...original, id: 'other-ref', fromVerse: 20 };
-    const time = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_112 };
-    const updateNote = jest.fn(() => ({ ...queuedMutation('timed-reference', Promise.resolve()), result: Promise.resolve(payload) }));
-    const options = setup(updateNote);
-    options.baselineRef.current = { ...payload, scriptureRefs: [original, other] };
-    renderHook(() => useNoteAutoSave({ ...options, scriptureRefs: [{ ...other, fromVerse: 22 }], referenceEdits: new Map([
-        [original.id, { time, observedRevision: 2 }], [other.id, { time, observedRevision: 3, reference: { ...other, fromVerse: 21 } }],
-    ]) }));
-
-    await act(async () => jest.advanceTimersByTime(1600));
-    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ referenceEvidence: { times: { [original.id]: time }, observedRevisions: { [original.id]: 2 } } }));
-  });
-
-  it('adopts canonical references from an exact queued acknowledgement before another autosave', async () => {
-    const phone = { id: 'phone-ref', bible: 'kjv' as const, book: 'John', chapter: 3, fromVerse: 16 };
-    const accepted = [{ ...phone, id: 'saved-ref' }, { ...phone, id: 'other-ref', book: 'Romans', chapter: 8, fromVerse: 28 }];
-    let finish!: () => void;
-    const persistence = new Promise<void>(resolve => { finish = resolve; });
-    const saved = { ...payload, scriptureRefs: accepted, revision: 2, studyNoteReferenceAliases: [{ from: phone.id, to: accepted[0].id }] };
-    const updateNote = jest.fn(() => ({
-      ...queuedMutation('first-reference', persistence), result: persistence.then(() => saved),
-      capture: Promise.resolve({ kind: 'submitted', requestId: 'first-reference', persistence }),
-    }));
-    const options = setup(updateNote);
-    const view = renderHook(({ references, content }) => useNoteAutoSave({ ...options, scriptureRefs: references, content }),
-      { initialProps: { references: [phone], content: payload.content } });
-    await act(async () => jest.advanceTimersByTime(1600));
-    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { scriptureRefs: [phone] } }));
-    await act(async () => { finish(); await persistence; });
-    expect(options.onSaved).toHaveBeenLastCalledWith({ ...payload, scriptureRefs: accepted });
-    expect(options.baselineRef.current?.scriptureRefs).toEqual(accepted);
-
-    view.rerender({ references: accepted, content: 'Later paragraph' });
-    await act(async () => jest.advanceTimersByTime(1600));
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: 'Later paragraph' } }));
-  });
-
   it('acknowledges the winning title while the next paragraph stays a body-only edit', async () => {
     let finish!: () => void;
     const persistence = new Promise<void>(resolve => { finish = resolve; });

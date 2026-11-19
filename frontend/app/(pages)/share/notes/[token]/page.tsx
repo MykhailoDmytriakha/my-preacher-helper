@@ -4,12 +4,17 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import '@locales/i18n';
-import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
+import { useAuth } from '@/providers/AuthProvider';
+import { readLanguageCookie } from '@/services/userSettings.service';
 import { resolveAppLocale } from '@/utils/appLocale';
+import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import ThemeModeToggle from '@components/navigation/ThemeModeToggle';
 import { useTranslation } from '@locales/useTranslation';
+
+import { SharedNoteReader } from './SharedNoteReader';
 
 import type { ScriptureReference } from '@/models/models';
 
@@ -28,7 +33,10 @@ interface ShareNotePayload {
 }
 
 export default function SharedNotePage() {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t, language: interfaceLanguage, i18n } = useTranslation();
+  // The Bible page is behind sign-in: a reader with an account is offered it from the verse window,
+  // a reader without one reads the passage in the window and stays on the note.
+  const { user, loading: authLoading } = useAuth();
   const params = useParams<{ token?: string }>();
   const token = params?.token;
 
@@ -45,6 +53,16 @@ export default function SharedNotePage() {
   const passageRefs = title ? scriptureRefs : scriptureRefs.slice(1);
   const passages = formatScriptureReferences(passageRefs, { locale, style: 'long', limit: PASSAGE_PREVIEW });
   const hiddenPassages = Math.max(0, passageRefs.length - PASSAGE_PREVIEW);
+
+  // A reader who has chosen no language — no account, nothing stored on this device — reads the note's
+  // page in the note's language, and the verse window follows it to that language's Bible (the owner,
+  // 2026-11-18: a Russian note opened in a private window showed the passages in English). Nothing is
+  // stored: the reader's own choice, once made, still wins everywhere.
+  const noteLanguage = status === 'ready' ? studyNoteLanguage({ title, content }) : null;
+  useEffect(() => {
+    if (!noteLanguage || authLoading || user || readLanguageCookie()) return;
+    if (interfaceLanguage !== noteLanguage) void i18n.changeLanguage(noteLanguage);
+  }, [noteLanguage, authLoading, user, interfaceLanguage, i18n]);
 
   useEffect(() => {
     if (!token) return;
@@ -81,30 +99,29 @@ export default function SharedNotePage() {
     load();
   }, [token]);
 
+  // As in the app, the Scripture in the note is a link that opens the passage over the page (the owner,
+  // 2026-11-17), read in the language the note is written in.
+  const writtenIn = studyNoteLanguage({ title, content });
   return (
+    <ScriptureLinksInWindow writtenIn={writtenIn} toBible={Boolean(user)}>
     <div className={PAGE_CONTAINER_CLASS}>
+      {status === 'ready' && token ? (
+        <SharedNoteReader
+          token={token}
+          content={content}
+          heading={heading}
+          passages={passages}
+          hiddenPassages={hiddenPassages}
+          scriptureRefs={scriptureRefs}
+          writtenIn={writtenIn ?? locale}
+        />
+      ) : (
       <div className={CONTENT_WRAPPER_CLASS}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <header className="space-y-2">
-            <p className="text-sm text-gray-500 dark:text-gray-400" suppressHydrationWarning={true}>
-              {t('shareNotes.title')} · {t('shareNotes.subtitle')}
-            </p>
-            {status === 'ready' && heading && (
-              <h1 className="text-2xl font-semibold sm:text-3xl">{heading}</h1>
-            )}
-            {status === 'ready' && passages && (
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                {passages}
-                {hiddenPassages > 0 && (
-                  <span className="font-normal text-gray-500 dark:text-gray-400">
-                    {' · '}
-                    {t('shareNotes.morePassages', { count: hiddenPassages })}
-                  </span>
-                )}
-              </p>
-            )}
-          </header>
-          <ThemeModeToggle variant="compact" className="shrink-0 sm:mt-1" />
+          <p className="text-sm text-gray-500 dark:text-gray-400" suppressHydrationWarning={true}>
+            {t('shareNotes.title')} · {t('shareNotes.subtitle')}
+          </p>
+          <ThemeModeToggle variant="compact" className="shrink-0" />
         </div>
 
         {status === 'loading' && (
@@ -142,13 +159,9 @@ export default function SharedNotePage() {
             {t('shareNotes.error')}
           </div>
         )}
-
-        {status === 'ready' && (
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <FoldableMarkdown content={content} />
-          </div>
-        )}
       </div>
+      )}
     </div>
+    </ScriptureLinksInWindow>
   );
 }

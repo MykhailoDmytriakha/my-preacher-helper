@@ -1,3 +1,4 @@
+import { CommandManager } from '@tiptap/core';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
@@ -7,7 +8,7 @@ import { nodes, position, productionArrival, serialize } from './foreignContent'
 
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 
 export const selectionTable = '| H1 | H2 |\n| --- | --- |\n| First | One |\n| abcdef | Two |';
 const prose = 'Alpha abcdef END\n\nTail';
@@ -144,4 +145,14 @@ export function nestedArrival(editor: Editor, kind: string, id: string, a: numbe
     }
   }
   return serialize(editor, editor.schema.nodes.doc.create(null, content.slice(0, 25)));
+}
+
+/** Compare mounted caller persistence to BASE without announcing a synthetic own edit. */
+export function baseTyping(editor: Editor, value: string) {
+  const base = baseSnapshot(editor, value);
+  let typed!: Transaction;
+  new CommandManager({ editor, state: base.state }).chain().insertContent('X')
+    .command(({ tr }) => { typed = tr; return true; }).run();
+  const doc = base.state.applyTransaction(typed).state.doc;
+  return { document: base.doc.toJSON(), selection: base.selection, typed: serialize(editor, doc) };
 }

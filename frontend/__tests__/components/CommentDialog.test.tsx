@@ -68,7 +68,8 @@ const mockEngine = {
   updateNote: jest.fn(() => ({ ...accepted(), result: Promise.resolve({}) })),
   deleteNote: jest.fn(() => accepted()),
 };
-jest.mock('@/hooks/useStudyNotesEngine', () => ({ useStudyNotesEngine: () => mockEngine }));
+// The window's other readers of stored notes (`storedReferences`, `engineNote`) stay real; only the door is stood in for.
+jest.mock('@/hooks/useStudyNotesEngine', () => ({ ...jest.requireActual('@/hooks/useStudyNotesEngine'), useStudyNotesEngine: () => mockEngine }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 // A book's text, every verse saying where it is: «Isaiah 41:2».
 const mockBookText = (book: string) => ({ id: book, chapters: Array.from({ length: 150 }, (_, c) => Array.from({ length: 40 }, (_, v) => `${book} ${c + 1}:${v + 1}`)) });
@@ -476,6 +477,81 @@ describe('CommentDialog', () => {
     expect(screen.getByLabelText('editor')).toHaveValue('Ждать — не бездействие.');
     expect(screen.getByLabelText('editor')).not.toHaveAttribute('readonly');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  // The words on the device are a frozen window session: the words and the versions they were typed over (the history
+  // with the real engine is `commentDraftSession.test.tsx`; here, what the window keeps and what it then sends).
+  describe('a written comment\'s words on the device keep what they were typed over', () => {
+    const typed = 'Сила приходит в ожидании. Моё.';
+    const keptRecords = () => Object.keys(window.localStorage).filter((key) => key.startsWith('draft:'))
+      .map((key) => JSON.parse(window.localStorage.getItem(key) ?? '{}') as { value?: { text?: string }; base?: { opened?: Partial<StudyNote>; mine?: Partial<StudyNote> } });
+    const refused = (expected: number, actual: number, values: Record<string, unknown>) => () => ({
+      acceptance: Promise.reject(new StaleWriteError('note', expected, actual, values)), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never;
+
+    it('keeps beside the words the version the window opened, its place as stored', async () => {
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(keptRecords()).toEqual([expect.objectContaining({
+        value: expect.objectContaining({ text: typed }),
+        base: { opened: { content: stored.content, type: 'comment', scriptureRefs: [reference], rev: { note: 4 } } },
+      })]);
+    });
+
+    it('saves restored words against the version they were typed over, not the one the window opened now', async () => {
+      const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+      first.unmount();
+      mockEngine.notes = [{ ...stored, content: 'Слова с другого устройства.', rev: { note: 5 } }];
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+      expect(mockEngine.updateNote).toHaveBeenCalledWith({
+        id: 'c1', updates: { content: typed }, expectedRevision: 4, expectedBaseline: { content: stored.content },
+      });
+    });
+
+    it('keeps both versions after «keep mine»: restored, it sends only what this window changed, guarded by the version answered about', async () => {
+      mockEngine.updateNote
+        .mockImplementationOnce(refused(4, 6, { content: 'Чужой текст.', type: 'note' }))
+        .mockImplementationOnce(refused(6, 7, { content: 'Третий текст.', type: 'note' }));
+      const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' }));
+      await waitFor(() => expect(mockEngine.updateNote).toHaveBeenCalledTimes(2));
+      await screen.findByRole('button', { name: 'freshness.conflictKeepMine' });
+      // The page goes away before the third version is answered.
+      first.unmount();
+      expect(keptRecords()).toEqual([expect.objectContaining({ base: {
+        opened: expect.objectContaining({ content: 'Чужой текст.', type: 'note', rev: { note: 6 } }),
+        mine: expect.objectContaining({ content: stored.content, type: 'comment', rev: { note: 4 } }),
+      } })]);
+
+      mockEngine.notes = [{ ...stored, content: 'Третий текст.', type: 'note', rev: { note: 7 } }];
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+      // The other device made it a note; this window never changed its type, so the type does not go out.
+      expect(mockEngine.updateNote).toHaveBeenLastCalledWith({
+        id: 'c1', updates: { content: typed }, expectedRevision: 6, expectedBaseline: { content: 'Чужой текст.' },
+      });
+    });
+
+    it('guards a copy kept without a base by an unknown version, and keeps that base unknown in the copies written after it', async () => {
+      saveDraft(draftKey('owner', 'c1', 'comment', 'older-build'), { text: typed, reference: null, title: '' });
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+      await userEvent.type(screen.getByLabelText('editor'), ' Ещё.');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const written = keptRecords().filter((record) => record.value?.text === `${typed} Ещё.`);
+      expect(written).toHaveLength(1);
+      expect(written[0]).not.toHaveProperty('base');
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+      expect(mockEngine.updateNote).toHaveBeenCalledWith({
+        id: 'c1', updates: { content: `${typed} Ещё.` }, expectedRevision: 4, expectedBaseline: { content: null },
+      });
+    });
   });
 
   it('restores the chosen kind and words of a new comment after reload', async () => {

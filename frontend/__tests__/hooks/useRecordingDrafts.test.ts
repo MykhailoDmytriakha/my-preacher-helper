@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useRecordingDrafts } from '@/hooks/useRecordingDrafts';
-import { deleteRecordingDraft, listRecordingDrafts } from '@/utils/recordingDraftStore';
+import { deleteRecordingDraft, listUnfinishedRecordingDrafts } from '@/utils/recordingDraftStore';
 
 import type { RecordingDraft } from '@/utils/recordingDraftStore';
 
@@ -9,11 +9,11 @@ let mockOwner: string | null = 'alice';
 const mockListeners = new Set<() => void>();
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: mockOwner ? { uid: mockOwner } : null }) }));
 jest.mock('@/utils/recordingDraftStore', () => ({
-  listRecordingDrafts: jest.fn(), deleteRecordingDraft: jest.fn(),
+  listUnfinishedRecordingDrafts: jest.fn(), deleteRecordingDraft: jest.fn(),
   saveRecordingDraft: jest.fn(), adoptLegacyRecordingDrafts: jest.fn().mockResolvedValue(0),
   subscribeRecordingDrafts: jest.fn((listener: () => void) => { mockListeners.add(listener); return () => { mockListeners.delete(listener); }; }),
 }));
-const list = jest.mocked(listRecordingDrafts);
+const list = jest.mocked(listUnfinishedRecordingDrafts);
 const remove = jest.mocked(deleteRecordingDraft);
 const makeDraft = (ownerId: string): RecordingDraft => ({
   id: ownerId + '-take', ownerId, context: 'thought', contextId: 'sermon-a',

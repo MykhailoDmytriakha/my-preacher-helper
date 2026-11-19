@@ -950,3 +950,133 @@ describe('confirmed-copy cleanup retries preserve exact ownership', () => {
     finally { newer.unmount(); }
   });
 });
+
+describe('each write keeps the base its words were built from, read at that write', () => {
+  const WRITER = draftKey('uid-1', 'note-1', 'note', 'opening');
+  beforeEach(() => { window.localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('the delayed write records the base as it is when the write lands', () => {
+    let base = 'Opened';
+    const view = render('Opened', { writerId: 'opening', readBase: () => base });
+    view.rerender({ value: 'Opened and typed' });
+    // The editor's own save moved its baseline before the delayed write fired.
+    base = 'Opened and submitted';
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Opened and typed', base: 'Opened and submitted' }));
+    view.unmount();
+  });
+
+  it.each(['pagehide', 'unmount'] as const)('the %s flush records the base current at departure', departure => {
+    let base = 'Opened';
+    const view = render('Opened', { writerId: 'opening', readBase: () => base });
+    view.rerender({ value: 'Typed just before leaving' });
+    base = 'Submitted just before leaving';
+    if (departure === 'pagehide') act(() => { window.dispatchEvent(new Event('pagehide')); });
+    else view.unmount();
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Typed just before leaving', base: 'Submitted just before leaving' }));
+    if (departure === 'pagehide') view.unmount();
+  });
+
+  it('offers the selected copy with its base, and no base for a copy written without one', () => {
+    const kept = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+    const older = draftKey('uid-1', 'note-1', 'note', 'older-build');
+    saveDraft(kept, 'Kept words', undefined, false, 2, 'Kept base');
+    saveDraft(older, 'Older words', undefined, false, 1);
+    const view = render('Server words', { writerId: 'opening' });
+    expect(view.result.current.recovered).toBe('Kept words');
+    expect(view.result.current.recoveredBase).toBe('Kept base');
+    act(() => view.result.current.selectRecovered(older));
+    expect(view.result.current.recovered).toBe('Older words');
+    expect(view.result.current.recoveredBase).toBeUndefined();
+    view.unmount();
+  });
+});
+
+describe('copies of one editing session — the same words built from the same base — are one choice', () => {
+  const first = draftKey('uid-1', 'note-1', 'note', 'first-opening');
+  const second = draftKey('uid-1', 'note-1', 'note', 'second-opening');
+  const otherBase = draftKey('uid-1', 'note-1', 'note', 'other-opening');
+  beforeEach(() => {
+    window.localStorage.clear(); jest.useFakeTimers();
+    saveDraft(first, 'Session words', undefined, false, 1, 'Session base');
+    saveDraft(second, 'Session words', undefined, false, 2, 'Session base');
+    saveDraft(otherBase, 'Session words', undefined, false, 3, 'Another base');
+  });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('lists the session once; accepting it adopts every copy, so the save that lands retires them all', () => {
+    const view = render('Server words', { writerId: 'current-opening' });
+    // Equal words from another base are another session: still a choice of their own.
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase, second]);
+    act(() => view.result.current.selectRecovered(second));
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase, second]);
+    act(() => view.result.current.acceptRecovered());
+    act(() => view.result.current.markSaved('Session words'));
+    expect(readDraft(first)).toBeNull();
+    expect(readDraft(second)).toBeNull();
+    expect(readDraft(otherBase)).toEqual(expect.objectContaining({ value: 'Session words', base: 'Another base' }));
+    view.unmount();
+  });
+
+  it('discarding the session removes every copy of it and nothing else', () => {
+    const view = render('Server words', { writerId: 'current-opening' });
+    act(() => view.result.current.selectRecovered(first));
+    // The selected copy stands for its session in the list.
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase, first]);
+    act(() => view.result.current.discardRecovered());
+    expect(readDraft(first)).toBeNull();
+    expect(readDraft(second)).toBeNull();
+    expect(readDraft(otherBase)).not.toBeNull();
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase]);
+    view.unmount();
+  });
+
+  it('settling the session (its words already shown) settles every copy of it: no identical copy is offered next, none is removed', () => {
+    const view = render('Server words', { writerId: 'current-opening' });
+    act(() => view.result.current.selectRecovered(first));
+    act(() => view.result.current.settleRecovered());
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherBase]);
+    expect(view.result.current.recoveredKey).toBe(otherBase);
+    // Hiding an offer is not proof that its words are stored: every copy stays where it is.
+    expect(readDraft(first)).not.toBeNull();
+    expect(readDraft(second)).not.toBeNull();
+    view.unmount();
+  });
+});
+
+describe('a base that moved while the words did not', () => {
+  const WRITER = draftKey('uid-1', 'note-1', 'note', 'opening');
+  beforeEach(() => { window.localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('reads the base for the very words it writes, and rewrites its last copy with the base read now', () => {
+    let base = 'Before the save';
+    const asked: string[] = [];
+    const view = render('Opened', { writerId: 'opening', readBase: words => { asked.push(words as string); return base; } });
+    view.rerender({ value: 'Typed while the save was being stored' });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(asked).toEqual(['Typed while the save was being stored']);
+    const written = readDraft<string>(WRITER)!;
+    expect(written.base).toBe('Before the save');
+
+    // The device has stored the save: the words typed meanwhile are built on it from now on.
+    base = 'The stored save';
+    act(() => view.result.current.rewriteCopy());
+    expect(readDraft(WRITER)).toEqual(expect.objectContaining({ value: 'Typed while the save was being stored', editedAt: written.editedAt, base: 'The stored save' }));
+    view.unmount();
+  });
+
+  it('leaves a copy another writer has replaced since', () => {
+    let base = 'Before the save';
+    const view = render('Opened', { writerId: 'opening', readBase: () => base });
+    view.rerender({ value: 'Typed while the save was being stored' });
+    act(() => { jest.advanceTimersByTime(300); });
+    saveDraft(WRITER, 'Words of another tab', undefined, false, Date.now() + 10_000, 'Their base');
+    const replaced = localStorage.getItem(WRITER);
+    base = 'The stored save';
+    act(() => view.result.current.rewriteCopy());
+    expect(localStorage.getItem(WRITER)).toBe(replaced);
+    view.unmount();
+  });
+});

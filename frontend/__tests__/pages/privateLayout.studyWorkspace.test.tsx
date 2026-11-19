@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 import { PrivateChrome } from '@/components/PrivateWorkspace';
+import { screenIsQuiet } from '@/utils/quietScreen';
 
 import PrivateLayout from '../../app/(pages)/(private)/layout';
 
@@ -66,7 +67,7 @@ describe('bounded study workspace routing', () => {
     );
 
     it.each(['/sermons/sermon-1/plan', '/sermons/sermon-1/plan/manual'])(
-        'hides workspace recovery while preaching at %s and restores it on exit', (pathname) => {
+        'hides workspace recovery while preaching at %s and restores it on exit (BUG-20261113-workspace-recovery-interrupts-preaching)', (pathname) => {
             mockPathname = pathname;
             const { rerender } = render(<PrivateLayout>Plan content</PrivateLayout>);
             const recovery = ['membership-recovery', 'analysis-recovery', 'settings-recovery'];
@@ -82,14 +83,56 @@ describe('bounded study workspace routing', () => {
             expect(workspace).toContainElement(screen.getByRole('main'));
             expect(workspace).toContainElement(screen.getByText('Preaching content'));
             expect(screen.getByTestId('outbox-drain')).toBe(drain);
-            for (const notice of recovery) expect(screen.queryByTestId(notice)).not.toBeInTheDocument();
+            // Hidden, not unmounted: the recovery work behind the prompts keeps running (quietScreen).
+            for (const notice of recovery) expect(screen.getByTestId(notice)).not.toBeVisible();
 
             mockSearch = '';
             rerender(<PrivateLayout>Plan content</PrivateLayout>);
-            for (const notice of recovery) expect(screen.getByTestId(notice)).toBeInTheDocument();
+            for (const notice of recovery) expect(screen.getByTestId(notice)).toBeVisible();
             expect(screen.getByTestId('outbox-drain')).toBe(drain);
         },
     );
+
+    it('keeps the workspace and background delivery mounted when preaching hides navigation', () => {
+        mockPathname = '/sermons/sermon-1/plan';
+        mockSearch = 'planView=preaching';
+        render(<PrivateLayout>Preaching content</PrivateLayout>);
+        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+        expect(screen.queryByText('Guest notice')).not.toBeInTheDocument();
+        const workspace = screen.getByTestId('data-engine-workspace');
+        expect(workspace).toContainElement(screen.getByRole('main'));
+        expect(workspace).toContainElement(screen.getByText('Preaching content'));
+        expect(workspace).toContainElement(screen.getByTestId('outbox-drain'));
+        expect(workspace).toContainElement(screen.getByTestId('membership-recovery'));
+    });
+
+    // BUG-20261117-preaching-screen-shows-sync-notice: while a sermon is preached, recovery prompts and
+    // every notice wait — the recovery work stays mounted, only its words are hidden.
+    it('holds the app quiet and hides recovery prompts while preaching, and lets them speak afterwards', () => {
+        mockPathname = '/sermons/sermon-1/plan';
+        mockSearch = 'planView=preaching';
+        const { rerender } = render(<PrivateChrome pathname={mockPathname} search={mockSearch}>Preaching content</PrivateChrome>);
+        expect(screenIsQuiet()).toBe(true);
+        expect(screen.getByTestId('membership-recovery')).not.toBeVisible();
+        expect(screen.getByTestId('settings-recovery')).not.toBeVisible();
+        rerender(<PrivateChrome pathname={mockPathname} search="">Plan</PrivateChrome>);
+        expect(screenIsQuiet()).toBe(false);
+        expect(screen.getByTestId('membership-recovery')).toBeVisible();
+    });
+
+    // The owner, 2026-11-18: leading a group or a council is in front of people too — nothing pops up
+    // there either; the way around the screen (navigation, breadcrumbs) stays.
+    it.each(['/groups/group-1/conduct', '/care/council/council-1/conduct'])('holds the app quiet while a meeting is led at %s', pathname => {
+        const { rerender } = render(<PrivateChrome pathname={pathname} search="">Meeting</PrivateChrome>);
+        expect(screenIsQuiet()).toBe(true);
+        expect(screen.getByTestId('membership-recovery')).not.toBeVisible();
+        expect(screen.getByText('Unsent changes')).not.toBeVisible();
+        expect(screen.getByRole('navigation')).toBeVisible();
+        expect(screen.getByText('Breadcrumbs')).toBeVisible();
+        rerender(<PrivateChrome pathname={pathname.replace('/conduct', '')} search="">Meeting page</PrivateChrome>);
+        expect(screenIsQuiet()).toBe(false);
+        expect(screen.getByText('Unsent changes')).toBeVisible();
+    });
 });
 
 describe('Bible sync notice placement', () => {

@@ -154,6 +154,26 @@ describe('ScriptureLinks — a document inside another', () => {
     render(<ScriptureOpening text={text} reference={leadingReference(text, { locale: 'ru' })} onOpen={jest.fn()} />);
     expect(screen.getByRole('button', { name: 'Пс 22:1' })).toHaveAttribute(SCRIPTURE_LINK_MARK);
   });
+
+  // BUG-20261117-scripture-list-shorthand-not-linked: a list in one book linked only its first place.
+  it('links every place of a list in one book, in a block and in a sermon\'s verse', () => {
+    const onOpen = jest.fn();
+    const { unmount } = render(
+      <ScriptureLinks onOpen={onOpen}><MarkdownDisplay content={'Притч. 10:13; 13:24; 19:18–19; 29:15, 17.\n\nНаказание как средство удержать человека.'} /></ScriptureLinks>,
+    );
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Притч. 10:13', '13:24', '19:18–19', '29:15', '17']);
+    fireEvent.click(screen.getByRole('button', { name: '17' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'rst', book: 'Proverbs', chapter: 29, fromVerse: 17 }));
+    unmount();
+
+    const verse = 'Притч. 1:23; 3:11–12 — обличение и наставление';
+    const open = jest.fn();
+    render(<ScriptureOpening text={verse} reference={leadingReference(verse, { locale: 'ru' })} onOpen={open} />);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Притч. 1:23', '3:11–12']);
+    expect(screen.getByRole('button', { name: '3:11–12' }).parentElement).toHaveTextContent(verse);
+    fireEvent.click(screen.getByRole('button', { name: '3:11–12' }));
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('at=3%3A11'), expect.anything());
+  });
 });
 
 

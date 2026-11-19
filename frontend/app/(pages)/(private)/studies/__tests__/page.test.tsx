@@ -140,6 +140,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   uid: 'mock-user',
   notes: [],
   noteDelivery: new Map(),
+  subscribeNoteVersionTaken: () => () => undefined,
   observeTitle: jest.fn(),
   observeContent: jest.fn(),
   observeType: jest.fn(), observeCommentKind: jest.fn(),

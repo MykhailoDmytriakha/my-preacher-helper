@@ -61,11 +61,11 @@ export function noteCaptureWriter(scope: string | undefined, owner: string, reso
   if (address?.owner === owner && address.aggregate === 'note' && address.documentId === resource.id) return address.writerId;
 }
 
-/** Immediate autosave can beat the typing debounce; bind the exact submitted words. */
-export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string, editedAt?: number): string | undefined {
+/** Immediate autosave can beat the typing debounce; bind the exact submitted words and the base they are sent against. */
+export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string, editedAt?: number, base?: unknown): string | undefined {
   if (!owner) return undefined;
   const key = draftKey(owner, noteId, 'note', writerId);
-  if (!saveDraft(key, value, undefined, true, editedAt)) return undefined;
+  if (!saveDraft(key, value, undefined, true, editedAt, base)) return undefined;
   return prepareDraftCapture(key, value, { collection: 'studyNotes', id: noteId });
 }
 

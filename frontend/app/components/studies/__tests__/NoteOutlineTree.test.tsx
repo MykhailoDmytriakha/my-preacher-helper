@@ -3,7 +3,7 @@ import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
 
-import { NoteOutlineTree } from '../NoteOutlineTree';
+import { NoteOutlineTree } from '@/components/studies/NoteOutlineTree';
 
 import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 

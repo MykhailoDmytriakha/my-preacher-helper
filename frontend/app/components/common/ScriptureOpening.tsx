@@ -1,5 +1,7 @@
 'use client';
 
+import { Fragment, type ReactNode } from 'react';
+
 import { SCRIPTURE_LINK_CLASSES, SCRIPTURE_LINK_MARK, useScriptureLinks, WrittenInMark } from '@/components/bible/ScriptureLinks';
 
 import type { LeadingReference } from '@/utils/bibleLink';
@@ -16,28 +18,40 @@ interface ScriptureOpeningProps {
 /**
  * A sermon's verse as words, its opening reference a link: "1 Пар. 4:9–10" opens the way every
  * reference on the screen opens (`ScriptureLinks` — over the page, or over a meeting), else through
- * `onOpen`; the words after it stay words. Plain text when there is no reference or no way to open
- * it. The sermon header, the plan header and the preaching view show the verse through this one piece.
+ * `onOpen`; the words after it stay words, except the places of the list it opens ("Притч. 1:23;
+ * 3:11–12"), which are links too. Plain text when there is no reference or no way to open it. The
+ * sermon header, the plan header and the preaching view show the verse through this one piece.
  */
 export default function ScriptureOpening({ text, reference = null, onOpen }: ScriptureOpeningProps) {
   const links = useScriptureLinks();
   if (!reference || (!links && !onOpen)) return <>{text}</>;
-  const open = () => {
-    if (links) links.onOpen(reference.reference);
-    else onOpen?.(reference.href, reference);
-  };
-  return (
+  const link = (place: LeadingReference, words: string) => (
     <>
       <button
         type="button"
-        onClick={open}
+        onClick={() => {
+          if (links) links.onOpen(place.reference);
+          else onOpen?.(place.href, place);
+        }}
         className={SCRIPTURE_LINK_CLASSES}
         {...{ [SCRIPTURE_LINK_MARK]: '' }}
       >
-        {text.slice(0, reference.end)}
+        {words}
       </button>
-      {reference.writtenIn ? <WrittenInMark bible={reference.writtenIn} /> : null}
-      {text.slice(reference.end)}
+      {place.writtenIn ? <WrittenInMark bible={place.writtenIn} /> : null}
+    </>
+  );
+  const parts: ReactNode[] = [];
+  let at = reference.end;
+  for (const place of reference.rest ?? []) {
+    parts.push(<Fragment key={`text-${at}`}>{text.slice(at, place.start)}</Fragment>, <Fragment key={place.start}>{link(place, place.raw)}</Fragment>);
+    at = place.end;
+  }
+  return (
+    <>
+      {link(reference, text.slice(0, reference.end))}
+      {parts}
+      {text.slice(at)}
     </>
   );
 }

@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { applyForeignContent, canonicalForeignTarget } from './foreignContent';
 import { retireHistory } from './foreignHistory';
 import { mapForeignMarkdownSelection } from './foreignMarkdownSelection';
+import { ownedTextDocument } from './ownedTextDocument';
 import { appendToComposition, decideComposition, rebaseParagraphAppend, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -14,9 +15,25 @@ import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
 
+import type { EditorTextOwner } from './useEditorOwnedText';
 import type { Node as DocumentNode } from '@tiptap/pm/model';
 
-interface RichMarkdownEditorProps {
+interface EditorAppearance {
+    /** Opt in only when the supplied value is this editor user's requested edit. */
+    valueIsUserAction?: boolean;
+    /** A foreign value coalesced with the own action; apply its boundary first. */
+    valueBeforeUserAction?: ForeignValue;
+    placeholder?: string;
+    minHeight?: string;
+    autoFocus?: boolean;
+    /** Distance from the top of the window to keep the toolbar at while scrolling. */
+    stickyToolbarTop?: number;
+    /** False holds the text still — a save being accepted must not take later keystrokes away with it. */
+    editable?: boolean;
+}
+
+/** Every screen except the study note: a controlled value, buffered and installed by the editor. */
+type ValueProps = {
     value: string;
     onChange: (value: string, editOpening?: string) => void | Promise<unknown>;
     /** Include the displayed pre-edit text for callers that track save ancestry. */
@@ -34,17 +51,97 @@ interface RichMarkdownEditorProps {
     confirmedTextTransfer?: ObservedTextAppend;
     /** Witness the applied document once, before its first subsequent edit. */
     onEditAfterForeignValue?: (value: string) => void;
-    /** Opt in only when the supplied value is this editor user's requested edit. */
-    valueIsUserAction?: boolean;
-    /** A foreign value coalesced with the own action; apply its boundary first. */
-    valueBeforeUserAction?: ForeignValue;
-    placeholder?: string;
-    minHeight?: string;
-    autoFocus?: boolean;
-    /** Distance from the top of the window to keep the toolbar at while scrolling. */
-    stickyToolbarTop?: number;
-    /** False holds the text still — a save being accepted must not take later keystrokes away with it. */
-    editable?: boolean;
+    ownedBy?: never;
+};
+/** The study note: the editor document is the text's one owner (`useEditorOwnedText`). */
+type OwnedProps = { ownedBy: EditorTextOwner; value?: never; onChange?: never };
+export type RichMarkdownEditorProps = EditorAppearance & (ValueProps | OwnedProps);
+
+// A table scrolls inside its own box, as it does when the note is read (`MarkdownDisplay`): its longest
+// word would otherwise widen the page on a phone. A cell holds one paragraph, without the prose margins.
+const EDITOR_CONTENT_CLASS =
+    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td>p]:my-0 [&_th>p]:my-0';
+
+export function RichMarkdownEditor(props: EditorAppearance & OwnedProps): React.JSX.Element;
+export function RichMarkdownEditor(props: RichMarkdownEditorProps): React.JSX.Element;
+export function RichMarkdownEditor(props: EditorAppearance & ValueProps): React.JSX.Element;
+export function RichMarkdownEditor(props: RichMarkdownEditorProps) {
+    return props.ownedBy ? <OwnedMarkdownEditor {...props} /> : <BufferedMarkdownEditor {...props} />;
+}
+
+/**
+ * The study note's editor. The page reads the text and writes it only through its owner
+ * (`follow`, `append`, `replace`); typing and composition are reported by this view itself.
+ */
+function OwnedMarkdownEditor({
+    ownedBy,
+    placeholder = '',
+    minHeight = '150px',
+    autoFocus = false,
+    stickyToolbarTop,
+    editable = true,
+}: EditorAppearance & OwnedProps) {
+    const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
+    const ownedDocument = useRef<ReturnType<typeof ownedTextDocument> | null>(null);
+    const editor = useEditor({
+        extensions: [
+            ...richMarkdownExtensions(),
+            Placeholder.configure({
+                placeholder,
+            }),
+        ],
+        content: '',
+        editable,
+        immediatelyRender: false,
+        autofocus: autoFocus ? 'end' : false,
+        editorProps: {
+            ...scrollProps,
+            handleDOMEvents: {
+                input: () => { ownedBy.nativeInput?.(); return false; },
+                compositionend: () => { ownedDocument.current?.compositionEnd(); return false; },
+            },
+            attributes: { class: EDITOR_CONTENT_CLASS },
+        },
+        onBeforeCreate: ({ editor }) => {
+            // Tiptap 3.20 emits beforeCreate after extension setup, before createDoc/createView.
+            // tiptap-markdown's beforeCreate has already made its parser available.
+            const markdown = editor.storage as unknown as { markdown: { parser: { parse(value: string): string } } };
+            editor.options.content = markdown.markdown.parser.parse(ownedBy.live());
+            ownedDocument.current = ownedTextDocument(editor);
+            const unregister = ownedBy.register(ownedDocument.current);
+            editor.on('destroy', unregister);
+        },
+        onUpdate: ({ editor }) => {
+            ownedBy.emit(readMarkdown(editor));
+        },
+    });
+
+    useEffect(() => {
+        // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user
+        // edit — over a value just given (a draft restored as the editor is released was wiped live, 2026-10-28).
+        if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
+    }, [editor, editable]);
+
+    if (!editor) {
+        return null;
+    }
+
+    return (
+        <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} />
+            <div className="flex-1 cursor-text flex flex-col">
+                <EditorContent
+                    editor={editor}
+                    className="w-full flex-1 flex flex-col"
+                    style={{ minHeight: 'inherit' }}
+                    onClick={event => {
+                        syncClickedTextSelection(editor.view, event.nativeEvent);
+                        editor.chain().focus().run();
+                    }}
+                />
+            </div>
+        </div>
+    );
 }
 
 interface ForeignValue {
@@ -105,7 +202,8 @@ interface DeferredArrival {
     shown: string;
 }
 
-export function RichMarkdownEditor({
+/** Every other screen: a controlled value with its prop echo, installation and composition rules. */
+function BufferedMarkdownEditor({
     value,
     onChange,
     includeEditOpening = false,
@@ -123,7 +221,7 @@ export function RichMarkdownEditor({
     autoFocus = false,
     stickyToolbarTop,
     editable = true,
-}: RichMarkdownEditorProps) {
+}: EditorAppearance & ValueProps) {
     const observedAppend = confirmedTextTransfer ?? appendedText;
     const { draft, change, getPending, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
     const foreignEditMark = useRef<string | null>(valueIsUserAction ? null : value);
@@ -165,11 +263,7 @@ export function RichMarkdownEditor({
     ], [placeholder]);
     const editorProps = useMemo(() => ({
         ...scrollProps,
-        attributes: {
-            // Keep the longest word of a table inside its own box on a phone.
-            class:
-                'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td>p]:my-0 [&_th>p]:my-0',
-        },
+        attributes: { class: EDITOR_CONTENT_CLASS },
     }), [scrollProps]);
     const editor = useEditor({
         extensions,

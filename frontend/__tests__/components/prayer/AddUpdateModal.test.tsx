@@ -30,6 +30,7 @@ jest.mock('@/utils/transcriptionRetryClient', () => {
 });
 
 jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
   saveRecordingDraft: jest.fn().mockResolvedValue('draft-1'),
   deleteRecordingDraft: jest.fn().mockResolvedValue(undefined),
 }));

@@ -204,7 +204,10 @@ export class ResourceObserver {
   private restart(): void {
     for (const entry of this.entries.values()) {
       this.stop(entry);
-      // The next observation must report its own failure. Retain the copy and retry budget.
+      // A failure belongs to the check that produced it. After a pause (hidden tab, lost network) the next
+      // observation must report its own failure (BUG-20261021-bible-marks-check-failed-line); offline nothing
+      // is checked, and the app's offline line says why (BUG-20261117-preaching-screen-shows-sync-notice).
+      // The copy and the failure count stay, so the retry deadline it earned survives the pause.
       entry.state = { ...entry.state, readiness: 'unknown', checking: false, error: false };
       this.emit(entry);
       this.start(entry, true);

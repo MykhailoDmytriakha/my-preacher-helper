@@ -200,7 +200,11 @@ export function bibleHrefForText(raw: string, options: BibleLinkOptions): string
  * Where a text's opening reference ends, the address it opens, the reference itself (for the verse
  * window), and its Bible where the reader needs the mark (`writtenInFor`).
  */
-export type LeadingReference = { end: number; href: string; reference: ScriptureRefShape & { bible: BibleId }; writtenIn?: BibleId };
+export type LeadingReference = {
+  end: number; href: string; reference: ScriptureRefShape & { bible: BibleId }; writtenIn?: BibleId;
+  /** The places of a list it opens, written without the book: "Притч. 1:23; 3:11–12" (`restOfList`). */
+  rest?: Array<ReferenceInText & { href: string }>;
+};
 
 /**
  * THE REFERENCE A TEXT OPENS WITH — "Еф 1:15 — «Посему и я…»", "1 Пар. 4:9–10",
@@ -212,7 +216,7 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
   let found: LeadingReference | null = null;
   // The sermon's words decide; the verse's own only where the screen gives none.
   const written = options.written ?? textLanguage(text);
-  for (const word of Array.from(text.matchAll(/\S+/g)).slice(0, 5)) {
+  for (const word of Array.from(beforeListMark(text).matchAll(/\S+/g)).slice(0, 5)) {
     if (!/\d/.test(word[0])) continue;
     // The punctuation that ends the reference ("Агг 1:5-14:", "Еф 1:15,") is not part of it.
     const end = (word.index ?? 0) + word[0].replace(/[.,:;]+$/, '').length;
@@ -228,7 +232,29 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
     const writtenIn = ref ? writtenInFor(candidate, ref, options.locale) : undefined;
     if (ref && href) found = { end, href, reference: ref, ...(writtenIn ? { writtenIn } : {}) };
   }
-  return found;
+  return withRestOfList(text, found, options, written);
+}
+
+/**
+ * A text up to its first list mark — a semicolon after a number, or a comma after a verse: a list's
+ * first place ends there. "Притч. 29:15, 17" is 29:15 and 29:17 (`restOfList`), never 29:15–17; a comma
+ * right after a chapter is the older way to write its verse ("Ин 3,16") and stays the parser's.
+ */
+function beforeListMark(text: string): string {
+  const mark = /[:.]\d+(?:\s*[-–—]\s*\d+(?:[:.]\d+)?)?(?=\s*,)|\d(?=\s*;)/.exec(text);
+  return mark ? text.slice(0, mark.index + mark[0].length) : text;
+}
+
+/** The opening with the places of the list it starts, each with its address: "Притч. 1:23; 3:11–12". */
+function withRestOfList(text: string, opening: LeadingReference | null, options: BibleLinkOptions, written: AppLocale | null): LeadingReference | null {
+  if (!opening) return null;
+  const raw = text.slice(0, opening.end);
+  const first: ReferenceInText = { start: 0, end: opening.end, raw, reference: opening.reference };
+  const rest = restOfList(text, first, bookNameIn(raw.replace(/[–—]/g, '-')), options.locale, written).flatMap(each => {
+    const href = bibleHref(each.reference, options);
+    return href ? [{ ...each, href }] : [];
+  });
+  return rest.length ? { ...opening, rest } : opening;
 }
 
 /**
@@ -237,7 +263,14 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
  * and Bible, would land elsewhere: a Synodal "Пс 22:1" for an English reader (Ps 23:1 there), a
  * Ukrainian "1Цар 3:5" for a Russian one (3 Kings there). The screen marks the reference with it.
  */
-export type ReferenceInText = { start: number; end: number; raw: string; reference: ScriptureRefShape & { bible: BibleId }; writtenIn?: BibleId };
+export type ReferenceInText = {
+  start: number; end: number; raw: string; reference: ScriptureRefShape & { bible: BibleId }; writtenIn?: BibleId;
+  /**
+   * For a place of a list written without its book ("17" in "Притч. 29:15, 17"), the list's first
+   * place, where the book is named: words that point a person to the place show that one.
+   */
+  listHead?: { start: number; raw: string };
+};
 
 /**
  * Whether a reference names a place its Bible has — the chapter, and the verse it starts at — so a
@@ -303,8 +336,8 @@ export function referencesInText(text: string, locale: AppLocale, written?: AppL
       for (const nameEnd of [wordEnd, ...(glued ? [wordStart + glued[0].length] : [])]) {
         const reference = referenceAt(text, start, nameEnd, locale, language);
         if (!reference) continue;
-        found.push(reference);
-        after = reference.end;
+        found.push(reference, ...restOfList(text, reference, text.slice(start, nameEnd), locale, language));
+        after = found[found.length - 1].end;
         return;
       }
     }
@@ -329,6 +362,49 @@ function referenceAt(text: string, start: number, nameEnd: number, locale: AppLo
   if (!/[:.]/.test(numbers[1]) && /^\s+\p{L}/u.test(rest) && !STILL_A_CHAPTER.test(rest)) return null;
   const writtenIn = writtenInFor(spaced, reference, locale);
   return { start, end, raw: text.slice(start, end), reference, ...(writtenIn ? { writtenIn } : {}) };
+}
+
+/** The mark that joins the next place of a list in the same book: "; 3:11–12", ", 17" — on the same line. */
+const LIST_MARK = /^[^\S\n]*([,;])[^\S\n]*/;
+/** What follows numbers on their line and names no place: a time of day, a share — "10:30 утра", "10%". */
+const NOT_A_PLACE_AFTER = /^[^\S\n]*(?:%|(?:утра|дня|вечера|ночи|ранку|вечора|ночі|am|pm|a\.m\.|p\.m\.)(?!\p{L}))/iu;
+
+/**
+ * THE REST OF A LIST IN ONE BOOK — "Притч. 1:23; 3:11–12; 29:15, 17": a place written without its book
+ * belongs to the book named before it. After a semicolon the numbers are a chapter of that book (and
+ * its verses); after a comma that follows a verse they are a verse of the same chapter ("29:15, 17")
+ * or a chapter and verse ("Ин 3:16, 5:24"). A comma after a whole chapter ends the list — "Рим 13, 15"
+ * is Romans 13:15 in the older way of writing — and so do a number followed by what it counts
+ * ("Ин 3:16, 3 раза") and a place the book does not have.
+ */
+function restOfList(text: string, first: ReferenceInText, name: string, locale: AppLocale, written?: AppLocale | null): ReferenceInText[] {
+  const rest: ReferenceInText[] = [];
+  let previous = first;
+  for (;;) {
+    const mark = LIST_MARK.exec(text.slice(previous.end));
+    if (!mark) return rest;
+    const from = previous.end + mark[0].length;
+    const numbers = NUMBERS_IN_PROSE.exec(text.slice(from));
+    // A list is written on one line: "Ин 3:16;" and a numbered point under it are two things.
+    if (!numbers || numbers[0].includes('\n')) return rest;
+    const end = from + numbers[0].length;
+    const chapterWritten = /[:.]/.test(numbers[1]);
+    const after = text.slice(end);
+    if (NOT_A_PLACE_AFTER.test(after) || (!chapterWritten && /^\s+\p{L}/u.test(after) && !STILL_A_CHAPTER.test(after))) return rest;
+    let place = numbers[1];
+    if (mark[1] === ',' && !chapterWritten) {
+      if (previous.reference.fromVerse === undefined) return rest;
+      place = `${verseEndChapter(previous.reference)}:${numbers[1]}`;
+    }
+    const spaced = `${name} ${place}`;
+    const reference = typedReference(spaced, locale, written);
+    if (!reference || !namesAPlace(reference)) return rest;
+    const start = end - numbers[1].length;
+    const writtenIn = writtenInFor(spaced, reference, locale);
+    const listHead = { start: first.start, raw: first.raw };
+    previous = { start, end, raw: text.slice(start, end), reference, listHead, ...(writtenIn ? { writtenIn } : {}) };
+    rest.push(previous);
+  }
 }
 
 /** Chapter and verse as written after a book: "3", "3:16", "4:9-10", "3:16-4:2", "22:1, 3-5". */

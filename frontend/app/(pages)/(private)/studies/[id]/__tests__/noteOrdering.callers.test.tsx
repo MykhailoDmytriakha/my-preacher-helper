@@ -9,7 +9,7 @@ jest.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => true }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => {
   const actual = jest.requireActual<typeof import('@/components/ui/RichMarkdownEditor')>('@/components/ui/RichMarkdownEditor');
   return { ...actual, RichMarkdownEditor: (props: React.ComponentProps<typeof actual.RichMarkdownEditor>) => {
-    expect(props.onEditAfterForeignValue).toBeUndefined();
+    expect(props.ownedBy).toBeUndefined();
     return <actual.RichMarkdownEditor {...props} />;
   } };
 });

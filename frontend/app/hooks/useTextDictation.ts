@@ -6,7 +6,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { newClientId } from '@/utils/clientId';
 import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
-import { deleteRecordingDraft, getRecordingDraft, moveRecordingDraft, saveRecordingDraft, saveRecordingDraftText } from '@/utils/recordingDraftStore';
+import { claimRecordingDraftWork, deleteRecordingDraft, getRecordingDraft, moveRecordingDraft, saveRecordingDraft, saveRecordingDraftText } from '@/utils/recordingDraftStore';
 import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 
 import type { FailureWords } from '@/utils/actionFailureMessage';
@@ -95,8 +95,10 @@ export function useTextDictation(options: TextDictationOptions) {
       ownership.known.delete(id);
     }
   }, [ownerId, ownership]);
-  const captureAcceptance = () => {
-    const included = [...ownership.applied];
+  const captureAcceptance = (submittedSourceIds?: readonly string[]) => {
+    // Durable writers that carry source IDs acknowledge only their submitted payload.
+    // Legacy field writers snapshot locally applied sources at their own save entrance.
+    const included = [...(submittedSourceIds ?? ownership.applied)];
     return () => retireSources(included);
   };
   const accept = () => captureAcceptance()();
@@ -169,6 +171,10 @@ export function useTextDictation(options: TextDictationOptions) {
 
   const transcribe = async (held: HeldRecording): Promise<boolean> => {
     if (!live() || ownership.busy || ownership.applied.has(held.id)) return false;
+    // In work until this attempt ends: the «unfinished recording» card does not offer it meanwhile,
+    // here or in another tab (BUG-20261117-recording-card-during-transcription).
+    const releaseWork = claimRecordingDraftWork(held.id);
+    if (!releaseWork) return false;
     ownership.busy = true;
     ownership.held = held;
     ownership.known.add(held.id);
@@ -210,6 +216,7 @@ export function useTextDictation(options: TextDictationOptions) {
       return false;
     } finally {
       ownership.busy = false;
+      releaseWork();
       patch({ processing: false });
     }
   };

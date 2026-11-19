@@ -8,6 +8,7 @@ import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { TestProviders } from '@test-utils/test-providers';
 import { createAudioThought } from '@services/thought.service';
+import { isRecordingDraftInWork } from '@/utils/recordingDraftStore';
 import '@testing-library/jest-dom';
 
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
@@ -645,6 +646,24 @@ describe('Sermon Detail Page', () => {
       expect(createAudioThought).not.toHaveBeenCalled();
       await act(async () => { parked(); });
       await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(1));
+      view.unmount();
+    });
+
+    // BUG-20261117-recording-card-during-transcription: the «unfinished recording» card listed the take
+    // beside «Processing…», as if transcription had failed. The take is in work until the attempt ends.
+    it('keeps the take in work while the provider transcribes it and lets it go once the attempt failed', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+      let fail!: (error: Error) => void;
+      (createAudioThought as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+      const view = renderPage();
+      const recorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(recorder).getByText('Mock Record'));
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(1));
+      const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+      expect(isRecordingDraftInWork(parkedId)).toBe(true);
+      await act(async () => { fail(new Error('Transcription failed')); });
+      expect(await within(recorder).findByTestId('transcription-error')).toBeInTheDocument();
+      expect(isRecordingDraftInWork(parkedId)).toBe(false);
       view.unmount();
     });
 

@@ -529,6 +529,31 @@ export function useRemotePeek(options?: EngineReadOptions): ((resource: Resource
   return useMemo(() => browser ? (resource: ResourceRef) => (fresh ? browser.engine.peekRemote(resource, { fresh: true }) : browser.engine.peekRemote(resource)) : null, [browser, fresh]);
 }
 
+// The person took the stored version: a local, transient fact with no persistence or replay.
+// Engine identity and owner scope observers; only a mounted subscriber for this resource hears it.
+type StoredVersionTakenObserver = { owner: string; resource: ResourceRef; notify: () => void };
+const storedVersionTakenObservers = new WeakMap<BrowserDataEngine['engine'], Set<StoredVersionTakenObserver>>();
+function announceStoredVersionTaken(browser: BrowserDataEngine, owner: string, resource: ResourceRef) {
+  for (const observer of [...storedVersionTakenObservers.get(browser.engine) ?? []]) {
+    if (observer.owner !== owner || observer.resource.collection !== resource.collection || observer.resource.id !== resource.id) continue;
+    try { observer.notify(); }
+    catch (error) { logFailureOnce(error, 'DataEngine background operation failed'); }
+  }
+}
+
+/** Hear when the person took the stored version for this resource in this engine/owner. */
+export function useStoredVersionTaken() {
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  return useCallback((resource: ResourceRef, notify: () => void) => {
+    if (!browser || !owner) return () => undefined;
+    let observers = storedVersionTakenObservers.get(browser.engine);
+    if (!observers) { observers = new Set(); storedVersionTakenObservers.set(browser.engine, observers); }
+    const observer = { owner, resource, notify };
+    observers.add(observer);
+    return () => { observers.delete(observer); };
+  }, [browser, owner]);
+}
+
 export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
@@ -568,8 +593,10 @@ export function useDocumentActions() {
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
     if (!creating) {
       const applying = applyingDocumentChoices.get(browser)?.get(documentChoiceKey(owner, resource));
-      // Allow a Save to follow a choice already made. An unanswered conflict still blocks it.
-      if (applying) await applying.catch(() => undefined);
+      // Allow a Save to follow a choice already made. An unanswered conflict still blocks it. The study-note
+      // page answers its own later words after a choice (its inline question) until it moves to the engine's
+      // editing session, so its Save does not wait here (BUG-20261118-note-page-codex-fixes-wait-for-engine-session).
+      if (applying && resource.collection !== 'studyNotes') await applying.catch(() => undefined);
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
       const waiting = await waitingFor(resource);
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
@@ -739,8 +766,12 @@ export function useDocumentActions() {
       const previous = applying.get(key);
       const settling = (previous ?? Promise.resolve(0)).catch(() => undefined).then(applyChoice);
       applying.set(key, settling);
-      try { return await settling; }
-      finally { if (applying.get(key) === settling) applying.delete(key); }
+      try {
+        const settled = await settling;
+        // Only a completed «take the stored version» lets an open page replace its text (useStoredVersionTaken).
+        if (choice === 'theirs') announceStoredVersionTaken(browser, owner, resource);
+        return settled;
+      } finally { if (applying.get(key) === settling) applying.delete(key); }
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);
 }

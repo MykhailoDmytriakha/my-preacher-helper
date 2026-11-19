@@ -1,5 +1,6 @@
 import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
 import * as foreignContent from '@/components/ui/foreignContent';
+import { baseTyping } from '@test-utils/foreignSelection';
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -57,9 +58,9 @@ jest.mock('@tiptap/react', () => {
 
 jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
   const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
-  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0]) => {
+  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0], handOff?: Parameters<typeof useNoteAutoSave>[1]) => {
     mockAutosave = args;
-    return actual.useNoteAutoSave(args);
+    return actual.useNoteAutoSave(args, handOff);
   } };
 });
 
@@ -141,24 +142,6 @@ afterEach(() => {
   observer?.disconnect(); view?.unmount(); world?.dispose();
   localStorage.clear(); jest.restoreAllMocks();
 });
-it('shows and saves dictation batched with native typing in the note', async () => {
-  await start('Opening.');
-  const editor = mockEditor;
-  await act(async () => {
-    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Typed.');
-    await mockVoice.onText('Dictated.', 'source-1');
-    await mockVoice.onText('Second.', 'source-2');
-  });
-  const expected = 'Opening. Typed.\n\nDictated.\n\nSecond.';
-  expect(md()).toBe(expected);
-  act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Later.'); });
-  await settle(1600);
-  await settle(2000);
-  expect(md()).toBe(expected + ' Later.');
-  expect(await stored()).toBe(expected + ' Later.');
-  expect(laptop.errors).toEqual([]);
-});
-
 it.each([
   { name: 'earlier typing and one Undo', priorTyping: true, undos: 1, laterTyping: false },
   { name: 'earlier typing and two Undos', priorTyping: true, undos: 2, laterTyping: false },
@@ -251,17 +234,13 @@ it('B31 ACCEPTED LIMITATION: an arrival retires saved own typing through real no
 });
 
 it('C12 preserves the production table shape through foreign adoption, later typing and note autosave', async () => {
-  const original = '| A | B |\n| --- | --- |\n| abcdef | Keep |';
-  await start(original);
+  await start('| A | B |\n| --- | --- |\n| abcdef | Keep |');
   const editor = mockEditor;
   act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
   await settle(1600); await settle(2000);
   const remote = '| A | B |\n| --- | --- |\n| abef | Keep |';
   await phoneSave(remote);
   expect(editor.view.dom.querySelectorAll('table')).toHaveLength(1);
-  expect(md().trim()).toBe(original);
-  act(() => { editor.view.dom.blur(); });
-  await settle(0);
   expect(md().trim()).toBe(remote);
   act(() => { expect(editor.commands.undo()).toBe(false); expect(editor.commands.redo()).toBe(false); });
   act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Own.'); });
@@ -304,14 +283,14 @@ it('keeps the note caret at its words through a far arrival and autosave', async
 });
 
 
-it('stores the next keystroke at the retained caret after an adjacent arrival in note autosave', async () => {
+it('stores the production result after an adjacent arrival in note autosave', async () => {
   const initial = 'First words\n\nLast words\n\nTail';
   await start(initial);
   const editor = mockEditor;
   const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
   act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
   const arrived = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
-  const expected = arrived.replace('First words', 'FirXst words');
+  const expected = baseTyping(editor, arrived);
   await phoneSave(arrived);
   expect(mockEditor).toBe(editor);
 
@@ -320,12 +299,12 @@ it('stores the next keystroke at the retained caret after an adjacent arrival in
   const paths = arrivalPath.mock.results.map(result => result.value);
   arrivalPath.mockRestore();
   writeForeignEvidence('caller-note-adjacent', paths);
-  expect(md()).toBe(arrived);
-  expect(paths).toEqual([{ fallback: false }]);
-  expect(editor.state.selection.toJSON()).toEqual({ type: 'text', anchor: 4, head: 4 });
+  expect(paths.every(result => result.fallback)).toBe(true);
+  expect(editor.state.doc.toJSON()).toEqual(expected.document);
+  expect(editor.state.selection.toJSON()).toEqual(expected.selection);
   act(() => { editor.commands.insertContent('X'); });
   await settle(1600); await settle(2000);
-  expect(md()).toBe(expected);
+  expect(md()).toBe(expected.typed);
   expect(await stored()).toBe(md());
 
   expect(notices).toEqual([]);

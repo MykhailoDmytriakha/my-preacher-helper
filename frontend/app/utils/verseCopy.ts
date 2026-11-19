@@ -90,10 +90,10 @@ function whole(words: string, cutStart: boolean, cutEnd: boolean): string {
 }
 
 /** «Рим 8:28–30», and «Isa 47:4 (KJV)» where the Bible must be named. */
-const placeLine = (verses: readonly VerseForCopy[], names: CopyNames) => {
+export function copiedPlaceLine(verses: readonly Pick<VerseForCopy, 'chapter' | 'verse'>[], names: CopyNames): string {
   const place = copiedPlace(names.book, verses);
   return names.mark ? `${place} (${names.mark})` : place;
-};
+}
 
 export function verseCopyText(verses: readonly VerseForCopy[], format: CopyFormat, names: CopyNames, chapterLength?: ChapterLength): string {
   const runs = runsOf(verses, chapterLength);
@@ -104,10 +104,10 @@ export function verseCopyText(verses: readonly VerseForCopy[], format: CopyForma
       // A gap between runs is said, unless the next run already opens with «…».
       .map((text, index) => (index > 0 && !text.startsWith(ELLIPSIS) ? `${ELLIPSIS} ${text}` : text))
       .join(' ');
-    return `${placeLine(verses, names)}: "${body}"`;
+    return `${copiedPlaceLine(verses, names)}: "${body}"`;
   }
   const severalChapters = new Set(verses.map((verse) => verse.chapter)).size > 1;
-  const lines = [`${placeLine(verses, names)}:`];
+  const lines = [`${copiedPlaceLine(verses, names)}:`];
   runs.forEach((run, index) => {
     if (index > 0) lines.push(ELLIPSIS);
     for (const verse of run) {

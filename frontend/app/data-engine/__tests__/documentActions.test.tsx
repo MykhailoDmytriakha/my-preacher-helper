@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
+import { captureRecoveryChoice, DataEngineProvider, useDocumentActions, useStoredVersionTaken } from '@/data-engine/react.client';
 import { prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
@@ -24,7 +24,13 @@ function setup(snapshot = savedSermon, options?: Parameters<typeof documentEngin
   const harness = documentEngineHarness(snapshot, options);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const wrapper = ({ children }: { children: React.ReactNode }) => <DataEngineProvider>{children}</DataEngineProvider>;
-  return { harness, ...renderHook(() => useDocumentActions(), { wrapper }) };
+  const notified = jest.fn();
+  return { harness, notified, ...renderHook(() => {
+    const actions = useDocumentActions();
+    const subscribeVersionTaken = useStoredVersionTaken();
+    React.useEffect(() => subscribeVersionTaken(resource, notified), [subscribeVersionTaken]);
+    return { ...actions, subscribeVersionTaken };
+  }, { wrapper }) };
 }
 
 describe('one action on a document no screen has open', () => {
@@ -496,5 +502,126 @@ describe('one action on a document no screen has open', () => {
       await waitFor(async () => { await settleEngine(); expect(harness.server.value?.verse).toBe('Romans 8:28'); });
       expect(harness.server.value?.title).toBe('Grace');
     });
+  });
+});
+
+
+describe('stored version taken announcements', () => {
+  it.each(['mine', 'theirs'] as const)('announces only the stored-version choice on an empty %s return', async choice => {
+    const { result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { expect(await result.current.resolve(resource, choice)).toBe(0); });
+    expect(notified).toHaveBeenCalledTimes(Number(choice === 'theirs'));
+  });
+
+  it.each([
+    { choice: 'mine' as const, scoped: false }, { choice: 'theirs' as const, scoped: false },
+    { choice: 'mine' as const, scoped: true }, { choice: 'theirs' as const, scoped: true },
+    { choice: 'theirs' as const, scoped: true, exactField: true },
+  ])('announces only after theirs completes: $choice (scoped=$scoped, exactField=$exactField)', async ({ choice, scoped, exactField }) => {
+    const { harness, result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    harness.silentRemote({ title: 'Phone' });
+    await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 'Laptop' })); });
+    await waitFor(async () => { await settleEngine(); expect(await harness.engine.listRecoverable(resource)).toHaveLength(1); });
+    const records = (await harness.engine.listRecoverable(resource)).map(item => item.record);
+    const scope = scoped ? captureRecoveryChoice(records) : undefined;
+    expect(notified).not.toHaveBeenCalled();
+    await act(async () => { expect(await result.current.resolve(resource, choice, scope, exactField)).toBe(1); });
+    expect(notified).toHaveBeenCalledTimes(Number(choice === 'theirs'));
+    await settleEngine();
+    expect(harness.server.value?.title).toBe(choice === 'mine' ? 'Laptop' : 'Phone');
+  });
+
+  it('does not announce a validation failure or a thrown replacement save', async () => {
+    const { harness, result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await expect(result.current.resolve(resource, 'theirs', undefined, true)).rejects.toMatchObject({ code: 'decision-changed' });
+    expect(notified).not.toHaveBeenCalled();
+    harness.silentRemote({ title: 'Phone' });
+    await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 'Laptop' })); });
+    await waitFor(async () => { await settleEngine(); expect(await harness.engine.listRecoverable(resource)).toHaveLength(1); });
+    const open = harness.engine.openEditor.bind(harness.engine);
+    jest.spyOn(harness.engine, 'openEditor').mockImplementation(async (...args) => {
+      const editor = await open(...args);
+      editor.save = async () => { throw new Error('Replacement capture failed'); };
+      return editor;
+    });
+    await act(async () => { await expect(result.current.resolve(resource, 'mine')).rejects.toThrow('Replacement capture failed'); });
+    expect(notified).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('does not announce when taking the stored version throws (exactField=%s)', async exactField => {
+    const { harness, result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    harness.silentRemote({ title: 'Phone' });
+    await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 'Laptop' })); });
+    await waitFor(async () => { await settleEngine(); expect(await harness.engine.listRecoverable(resource)).toHaveLength(1); });
+    const scope = captureRecoveryChoice((await harness.engine.listRecoverable(resource)).map(item => item.record));
+    const open = harness.engine.openEditor.bind(harness.engine);
+    const spy = exactField
+      ? jest.spyOn(harness.engine, 'openEditor').mockImplementation(async (...args) => {
+        const editor = await open(...args);
+        editor.acceptRemote = async () => { throw new Error('Take failed'); };
+        return editor;
+      })
+      : jest.spyOn(harness.engine, 'takeStoredVersion').mockRejectedValue(new Error('Take failed'));
+    try {
+      await act(async () => { await expect(result.current.resolve(resource, 'theirs', scope, exactField)).rejects.toThrow('Take failed'); });
+      expect(notified).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('keeps a successful resolve and later observers when an observer throws', async () => {
+    const { result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const error = new Error('Observer failed');
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stopThrowing = result.current.subscribeVersionTaken(resource, () => { throw error; });
+    const later = jest.fn();
+    const stopLater = result.current.subscribeVersionTaken(resource, later);
+    try {
+      await act(async () => { await expect(result.current.resolve(resource, 'theirs')).resolves.toBe(0); });
+      expect(notified).toHaveBeenCalledTimes(1);
+      expect(later).toHaveBeenCalledTimes(1);
+      expect(logged).toHaveBeenCalledWith('DataEngine background operation failed', error);
+    } finally { stopThrowing(); stopLater(); logged.mockRestore(); }
+  });
+
+  it('announces to a snapshot despite subscriptions changing during notification', async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const late = jest.fn(), removed = jest.fn();
+    let stopLate = () => {};
+    let stopRemoved = () => {};
+    const stopChanging = result.current.subscribeVersionTaken(resource, () => {
+      stopRemoved();
+      stopLate = result.current.subscribeVersionTaken(resource, late);
+    });
+    stopRemoved = result.current.subscribeVersionTaken(resource, removed);
+    try {
+      await act(async () => { await result.current.resolve(resource, 'theirs'); });
+      expect(removed).toHaveBeenCalledTimes(1);
+      expect(late).not.toHaveBeenCalled();
+    } finally { stopChanging(); stopRemoved(); stopLate(); }
+  });
+
+  it('filters collection and id, unsubscribes, and does not replay an earlier completion', async () => {
+    const { result, notified } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const wrongCollection = jest.fn(), wrongId = jest.fn(), stopped = jest.fn(), late = jest.fn();
+    const stops = [
+      result.current.subscribeVersionTaken({ ...resource, collection: 'studyNotes' }, wrongCollection),
+      result.current.subscribeVersionTaken({ ...resource, id: 'other' }, wrongId),
+    ];
+    result.current.subscribeVersionTaken(resource, stopped)();
+    await act(async () => { await result.current.resolve(resource, 'theirs'); });
+    const stopLate = result.current.subscribeVersionTaken(resource, late);
+    expect(notified).toHaveBeenCalledTimes(1);
+    expect(wrongCollection).not.toHaveBeenCalled();
+    expect(wrongId).not.toHaveBeenCalled();
+    expect(stopped).not.toHaveBeenCalled();
+    expect(late).not.toHaveBeenCalled();
+    stopLate(); stops.forEach(stop => stop());
   });
 });

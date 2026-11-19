@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { toast } from 'sonner';
 
 import { paragraphPlaceRefusal, storedCommentLayout } from '@/components/bible/commentParagraphPlacement';
+import { commentDraftBase, guardedByUnknownBase, resumedCommentSession } from '@/components/commentDraftBase';
 import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
 import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -303,6 +304,9 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const placeBasis = useRef(openingMove);
   // Where this window's edits began: the version it opened with, or the other device's once that was taken.
   const mine = useRef<StudyNote | undefined>(found);
+  // Restored words whose base is unknown — a copy kept before copies kept one: until the person answers a question about a
+  // version, every field this window sends is guarded by an unknown value, so the check asks rather than replaces.
+  const unknownBase = useRef(false);
   const { value: text, observe: setText, act: changeText, isUserAction: textIsUserAction, foreignValueBeforeAction: textForeignValue } = useEditorValue<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
   // The name it takes past five sentences, as a note (the owner, 2026-10-28: «без имени толку нету»).
   const [title, setTitle] = useState(found?.title ?? '');
@@ -353,6 +357,9 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     confirmedValue: text === null ? null : settled.current ?? commentDraftValue(initial, reference, initialTitle, restoredWithoutTitle,
       target.kind === 'new' ? paragraphChoice?.initial : undefined),
     isRecoveredDraftSaved: isCommentDraftSaved,
+    // Beside the words, what they are built from, read at each write: the versions the next save measures and guards with.
+    // An unknown base stays unknown in every later copy, so a window gone before the answer asks again when restored.
+    readBase: () => (target.kind === 'edit' && !unknownBase.current ? commentDraftBase(opened.current, mine.current) : undefined),
   });
   const settle = () => {
     settled.current = kept;
@@ -376,6 +383,17 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const { held: deciding, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, writerId]), waiting !== null);
   const restore = () => {
     if (!waiting) return;
+    // A written comment's words resume the session they were typed in: what this window's save measures and guards with
+    // goes back to what the words were built from, so another device's change since is judged by the existing check.
+    if (target.kind === 'edit' && opened.current) {
+      const session = resumedCommentSession(draft.recoveredBase, opened.current, resolveAppLocale(language));
+      unknownBase.current = session === null;
+      if (session) {
+        opened.current = session.opened;
+        mine.current = session.mine;
+        kindBasis.current = observeCommentKind?.(session.opened);
+      }
+    }
     changeText(waiting.text);
     setTitle(waiting.title ?? '');
     kind.restore(waiting.paragraph);
@@ -419,6 +437,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    */
   const adopt = (found: StoredVersion) => {
     if (!opened.current) return;
+    // The version answered about is known: from here the window guards with it.
+    unknownBase.current = false;
     opened.current = {
       ...opened.current, content: found.content, type: found.type, title: found.title, paragraph: found.paragraph,
       ...(found.scriptureRefs ? { scriptureRefs: found.scriptureRefs } : {}),
@@ -429,6 +449,9 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     contentBasis.current = found.engineRevision === undefined ? undefined
       : observeContent?.(opened.current.id, found.content, found.engineRevision);
   };
+
+  // What a save guards with: restored words of an unknown base guard every field they send with an unknown value.
+  const guardOf = (guard: Record<string, unknown>, updates: Partial<StudyNote>) => (unknownBase.current ? guardedByUnknownBase(guard, updates) : guard);
 
   // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
   // out where the window offers the choice — a new one's always, a written one's only when switched here.
@@ -495,7 +518,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     const compound = switchedKind || typeof updates.type === 'string';
     const textOpening = contentBasis.current;
     updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null,
-      expectedBaseline: switchedKind ? { ...baseline, scriptureRefs: note?.scriptureRefs } : baseline,
+      expectedBaseline: guardOf(switchedKind ? { ...baseline, scriptureRefs: note?.scriptureRefs } : baseline, updates),
       ...(typeof updates.content === 'string' && textOpening && textOpening.opening === baseline.content && {
         noteContent: { ...textOpening, time: captureActionTime?.() ?? null },
       }),

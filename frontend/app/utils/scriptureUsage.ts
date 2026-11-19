@@ -59,7 +59,11 @@ const MATCH_ORDER: Record<ScriptureUsageMatch, number> = { same: 0, overlap: 1, 
 
 /** The references a text names, each in the Bible it was written in — the text's language, then its document's (`written`). */
 function inText(text: string, locale: AppLocale, written: AppLocale | null): Candidate[] {
-  return referencesInText(text, locale, written).map(found => ({ reference: found.reference, text, at: found.start, inText: true, raw: found.raw }));
+  // A place of a list written without its book ("17" in "Притч. 29:15, 17") points to the list's first
+  // place: a bare "17" looked up in the note would light a "17" anywhere, "2017" included.
+  return referencesInText(text, locale, written).map(found => ({
+    reference: found.reference, text, at: found.listHead?.start ?? found.start, inText: true, raw: found.listHead?.raw ?? found.raw,
+  }));
 }
 
 /**

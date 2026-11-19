@@ -395,3 +395,57 @@ describe('authored edit time versus storage time', () => {
     clock.mockRestore();
   });
 });
+
+describe('a copy keeps what its words were built from', () => {
+  const opened = { content: 'Opened words' };
+  const typed = { content: 'Typed words' };
+
+  it('stores the base beside the words, and none when the writer gives none', () => {
+    const key = draftKey('uid-1', 'note-1', 'note', 'opening');
+    expect(saveDraft(key, typed, undefined, false, 1, opened)).toBe(true);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ value: typed, base: opened }));
+    saveDraft(key, { content: 'Typed more' }, undefined, false, 2);
+    expect(readDraft(key)).not.toHaveProperty('base');
+  });
+
+  it('keeps the payload identity of the same words when only their base moves', () => {
+    const key = draftKey('uid-1', 'note-1', 'note', 'opening');
+    saveDraft(key, typed, undefined, true, 1, opened);
+    const token = readDraft(key)?.captureToken;
+    saveDraft(key, typed, undefined, true, 1, typed);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ captureToken: token, base: typed }));
+  });
+
+  it('keeps the words alone when the device has no room for the base beside them — never nothing', () => {
+    const key = draftKey('uid-1', 'note-1', 'note', 'opening');
+    const long = (word: string) => ({ content: `${word} `.repeat(400) });
+    const words = long('Typed');
+    // The browser's room: the words fit, the words with their base do not.
+    const room = 4000;
+    const setItem = Storage.prototype.setItem;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, name: string, value: string) {
+      const used = Object.keys(this).filter(other => other !== name).reduce((sum, other) => sum + other.length + (this.getItem(other)?.length ?? 0), 0);
+      if (used + name.length + value.length > room) throw new DOMException('quota', 'QuotaExceededError');
+      return setItem.call(this, name, value);
+    });
+
+    expect(saveDraft(key, words, undefined, false, 1, long('Opened'))).toBe(true);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ value: words, editedAt: 1 }));
+    expect(readDraft(key)).not.toHaveProperty('base');
+    expect(isDraftStorageRefused()).toBe(false);
+
+    // No room even for the words: refused and reported, as before.
+    expect(saveDraft(key, long('Typed much more words'), undefined, false, 2, long('Opened'))).toBe(false);
+    expect(readDraft(key)).toEqual(expect.objectContaining({ value: words }));
+    expect(isDraftStorageRefused()).toBe(true);
+  });
+
+  it('carries the base with the words when a new note moves to its created address', () => {
+    const from = draftKey('uid-1', 'new~created', 'note', 'opening');
+    const to = draftKey('uid-1', 'created', 'note', 'opening');
+    saveDraft(from, typed, 'created', false, 1, opened);
+    moveDraft(from, to, 'created');
+    expect(readDraft(from)).toBeNull();
+    expect(readDraft(to)).toEqual(expect.objectContaining({ value: typed, base: opened }));
+  });
+});

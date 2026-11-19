@@ -3,12 +3,12 @@
 
 import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
 import { CommentIcon } from '@/components/Icons';
+import ScriptureRefBadge from '@/components/studies/ScriptureRefBadge';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { relativeDay } from '@/utils/relativeDay';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
 
-import ScriptureRefBadge from './ScriptureRefBadge';
 
 import type { StudyNote } from '@/models/models';
 

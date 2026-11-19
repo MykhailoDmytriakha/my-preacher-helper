@@ -5,6 +5,7 @@ import { useFeedback } from '@/hooks/useFeedback';
 
 // Mock feedback service
 jest.mock('@services/feedback.service', () => ({
+  ...jest.requireActual('@services/feedback.service'),
   submitFeedback: jest.fn(),
 }));
 
@@ -77,8 +78,9 @@ describe('useFeedback', () => {
       returnValue = await submission;
     });
 
+    // Sent at once under a name, since this device kept nothing (no device storage in the test).
     expect(submitFeedback).toHaveBeenCalledWith(
-      'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123'
+      'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123', undefined, expect.any(String)
     );
     expect(result.current.showFeedbackModal).toBe(false);
     expect(toast.success).toHaveBeenCalledWith('feedback.successMessage');
@@ -160,5 +162,47 @@ describe('useFeedback', () => {
       await jest.runAllTimersAsync();
       await submission;
     });
+  });
+});
+
+// Codex review round 2, 2026-11-17: when the device cannot keep a feedback, the form sends it at once —
+// under a name, so the server can say «its letter has not left» and a second press finishes the same
+// feedback instead of storing another.
+describe('when the device cannot keep the feedback', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  test('sends it named, and a second press after a failure sends the same name', async () => {
+    (submitFeedback as jest.Mock).mockRejectedValueOnce(Object.assign(new Error('Letter pending'), { status: 503 })).mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useFeedback());
+    act(() => { result.current.handleFeedbackClick(); });
+    for (let press = 0; press < 2; press += 1) {
+      await act(async () => {
+        const submission = result.current.handleSubmitFeedback('Words', 'bug', [], 'user-1');
+        await jest.runAllTimersAsync();
+        await submission;
+      });
+    }
+    const names = (submitFeedback as jest.Mock).mock.calls.map(call => call[5]);
+    expect(typeof names[0]).toBe('string');
+    expect(names[1]).toBe(names[0]);
+    expect(result.current.showFeedbackModal).toBe(false);
+  });
+
+  // Codex review round 3, 2026-11-17: the first send was mailed but its answer lost; the person added
+  // words and pressed again under the same name — the server said «already done» and the new words were lost.
+  test('gives changed words a new name, so the server takes them as a new feedback', async () => {
+    (submitFeedback as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useFeedback());
+    act(() => { result.current.handleFeedbackClick(); });
+    for (const words of ['First words', 'First words, and more']) {
+      await act(async () => {
+        const submission = result.current.handleSubmitFeedback(words, 'bug', [], 'user-1');
+        await jest.runAllTimersAsync();
+        await submission;
+      });
+    }
+    const names = (submitFeedback as jest.Mock).mock.calls.map(call => call[5]);
+    expect(names[1]).not.toBe(names[0]);
   });
 });

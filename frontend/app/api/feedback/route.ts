@@ -326,7 +326,7 @@ async function deleteExpiredFeedback(now: Date): Promise<void> {
  * IMPORTANT: Images are NOT persisted here (TRIZ: inbox is already persistent).
  * Only imageCount is stored so queries stay fast and documents stay small.
  */
-async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
+async function storeFeedbackInDatabase(feedbackData: FeedbackData, feedbackId?: string): Promise<{ id: string; created: boolean }> {
   console.log('Storing feedback in Firestore database');
   const feedbackRef = adminDb.collection('feedback');
 
@@ -334,6 +334,9 @@ async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
   const { images, diagnostics, ...dataWithoutImages } = feedbackData;
   const docToStore = {
     ...dataWithoutImages,
+    // A named feedback records whether its letter left: the letter and its screenshots travel only by
+    // mail, so a stored document alone is not proof they arrived (Codex review 2026-11-17).
+    ...(feedbackId && { emailed: false }),
     ...(images && images.length > 0 && { imageCount: images.length }),
     // A string, not a nested map: a browser's report can be deeper than Firestore allows or carry a
     // reserved key, and a refused document would cost the person their words.
@@ -341,9 +344,127 @@ async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
     expiresAt: new Date(Date.parse(feedbackData.createdAt) + FEEDBACK_RETENTION_MS),
   };
 
-  const result = await feedbackRef.add(docToStore);
-  console.log(`Feedback stored successfully with ID: ${result.id}`);
-  return result;
+  // A device names its feedback, so a send repeated after a lost answer finds it already stored; an
+  // older app sends no name and the database gives one. One creation either way, never an overwrite.
+  const ref = feedbackId ? feedbackRef.doc(feedbackId) : feedbackRef.doc();
+  try {
+    await ref.create(docToStore);
+  } catch (error) {
+    if (!feedbackId || resolveFirestoreWriteRefusal(error)?.code !== 'already-exists') throw error;
+    console.log(`Feedback ${feedbackId} was already stored; not storing or emailing it again`);
+    return { id: feedbackId, created: false };
+  }
+  console.log(`Feedback stored successfully with ID: ${ref.id}`);
+  return { id: ref.id, created: true };
+}
+
+/** A device-chosen feedback id: one document name, the way `newClientId` makes it. */
+const FEEDBACK_ID = /^[A-Za-z0-9_-]{8,128}$/;
+
+/** The device's id for this feedback: undefined when none was sent, null when it cannot name a document. */
+function readFeedbackId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' && FEEDBACK_ID.test(value) ? value : null;
+}
+
+/** Sends the letter; false when it could not leave now. Unconfigured mail counts as sent: nothing more can be done. */
+async function emailFeedback(feedbackData: FeedbackData, userEmailVerified: boolean): Promise<boolean> {
+  try {
+    await sendEmailNotification(feedbackData, userEmailVerified);
+    return true;
+  } catch (emailError) {
+    console.error('Email sending failed:', emailError);
+    return false;
+  }
+}
+
+/** The letter of a named feedback left; a later repeat of it answers without mailing again. */
+const markEmailed = (feedbackId: string) => adminDb.collection('feedback').doc(feedbackId).update({ emailed: true });
+
+const duplicateResponse = (id: string) =>
+  NextResponse.json({ success: true, message: 'Feedback already submitted', id, duplicate: true });
+
+/** Stored, but the letter has not left: the device keeps the feedback and sends it again later. No Retry-After — this is not an outage. */
+const letterPendingResponse = (id: string) =>
+  NextResponse.json({ error: 'Feedback stored; its letter could not be sent yet', code: 'email-pending', id }, { status: 503 });
+
+/** The feedback as stored and mailed: the words exactly as sent, the sender from the verified token. */
+function buildFeedbackData({ text, feedbackType, images, identity, diagnostics, userAgent }: {
+  text: string; feedbackType: unknown; images: string[]; diagnostics: unknown; userAgent: string | null;
+  identity: { uid: string; email?: string | null };
+}): FeedbackData {
+  const trimmedTokenEmail = typeof identity.email === 'string' ? identity.email.trim() : '';
+  const tokenEmail = trimmedTokenEmail || NOT_PROVIDED;
+  const resolvedType = resolveFeedbackType(feedbackType);
+
+  console.log('Parsed feedback request:', {
+    type: resolvedType,
+    userId: identity.uid,
+    userEmail: tokenEmail,
+    textLength: text.length,
+    imagesCount: images.length
+  });
+
+  // The words are stored exactly as sent. An older app version that still glues its report under
+  // them keeps that text as it was — cutting it apart risked cutting a person's own quoted words
+  // (two review rounds), and such versions update themselves within days.
+  const report = checkFeedbackDiagnostics(diagnostics);
+
+  return {
+    text,
+    type: resolvedType,
+    userId: identity.uid,
+    userEmail: tokenEmail,
+    createdAt: new Date().toISOString(),
+    status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.
+    userAgent: userAgent || 'unknown',
+    ...(images.length > 0 && { images }),
+    ...(report.kind === 'ok' && { diagnostics: { json: report.json, report: report.diagnostics } }),
+    ...(report.kind === 'dropped' && { diagnosticsDropped: report.reason }),
+  };
+}
+
+/** Stores a new feedback and mails its letter; a named one is answered as done only once its letter left. */
+async function storeAndMail(feedbackData: FeedbackData, feedbackId: string | undefined, userEmailVerified: boolean): Promise<NextResponse> {
+  const result = await storeFeedbackInDatabase(feedbackData, feedbackId);
+  // Another send of the same feedback stored it a moment ago and has not said its letter left: the
+  // device keeps its copy and asks again (Codex review round 2, 2026-11-17).
+  if (!result.created) return letterPendingResponse(result.id);
+  afterResponse(() => deleteExpiredFeedback(new Date()));
+
+  // Send email notification - ensure it completes before the function returns
+  console.log('Triggering email notification');
+  const emailed = await emailFeedback(feedbackData, userEmailVerified);
+  if (feedbackId) {
+    // The device keeps a named feedback until its letter left; an older app's feedback stays as it
+    // always was — stored, with the failure logged.
+    if (!emailed) return letterPendingResponse(result.id);
+    await markEmailed(result.id);
+  }
+
+  console.log('Feedback submission completed successfully');
+  return NextResponse.json({ success: true, message: 'Feedback submitted successfully', id: result.id });
+}
+
+/**
+ * A FEEDBACK THE DEVICE SENDS AGAIN FINISHES WHAT THE FIRST SEND LEFT. The device sends a queued
+ * feedback until it hears an answer (`utils/feedbackOutbox.ts`), so the same name can arrive after the
+ * first send stored it, mailed it, or stopped in between. Already stored and mailed → the same answer
+ * again, nothing repeated; stored but not mailed → the letter is sent now, with this send's
+ * screenshots. Null when nothing is stored under the name yet.
+ */
+async function finishStoredFeedback(feedbackId: string, feedbackData: FeedbackData, userEmailVerified: boolean): Promise<NextResponse | null> {
+  const ref = adminDb.collection('feedback').doc(feedbackId);
+  const stored = await ref.get();
+  if (!stored.exists) return null;
+  const storedData = stored.data() as { userId?: unknown; emailed?: unknown } | undefined;
+  if (storedData?.userId !== feedbackData.userId) {
+    return NextResponse.json({ error: 'This feedback belongs to another account', code: 'owner-mismatch' }, { status: 409 });
+  }
+  if (storedData?.emailed !== false) return duplicateResponse(feedbackId);
+  if (!await emailFeedback(feedbackData, userEmailVerified)) return letterPendingResponse(feedbackId);
+  await markEmailed(feedbackId);
+  return duplicateResponse(feedbackId);
 }
 
 /**
@@ -378,6 +499,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { feedbackText, feedbackType, images } = body as Record<string, unknown>;
+    const feedbackId = readFeedbackId((body as Record<string, unknown>).feedbackId);
+    if (feedbackId === null) return NextResponse.json({ error: 'Invalid feedback id' }, { status: 400 });
 
     if (typeof feedbackText !== 'string' || !feedbackText) {
       console.log('Validation failed: Feedback text is missing');
@@ -398,6 +521,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const feedbackData = buildFeedbackData({
+      text: feedbackText, feedbackType, images: imageValidation.images, identity,
+      diagnostics: (body as Record<string, unknown>).diagnostics, userAgent: request.headers.get('user-agent'),
+    });
+
+    if (feedbackId) {
+      // A queue drained after signing in to another account must not send the first account's words
+      // under the second one's name (Codex review 2026-11-17).
+      if ((body as Record<string, unknown>).userId !== identity.uid) {
+        return NextResponse.json({ error: 'This feedback was written by another account', code: 'owner-mismatch' }, { status: 409 });
+      }
+      // A repeat is not a new submission: it is answered before the rate limit counts it.
+      const finished = await withStore(() => finishStoredFeedback(feedbackId, feedbackData, identity.emailVerified), { write: true });
+      if (finished) return finished;
+    }
+
     const rateLimit = await withStore(() => consumeSlidingWindowRateLimit({
       scope: 'feedback',
       key: identity.uid,
@@ -416,58 +555,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const trimmedTokenEmail =
-      typeof identity.email === 'string' ? identity.email.trim() : '';
-    const tokenEmail = trimmedTokenEmail || NOT_PROVIDED;
-    const resolvedType = resolveFeedbackType(feedbackType);
-
-    console.log('Parsed feedback request:', {
-      type: resolvedType,
-      userId: identity.uid,
-      userEmail: tokenEmail,
-      textLength: typeof feedbackText === 'string' ? feedbackText.length : 0,
-      imagesCount: imageValidation.images.length
-    });
-
-    // Create a new feedback document
-    // The words are stored exactly as sent. An older app version that still glues its report under
-    // them keeps that text as it was — cutting it apart risked cutting a person's own quoted words
-    // (two review rounds), and such versions update themselves within days.
-    const report = checkFeedbackDiagnostics((body as Record<string, unknown>).diagnostics);
-
-    const feedbackData: FeedbackData = {
-      text: feedbackText,
-      type: resolvedType,
-      userId: identity.uid,
-      userEmail: tokenEmail,
-      createdAt: new Date().toISOString(),
-      status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.
-      userAgent: request.headers.get('user-agent') || 'unknown',
-      ...(imageValidation.images.length > 0 && { images: imageValidation.images }),
-      ...(report.kind === 'ok' && { diagnostics: { json: report.json, report: report.diagnostics } }),
-      ...(report.kind === 'dropped' && { diagnosticsDropped: report.reason }),
-    };
-
-    // Add the feedback to Firestore
-    const result = await storeFeedbackInDatabase(feedbackData);
-    afterResponse(() => deleteExpiredFeedback(new Date()));
-
-    // Send email notification - ensure it completes before the function returns
-    console.log('Triggering email notification');
-    try {
-      await sendEmailNotification(feedbackData, identity.emailVerified);
-    } catch (emailError) {
-      console.error('Email sending failed:', emailError);
-      // Still proceed with success response as the feedback was stored
-    }
-
-    // Return success response
-    console.log('Feedback submission completed successfully');
-    return NextResponse.json({
-      success: true,
-      message: 'Feedback submitted successfully',
-      id: result.id
-    });
+    return await storeAndMail(feedbackData, feedbackId, identity.emailVerified);
   } catch (error) {
     if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Error submitting feedback:', error);

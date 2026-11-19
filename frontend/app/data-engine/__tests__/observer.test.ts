@@ -395,6 +395,26 @@ describe('ResourceObserver', () => {
     },
   );
 
+  // BUG-20261117-preaching-screen-shows-sync-notice: a check the server refused just before the device
+  // lost its network stayed "failed" for the whole offline time, so the screen said «could not check for
+  // updates» with a Retry beside the app's own «offline» line. Offline, nothing is checked and the
+  // offline line says why; back online, a new failure is reported again.
+  it('does not keep reporting a failed check while offline, and reports a new failure once back online', async () => {
+    const h = harness(); h.read.mockRejectedValue(new Error('Server refused the read')); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500);
+    expect(h.state()).toMatchObject({ error: true });
+    h.observer.setOnline(false);
+    expect(h.state()).toMatchObject({ error: false, readiness: 'unknown' });
+    await jest.advanceTimersByTimeAsync(500_000);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    expect(h.state().error).toBe(false);
+    h.observer.setOnline(true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.state()).toMatchObject({ error: true });
+    h.observer.dispose();
+  });
+
   it('backs off failed reads with a bounded maximum', async () => {
     const h = harness(); h.read.mockRejectedValue(new Error('Network failure.')); h.watch();
     await jest.advanceTimersByTimeAsync(2_500);

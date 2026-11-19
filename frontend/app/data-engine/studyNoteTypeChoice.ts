@@ -6,7 +6,6 @@ import { mergeDocumentFields } from './protocol';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-const path = ['type'];
 export const isStudyNoteTypeConflict = (conflict: ConflictDetail) => conflict.path.length === 1 && conflict.path[0] === 'type';
 
 function comparedType(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
-import { firstCommentReference, isLiveCollectionDocument, matchesCommentPlaceScope, readTagOpening, replaceCommentReference, useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
+import { firstCommentReference, isLiveCollectionDocument, matchesCommentPlaceScope, readTagOpening, replaceCommentReference, useDataCollection, useDocumentActions, useStoredVersionTaken, type DocumentWriteReceipt } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
@@ -68,8 +68,12 @@ export function engineNote(value: DocumentData, id: string, locale: AppLocale): 
  */
 const readFrom = new WeakMap<object, unknown>();
 
-/** Recover the exact stored list behind a reading, including legacy references without a Bible. */
-const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
+/**
+ * Recover the exact stored list behind a reading, including legacy references without a Bible. Exported for a copy
+ * of an editor baseline that leaves memory (a note draft's base): JSON keeps the stored list, never this mapping, and
+ * `engineNote` reads it back into a reading that has the mapping again.
+ */
+export const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
   ? readFrom.get(references) ?? references : references;
 
 const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({
@@ -113,6 +117,9 @@ export function useStudyNotesEngine(enabled: boolean) {
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useDataCollection(enabled && uid ? 'studyNotes' : null);
   const actions = useDocumentActions();
+  const subscribeVersionTaken = useStoredVersionTaken();
+  const subscribeNoteVersionTaken = useCallback((id: string, notify: () => void) =>
+    enabled && uid ? subscribeVersionTaken(resource(id), notify) : () => undefined, [enabled, uid, subscribeVersionTaken]);
   const [updating, setUpdating] = useState(0);
   const inFlight = useRef(new Set<string>());
 
@@ -225,6 +232,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     uid,
     notes,
     noteDelivery,
+    subscribeNoteVersionTaken,
     observeTitle,
     observeContent,
     observeType,

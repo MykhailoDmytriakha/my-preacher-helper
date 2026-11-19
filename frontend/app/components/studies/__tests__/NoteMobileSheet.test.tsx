@@ -4,7 +4,7 @@ import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
 
-import { NoteMobileSheet } from '../NoteMobileSheet';
+import { NoteMobileSheet } from '@/components/studies/NoteMobileSheet';
 
 import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 
@@ -118,6 +118,29 @@ describe('NoteMobileSheet', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
 
         expect(toggleAll).toHaveBeenCalled();
+    });
+
+    it('keeps collapse-all with the list on the outline tab, not in the header beside the tabs', () => {
+        render(<NoteMobileSheet {...props} outline={makeControl()} />);
+
+        const toggle = screen.getByRole('button', { name: 'Collapse all' });
+        expect(toggle.closest('[data-note-sheet-scroll]')).not.toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Properties' }));
+        expect(screen.queryByRole('button', { name: 'Collapse all' })).not.toBeInTheDocument();
+    });
+
+    it('opens on the tab the host asks for, under the name the host gives it — a guest\'s "and 193 more"', () => {
+        const outline = makeControl();
+        const { rerender } = render(<NoteMobileSheet {...props} open={false} outline={outline} openOn="properties" propertiesLabel="Passages" />);
+        rerender(<NoteMobileSheet {...props} open outline={outline} openOn="properties" propertiesLabel="Passages" />);
+
+        expect(screen.getByRole('button', { name: 'Passages' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByText('refs slot')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Properties' })).not.toBeInTheDocument();
+
+        rerender(<NoteMobileSheet {...props} open={false} outline={outline} openOn="outline" propertiesLabel="Passages" />);
+        rerender(<NoteMobileSheet {...props} open outline={outline} openOn="outline" propertiesLabel="Passages" />);
+        expect(screen.getByRole('button', { name: 'Outer' })).toBeInTheDocument();
     });
 
     it('while editing the fold arrows are gone — the editor is not the folding renderer', () => {

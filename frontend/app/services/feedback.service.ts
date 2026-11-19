@@ -19,16 +19,20 @@ import {
   serializeFeedbackPayload,
 } from '@/utils/feedbackPayload';
 
-export async function submitFeedback(
-  feedbackText: string,
-  feedbackType: string,
-  images: string[] = [],
-  userId: string = 'anonymous',
+export interface FeedbackSubmission {
+  feedbackText: string;
+  feedbackType: string;
+  images: string[];
+  /** The caller's id or 'anonymous'; the endpoint takes identity from the bearer token. */
+  userId: string;
   /** The technical report, beside the words — never inside them (owner, 2026-10-10). */
-  diagnostics?: Record<string, unknown>
-) {
-  // Endpoint derives identity from the bearer token; userId is kept for signature
-  // compatibility but is ignored server-side.
+  diagnostics?: Record<string, unknown>;
+  /** Names the feedback on the server, so a send repeated after a lost answer is stored and emailed once. */
+  feedbackId?: string;
+}
+
+/** The request body for a feedback, refused here when the server would refuse it for its size. */
+export function prepareFeedbackPayload({ feedbackText, feedbackType, images, userId, diagnostics, feedbackId }: FeedbackSubmission): string {
   if (getUtf8ByteLength(feedbackText) > MAX_FEEDBACK_TEXT_BYTES) {
     throw new Error('Feedback text is too large');
   }
@@ -39,10 +43,26 @@ export async function submitFeedback(
     images,
     userId,
     ...(diagnostics ? { diagnostics } : {}),
+    ...(feedbackId ? { feedbackId } : {}),
   });
   if (getUtf8ByteLength(serializedPayload) > MAX_FEEDBACK_PAYLOAD_BYTES) {
     throw new Error('Feedback payload is too large');
   }
+  return serializedPayload;
+}
+
+export async function submitFeedback(
+  feedbackText: string,
+  feedbackType: string,
+  images: string[] = [],
+  userId: string = 'anonymous',
+  /** The technical report, beside the words — never inside them (owner, 2026-10-10). */
+  diagnostics?: Record<string, unknown>,
+  feedbackId?: string
+) {
+  // Endpoint derives identity from the bearer token; userId is kept for signature
+  // compatibility but is ignored server-side.
+  const serializedPayload = prepareFeedbackPayload({ feedbackText, feedbackType, images, userId, diagnostics, feedbackId });
 
   const authHeaders = await getAuthenticatedRequestHeaders();
   const response = await apiClient('/api/feedback', { category: 'detail', timeout: 60000,

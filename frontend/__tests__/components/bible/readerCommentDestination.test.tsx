@@ -22,7 +22,7 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     <textarea aria-label="comment-editor" value={value} onChange={event => onChange(event.target.value)} />,
 }));
 const mockEngine = { uid: 'owner', notes: [] as StudyNote[], createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() };
-jest.mock('@/hooks/useStudyNotesEngine', () => ({ useStudyNotesEngine: () => mockEngine }));
+jest.mock('@/hooks/useStudyNotesEngine', () => ({ ...jest.requireActual('@/hooks/useStudyNotesEngine'), useStudyNotesEngine: () => mockEngine }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 let mockTarget = { book: 'Romans', chapter: 1, verse: 7 };
 jest.mock('@/components/bible/BiblePicker', () => ({

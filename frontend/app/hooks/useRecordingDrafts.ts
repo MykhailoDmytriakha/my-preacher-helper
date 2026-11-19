@@ -4,7 +4,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import {
   adoptLegacyRecordingDrafts,
   deleteRecordingDraft,
-  listRecordingDrafts,
+  listUnfinishedRecordingDrafts,
   saveRecordingDraft,
   subscribeRecordingDrafts,
   type RecordingDraft,
@@ -47,7 +47,7 @@ export function useRecordingDrafts(context: RecordingDraftContext, contextId?: s
       if (contextId && sourceOwnerId === ownerId) {
         await adoptLegacyRecordingDrafts({ ownerId, sourceOwnerId, context, contextId });
       }
-      const drafts = await listRecordingDrafts({ ownerId, context, contextId, linkedSourceIds: linkedIds });
+      const drafts = await listUnfinishedRecordingDrafts({ ownerId, context, contextId, linkedSourceIds: linkedIds });
       if (isLatest()) setState({ identity, drafts, loading: false, error: null });
       return drafts;
     } catch (error) {

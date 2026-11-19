@@ -45,6 +45,14 @@ export interface DurableDraft<T> {
   creationTargetId?: string;
   /** Exact payload ownership; a different value always drops this binding. */
   captureToken?: string;
+  /**
+   * What `value` was built from, as the editor's own save compares it: the editor's baseline when this copy
+   * was written. A copy is a frozen editor session, the words AND their base; restoring it resumes that session,
+   * so the editor's ordinary save and stale-write check judge the old words against what they really replaced.
+   * Supplied by the caller at every write of the copy; absent on copies written before it existed (unknown base).
+   * Its shape is the caller's and nothing here validates it, so a reader checks it before use. Older builds ignore it.
+   */
+  base?: unknown;
 }
 
 /**
@@ -122,7 +130,7 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * it traded an original for a backup, silently. So a refused copy is reported instead: the
  * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity: boolean | 'renew' = false, editedAt?: number): boolean {
+export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity: boolean | 'renew' = false, editedAt?: number, base?: unknown): boolean {
   const renewCapture = captureIdentity === 'renew' || refusedDraftKeys.get(key)?.renewCapture === true;
   const store = storage();
   if (!store) {
@@ -149,18 +157,28 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
   // A capture refresh of the same payload is storage work, not another edit.
   const actionTime = Number.isFinite(editedAt) ? editedAt
     : sameLineage && sameValue && Number.isFinite(previous?.editedAt) ? previous?.editedAt : undefined;
-  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(actionTime !== undefined ? { editedAt: actionTime } : {}), ...(creationTargetId ? { creationTargetId } : {}),
-    ...(captureToken ? { captureToken } : {}) } satisfies DurableDraft<T>);
+  // The base is read by the caller at this write, beside the words it belongs to; it never changes the
+  // payload identity above, which binds the words alone.
+  const record = (kept: unknown) => JSON.stringify({ value, savedAt: Date.now(), ...(actionTime !== undefined ? { editedAt: actionTime } : {}), ...(creationTargetId ? { creationTargetId } : {}),
+    ...(captureToken ? { captureToken } : {}), ...keptBase(kept) } satisfies DurableDraft<T>);
 
-  try {
-    store.setItem(key, payload);
-  } catch {
+  // NO ROOM FOR THE BASE IS NOT NO ROOM FOR THE WORDS. The base can double a copy; a copy that does not fit with it is
+  // kept as the words alone — the record a copy had before copies kept their base, which «Restore» asks about once —
+  // rather than not at all. Only words that do not fit even alone are refused.
+  const write = (payload: string) => { try { store.setItem(key, payload); return true; } catch { return false; } };
+  const withBase = keptBase(base).base !== undefined;
+  if (!write(record(base)) && !(withBase && write(record(undefined)))) {
     console.error('durableDraft: no room to persist', key);
     recordDraftStorage(key, true, value, creationTargetId, renewCapture);
     return false;
   }
   recordDraftStorage(key, false);
   return true;
+}
+
+/** The record's base field: present only when the writer read one. */
+function keptBase(base: unknown): Pick<DurableDraft<unknown>, 'base'> {
+  return base === undefined || base === null ? {} : { base };
 }
 
 /** Read a draft, or null when absent/unparsable. Never throws. */
@@ -306,8 +324,8 @@ export function moveDraft(fromKey: string, toKey: string, expectedCreationTarget
     carryRefusal(fromKey, toKey);
   }
   if (!stored) return;
-  // Copied as it is, without settling anything: an older stored text landing under the new key
-  // proves nothing about a newer text the browser refused there.
+  // Copied as it is, its base included, without settling anything: an older stored text landing under the
+  // new key proves nothing about a newer text the browser refused there.
   if (!writeStoredDraft(toKey, stored)) return;
   // VERIFY THE COPY LANDED before the source goes: clearing it on faith would leave the text
   // with no durable copy at all, which is worse than not moving it.

@@ -11,22 +11,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { rebaseAcceptedStudyNoteReferences } from '@/data-engine/react.client';
-import { isStaleWriteError, type StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
-import { serializeContent } from '@/utils/contentFingerprint';
 import { prepareDraftCapture, prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
 import { draftKey, clearDraftIfMatches, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
 
+import { noteDraftBase } from './noteDraftBase';
+
 import type { NoteDraftPayload } from './noteDraft';
-import type { NoteReferenceEdit } from './noteReferenceDraft';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
-import type { StudyNoteContentCapture, StudyNoteReferenceAlias, StudyNoteReferenceEvidence } from '@/data-engine/types';
-import type { SavedStudyNote, StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
+import type { StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
 const EMPTY_SOURCE_IDS: string[] = [];
@@ -79,9 +77,27 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
     }).catch(() => undefined);
 }
 
+/**
+ * A COPY'S BASE IS NEVER AHEAD OF WHAT THIS DEVICE HAS STORED. A save handed to the engine is this device's only once
+ * its local capture has stored it; a page that dies before that takes the save with it. A copy that named such a save as
+ * its base would, restored, send only what differs from a save nobody holds — his own change silently dropped. So the
+ * page's copies keep `baselineRef` as their base, and the baseline moves to a save at its capture. At that moment
+ * `stored` writes the page's copy again with the new base: words typed while the device was storing the save do not
+ * keep the base before it once the save is stored, and «Restore» does not ask about his own save. A save that does not
+ * land moves neither the baseline nor the copy's base.
+ */
+export type NoteSaveStored = { stored: () => void };
+
+/** The save landed: its capture moved the baseline to it, and the copy follows. Anything else moves nothing. */
+function followStoredSave(follow: NoteSaveStored | undefined, payload: NoteDraftPayload, baseline: NoteDraftPayload | null) {
+    if (follow && baseline === payload) follow.stored();
+}
+
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, contentRoot, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onBodyCaptured, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    liveValues, noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
+    /** The page reads this same synchronous snapshot for adoption and submission. */
+    liveValues?: () => NoteDraftPayload;
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
     creationId?: string;
@@ -91,9 +107,6 @@ export function useNoteAutoSave({
     draftWriterId?: string;
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
-    draftOrigin?: NoteDraftPayload['origin'];
-    draftTargetGeneration?: string | null;
-    expectedGeneration?: string | null;
     titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
     typeEditRef?: React.MutableRefObject<NoteTypeEdit | null>;
     submittedTypeRef?: React.MutableRefObject<SubmittedNoteType | null>;
@@ -106,23 +119,17 @@ export function useNoteAutoSave({
         updates: Partial<StudyNote>;
         captureScope?: string;
         titleCapture?: StudyNoteTitleCapture;
-        noteContent?: StudyNoteContentCapture;
-        dictationAfterUndo?: NonNullable<NoteDraftPayload['origin']>['dictationAfterUndo'];
         typeCapture?: StudyNoteTypeCapture;
         tagMembership?: readonly DocumentTagIntent[];
-        referenceEvidence?: StudyNoteReferenceEvidence;
         expectedRevision?: number | null;
-        expectedGeneration?: string | null;
         expectedBaseline?: Record<string, unknown> | null;
-    }) => StudyNoteSubmission & { result: Promise<SavedStudyNote> };
+    }) => StudyNoteSubmission & { result: Promise<StudyNote & { revision?: number }> };
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }) =>
         StudyNoteSubmission & { note: StudyNote };
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Baseline owned by the page so both autosave and "load newer" can move it. */
     baselineRef: React.MutableRefObject<NoteDraftPayload | null>;
-    /** The editor lineage differs from a row adopted before its document was rendered. */
-    contentRoot?: React.MutableRefObject<string>;
     /** Revision this text was built from; null keeps the write unguarded. */
     revisionRef: React.MutableRefObject<number | null>;
     /**
@@ -137,27 +144,22 @@ export function useNoteAutoSave({
     /** While true the server already refused: stop saving until the person chooses. */
     saveBlocked: boolean;
     /** Raised when the server refused a stale write — the text is NOT lost. */
-    onConflict: (error: StaleWriteError) => void;
+    onConflict: () => void;
     /**
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
      */
-    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType, replacedContent?: string, replacedDictation?: readonly string[]) => void;
-    referenceEdits?: ReadonlyMap<string, NoteReferenceEdit>;
-    onBodyCaptured?: (requestId: string, body: string) => void;
-    onContentCaptured?: (opening: Omit<StudyNoteContentCapture, 'time'>) => void;
-    onContentAcknowledged?: (content: string, proof: { generation: string; revision: number } | undefined) => void;
-    onReferenceAcknowledged?: (submitted: ScriptureReference[], accepted: ScriptureReference[], aliases: readonly StudyNoteReferenceAlias[], revision?: number, engineRevision?: number) => void;
+    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType) => void;
     /** Called only after an exact canonical request durably owns these words. */
     onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
-    /** Capture source IDs at submission time; later dictation belongs to a later save. */
-    captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
+    /** Snapshot only transcript IDs in this submitted create/update, never other applied sources. */
+    captureRecordingHandoff?: (submittedSourceIds: readonly string[]) => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
     /**
      * Set by the page right before a change that must not wait for the pause — dictated text
      * landing in the note. The next save goes at once; the flag clears when a save starts.
      */
     saveAtOnceRef?: React.MutableRefObject<boolean>;
-}) {
+}, saveStored?: NoteSaveStored) {
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -168,16 +170,23 @@ export function useNoteAutoSave({
     // both create the same new note.
     const inFlightRef = useRef(false);
     const atOnceRef = saveAtOnceRef ?? ownAtOnceRef;
+    const saveStoredRef = useRef(saveStored);
+    saveStoredRef.current = saveStored;
 
-    // Only a submitted payload advances the editor lineage; row adoption cannot prove what was drawn.
+    // Submitted text, including queued work, becomes the next save baseline.
     const advanceSubmittedBaseline = useCallback((payload: NoteDraftPayload) => {
         baselineRef.current = payload;
-        if (contentRoot) contentRoot.current = payload.content;
-    }, [baselineRef, contentRoot]);
+    }, [baselineRef]);
 
-    const saveNewNote = useCallback(async () => {
+    const readValues = useCallback(() => liveValues?.() ?? ({
+        title, content, tags, scriptureRefs, type,
+        ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
+    }), [liveValues, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]);
+
+    const saveNewNote = useCallback(async (confirmedPayload: NoteDraftPayload) => {
+        const { title, content, tags, scriptureRefs } = confirmedPayload;
         if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
-        const recording = captureRecordingHandoff?.();
+        const recording = captureRecordingHandoff?.(confirmedPayload.dictationSourceIds ?? EMPTY_SOURCE_IDS);
         // Creation adopts a new destination and remounts the recorder; keep its sole source safe first.
         if (recording?.canChangeDestination?.() === false) return;
 
@@ -185,17 +194,15 @@ export function useNoteAutoSave({
         setSaveError(null);
         setLastSaved(null);
         try {
-            const confirmedPayload: NoteDraftPayload = {
-                title, content, tags, scriptureRefs, type,
-                ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
-            };
             // Immediate dictation can beat the backup debounce. Carry the submitted words,
             // never an older copy; a refused backup keeps its source and existing warning.
             const sourceKey = uid ? draftKey(uid, draftDocId, 'note', draftWriterId) : null;
             const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
             // Do not claim another creation's copy or an untagged legacy source for this ID.
             const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
-            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId, true, draftEditedAt) : false;
+            // The copy keeps the base it was typed against, as every writer of this key does (`noteDraftBase`).
+            const backupReady = sourceKey && ownsSource
+                ? saveDraft(sourceKey, confirmedPayload, creationId, true, draftEditedAt, noteDraftBase(baselineRef.current)) : false;
             const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
             const captureScope = sourceKey && backupReady && creationId
                 ? prepareDraftCapture(sourceKey, confirmedPayload, { collection: 'studyNotes', id: creationId }) : undefined;
@@ -267,9 +274,10 @@ export function useNoteAutoSave({
             console.error('Auto-create error', e);
             setSaveError('common.saveError');
         } finally {
+            followStoredSave(saveStoredRef.current, confirmedPayload, baselineRef.current);
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
+    }, [createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, baselineRef, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -283,9 +291,11 @@ export function useNoteAutoSave({
         // writes at a document we know is newer — and one of them could land.
         if (saveBlocked) return;
 
+        const payload = readValues();
+        const { title, tags, scriptureRefs, type } = payload;
         if (isNew) {
             inFlightRef.current = true;
-            try { await saveNewNote(); } finally { inFlightRef.current = false; }
+            try { await saveNewNote(payload); } finally { inFlightRef.current = false; }
             return;
         }
 
@@ -293,13 +303,8 @@ export function useNoteAutoSave({
         // an untouched field is written back from the snapshot this tab loaded, so
         // a stale tab silently reverts text edited elsewhere. The baseline advances
         // only after acceptance, so a failed write remains changed on the next pass.
-        const payload: NoteDraftPayload = {
-            title, content, tags, scriptureRefs, type,
-            ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
-        };
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, payload);
         const wasDeliberate = deliberateOverwriteRef.current;
-        const noteContent = updates.content !== undefined ? draftOrigin?.content : undefined;
         const titleEdit = titleEditRef?.current;
         const seen = titleEdit?.capture.seen;
         const titleCapture = !wasDeliberate && titleEdit && titleEdit.owner === uid && titleEdit.id === noteId && titleEdit.value === title
@@ -330,19 +335,6 @@ export function useNoteAutoSave({
         // An unchanged picker or recovery can copy reference values without retaining
         // their raw read provenance. Keep the opened identity until references change;
         // all other fields must still match the exact editor payload being confirmed.
-        const openingReferences = baselineRef.current?.scriptureRefs;
-        const desiredReferences = updates.scriptureRefs;
-        const exactReferenceEdits = openingReferences && desiredReferences && referenceEdits
-            ? [...referenceEdits].filter(([id, action]) => {
-                const opening = openingReferences.find(reference => reference.id === id);
-                const desired = desiredReferences.find(reference => reference.id === id);
-                return serializeContent(opening ?? null) !== serializeContent(desired ?? null)
-                    && serializeContent(action.reference ?? null) === serializeContent(desired ?? null);
-            }) : [];
-        const referenceEvidence = exactReferenceEdits.length ? {
-            times: Object.fromEntries(exactReferenceEdits.flatMap(([id, edit]) => edit.time ? [[id, edit.time]] : [])),
-            observedRevisions: Object.fromEntries(exactReferenceEdits.flatMap(([id, edit]) => edit.observedRevision ? [[id, edit.observedRevision]] : [])),
-        } : undefined;
         const submittedPayload: NoteDraftPayload = {
             ...payload,
             scriptureRefs: updates.scriptureRefs ?? baselineRef.current?.scriptureRefs ?? scriptureRefs,
@@ -356,24 +348,21 @@ export function useNoteAutoSave({
         // indicator after the spinner ends.
         setLastSaved(null);
         try {
-            const backup = draftOrigin ? { ...submittedPayload, origin: draftOrigin, ...(draftTargetGeneration !== undefined && { targetGeneration: draftTargetGeneration }) } : submittedPayload;
-            const captureScope = prepareNoteDraftCapture(uid, noteId, backup, draftWriterId, draftEditedAt);
+            const recording = captureRecordingHandoff?.(updates.dictationSourceIds ?? EMPTY_SOURCE_IDS);
+            // The copy keeps the base this save is checked against: the same `baselineRef` sent below.
+            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt, noteDraftBase(baselineRef.current));
             const submission = updateNote({
                 id: noteId,
                 captureScope,
-                ...(noteContent && { noteContent }),
-                ...(draftOrigin?.dictationAfterUndo && { dictationAfterUndo: draftOrigin.dictationAfterUndo }),
                 ...(titleCapture && { titleCapture }),
                 ...(typeCapture && { typeCapture }),
                 ...(tagMembership.length && { tagMembership }),
-                ...(referenceEvidence && { referenceEvidence }),
                 updates,
                 expectedRevision: revisionRef.current,
-                ...(expectedGeneration !== undefined && { expectedGeneration }),
                 // WHAT THIS TEXT WAS BUILT FROM. Not a fresh read: the service used
                 // to fingerprint the document it had just fetched, which compares the
                 // server with itself, always agrees, and let a stale save through.
-                // The baseline is the last text the server confirmed for this editor.
+                // The baseline is the text last adopted or submitted by this page.
                 // ⚠️ OMITTED for a DELIBERATE overwrite. The person saw the conflict
                 // and chose their own text; carrying the opening values would compare
                 // them against what the other device stored, mismatch by definition,
@@ -382,16 +371,8 @@ export function useNoteAutoSave({
                 // refusal, which is exactly the "yes, replace that" statement.
                 expectedBaseline: deliberateOverwriteRef.current
                     ? null
-                    : ({ ...baselineRef.current, ...(contentRoot && 'content' in updates ? { content: contentRoot.current } : {}) } as unknown as Record<string, unknown>),
+                    : (baselineRef.current as unknown as Record<string, unknown>),
             });
-            if (updates.content !== undefined && submission.capture) {
-                void submission.capture.then(receipt => {
-                    if (receipt.kind === 'submitted' && receipt.requestId) {
-                        onBodyCaptured?.(receipt.requestId, submittedPayload.content);
-                        if (noteContent) onContentCaptured?.({ ...noteContent, opening: submittedPayload.content, requestId: receipt.requestId });
-                    }
-                }).catch(() => undefined);
-            }
             if (titleCapture && titleEdit && titleEditRef && submission.capture) {
                 void submission.capture.then(receipt => {
                     if (receipt.kind !== 'submitted' || !receipt.requestId) return;
@@ -425,53 +406,28 @@ export function useNoteAutoSave({
                     }
                 }).catch(() => undefined);
             }
-            const acknowledge = (saved: SavedStudyNote | undefined) => {
+            const acknowledge = (saved: StudyNote | undefined) => {
                 if (submittedTypeRequestId && submittedTypeRef?.current?.seen.requestId === submittedTypeRequestId) submittedTypeRef.current = null;
                 const acceptedTitle = saved ? saved.title ?? '' : submittedPayload.title;
-                const acceptedContent = saved ? saved.content ?? '' : submittedPayload.content;
-                if (updates.content !== undefined) onContentAcknowledged?.(acceptedContent, saved?.contentProof);
                 const acceptedType = saved ? saved.type ?? 'note' : submittedPayload.type;
                 const replacedType = acceptedType !== submittedPayload.type ? submittedPayload.type : undefined;
                 const acceptedTags = saved?.tags ?? submittedPayload.tags;
-                const ordinary = (submittedPayload.type === 'note' || submittedPayload.type === 'question')
-                    && (acceptedType === 'note' || acceptedType === 'question');
-                const acceptedReferences = ordinary ? saved?.scriptureRefs ?? submittedPayload.scriptureRefs : submittedPayload.scriptureRefs;
-                const aliases = saved?.studyNoteReferenceAliases ?? [];
-                const replacedReferences = serializeContent(acceptedReferences) !== serializeContent(submittedPayload.scriptureRefs);
                 const replacedTitle = acceptedTitle !== submittedPayload.title ? submittedPayload.title : undefined;
-                const replacedContent = acceptedContent !== submittedPayload.content ? submittedPayload.content : undefined;
                 const replacedTags = !sameNoteTags(acceptedTags, submittedPayload.tags) ? submittedPayload.tags : undefined;
                 const basis = baselineRef.current;
                 if (basis) {
                     if (replacedTitle !== undefined && basis.title === replacedTitle) baselineRef.current = { ...basis, title: acceptedTitle };
-                    if (replacedContent !== undefined && basis.content === replacedContent) baselineRef.current = { ...baselineRef.current!, content: acceptedContent };
                     if (replacedType !== undefined && basis.type === replacedType) baselineRef.current = { ...baselineRef.current!, type: acceptedType };
                     if (replacedTags) baselineRef.current = { ...baselineRef.current!, tags: rebaseNoteTags(replacedTags, basis.tags, acceptedTags) };
-                    if (replacedReferences) {
-                        const rebased = rebaseAcceptedStudyNoteReferences(submittedPayload.scriptureRefs, basis.scriptureRefs, acceptedReferences, aliases);
-                        baselineRef.current = { ...baselineRef.current!, scriptureRefs: rebased.needsReview ? acceptedReferences : rebased.references };
-                    }
                 }
-                if (replacedReferences) onReferenceAcknowledged?.(submittedPayload.scriptureRefs, acceptedReferences, aliases, saved?.revision, saved?.referenceEngineRevision);
-                const acceptedPayload = { title: acceptedTitle, content: acceptedContent, tags: acceptedTags, type: acceptedType,
-                    scriptureRefs: acceptedReferences, ...noteRecordingMetadata(saved ? saved.dictationSourceIds : submittedPayload.dictationSourceIds,
-                        saved ? saved.recordingSourceIds : submittedPayload.recordingSourceIds) };
-                const replacedDictation = replacedContent !== undefined && (submittedPayload.dictationSourceIds ?? []).filter(id =>
-                    !acceptedPayload.dictationSourceIds?.includes(id));
-                if (replacedDictation && replacedDictation.length) {
-                    const current = baselineRef.current;
-                    if (current && current.content === acceptedContent) {
-                        const { dictationSourceIds: _submitted, ...rest } = current;
-                        baselineRef.current = { ...rest, ...noteRecordingMetadata(acceptedPayload.dictationSourceIds) };
-                    }
-                    onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent, replacedDictation);
-                } else if (replacedContent !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType, replacedContent);
-                else if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
+                const acceptedPayload = { ...submittedPayload, title: acceptedTitle, tags: acceptedTags, type: acceptedType };
+                if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
                 else if (replacedTags) onSaved?.(acceptedPayload, replacedTitle, replacedTags);
                 else if (replacedTitle !== undefined) onSaved?.(acceptedPayload, replacedTitle);
                 else onSaved?.(acceptedPayload);
             };
-            afterCanonicalCapture(submission, backup, noteId, onCaptured, draftEditedAt);
+            afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured, draftEditedAt);
+            void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
             if (acceptance.kind !== 'persisted') {
@@ -522,7 +478,7 @@ export function useNoteAutoSave({
                 // was NOT written — and it was NOT lost either: the durable draft
                 // already holds it and the inputs still show it. Stop hammering the
                 // server and hand the decision to the person.
-                onConflict(e);
+                onConflict();
                 setSaveError(null);
                 return;
             }
@@ -536,10 +492,11 @@ export function useNoteAutoSave({
             console.error('Auto-save error', e);
             setSaveError('common.saveError');
         } finally {
+            followStoredSave(saveStoredRef.current, submittedPayload, baselineRef.current);
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, draftOrigin, draftTargetGeneration, expectedGeneration, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, contentRoot, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onBodyCaptured, onContentCaptured, onContentAcknowledged, onReferenceAcknowledged, referenceEdits, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, readValues, updateNote, baselineRef, advanceSubmittedBaseline, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

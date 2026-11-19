@@ -38,6 +38,9 @@ import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
+/** Off until the study-note page settles field-by-field choices (BUG-20261118-note-page-codex-fixes-wait-for-engine-session). */
+const STUDY_NOTE_FIELD_CHOICES = false;
+
 /**
  * conflict — another device changed the same field, one draft waits · refused — the server will
  * not take it · refusedCreate — a new record the server would not create · deletedThere — deleted
@@ -610,7 +613,10 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
     const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
     const sourceNotes = entry.records.length === 1 ? readSourceNoteLinkComparison(checkpoint) : undefined;
     const referenceReview = entry.records.length === 1 ? readStudyNoteReferenceComparison(checkpoint) : undefined;
-    const noteFields = entry.resource.collection === 'studyNotes' && entry.records.length === 1 ? readStudyNoteFieldsComparison(checkpoint) : undefined;
+    // Field-by-field note choices are settled by a page that answers each field. The study-note page answers the
+    // whole note until it moves to the engine's editing session (BUG-20261118-note-page-codex-fixes-wait-for-engine-session).
+    const noteFields = STUDY_NOTE_FIELD_CHOICES && entry.resource.collection === 'studyNotes' && entry.records.length === 1
+      ? readStudyNoteFieldsComparison(checkpoint) : undefined;
     const textFields = ['prayerRequests', 'series'].includes(entry.resource.collection) && entry.records.length === 1
       && readDocumentTextComparison(checkpoint)?.complete
       ? checkpoint.conflicts : undefined;

@@ -19,6 +19,7 @@ import {
 
 /** How long to coalesce keystrokes before touching storage. */
 const WRITE_DELAY_MS = 250;
+const NO_COPIES: readonly DurableDraftCopy<unknown>[] = [];
 
 interface DraftHandoff {
   key: string;
@@ -58,6 +59,12 @@ export interface UseDurableDraftOptions<T> {
   /** Logical editor identity across an optimistic document-id handoff. The draft
    * moves to docId, but recovery is inspected only once for this owner/identity. */
   recoveryIdentity?: string | null;
+  /**
+   * What the words being written are built from — the baseline the editor's own save of them would compare against —
+   * read at every write, the debounced one and the departure flush alike, given those very words, and kept beside them
+   * (`DurableDraft.base`). Omitted: copies are written without a base, as before.
+   */
+  readBase?: (value: T) => unknown;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -68,15 +75,22 @@ export interface UseDurableDraftResult<T> {
    * Read ONCE at mount: it must not change under the user while typing.
    */
   recovered: T | null;
+  /** What the selected copy was built from, unvalidated; undefined for a copy written without one. */
+  recoveredBase: unknown;
   recoveredKey: string | null;
   recoveries: readonly DurableDraftCopy<T>[];
   selectRecovered: (key: string) => void;
   /** Hide equal shown words; only an equal complete baseline proves them settled. */
   settleRecovered: (verifiedBaseline?: T) => void;
-  /** The user took the recovered text — hide the offer, KEEP the stored copy. */
+  /** The user took the recovered text — hide the offer, KEEP the stored copy (every copy of its session). */
   acceptRecovered: (options?: { transferToWriter: true }) => void;
-  /** The user chose to keep the server version — forget the draft. */
+  /** The user chose to keep the server version — forget the draft (every copy of its session). */
   discardRecovered: () => void;
+  /**
+   * What the words are built from moved while the words did not (this device has just stored a save of earlier words):
+   * write this writer's last copy again, with the base read now.
+   */
+  rewriteCopy: () => void;
   /** Transfer this exact payload to a durably captured canonical request. */
   markCaptured: (captured: T, targetDocId: string, editedAt?: number) => void;
   /** Hold independently confirmed words until an explicit comparison choice. */
@@ -94,6 +108,29 @@ export function useSettleShownDraft(shown: boolean, settleRecovered: () => void,
   useEffect(() => {
     if (shown) settleRecovered();
   }, [shown, settleRecovered, sourceKey]);
+}
+
+/**
+ * Two physical copies of ONE editing session: the same words built from the same base — written, for example, by two
+ * openings that restored the same copy and were left before its question was answered. They are one choice, and one
+ * answer settles them all. Words and base together are the session's identity; matching words alone are not, so a
+ * copy written without a base stays a choice of its own.
+ */
+function sameSession(left: DurableDraftCopy<unknown>, right: DurableDraftCopy<unknown>): boolean {
+  return left.base !== undefined && right.base !== undefined
+    && serializeContent(left.value) === serializeContent(right.value) && serializeContent(left.base) === serializeContent(right.base);
+}
+
+/** Every listed copy of the session `copy` belongs to; at least the copy itself. */
+function sessionOf<T>(copies: readonly DurableDraftCopy<T>[], copy: DurableDraftCopy<T>): DurableDraftCopy<T>[] {
+  const members = copies.filter(other => sameSession(other, copy));
+  return members.length > 0 ? members : [copy];
+}
+
+/** Drop the listed copies that are members of `session` (the same address holding the same words). */
+function withoutSession<T>(copies: readonly DurableDraftCopy<T>[], session: readonly DurableDraftCopy<T>[]): DurableDraftCopy<T>[] {
+  return copies.filter(candidate => !session.some(member => member.key === candidate.key
+    && serializeContent(member.value) === serializeContent(candidate.value)));
 }
 
 /** The initial recovery choice belongs to this opening, not every remaining source.
@@ -144,6 +181,7 @@ export function useDurableDraft<T>({
   isRecoveredDraftSaved,
   preferredRecoveryKey,
   recoveryIdentity = docId,
+  readBase,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate, writerId) : null;
   const recoveryKey = uid && recoveryIdentity ? draftKey(uid, recoveryIdentity, aggregate) : null;
@@ -156,13 +194,21 @@ export function useDurableDraft<T>({
   enabledRef.current = enabled;
   const keyRef = useRef(key);
   keyRef.current = key;
+  const readBaseRef = useRef(readBase);
+  readBaseRef.current = readBase;
 
   const [recovery, setRecovery] = useState<{ identity: string | null; copies: DurableDraftCopy<T>[] }>({ identity: null, copies: [] });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const recoveries = recovery.identity === recoveryKey ? recovery.copies : [];
-  const selected = recoveries.find(copy => copy.key === selectedKey)
-    ?? recoveries.find(copy => copy.key === preferredRecoveryKey) ?? recoveries[0] ?? null;
+  const copies = recovery.identity === recoveryKey ? recovery.copies : NO_COPIES as DurableDraftCopy<T>[];
+  const selected = copies.find(copy => copy.key === selectedKey)
+    ?? copies.find(copy => copy.key === preferredRecoveryKey) ?? copies[0] ?? null;
+  // One choice per session: the selected copy stands for its own session, any other session by its first copy.
+  const recoveries = useMemo(() => copies.filter(copy => {
+    const session = sessionOf(copies, copy);
+    return copy === (selected && session.includes(selected) ? selected : session[0]);
+  }), [copies, selected]);
   const recovered = selected?.value ?? null;
+  const recoveredBase = selected?.base;
   const recoveredKey = selected?.key ?? null;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -285,7 +331,8 @@ export function useDurableDraft<T>({
       }
       return;
     }
-    if (saveDraft(targetKey, next, creationTargetId, false, editedAt)) {
+    // The base as it is now for these words: the same baseline the editor's next save of them would carry.
+    if (saveDraft(targetKey, next, creationTargetId, false, editedAt, readBaseRef.current?.(next))) {
       const record = readDraft<T>(targetKey);
       if (record?.editedAt === editedAt && serializeContent(record.value) === serialised) {
         ourDraftRef.current = { key: targetKey, value: serialised, record };
@@ -347,32 +394,42 @@ export function useDurableDraft<T>({
     };
   }, []);
 
+  /** The copies listed for this opening: the selected copy's session is looked up among them. */
+  const listedCopies = useCallback(() => recoveryRef.current.identity === recoveryKeyRef.current
+    ? recoveryRef.current.copies : NO_COPIES as DurableDraftCopy<T>[], []);
+
   /** Hide a shown offer; only a complete baseline match permits settled-copy cleanup. */
   const settleRecovered = useCallback((verifiedBaseline?: T) => {
     const copy = selectedRef.current;
     if (!copy) return;
     const identity = recoveryKeyRef.current;
+    const session = sessionOf(listedCopies(), copy);
     // Preserve the existing completed-copy cleanup only with the entire baseline,
     // never merely another restored/typed value that happens to have equal words.
     const stored = serializeContent(copy.value);
     const verified = verifiedBaseline !== undefined && stored === serializeContent(verifiedBaseline);
-    if (stored === confirmedRef.current || verified) adoptedRef.current.set(copy.key, { identity, copy });
+    if (stored === confirmedRef.current || verified) {
+      for (const member of session) adoptedRef.current.set(member.key, { identity, copy: member });
+    }
     if (verified) retireKnownCopies(verifiedBaseline, identity);
-    setRecovery(current => current.identity !== identity ? current : { ...current,
-      copies: current.copies.filter(candidate => candidate.key !== copy.key || serializeContent(candidate.value) !== serializeContent(copy.value)) });
-  }, [retireKnownCopies]);
+    setRecovery(current => current.identity !== identity ? current : { ...current, copies: withoutSession(current.copies, session) });
+  }, [retireKnownCopies, listedCopies]);
 
-  /** Explicitly adopt this physical source, retaining it until exact retirement. */
+  /**
+   * Explicitly adopt this physical source — every copy of its session — retaining each until exact retirement.
+   * A transfer to this writer also retires them once the writer's own later copy returns to a confirmed save.
+   */
   const acceptRecovered = useCallback((options?: { transferToWriter: true }) => {
     const copy = selectedRef.current;
     if (!copy) return;
+    const identity = recoveryKeyRef.current;
     const writer = keyRef.current;
     const transfer = options?.transferToWriter && writer;
-    adoptedRef.current.set(copy.key, { identity: recoveryKeyRef.current, copy, ...(transfer && {
+    for (const member of sessionOf(listedCopies(), copy)) adoptedRef.current.set(member.key, { identity, copy: member, ...(transfer && {
       selectedAt: { key: writer, editedAt: editRef.current.editedAt }, allowConfirmedReturn: true,
     }) });
     settleRecovered();
-  }, [settleRecovered]);
+  }, [settleRecovered, listedCopies]);
 
   /**
    * The user rejected the recovered text — this is the one path that deletes it.
@@ -381,15 +438,29 @@ export function useDurableDraft<T>({
    * person keeps working, so by the time they dismiss it the slot may already hold
    * NEWER text typed since: an unconditional clear here threw away the very text
    * they were writing (loss of unconfirmed text, dressed as a dismissal). Compare
-   * first, delete only on an exact match.
+   * first, delete only on an exact match. The rejected version is the session the person answered about: every
+   * copy of it goes, each on the same exact match.
    */
   const discardRecovered = useCallback(() => {
     const rejected = selectedRef.current;
     if (!rejected) return;
-    clearDraftIfMatches(rejected.key, rejected.value);
+    const session = sessionOf(listedCopies(), rejected);
+    for (const member of session) clearDraftIfMatches(member.key, member.value);
     const identity = recoveryKeyRef.current;
-    setRecovery(current => current.identity !== identity ? current : { ...current,
-      copies: current.copies.filter(copy => copy.key !== rejected.key || serializeContent(copy.value) !== serializeContent(rejected.value)) });
+    setRecovery(current => current.identity !== identity ? current : { ...current, copies: withoutSession(current.copies, session) });
+  }, [listedCopies]);
+
+  /**
+   * Write this writer's last copy again, with the base `readBase` gives now. For a base that moved while the words did
+   * not: this device has just stored a save of the words before them, so they are built on that save from now on. Only
+   * the copy this writer last wrote, still stored exactly as written, is rewritten — the same words and the same edit.
+   */
+  const rewriteCopy = useCallback(() => {
+    const ours = ourDraftRef.current;
+    if (!ours || !enabledRef.current) return;
+    const record = readDraft<T>(ours.key);
+    if (!record || serializeContent(record) !== serializeContent(ours.record)) return;
+    persistRef.current(ours.key, record.value, record.editedAt ?? editRef.current.editedAt);
   }, []);
 
   const holdAlternative = useCallback((alternative: T) => {
@@ -462,5 +533,5 @@ export function useDurableDraft<T>({
     // A replacement at that address can never satisfy this old snapshot.
   }, [key, recoveryKey, retireKnownCopies, isRecoveredDraftSaved]);
 
-  return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, markCaptured, markSaved };
+  return { editedAt: editRef.current.editedAt, recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, rewriteCopy, markCaptured, markSaved };
 }

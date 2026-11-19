@@ -79,3 +79,10 @@ after answering, deletes up to 50 letters whose date has passed. Feedback is a s
 inbox, not an owned document, and never moves to the engine. Firestore TTL would do the
 same without code, but it needs a billed project. This is the same shape as the admin
 telemetry clean-up routes, not migration debt.
+
+On 2026-11-17 the route's one creation call moved from `add` to `create` (the entry count is
+unchanged): a feedback now waits on the device and is delivered from there, named by the device,
+so a send repeated after a lost answer is stored and emailed once (`utils/feedbackOutbox.ts`).
+Two entries came with it (`get` 1→2, `update` 1): a named feedback records whether its letter left,
+and a repeat reads that record before the rate limit — the letter and its screenshots travel only by
+mail, so a stored document alone is not proof they arrived (Codex review 2026-11-17).

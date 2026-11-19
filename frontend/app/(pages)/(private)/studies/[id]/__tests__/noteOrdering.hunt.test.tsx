@@ -1,35 +1,54 @@
 import { runHistory, rng, type OrderingEvent } from '@test-utils/noteOrdering';
-import { productionSends, shortestWitnesses } from '@test-utils/noteOrderingProduction';
+import { shortestWitnesses } from '@test-utils/noteOrderingProduction';
 
 const full = process.env.NOTE_ORDERING_HUNT === 'full';
 const seeds = full ? [11, 29, 85, 3418] : [11, 29];
 const count = full ? 512 : 64;
-const totals = { histories: 0, I1: 0, I2: 0, sends: 0, productionSends: 0, increased: 0 };
-
-it.each(seeds)('preserves arrived and authored words in seeded histories, seed %i', async seed => {
-  const next = rng(seed);
-  const kinds: OrderingEvent['kind'][] = ['type', 'type', 'arriveSame', 'arriveOther', 'timer', 'ack', 'offline', 'online', 'dictate'];
-  const failures: unknown[] = [];
-  for (let h = 0; h < count; h++) {
-    const length = 1 + Math.floor(next() * 8);
-    const events: OrderingEvent[] = [];
-    for (let e = 0; e < length; e++) {
-      const kind = kinds[Math.floor(next() * kinds.length)];
-      events.push({ kind, ...(['type', 'arriveSame', 'arriveOther', 'dictate'].includes(kind) ? { word: `W${seed}H${h}E${e}X` } : {}) });
+export const extendedAlphabet: OrderingEvent['kind'][] = ['type', 'arriveSame', 'arriveOther', 'timer', 'ack', 'offline', 'online', 'dictate', 'doneEdit', 'typeDictate', 'dictateType', 'arriveLive'];
+const modes = process.env.NOTE_ORDERING_ALPHABET ? [process.env.NOTE_ORDERING_ALPHABET] : ['random', 'extended'];
+const totals: Record<string, { histories: number; I1: number; I2: number; I3: number; I4: number; sends: number; questions: number }> = {};
+const exhaustiveTotals: typeof totals = {};
+for (const mode of modes) {
+  const sum: (typeof totals)[string] = totals[mode] = { histories: 0, I1: 0, I2: 0, I3: 0, I4: 0, sends: 0, questions: 0 };
+  it.each(seeds)(`${mode} preserves words and avoids false questions, seed %i`, async seed => {
+    const next = rng(seed);
+    const kinds = mode === 'extended' ? ['type', ...extendedAlphabet] : ['type', ...extendedAlphabet.slice(0, 8)];
+    const failures: unknown[] = [];
+    for (let h = 0; h < count; h++) {
+      const length = 1 + Math.floor(next() * 8);
+      const events: OrderingEvent[] = [];
+      for (let e = 0; e < length; e++) {
+        const kind = kinds[Math.floor(next() * kinds.length)] as OrderingEvent['kind'];
+        events.push({ kind, ...(['type', 'arriveSame', 'arriveOther', 'dictate', 'typeDictate', 'dictateType'].includes(kind) ? { word: `W${seed}H${h}E${e}X` } : {}) });
+      }
+      const row = await runHistory(events, `${seed}:${h}`);
+      sum.histories++; sum.I1 += Number(!!row.missingArrived.length); sum.I2 += Number(!!row.missingTyped.length); sum.I3 += Number(row.falseQuestion); sum.I4 += Number(row.unconverged);
+      sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question);
+      if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || row.unconverged) failures.push({
+        id: row.id, I1: row.missingArrived, I2: row.missingTyped, I3: row.falseQuestion, I4: row.unconverged,
+      });
     }
-    const row = await runHistory(events, `${seed}:${h}`);
-    const increased = row.final.engineWrites > productionSends[seed][h];
-    totals.histories++; totals.I1 += Number(row.missingArrived.length > 0); totals.I2 += Number(row.missingTyped.length > 0);
-    totals.sends += row.final.engineWrites; totals.productionSends += productionSends[seed][h]; totals.increased += Number(increased);
-    if (row.missingArrived.length || row.missingTyped.length || increased) failures.push(row);
-  }
-  expect(failures).toEqual([]);
-}, full ? 1200000 : 30000);
+    expect(failures).toEqual([]);
+  }, full ? 1200000 : 60000);
+}
+afterAll(() => {
+  console.info('NOTE_ORDERING_HUNT', JSON.stringify(totals));
+  for (const [prefix, sum] of Object.entries(exhaustiveTotals)) console.info('NOTE_ORDERING_EXHAUSTIVE', prefix, JSON.stringify(sum));
+});
 
-afterAll(() => console.info('NOTE_ORDERING_HUNT', JSON.stringify(totals)));
+it('I3 rejects a question about fully adopted values after a clean arrival', async () => {
+  const row = await runHistory([{ kind: 'arriveOther', word: 'Adoptedword' }], 'I3:clean-arrival');
+  expect(row.final.pageValues).toEqual(row.final.storedValues);
+  expect(row.falseQuestion).toBe(false);
+});
+
+it('I4 converges after the other device stores the live text and silence', async () => {
+  const row = await runHistory([{ kind: 'type', word: 'Equalword' }, { kind: 'arriveLive' }], 'I4:equal-arrival');
+  expect(row.unconverged).toBe(false);
+  expect(row.final.engineWrites).toBe(1);
+});
 
 it.each(shortestWitnesses)('preserves the shortest $invariant witness and every proper subsequence', async witness => {
-  // Collect every subsequence before asserting, so a failing prefix cannot hide the full witness.
   const outcomes = [];
   const key = witness.invariant === 'I1' ? 'missingArrived' : 'missingTyped';
   for (let mask = 0; mask < (1 << witness.events.length); mask++) {
@@ -39,3 +58,24 @@ it.each(shortestWitnesses)('preserves the shortest $invariant witness and every 
   }
   expect(outcomes).toEqual(outcomes.map(row => ({ ...row, missing: [] })));
 }, 30000);
+
+const exhaustive = process.env.NOTE_ORDERING_EXHAUSTIVE === '1' ? it : it.skip;
+const prefixes = [null, ...extendedAlphabet].filter((_, index) => !process.env.NOTE_ORDERING_EXHAUSTIVE_SHARD
+  || index === Number(process.env.NOTE_ORDERING_EXHAUSTIVE_SHARD));
+exhaustive.each(prefixes)('checks every sequence up to length four starting with %s', async prefix => {
+  const sum = { histories: 0, I1: 0, I2: 0, I3: 0, I4: 0, sends: 0, questions: 0 };
+  exhaustiveTotals[prefix ?? 'null'] = sum;
+  const failures: unknown[] = [];
+  async function visit(kinds: OrderingEvent['kind'][]) {
+    const events = kinds.map((kind, index) => ({ kind, word: `ExhaustiveE${index}X` }));
+    const row = await runHistory(events, `exhaustive:${prefix ?? 'empty'}:${sum.histories}`);
+    sum.histories++; sum.I1 += Number(!!row.missingArrived.length); sum.I2 += Number(!!row.missingTyped.length); sum.I3 += Number(row.falseQuestion); sum.I4 += Number(row.unconverged);
+    sum.sends += row.final.engineWrites; sum.questions += Number(row.final.question);
+    if (row.missingArrived.length || row.missingTyped.length || row.falseQuestion || row.unconverged) failures.push({
+      id: row.id, I1: row.missingArrived, I2: row.missingTyped, I3: row.falseQuestion, I4: row.unconverged,
+    });
+    if (prefix !== null && kinds.length < 4) for (const kind of extendedAlphabet) await visit([...kinds, kind]);
+  }
+  await visit(prefix === null ? [] : [prefix]);
+  expect(failures).toEqual([]);
+}, 1200000);

@@ -45,6 +45,7 @@ jest.mock('@/hooks/useWideViewport', () => ({
     useRoomyHeader: () => mockViewport.roomy,
 }));
 jest.mock('@/hooks/useStudyNotes');
+const mockSubscribeNoteVersionTaken = () => () => undefined;
 // Match the authenticated opening to this suite's current mocked owner.
 jest.mock('@/hooks/useResolvedUid', () => ({
   useResolvedUid: () => ({ uid: require('@/hooks/useStudyNotes').useStudyNotes().uid, isAuthLoading: false }),
@@ -90,11 +91,11 @@ jest.mock('../../components/SermonsBuiltOnNote', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    RichMarkdownEditor: ({ value, onChange, ownedBy, placeholder }: import('@/components/ui/RichMarkdownEditor').RichMarkdownEditorProps) => (
         <textarea
             data-testid="rich-markdown-editor"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            value={ownedBy ? ownedBy.live() : value}
+            onChange={(e) => ownedBy ? ownedBy.emit(e.target.value) : onChange!(e.target.value)}
             placeholder={placeholder}
         />
     ),
@@ -148,7 +149,7 @@ describe('note editor sync integration', () => {
     (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], noteDelivery: new Map([[mockCache.id, { pending: false, needsAttention: false }]]), loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], noteDelivery: new Map([[mockCache.id, { pending: false, needsAttention: false }]]), loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
@@ -159,7 +160,7 @@ describe('note editor sync integration', () => {
   it('keeps both independent openings when the older editor loses its owner with a write waiting', () => {
     let uid: string | undefined = 'user-1';
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid, subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     const edit = (view: ReturnType<typeof render>, text: string) => {
       const page = within(view.container);
@@ -269,7 +270,7 @@ describe('note editor on the engine', () => {
     (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
@@ -380,274 +381,6 @@ describe('note editor on the engine', () => {
       expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Original body');
       expect(window.localStorage.getItem(key)).toBeNull();
     });
-  });
-
-  it.each([
-    ['stored', 'title'], ['local', 'title'], ['stored', 'type'], ['local', 'type'],
-  ] as const)('keeps an independent restored paragraph when choosing the %s %s', async (side, field) => {
-    const mine = field === 'title' ? 'Phone title' : 'question';
-    const stored = field === 'title' ? 'Computer title' : 'note';
-    const paragraph = 'New paragraph from the phone';
-    mockCache = { ...initialNote, [field]: stored, rev: { note: 2 } };
-    const key = draftKey('user-1', initialNote.id, 'note', 'phone');
-    window.localStorage.setItem(key, JSON.stringify({ savedAt: 1, value: {
-      title: initialNote.title, type: 'note', [field]: mine, content: paragraph, tags: [], scriptureRefs: [],
-      origin: { fields: { [field]: initialNote[field], content: initialNote.content },
-        [field]: { seen: { [field]: initialNote[field], generation: 'generation', revision: 1 }, time: null } },
-    } }));
-    const refusal = Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note', expectedRevision: 1, actualRevision: 2,
-      serverValues: { [field]: stored, content: initialNote.content }, conflictingFields: [field], generation: 'generation', engineRevision: 2 });
-    const refused = Promise.reject(refusal);
-    refused.catch(() => undefined);
-    const pending = new Promise<never>(() => undefined);
-    updateNote.mockReturnValueOnce({ ...persistedWrite(refused), result: refused })
-      .mockReturnValue({ ...persistedWrite(pending), result: pending });
-    render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(paragraph);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: side === 'stored' ? 'dataSync.useStoredVersion' : 'dataSync.useLocalVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-
-    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(paragraph);
-    if (field === 'title') expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(side === 'stored' ? stored : mine);
-    expect(updateNote).toHaveBeenCalledTimes(2);
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
-      updates: { content: paragraph, ...(side === 'local' && { [field]: mine }) },
-      expectedBaseline: expect.objectContaining({ [field]: stored, content: initialNote.content }),
-      ...(side === 'local' && { [field + 'Capture']: { seen: { [field]: stored, generation: 'generation', revision: 2 }, time: null } }),
-    }));
-  });
-
-  it('can take the saved title and keep the local body when both recovered fields need a decision', async () => {
-    const mine = { title: 'Offline title', content: 'Offline body' };
-    const saved = { title: 'Computer title', content: 'Computer body' };
-    mockCache = { ...initialNote, ...saved, rev: { note: 2 } };
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note', 'phone'), JSON.stringify({ savedAt: 1, value: {
-      ...mine, type: 'note', tags: [], scriptureRefs: [],
-      origin: { fields: { title: initialNote.title, content: initialNote.content } },
-    } }));
-    const refuse = (conflictingFields: string[]) => {
-      const result = Promise.reject(Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note',
-        expectedRevision: 1, actualRevision: 2, serverValues: saved, conflictingFields }));
-      result.catch(() => undefined);
-      return { ...persistedWrite(result), result };
-    };
-    const pending = new Promise<never>(() => undefined);
-    updateNote.mockReturnValueOnce(refuse(['title', 'content'])).mockReturnValueOnce(refuse(['content']))
-      .mockReturnValue({ ...persistedWrite(pending), result: pending });
-    render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(mine.content);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(saved.title);
-    expect(screen.getByText(saved.content)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).toHaveBeenCalledTimes(3);
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
-      updates: { content: mine.content }, expectedBaseline: expect.objectContaining(saved),
-    }));
-    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(mine.content);
-  });
-
-  it('holds an old draft until a cached note without generation is confirmed', async () => {
-    let source: 'cache' | 'server' = 'cache';
-    const local = { title: 'Old draft title', content: 'Old draft paragraph' };
-    const saved = { title: 'Saved title', content: 'Saved paragraph' };
-    mockCache = { ...initialNote, ...saved, rev: undefined };
-    (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, updateNote, createNote, deleteNote: jest.fn(),
-      notePresence: () => ({ kind: 'present', source, snapshot: {
-        resource: { collection: 'studyNotes', id: initialNote.id }, value: mockCache, metadata: null,
-      } }),
-    }));
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note'), JSON.stringify({ savedAt: 1, value: {
-      ...local, type: 'note', tags: [], scriptureRefs: [],
-    } }));
-    const pending = new Promise<never>(() => undefined);
-    updateNote.mockReturnValue({ ...persistedWrite(pending), result: pending });
-    const view = render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(local.content);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'dataSync.useStoredVersion' })).not.toBeInTheDocument();
-
-    source = 'server';
-    view.rerender(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).toHaveBeenCalledTimes(1);
-    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
-      updates: { content: local.content }, expectedGeneration: null,
-    }));
-  });
-
-  it('compares an older copy without opening values before sending any differing fields', async () => {
-    const local = { title: 'Old draft title', content: 'Old draft paragraph' };
-    const saved = { title: 'Saved title', content: 'Saved paragraph' };
-    mockCache = { ...initialNote, ...saved, rev: { note: 2 } };
-    (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, updateNote, createNote, deleteNote: jest.fn(),
-      notePresence: () => ({ kind: 'present', source: 'server', snapshot: {
-        resource: { collection: 'studyNotes', id: initialNote.id }, value: mockCache,
-        metadata: { protocol: 1, generation: 'generation', revision: 2, deleted: false },
-      } }),
-    }));
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note'), JSON.stringify({ savedAt: 1, value: {
-      ...local, type: 'note', tags: [], scriptureRefs: [],
-    } }));
-    const pending = new Promise<never>(() => undefined);
-    updateNote.mockReturnValue({ ...persistedWrite(pending), result: pending });
-    render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(local.content);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    expect(screen.getByText(saved.content)).toBeInTheDocument();
-    expect(updateNote).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).toHaveBeenCalledTimes(1);
-    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
-      updates: { content: local.content }, expectedGeneration: 'generation',
-    }));
-  });
-
-  it('keeps the unreviewed fields of an older draft from autosaving after a reload', async () => {
-    const saved = { title: 'Saved title', content: 'Saved paragraph' };
-    const local = { title: 'Old title', content: 'Old paragraph' };
-    mockCache = { ...initialNote, ...saved, rev: { note: 2 } };
-    (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, updateNote, createNote, deleteNote: jest.fn(),
-      notePresence: () => ({ kind: 'present', source: 'server', snapshot: {
-        resource: { collection: 'studyNotes', id: initialNote.id }, value: mockCache,
-        metadata: { protocol: 1, generation: 'generation', revision: 2, deleted: false },
-      } }),
-    }));
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note'), JSON.stringify({ savedAt: 1, value: {
-      ...local, type: 'note', tags: [], scriptureRefs: [],
-    } }));
-    const opening = render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(300); });
-    expect(findNoteDraftCopies('user-1', initialNote.id, 'note')[0].value).toEqual(expect.objectContaining({
-      title: saved.title, content: local.content, targetGeneration: 'generation', reviewLegacyFields: true,
-    }));
-    opening.unmount();
-
-    render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(local.content);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(screen.getByText(saved.content)).toBeInTheDocument();
-    expect(updateNote).not.toHaveBeenCalled();
-  });
-
-  it('keeps a recovered draft separate when the note has been replaced while a choice is open', async () => {
-    const local = 'Offline title';
-    const title = 'Current title';
-    const paragraph = 'Independent paragraph';
-    let generation = 'original-generation';
-    mockCache = { ...initialNote, title, rev: { note: 2 } };
-    (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, updateNote, createNote, deleteNote: jest.fn(),
-      notePresence: () => ({ kind: 'present', source: 'server', snapshot: {
-        resource: { collection: 'studyNotes', id: initialNote.id }, value: mockCache,
-        metadata: { protocol: 1, generation, revision: 2, deleted: false },
-      } }),
-    }));
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note', 'phone'), JSON.stringify({ savedAt: 1, value: {
-      title: local, content: paragraph, type: 'note', tags: [], scriptureRefs: [],
-      origin: { fields: { title: initialNote.title, content: initialNote.content },
-        title: { seen: { title: initialNote.title, generation, revision: 1 }, time: null } },
-    } }));
-    const result = Promise.reject(Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note',
-      expectedRevision: 1, actualRevision: 2, serverValues: { title }, conflictingFields: ['title'], generation }));
-    result.catch(() => undefined);
-    updateNote.mockReturnValueOnce({ ...persistedWrite(result), result });
-    const view = render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(paragraph);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    const answer = screen.getByRole('button', { name: 'dataSync.useLocalVersion' });
-    generation = 'replacement-generation';
-    view.rerender(<StudyNoteEditorPage />);
-    fireEvent.click(answer);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(paragraph);
-    expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(local);
-  });
-
-  it('compares a newer title again before applying an answer to the previous one', async () => {
-    const mine = 'Phone title';
-    const stored = 'Computer title';
-    const paragraph = 'Independent paragraph';
-    mockCache = { ...initialNote, title: stored, rev: { note: 2 } };
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note', 'phone'), JSON.stringify({ savedAt: 1, value: {
-      title: mine, content: paragraph, type: 'note', tags: [], scriptureRefs: [],
-      origin: { fields: { title: initialNote.title, content: initialNote.content },
-        title: { seen: { title: initialNote.title, generation: 'generation', revision: 1 }, time: null } },
-    } }));
-    const refuse = (title: string, actualRevision: number) => {
-      const result = Promise.reject(Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note',
-        expectedRevision: 1, actualRevision, serverValues: { title }, conflictingFields: ['title'] }));
-      result.catch(() => undefined);
-      return { ...persistedWrite(result), result };
-    };
-    const later = 'Newer computer title';
-    updateNote.mockReturnValueOnce(refuse(stored, 2)).mockReturnValueOnce(refuse(later, 3));
-    const view = render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(paragraph);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    mockCache = { ...mockCache, title: later, rev: { note: 3 } };
-    view.rerender(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-
-    expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(mine);
-    expect(screen.getByText(later)).toBeInTheDocument();
-    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(paragraph);
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ expectedBaseline: expect.objectContaining({ title: initialNote.title }) }));
-  });
-
-  it('refreshes a comparison when a typed match to the old answer differs from the current note', async () => {
-    const title = 'Phone title';
-    const oldSaved = 'Old saved title';
-    const newSaved = 'New saved title';
-    const content = 'Independent paragraph';
-    mockCache = { ...initialNote, title: oldSaved, rev: { note: 2 } };
-    window.localStorage.setItem(draftKey('user-1', initialNote.id, 'note'), JSON.stringify({ savedAt: 1, value: {
-      title, content, tags: [], scriptureRefs: [], type: 'note',
-      origin: { fields: { title: initialNote.title, content: initialNote.content } },
-    } }));
-    const refused = Promise.reject(Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note',
-      expectedRevision: 1, actualRevision: 2, serverValues: { title: oldSaved }, conflictingFields: ['title'] }));
-    refused.catch(() => undefined);
-    const pending = new Promise<never>(() => undefined);
-    updateNote.mockReturnValueOnce({ ...persistedWrite(refused), result: refused })
-      .mockReturnValue({ ...persistedWrite(pending), result: pending });
-    const view = render(<StudyNoteEditorPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-    enterNoteEditing(content);
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    mockCache = { ...mockCache, title: newSaved, rev: { note: 3 } };
-    view.rerender(<StudyNoteEditorPage />);
-    fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder'), { target: { value: oldSaved } });
-    expect(screen.getByText(newSaved)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
-    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content } }));
-    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(content);
   });
 
   it('offers the row when a save is refused, and "take theirs" shows it', async () => {

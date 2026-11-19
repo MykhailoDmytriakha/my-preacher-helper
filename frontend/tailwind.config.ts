@@ -58,6 +58,16 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            // A quote carries its own marks («…» as the person wrote them); the plugin's decorative “ ”
+            // around a blockquote doubled them, in the notes and in the editor alike.
+            'blockquote p:first-of-type::before': { content: 'none' },
+            'blockquote p:last-of-type::after': { content: 'none' },
+          },
+        },
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",

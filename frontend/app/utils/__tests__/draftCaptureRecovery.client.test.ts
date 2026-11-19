@@ -230,3 +230,13 @@ describe('canonical note draft capture recovery', () => {
     saveDraft(key, words, 'another-creation'); expect(readDraft(key)?.captureToken).toBeUndefined();
   });
 });
+
+describe('the immediate note backup keeps what its words are sent against', () => {
+  it('records the base beside the submitted words, and the capture still binds the words', () => {
+    const writer = draftKey(owner, resource.id, 'note', 'opening');
+    const base = { ...words, content: 'Opened words' };
+    const scope = prepareNoteDraftCapture(owner, resource.id, words, 'opening', 7, base);
+    expect(scope).toBeDefined();
+    expect(readDraft(writer)).toEqual(expect.objectContaining({ value: words, base, editedAt: 7, captureToken: expect.any(String) }));
+  });
+});

@@ -111,7 +111,7 @@ export function EngineCreateSermonModal({ recoveryId, preSelectedSeriesId, allow
     onCancel={() => { void cancel().catch(onClose); }} unsaved={unsaved} submitLabel={t('addSermon.save')}
     saving={saving} readOnly={!creation || action.phase !== 'editing'} submitDisabled={!action.durable || Boolean(creation?.requestedSeriesId)}
     showPlannedDate={allowPlannedDate || dates.length > 0} detailsHint={t('addSermon.groupLaterHint')}
-    verseNote={verseNote} layerClassName={layerClassName}
+    enableScripturePicker verseNote={verseNote} layerClassName={layerClassName}
     seriesOptions={creation?.seriesOpened ? options : seriesFailed ? undefined : []} seriesLoading={!creation?.seriesOpened && !seriesFailed}
     // Nothing to say — no room either: an empty status stood as a blank band under the series.
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">

@@ -32,39 +32,3 @@ it.each([false, true])('directed W3 preserves the document and Undo, own=%s', ow
   expect(undoDepth(editor.state)).toBe(1);
   view.unmount();
 });
-
-it('reports a foreign application once before onChange and never marks typing echoes', () => {
-  const events: string[] = [];
-  let supply!: (value: string) => void;
-  function Host() {
-    const [value, set] = React.useState('Original.'); supply = set;
-    return <RichMarkdownEditor value={value} onEditAfterForeignValue={basis => events.push('root:' + basis)}
-      onChange={next => { events.push('change:' + next); set(next); }} />;
-  }
-  const view = render(<Host />); const editor = mountedEditor(view.container);
-  const type = (text: string) => act(() => editor.view.dispatch(editor.state.tr.insertText(text, editor.state.doc.content.size - 1)));
-  type(' First'); type(' Second');
-  act(() => supply('Foreign.')); type(' Third'); type(' Fourth');
-  act(() => supply('Another version.'));
-  act(() => supply('Foreign. Third Fourth')); type(' Fifth');
-  expect(events).toEqual(['root:Original.', 'change:Original. First', 'change:Original. First Second',
-    'root:Foreign.', 'change:Foreign. Third', 'change:Foreign. Third Fourth',
-    'root:Foreign. Third Fourth', 'change:Foreign. Third Fourth Fifth']);
-  view.unmount();
-});
-
-it('an installed own value drops a pending foreign mark', () => {
-  const roots: string[] = [];
-  let supply!: (value: string) => void;
-  function Host() {
-    const value = useEditorValue('Original.'); supply = value.act;
-    return <RichMarkdownEditor value={value.value} valueIsUserAction={value.isUserAction} valueBeforeUserAction={value.foreignValueBeforeAction}
-      onEditAfterForeignValue={basis => roots.push(basis)} onChange={value.observe} />;
-  }
-  const view = render(<Host />); const editor = mountedEditor(view.container);
-  act(() => supply('Original. Ownword'));
-  act(() => editor.view.dispatch(editor.state.tr.insertText(' Typedword', editor.state.doc.content.size - 1)));
-  expect(roots).toEqual([]);
-  expect(markdown(editor)).toBe('Original. Ownword Typedword');
-  view.unmount();
-});

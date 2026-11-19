@@ -231,6 +231,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
         {!editor.isReadOnly && <OptionMenu
           sermon={sermon}
           series={series}
+          alignStartOnPhone
           onDelete={() => router.replace('/sermons')}
         />}
         {/* Mode toggle moved to global DashboardNav */}

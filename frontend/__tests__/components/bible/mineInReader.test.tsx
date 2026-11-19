@@ -58,6 +58,7 @@ jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owne
 const mockCreateNote = jest.fn((_note: unknown) => ({ acceptance: new Promise(() => undefined) }));
 const mockUpdateNote = jest.fn((_change: unknown) => ({ acceptance: new Promise(() => undefined) }));
 jest.mock('@/hooks/useStudyNotesEngine', () => ({
+  ...jest.requireActual('@/hooks/useStudyNotesEngine'),
   useStudyNotesEngine: () => ({
     uid: 'owner',
     notes: (mockRows.studyNotes ?? []).map((stored) => ({ id: stored.resource.id, tags: [], scriptureRefs: [], createdAt: '', updatedAt: '', isDraft: false, ...stored.value })),
