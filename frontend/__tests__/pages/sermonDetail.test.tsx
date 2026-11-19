@@ -72,9 +72,10 @@ jest.mock('@components/AudioRecorder', () => ({
   ),
 }));
 
-jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeChange }: any) => (
+jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeChange, dates }: any) => (
   <div data-testid="sermon-header">
     <h1>{sermon?.title || 'No Title'}</h1>
+    {dates}
     <button onClick={() => onModeChange(uiMode === 'classic' ? 'prep' : 'classic')}>
       Switch to {uiMode === 'classic' ? 'Prep' : 'Classic'} Mode
     </button>
@@ -356,8 +357,12 @@ describe('Sermon Detail Page', () => {
       openSermon({ preachDates: dates, isPreached: true });
       renderPage();
       await screen.findByTestId('sermon-header');
-      const remove = await screen.findAllByTitle('common.delete');
-      await waitFor(() => expect(remove[0]).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeEnabled());
+      // Each date is a chip in the header line; its card holds «delete». Chips run oldest first.
+      const remove = async (church: string) => {
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(church) }));
+        fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
+      };
       return remove;
     };
 
@@ -365,7 +370,7 @@ describe('Sermon Detail Page', () => {
       const remove = await openHistory();
       expect(screen.getByText('Future Church')).toBeInTheDocument();
       expect(screen.getByText('Past Church')).toBeInTheDocument();
-      fireEvent.click(remove[0]);
+      await remove('Future Church');
       const dialog = await screen.findByRole('dialog');
       const confirm = await within(dialog).findByRole('button', { name: 'common.delete' });
       await waitFor(() => expect(confirm).toBeEnabled());
@@ -395,7 +400,7 @@ describe('Sermon Detail Page', () => {
 
     it('keeps both dates when the deletion is cancelled', async () => {
       const remove = await openHistory();
-      fireEvent.click(remove[1]);
+      await remove('Past Church');
       const dialog = await screen.findByRole('dialog');
       await waitFor(() => expect(within(dialog).getByRole('button', { name: 'common.delete' })).toBeEnabled());
       fireEvent.click(within(dialog).getByRole('button', { name: 'buttons.cancel' }));

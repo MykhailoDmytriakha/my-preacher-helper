@@ -42,26 +42,19 @@ const base: Sermon = { id: 's1', userId: 'u', title: 'T', verse: 'V', date: '202
 const pd = (status: 'planned' | 'preached', date: string) =>
   ({ id: `${status}-${date}`, date, status, church, createdAt: '2026-01-01T00:00:00Z' });
 
-describe('SermonHeader status chip', () => {
-  it('shows the emerald preached chip with the latest preached date', () => {
-    render(<SermonHeader sermon={{ ...base, preachDates: [pd('preached', '2026-03-01'), pd('preached', '2026-02-01')] }} editor={editor} />);
-    const label = screen.getByText('Preached');
-    expect(label).toBeInTheDocument();
-    expect(screen.getByText('FMT(2026-03-01)')).toBeInTheDocument();
-    expect(label.closest('span[class*="emerald"]')).not.toBeNull();
+describe('SermonHeader preach dates', () => {
+  it('shows the dates it is given in the line under the title, next to the creation date', () => {
+    render(<SermonHeader sermon={{ ...base, preachDates: [pd('preached', '2026-03-01')] }} editor={editor}
+      dates={<span data-testid="preach-dates">dates</span>} />);
+    const dates = screen.getByTestId('preach-dates');
+    expect(dates.parentElement).toBe(screen.getByText('CREATED').parentElement);
   });
 
-  it('shows the amber planned chip when only a planned date exists', () => {
-    render(<SermonHeader sermon={{ ...base, preachDates: [pd('planned', '2026-05-01')] }} editor={editor} />);
-    const label = screen.getByText('Planned');
-    expect(screen.getByText('FMT(2026-05-01)')).toBeInTheDocument();
-    expect(label.closest('span[class*="amber"]')).not.toBeNull();
-    expect(screen.queryByText('Preached')).not.toBeInTheDocument();
-  });
-
-  it('shows neither chip when the sermon has no preach dates', () => {
-    render(<SermonHeader sermon={base} editor={editor} />);
+  it('never shows a status chip of its own, so a date is not shown twice', () => {
+    render(<SermonHeader sermon={{ ...base, preachDates: [pd('preached', '2026-03-01'), pd('planned', '2026-05-01')] }} editor={editor} />);
     expect(screen.queryByText('Preached')).not.toBeInTheDocument();
     expect(screen.queryByText('Planned')).not.toBeInTheDocument();
+    expect(screen.queryByText('FMT(2026-03-01)')).not.toBeInTheDocument();
+    expect(screen.queryByText('FMT(2026-05-01)')).not.toBeInTheDocument();
   });
 });

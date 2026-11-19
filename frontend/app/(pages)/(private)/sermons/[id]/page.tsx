@@ -11,7 +11,7 @@ import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
-import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
+import { EnginePreachDateChips } from '@/components/calendar/EnginePreachDateChips';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
@@ -700,14 +700,11 @@ function SermonPageContent({ id }: { id: string }) {
         subject: core.syncSubject ?? core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, comparison: core.syncComparison, error: core.error, errorWords: core.errorWords,
         titleForm: core.titleBinding, verseForm: core.verseBinding, recovery: core.headerRecovery,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
-      }} />
+      }} dates={<EnginePreachDateChips sermonId={sermon.id} />} />
       {thoughtComparison && <DataSyncStatus subject={engineThoughts.recoveryIdentity} status={engineThoughts.status}
         error={engineThoughts.error} errorWords={engineThoughts.errorWords} comparison={thoughtComparison} onRetry={engineThoughts.retry}
         onKeepLocal={() => engineThoughts.keepLocal(thoughtCheckpoint)} onAcceptRemote={() => engineThoughts.acceptRemote(thoughtCheckpoint)} />}
       <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />
-      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-        <EnginePreachDateList sermonId={sermon.id} showDocumentStatus={false} />
-      </div>
       <div className="lg:hidden">
         <StructureStats
           sermon={sermon!}

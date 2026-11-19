@@ -3020,6 +3020,8 @@
     "useEarlierDate": "Использовать эту дату",
     "loadEarlierDates": "Показать ещё даты",
     "addPreachDate": "Добавить дату",
+    "addDateChip": "Дата",
+    "addFirstDateChip": "Дата проповеди",
     "editPreachDate": "Редактировать дату",
     "deletePreachDate": "Удалить дату",
     "deleteConfirm": "Вы уверены, что хотите удалить эту дату проповеди?",

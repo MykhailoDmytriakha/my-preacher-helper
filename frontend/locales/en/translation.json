@@ -2984,6 +2984,8 @@
     "useEarlierDate": "Use this date",
     "loadEarlierDates": "Show more dates",
     "addPreachDate": "Add Preach Date",
+    "addDateChip": "Date",
+    "addFirstDateChip": "Preach date",
     "editPreachDate": "Edit Preach Date",
     "deletePreachDate": "Delete Preach Date",
     "deleteConfirm": "Are you sure you want to delete this preach date?",

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
-import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
+import { EnginePreachDateChips } from '@/components/calendar/EnginePreachDateChips';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
@@ -139,9 +139,10 @@ it('keeps the sermon when its last preached date is deleted and clears the preac
 
 it('opens history deletion as an explicit engine form and retains the sibling date', async () => {
   const harness = membershipEngineHarness([original]); jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const view = render(<DataEngineProvider><EnginePreachDateList sermonId="sermon" /></DataEngineProvider>);
-  const buttons = await screen.findAllByTitle('common.delete');
-  fireEvent.click(buttons[0]);
+  const view = render(<DataEngineProvider><EnginePreachDateChips sermonId="sermon" /></DataEngineProvider>);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeEnabled());
+  fireEvent.click((await screen.findAllByRole('button', { name: /Named church/ }))[1]);
+  fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
   const dialog = await screen.findByRole('dialog');
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'common.delete' })).toBeEnabled());
   expect(harness.transport.send).not.toHaveBeenCalled();
@@ -164,14 +165,15 @@ it('reads date history while storage is silent and enables changes only after ed
     }));
     return browser;
   });
-  const view = render(<DataEngineProvider><EnginePreachDateList sermonId="sermon" /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><EnginePreachDateChips sermonId="sermon" /></DataEngineProvider>);
   void trackStorage('engine-state', new Promise(() => undefined));
   await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
   expect(await screen.findAllByText('Named church')).toHaveLength(2);
-  expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeDisabled();
-  for (const button of screen.getAllByRole('button', { name: /common.edit|common.delete/ })) {
-    expect(button).toBeDisabled(); fireEvent.click(button);
-  }
+  // Until the editor is back the dates are readable, but nothing can be added, changed or removed.
+  expect(screen.queryByRole('button', { name: 'calendar.addPreachDate' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: /Named church/ })[0]);
+  expect(await screen.findByText('Named church, City')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /common.edit|common.delete|optionMenu.markAsPreached/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   await act(async () => { finishOpening(); await settleEngine(); });
   await waitFor(() => expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeEnabled());
