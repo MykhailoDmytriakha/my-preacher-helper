@@ -53,6 +53,7 @@ import { apiClient } from '@/utils/apiClient';
 import { formatDay, textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { referenceFromTyped } from '@/utils/bibleLink';
+import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
@@ -165,9 +166,26 @@ function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
     return serializeContent(a) === serializeContent(b);
 }
 
-/** The unsaved words from last time still to be answered, or null: words equal to the page's are settled as taken. */
-function useNoteDraftOffer(recovered: NoteDraftPayload | null, shown: NoteDraftPayload, ready: boolean, settle: () => void, sourceKey: string | null): NoteDraftPayload | null {
-    const same = recovered !== null && sameNoteDraft(recovered, shown);
+/**
+ * Whether a copy holds nothing beyond its own base: its words ARE what they were built from (`resumedNoteBaseline`,
+ * compared as the editor compares what it sends, `changedFields`). Every copy keeps as its base what its words are built
+ * on — the save its editor had already handed to the engine, once the words go beyond it — so such a copy was written
+ * after its very words were handed over and stored by this device: the engine owns them, nothing in the copy is unsent.
+ * Resumed, it would show those words while sending nothing, even when the note was stored newer since; it is not
+ * offered instead, and stays where it is. A copy without a readable base is never such a copy.
+ */
+function holdsNothingUnsent(copy: { value: NoteDraftPayload; base?: unknown }, noteId: string, locale: AppLocale): boolean {
+    const words = withNoteReferenceBibles(copy.value, locale);
+    return Object.keys(changedFields(resumedNoteBaseline(copy.base, words, null, noteId, locale), words)).length === 0;
+}
+
+/**
+ * The unsaved words from last time still to be answered, or null: words equal to the page's are settled as taken, and
+ * so are words that hold nothing unsent (`nothingUnsent`).
+ */
+function useNoteDraftOffer(recovered: NoteDraftPayload | null, shown: NoteDraftPayload, ready: boolean, settle: () => void,
+    sourceKey: string | null, nothingUnsent = false): NoteDraftPayload | null {
+    const same = recovered !== null && (nothingUnsent || sameNoteDraft(recovered, shown));
     useSettleShownDraft(ready && same, settle, sourceKey);
     return recovered && !same ? recovered : null;
 }
@@ -921,9 +939,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    // Every copy of this opening keeps what its words were built from: the baseline the next save carries.
-    const readDraftBase = useCallback(() => noteDraftBase(baselineRef.current), []);
-    const { recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
+    // Every copy of this opening keeps what its words were built from: the baseline the next save carries — or, while a
+    // save is handed to the engine and not yet stored by this device, that save, for words that go beyond it. Words
+    // equal to the handed save are still built on the baseline it is checked against, as its own immediate backup is.
+    const handedBaselineRef = useRef<NoteDraftPayload | null>(null);
+    const readDraftBase = useCallback((words: NoteDraftPayload) => {
+        const handed = handedBaselineRef.current;
+        return noteDraftBase(handed && !sameNoteDraft(handed, words) ? handed : baselineRef.current);
+    }, []);
+    const { recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, rewriteCopy, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         writerId: draftWriterId,
@@ -949,7 +973,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         acceptRecovered();
     }, [recoveredDraft, acceptRecovered, setRecordingSourceIds]);
     const offeredWords = recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) ? recoveredDraft : null;
-    const unsavedRecovery = useNoteDraftOffer(offeredWords, draftPayload, isInitialized, settleRecovered, recoveredKey);
+    // A copy whose words are its own base holds nothing unsent (`holdsNothingUnsent`): settled like words already shown.
+    const unsentCopy = useCallback((copy: { value: NoteDraftPayload; base?: unknown }) =>
+        !holdsNothingUnsent(copy, noteId, bibleLocale), [noteId, bibleLocale]);
+    const offeredCopies = useMemo(() => recoveries.filter(unsentCopy), [recoveries, unsentCopy]);
+    const unsavedRecovery = useNoteDraftOffer(offeredWords, draftPayload, isInitialized, settleRecovered, recoveredKey,
+        offeredWords !== null && !unsentCopy({ value: offeredWords, base: recoveredBase }));
     const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
     const isEditing = writesNow(editingWanted, draftHeld ? unsavedRecovery : null);
 
@@ -993,14 +1022,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             // This text IS the server's now, so the tick may come back.
             setConfirmedDraft(saved);
         }
-    });
+    }, { handed: handedBaselineRef, returned: rewriteCopy });
 
     // A matching first copy must not hide a different unfinished version.
     useEffect(() => {
         if (!recoveredDraft || !sameNoteDraft(recoveredDraft, draftPayload)) return;
-        const alternative = recoveries.find(copy => !sameNoteDraft(withNoteReferenceBibles(copy.value, bibleLocale), draftPayload));
+        const alternative = offeredCopies.find(copy => !sameNoteDraft(withNoteReferenceBibles(copy.value, bibleLocale), draftPayload));
         if (alternative) selectRecovered(alternative.key);
-    }, [recoveredDraft, draftPayload, recoveries, bibleLocale, selectRecovered]);
+    }, [recoveredDraft, draftPayload, offeredCopies, bibleLocale, selectRecovered]);
 
     const editorIsDirty = useMemo(
         () => (confirmedDraft ? !sameNoteDraft(confirmedDraft, draftPayload) : false),
@@ -1087,15 +1116,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // the baseline, old words passed as a fresh edit: another device's newer text was replaced, and fields this
         // device never touched (a title changed on the phone) were sent back, all in one silent command. From the
         // kept base the save sends only what the person changed, and the existing baseline check decides — accept,
-        // merge by field, or ask. A copy without a base asks (see `resumedNoteBaseline`). A new note has no stored
-        // version to replace: its create carries no baseline.
-        if (!isNew) baselineRef.current = resumedNoteBaseline(recoveredBase, unsavedRecovery, baselineRef.current, noteId, bibleLocale);
+        // merge by field, or ask. A copy without a base asks about what it changes in the note as stored — the row,
+        // not the base of a copy restored before it in this opening (see `resumedNoteBaseline`). A new note has no
+        // stored version to replace: its create carries no baseline.
+        if (!isNew) baselineRef.current = resumedNoteBaseline(recoveredBase, unsavedRecovery, rowPayload ?? baselineRef.current, noteId, bibleLocale);
         // Hide the offer but KEEP the stored copy: this text is still unconfirmed
         // until a save lands. Deleting it here would leave a window with no durable
         // copy at all.
         acceptRecovered();
         answerDraftQuestion();
-    }, [unsavedRecovery, recoveredBase, isNew, noteId, bibleLocale, acceptRecovered, answerDraftQuestion, setTitle, changeContent, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs, setTags, setType]);
+    }, [unsavedRecovery, recoveredBase, rowPayload, isNew, noteId, bibleLocale, acceptRecovered, answerDraftQuestion, setTitle, changeContent, setDictationSourceIds, setRecordingSourceIds, setScriptureRefs, setTags, setType]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1519,7 +1549,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 {/* Text that was typed but never confirmed saved — a closed tab, a
                     crash or a failed write. Offered, never applied silently: a stale
                     draft must not overwrite text edited later on another device. */}
-                {unsavedRecovery && <NoteDraftRecovery draft={unsavedRecovery} copies={recoveries}
+                {unsavedRecovery && <NoteDraftRecovery draft={unsavedRecovery} copies={offeredCopies}
                     selectedKey={recoveredKey ?? ''} onSelect={selectRecovered} onRestore={applyRecovered}
                     onDiscard={() => { void forgetRecovered(); }} />}
         </>
@@ -1574,7 +1604,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     if (unavailable && !awaitingOwnCreate) {
         const kept = unsavedRecovery ?? (isInitialized ? draftPayload : null);
         return <RecordUnavailable presence={presence} checking={notesLoading} pageLoading={notesLoading && !kept} onBack={handleBack} onRetry={refetch}>
-            {unsavedRecovery ? <NoteDraftRecovery readOnly draft={unsavedRecovery} copies={recoveries}
+            {unsavedRecovery ? <NoteDraftRecovery readOnly draft={unsavedRecovery} copies={offeredCopies}
                 selectedKey={recoveredKey ?? ''} onSelect={selectRecovered} onRestore={applyRecovered}
                 onDiscard={() => { void forgetRecovered(); }} /> : kept && <RetainedNoteDraft draft={kept} />}
         </RecordUnavailable>;

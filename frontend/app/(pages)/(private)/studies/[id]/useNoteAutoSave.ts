@@ -77,6 +77,27 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
     }).catch(() => undefined);
 }
 
+/**
+ * THE HAND-OFF: the page's view of a save handed to the engine and not yet stored by this device (its local capture).
+ * From the moment a save is handed over, words typed after it are built on it, though the baseline moves to it only at
+ * capture: a copy written in between used to keep the base before it and, restored later, asked about his own save as if
+ * another device had written it. So the page's copies read the handed save (`handed`) for words that go beyond it. What
+ * is sent and what it is checked against stay `baselineRef`. A hand-off that does not land (refused, failed) gives the
+ * base before it back, and `returned` writes the copy again with it, so a refused save is asked about, not dropped.
+ */
+export type NoteHandOff = { handed: React.MutableRefObject<NoteDraftPayload | null>; returned: () => void };
+
+function handOver(handOff: NoteHandOff | undefined, payload: NoteDraftPayload) {
+    if (handOff) handOff.handed.current = payload;
+}
+
+/** Landed: the baseline is the handed save itself. Otherwise its copies are written again with the base that holds. */
+function endHandOver(handOff: NoteHandOff | undefined, payload: NoteDraftPayload, baseline: NoteDraftPayload | null) {
+    if (!handOff || handOff.handed.current !== payload) return;
+    handOff.handed.current = null;
+    if (baseline !== payload) handOff.returned();
+}
+
 export function useNoteAutoSave({
     liveValues, noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
@@ -140,7 +161,7 @@ export function useNoteAutoSave({
      * landing in the note. The next save goes at once; the flag clears when a save starts.
      */
     saveAtOnceRef?: React.MutableRefObject<boolean>;
-}) {
+}, handOff?: NoteHandOff) {
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -151,6 +172,8 @@ export function useNoteAutoSave({
     // both create the same new note.
     const inFlightRef = useRef(false);
     const atOnceRef = saveAtOnceRef ?? ownAtOnceRef;
+    const handOffRef = useRef(handOff);
+    handOffRef.current = handOff;
 
     // Submitted text, including queued work, becomes the next save baseline.
     const advanceSubmittedBaseline = useCallback((payload: NoteDraftPayload) => {
@@ -185,6 +208,7 @@ export function useNoteAutoSave({
             const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
             const captureScope = sourceKey && backupReady && creationId
                 ? prepareDraftCapture(sourceKey, confirmedPayload, { collection: 'studyNotes', id: creationId }) : undefined;
+            handOver(handOffRef.current, confirmedPayload);
             const submission = creationId ? createNote(input, { id: creationId, ...(captureScope ? { captureScope } : {}) }) : createNote(input);
             const newNote = submission.note;
             void recording?.carryTo(newNote.id).catch(() => undefined);
@@ -253,6 +277,7 @@ export function useNoteAutoSave({
             console.error('Auto-create error', e);
             setSaveError('common.saveError');
         } finally {
+            endHandOver(handOffRef.current, confirmedPayload, baselineRef.current);
             setIsSaving(false);
         }
     }, [createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, baselineRef, advanceSubmittedBaseline, onSaved, onCaptured, captureRecordingHandoff]);
@@ -328,6 +353,7 @@ export function useNoteAutoSave({
             const recording = captureRecordingHandoff?.(updates.dictationSourceIds ?? EMPTY_SOURCE_IDS);
             // The copy keeps the base this save is checked against: the same `baselineRef` sent below.
             const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt, noteDraftBase(baselineRef.current));
+            handOver(handOffRef.current, submittedPayload);
             const submission = updateNote({
                 id: noteId,
                 captureScope,
@@ -464,6 +490,7 @@ export function useNoteAutoSave({
             console.error('Auto-save error', e);
             setSaveError('common.saveError');
         } finally {
+            endHandOver(handOffRef.current, submittedPayload, baselineRef.current);
             inFlightRef.current = false;
             setIsSaving(false);
         }

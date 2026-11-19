@@ -58,9 +58,9 @@ jest.mock('@tiptap/react', () => {
 
 jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
   const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
-  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0]) => {
+  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0], handOff?: Parameters<typeof useNoteAutoSave>[1]) => {
     mockAutosave = args;
-    return actual.useNoteAutoSave(args);
+    return actual.useNoteAutoSave(args, handOff);
   } };
 });
 

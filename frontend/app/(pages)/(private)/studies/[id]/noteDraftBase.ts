@@ -1,5 +1,5 @@
 import { engineNote, storedReferences } from '@/hooks/useStudyNotesEngine';
-import { serializeContent } from '@/utils/contentFingerprint';
+import { changedFields } from '@/utils/changedFields';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { DocumentData } from '@/data-engine/types';
@@ -63,18 +63,17 @@ export function keepMineBaseline(shown: NoteDraftPayload, refused: Record<string
  *   so the restored words differ from it only where the person edited, and the check maps that reading back to the
  *   stored list it compares.
  * - No readable base (a copy written before drafts kept one): what these words were built from is unknown. Every field
- *   the copy would change gets an unknown base (null); the existing check reads an unknown base as changed elsewhere
- *   unless the stored value already is the copy's, so the restore is refused before any command and the existing version
- *   question is asked. Fields the copy leaves as shown keep the shown base and are not sent.
+ *   the copy would change in the note as stored (`stored`: the row the page shows, never the base of a copy restored
+ *   before this one) gets an unknown base (null); the existing check reads an unknown base as changed elsewhere unless
+ *   the stored value already is the copy's, so the restore is refused before any command and the existing version
+ *   question is asked. Fields the copy leaves as stored keep that value as their base and are not sent.
  */
-export function resumedNoteBaseline(kept: unknown, restored: NoteDraftPayload, shown: NoteDraftPayload | null,
+export function resumedNoteBaseline(kept: unknown, restored: NoteDraftPayload, stored: NoteDraftPayload | null,
     noteId: string, locale: AppLocale): NoteDraftPayload {
     if (readableBase(kept)) {
         if (!Array.isArray(kept.scriptureRefs)) return kept;
         return { ...kept, scriptureRefs: readStoredReferences(kept.scriptureRefs, kept.type, noteId, locale) as NoteDraftPayload['scriptureRefs'] };
     }
-    const current: Partial<Record<keyof NoteDraftPayload, unknown>> = shown ?? {};
-    const unknown = (Object.keys(restored) as (keyof NoteDraftPayload)[])
-        .filter(field => serializeContent(current[field]) !== serializeContent(restored[field]));
-    return { ...shown, ...Object.fromEntries(unknown.map(field => [field, null])) } as unknown as NoteDraftPayload;
+    const unknown = Object.keys(changedFields(stored, restored));
+    return { ...stored, ...Object.fromEntries(unknown.map(field => [field, null])) } as unknown as NoteDraftPayload;
 }
