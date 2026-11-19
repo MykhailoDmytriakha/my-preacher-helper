@@ -209,7 +209,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
   }
   // The study-note page sends no proof of the text it saw yet; until it does (BUG-20261118-note-page-codex-fixes-wait-for-engine-session)
-  // an unproven note text keeps the plain base check, as before this rule. Proven texts (the comment window) are ordered.
+  // an unproven note or comment text keeps the plain base check, as before this rule. A text sent with its proof
+  // (the comment window, when it has one) is ordered by the action above.
   if (!action && tracksOpeningReturns(target) && target.action !== 'studyNoteContentAction' && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot tell a returned word from an untouched opening.
