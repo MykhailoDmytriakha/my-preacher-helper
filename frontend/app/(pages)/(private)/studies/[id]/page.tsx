@@ -461,12 +461,33 @@ type EditorHeaderProps = {
     editHeld?: boolean;
 };
 
+/** The phone controls row folds with `transition-all duration-200`. */
+const ROW_FOLD_MS = 200;
+
+/**
+ * Whether a folding row is open and done moving. It must clip while it folds or unfolds — its buttons would
+ * otherwise draw over the title below — and must not clip once open, or the menus it holds open out of sight.
+ */
+function useSettledOpenRow(folded: boolean): boolean {
+    const [settled, setSettled] = useState(!folded);
+    useEffect(() => {
+        if (folded) {
+            setSettled(false);
+            return;
+        }
+        const timer = window.setTimeout(() => setSettled(true), ROW_FOLD_MS);
+        return () => window.clearTimeout(timer);
+    }, [folded]);
+    return settled && !folded;
+}
+
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
     currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
     title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop,
     roomy, collapsed, sectionLabel, onOpenSheet, editHeld = false
 }: EditorHeaderProps) {
+    const controlsOpen = useSettledOpenRow(collapsed);
 
     const backButton = (
         <button
@@ -511,7 +532,7 @@ function EditorHeader({
        outline and says which section is being read — see NoteMobileSheet. */
     const titleField = <EditorTitleField isEditing={isEditing} title={title} setTitle={setTitle} t={t} searchQuery={searchQuery} />;
 
-    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} editHeld={editHeld} handleDelete={handleDelete} aiMenu={aiMenu} />;
+    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} editHeld={editHeld} handleDelete={handleDelete} aiMenu={aiMenu} folded={collapsed} />;
 
     const shell = 'sticky z-30 border-b border-gray-200 bg-white/90 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/90';
 
@@ -522,9 +543,12 @@ function EditorHeader({
         return (
             <header ref={headerRef} style={{ top: stickyTop }} className={`${shell} px-3 pb-1.5 pt-1.5`}>
                 {/* `inert` and not just `aria-hidden`: a zero-height row keeps its buttons in
-                    the tab order, so Tab used to land on an invisible Copy / Edit / More. */}
+                    the tab order, so Tab used to land on an invisible Copy / Edit / More.
+                    The row clips only while it is folded or folding: open and still, it lets its
+                    menus (More, AI) hang below it — clipped, More opened invisibly and Delete
+                    could not be reached on a phone (BUG-20261119-note-phone-more-menu-clipped). */}
                 <div
-                    className={`flex items-center justify-between gap-2 overflow-hidden transition-all duration-200 ${collapsed ? 'h-0 opacity-0' : 'h-11 opacity-100'}`}
+                    className={`flex items-center justify-between gap-2 transition-all duration-200 ${controlsOpen ? '' : 'overflow-hidden'} ${collapsed ? 'h-0 opacity-0' : 'h-11 opacity-100'}`}
                     inert={collapsed}
                 >
                     <div className="flex items-center gap-1">
@@ -1765,10 +1789,17 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     );
 }
 
-function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, editHeld = false, handleDelete, aiMenu }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'editHeld' | 'handleDelete' | 'aiMenu'>) {
+function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, editHeld = false, handleDelete, aiMenu, folded = false }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'editHeld' | 'handleDelete' | 'aiMenu'> & {
+    /** The phone row these actions sit in folded away while reading: its menu closes with it. */
+    folded?: boolean;
+}) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const copyLabel = isCopied ? t('common.copied') : t('common.copy');
+
+    useEffect(() => {
+        if (folded) setShowMenu(false);
+    }, [folded]);
 
     useEffect(() => {
         if (!showMenu) return;

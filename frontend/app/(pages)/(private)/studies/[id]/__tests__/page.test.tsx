@@ -2204,6 +2204,28 @@ describe('StudyNoteEditorPage — where the outline and properties are reachable
         expect(beacons.length).toBeGreaterThan(0);
     });
 
+    // BUG-20261119-note-phone-more-menu-clipped: on a phone the More menu opened inside the folding row of controls,
+    // which clipped everything below its own 44 px — Delete was rendered but nobody could see or tap it. jsdom has
+    // no layout, so the contract is the clip itself: an open, settled row does not hide what hangs below it.
+    it('phone width: the More menu hangs below an open row of controls that does not clip it', () => {
+        mockViewport.wide = false;
+        mockViewport.roomy = false;
+
+        const { container } = render(<StudyNoteEditorPage />);
+
+        const more = screen.getByTitle('common.more');
+        fireEvent.click(more);
+        expect(screen.getByText('common.delete')).toBeInTheDocument();
+        const header = more.closest('header');
+        expect(header).not.toBeNull();
+        const clipping: Element[] = [];
+        for (let node: Element | null = more.parentElement; node && node !== header; node = node.parentElement) {
+            if (node.classList.contains('overflow-hidden')) clipping.push(node);
+        }
+        expect(clipping).toEqual([]);
+        expect(container.querySelector('header')).toBe(header);
+    });
+
     it('a wide screen has the panel and never mounts the sheet at all', () => {
         mockViewport.wide = true;
         mockViewport.roomy = true;
