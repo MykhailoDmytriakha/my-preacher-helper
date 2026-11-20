@@ -5,6 +5,35 @@ export type SermonGoalType = NonNullable<NonNullable<Preparation['preachingGoal'
 export const isSermonGoalType = (value: unknown): value is SermonGoalType =>
   value === 'informative' || value === 'proclamation' || value === 'didactic' || value === 'exhortative';
 
+export const preparationTextPaths = {
+  authorIntent: ['preparation', 'authorIntent'],
+  timelessTruth: ['preparation', 'timelessTruth'],
+  christConnection: ['preparation', 'christConnection'],
+  statement: ['preparation', 'preachingGoal', 'statement'],
+  contextIdea: ['preparation', 'mainIdea', 'contextIdea'],
+  textIdea: ['preparation', 'mainIdea', 'textIdea'],
+  argumentation: ['preparation', 'mainIdea', 'argumentation'],
+  exegetical: ['preparation', 'thesis', 'exegetical'],
+  homiletical: ['preparation', 'thesis', 'homiletical'],
+  transitionSentence: ['preparation', 'thesis', 'transitionSentence'],
+  oneSentence: ['preparation', 'thesis', 'oneSentence'],
+  sermonInOneSentence: ['preparation', 'thesis', 'sermonInOneSentence'],
+  whyPreach: ['preparation', 'thesis', 'homileticalAnswers', 'whyPreach'],
+  impactOnChurch: ['preparation', 'thesis', 'homileticalAnswers', 'impactOnChurch'],
+  practicalQuestions: ['preparation', 'thesis', 'homileticalAnswers', 'practicalQuestions'],
+  modernTranslation: ['preparation', 'homileticPlan', 'modernTranslation'],
+  passageSummary: ['preparation', 'textContext', 'passageSummary'],
+  contextNotes: ['preparation', 'textContext', 'contextNotes'],
+} as const;
+export type PreparationTextField = keyof typeof preparationTextPaths;
+
+export function preparationTextField(path: readonly string[]): PreparationTextField | undefined {
+  const field = path.at(-1) as PreparationTextField;
+  if (!Object.hasOwn(preparationTextPaths, field)) return undefined;
+  const target = preparationTextPaths[field];
+  return target.length === path.length && target.every((part, index) => part === path[index]) ? field : undefined;
+}
+
 export const preparationConfirmationPaths = {
   readAndPrayedConfirmed: ['preparation', 'spiritual', 'readAndPrayedConfirmed'],
   readWholeBookOnceConfirmed: ['preparation', 'textContext', 'readWholeBookOnceConfirmed'],

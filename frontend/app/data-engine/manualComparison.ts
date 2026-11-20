@@ -1,3 +1,5 @@
+import { preparationTextField } from '@/utils/preparationFieldValues';
+
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
 import { isManualSeriesDescriptionChoice } from './documentTextChoice';
@@ -74,6 +76,10 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       // The server can prove that series text changed and returned to the same opening words.
       const seriesDescription = isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, form.record.selection)
         && !sameManualSelection(mine, stored.value, ['description']);
+      const exactPreparationText = stored.resource.collection === 'sermons' && request.baseline.metadata
+        && request.baseline.metadata.generation === stored.metadata?.generation
+        && conflicts.some(({ path }) => preparationTextField(path) !== undefined
+          && form.record.selection.some(selected => equalValues(selected, path)) && !sameManualSelection(mine, stored.value, path));
       const thoughtId = exact && conflicts.length === 1 ? thoughtTextConflictId(conflicts[0].path) : undefined;
       const exactThoughtText = thoughtId && form.record.selection.some(path => equalValues(path, ['thoughts', { id: thoughtId }])
         || equalValues(path, ['thoughts', { id: thoughtId }, 'text'])) && readThoughtTextConflict(thoughtId, mine, stored.value);
@@ -86,7 +92,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || seriesDescription || exactVerse || dateField || exactThoughtText || exactList || outlineParent) {
+      if (changed || seriesDescription || exactPreparationText || exactVerse || dateField || exactThoughtText || exactList || outlineParent) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,

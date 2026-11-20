@@ -33,7 +33,7 @@ import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { OutlinePointGap, OutlinePointOrder, OutlineSubpointGap } from '@/utils/outlineDnd';
-import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
+import type { PreparationConfirmation, PreparationTextField } from '@/utils/preparationFieldValues';
 import type { SermonNoteOpening } from '@/utils/sermonNoteText';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -283,6 +283,7 @@ export type DataCommand = CommandBase & (
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonThesisFieldActions?: Partial<Record<SermonThesisField, DocumentFieldStamp>>;
+      sermonPreparationTextActions?: Partial<Record<PreparationTextField, DocumentFieldStamp>>;
       sermonRepeatedWordsAction?: DocumentFieldStamp;
       sermonPlanModeAction?: SermonPlanModeStamp;
       accountPreferenceActions?: AccountPreferenceStamps;

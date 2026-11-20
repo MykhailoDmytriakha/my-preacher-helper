@@ -11,7 +11,7 @@ import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { followsStandaloneCreation, initializePendingRemoval, isRemovalAfterStandaloneCreation, provesStandaloneCreation } from './deletionOrdering';
-import { capturedDocumentField, documentFieldTargets, isLongTextDocumentField, pendingDocumentFieldAncestor } from './documentFieldAction';
+import { capturedDocumentField, documentFieldPath, documentFieldTargets, isLongTextDocumentField, pendingDocumentFieldAncestor } from './documentFieldAction';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
@@ -266,11 +266,10 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const topicKind = record.councilTopicKindActions?.kind;
     const timedReference = sameGeneration && Boolean(record.studyNoteReferenceEvidence) && hasStudyNoteReferenceReview(rebased.conflicts);
     const longTextFields = documentFieldTargets(record.baseline.resource.collection).filter(isLongTextDocumentField);
-    const canOrderLongText = (conflict: typeof rebased.conflicts[number]) => conflict.path.length === 1
-      && longTextFields.some(target => {
-        const action = target.field === conflict.path[0] && capturedDocumentField(record, target);
-        return action && equalValues(conflict.mine, action.after);
-      });
+    const canOrderLongText = (conflict: typeof rebased.conflicts[number]) => longTextFields.some(target => {
+      const action = equalValues(conflict.path, documentFieldPath(target)) && capturedDocumentField(record, target);
+      return action && equalValues(conflict.mine, action.after);
+    });
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
       || (timedReference && conflict.path[0] === 'scriptureRefs')
       || canOrderLongText(conflict)

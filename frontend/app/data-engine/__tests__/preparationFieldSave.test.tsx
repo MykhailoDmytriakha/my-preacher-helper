@@ -498,6 +498,43 @@ it.each(['authorIntent', 'homileticPlan'] as const)('does not silently overwrite
 });
 
 
+it.each(['local', 'stored'] as const)('shows an offline return at the exact field and applies the %s choice', async choice => {
+  const preparation = { authorIntent: 'Opening author intent', timelessTruth: 'Opening truth' };
+  const t = await setup({ section: 'authorIntent', withStatus: true, initialValue: { ...initial, preparation } });
+  const held = 'Earlier offline human text';
+  const currentTruth = 'Independent phone truth';
+  const field = (value: string) => ({ exists: true, value });
+  try {
+    await act(async () => { t.h.engine.setOnline(false); });
+    fireEvent.change(t.input, { target: { value: held } });
+    fireEvent.click(screen.getByTitle('actions.save'));
+    await waitFor(async () => expect((await t.h.commits.list('owner')).some(request =>
+      (request.value?.preparation as typeof preparation)?.authorIntent === held)).toBe(true));
+    t.h.silentRemote({ preparation: { ...preparation, timelessTruth: currentTruth } });
+    jest.mocked(t.h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: t.h.server,
+      conflicts: [{ path: ['preparation', 'authorIntent'], base: field(preparation.authorIntent), mine: field(held),
+        theirs: field(preparation.authorIntent) }],
+    }));
+    await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent(held);
+    expect(comparison).toHaveTextContent(preparation.authorIntent);
+    expect(t.h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      sermonPreparationTextActions: { authorIntent: { observedRevision: 1, time: null } },
+    }));
+    if (choice === 'local') fireEvent.click(within(comparison).getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    else {
+      fireEvent.click(within(comparison).getByRole('button', { name: 'dataSync.useStoredVersion' }));
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'common.discardText.confirm' }));
+    }
+    const expected = choice === 'local' ? held : preparation.authorIntent;
+    await waitFor(() => expect(t.input).toHaveValue(expected));
+    await waitFor(() => expect(t.h.server.value?.preparation).toMatchObject({ authorIntent: expected, timelessTruth: currentTruth }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument());
+  } finally { await finish(t.view); }
+});
+
 it.each([
   ['verse', 'passageInput.placeholder'], ['passageSummary', 'passageSummary.placeholder'],
   ['contextNotes', 'contextInput.placeholder'], ['repeatedWords', 'repeatedInput.placeholder'],

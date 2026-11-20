@@ -36,6 +36,7 @@ type DocumentFieldOrder = {
   previous?: FieldProof;
   listOpening?: { basis: ListOpening; intended: FieldValue };
   acknowledgedListChoice?: true;
+  reaffirmedPreparationText?: true;
   displaced?: { value: FieldValue; winnerValue: FieldValue; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime };
   uncertain?: ConflictDetail[];
 };
@@ -104,9 +105,11 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
     : target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field]
     : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field]
     : target.action === 'sermonThesisFieldActions' ? command.sermonThesisFieldActions?.[target.field]
+    : target.action === 'sermonPreparationTextActions' ? command.sermonPreparationTextActions?.[target.field]
     : target.action === 'prayerTextActions' ? command.prayerTextActions?.[target.field] : command[target.action];
   const { before, after } = change;
-  if (!object(action) || ('path' in target && !after.exists && target.action !== 'accountPreferenceActions') || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
+  if (!object(action) || ('path' in target && !after.exists
+    && target.action !== 'accountPreferenceActions' && target.action !== 'sermonPreparationTextActions') || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
     || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
     || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
@@ -160,11 +163,13 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
     && isStandaloneScriptureReference(after) && isStandaloneScriptureReference(stored);
   const order = standalone && time && action.time ? compareActionTime(action.time, time) : 0;
   if (sameFieldOpening(action.after, value, target)) {
-    return order > 0 ? { command, stamp: action.time } : order < 0 ? { command, previous }
-      : { command, stamp: null, ...(repeatedWords && { acknowledgedListChoice: true }) };
+    if (order < 0) return { command, previous };
+    return { command, stamp: order > 0 ? action.time : null,
+      ...(!order && repeatedWords && { acknowledgedListChoice: true }),
+      ...(target.action === 'sermonPreparationTextActions' && { reaffirmedPreparationText: true }) };
   }
   if (!order || !time || !action.time) {
-    const needsReview = repeatedWords || equalValues(action.before, value)
+    const needsReview = repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
       || (target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after));
     const uncertain = needsReview ? [{ path: change.path, base: change.before, mine: change.after, theirs: value }] : undefined;
     return { command, uncertain };
@@ -339,16 +344,18 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const scopeChanged = referenceChanged || placeScopeChanged;
     const order = scopeChanged ? undefined : fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
-    const previous = scopeChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
     const rawValue = target.action === 'commentPlaceAction' ? documentFieldValue((raw ?? {}) as DocumentData, target)
       : readField((raw ?? {}) as DocumentData, documentFieldPath(target));
     const changed = target.causal === true && (scopeChanged || !equalValues(rawValue, value));
+    if (target.action === 'sermonPreparationTextActions' && !value.exists && !changed
+      && (!object(rawMetadata) || rawMetadata[target.proof] === undefined)) return [];
+    const previous = scopeChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
     // The first unrelated write to an older sermon, including a secondary effect,
     // observes the same field at the original revision.
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)
       && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
       ? rawMetadata.revision : metadata.revision;
-    const sameWordWon = tracksOpeningReturns(target) && (order?.stamp != null || order?.acknowledgedListChoice);
+    const sameWordWon = tracksOpeningReturns(target) && (order?.stamp != null || order?.acknowledgedListChoice || order?.reaffirmedPreparationText);
     const listOpening = order?.listOpening && equalValues(order.listOpening.intended, value) ? order.listOpening.basis : undefined;
     const time = target.action === 'sermonRepeatedWordsAction' && !listOpening ? null : order?.stamp ?? null;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
@@ -360,7 +367,8 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     };
     const match = usesDigest(target) ? { digest: fieldDigest(proof.value, target) } : { [target.field]: proof.value.value };
     const pastOpenings = tracksOpeningReturns(target) && rawValue && object(rawMetadata)
-      && rawMetadata.generation === metadata.generation ? nextFieldOpenings(rawMetadata, target, rawValue, changed) : undefined;
+      && rawMetadata.generation === metadata.generation
+      ? nextFieldOpenings(rawMetadata, target, rawValue, changed || order?.reaffirmedPreparationText === true) : undefined;
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
       ...(proof.initialized && { initialized: true as const }),

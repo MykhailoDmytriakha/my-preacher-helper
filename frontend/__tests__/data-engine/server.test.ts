@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
 import { prepareDomainCommand } from '@/data-engine/domainPolicy';
+import { readField, writeField } from '@/data-engine/fieldValues';
 import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listOutlineTitleHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteReferenceHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
@@ -1462,6 +1463,146 @@ describe('transactional relation execution', () => {
     expect(await processCommand('owner-1', command)).toMatchObject({ kind: 'refused', code: 'relation-effects-too-large' });
     expect(documents.get('studyMaterials/m')?.noteIds).toEqual([]);
     expect(documents.get('studyNotes/large-0')?.materialIds).toEqual([]);
+  });
+});
+
+describe('sermon preparation text action chronology', () => {
+  const owner = 'owner-1';
+  const openingText = 'Opening words';
+  const sibling = ['preparation', 'textContext', 'passage'] as const;
+  const authorIntent = ['preparation', 'authorIntent'] as const;
+  const truth = ['preparation', 'timelessTruth'] as const;
+  const fields = [
+    authorIntent, truth, ['preparation', 'christConnection'], ['preparation', 'preachingGoal', 'statement'],
+    ['preparation', 'mainIdea', 'contextIdea'], ['preparation', 'mainIdea', 'textIdea'], ['preparation', 'mainIdea', 'argumentation'],
+    ['preparation', 'thesis', 'exegetical'], ['preparation', 'thesis', 'homiletical'], ['preparation', 'thesis', 'transitionSentence'],
+    ['preparation', 'thesis', 'oneSentence'], ['preparation', 'thesis', 'sermonInOneSentence'],
+    ['preparation', 'thesis', 'homileticalAnswers', 'whyPreach'], ['preparation', 'thesis', 'homileticalAnswers', 'impactOnChurch'],
+    ['preparation', 'thesis', 'homileticalAnswers', 'practicalQuestions'], ['preparation', 'homileticPlan', 'modernTranslation'],
+    ['preparation', 'textContext', 'passageSummary'], ['preparation', 'textContext', 'contextNotes'],
+  ] as const;
+  const word = (value: string) => ({ exists: true, value });
+
+  const setup = async (path: readonly string[], openingValue: FieldValue = word(openingText)) => {
+    const seed = create();
+    if (seed.kind !== 'create') throw Error('Expected creation');
+    const value = writeField(writeField(seed.value, sibling, word('Passage context')), path, openingValue);
+    const result = await processCommand(owner, { ...seed, value });
+    if (result.kind !== 'acknowledged') throw Error('Expected the sermon to exist');
+    return result.snapshot;
+  };
+  const save = (basis: ResourceSnapshot, id: string, path: readonly string[], value: FieldValue,
+    timeMs?: number | null, independent?: { path: readonly string[]; text: string }) => {
+    const choice = writeField(basis.value!, path, value);
+    const draft = independent ? writeField(choice, independent.path, word(independent.text)) : choice;
+    const { command } = prepareDomainCommand(owner, id, basis, draft);
+    if (command.kind !== 'update') throw Error('Expected a text update');
+    if (timeMs === undefined) return command;
+    return { ...command, sermonPreparationTextActions: {
+      [path.at(-1)!]: { observedRevision: basis.metadata!.revision,
+        time: timeMs === null ? null : { earliestMs: timeMs, latestMs: timeMs + 20 } },
+    } };
+  };
+  const accepted = async (command: DataCommand) => {
+    const result = await processCommand(owner, command);
+    if (result.kind !== 'acknowledged') throw Error(`Expected acknowledgement, got ${result.kind}`);
+    return result.snapshot;
+  };
+  const read = async (path: readonly string[]) => readField((await readDocument(owner, resource)).value!, path);
+  const history = (field: string) => [...documents.entries()].flatMap(([path, value]) => path.startsWith('sermons/sermon-1/_metadataHistory/')
+    ? (value.fields as { field: string; value: string }[]).filter(entry => entry.field === field).map(entry => entry.value) : []);
+
+  it.each(fields.map(path => [path.join('.'), path] as const))(
+    'holds an old unproved packet after a deliberate return in %s', async (_name, path) => {
+      const opening = await setup(path);
+      const delayed = save(opening, 'old-phone', path, word('Earlier offline words'));
+      const moved = await accepted(save(opening, 'desktop-edit', path, word('Intermediate words')));
+      await accepted(save(moved, 'desktop-return', path, word(openingText)));
+
+      const result = await processCommand(owner, delayed);
+      expect(await read(path)).toEqual(word(openingText));
+      expect(result).toMatchObject({ kind: 'conflict', conflicts: [
+        { path, base: word(openingText), mine: word('Earlier offline words'), theirs: word(openingText) },
+      ] });
+      expect(await read(sibling)).toEqual(word('Passage context'));
+    },
+  );
+
+  it.each([false, true])('orders a timed first delivery with exact displaced text (incoming newer: %s)', async incomingNewer => {
+    const opening = await setup(authorIntent);
+    const delayed = save(opening, 'offline-phone', authorIntent, word('Phone words'), incomingNewer ? 4000 : 1000,
+      { path: truth, text: 'Independent truth' });
+    const moved = await accepted(save(opening, 'desktop-edit', authorIntent, word('Intermediate words'), 2000));
+    await accepted(save(moved, 'desktop-return', authorIntent, word(openingText), 3000));
+
+    await accepted(delayed);
+    expect(await read(authorIntent)).toEqual(word(incomingNewer ? 'Phone words' : openingText));
+    expect(await read(truth)).toEqual(word('Independent truth'));
+    expect(history('authorIntent')).toEqual([incomingNewer ? openingText : 'Phone words']);
+    await accepted(delayed);
+    expect(history('authorIntent')).toHaveLength(1);
+  });
+
+  it.each([false, true])('keeps a same-result action as the newest evidence (timed: %s)', async timed => {
+    const opening = await setup(authorIntent);
+    const confirmed = await accepted(save(opening, 'first-save', authorIntent, word('Same words'), 2000));
+    const delayed = save(confirmed, 'delayed-different', authorIntent, word('Different earlier words'), 3000);
+    const reaffirmed = await accepted(save(opening, 'same-words', authorIntent, word('Same words'), timed ? 4000 : null));
+    expect(reaffirmed.metadata?.revision).toBeGreaterThan(confirmed.metadata!.revision);
+
+    const result = await processCommand(owner, delayed);
+    expect(result.kind).toBe(timed ? 'acknowledged' : 'conflict');
+    expect(await read(authorIntent)).toEqual(word('Same words'));
+    expect(history('authorIntent')).toEqual(timed ? ['Different earlier words'] : []);
+  });
+
+  it('asks about a legacy change after the matching opening was reaffirmed', async () => {
+    const opening = await setup(authorIntent);
+    const first = await accepted(save(opening, 'first-save', authorIntent, word('Same words'), 2000));
+    const delayed = save(first, 'legacy-different', authorIntent, word('Different legacy words'));
+    const reaffirmed = await accepted(save(opening, 'later-same-words', authorIntent, word('Same words'), 4000));
+
+    expect(await processCommand(owner, delayed)).toMatchObject({ kind: 'conflict', conflicts: [
+      { path: authorIntent, base: word('Same words'), mine: word('Different legacy words'), theirs: word('Same words') },
+    ] });
+    expect(await read(authorIntent)).toEqual(word('Same words'));
+    await accepted(save(reaffirmed, 'fresh-choice', authorIntent, word('Fresh words'), null));
+    expect(await read(authorIntent)).toEqual(word('Fresh words'));
+  });
+
+  it('merges a legacy change based on a field that has not returned', async () => {
+    const opening = await setup(authorIntent);
+    const delayed = save(opening, 'legacy-without-proof', authorIntent, word('Uncontested intent'));
+    await accepted(save(opening, 'desktop-truth', truth, word('Independent truth'), 2000));
+
+    await accepted(delayed);
+    expect(await read(authorIntent)).toEqual(word('Uncontested intent'));
+    expect(await read(truth)).toEqual(word('Independent truth'));
+  });
+
+  it('preserves the later timed clear of an initially missing sibling text', async () => {
+    const opening = await setup(authorIntent, { exists: false });
+    const delayed = save(opening, 'old-phone', authorIntent, word('Offline words'), 1000);
+    const moved = await accepted(save(opening, 'desktop-edit', authorIntent, word('Intermediate words'), 2000));
+    await accepted(save(moved, 'desktop-clear', authorIntent, { exists: false }, 3000));
+
+    await accepted(delayed);
+    expect(await read(authorIntent)).toEqual({ exists: false });
+    expect(history('authorIntent')).toEqual(['Offline words']);
+  });
+
+  it('keeps both versions for a genuinely unclocked return, then accepts a new choice', async () => {
+    const opening = await setup(authorIntent);
+    const delayed = save(opening, 'old-phone', authorIntent, word('Phone candidate'), null);
+    const moved = await accepted(save(opening, 'desktop-edit', authorIntent, word('Intermediate words'), null));
+    const current = await accepted(save(moved, 'desktop-return', authorIntent, word(openingText), null));
+
+    expect(await processCommand(owner, delayed)).toMatchObject({ kind: 'conflict', conflicts: [
+      { path: authorIntent, base: word(openingText), mine: word('Phone candidate'), theirs: word(openingText) },
+    ] });
+    expect(await read(authorIntent)).toEqual(word(openingText));
+    await accepted(save(current, 'make-new-choice', authorIntent, word('Phone candidate'), null));
+    expect(await read(authorIntent)).toEqual(word('Phone candidate'));
   });
 });
 

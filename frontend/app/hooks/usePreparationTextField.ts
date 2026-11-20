@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery, type HomileticMoveInput } from '@/data-engine/react.client';
+import { preparationTextField } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PreparationFieldBinding, PreparationTextBinding } from '@/components/common/manualTextBinding';
@@ -43,6 +44,7 @@ export function usePreparationTextField(resource: ResourceRef | null, path: read
 export function usePreparationField<T>(resource: ResourceRef | null, path: readonly string[], captionKey: string | undefined,
   codec: PreparationValue<T>, options?: { captureMetadataTime: true }): PreparationFieldBinding<T> & { edit(updater: (current: T) => T, fieldInput?: HomileticMoveInput): Promise<void> } {
   const { owner } = useDataEngine();
+  const captureTime = options?.captureMetadataTime || preparationTextField(path) !== undefined;
   const { t } = useTranslation();
   const document = useDataDocument(resource, { autoSave: false });
   const form = useDataForm(resource, `prep-${path.slice(1).join('-')}`, [[...path]]);
@@ -71,7 +73,7 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
   const decision = manualFormDecision(form, comparison);
   if (decision) decision.keepLocal = () => form.keepLocal(
     current => withValue(current, path, encode(codec.read(valueAt(current, path)))),
-    options && form.captureDocumentMetadataAction(),
+    captureTime ? form.captureDocumentMetadataAction() : undefined,
   );
   if (decision?.status && (!canSave || form.comparison?.canKeepLocal === false)) decision.status = { ...decision.status, canKeepLocal: false };
   const edit = (updater: (current: T) => T, fieldInput?: HomileticMoveInput) => form.update(current => {
@@ -91,6 +93,6 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
     comparison,
     begin: form.begin, cancel: form.cancel, retry: form.retry, recovery,
     edit, update: next => edit(() => next),
-    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, encode(next)), options && form.captureDocumentMetadataAction()),
+    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, encode(next)), captureTime ? form.captureDocumentMetadataAction() : undefined),
   };
 }

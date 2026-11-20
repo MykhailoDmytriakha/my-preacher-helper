@@ -1,4 +1,4 @@
-import { preparationConfirmationField } from '@/utils/preparationFieldValues';
+import { preparationConfirmationField, preparationTextField } from '@/utils/preparationFieldValues';
 import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
@@ -24,7 +24,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
     || isPlanCellPath(path) || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
-    || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
+    || preparationConfirmationField(path) !== undefined || preparationTextField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || thoughtTextConflictId(path) !== undefined || preachDateNoteConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -67,7 +67,7 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
   if (path[0] === 'verse' || path[0] === 'planMode') return withField(data, path[0], selected);
-  if (preparationConfirmationField(path)) return writeField(data, path, selected);
+  if (preparationConfirmationField(path) || preparationTextField(path)) return writeField(data, path, selected);
   const [field, id, ...leaf] = path;
   const rows = data[field];
   if (!Array.isArray(rows) || !rows.some(value => isRow(value, id))) return undefined;
