@@ -44,10 +44,31 @@ export function requirePreparedAudio(doc: AudioSourceDocument, mode: AudioSource
   return source;
 }
 
+function samePreparedSection(first: PreparedAudioSet | undefined, second: PreparedAudioSet | undefined, section: SermonSection): boolean {
+  const words = (source: PreparedAudioSet | undefined) => heardChunks(source?.chunks
+    .filter(chunk => chunk.sectionId === section).map((chunk, index) => ({ ...chunk, index })));
+  return Boolean(first?.sections.includes(section)) === Boolean(second?.sections.includes(section)) && words(first) === words(second);
+}
+
+function preparedSectionRevision(source: PreparedAudioSet | undefined, section: SermonSection): number | undefined {
+  if (!source) return;
+  const recorded = source.sectionRevisions?.[section];
+  return typeof recorded === 'number' && Number.isSafeInteger(recorded) && recorded >= 0 && recorded <= source.revision
+    ? recorded : source.revision;
+}
+
 /** Assign the revision only from the latest document supplied by the canonical transaction. */
 export function putPreparedAudio(doc: AudioSourceDocument, mode: AudioSourceMode, chunks: AudioChunk[], options: { id: string; sections: readonly SermonSection[] }): PreparedAudioFields {
   const sources = readPreparedAudioSources(doc), previous = sources[mode];
-  const source: PreparedAudioSet = { id: options.id, revision: (previous?.revision ?? 0) + 1, sections: sections.filter(section => options.sections.includes(section)), chunks: clone(chunks) };
+  const revision = (previous?.revision ?? 0) + 1;
+  const source: PreparedAudioSet = {
+    id: options.id, revision, sections: sections.filter(section => options.sections.includes(section)), chunks: clone(chunks),
+  };
+  const sectionRevision = (section: SermonSection) =>
+    samePreparedSection(previous, source, section) ? preparedSectionRevision(previous, section) ?? revision : revision;
+  source.sectionRevisions = {
+    introduction: sectionRevision('introduction'), mainPart: sectionRevision('mainPart'), conclusion: sectionRevision('conclusion'),
+  };
   sources[mode] = source;
   return { audioSources: sources, audioChunks: clone(chunks), audioMetadata: { ...(object(doc.audioMetadata) ? doc.audioMetadata : {}), mode, chunksCount: chunks.length } };
 }
@@ -80,8 +101,8 @@ export function replacePreparedAudioSections(
 ): PreparedAudioFields {
   const sources = readPreparedAudioSources(doc), source = sources[mode];
   const selected = new Set<SermonSection>(replacement.sections);
-  const words = (chunks: AudioChunk[] = []) => heardChunks(chunks.filter(chunk => selected.has(chunk.sectionId)).map((chunk, index) => ({ ...chunk, index })));
-  if ((opening ? source?.id !== opening.id : Boolean(source)) || words(source?.chunks) !== words(opening?.chunks)) {
+  if ((opening ? source?.id !== opening.id : Boolean(source)) || replacement.sections.some(section =>
+    preparedSectionRevision(source, section) !== preparedSectionRevision(opening, section) || !samePreparedSection(source, opening, section))) {
     throw new PreparedAudioChanged(mode, sources);
   }
   const kept = (source?.chunks ?? []).filter(chunk => !selected.has(chunk.sectionId));

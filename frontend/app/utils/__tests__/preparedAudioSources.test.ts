@@ -97,6 +97,47 @@ describe('independently saved speech sources', () => {
     expect(() => replacePreparedAudioSections(corrected, 'ai', start.audioSources.ai, replacement)).toThrow(PreparedAudioChanged);
   });
 
+  it('rejects stale preparation after an edit and return to the opening words in its section', () => {
+    const opening = putPreparedAudio(legacy, 'ai', ai, { id: 'ai-start', sections: ['introduction'] });
+    const changed = putPreparedAudio(opening, 'ai', [chunk('Later manual correction')], { id: 'ai-start', sections: ['introduction'] });
+    const restored = putPreparedAudio(changed, 'ai', ai, { id: 'ai-start', sections: ['introduction'] });
+    const replacement = { id: 'prepared-by-the-earlier-request', sections: ['introduction'] as const, chunks: [chunk('Outdated AI words')] };
+    expect(() => replacePreparedAudioSections(restored, 'ai', opening.audioSources.ai, replacement)).toThrow(PreparedAudioChanged);
+    expect(restored.audioSources.ai?.chunks).toEqual(ai);
+    expect(replacePreparedAudioSections(restored, 'ai', restored.audioSources.ai, replacement).audioChunks).toEqual(replacement.chunks);
+  });
+
+  it('lets preparation complete when an independent section was edited and restored', () => {
+    const main = { ...chunk('Opening main'), index: 1, sectionId: 'mainPart' as const };
+    const options = { id: 'ai-start', sections: ['introduction', 'mainPart'] as const };
+    const opening = putPreparedAudio(legacy, 'ai', [...ai, main], options);
+    const changed = putPreparedAudio(opening, 'ai', [...ai, { ...main, text: 'Later main' }], options);
+    const restored = putPreparedAudio(changed, 'ai', [...ai, main], options);
+    const result = replacePreparedAudioSections(restored, 'ai', opening.audioSources.ai, {
+      id: 'intro-prepared', sections: ['introduction'], chunks: [chunk('Prepared intro')],
+    });
+    expect(result.audioChunks.map(item => item.text)).toEqual(['Prepared intro', 'Opening main']);
+  });
+
+  it('starts section tracking without invalidating an independent preparation opened on a versioned old set', () => {
+    const main = { ...chunk('Main opening'), index: 1, sectionId: 'mainPart' as const };
+    const old = { id: 'versioned-legacy', revision: 3, chunks: [...ai, main], sections: ['introduction', 'mainPart'] as const };
+    const opening = { ...old, sections: [...old.sections] };
+    const edited = putPreparedAudio({ audioSources: { ai: opening } }, 'ai', [...ai, { ...main, text: 'Corrected main' }], opening);
+    const updated = replacePreparedAudioSections(edited, 'ai', opening, {
+      id: 'intro-prepared-from-old-set', sections: ['introduction'], chunks: [chunk('Prepared intro')],
+    });
+    expect(updated.audioChunks.map(item => item.text)).toEqual(['Prepared intro', 'Corrected main']);
+  });
+
+  it('holds a versioned old set when later writes have no section-level evidence', () => {
+    const old = { id: 'versioned-legacy', revision: 3, chunks: ai, sections: ['introduction'] as const };
+    const opening = { ...old, sections: [...old.sections] };
+    const saved = { audioSources: { ai: { ...opening, revision: 5 } } };
+    const replacement = { id: 'earlier-preparation', sections: ['introduction'] as const, chunks: raw };
+    expect(() => replacePreparedAudioSections(saved, 'ai', opening, replacement)).toThrow(PreparedAudioChanged);
+  });
+
   it('records an explicitly prepared empty section without deleting the other saved words', () => {
     const next = replacePreparedAudioSections(legacy, 'ai', readPreparedAudioSources(legacy).ai, { id: 'ai-empty-main', sections: ['mainPart'], chunks: [] });
     expect(next.audioSources.ai?.chunks).toEqual(ai);

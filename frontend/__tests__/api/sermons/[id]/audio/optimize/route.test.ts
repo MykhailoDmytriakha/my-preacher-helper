@@ -7,6 +7,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { createAudioChunks, splitTextIntoChunks, splitTextEvenly } from '@/api/clients/tts.client';
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { UsageCapReachedError } from '@/services/usageLimits';
+import { putPreparedAudio } from '@/utils/preparedAudioSources';
 
 // Mock Next.js Server objects
 jest.mock('next/server', () => {
@@ -525,6 +526,33 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
             expect(response.status).toBe(409);
             expect(json.code).toBe('chunks-changed');
             expect(json.chunks).toEqual([expect.objectContaining({ sectionId: 'introduction', text: 'Intro corrected on the phone' })]);
+            expect(mockEngineWritten).toBeNull();
+        } finally {
+            mockEngineCurrent = null;
+            mockEngineWritten = null;
+        }
+    });
+
+    it('keeps manually restored speech when an earlier preparation finishes later', async () => {
+        const original = { index: 0, sectionId: 'introduction' as const, text: 'Opening spoken words', createdAt: 'then' };
+        const options = { id: 'same-ai-source', sections: ['introduction'] as const };
+        const opened = putPreparedAudio({}, 'ai', [original], options);
+        const changed = putPreparedAudio(opened, 'ai', [{ ...original, text: 'Later phone correction' }], options);
+        const restored = putPreparedAudio(changed, 'ai', [original], options);
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({ userId: mockUserId, ...opened, thoughts: [{ id: 't1', text: 'Earlier AI request', tags: ['introduction'] }] }),
+        });
+        mockEngineCurrent = { userId: mockUserId, ...restored };
+        try {
+            const req = new NextRequest('http://localhost:3000/api/optimize', {
+                method: 'POST', body: JSON.stringify({ sections: 'introduction' }),
+            });
+            const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+
+            expect(response.status).toBe(409);
+            expect(await response.json()).toMatchObject({ code: 'chunks-changed', chunks: [original] });
             expect(mockEngineWritten).toBeNull();
         } finally {
             mockEngineCurrent = null;

@@ -54,8 +54,10 @@ const church = object({ id: text, name: text, city: text.optional() });
 const preachDate = object({ id, date: z.union([id, z.literal('')]), status: z.enum(['planned', 'preached']).optional(), church, audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text })
   .refine(row => row.date !== '' || row.status !== 'preached', { path: ['date'], message: 'A recorded preaching needs a day' });
 const audioChunk = object({ text, sectionId: z.enum(['introduction', 'mainPart', 'conclusion']), createdAt: text, index: number.int().nonnegative(), kind: z.enum(['body', 'transition']).optional(), role: z.enum(['intro', 'bridge', 'outro']).optional() });
+const audioRevision = number.int().safe().nonnegative();
 const preparedAudioSet = object({
   id, revision: number.int().nonnegative(), sections: z.array(z.enum(['introduction', 'mainPart', 'conclusion'])), chunks: z.array(audioChunk),
+  sectionRevisions: object({ introduction: audioRevision, mainPart: audioRevision, conclusion: audioRevision }).optional(),
 });
 const preparedAudioSources = object({ ai: preparedAudioSet.optional(), raw: preparedAudioSet.optional() });
 const planNode: z.ZodType<{ id: string; title: string; children?: unknown[] }> = z.lazy(() => object({ id, title: text, children: children(planNode).optional() }));

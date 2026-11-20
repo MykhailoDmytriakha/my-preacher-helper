@@ -357,6 +357,8 @@ export interface PreparedAudioSet {
     id: string;
     /** Increased by the server inside each accepted preparation/edit transaction. */
     revision: number;
+    /** Last source revision that changed each section's prepared words or coverage. */
+    sectionRevisions?: Record<SermonSection, number>;
     /** Sections actually prepared, including prepared sections with no spoken words. */
     sections: SermonSection[];
     chunks: AudioChunk[];
