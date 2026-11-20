@@ -77,7 +77,7 @@ export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) {
   }
 }
 
-function readExactTextConflict(checkpoint: SessionCheckpoint, collection: string, field: 'name' | 'color') {
+function readExactTextConflict(checkpoint: SessionCheckpoint, collection: string, field: 'name' | 'color' | 'title') {
   const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
   const path = conflicts[0]?.path;
   const mine = draft?.[field], stored = remoteCandidate?.value?.[field];
@@ -96,6 +96,10 @@ export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) {
 
 export function readTagColorConflict(checkpoint: SessionCheckpoint) {
   return readExactTextConflict(checkpoint, 'tags', 'color');
+}
+
+export function readServiceOrderTitleConflict(checkpoint: SessionCheckpoint) {
+  return readExactTextConflict(checkpoint, 'serviceOrders', 'title');
 }
 
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) {

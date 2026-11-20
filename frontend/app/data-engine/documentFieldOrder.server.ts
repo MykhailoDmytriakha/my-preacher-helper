@@ -36,7 +36,7 @@ type DocumentFieldOrder = {
   previous?: FieldProof;
   listOpening?: { basis: ListOpening; intended: FieldValue };
   acknowledgedListChoice?: true;
-  reaffirmedPreparationText?: true;
+  reaffirmedOpening?: true;
   displaced?: { value: FieldValue; winnerValue: FieldValue; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime };
   uncertain?: ConflictDetail[];
 };
@@ -66,7 +66,8 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  target.action === 'sermonThesisFieldActions' || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
+  target.action === 'serviceOrderTitleAction' || target.action === 'sermonThesisFieldActions'
+    || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
   : createHash('sha256').update(JSON.stringify(word)).digest('base64url');
@@ -166,7 +167,7 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
     if (order < 0) return { command, previous };
     return { command, stamp: order > 0 ? action.time : null,
       ...(!order && repeatedWords && { acknowledgedListChoice: true }),
-      ...(target.action === 'sermonPreparationTextActions' && { reaffirmedPreparationText: true }) };
+      ...((target.action === 'sermonPreparationTextActions' || target.action === 'serviceOrderTitleAction') && { reaffirmedOpening: true }) };
   }
   if (!order || !time || !action.time) {
     const needsReview = repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
@@ -218,7 +219,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   // (the comment window, when it has one) is ordered by the action above.
   if (!action && tracksOpeningReturns(target) && target.action !== 'studyNoteContentAction' && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
-    // An old queued packet cannot tell a returned word from an untouched opening.
+    // An old queued packet cannot distinguish a restored value from an untouched opening.
     if (past === null || past?.includes(fieldDigest(stored, target))) {
       return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
     }
@@ -355,7 +356,8 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)
       && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
       ? rawMetadata.revision : metadata.revision;
-    const sameWordWon = tracksOpeningReturns(target) && (order?.stamp != null || order?.acknowledgedListChoice || order?.reaffirmedPreparationText);
+    const sameWordWon = tracksOpeningReturns(target) && (order?.stamp != null || order?.acknowledgedListChoice
+      || (target.action === 'sermonPreparationTextActions' && order?.reaffirmedOpening));
     const listOpening = order?.listOpening && equalValues(order.listOpening.intended, value) ? order.listOpening.basis : undefined;
     const time = target.action === 'sermonRepeatedWordsAction' && !listOpening ? null : order?.stamp ?? null;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
@@ -368,7 +370,7 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const match = usesDigest(target) ? { digest: fieldDigest(proof.value, target) } : { [target.field]: proof.value.value };
     const pastOpenings = tracksOpeningReturns(target) && rawValue && object(rawMetadata)
       && rawMetadata.generation === metadata.generation
-      ? nextFieldOpenings(rawMetadata, target, rawValue, changed || order?.reaffirmedPreparationText === true) : undefined;
+      ? nextFieldOpenings(rawMetadata, target, rawValue, changed || order?.reaffirmedOpening === true) : undefined;
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
       ...(proof.initialized && { initialized: true as const }),

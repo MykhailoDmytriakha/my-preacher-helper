@@ -8,7 +8,7 @@ import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAs
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, SermonPlanModeCapture, SermonPlanModeStamp, SermonThesisField, StudyNoteTitleCapture, StudyNoteTypeCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
+import type { DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, SermonPlanModeCapture, SermonPlanModeStamp, SermonThesisField, StudyNoteTitleCapture, StudyNoteTypeCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
 import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
@@ -254,7 +254,7 @@ export type DataCommand = CommandBase & (
       preachDateFieldActions?: PreachDateFieldWire;
       preachStatusActions?: PreachStatusAction[];
       bibleMarkStroke?: BibleMarkStrokeStamp;
-      serviceOrderTitleAction?: DocumentFieldAction;
+      serviceOrderTitleAction?: DocumentFieldObservation;
       serviceOrderFlagActions?: ServiceOrderFlagActions;
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
       serviceOrderStepBodyActions?: RowTextStamp[];

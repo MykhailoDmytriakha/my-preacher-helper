@@ -43,6 +43,7 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { readServiceOrderTitleConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
@@ -1297,6 +1298,17 @@ export class EditorController {
             });
             if (!later) throw new Error('The later comment text could not be captured');
             session.applyCommit(later); replacements.push(later);
+          }
+        }
+        if (choice === 'local' && !selection && !correction && readServiceOrderTitleConflict(decided)) {
+          const next = session.checkpoint();
+          const { value, metadata } = next.confirmed;
+          if (typeof value?.title === 'string' && metadata && !metadata.deleted && next.draft?.title !== value.title) {
+            const seen = { title: value.title, generation: metadata.generation, revision: metadata.revision };
+            const replacement = this.options.commits!.choiceReplacement(record.editorId, next, {
+              action: { kind: 'service-order-title', title: { seen, time: choiceTime ?? null } },
+            });
+            if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
           }
         }
         if (choice === 'local' && stepBody) {

@@ -30,13 +30,12 @@ export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: 
 export type SermonPlanModeCapture = { time: ActionTime | null; seen: SermonPlanModeOpening; initialize?: true };
 export type SermonPlanModeObservation = DocumentFieldObservation<FieldValue> & { initialize?: true };
 export type DocumentFieldObservation<Value = string> = DocumentFieldStamp & { before: Value; after: Value };
-export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime };
 type TextFieldBasis = { generation: string; revision: number; requestId?: string };
 export type DocumentTitleSeen = TextFieldBasis & { title: string };
 export type TagColorSeen = TextFieldBasis & { color: string };
 export type TagColorCapture = { time: ActionTime | null; seen: TagColorSeen };
 export type ServiceOrderTitleSeen = DocumentTitleSeen;
-export type ServiceOrderTitleCapture = { time: ActionTime; seen: ServiceOrderTitleSeen };
+export type ServiceOrderTitleCapture = { time: ActionTime | null; seen: ServiceOrderTitleSeen };
 export type StudyNoteTitleSeen = DocumentTitleSeen & { missing?: true };
 export type StudyNoteTitleCapture = { time: ActionTime | null; seen: StudyNoteTitleSeen };
 export type { OrdinaryStudyNoteType } from '@/utils/studyNoteType';
@@ -385,11 +384,12 @@ export function matchesTagColorRequest(request: CommitRequest | undefined, owner
 export function validatedTitleCapture(confirmed: ResourceSnapshot, draft: DocumentData | null, next: DocumentData | null,
   capture: ServiceOrderTitleCapture, knownPredecessor: boolean): ServiceOrderTitleCapture | undefined {
   const { seen } = capture;
-  const time = boundedActionTime(capture.time);
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
   const title = next?.title;
   if (confirmed.resource.collection === 'serviceOrders' && !confirmed.metadata?.deleted && seen.generation === confirmed.metadata?.generation
     && Number.isSafeInteger(seen.revision) && seen.revision > 0 && seen.revision <= confirmed.metadata.revision
-    && (!seen.requestId || knownPredecessor || confirmed.value?.title === seen.title) && isShortDocumentTitle(seen.title, SERVICE_ORDER_TITLE) && isShortDocumentTitle(title, SERVICE_ORDER_TITLE) && time) {
+    && (!seen.requestId || knownPredecessor || confirmed.value?.title === seen.title)
+    && isShortDocumentTitle(seen.title, SERVICE_ORDER_TITLE) && isShortDocumentTitle(title, SERVICE_ORDER_TITLE) && time !== undefined) {
     return { seen: { title: seen.title, generation: seen.generation, revision: seen.revision,
       ...(knownPredecessor && seen.requestId && { requestId: seen.requestId }) }, time };
   }
@@ -399,7 +399,7 @@ export function validatedTitleCapture(confirmed: ResourceSnapshot, draft: Docume
 }
 
 export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: DocumentData | null,
-  capture?: ServiceOrderTitleCapture): DocumentFieldAction | undefined {
+  capture?: ServiceOrderTitleCapture): DocumentFieldObservation | undefined {
   if (!capture || baseline.resource.collection !== 'serviceOrders' || baseline.metadata?.generation !== capture.seen.generation) return undefined;
   const after = value?.title;
   if (!isShortDocumentTitle(after, SERVICE_ORDER_TITLE) || after === capture.seen.title) return undefined;

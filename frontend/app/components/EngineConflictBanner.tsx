@@ -13,6 +13,7 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readDocumentTextComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForOutlineParentReview, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { readServiceOrderTitleConflict } from '@/data-engine/rowConflictDetails';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -142,7 +143,10 @@ function fieldComparison(entry: Waiting, t: (key: string) => string, locale: Ret
     return comparison && { title: fieldLabel(t, 'color'), valueKind: 'field', mine: comparison.mine || unset, stored: comparison.stored || unset };
   }
   if (entry.resource.collection !== 'serviceOrders') return undefined;
-  const comparison = readServiceStepConflict(entry.records[0].checkpoint);
+  const checkpoint = entry.records[0].checkpoint;
+  const titleComparison = readServiceOrderTitleConflict(checkpoint);
+  if (titleComparison) return { ...titleComparison, title: t('serviceOrders.orderTitle'), valueKind: 'field' };
+  const comparison = readServiceStepConflict(checkpoint);
   if (!comparison) return undefined;
   const { field, mine, stored } = comparison;
   if (field === 'title') {

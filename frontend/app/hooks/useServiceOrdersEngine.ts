@@ -263,7 +263,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
       let refusal: StaleWriteError | null = null;
       let revision: number | null = null;
       const seen = held && (held.seen ?? shownTitle(collectionState.current, id, held));
-      const action: EditorCommitAction | undefined = seen && time ? { kind: 'service-order-title', title: { seen, time } } : undefined;
+      const action: EditorCommitAction | undefined = seen && { kind: 'service-order-title', title: { seen, time: time ?? null } };
       const update = (current: DocumentData | null) => {
         refusal = null;
         if (!current) throw notFound();
@@ -275,8 +275,8 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
         revision = stored + Number(current.title !== title);
         return { ...current, title, updatedAt: now() };
       };
-      const receipt = seen ? await actions.submit(resource(id), { kind: 'update', update }, action ? { action } : undefined) : null;
-      if (!seen) await actions.commit(resource(id), update);
+      const receipt = action ? await actions.submit(resource(id), { kind: 'update', update }, { action }) : null;
+      if (!action) await actions.commit(resource(id), update);
       const refused = refusal as StaleWriteError | null;
       if (refused) {
         const serverTitle = refused.serverValues?.title;
@@ -302,8 +302,8 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
         const current = confirmedTitle(collectionState.current, id);
         if (!current || current.generation !== seen.generation) throw notFound();
         if (current.title === title) return;
-        const time = actions.captureActionTime();
-        const action: EditorCommitAction | undefined = time ? { kind: 'service-order-title', title: { seen: current, time } } : undefined;
+        const time = actions.captureActionTime() ?? null;
+        const action: EditorCommitAction = { kind: 'service-order-title', title: { seen: current, time } };
         await actions.commit(resource(id), value => {
           if (!value) throw notFound();
           if (value.title !== current.title) throw Object.assign(new Error('The service order title changed'), { code: 'stale-write' });

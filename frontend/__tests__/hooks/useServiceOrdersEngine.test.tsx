@@ -94,7 +94,10 @@ describe('orders of service on the engine', () => {
     expect(revision).toBe(5);
   });
 
-  it('keeps the action time when an edit starts from the projected title of a queued save', async () => {
+  it.each([
+    { clock: 'available', time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
+    { clock: 'unavailable', time: undefined },
+  ])('keeps the queued opening title when the action clock is $clock', async ({ time }) => {
     const baseline: ResourceSnapshot = {
       resource: { collection: 'serviceOrders', id: 'o1' },
       value: { userId: 'u', title: 'Original', steps: [], rank: 1000, createdAt: 'c', updatedAt: 'u' },
@@ -118,12 +121,11 @@ describe('orders of service on the engine', () => {
     jest.mocked(useDocumentActions).mockReturnValue({ ...actions, submit } as never);
     jest.mocked(useDataCollection).mockReturnValue({ state, loading: false, error: null } as never);
     const { result } = renderHook(() => useServiceOrdersEngine('u', true));
-    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
     act(() => result.current.openedWith('o1', { title: localTitle, revision: 0 }, 'new-sitting'));
     await act(async () => { await result.current.renameOrder('o1', 'Second local title', 'new-sitting', time); });
     expect(submit).toHaveBeenCalledWith(baseline.resource, expect.objectContaining({ kind: 'update' }), {
       action: { kind: 'service-order-title', title: {
-        seen: { title: localTitle, generation: 'g', revision: 1, requestId: pending.id }, time,
+        seen: { title: localTitle, generation: 'g', revision: 1, requestId: pending.id }, time: time ?? null,
       } },
     });
   });

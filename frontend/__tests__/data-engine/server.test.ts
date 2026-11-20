@@ -8324,14 +8324,15 @@ describe('transactional DataEngine server', () => {
     } else expect(history()).toHaveLength(0);
   });
 
-  it('retains a title conflict when unstamped edits returned the title to its original value', async () => {
+  it.each(['timed', 'clock unavailable', 'legacy'] as const)('retains a delayed %s rename after the title was returned', async scenario => {
     const resource = { collection: 'serviceOrders', id: 'title-round-trip' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
     const now = '2026-11-08T00:00:00.000Z';
     const initialTitle = 'Original title';
     const changedTitle = 'Temporary title';
+    const steps = [{ id: 'first', title: 'Opening', body: 'Words for the service' }];
     expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
-      value: { userId: base.owner, title: initialTitle, rank: 100, steps: [], createdAt: now, updatedAt: now },
+      value: { userId: base.owner, title: initialTitle, rank: 100, steps, createdAt: now, updatedAt: now },
     })).kind).toBe('acknowledged');
     const rename = (operationId: string, before: string, after: string) => ({
       ...base, kind: 'update', generation: 'seed', operationId,
@@ -8340,11 +8341,49 @@ describe('transactional DataEngine server', () => {
     expect((await processCommand(base.owner, rename('change', initialTitle, changedTitle))).kind).toBe('acknowledged');
     expect((await processCommand(base.owner, rename('return', changedTitle, initialTitle))).kind).toBe('acknowledged');
     const delayed = 'Delayed title';
-    expect(await processCommand(base.owner, { ...rename('delayed', initialTitle, delayed),
-      serviceOrderTitleAction: { before: initialTitle, after: delayed, observedRevision: 1,
-        time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
-    })).toMatchObject({ kind: 'conflict', snapshot: { value: { title: initialTitle } }, conflicts: [{ path: ['title'] }] });
+    const command = { ...rename('delayed', initialTitle, delayed),
+      ...(scenario !== 'legacy' && { serviceOrderTitleAction: {
+        before: initialTitle, after: delayed, observedRevision: 1,
+        time: scenario === 'timed' ? { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } : null,
+      } }),
+    };
+    const result = await processCommand(base.owner, command);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { title: initialTitle, steps } },
+      conflicts: [{ path: ['title'], base: { value: initialTitle }, mine: { value: delayed }, theirs: { value: initialTitle } }],
+    });
+    expect(await processCommand(base.owner, command)).toEqual(result);
+    const observedRevision = result.kind === 'conflict' ? result.snapshot.metadata!.revision : 0;
+    expect(await processCommand(base.owner, { ...rename('fresh-choice', initialTitle, delayed),
+      serviceOrderTitleAction: { before: initialTitle, after: delayed, observedRevision, time: null },
+    })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: delayed, steps } } });
     expect((await listServiceOrderTitleHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it.each([
+    { order: 'an earlier', time: 20, expected: 'acknowledged' },
+    { order: 'a later', time: 60, expected: 'conflict' },
+    { order: 'an unclocked', time: null, expected: 'conflict' },
+  ])('protects the title from a legacy rename after $order same-title edit', async ({ time, expected }) => {
+    const resource = { collection: 'serviceOrders', id: 'title-reaffirmed' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Original', rank: 100, steps: [], createdAt: now, updatedAt: now },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: string, after: string) => ({
+      ...base, kind: 'update', generation: 'seed', operationId,
+      changes: [{ path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const sameTitle = (operationId: string, offset: number | null) => ({
+      ...rename(operationId, 'Original', 'My title'),
+      serviceOrderTitleAction: { before: 'Original', after: 'My title', observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } },
+    });
+    expect(await processCommand(base.owner, sameTitle('first', 40))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, sameTitle('also-my-title', time))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('legacy', 'My title', 'Queued title'))).toMatchObject({
+      kind: expected, snapshot: { value: { title: expected === 'conflict' ? 'My title' : 'Queued title' } },
+    });
   });
 
   describe.each([

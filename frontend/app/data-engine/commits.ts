@@ -62,7 +62,7 @@ import type { CaptureTransferProof, CaptureTransferResult } from './captureTrans
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { CouncilFieldActions } from './councilFieldAction';
-import type { DocumentFieldAction, DocumentFieldObservation, PreparationTextObservations, SermonChurchObservation, SermonPlanModeObservation, SermonThesisObservations } from './documentFieldAction';
+import type { DocumentFieldObservation, PreparationTextObservations, SermonChurchObservation, SermonPlanModeObservation, SermonThesisObservations } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { GroupTextReviewStage } from './groupTextReview';
@@ -135,7 +135,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   councilTopicPlacementLegacyRevision?: number;
   outlinePointPlacementLegacyRevision?: number;
   outlinePointPlacementBirthRevision?: number;
-  serviceOrderTitleAction?: DocumentFieldAction;
+  serviceOrderTitleAction?: DocumentFieldObservation;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
   councilTopicQueue?: string;
   councilAssemblyActions?: CouncilAssemblyActions;
