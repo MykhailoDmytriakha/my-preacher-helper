@@ -833,8 +833,11 @@ export class CommitQueue {
     }
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const reviewedMeeting = groupMeetingReviewForSave(intent.groupMeetingReview, baseline, intent.draft);
-    const action = dateTarget && (captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records)
-      ?? reviewedMeeting?.date);
+    const titleReview = editorAction?.kind === 'document-metadata' ? editorAction.sermonTitleReview : undefined;
+    const reviewedDate = dateTarget?.evidence === 'preachDateAction' ? titleReview?.date : undefined;
+    const datedAction = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft,
+      frozenOptions?.[dateTarget.evidence] ?? reviewedDate, records);
+    const action = datedAction ? { ...datedAction, ...(reviewedDate && { observedRevision: reviewedDate.observedRevision }) } : reviewedMeeting?.date;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined, records);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
@@ -895,7 +898,8 @@ export class CommitQueue {
     const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
       ? editorAction.time : frozenOptions?.documentMetadataTime;
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
-      editorAction?.kind === 'account-preference' ? editorAction.fields : undefined);
+      editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
+      titleReview);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
     const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);

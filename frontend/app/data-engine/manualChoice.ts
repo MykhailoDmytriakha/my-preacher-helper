@@ -5,9 +5,9 @@ import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { isAuthoredListComparison } from './authoredStringList';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
-import { autosaveFieldTargets } from './documentFieldAction';
+import { autosaveFieldTargets, isOrderedSermonMetadata } from './documentFieldAction';
 import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText } from './documentTextChoice';
-import { manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
+import { areSameTabManualParents, editorSlot, manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
@@ -21,7 +21,7 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
-import { keepUncontestedSermonFields } from './sermonFieldChoice';
+import { isReturnedSermonTitle, keepUncontestedSermonFields, sermonTitleReviewFrames } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -81,8 +81,15 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       });
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
-      if (recovered || sameMeetingForm || (record.scopeId === request.editorId
-        && (markedList || meeting || thoughtText || dateNotes || hasLaterScope(request, requests)))) return request;
+      const returnedSermonTitle = record.resource.collection === 'sermons' && request.result?.kind === 'conflict'
+        && request.result.conflicts.some(isReturnedSermonTitle) && record.selection.some(path => equalValues(path, ['title']));
+      const sameTitleForm = returnedSermonTitle && readManualScopeIdentity(request.editorId);
+      const openTitleForm = returnedSermonTitle && readManualScopeIdentity(record.scopeId);
+      const sameTabTitleForm = sameTitleForm && openTitleForm && sameTitleForm.slot === openTitleForm.slot
+        && editorSlot(sameTitleForm.parentEditorId) === editorSlot(openTitleForm.parentEditorId)
+        && areSameTabManualParents(sameTitleForm.parentEditorId, openTitleForm.parentEditorId, record.resource);
+      if (recovered || sameMeetingForm || sameTabTitleForm || (record.scopeId === request.editorId
+          && (markedList || meeting || thoughtText || dateNotes || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
   }
@@ -111,8 +118,10 @@ function afterChoice(confirmed: ResourceSnapshot, draft: DocumentData | null, ge
 
 export function manualChoiceFrames(request: CommitRequest, value: DocumentData, stored: ResourceSnapshot) {
   const prepared = request.initialized && request.command;
-  return { basis: prepared ? request.working : request.baseline,
-    reviewed: prepared ? replaySavedChoiceDelta(stored.resource, request.value, value, request.intended) : value };
+  const basis = prepared ? request.working : request.baseline;
+  const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, value, request.intended) : value;
+  const ordered = request.result?.kind === 'conflict' ? request.result.conflicts.filter(isOrderedSermonMetadata) : [];
+  return ordered.length ? sermonTitleReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill) : { basis, reviewed };
 }
 
 /** The comparison decides its one Save. Later branches remain separate drafts until explicitly recovered. */
@@ -167,7 +176,7 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       request.result?.kind === 'conflict' ? request.result.conflicts : [], decision.value);
     draft = projectManualSelection(stored.value!, chosen!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
-    const conflicts = request.result.conflicts;
+    const conflicts = request.result.conflicts.filter(conflict => !isOrderedSermonMetadata(conflict));
     const retained = basis.value && reviewed && stored.value
       && isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, decision.selection)
       ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, ['description'])

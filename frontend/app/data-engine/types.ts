@@ -90,7 +90,7 @@ export type EditorCommitAction =
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
-  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList }
+  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonTitleReview?: import('./documentFieldAction').SermonTitleReviewProofs }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }

@@ -49,7 +49,7 @@ import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
-import { comparableSermonFields } from './sermonFieldChoice';
+import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof } from './sermonFieldChoice';
 import { DataSession, hasUnreadableDraftProof } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -2885,7 +2885,8 @@ export class DataEngine {
         const controller = parent.controller!;
         const shown = scope.getState();
         const checkpoint = controller.getState().checkpoint;
-        const stored = manualComparison(shown, checkpoint, this.commitRecords, request)?.stored ?? checkpoint.remoteCandidate ?? checkpoint.confirmed;
+        const comparison = manualComparison(shown, checkpoint, this.commitRecords, request);
+        const stored = comparison?.stored ?? checkpoint.remoteCandidate ?? checkpoint.confirmed;
         const predecessor = shown.record.predecessor;
         const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
           ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
@@ -2904,7 +2905,16 @@ export class DataEngine {
             request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
           const keepSeriesFields = choice === 'remote' && request.result?.kind === 'conflict'
             && isManualSeriesDescriptionChoice(request.baseline, stored, request.result.conflicts, selection);
-          const checkedAction: EditorCommitAction | undefined = positionReview ? {
+          const settled = controller.getState().checkpoint.draft;
+          const titleReview = comparison?.kind === 'returned-sermon-title' && {
+            verse: earlierSermonMetadataProof(request.sermonVerseAction, settled?.verse),
+            church: earlierSermonMetadataProof(request.sermonChurchAction, readField(settled ?? {}, ['church'])),
+            date: earlierSermonDateProof(request, settled, stored),
+          };
+          const checkedAction: EditorCommitAction | undefined = titleReview ? {
+            kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
+            sermonTitleReview: titleReview,
+          } : positionReview ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             homileticPositionReview: positionReview,
           } : keepSeriesFields ? { kind: 'document-metadata', time: null } : action;

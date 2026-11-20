@@ -17,12 +17,29 @@ import { captureSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
+import type { DatedRowActionEvidence } from './datedRowAction';
 import type { PrayerStatusCapture, PrayerStatusObservations, PrayerStatusOpening, PrayerStatusTarget } from './prayerStatusAction';
 import type { PrayerTextCapture, PrayerTextObservations, PrayerTextOpenings, PrayerTextTarget } from './prayerTextAction';
 import type { SeriesFieldObservation, SeriesFieldTarget } from './seriesFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
-import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
+import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 import type { Church, Group, Sermon } from '@/models/models';
+
+export const SERMON_METADATA_SETTLED = 'sermon-metadata-settled';
+export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
+export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
+  const [field, id, leaf] = conflict.path;
+  const metadata = (conflict.path.length === 1 && (field === 'verse' || field === 'church'))
+    || (conflict.path.length === 3 && field === 'preachDates' && id.startsWith('id:') && leaf === 'date');
+  return metadata && (conflict.code === SERMON_METADATA_SETTLED || conflict.code === SERMON_METADATA_QUEUED);
+}
+
+type SermonReviewProof = Pick<DocumentFieldStamp, 'time' | 'observedRevision'>;
+export type SermonTitleReviewProofs = {
+  verse?: SermonReviewProof;
+  church?: SermonReviewProof;
+  date?: Pick<DatedRowActionEvidence, 'rowId' | 'after' | 'observedRevision' | 'time'>;
+};
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
 export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
@@ -685,7 +702,7 @@ export function capturePreparationConfirmation(baseline: ResourceSnapshot, prede
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
 export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[],
-  preferenceFields?: readonly AccountPreferenceField[]) {
+  preferenceFields?: readonly AccountPreferenceField[], sermonTitleReview?: SermonTitleReviewProofs) {
   if (captured === undefined || !baseline.metadata || baseline.metadata.deleted) return {};
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return {};
@@ -709,8 +726,8 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   }
   if (baseline.resource.collection !== 'sermons') return {};
   const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, time, records);
-  const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, time, records);
-  const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, time, records);
+  const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, sermonTitleReview ? sermonTitleReview.verse?.time ?? null : time, records);
+  const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, sermonTitleReview ? sermonTitleReview.church?.time ?? null : time, records);
   const goalType = captureStoredMetadataField(baseline, predecessor, draft, SERMON_GOAL_TYPE, time, records);
   const repeatedWords = captureStoredMetadataField(baseline, predecessor, draft, SERMON_REPEATED_WORDS, time, records);
   const thesis = SERMON_THESIS_TARGETS.flatMap(target => {
@@ -723,8 +740,9 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   });
   const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
-  return { ...(title && { sermonTitleAction: title }), ...(verse && { sermonVerseAction: verse }),
-    ...(church && { sermonChurchAction: church }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
+  return { ...(title && { sermonTitleAction: title }),
+    ...(verse && { sermonVerseAction: { ...verse, ...sermonTitleReview?.verse } }),
+    ...(church && { sermonChurchAction: { ...church, ...sermonTitleReview?.church } }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
     ...(repeatedWords?.after.exists && { sermonRepeatedWordsAction: repeatedWords }),
     ...(thesis.length && { sermonThesisFieldActions: Object.fromEntries(thesis) }),
     ...(preparationText.length && { sermonPreparationTextActions: Object.fromEntries(preparationText) }),

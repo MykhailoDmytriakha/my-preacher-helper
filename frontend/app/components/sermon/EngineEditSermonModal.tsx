@@ -61,11 +61,13 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const reviewRecoveryId = form.status?.phase === 'conflict' && !form.dirty && !form.exactChoice && form.borrowedRecoveryIds?.length === 1
     ? form.borrowedRecoveryIds[0] : undefined;
   const versions = form.comparison;
-  const mine = versions?.mine.verse;
-  const stored = versions?.stored.value?.verse;
+  const comparisonField = versions?.kind === 'returned-sermon-title' ? 'title' : 'verse';
+  const mine = versions?.mine[comparisonField];
+  const stored = versions?.stored.value?.[comparisonField];
   const comparison: TextComparison | undefined = versions?.conflictPaths.length === 1 && versions.conflictPaths[0].length === 1
-    && versions.conflictPaths[0][0] === 'verse' && typeof mine === 'string' && typeof stored === 'string' && mine !== stored
-    ? { identity: versions.identity, title: t('addSermon.verseLabel'), mine, stored, scopedChoice: form.exactChoice ? true : undefined } : undefined;
+    && versions.conflictPaths[0][0] === comparisonField && typeof mine === 'string' && typeof stored === 'string' && mine !== stored
+    ? { identity: versions.identity, title: t(comparisonField === 'title' ? 'addSermon.titleLabel' : 'addSermon.verseLabel'),
+      mine, stored, scopedChoice: form.exactChoice ? true : undefined } : undefined;
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
@@ -87,7 +89,9 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       session={{ owner, generation, sermonId, field: 'church', restore: church => form.update(current =>
         sermonMetadataPatch(current, { church: church ?? undefined }, plannedId, newDate.createdAt, unspecifiedChurch, openingRow)) }} />}
     formStatus={<DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-        onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
+        onKeepLocal={comparison && comparisonField === 'title'
+          ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : form.keepLocal}
+        onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />}
     seriesHistory={owner && form.active && <SeriesMembershipHistory key={JSON.stringify([owner, sermonId, generation])}

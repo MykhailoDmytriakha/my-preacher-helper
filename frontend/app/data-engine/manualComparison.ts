@@ -2,6 +2,7 @@ import { preparationTextField } from '@/utils/preparationFieldValues';
 
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
+import { isOrderedSermonMetadata } from './documentFieldAction';
 import { isManualSeriesDescriptionChoice } from './documentTextChoice';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
@@ -11,6 +12,7 @@ import { readOutlineParentComparison } from './outlineParentChoice';
 import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields } from './protocol';
+import { isReturnedSermonTitle } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
@@ -19,7 +21,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -45,7 +47,8 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       if (!stored.value || stored.metadata?.deleted) return undefined;
       const authored = exact ? exactManualWords(form, exact) : form.value;
       const { basis, reviewed } = manualChoiceFrames(request, authored, stored);
-      const conflicts = preachDateReviewConflicts(basis.value, reviewed, stored.value, request.result.conflicts);
+      const conflicts = preachDateReviewConflicts(basis.value, reviewed, stored.value,
+        request.result.conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)));
       const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
         conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
       const meeting = firstGroupMeetingReview(conflicts);
@@ -68,6 +71,9 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
       }
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
+      const returnedTitle = exact && stored.resource.collection === 'sermons' && conflicts.length === 1
+        && isReturnedSermonTitle(conflicts[0]) && request.baseline.metadata?.generation === stored.metadata?.generation
+        && form.record.selection.some(path => equalValues(path, ['title'])) && !sameManualSelection(mine, stored.value, ['title']);
       const dateField = form.record.selection.some(path => equalValues(path, ['preachDates']))
         && request.baseline.metadata?.generation === stored.metadata?.generation && conflicts.some(({ path }) => {
           const versions = readPreachDateFieldVersions(path, mine, stored.value!);
@@ -92,11 +98,14 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || seriesDescription || exactPreparationText || exactVerse || dateField || exactThoughtText || exactList || outlineParent) {
-        const observedConflicts = exactVerse && stored !== request.result.snapshot
-          ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
+      if (changed || seriesDescription || exactPreparationText || exactVerse || returnedTitle || dateField || exactThoughtText || exactList || outlineParent) {
+        const comparedField = returnedTitle ? 'title' : exactVerse ? 'verse' : undefined;
+        const observedConflicts = comparedField && (returnedTitle || stored !== request.result.snapshot)
+          ? mergeDocumentFields(returnedTitle ? basis.value : request.baseline.value, returnedTitle ? reviewed : mine, stored.value)
+            .conflicts.filter(conflict => conflict.path[0] !== comparedField) : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
           conflictPaths: [...conflicts, ...observedConflicts].map(conflict => conflict.path), mine,
+          ...(returnedTitle && { kind: 'returned-sermon-title' as const }),
           ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }

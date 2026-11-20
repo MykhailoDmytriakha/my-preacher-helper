@@ -9,13 +9,15 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
 import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_REPEATED_WORDS } from './documentFieldAction';
+import { PREACH_DATE_TARGET } from './datedRowAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
-import { proofRevision } from './rowFieldAction';
+import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
+import type { orderDatedRow } from './datedRowOrder.server';
 import type { DocumentFieldObservation, DocumentFieldTarget } from './documentFieldAction';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
 
@@ -67,7 +69,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksTitleReturns = (target: DocumentFieldTarget) =>
-  target.action === 'serviceOrderTitleAction' || target.action === 'groupTitleAction';
+  target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction' || target.action === 'groupTitleAction';
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
@@ -336,6 +338,31 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
     return { target, order };
   });
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
+}
+
+export function orderedSermonMetadata(command: DataCommand, current: ResourceSnapshot,
+  orders: ReturnType<typeof orderDocumentFields>, dateOrder: ReturnType<typeof orderDatedRow>): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'sermons'
+    || !orders.uncertain.some(({ path, base, theirs }) => path[0] === 'title' && equalValues(base, theirs))) return [];
+  const fields = orders.fields.flatMap(({ target, order }) => {
+    if (!order.displaced || (target.action !== 'sermonVerseAction' && target.action !== 'sermonChurchAction')) return [];
+    const change = documentFieldChange(command.changes, target);
+    const stored = documentFieldValue(current.value, target);
+    if (!change || !stored) return [];
+    const code = equalValues(order.displaced.winnerValue, stored) ? SERMON_METADATA_SETTLED : SERMON_METADATA_QUEUED;
+    return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
+  });
+  const date = command.preachDateAction, displaced = dateOrder.displaced;
+  if (date && dateOrder.target === PREACH_DATE_TARGET && displaced?.rowId === date.rowId) {
+    const settled = displaced.date === date.after;
+    fields.push({
+      path: rowConflictPath(date.rowId, PREACH_DATE_TARGET),
+      code: settled ? SERMON_METADATA_SETTLED : SERMON_METADATA_QUEUED,
+      base: rowConflictValue(date.before), mine: rowConflictValue(date.after),
+      theirs: rowConflictValue(settled ? displaced.winnerDate : displaced.date),
+    });
+  }
+  return fields;
 }
 
 export function isGroupScalarText(target: DocumentFieldTarget): boolean {

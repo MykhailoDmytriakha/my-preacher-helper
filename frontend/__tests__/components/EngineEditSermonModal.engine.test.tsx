@@ -194,6 +194,84 @@ it('cancels typed metadata and planned dates without submitting or offering canc
   expect(await harness.commits.list('owner')).toEqual([]); expect(harness.transport.send).not.toHaveBeenCalled(); view.unmount();
 });
 
+it.each([
+  { choice: 'local', verseOrder: 'none' }, { choice: 'stored', verseOrder: 'none' },
+  { choice: 'local', verseOrder: 'settled' }, { choice: 'stored', verseOrder: 'settled' },
+  { choice: 'local', verseOrder: 'queued' }, { choice: 'stored', verseOrder: 'queued' },
+])('shows a returned title and keeps $choice without changing independent chronology ($verseOrder)', async ({ choice, verseOrder }) => {
+  const mine = 'Title written on the phone';
+  const newVerse = 'John 3:16';
+  const firstDay = '2099-10-08';
+  const deskDay = '2099-10-11';
+  const oldTime = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
+  const choiceTime = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+  const deskVerse = 'Mark 1:2';
+  const ordered = verseOrder !== 'none';
+  const openingRow = { ...originalDates[0], church: unspecifiedChurch };
+  const opening = { ...original, value: { ...original.value!, preachDates: [openingRow, originalDates[1]] } };
+  const deskChurch = { id: 'desk-church', name: 'Desktop chapel', city: '' };
+  const returned = { ...opening, value: { ...opening.value, church: deskChurch, ...(ordered && { verse: deskVerse,
+    preachDates: [{ ...openingRow, date: deskDay }, originalDates[1]] }) },
+    metadata: { ...original.metadata!, revision: 3 } };
+  const harness = membershipEngineHarness([opening]);
+  const browser = harness.createBrowser();
+  browser.engine.setOwner('owner');
+  browser.engine.setOnline(false);
+  try {
+    const source = await browser.engine.openEditor(resource, editorIdentity('original-tab', resource, 'sermon', 'source'));
+    const form = source.form('sermon-metadata', SERMON_METADATA_SELECTION);
+    await form.begin();
+    await form.save(value => ({ ...value, title: mine, verse: newVerse,
+      church: mockOtherChurch, preachDates: [{ ...openingRow, date: firstDay, church: mockOtherChurch }, originalDates[1]] }),
+    { documentMetadata: { time: oldTime, dateAction: { rowId: 'first', after: firstDay, time: oldTime } } });
+    harness.replace(returned);
+    jest.mocked(harness.transport.send).mockImplementationOnce(async ({ operationId }) => ({ kind: 'conflict', operationId, snapshot: returned,
+      conflicts: [{ path: ['title'], base: { exists: true, value: original.value!.title },
+        mine: { exists: true, value: mine }, theirs: { exists: true, value: original.value!.title } },
+      { path: ['church'], code: 'sermon-metadata-settled', base: { exists: false },
+        mine: { exists: true, value: mockOtherChurch }, theirs: { exists: true, value: deskChurch } },
+      ...(ordered ? [{ path: ['verse'], code: 'sermon-metadata-' + verseOrder, base: { exists: true, value: original.value!.verse },
+        mine: { exists: true, value: newVerse }, theirs: { exists: true, value: deskVerse } },
+      { path: ['preachDates', 'id:first', 'date'], code: 'sermon-metadata-' + verseOrder, base: { exists: true, value: openingRow.date },
+        mine: { exists: true, value: firstDay }, theirs: { exists: true, value: deskDay } }] : [])] }));
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await waitFor(() => expect(source.getState().result?.kind).toBe('conflict'));
+  } finally { browser.dispose(); }
+
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <EngineEditSermonModal sermonId="sermon" onClose={jest.fn()} />
+  </DataDocumentProvider></DataEngineProvider>);
+  expect(await screen.findByDisplayValue(mine)).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: 'dataSync.reviewSavedChange' }));
+  const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(within(panel).getByText(mine)).toBeVisible();
+  expect(within(panel).getByText(String(original.value!.title))).toBeVisible();
+  const readChoiceTime = jest.spyOn(actionClock, 'capture').mockReturnValue(choiceTime);
+  try {
+    fireEvent.click(within(panel).getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'dataSync.useStoredVersion' }));
+    if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    await waitFor(() => expect(harness.read(resource).value).toMatchObject({ title: choice === 'local' ? mine : original.value!.title,
+      verse: verseOrder === 'settled' ? deskVerse : newVerse, church: deskChurch,
+      preachDates: [{ ...openingRow, date: verseOrder === 'settled' ? deskDay : firstDay }, originalDates[1]] }));
+    if (choice === 'stored' && verseOrder === 'settled') {
+      await waitFor(() => expect(panel).not.toBeInTheDocument());
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      return;
+    }
+    const replacement = jest.mocked(harness.transport.send).mock.calls.at(-1)?.[0];
+    if (replacement?.kind !== 'update') throw new Error('Missing replacement command');
+    expect(replacement.sermonTitleAction?.time).toEqual(choice === 'local' ? choiceTime : undefined);
+    expect(replacement.sermonVerseAction).toEqual(verseOrder === 'settled' ? undefined : { time: oldTime, observedRevision: 1 });
+    expect(replacement.sermonChurchAction).toBeUndefined();
+    if (verseOrder === 'settled') expect(replacement.preachDateAction).toBeUndefined();
+    else expect(replacement.preachDateAction).toMatchObject({ rowId: 'first', after: firstDay, observedRevision: 1, time: oldTime });
+  } finally {
+    readChoiceTime.mockRestore();
+  }
+});
+
 it.each(['local', 'stored'])('offers direct review after a fresh opening and keeps the %s scripture version', async choice => {
   const harness = membershipEngineHarness([original]);
   const browser = harness.createBrowser();

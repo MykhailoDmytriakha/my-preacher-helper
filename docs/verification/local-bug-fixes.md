@@ -10086,3 +10086,12 @@ Groups → a group → the name in its header. A legacy request could replace a 
 The server regressions reproduced the old overwrites before the fix. Final engine and group Jest passed 4,362 tests in 187 suites with 15 skipped. TypeScript, scoped ESLint with zero errors and independent source review passed. Four hidden Chrome scenarios used local Auth and Firestore and verified both buttons, the cold action, both chronology directions for a compound name and description save, and the meeting after reload. Evidence is in `artifacts/action-chronology-356/group-name-20261120/verification.md` in the local case.
 
 After authorized deployment, use two short sessions on a disposable group with a meeting. Rename the group offline. Change and return the name in the other session and save a separate description. Reconnect. Verify the proved later title or select an available comparison. Reopen the group and verify the name, description and meeting before closing both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored sermon title
+
+Sermons → the card menu → Edit. Legacy title changes now use the existing opening history. A returned title can be compared in the same tab when the form is reopened. Choosing a title preserves the order of scripture, church and a planned day captured with the original Save. The server sends its decisions about those fields with the title response. When the winning field is queued for delivery, the replacement keeps the original observation so a later change can still win. A losing church cannot return through its inferred value on a date row.
+
+Two server regressions failed on the original code. The final focused suite passed 20 cases. The related gate passed 4,258 tests in 180 suites with 15 tests skipped. TypeScript, scoped ESLint with zero errors, and independent review passed. Both choices and reopening passed in headless Chrome with local Auth and Firestore. Peak sampled Next memory was 4.15 GiB and all five stand ports were released. Evidence is in `artifacts/action-chronology-356/sermon-name-20261120/verification.md` in the local case.
+
+After authorized deployment, use a disposable sermon and two brief sessions. Save a title offline, change and restore the title in the second session, and make a separate scripture or planned-day edit. Reconnect, verify the later proved edit or the displayed choice, and reopen the form to confirm the independent fields. Close both sessions.

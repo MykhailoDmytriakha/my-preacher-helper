@@ -1261,7 +1261,12 @@ describe('document operation budgets', () => {
     await processCommand('owner-1', create());
     reset();
     for (let index = 0; index < 1_000; index += 1) {
-      await processCommand('owner-1', { ...update(`save-${index}`), changes: [{ path: ['title'], before: { exists: true, value: index === 0 ? 'First' : `Title ${index - 1}` }, after: { exists: true, value: `Title ${index}` } }] });
+      const before = index === 0 ? 'First' : `Title ${index - 1}`;
+      const after = `Title ${index}`;
+      const saved = await processCommand('owner-1', { ...update(`save-${index}`),
+        changes: [{ path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        sermonTitleAction: { before, after, observedRevision: index + 1, time: null } });
+      expect(saved.kind).toBe('acknowledged');
     }
     expect(measured()).toEqual({ reads: 3_000, writes: 4_000 });
     const savedReceipts = receipts();
@@ -7741,6 +7746,111 @@ describe('transactional DataEngine server', () => {
       }
       expect((await listSermonTitleHistory('owner-1', resource.id, 'title-chain')).entries).toEqual([]);
     });
+
+  it.each(['returned title', 'repeated title'] as const)('keeps a %s from a delayed legacy sermon rename', async scenario => {
+    const seed = create('legacy-sermon-title') as Extract<DataCommand, { kind: 'create' }>;
+    const opening = { ...seed.value, title: 'Opening title', verse: 'John 1:1' };
+    expect(await processCommand('owner-1', { ...seed, value: opening })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: string, after: string, revision?: number, verse?: string) => ({
+      ...update(operationId, 'legacy-sermon-title'),
+      changes: [
+        { path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } },
+        ...(verse ? [{ path: ['verse'], before: { exists: true, value: opening.verse }, after: { exists: true, value: verse } }] : []),
+      ],
+      ...(revision !== undefined && { sermonTitleAction: { before, after, observedRevision: revision, time: null } }),
+    });
+    const middle = 'Changed title';
+    const returned = scenario === 'returned title';
+    const stored = returned ? opening.title : middle;
+    const earlier = returned ? middle : opening.title;
+    expect(await processCommand('owner-1', rename('change', opening.title, middle, 1))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand('owner-1', rename('confirm', earlier, stored, undefined, 'John 3:16')))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: stored, verse: 'John 3:16' } } });
+
+    const late = rename('late', stored, 'Offline title');
+    const answer = await processCommand('owner-1', late);
+    expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { title: stored, verse: 'John 3:16' } },
+      conflicts: [{ path: ['title'], mine: { value: 'Offline title' }, theirs: { value: stored } }],
+    });
+    expect(await processCommand('owner-1', late)).toEqual(answer);
+    const revision = answer.kind === 'conflict' ? answer.snapshot.metadata!.revision : 0;
+    expect(await processCommand('owner-1', rename('choose', stored, 'Offline title', revision)))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Offline title', verse: 'John 3:16' } } });
+  });
+
+  it.each([
+    { phoneAt: 10, code: 'sermon-metadata-settled' }, { phoneAt: 80, code: 'sermon-metadata-queued' },
+  ])('reports independently ordered scripture during returned title review ($code)', async ({ phoneAt, code }) => {
+    const seed = create('legacy-sermon-title-review') as Extract<DataCommand, { kind: 'create' }>;
+    const original = { ...seed.value, title: 'Opening title', verse: 'John 1:1' };
+    const field = (name: string, before: string, after: string) => ({ path: [name],
+      before: { exists: true, value: before }, after: { exists: true, value: after } });
+    const time = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at });
+    const save = (id: string) => update(id, 'legacy-sermon-title-review');
+    expect((await processCommand('owner-1', { ...seed, value: original })).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', { ...save('desk'), changes: [
+      field('title', original.title, 'Middle title'), field('verse', original.verse, 'Mark 1:2'),
+    ], sermonVerseAction: { observedRevision: 1, time: time(40) } })).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', { ...save('restore'),
+      changes: [field('title', 'Middle title', original.title)] })).kind).toBe('acknowledged');
+
+    const incoming = { ...save('phone'), changes: [field('title', original.title, 'Phone title'), field('verse', original.verse, 'John 3:16')],
+      sermonVerseAction: { observedRevision: 1, time: time(phoneAt) } };
+    const answer = await processCommand('owner-1', incoming);
+    expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { title: original.title, verse: 'Mark 1:2' } },
+      conflicts: [{ path: ['title'] }, { path: ['verse'], code, mine: { value: 'John 3:16' }, theirs: { value: 'Mark 1:2' } }] });
+    expect(await processCommand('owner-1', incoming)).toEqual(answer);
+
+    if (code === 'sermon-metadata-queued') {
+      expect((await processCommand('owner-1', { ...save('desk-verse-new'), changes: [field('verse', 'Mark 1:2', 'Luke 2:1')],
+        sermonVerseAction: { observedRevision: 3, time: time(100) } })).kind).toBe('acknowledged');
+      expect((await processCommand('owner-1', { ...save('desk-verse-return'), changes: [field('verse', 'Luke 2:1', 'Mark 1:2')],
+        sermonVerseAction: { observedRevision: 4, time: time(110) } })).kind).toBe('acknowledged');
+      const chosen = await processCommand('owner-1', { ...save('choose-title'), changes: [
+        field('title', original.title, 'Phone title'), field('verse', 'Mark 1:2', 'John 3:16'),
+      ], sermonTitleAction: { before: original.title, after: 'Phone title', observedRevision: 5, time: time(120) },
+      sermonVerseAction: incoming.sermonVerseAction });
+      expect(chosen).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Phone title', verse: 'Mark 1:2' } } });
+    }
+  });
+
+  it.each([
+    { phoneAt: 10, code: 'sermon-metadata-settled' }, { phoneAt: 80, code: 'sermon-metadata-queued' },
+  ])('reports an independently ordered planned date during returned title review ($code)', async ({ phoneAt, code }) => {
+    const seed = create('legacy-sermon-title-day') as Extract<DataCommand, { kind: 'create' }>;
+    const row = { id: 'first', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Chapel', city: 'City' }, audience: 'Keep the audience' };
+    const original = { ...seed.value, title: 'Opening title', preachDates: [row] };
+    const present = (value: Json) => ({ exists: true, value });
+    const time = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at });
+    const title = (before: string, after: string) => ({ path: ['title'], before: present(before), after: present(after) });
+    const save = (id: string, nextTitle: string, day: string, at: number, before = row.date, observedRevision = 1) => ({
+      ...update(id, 'legacy-sermon-title-day'),
+      changes: [title(original.title, nextTitle), { path: ['preachDates'], before: present([{ ...row, date: before }]),
+        after: present([{ ...row, date: day }]) }],
+      preachDateAction: { rowId: row.id, before, after: day, observedRevision, time: time(at) },
+    });
+    expect((await processCommand('owner-1', { ...seed, value: original })).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', save('desk', 'Middle title', '2026-12-20', 40))).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', { ...update('restore', 'legacy-sermon-title-day'),
+      changes: [title('Middle title', original.title)] })).kind).toBe('acknowledged');
+
+    const phone = save('phone', 'Phone title', '2026-12-27', phoneAt);
+    const answer = await processCommand('owner-1', phone);
+    expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { title: original.title, preachDates: [{ ...row, date: '2026-12-20' }] } },
+      conflicts: [{ path: ['title'] }, { path: ['preachDates', 'id:first', 'date'], code,
+        mine: { value: '2026-12-27' }, theirs: { value: '2026-12-20' } }] });
+
+    if (code === 'sermon-metadata-queued') {
+      const editDay = (id: string, before: string, after: string, at: number, revision: number) =>
+        processCommand('owner-1', save(id, original.title, after, at, before, revision));
+      expect((await editDay('move', '2026-12-20', '2026-12-21', 100, 3)).kind).toBe('acknowledged');
+      expect((await editDay('return', '2026-12-21', '2026-12-20', 110, 4)).kind).toBe('acknowledged');
+      const chosen = await processCommand('owner-1', { ...save('choose', 'Phone title', '2026-12-27', phoneAt, '2026-12-20'),
+        sermonTitleAction: { before: original.title, after: 'Phone title', observedRevision: 5, time: time(120) } });
+      expect(chosen).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Phone title', preachDates: [{ ...row, date: '2026-12-20' }] } } });
+    }
+  });
 
   it('does not invent a title edit when removing a legacy series mirror from an older sermon', async () => {
     const now = '2026-11-08T00:00:00.000Z';

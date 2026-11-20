@@ -2,7 +2,8 @@ import { preparationConfirmationField, preparationTextField } from '@/utils/prep
 import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
-import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
+import { existingRowDate, PREACH_DATE_TARGET } from './datedRowAction';
+import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
@@ -11,12 +12,16 @@ import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { isOrderedPreachDateField, preachDateChoiceFrames, withoutPreachDateRow } from './preachDateChoice';
 import { preachDateNoteConflictId, samePreachDateRow } from './preachDateFieldAction';
 import { mergeDocumentFields } from './protocol';
+import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
+import type { CommitRequest } from './commits';
+import type { DocumentFieldObservation } from './documentFieldAction';
+import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
 import type { Sermon, ThoughtsBySection } from '@/models/models';
@@ -29,9 +34,51 @@ export function comparableSermonField(path: readonly string[]): boolean {
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
 
+export function isReturnedSermonTitle(conflict: ConflictDetail): boolean {
+  return conflict.path.length === 1 && conflict.path[0] === 'title'
+    && equalValues(conflict.base, conflict.theirs);
+}
+
+export function earlierSermonMetadataProof<Value>(action: DocumentFieldObservation<Value> | undefined, after: unknown) {
+  if (action && equalValues(action.after, after)) return { observedRevision: action.observedRevision, time: action.time };
+}
+
+export function earlierSermonDateProof(request: CommitRequest, draft: DocumentData | null, stored: ResourceSnapshot) {
+  const action = request.preachDateAction;
+  const opening = request.initialized ? request.working.value : request.baseline.value;
+  if (!action || !draft || !opening || !stored.value || !samePreachDateRow(action.rowId, opening, stored.value)
+    || !samePreachDateRow(action.rowId, opening, draft)
+    || existingRowDate(draft.preachDates, action.rowId, PREACH_DATE_TARGET) !== action.after) return;
+  const { rowId, after, observedRevision, time } = action;
+  return { rowId, after, observedRevision, time };
+}
+
+export function sermonTitleReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot,
+  conflicts: readonly ConflictDetail[], churchFill?: SermonChurchFill) {
+  if (basis.resource.collection !== 'sermons' || !basis.value || !reviewed || !stored.value
+    || basis.metadata?.generation !== stored.metadata?.generation) return { basis, reviewed };
+  let base = basis.value;
+  let value = reviewed;
+  for (const conflict of conflicts.filter(isOrderedSermonMetadata)) {
+    if (!equalValues(readSermonConflictField(value, conflict.path), conflict.mine)) continue;
+    if (conflict.path[0] === 'preachDates' && !samePreachDateRow(conflict.path[1].slice(3), base, stored.value)) continue;
+    if (conflict.code === SERMON_METADATA_SETTLED) {
+      value = withSelectedField(value, conflict.path, readSermonConflictField(base, conflict.path)) ?? value;
+      if (conflict.path[0] === 'church' && churchFill) {
+        const dates = rebaseSermonChurchFill(base.preachDates, value.preachDates, stored.value.preachDates,
+          readField(stored.value, conflict.path), churchFill);
+        if (dates !== undefined) value = { ...value, preachDates: dates };
+      }
+    } else if (equalValues(readSermonConflictField(stored.value, conflict.path), conflict.theirs)) {
+      base = withSelectedField(base, conflict.path, conflict.theirs) ?? base;
+    }
+  }
+  return { basis: { ...basis, value: base }, reviewed: value };
+}
+
 export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
-    || (conflicts.length === 1 && comparableSermonField(conflicts[0].path)));
+    || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path) || isReturnedSermonTitle(conflicts[0]))));
 }
 
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
@@ -66,7 +113,7 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 }
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
-  if (path[0] === 'verse' || path[0] === 'planMode') return withField(data, path[0], selected);
+  if (path.length === 1) return withField(data, path[0], selected);
   if (preparationConfirmationField(path) || preparationTextField(path)) return writeField(data, path, selected);
   const [field, id, ...leaf] = path;
   const rows = data[field];
