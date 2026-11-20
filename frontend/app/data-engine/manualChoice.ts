@@ -6,7 +6,7 @@ import { isAuthoredListComparison } from './authoredStringList';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { autosaveFieldTargets, isOrderedSermonMetadata } from './documentFieldAction';
-import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText } from './documentTextChoice';
+import { keepUncontestedDocumentText, manualSeriesTextChoiceFields } from './documentTextChoice';
 import { areSameTabManualParents, editorSlot, manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
@@ -21,6 +21,7 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
+import { isReturnedSeriesTitle, seriesTitleReviewFrames } from './seriesFieldAction';
 import { isReturnedSermonTitle, keepUncontestedSermonFields, sermonTitleReviewFrames } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -81,10 +82,12 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       });
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
-      const returnedSermonTitle = record.resource.collection === 'sermons' && request.result?.kind === 'conflict'
-        && request.result.conflicts.some(isReturnedSermonTitle) && record.selection.some(path => equalValues(path, ['title']));
-      const sameTitleForm = returnedSermonTitle && readManualScopeIdentity(request.editorId);
-      const openTitleForm = returnedSermonTitle && readManualScopeIdentity(record.scopeId);
+      const returnedTitle = record.resource.collection === 'sermons' ? isReturnedSermonTitle
+        : record.resource.collection === 'series' ? isReturnedSeriesTitle : undefined;
+      const savedTitleReview = returnedTitle && request.result?.kind === 'conflict'
+        && request.result.conflicts.some(returnedTitle) && record.selection.some(path => equalValues(path, ['title']));
+      const sameTitleForm = savedTitleReview && readManualScopeIdentity(request.editorId);
+      const openTitleForm = savedTitleReview && readManualScopeIdentity(record.scopeId);
       const sameTabTitleForm = sameTitleForm && openTitleForm && sameTitleForm.slot === openTitleForm.slot
         && editorSlot(sameTitleForm.parentEditorId) === editorSlot(openTitleForm.parentEditorId)
         && areSameTabManualParents(sameTitleForm.parentEditorId, openTitleForm.parentEditorId, record.resource);
@@ -120,8 +123,11 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   const prepared = request.initialized && request.command;
   const basis = prepared ? request.working : request.baseline;
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, value, request.intended) : value;
-  const ordered = request.result?.kind === 'conflict' ? request.result.conflicts.filter(isOrderedSermonMetadata) : [];
-  return ordered.length ? sermonTitleReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill) : { basis, reviewed };
+  const conflicts = request.result?.kind === 'conflict' ? request.result.conflicts : [];
+  const ordered = conflicts.filter(isOrderedSermonMetadata);
+  if (ordered.length) return { ...sermonTitleReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
+    conflicts: conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)) };
+  return seriesTitleReviewFrames(basis, reviewed, stored, conflicts);
 }
 
 /** The comparison decides its one Save. Later branches remain separate drafts until explicitly recovered. */
@@ -140,7 +146,7 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const { request, stored } = decision;
   let draft = stored.value;
   const prepared = request.initialized && request.command;
-  const { basis, reviewed } = manualChoiceFrames(request, decision.value, stored);
+  const { basis, reviewed, conflicts: reviewedConflicts } = manualChoiceFrames(request, decision.value, stored);
   const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
   const meeting = request.result?.kind === 'conflict' && decision.selection.some(path => equalValues(path, ['meetingDates']))
     && firstGroupMeetingReview(request.result.conflicts);
@@ -176,10 +182,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       request.result?.kind === 'conflict' ? request.result.conflicts : [], decision.value);
     draft = projectManualSelection(stored.value!, chosen!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
-    const conflicts = request.result.conflicts.filter(conflict => !isOrderedSermonMetadata(conflict));
-    const retained = basis.value && reviewed && stored.value
-      && isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, decision.selection)
-      ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, ['description'])
+    const conflicts = reviewedConflicts;
+    const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, conflicts, decision.selection, reviewed);
+    const retained = basis.value && reviewed && stored.value && seriesFields
+      ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, seriesFields)
       : keepUncontestedSermonFields(basis, reviewed, stored, conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }

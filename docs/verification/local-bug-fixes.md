@@ -10113,3 +10113,12 @@ Settings → Structure templates → edit a template name. The opening history p
 Six regressions failed on the original paths. The focused result was 8 passed. The related Jest gate passed 4,535 tests in 201 suites with 15 tests skipped. TypeScript, scoped ESLint with zero errors and independent review passed. Three hidden Chrome scenarios on local Auth and Firestore verified both choices, a newer name arriving while the comparison was open, and outline contents after reload. Peak sampled Next memory was 3.22 GiB and all five stand ports were released. Evidence is in `artifacts/action-chronology-356/template-name-20261120/verification.md` in the local case.
 
 After authorized deployment, use a disposable structure template and two brief sessions. Rename it offline. In the other session change and restore the name and add a separate outline point. Reconnect and verify the later proved name or compare both versions when the order is unknown. Choose the intended name, reload to check the point, and close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored series title
+
+Series → open a series → Edit Series. The title follows the shared opening history for legacy return and reaffirmation. The detail page and the reopened form show the two titles and keep an independent book edit. When the saved legacy theme differs from the title, taking the saved title keeps that theme. The server sends the decisions for independent known-order fields with the title conflict. Selecting a title keeps the original time and revision of any queued winning field.
+
+The baseline failed four server regressions and two mounted form cases. The related Jest gate passed 4,495 tests in 199 suites with 15 skipped. TypeScript, scoped ESLint with zero errors and independent review passed. Six hidden Chrome scenarios on local Auth and Firestore verified both choices on the page and in the editor, the earlier and later order of the description, and the resulting fields after reload. Peak sampled Next memory was 5.44 GiB and all five stand ports were released. Evidence is in `artifacts/action-chronology-356/series-title-20261120/verification.md` in the local case.
+
+After authorized deployment, use a disposable series in two brief sessions. Save a title and a book from a disconnected session. Change and restore the title in the other session and change the description there. Reconnect, verify the proved title or choose a version, then reload to check the title, book and description. Close both sessions.

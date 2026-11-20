@@ -2,7 +2,7 @@ import { rebaseOptionalPrayerTags, tagField, tagMembership } from './documentTag
 import { equalValues, readField, writeField } from './fieldValues';
 import { orderedPrayerTextField, prayerTextEditAction, PRAYER_TEXT_SETTLED, PRAYER_TEXT_TARGETS } from './prayerTextAction';
 import { mergeDocumentFields } from './protocol';
-import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
+import { isReturnedSeriesTitle, seriesTitleReviewFrames, SERIES_FIELD_TARGETS } from './seriesFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -14,12 +14,24 @@ import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
 const seriesDescription = SERIES_FIELD_TARGETS.filter(target => target.field === 'description');
 
-export function isManualSeriesDescriptionChoice(basis: ResourceSnapshot, stored: ResourceSnapshot | null,
-  conflicts: readonly ConflictDetail[], selection: readonly ManualPath[]): boolean {
-  return basis.resource.collection === 'series' && Boolean(basis.metadata && stored?.value
-    && stored.metadata?.generation === basis.metadata.generation && !stored.metadata.deleted)
-    && conflicts.length === 1 && equalValues(conflicts[0].path, ['description'])
-    && selection.some(path => equalValues(path, ['description']));
+export function seriesTextChoiceFields(paths: readonly (readonly string[])[], mine: DocumentData | null,
+  stored: DocumentData | null): readonly string[] | undefined {
+  if (paths.length === 1 && equalValues(paths[0], ['description'])) return ['description'];
+  if (typeof mine?.title !== 'string' || typeof stored?.title !== 'string' || mine.title === stored.title
+    || !paths.some(path => equalValues(path, ['title']))) return;
+  const mirroredRename = mine.theme === mine.title;
+  if (paths.length === 1) return mirroredRename ? ['title', 'theme'] : ['title'];
+  if (paths.length === 2 && mirroredRename && stored.theme === stored.title
+    && paths.some(path => equalValues(path, ['theme']))) return ['title', 'theme'];
+}
+
+export function manualSeriesTextChoiceFields(basis: ResourceSnapshot, stored: ResourceSnapshot | null,
+  conflicts: readonly ConflictDetail[], selection: readonly ManualPath[], mine: DocumentData | null) {
+  if (basis.resource.collection !== 'series' || !basis.metadata || !stored?.value
+    || stored.metadata?.generation !== basis.metadata.generation || stored.metadata.deleted) return;
+  const fields = seriesTextChoiceFields(conflicts.map(conflict => conflict.path), mine, stored.value);
+  if (fields?.includes('title') && !conflicts.some(isReturnedSeriesTitle)) return;
+  if (fields?.every(field => selection.some(path => equalValues(path, [field])))) return fields;
 }
 
 function projectDocumentTextChoice(checkpoint: SessionCheckpoint) {
@@ -71,6 +83,18 @@ export function readDocumentTextChoice(source: SessionCheckpoint) {
   const saved = remoteCandidate?.value;
   if (!confirmed.value || !draft || !saved || !metadata || metadata.deleted
     || confirmed.metadata?.generation !== metadata.generation || !conflicts.length) return;
+  if (collection === 'series' && conflicts.some(isReturnedSeriesTitle) && Object.keys(checkpoint.pending).length === 1) {
+    const series = seriesTitleReviewFrames(confirmed, draft, remoteCandidate, conflicts);
+    const revised = series.reviewed!;
+    const observed = mergeDocumentFields(series.basis.value, revised, saved).conflicts;
+    const paths = [...series.conflicts, ...observed.filter(item => !series.conflicts.some(conflict => equalValues(conflict.path, item.path)))];
+    const fields = seriesTextChoiceFields(paths.map(item => item.path), revised, saved);
+    if (fields?.includes('title')) {
+      const compared = paths.filter(item => equalValues(item.path, ['title'])).map(item => ({ ...item,
+        mine: readField(draft, ['title']), theirs: readField(saved, ['title']) }));
+      return { openings: {}, fields, queued, checkpoint: { ...checkpoint, confirmed: series.basis, draft: revised, conflicts: compared }, complete: true, title: undefined };
+    }
+  }
   const openings: PrayerTextOpenings = {};
   let title: DocumentTitleSeen | undefined;
   for (const { path, mine, theirs } of conflicts) {

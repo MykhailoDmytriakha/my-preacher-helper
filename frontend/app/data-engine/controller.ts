@@ -22,7 +22,7 @@ import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pe
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { withQueuedGroupScalarProofs } from './documentFieldAction';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
-import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
+import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
@@ -880,8 +880,9 @@ export class EditorController {
     correction?: { base: DocumentData; value: DocumentData },
     remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
-    if (expected && !selection && !correction
-      && ['prayerRequests', 'planTemplates'].includes(expected.checkpoint.confirmed.resource.collection)) {
+    const shownCollection = expected?.checkpoint.confirmed.resource.collection;
+    if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates'
+      || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title')))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
@@ -984,9 +985,9 @@ export class EditorController {
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const answered = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
-        const reviewedSeriesDescription = selection && choice === 'remote'
-          && isManualSeriesDescriptionChoice(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection);
-        const documentTextChoice = (!selection || reviewedSeriesDescription) && !correction ? readDocumentTextChoice(answered) : undefined;
+        const reviewedSeriesText = selection && choice === 'remote'
+          && manualSeriesTextChoiceFields(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection, answered.draft);
+        const documentTextChoice = (!selection || reviewedSeriesText) && !correction ? readDocumentTextChoice(answered) : undefined;
         const decided = documentTextChoice?.checkpoint ?? answered;
         const orderedDateField = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(isOrderedPreachDateField);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
@@ -1312,7 +1313,8 @@ export class EditorController {
           const original = ordinary?.first ?? retired.find(request => answered.pending[request.id] && request.result?.kind === 'conflict');
           const collection = decided.confirmed.resource.collection;
           let action: EditorCommitAction | undefined;
-          if (collection === 'series') action = { kind: 'document-metadata', time: choice === 'local' ? time : null };
+          if (collection === 'series') action = { kind: 'document-metadata', time: choice === 'local' ? time : null,
+            ...(documentTextChoice.fields.includes('title') && { seriesTitleReview: original?.seriesFieldActions ?? {} }) };
           else if (collection === 'prayerRequests') action = retryPrayerTextChoice(documentTextChoice, choice, original, session.checkpoint().draft, time);
           else if (choice === 'local' && documentTextChoice.title) {
             action = { kind: 'plan-template-name', name: { seen: documentTextChoice.title, time } };

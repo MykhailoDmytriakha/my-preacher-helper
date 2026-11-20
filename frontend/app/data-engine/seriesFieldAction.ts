@@ -1,5 +1,7 @@
+import { equalValues, readField, writeField } from './fieldValues';
+
 import type { DocumentFieldObservation, DocumentFieldStamp } from './documentFieldAction';
-import type { FieldValue } from './types';
+import type { ConflictDetail, DocumentData, FieldValue, ResourceSnapshot } from './types';
 
 export type SeriesTimedField = 'title' | 'bookOrTopic' | 'status' | 'color' | 'description';
 export type SeriesFieldStamp = DocumentFieldStamp & { openingTheme?: string };
@@ -33,3 +35,31 @@ export const SERIES_FIELD_TARGETS = [
     accepts: (value: unknown) => typeof value === 'string', optional: true, causal: true },
 ] as const satisfies readonly SeriesFieldPolicy[];
 export type SeriesFieldTarget = typeof SERIES_FIELD_TARGETS[number];
+
+export const SERIES_METADATA_SETTLED = 'series-metadata-settled';
+export const SERIES_METADATA_QUEUED = 'series-metadata-queued';
+
+export function isReturnedSeriesTitle({ path, base, theirs }: ConflictDetail): boolean {
+  return path.length === 1 && path[0] === 'title' && equalValues(base, theirs);
+}
+
+export function seriesTitleReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot | null,
+  conflicts: readonly ConflictDetail[]) {
+  if (basis.resource.collection !== 'series' || !basis.value || !reviewed || !stored?.value
+    || basis.metadata?.generation !== stored.metadata?.generation) return { basis, reviewed, conflicts };
+  let opening = basis.value;
+  let draft = reviewed;
+  const remaining = conflicts.filter(conflict => {
+    const { path, code } = conflict;
+    if (path.length !== 1 || path[0] === 'title' || !SERIES_FIELD_TARGETS.some(({ field }) => field === path[0])
+      || (code !== SERIES_METADATA_SETTLED && code !== SERIES_METADATA_QUEUED)) return true;
+    const mine = readField(draft, path);
+    const saved = readField(stored.value!, path);
+    if (equalValues(mine, saved)) return false;
+    if (!equalValues(mine, conflict.mine) || (code === SERIES_METADATA_QUEUED && !equalValues(saved, conflict.theirs))) return true;
+    if (code === SERIES_METADATA_SETTLED) draft = writeField(draft, path, readField(opening, path));
+    else opening = writeField(opening, path, saved);
+    return false;
+  });
+  return { basis: { ...basis, value: opening }, reviewed: draft, conflicts: remaining };
+}

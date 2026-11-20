@@ -15,6 +15,7 @@ import { commandFingerprint, equalValues, object, readField } from './fieldValue
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { SERIES_METADATA_QUEUED, SERIES_METADATA_SETTLED } from './seriesFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
@@ -71,7 +72,8 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 
 const tracksTitleReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
-    || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction';
+    || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
+    || (target.action === 'seriesFieldActions' && target.field === 'title');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
@@ -352,6 +354,19 @@ export function orderedPrayerText(command: DataCommand, current: ResourceSnapsho
     const stored = documentFieldValue(current.value, target);
     if (!change || !stored) return [];
     const code = equalValues(order.displaced.winnerValue, stored) ? PRAYER_TEXT_SETTLED : PRAYER_TEXT_QUEUED;
+    return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
+  });
+}
+
+export function orderedSeriesMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'series'
+    || !orders.uncertain.some(({ path }) => path.length === 1 && path[0] === 'title')) return [];
+  return orders.fields.flatMap(({ target, order }) => {
+    if (!order.displaced || target.action !== 'seriesFieldActions' || target.field === 'title') return [];
+    const change = documentFieldChange(command.changes, target);
+    const stored = documentFieldValue(current.value, target);
+    if (!change || !stored) return [];
+    const code = equalValues(order.displaced.winnerValue, stored) ? SERIES_METADATA_SETTLED : SERIES_METADATA_QUEUED;
     return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
   });
 }

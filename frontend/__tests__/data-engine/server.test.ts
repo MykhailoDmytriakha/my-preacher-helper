@@ -6128,6 +6128,58 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(base.owner, command)).toEqual(result);
     });
 
+    it.each(['return', 'reaffirm'])('protects a series title with a legacy %s before the first delayed save', async kind => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const { seriesFieldActions: _proof, ...rename } = edit('series-phone', { title: phone.title, theme: phone.theme }, null);
+      const field = (value: string) => ({ exists: true, value });
+      const restore = {
+        ...rename, operationId: 'series-return',
+        changes: [
+          { path: ['title'], before: field(desk.title), after: field(original.title) },
+          { path: ['theme'], before: field(desk.theme), after: field(original.theme) },
+        ],
+      };
+      if (kind === 'return') {
+        expect((await processCommand(base.owner, edit('series-desk', { title: desk.title, theme: desk.theme }, 40))).kind).toBe('acknowledged');
+      }
+      expect((await processCommand(base.owner, restore)).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-independent', { bookOrTopic: desk.bookOrTopic }, 80))).kind).toBe('acknowledged');
+
+      const answer = await processCommand(base.owner, rename);
+      expect(answer).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['title'], mine: field(phone.title), theirs: field(original.title) }],
+        snapshot: { value: { title: original.title, theme: original.theme, bookOrTopic: desk.bookOrTopic } },
+      });
+      expect(await processCommand(base.owner, rename)).toEqual(answer);
+    });
+
+    it.each([20, 80])('includes the proven description order when the series title needs review (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const field = (value: string) => ({ exists: true, value });
+      const description = (value: string) => ({ path: ['description'], before: field(original.description), after: field(value) });
+      const time = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at });
+      const first = edit('series-desk', { title: desk.title, theme: desk.theme }, 40);
+      expect((await processCommand(base.owner, { ...first, changes: [...first.changes, description('Desktop description')],
+        seriesFieldActions: { ...first.seriesFieldActions, description: { observedRevision: 1, time: time(40) } } })).kind).toBe('acknowledged');
+      const returned = {
+        ...edit('series-return', {}, null),
+        changes: [{ path: ['title'], before: field(desk.title), after: field(original.title) },
+          { path: ['theme'], before: field(desk.theme), after: field(original.theme) }],
+      };
+      expect((await processCommand(base.owner, returned)).kind).toBe('acknowledged');
+      const phoneUpdate = edit('series-phone', { title: phone.title, theme: phone.theme }, null);
+      const result = await processCommand(base.owner, { ...phoneUpdate, changes: [...phoneUpdate.changes, description('Phone description')],
+        seriesFieldActions: { description: { observedRevision: 1, time: time(offset) } } });
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: expect.arrayContaining([
+          { path: ['title'], base: field(original.title), mine: field(phone.title), theirs: field(original.title) },
+          { path: ['description'], code: offset < 40 ? 'series-metadata-settled' : 'series-metadata-queued',
+            base: field(original.description), mine: field('Phone description'), theirs: field('Desktop description') },
+        ]),
+        snapshot: { value: { title: original.title, description: 'Desktop description' } },
+      });
+    });
+
     it('orders a later custom CSS color and retains a displaced absence for restoration', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       const deskColor = edit('series-desk', { color: desk.color }, 40);

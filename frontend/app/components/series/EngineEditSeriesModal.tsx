@@ -11,8 +11,8 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import { seriesDescriptionComparison } from './seriesDescriptionComparison';
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
+import { seriesTextComparison } from './seriesTextComparison';
 
 import type { SeriesTimedField } from '@/data-engine/seriesFieldAction';
 import type { DocumentData } from '@/data-engine/types';
@@ -35,8 +35,9 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     recover: form.recover });
   const generation = form.openingGeneration;
   const shown = form.comparison;
-  const comparison = shown && shown.stored.metadata?.generation === generation && seriesDescriptionComparison(shown.conflictPaths, shown.mine, shown.stored.value,
-    shown.identity, t('workspaces.series.form.description'), t('dataSync.emptyField'));
+  const comparison = shown && (shown.conflictPaths[0]?.[0] === 'description' || shown.returnedSeriesTitle)
+    && shown.stored.metadata?.generation === generation && seriesTextComparison(shown.conflictPaths, shown.mine, shown.stored.value,
+    shown.identity, { title: t('workspaces.series.form.title'), description: t('workspaces.series.form.description') }, t('dataSync.emptyField'));
   const values = seriesFormValues(form.data as unknown as Series | undefined);
   // An empty required field is the form's own message; the sync status speaks only of delivery.
   // Kept as words, so a language switch re-says it (BUG-20261003-said-refusal-keeps-old-language).

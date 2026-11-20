@@ -10,7 +10,7 @@ import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleto
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, knownCollectionRemovals, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, knownCollectionRemovals, readDocumentTextComparison, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
@@ -21,10 +21,10 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { EngineEditSeriesModal, SERIES_METADATA_SELECTION } from './EngineEditSeriesModal';
 import { RetainedSeriesMetadata } from './RetainedSeriesMetadata';
-import { seriesDescriptionComparison } from './seriesDescriptionComparison';
 import { SeriesDetailView } from './SeriesDetailView';
 import SeriesItemCard from './SeriesItemCard';
 import { SeriesMembershipDialog, type SeriesMembershipDialogMode } from './SeriesMembershipDialog';
+import { seriesTextComparison } from './seriesTextComparison';
 
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { Series, SeriesItem } from '@/models/models';
@@ -72,11 +72,12 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       discard: () => document.discardRecovery(source) })),
     recover: document.recover });
   const checkpoint = document.state?.checkpoint;
-  const comparison = checkpoint && checkpoint.remoteCandidate?.metadata?.generation === checkpoint.confirmed.metadata?.generation
-    ? seriesDescriptionComparison(
-    checkpoint.conflicts.map(conflict => conflict.path), checkpoint.draft, checkpoint.remoteCandidate?.value ?? null,
-    JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.revision]),
-    t('workspaces.series.form.description'), t('dataSync.emptyField')) : undefined;
+  const reviewed = checkpoint && readDocumentTextComparison(checkpoint);
+  const shown = reviewed?.complete ? reviewed.checkpoint : undefined;
+  const comparison = shown ? seriesTextComparison(
+    shown.conflicts.map(conflict => conflict.path), shown.draft, shown.remoteCandidate?.value ?? null,
+    JSON.stringify([shown.editGeneration, shown.remoteCandidate?.metadata?.revision]),
+    { title: t('workspaces.series.form.title'), description: t('workspaces.series.form.description') }, t('dataSync.emptyField')) : undefined;
   const compared = comparison ? checkpoint : undefined;
   const sync = <DataSyncStatus comparison={editing ? undefined : comparison} subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     onKeepLocal={() => saveKeptSeries(document, compared)} onAcceptRemote={() => compared ? document.acceptRemote(compared) : document.acceptRemote()}

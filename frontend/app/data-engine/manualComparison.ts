@@ -2,8 +2,7 @@ import { preparationTextField } from '@/utils/preparationFieldValues';
 
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
-import { isOrderedSermonMetadata } from './documentFieldAction';
-import { isManualSeriesDescriptionChoice } from './documentTextChoice';
+import { manualSeriesTextChoiceFields } from './documentTextChoice';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { exactManualWords, manualChoiceFrames, replaySavedChoiceDelta } from './manualChoice';
@@ -21,7 +20,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; returnedSeriesTitle?: true; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -46,9 +45,8 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       if (canReplaceSnapshot(stored, observed)) stored = observed;
       if (!stored.value || stored.metadata?.deleted) return undefined;
       const authored = exact ? exactManualWords(form, exact) : form.value;
-      const { basis, reviewed } = manualChoiceFrames(request, authored, stored);
-      const conflicts = preachDateReviewConflicts(basis.value, reviewed, stored.value,
-        request.result.conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)));
+      const { basis, reviewed, conflicts: reviewedConflicts } = manualChoiceFrames(request, authored, stored);
+      const conflicts = preachDateReviewConflicts(basis.value, reviewed, stored.value, reviewedConflicts);
       const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
         conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
       const meeting = firstGroupMeetingReview(conflicts);
@@ -80,8 +78,11 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           return versions && !equalValues(versions.mine, versions.stored);
         });
       // The server can prove that series text changed and returned to the same opening words.
-      const seriesDescription = isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, form.record.selection)
-        && !sameManualSelection(mine, stored.value, ['description']);
+      const observedSeriesConflicts = stored.resource.collection === 'series' && conflicts.some(({ path }) => equalValues(path, ['title']))
+        ? mergeDocumentFields(basis.value, reviewed, stored.value).conflicts.filter(item => !conflicts.some(({ path }) => equalValues(path, item.path))) : [];
+      const seriesConflicts = [...conflicts, ...observedSeriesConflicts];
+      const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, seriesConflicts, form.record.selection, mine);
+      const seriesText = seriesFields && !sameManualSelection(mine, stored.value, [seriesFields[0]]);
       const exactPreparationText = stored.resource.collection === 'sermons' && request.baseline.metadata
         && request.baseline.metadata.generation === stored.metadata?.generation
         && conflicts.some(({ path }) => preparationTextField(path) !== undefined
@@ -98,14 +99,15 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || seriesDescription || exactPreparationText || exactVerse || returnedTitle || dateField || exactThoughtText || exactList || outlineParent) {
+      if (changed || seriesText || exactPreparationText || exactVerse || returnedTitle || dateField || exactThoughtText || exactList || outlineParent) {
         const comparedField = returnedTitle ? 'title' : exactVerse ? 'verse' : undefined;
         const observedConflicts = comparedField && (returnedTitle || stored !== request.result.snapshot)
           ? mergeDocumentFields(returnedTitle ? basis.value : request.baseline.value, returnedTitle ? reviewed : mine, stored.value)
             .conflicts.filter(conflict => conflict.path[0] !== comparedField) : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
-          conflictPaths: [...conflicts, ...observedConflicts].map(conflict => conflict.path), mine,
+          conflictPaths: [...seriesConflicts, ...observedConflicts].map(conflict => conflict.path), mine,
           ...(returnedTitle && { kind: 'returned-sermon-title' as const }),
+          ...(seriesFields?.includes('title') && { returnedSeriesTitle: true as const }),
           ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }

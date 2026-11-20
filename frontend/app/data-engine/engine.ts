@@ -18,7 +18,7 @@ import { readCouncilSummaryChoice } from './councilPrivateFields';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
-import { isManualSeriesDescriptionChoice } from './documentTextChoice';
+import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -2903,8 +2903,9 @@ export class DataEngine {
         if (choice === 'local' || controller.getState().checkpoint.dirty) {
           const positionReview = request.result?.kind === 'conflict' ? reviewedHomileticList(
             request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
-          const keepSeriesFields = choice === 'remote' && request.result?.kind === 'conflict'
-            && isManualSeriesDescriptionChoice(request.baseline, stored, request.result.conflicts, selection);
+          const keepSeriesDescription = stored.resource.collection === 'series' && comparison
+            && seriesTextChoiceFields(comparison.conflictPaths, comparison.mine, stored.value)?.includes('description');
+          const comparedTitle = comparison?.returnedSeriesTitle;
           const settled = controller.getState().checkpoint.draft;
           const titleReview = comparison?.kind === 'returned-sermon-title' && {
             verse: earlierSermonMetadataProof(request.sermonVerseAction, settled?.verse),
@@ -2917,7 +2918,10 @@ export class DataEngine {
           } : positionReview ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             homileticPositionReview: positionReview,
-          } : keepSeriesFields ? { kind: 'document-metadata', time: null } : action;
+          } : comparedTitle ? {
+            kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
+            seriesTitleReview: request.seriesFieldActions ?? {},
+          } : choice === 'remote' && keepSeriesDescription ? { kind: 'document-metadata', time: null } : action;
           await controller.save(undefined, selection, undefined, undefined, checkedAction); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
@@ -2934,6 +2938,8 @@ export class DataEngine {
       staged: ReturnType<ManualScope['getState']> | undefined, updating: Promise<void> | undefined,
       assertComparison: () => void, checked: boolean, action?: EditorCommitAction, titles?: readonly OutlineTitleDecision[]) => {
         const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
+        const comparison = checked ? state.form.getState()?.comparison : undefined;
+        const comparedRequest = comparison ? this.commitRecords.get(comparison.requestId) : undefined;
         parent.controller!.assertManualResolution(selection);
         // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
         if (scope) await Promise.all([updating, amendment ? scope.suspend() : scope.cancel()]);
@@ -2948,7 +2954,7 @@ export class DataEngine {
           if ((meeting || readOutlineParentComparison(shown)) && controller.getState().checkpoint.dirty) {
             await controller.save(undefined, selection); active();
             this.prepareCommitsInBackground(); this.backgroundDrain();
-          } else if (isManualSeriesDescriptionChoice(shown.confirmed, shown.remoteCandidate, shown.conflicts, selection)) {
+          } else if (manualSeriesTextChoiceFields(shown.confirmed, shown.remoteCandidate, shown.conflicts, selection, shown.draft)) {
             this.prepareCommitsInBackground(); this.backgroundDrain();
           }
           if (amendment && scope) await scope.cancel();
@@ -2958,7 +2964,11 @@ export class DataEngine {
           const choiceTime = action?.kind === 'document-metadata'
             && (conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(conflicts)) ? action.time : undefined;
           await controller.keepLocal(selection, amendment, expectedParent, choiceTime, titles); active();
-          await controller.save(undefined, selection, undefined, undefined, action); active();
+          const seriesFields = comparedRequest?.result?.kind === 'conflict' && comparison
+            ? manualSeriesTextChoiceFields(comparedRequest.baseline, comparison.stored, comparedRequest.result.conflicts, selection, comparison.mine) : undefined;
+          const reviewedAction = seriesFields?.includes('title') && action?.kind === 'document-metadata'
+            ? { ...action, seriesTitleReview: comparedRequest?.seriesFieldActions ?? {} } : action;
+          await controller.save(undefined, selection, undefined, undefined, reviewedAction); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();
           this.prepareCommitsInBackground(); this.backgroundDrain();
