@@ -1,5 +1,5 @@
 import { LockClosedIcon, LockOpenIcon } from '@heroicons/react/24/outline';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createInstance } from 'i18next';
 import React from 'react';
 
@@ -47,8 +47,10 @@ function mockRecorder(label: string, props: RecorderProps) {
     {props.transcriptionError && <button type="button" onClick={props.onClearError}>{label} clear: {sayFailure(props.transcriptionError, key => key)}</button>}
   </div>;
 }
-jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: (props: RecorderProps) => mockRecorder('Point', props) }));
-jest.mock('@/components/FlatRecorderButton', () => ({ FlatRecorderButton: (props: RecorderProps) => mockRecorder('Sub', props) }));
+// The point header and each sub-point lane use the same round recorder; which one is told by where it stands.
+jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: (props: RecorderProps) => mockRecorder('Rec', props) }));
+const recorderButton = (name: string, owner: 'point' | 'sub') => screen.getAllByRole('button', { name })
+  .find((button) => Boolean(button.closest('[data-testid^="sub-point-drop-"]')) === (owner === 'sub'))!;
 
 const t = (key: string, options?: Record<string, unknown>) => String(options?.defaultValue ?? key);
 const point = { id: 'point', text: 'Point', note: 'Point note', isReviewed: false, subPoints: [{ id: 'sub', text: 'Sub', position: 1, note: 'Sub note' }] };
@@ -90,9 +92,9 @@ it('keeps normalized inline save, blank rejection, cancel, delete and collapse l
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'common.collapse' }));
-  expect(screen.queryByTestId('subpoint-editor')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('sub-point-drop-sub')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'common.expand' }));
-  expect(screen.getByTestId('subpoint-editor')).toBeVisible();
+  expect(screen.getByTestId('sub-point-drop-sub')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'common.delete' }));
   expect(onDeletePoint).toHaveBeenCalledWith('point');
 });
@@ -159,24 +161,24 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   let resolveAudio!: (value: Awaited<ReturnType<typeof createAudioThought>>) => void;
   jest.mocked(createAudioThought).mockImplementationOnce(() => new Promise(resolve => { resolveAudio = resolve; }) as ReturnType<typeof createAudioThought>);
   render(<OutlinePointCard {...base} sermonId="sermon" onAudioThoughtCreated={onAudioThoughtCreated} audioError={{ said: 'Point failure' }} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Point record' }));
+  fireEvent.click(recorderButton('Rec record', 'point'));
   await waitFor(() => expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', undefined, { id: expect.any(String), sectionId: 'main' }));
-  expect(screen.getByRole('button', { name: 'Point record' })).toHaveAttribute('aria-busy', 'true');
+  expect(recorderButton('Rec record', 'point')).toHaveAttribute('aria-busy', 'true');
   await act(async () => resolveAudio({ id: 'created' } as Awaited<ReturnType<typeof createAudioThought>>));
   expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: 'created' }, 'main');
-  expect(screen.getByRole('button', { name: 'Point record' })).toHaveAttribute('aria-busy', 'false');
-  fireEvent.click(screen.getByRole('button', { name: 'Point clear: Point failure' }));
+  expect(recorderButton('Rec record', 'point')).toHaveAttribute('aria-busy', 'false');
+  fireEvent.click(recorderButton('Rec clear: Point failure', 'point'));
   expect(base.onClearAudioError).toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Point error' }));
+  fireEvent.click(recorderButton('Rec error', 'point'));
   expect(base.setAudioError).toHaveBeenLastCalledWith({ said: 'Device error' });
   jest.mocked(createAudioThought).mockResolvedValueOnce({ id: 'sub-created' } as Awaited<ReturnType<typeof createAudioThought>>);
-  fireEvent.click(screen.getByRole('button', { name: 'Sub record' }));
+  fireEvent.click(recorderButton('Rec record', 'sub'));
   await waitFor(() => expect(createAudioThought).toHaveBeenLastCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', 'sub', { id: expect.any(String), sectionId: 'main' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Sub record' })).toHaveAttribute('aria-busy', 'false'));
-  fireEvent.click(screen.getByRole('button', { name: 'Sub error' }));
-  expect(screen.getByRole('button', { name: 'Sub clear: Device error' })).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Sub clear: Device error' }));
-  expect(screen.queryByRole('button', { name: 'Sub clear: Device error' })).not.toBeInTheDocument();
+  await waitFor(() => expect(recorderButton('Rec record', 'sub')).toHaveAttribute('aria-busy', 'false'));
+  fireEvent.click(recorderButton('Rec error', 'sub'));
+  expect(recorderButton('Rec clear: Device error', 'sub')).toBeVisible();
+  fireEvent.click(recorderButton('Rec clear: Device error', 'sub'));
+  expect(screen.queryAllByRole('button', { name: 'Rec clear: Device error' }).filter((button) => button.closest('[data-testid^="sub-point-drop-"]'))).toHaveLength(0);
 });
 
 // The header locks every thought of the point; a thought card locks one. Same action, same sign:
@@ -259,4 +261,28 @@ it.each([false, true])('collapses nested content and restores it without emittin
   fireEvent.click(screen.getByRole('button', { name: 'common.expand' }));
   expect(screen.getByText('nested')).toBeVisible();
   expect(onSaveEdit).not.toHaveBeenCalled();
+});
+
+it('renames, removes and adds sub-points in the lanes, where the list above them used to repeat them', () => {
+  const onAddSubPoint = jest.fn();
+  const onEditSubPoint = jest.fn();
+  const onDeleteSubPoint = jest.fn();
+  render(<OutlinePointCard {...base} onAddSubPoint={onAddSubPoint} onEditSubPoint={onEditSubPoint} onDeleteSubPoint={onDeleteSubPoint} />);
+  const lane = within(screen.getByTestId('sub-point-drop-sub'));
+
+  fireEvent.click(lane.getByRole('button', { name: 'common.edit' }));
+  fireEvent.change(lane.getByDisplayValue('Sub'), { target: { value: 'renamed sub' } });
+  fireEvent.keyDown(lane.getByDisplayValue('Renamed sub'), { key: 'Enter' });
+  expect(onEditSubPoint).toHaveBeenCalledWith('point', 'sub', 'Renamed sub', 'Sub');
+
+  // The sub-point holds a reminder, so it goes only after the question.
+  fireEvent.click(lane.getByRole('button', { name: 'common.delete' }));
+  expect(onDeleteSubPoint).not.toHaveBeenCalled();
+  fireEvent.click(within(lane.getByRole('alertdialog')).getByRole('button', { name: 'common.delete' }));
+  expect(onDeleteSubPoint).toHaveBeenCalledWith('point', 'sub');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add sub-point' }));
+  fireEvent.change(screen.getByPlaceholderText('Sub-point name...'), { target: { value: 'new sub' } });
+  fireEvent.keyDown(screen.getByPlaceholderText('Sub-point name...'), { key: 'Enter' });
+  expect(onAddSubPoint).toHaveBeenCalledWith('point', 'New sub');
 });

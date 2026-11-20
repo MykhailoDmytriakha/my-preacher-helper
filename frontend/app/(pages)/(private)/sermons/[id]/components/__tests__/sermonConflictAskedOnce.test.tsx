@@ -15,7 +15,6 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'o
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/sermon/ScratchPanel', () => ({ __esModule: true, default: () => <div data-testid="scratch-panel" /> }));
-jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal: () => null }));
 
 /**
  * ONE CONFLICT, ONE QUESTION (BUG-20261006-sermon-conflict-choice-shown-twice). On the sermon page the

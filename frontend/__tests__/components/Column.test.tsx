@@ -1125,10 +1125,8 @@ describe('Column Component', () => {
       if (target === 'point') {
         fireEvent.click(screen.getByRole('heading', { name: point.text }));
       } else {
-        const labels = screen.getAllByTitle(point.subPoints[0].text);
-        const editableLabel = labels.find(label => label.classList.contains('cursor-text'));
-        expect(editableLabel).toBeVisible();
-        fireEvent.doubleClick(editableLabel!);
+        // A sub-point is renamed in its own lane (the structure page has no list of sub-points above).
+        fireEvent.click(within(screen.getByTestId('sub-point-drop-sub')).getByRole('button', { name: 'Edit' }));
       }
       const draft = 'These words were typed before the saved removal';
       const opening = target === 'point' ? point.text : point.subPoints[0].text;

@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
-import PointNote from '@/components/PointNote';
+import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import {
@@ -567,10 +567,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     renderDirectNote(point.id, point.note, note => mutatePoint(point.id, current => ({ ...current, note })),
       'ml-6', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100')
   ) : (
-    <PointNote note={point.note} onChange={note => mutatePoint(point.id, current => ({ ...current, note }))}
-      captureSave={onNoteChange && captureNoteSave({ kind: 'point', id: point.id }, point.note)}
-      isReadOnly={isReadOnly} indentClass="ml-6" addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-      tone={scratch ? 'neutral' : 'note'} labels={scratch?.noteLabels} />
+    <NodeSketches node={{ kind: 'point', id: point.id }} isReadOnly={isReadOnly} indentClass="ml-6"
+      addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+      outlineNote={{ text: point.note, onChange: note => mutatePoint(point.id, current => ({ ...current, note })),
+        captureSave: onNoteChange && captureNoteSave({ kind: 'point', id: point.id }, point.note) }} />
   );
 
   const renderSubPointControls = (point: OutlinePoint, sp: SubPoint) => {
@@ -725,20 +725,19 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                           {showNotes && (
                             editingDirectly ? renderDirectNote(sp.id, sp.note, value => mutatePoint(point.id, current => ({ ...current,
                                 subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, note: value } : sub) })),
-                              'ml-5', 'opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100') : <PointNote
-                              note={sp.note}
-                              captureSave={onNoteChange && captureNoteSave({ kind: 'subpoint', id: sp.id }, sp.note)}
-                              onChange={(n) =>
-                                mutatePoint(point.id, (p) => ({
-                                  ...p,
-                                  subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
-                                }))
-                              }
+                              'ml-5', 'opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100') : <NodeSketches
+                              node={{ kind: 'subpoint', id: sp.id }}
                               isReadOnly={isReadOnly}
                               indentClass="ml-5"
                               addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
-                              tone={scratch ? 'neutral' : 'note'}
-                              labels={scratch?.noteLabels}
+                              outlineNote={{
+                                text: sp.note,
+                                captureSave: onNoteChange && captureNoteSave({ kind: 'subpoint', id: sp.id }, sp.note),
+                                onChange: (n) => mutatePoint(point.id, (p) => ({
+                                  ...p,
+                                  subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
+                                })),
+                              }}
                             />
                           )}
                           {scratch &&

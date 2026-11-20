@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { serializeContent } from '@/utils/contentFingerprint';
+import { scratchByOutlineNode } from '@/utils/scratchPlacement';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 
@@ -49,12 +50,25 @@ export function notePlanSourceText(notes: StudyNote[]): string {
   return serializeContent(notePlanSourceMaterial(notes));
 }
 
+/**
+ * The scratch notes filed on each outline node, by node id. A node's reminders are its old one-line `note`
+ * and these notes (owner, 2026-11-19: they are one thing, pieces), so the plan reads all of them.
+ */
+export function notePlanFiledNotes(sermon: Pick<Sermon, 'outline' | 'scratch'>): Record<string, string[]> {
+  return Object.fromEntries([...scratchByOutlineNode(sermon.scratch ?? [], sermon.outline)].map(([nodeId, notes]) => [nodeId, notes.map((note) => note.text)]));
+}
+
+/** A node's reminders as the plan reads them: the old one-line note first, then each filed note, one per line. */
+export function notePlanReminder(nodeId: string, note: string | undefined, filed: Record<string, string[]> = {}): string {
+  return [note, ...(filed[nodeId] ?? [])].filter((text): text is string => Boolean(text?.trim())).join('\n');
+}
+
 /** One explicit cell, or the existing whole-point scope when no target is supplied. */
-export function notePlanTargetNodes(point: SermonPoint, targetNodeId?: string) {
+export function notePlanTargetNodes(point: SermonPoint, targetNodeId?: string, filed: Record<string, string[]> = {}) {
   const nodes = [
-    { nodeId: point.id, title: point.text, reminder: point.note ?? '', kind: 'point' },
+    { nodeId: point.id, title: point.text, reminder: notePlanReminder(point.id, point.note, filed), kind: 'point' },
     [...(point.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => ({
-      nodeId: sub.id, title: sub.text, reminder: sub.note ?? '', kind: 'subPoint',
+      nodeId: sub.id, title: sub.text, reminder: notePlanReminder(sub.id, sub.note, filed), kind: 'subPoint',
     })),
   ].flat();
   return targetNodeId === undefined ? nodes : nodes.filter((node) => node.nodeId === targetNodeId);
@@ -62,15 +76,16 @@ export function notePlanTargetNodes(point: SermonPoint, targetNodeId?: string) {
 
 /** Compare the actual generation inputs, not unrelated changes to saved plan text. */
 export function notePlanContextKey(sermon: Sermon, pointId: string): string {
+  const filed = notePlanFiledNotes(sermon);
   return JSON.stringify({
     title: sermon.title,
     verse: sermon.verse,
     sourceNoteIds: sermon.sourceNoteIds ?? [],
     outline: ['introduction', 'main', 'conclusion'].map((section) =>
       (sermon.outline?.[section as keyof NonNullable<Sermon['outline']>] ?? []).map((point) => ({
-        id: point.id, text: point.text, note: point.note ?? '',
+        id: point.id, text: point.text, note: point.note ?? '', filed: filed[point.id] ?? [],
         subPoints: [...(point.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => ({
-          id: sub.id, text: sub.text, note: sub.note ?? '',
+          id: sub.id, text: sub.text, note: sub.note ?? '', filed: filed[sub.id] ?? [],
         })),
       }))),
     thoughts: getVisualOrderedThoughtsForOutlinePoint(sermon, pointId).map((thought) => ({

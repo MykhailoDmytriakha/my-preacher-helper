@@ -6,11 +6,10 @@ import { PlusIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, SparklesIcon, Che
 import React from 'react';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
-import { FlatRecorderButton } from '@/components/FlatRecorderButton';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { LockToggleButton } from '@/components/LockToggleButton';
 import { useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
-import PointNote from '@/components/PointNote';
+import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
 import { useRecordingOwner } from '@/hooks/useRecordingOwner';
@@ -196,7 +195,9 @@ export const OutlinePointCard: React.FC<{
   const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
   const renderSubPointRecorder = canUseInlineRecorder
     ? (subPoint: SubPoint) => (
-      <FlatRecorderButton
+      // The point's own round recorder: a lane header has room for a button, not a bar.
+      <FocusRecorderButton
+        size="small"
         key={JSON.stringify([recordingOwner.key, subPoint.id])}
         onDiscardRecording={() => recordingOwner.discard(`sub:${subPoint.id}`)}
         disabled={isPointLocked || transcriptionBlocked}
@@ -381,7 +382,8 @@ export const OutlinePointCard: React.FC<{
           onReorder={onReorderSubPoints}
           getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
           t={t}
-          hideList={Boolean(isFocusMode || isEditingLocally || isCollapsed) || !((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint))}
+          // Sub-points live in the lanes below (rename, delete, «+ Добавить подпункт»); the list above repeated them.
+          hideList
           renderHeader={(addSubPointButton) => (
             <div
               className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
@@ -490,14 +492,10 @@ export const OutlinePointCard: React.FC<{
               </div>
 
               {showNotes && !isEditingLocally && (
-                <PointNote
-                  note={point.note}
-                  onChange={(note) => onSetPointNote?.(point.id, note)}
-                  captureSave={captureNoteEdit && (() => captureNoteEdit({ kind: 'point', id: point.id }, point.note))}
-                  isReadOnly={isPointLocked}
-                  indentClass="ml-6"
+                <NodeSketches node={{ kind: 'point', id: point.id }} isReadOnly={isPointLocked} indentClass="ml-6"
                   addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                />
+                  outlineNote={{ text: point.note, onChange: (note) => onSetPointNote?.(point.id, note),
+                    captureSave: captureNoteEdit && (() => captureNoteEdit({ kind: 'point', id: point.id }, point.note)) }} />
               )}
             </div>
           )}
@@ -518,6 +516,10 @@ export const OutlinePointCard: React.FC<{
           showNotes={showNotes}
           isPointLocked={isPointLocked}
           onSetSubPointNote={onSetSubPointNote}
+          onAddSubPoint={onAddSubPoint}
+          onEditSubPoint={onEditSubPoint}
+          onDeleteSubPoint={onDeleteSubPoint}
+          getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
           t={t}
         />}
       </div>

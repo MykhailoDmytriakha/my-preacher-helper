@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react';
 
-import type { SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
+import type { ScratchNote, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { OutlineInputSequence } from '@/utils/outlineCapture';
-import type { CaptureOutlineNote, OutlineTitleOpening, OutlineTitleVersion } from '@/utils/sermonNoteText';
+import type { CaptureOutlineNote, OutlineNoteTarget, OutlineTitleOpening, OutlineTitleVersion, SaveSermonNoteText } from '@/utils/sermonNoteText';
 import type { StructureSectionId } from '@/utils/structureTags';
 
 /**
@@ -27,6 +27,14 @@ export interface OutlinePointMove { pointId: string; before: SermonOutline; vers
 
 export interface StructureWriter {
   captureNoteEdit?: CaptureOutlineNote;
+  /**
+   * Scratch notes («наброски») on a point or a sub-point: each one a piece of its own, never glued into
+   * the node's old one-line `note`. Editing is bound to what the person saw through `captureSketchEdit`.
+   */
+  addSketch?(target: OutlineNoteTarget, text: string): Promise<unknown>;
+  editSketch?(noteId: string, text: string): Promise<unknown>;
+  deleteSketch?(noteId: string): Promise<unknown>;
+  captureSketchEdit?(note: ScratchNote): SaveSermonNoteText;
   outlineTitleVersion?(opening: OutlineTitleOpening): OutlineTitleVersion | undefined;
   outlinePlacementVersion?(shown?: SermonOutline): OutlinePlacementVersion | undefined;
   updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null, options?: StructureWriteOptions): Promise<unknown>;

@@ -13,6 +13,7 @@ import { useOutlineConflictForEditor } from '@/components/plan-editor/OutlineCon
 import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
 import { OutlineTitleHistory } from '@/components/plan-editor/OutlineTitleHistory';
 import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
+import { PlacedSketchesProvider } from '@/components/sermon/scratch/PlacedSketches';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
@@ -740,10 +741,13 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
           {collision && needsWholeChoice && wholeReviewOpen && (
             <section aria-label={t('planEditor.currentStructure')} className="mb-5 rounded-xl border border-slate-300 p-3 dark:border-gray-600">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.currentStructure')}</h3>
-              <OutlineBoard value={fromSermon(collision.serverOutline)} onChange={() => undefined} isReadOnly showNotes />
+              <PlacedSketchesProvider notes={sermon.scratch} outline={fromSermon(collision.serverOutline)}>
+                <OutlineBoard value={fromSermon(collision.serverOutline)} onChange={() => undefined} isReadOnly showNotes />
+              </PlacedSketchesProvider>
             </section>
           )}
           {needsWholeChoice && <h3 className="mb-3 font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.localStructure')}</h3>}
+          <PlacedSketchesProvider notes={sermon.scratch} outline={outline}>
           <OutlineBoard
             value={outline}
             onChange={handleChange}
@@ -763,6 +767,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             onOutlinePointMoved={onOutlinePointMoved}
             onSubPointMoved={onSubPointMoved}
           />
+          </PlacedSketchesProvider>
         </div>
 
         <footer className="flex items-center justify-between px-4 sm:px-5 py-3 border-t border-slate-200 dark:border-gray-700">

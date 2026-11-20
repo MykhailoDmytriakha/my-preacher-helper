@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { StructureWriterContext } from '@/components/sermon/structureWriter';
 import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
@@ -412,6 +413,18 @@ describe('OutlineBoard', () => {
   });
 });
 
+
+/** Scratch notes added on a node go through the shared structure writer, not into the outline. */
+function renderWithSketchWriter(ui: React.ReactElement, addSketch: jest.Mock) {
+  const refused = () => Promise.reject(new Error('unused'));
+  return render(
+    <StructureWriterContext.Provider value={{ updateStructure: refused, updateThought: refused, deleteThought: refused, createManualThought: refused,
+      updateSermonOutline: refused, addSketch, editSketch: jest.fn(() => Promise.resolve()), deleteSketch: jest.fn(() => Promise.resolve()) }}>
+      {ui}
+    </StructureWriterContext.Provider>,
+  );
+}
+
 describe('OutlineBoard — reminder notes', () => {
   it('shows an existing point note only when showNotes is enabled', () => {
     const value: SermonOutline = {
@@ -422,44 +435,38 @@ describe('OutlineBoard — reminder notes', () => {
     const { rerender } = render(<OutlineBoard value={value} onChange={jest.fn()} />);
     // Off by default (e.g. template editor) → no note leaks into the UI.
     expect(screen.queryByText('remember the story')).not.toBeInTheDocument();
-    expect(screen.queryByText('planEditor.note.add')).not.toBeInTheDocument();
+    expect(screen.queryByText('scratch.node.add')).not.toBeInTheDocument();
 
     rerender(<OutlineBoard value={value} onChange={jest.fn()} showNotes />);
     expect(screen.getByText('remember the story')).toBeInTheDocument();
   });
 
-  it('adds a note to a point and emits it (text preserved)', () => {
-    const value: SermonOutline = {
-      introduction: [{ id: 'p1', text: 'Point' }],
-      main: [],
-      conclusion: [],
-    };
+  it('adds a note to a point as a new scratch note, never into the point\'s own note', () => {
+    const value: SermonOutline = { introduction: [{ id: 'p1', text: 'Point' }], main: [], conclusion: [] };
     const onChange = jest.fn();
-    render(<OutlineBoard value={value} onChange={onChange} showNotes />);
+    const addSketch = jest.fn(() => Promise.resolve());
+    renderWithSketchWriter(<OutlineBoard value={value} onChange={onChange} showNotes />, addSketch);
 
     const introCol = screen.getByTestId('outline-board-column-introduction');
-    fireEvent.click(within(introCol).getByLabelText('planEditor.note.label')); // "+ note"
+    fireEvent.click(within(introCol).getByLabelText('scratch.node.label')); // "+ набросок"
     const textarea = within(introCol).getByPlaceholderText('planEditor.note.placeholder');
     fireEvent.change(textarea, { target: { value: 'start with a question' } });
     fireEvent.blur(textarea);
 
-    const next = onChange.mock.calls.at(-1)![0] as SermonOutline;
-    expect(next.introduction[0].note).toBe('start with a question');
-    expect(next.introduction[0].text).toBe('Point');
-    expect(next.introduction[0].id).toBe('p1');
+    expect(addSketch).toHaveBeenCalledWith({ kind: 'point', id: 'p1' }, 'start with a question');
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('saves a note with Enter', () => {
+  it('adds a note with Enter', () => {
     const value: SermonOutline = { introduction: [{ id: 'p1', text: 'Point' }], main: [], conclusion: [] };
-    const onChange = jest.fn();
-    render(<OutlineBoard value={value} onChange={onChange} showNotes />);
+    const addSketch = jest.fn(() => Promise.resolve());
+    renderWithSketchWriter(<OutlineBoard value={value} onChange={jest.fn()} showNotes />, addSketch);
     const introCol = screen.getByTestId('outline-board-column-introduction');
-    fireEvent.click(within(introCol).getByLabelText('planEditor.note.label'));
+    fireEvent.click(within(introCol).getByLabelText('scratch.node.label'));
     const textarea = within(introCol).getByPlaceholderText('planEditor.note.placeholder');
     fireEvent.change(textarea, { target: { value: 'via enter' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
-    const next = onChange.mock.calls.at(-1)![0] as SermonOutline;
-    expect(next.introduction[0].note).toBe('via enter');
+    expect(addSketch).toHaveBeenCalledWith({ kind: 'point', id: 'p1' }, 'via enter');
   });
 
   it('deletes a note via the × affordance only after the question is confirmed', async () => {
@@ -471,8 +478,8 @@ describe('OutlineBoard — reminder notes', () => {
     const onChange = jest.fn();
     render(<OutlineBoard value={value} onChange={onChange} showNotes />);
     const introCol = screen.getByTestId('outline-board-column-introduction');
-    fireEvent.click(within(introCol).getByLabelText('planEditor.note.delete'));
-    const question = await screen.findByRole('dialog', { name: 'planEditor.note.deleteConfirm' });
+    fireEvent.click(within(introCol).getByLabelText('scratch.node.delete'));
+    const question = await screen.findByRole('dialog', { name: 'scratch.node.deleteConfirm' });
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(within(question).getByText('common.delete'));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
@@ -489,8 +496,8 @@ describe('OutlineBoard — reminder notes', () => {
     };
     const onChange = jest.fn();
     const { rerender } = render(<OutlineBoard value={asked} onChange={onChange} showNotes />);
-    fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByLabelText('planEditor.note.delete'));
-    const question = await screen.findByRole('dialog', { name: 'planEditor.note.deleteConfirm' });
+    fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByLabelText('scratch.node.delete'));
+    const question = await screen.findByRole('dialog', { name: 'scratch.node.deleteConfirm' });
 
     // While the question is open, a newer outline arrives (another edit, a save echo).
     const now: SermonOutline = { ...asked, main: [{ id: 'p2', text: 'Added meanwhile' }] };
@@ -516,7 +523,7 @@ describe('OutlineBoard — reminder notes', () => {
 
     const introCol = screen.getByTestId('outline-board-column-introduction');
     expect(within(introCol).getByText('old note')).toBeInTheDocument();
-    fireEvent.click(within(introCol).getByTitle('planEditor.note.label')); // the sub-point note line
+    fireEvent.click(within(introCol).getByTitle('scratch.node.label')); // the sub-point note line
     const textarea = within(introCol).getByDisplayValue('old note');
     fireEvent.change(textarea, { target: { value: 'new note' } });
     fireEvent.blur(textarea);
@@ -536,7 +543,7 @@ describe('OutlineBoard — reminder notes', () => {
     render(<OutlineBoard value={value} onChange={onChange} showNotes />);
 
     const introCol = screen.getByTestId('outline-board-column-introduction');
-    fireEvent.click(within(introCol).getByTitle('planEditor.note.label'));
+    fireEvent.click(within(introCol).getByTitle('scratch.node.label'));
     const textarea = within(introCol).getByDisplayValue('temporary');
     fireEvent.change(textarea, { target: { value: '   ' } });
     fireEvent.blur(textarea);
@@ -552,15 +559,17 @@ describe('OutlineBoard — reminder notes', () => {
       conclusion: [],
     };
     const onChange = jest.fn();
-    render(<OutlineBoard value={value} onChange={onChange} showNotes />);
+    const addSketch = jest.fn(() => Promise.resolve());
+    renderWithSketchWriter(<OutlineBoard value={value} onChange={onChange} showNotes />, addSketch);
 
     const introCol = screen.getByTestId('outline-board-column-introduction');
-    fireEvent.click(within(introCol).getByLabelText('planEditor.note.label'));
+    fireEvent.click(within(introCol).getByLabelText('scratch.node.label'));
     const textarea = within(introCol).getByPlaceholderText('planEditor.note.placeholder');
     fireEvent.change(textarea, { target: { value: 'discard me' } });
     fireEvent.keyDown(textarea, { key: 'Escape' });
 
     expect(onChange).not.toHaveBeenCalled();
+    expect(addSketch).not.toHaveBeenCalled();
     expect(within(introCol).queryByDisplayValue('discard me')).not.toBeInTheDocument();
   });
 
@@ -572,9 +581,9 @@ describe('OutlineBoard — reminder notes', () => {
     };
     render(<OutlineBoard value={value} onChange={jest.fn()} showNotes isReadOnly />);
     expect(screen.getByText('view only')).toBeInTheDocument();
-    expect(screen.queryByText('planEditor.note.add')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('planEditor.note.label')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('planEditor.note.delete')).not.toBeInTheDocument();
+    expect(screen.queryByText('scratch.node.add')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('scratch.node.label')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('scratch.node.delete')).not.toBeInTheDocument();
   });
 });
 

@@ -14,6 +14,7 @@ import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import { OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope } from "@/components/plan-editor/OutlineTitleDrafts";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { PlacedSketchesProvider } from '@/components/sermon/scratch/PlacedSketches';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
@@ -788,6 +789,8 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
 
   return (
     <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} toBible={false}>
+    {/* The notes filed on the «Наброски» board show under their points. */}
+    <PlacedSketchesProvider notes={sermon.scratch} outline={sermon.outline}>
     <div className="px-4 pb-4">
       {/* `empty:hidden`: a silent status leaves no margin behind. */}
       <div className="mb-4 empty:hidden">{syncStatus}</div>
@@ -1022,6 +1025,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
       </div>
       {confirmDialog}
     </div>
+    </PlacedSketchesProvider>
     </ScriptureLinksInWindow>
   );
 }

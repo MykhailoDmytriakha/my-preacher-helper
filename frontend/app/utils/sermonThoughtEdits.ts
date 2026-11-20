@@ -1,5 +1,6 @@
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { scratchAfterOutlineChange } from '@/utils/scratchPlacement';
 import { getCanonicalTagForSection, normalizeStructureTag, type StructureSectionId } from '@/utils/structureTags';
 import { findThoughtSectionInStructure, insertThoughtIdInStructure, removeThoughtIdFromStructure, resolveSectionForNewThought, resolveSectionFromOutline, resolveSectionFromTags, type SectionKey } from '@/utils/thoughtOrdering';
 
@@ -56,10 +57,15 @@ export const deleteSermonThought = (current: Sermon, id: string): Sermon => {
 const outlineEntries = (outline?: SermonOutline) => (['introduction', 'main', 'conclusion'] as const)
   .flatMap(section => (outline?.[section] ?? []).map(point => ({ point, section })));
 
-/** Replace an outline and repair only the assignments affected by this explicit outline edit. */
+/**
+ * Replace an outline and repair only the assignments affected by this explicit outline edit: thoughts and
+ * scratch notes follow their points and sub-points, and a removed node's old reminder stays as a note.
+ */
 export function replaceSermonOutline(current: Sermon, outline: SermonOutline): Sermon {
   const before = outlineEntries(current.outline), after = outlineEntries(outline);
-  let next: Sermon = { ...current, outline };
+  const scratch = scratchAfterOutlineChange(current.scratch ?? [], current.outline, outline);
+  const scratchChanged = scratch.length !== (current.scratch ?? []).length || scratch.some((note, index) => note !== current.scratch?.[index]);
+  let next: Sermon = { ...current, outline, ...(scratchChanged ? { scratch } : {}) };
   for (const thought of current.thoughts ?? []) {
     const previous = before.find(entry => entry.point.id === thought.outlinePointId);
     if (!previous) continue;

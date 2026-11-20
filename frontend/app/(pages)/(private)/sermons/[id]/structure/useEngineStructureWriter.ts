@@ -5,11 +5,13 @@ import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict'
 import { captureOutlineSubpointMove, useDataDocument, useDocumentActions, type DocumentUpdateOptions } from '@/data-engine/react.client';
 import { isOutlineCollisionError, OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
+import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
+import { placeOfNode, scratchNoteAt } from '@/utils/scratchPlacement';
 import { readOutlineNoteText, readOutlineTitleText, withOutlineNoteText, withOutlineTitleText } from '@/utils/sermonNoteText';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
@@ -185,6 +187,26 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
     outlineTitleVersion: document.outlineTitleVersion,
     outlinePlacementVersion: document.outlinePlacementVersion,
     captureNoteEdit: captureSermonNoteText,
+    addSketch: (target, text) => {
+      // The id is chosen once, outside the update: a replayed update finds its note already there.
+      const note = { id: newClientId(), text: text.trim(), createdAt: new Date().toISOString() };
+      if (!note.text) return Promise.resolve();
+      return edit(current => {
+        if ((current.scratch ?? []).some(existing => existing.id === note.id)) return { next: current, result: undefined };
+        const place = placeOfNode(current.outline, target);
+        // The point is gone (removed on another device, or not saved yet): say so, so the typed words stay open.
+        if (!place) throw new Error('The point for this scratch note is not in the saved plan');
+        return { next: { ...current, scratch: [...(current.scratch ?? []), scratchNoteAt(place, note)] }, result: undefined };
+      });
+    },
+    editSketch: (noteId, text) => edit(current => ({
+      next: { ...current, scratch: (current.scratch ?? []).map(note => note.id === noteId ? { ...note, text } : note) }, result: undefined,
+    })),
+    deleteSketch: noteId => edit(current => ({
+      next: { ...current, scratch: (current.scratch ?? []).filter(note => note.id !== noteId) }, result: undefined,
+    })),
+    captureSketchEdit: captureSermonNoteText
+      && (note => captureSermonNoteText({ kind: 'scratch', id: note.id, createdAt: note.createdAt }, note.text)),
     updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence, pointMove) => {
       if (pointMove && document.commitOutlineMove) {
         const { pointId, before } = pointMove;

@@ -1,4 +1,4 @@
-import { notePlanTargetNodes, type NotePlanRevision } from '@/utils/notePlan';
+import { notePlanReminder, notePlanTargetNodes, type NotePlanRevision } from '@/utils/notePlan';
 
 import type { SermonPoint } from '@/models/models';
 
@@ -12,6 +12,8 @@ export interface NotePlanInput {
   outline: { section: string; title: string; subPoints: string[] }[];
   notes: { id: string; title: string; content: string; scriptureRefs: string[] }[];
   thoughts: { text: string; subPointId?: string | null; keyFragments?: string[] }[];
+  /** Scratch notes filed on each node of the outline (`notePlanFiledNotes`), read with the node's reminder. */
+  filed?: Record<string, string[]>;
 }
 
 export function createNotePlanUserMessage(input: NotePlanInput): string {
@@ -19,8 +21,8 @@ export function createNotePlanUserMessage(input: NotePlanInput): string {
     sermon: { title: input.title, verse: input.verse },
     section: input.section,
     outlineContext: input.outline,
-    targetNodes: notePlanTargetNodes(input.point, input.targetNodeId),
-    ...(input.targetNodeId && { parentContext: { title: input.point.text, reminder: input.point.note ?? '' } }),
+    targetNodes: notePlanTargetNodes(input.point, input.targetNodeId, input.filed),
+    ...(input.targetNodeId && { parentContext: { title: input.point.text, reminder: notePlanReminder(input.point.id, input.point.note, input.filed) } }),
     sourceNotes: input.notes,
     supplementalThoughts: input.thoughts,
     ...(input.revision && { revision: input.revision }),

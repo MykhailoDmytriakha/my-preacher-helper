@@ -3339,6 +3339,12 @@
       "removeSubPointTitle": "Видалити підпункт «{{title}}»?",
       "removeSubPointDescription": "Начерки й думки з нього залишаться в пункті.",
       "howTo": "Як розкладати начерки"
+    },
+    "node": {
+      "label": "Начерк",
+      "delete": "Видалити начерк",
+      "add": "начерк",
+      "deleteConfirm": "Видалити начерк?"
     }
   },
   "wizard": {

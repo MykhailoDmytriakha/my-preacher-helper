@@ -3296,6 +3296,12 @@
       "removeSubPointTitle": "Remove the sub-point “{{title}}”?",
       "removeSubPointDescription": "Its scratch notes and thoughts stay in the point.",
       "howTo": "How to sort scratch notes"
+    },
+    "node": {
+      "label": "Scratch note",
+      "delete": "Delete scratch note",
+      "add": "scratch note",
+      "deleteConfirm": "Delete this scratch note?"
     }
   },
   "wizard": {

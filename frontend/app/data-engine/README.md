@@ -358,10 +358,11 @@ merged date statuses are authoritative over the legacy fallback flag.
 `PreachDateModal` requires `sermonId` and routes enabled collections to this form;
 calendar, history and menu wiring tests must prove legacy writers are not called.
 
-`EngineOutlineModal` is the outline example: selected fields include the outline,
-thoughts and placement aliases, because hierarchy edits affect all of them. The pure
-`replaceSermonOutline` transform follows IDs through move/nest/promotion/delete; the
-form pins the ancestor and owns persistence. `OutlineBoard.directText` emits every
+Outline edits go through the pure `replaceSermonOutline` transform: hierarchy edits
+affect the outline, thoughts, placement aliases and scratch notes, and it follows IDs
+through move/nest/promotion/delete for thoughts and scratch notes alike (a removed
+node's old `note` becomes a scratch note in its place). A form over the outline selects
+all of those fields, pins the ancestor and owns persistence. `OutlineBoard.directText` emits every
 keystroke into that form, while one outer Save submits the complete action. The board
 itself owns no transport or conflict rules. A pending AI proposal needs the same
 opening discipline; do not apply its old full outline to a newly read document.
@@ -373,10 +374,9 @@ The React facade aborts staging when its form unmounts; it does not promise to c
 an already running external request. Successful output persists only a selected-field
 stage. It never sends a document command or changes the opening ancestor.
 
-`EngineOutlineModal` with `withScratch` is the example: manual placement and AI
-output stage outline, dependent thought links and scratch consumption together.
-Close retains the draft; Cancel discards unsent intent; Apply submits one action.
-The compose API optionally checks `scratchComposeSource` (title, verse and selected
+Scratch notes are sorted by hand on the «Наброски» board (`ScratchSortingBoard`), each
+move one write; the AI proposal board that staged outline and scratch consumption
+together is gone. The compose API optionally checks `scratchComposeSource` (title, verse and selected
 note contents/order) against the repository read before calling AI. Legacy callers
 remain compatible. At Apply, `scratchConsumptionConflicts` checks consumed source
 notes in the same server transaction as the outline merge. A changed or missing

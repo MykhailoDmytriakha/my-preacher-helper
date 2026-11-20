@@ -15,6 +15,7 @@ import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client'
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useRouteId } from "@/hooks/useRouteId";
 import { sermonLanguage } from "@/utils/documentLanguage";
+import { notePlanFiledNotes, notePlanReminder } from "@/utils/notePlan";
 import { legacySectionText, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
@@ -71,6 +72,8 @@ interface ManualPointCardProps {
   noteMode?: boolean;
   /** A copy for reading: the card shows its text and offers no editor, rename, save or delete. */
   readOnly?: boolean;
+  /** Scratch notes filed on each node, read with the node's reminder (`notePlanFiledNotes`). */
+  filedNotes?: Record<string, string[]>;
 }
 
 /**
@@ -137,7 +140,7 @@ const EditableTitle = ({
   );
 };
 
-const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, onAuthorCell, text, noteMode, readOnly = false }: ManualPointCardProps) => {
+const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, onAuthorCell, text, noteMode, readOnly = false, filedNotes }: ManualPointCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const tone = SECTION_TONE_CLASSES[section];
@@ -231,7 +234,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             )}
             {noteMode && node.kind === 'subPoint' && <NotePointActions point={point} targetNodeId={node.id} />}
             {noteMode && <NoteNodeReminder
-              text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note}
+              text={notePlanReminder(node.id, node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note, filedNotes)}
               hasPlan={Boolean(text[node.id]?.trim())}
             />}
             {isEditing && !readOnly ? (
@@ -319,6 +322,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
    * editor's cells are merged over time and would keep text a newer copy no longer has.
    */
   const storedText = useMemo(() => readPlanText(sermon), [sermon]);
+  const filedNotes = useMemo(() => (sermon ? notePlanFiledNotes(sermon) : {}), [sermon]);
   const shownText = copyReadOnly ? storedText : conspectus.contentByNodeId;
 
   /**
@@ -561,6 +565,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
                   text={shownText}
                   noteMode={noteMode}
                   readOnly={locked}
+                  filedNotes={filedNotes}
                 />
               ))}
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Pencil, X } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ import { useTextDictation } from '@/hooks/useTextDictation';
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { sayFailure } from '@/utils/actionFailureMessage';
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
+import { outlineNoteSketches } from '@/utils/scratchPlacement';
 import { useTranslation } from "@locales/useTranslation";
 
 import { useScratchNoteLabels } from './scratch/ScratchNoteCard';
@@ -40,7 +41,8 @@ interface ScratchPanelProps {
   restoreScratchNote: (note: ScratchNote) => Promise<ScratchNote | null>;
   updateScratchNote: (noteId: string, patch: { text?: string }) => void;
   captureScratchText?: (note: ScratchNote) => (text: string) => Promise<void>;
-  deleteScratchNote: (noteId: string) => void;
+  /** Resolves once the deletion is submitted, so «Undo» never runs ahead of it. */
+  deleteScratchNote: (noteId: string) => Promise<void> | void;
   placeScratchNotes: (noteIds: string[], place: ScratchPlace, beforeId?: string) => void;
   createPointWithScratch: (section: SectionKey, title: string, noteIds: string[]) => void;
   addOutlinePoint: (section: SectionKey, title: string) => void;
@@ -158,6 +160,8 @@ export default function ScratchPanel({
     if (blob) downloadBlobToDevice(blob, buildRecordingFilename(blob.type));
   }, []);
 
+  /** The notes the board shows: the nodes' old one-line reminders are notes there too. */
+  const shownNotes = useMemo(() => [...outlineNoteSketches(outline), ...notes], [notes, outline]);
   const handleEditNote = useCallback((noteId: string, text: string, save?: (text: string) => Promise<void>) => {
     if (lockedRef.current) return;
     if (save) return save(text);
@@ -166,8 +170,8 @@ export default function ScratchPanel({
 
   const handleDeleteNote = useCallback((noteId: string) => {
     if (lockedRef.current) return;
-    const deletedNote = notes.find((note) => note.id === noteId);
-    deleteScratchNote(noteId);
+    const deletedNote = shownNotes.find((note) => note.id === noteId);
+    const deleted = deleteScratchNote(noteId);
     if (!deletedNote) return;
     showUndoNotice({
       ...SCRATCH_TOAST_OPTIONS,
@@ -177,6 +181,7 @@ export default function ScratchPanel({
       saving: t("dataSync.phase.savingLocally"),
       onUndo: async () => {
         if (lockedRef.current) throw new Error("Scratch notes are read-only");
+        if (deleted) await deleted;
         if (!await restoreScratchNote(deletedNote)) throw new Error("The scratch note could not be restored");
       },
       failureMessage: error => {
@@ -184,7 +189,7 @@ export default function ScratchPanel({
         return t("common.saveError");
       },
     });
-  }, [deleteScratchNote, notes, restoreScratchNote, t]);
+  }, [deleteScratchNote, shownNotes, restoreScratchNote, t]);
 
   /**
    * Deleting a scratch note is one click away from an idea the preacher cannot retype,
@@ -201,7 +206,7 @@ export default function ScratchPanel({
     if (!noteId || isNoteEditingLocked) return;
     handleDeleteNote(noteId);
   }, [handleDeleteNote, isNoteEditingLocked, pendingDeleteNoteId]);
-  const pendingDeleteNote = pendingDeleteNoteId ? notes.find((note) => note.id === pendingDeleteNoteId) ?? null : null;
+  const pendingDeleteNote = pendingDeleteNoteId ? shownNotes.find((note) => note.id === pendingDeleteNoteId) ?? null : null;
 
   /** The note's words, edited in place with the shared note editor; clearing them asks to delete. */
   const renderText = (note: ScratchNote, editSignal: number, onEditingChange: (editing: boolean) => void) => (

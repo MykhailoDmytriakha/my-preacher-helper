@@ -12,7 +12,7 @@ import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/
 import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest } from '@/services/recoverableAiResult.server';
 import { withStore } from '@/services/storeAvailability.server';
 import { AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
-import { NotePlanRequestSchema, NotePlanResultSchema, notePlanContextKey, notePlanSourceMaterial, notePlanSourceText, notePlanTargetNodes, type NotePlanRequest } from '@/utils/notePlan';
+import { NotePlanRequestSchema, NotePlanResultSchema, notePlanContextKey, notePlanFiledNotes, notePlanSourceMaterial, notePlanSourceText, notePlanTargetNodes, type NotePlanRequest } from '@/utils/notePlan';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { withinDeadline } from '@/utils/withinDeadline';
 
@@ -69,7 +69,7 @@ async function createProposal(scope: SourceScope, request: NotePlanRequest, capt
   const materialKey = sourceKey(notes);
   if (request.expectedSourceKey && request.expectedSourceKey !== materialKey) throw new NotePlanRefusal('contextChanged', 409);
   const input: NotePlanInput = {
-    title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision,
+    title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision, filed: notePlanFiledNotes(sermon),
     outline: sections.flatMap(key => (sermon.outline?.[key] ?? []).map(item => ({
       section: key, title: item.text,
       subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map(sub => sub.text),

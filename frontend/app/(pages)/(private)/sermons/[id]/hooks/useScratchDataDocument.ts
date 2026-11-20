@@ -3,10 +3,10 @@ import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { moveNoteTo } from '@/utils/scratchOrder';
 import {
-  outlineOrEmpty, outlineWithPoint, outlineWithSubPoint, outlineWithoutPoint, outlineWithoutSubPoint, placeScratchNotes,
-  releaseScratchFromPoint, releaseScratchFromSubPoint, sectionOfPoint, type ScratchPlace,
+  materializedNoteId, materializeOutlineNotes, OLD_REMINDER_CREATED_AT, outlineNoteTargetOf, scratchNoteAt, scratchPlaceOf, outlineOrEmpty, outlineWithPoint, outlineWithSubPoint, outlineWithoutPoint, outlineWithoutSubPoint,
+  placeScratchNotes, type ScratchPlace,
 } from '@/utils/scratchPlacement';
-import { withOutlineTitleText, type OutlineNoteTarget } from '@/utils/sermonNoteText';
+import { readOutlineNoteText, withOutlineNoteText, withOutlineTitleText, type OutlineNoteTarget } from '@/utils/sermonNoteText';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 
 import type { DocumentData, Json } from '@/data-engine/types';
@@ -35,6 +35,12 @@ export function useScratchDataDocument(sermonId: string | null) {
     void document.update(current => change(existing(current))).catch(() => undefined);
   };
   const mutateNotes = (mutate: (notes: ScratchNote[]) => ScratchNote[]) => write(sermon => withNotes(sermon, mutate(notesOf(sermon))));
+  /**
+   * A deletion is committed at once, not after the editor's short autosave pause: its «Undo» restores
+   * through a separate commit that reads what was submitted, and must find the deletion already there.
+   */
+  const commitNow = (change: (sermon: DocumentData) => DocumentData): Promise<void> =>
+    Promise.resolve(document.commit(current => change(existing(current)))).then(() => undefined, () => undefined);
   /** One gesture, one write: a new point and the notes it was made from land together. */
   const createPointWithScratch = (section: SectionKey, title: string, noteIds: string[]): string | null => {
     const text = title.trim();
@@ -63,20 +69,46 @@ export function useScratchDataDocument(sermonId: string | null) {
       return outline ? withOutline(sermon, outline) : sermon;
     });
   };
-  /** A sub-point goes; its scratch notes and its thoughts stay on the point (the thoughts by the outline rule). */
-  const removeOutlineSubPoint = (subPointId: string) => write(sermon => withNotes(
-    withOutline(sermon, outlineWithoutSubPoint(outlineOf(sermon), subPointId)),
-    releaseScratchFromSubPoint(notesOf(sermon), subPointId),
-  ));
-  /** A point goes; its scratch notes and its thoughts stay in its part, without a point. */
-  const removeOutlinePoint = (pointId: string) => write(sermon => withNotes(
-    withOutline(sermon, outlineWithoutPoint(outlineOf(sermon), pointId)),
-    // The part is read from the outline being changed, not from the screen: the point may have moved since.
-    releaseScratchFromPoint(notesOf(sermon), pointId, sectionOfPoint(outlineOf(sermon), pointId)),
-  ));
+  /** A sub-point goes; its notes, its old reminder and its thoughts stay on the point (the outline rule). */
+  const removeOutlineSubPoint = (subPointId: string) => write(sermon => withOutline(sermon, outlineWithoutSubPoint(outlineOf(sermon), subPointId)));
+  /** A point goes; its notes, its old reminder and its thoughts stay in the part it stands in now (the outline rule). */
+  const removeOutlinePoint = (pointId: string) => write(sermon => withOutline(sermon, outlineWithoutPoint(outlineOf(sermon), pointId)));
+  /** The node's old reminder set to `text` (cleared when undefined), through the same outline rule. */
+  const withReminder = (sermon: DocumentData, target: OutlineNoteTarget, text: string | undefined): DocumentData => {
+    const outline = withOutlineNoteText(outlineOrEmpty(outlineOf(sermon)), target, text);
+    return outline ? withOutline(sermon, outline) : sermon;
+  };
+  /** Old reminders among `ids` become ordinary notes first (`materializedNoteId`), then the change runs on real notes. */
+  const onRealNotes = (ids: readonly (string | undefined)[], change: (sermon: DocumentData, realId: (id: string) => string) => DocumentData) => {
+    const reminders = ids.filter((id): id is string => Boolean(id && outlineNoteTargetOf(id)));
+    write(sermon => {
+      if (!reminders.length) return change(sermon, id => id);
+      const made = materializeOutlineNotes(outlineOf(sermon), notesOf(sermon), reminders);
+      return change(withNotes(withOutline(sermon, made.outline), made.notes), id => made.ids.get(id) ?? id);
+    });
+  };
   const restoreScratchNote = async (note: ScratchNote): Promise<ScratchNote | null> => {
     if (!note.text.trim()) return null;
     if (!sermonId) throw new Error('The sermon is not available for scratch editing');
+    const reminder = outlineNoteTargetOf(note.id);
+    if (reminder) {
+      // Undo of a cleared reminder writes it back into its node. If the node got other words meanwhile, or is
+      // gone, the deleted words come back as an ordinary note where the node is (or was) — never dropped.
+      await actions.commit({ collection: 'sermons', id: sermonId }, current => {
+        const sermon = existing(current);
+        const outline = outlineOrEmpty(outlineOf(sermon));
+        const now = readOutlineNoteText(outline, reminder)?.text;
+        if (now === note.text) return sermon;
+        const restored = !now?.trim() ? withOutlineNoteText(outline, reminder, note.text) : undefined;
+        if (restored) return withOutline(sermon, restored);
+        const id = materializedNoteId(reminder, note.text);
+        const notes = notesOf(sermon);
+        if (notes.some(item => item.id === id)) return sermon;
+        const place = scratchPlaceOf({ ...note, id }, outline);
+        return withNotes(sermon, [scratchNoteAt(place, { id, text: note.text, createdAt: OLD_REMINDER_CREATED_AT }), ...notes]);
+      });
+      return note;
+    }
     let restored: ScratchNote | null = null;
     await actions.commit({ collection: 'sermons', id: sermonId }, current => {
       const sermon = existing(current);
@@ -106,7 +138,15 @@ export function useScratchDataDocument(sermonId: string | null) {
     });
     return accepted;
   };
-  const updateScratchNote = (noteId: string, patch: ScratchPatch) => mutateNotes(notes => notes.map(note => {
+  const updateScratchNote = (noteId: string, patch: ScratchPatch) => {
+    const reminder = outlineNoteTargetOf(noteId);
+    if (reminder) {
+      if (typeof patch.text === 'string') write(sermon => withReminder(sermon, reminder, patch.text));
+      return;
+    }
+    updateRealNote(noteId, patch);
+  };
+  const updateRealNote = (noteId: string, patch: ScratchPatch) => mutateNotes(notes => notes.map(note => {
     if (note.id !== noteId) return note;
     const next = { ...note };
     if (typeof patch.text === 'string') next.text = patch.text;
@@ -130,12 +170,20 @@ export function useScratchDataDocument(sermonId: string | null) {
     restoreScratchNote,
     updateScratchNote,
     captureScratchText: (note: ScratchNote) => document.captureSermonNoteText(
-      { kind: 'scratch', id: note.id, createdAt: note.createdAt }, note.text,
+      outlineNoteTargetOf(note.id) ?? { kind: 'scratch', id: note.id, createdAt: note.createdAt }, note.text,
     ),
-    deleteScratchNote: (noteId: string) => mutateNotes(notes => notes.filter(note => note.id !== noteId)),
+    /** Resolves once the deletion is submitted; «Undo» waits for it, so it never restores before the delete lands. */
+    deleteScratchNote: (noteId: string): Promise<void> => {
+      const reminder = outlineNoteTargetOf(noteId);
+      return reminder
+        ? commitNow(sermon => withReminder(sermon, reminder, undefined))
+        : commitNow(sermon => withNotes(sermon, notesOf(sermon).filter(note => note.id !== noteId)));
+    },
     moveScratchNote: (noteId: string, neighbourIds: string[], index: number) => mutateNotes(notes => moveNoteTo(notes, noteId, neighbourIds, index)),
     setScratchNoteSection: (noteId: string, section: ScratchNote['section'] | null) => updateScratchNote(noteId, { section }),
-    placeScratchNotes: (noteIds: string[], place: ScratchPlace, beforeId?: string) => mutateNotes(notes => placeScratchNotes(notes, noteIds, place, beforeId)),
+    // An old reminder moved — or dropped before — becomes an ordinary note, then moves like one.
+    placeScratchNotes: (noteIds: string[], place: ScratchPlace, beforeId?: string) => onRealNotes([...noteIds, beforeId], (sermon, realId) =>
+      withNotes(sermon, placeScratchNotes(notesOf(sermon), noteIds.map(realId), place, beforeId && realId(beforeId)))),
     createPointWithScratch,
     addOutlinePoint,
     addOutlineSubPoint,

@@ -75,6 +75,25 @@ const createProps = (overrides: Partial<Props> = {}): Props => ({
 });
 
 describe("ClassicThoughtsPanel", () => {
+  it("counts as still unsorted only the notes left in the pool, not the ones filed on the board", () => {
+    render(
+      <ClassicThoughtsPanel
+        {...createProps({
+          sermonOutline: { introduction: [], main: [{ id: "p1", text: "Point" }], conclusion: [] },
+          scratchNotes: [
+            { id: "filed", text: "Filed under a point", createdAt: "2026-11-19", section: "main", outlinePointId: "p1" },
+            { id: "loose", text: "Filed in the part", createdAt: "2026-11-19", section: "main" },
+            { id: "pool", text: "Still in the pool", createdAt: "2026-11-19" },
+          ],
+        })}
+      />,
+      { wrapper: TestProviders }
+    );
+    const line = screen.getByText("sermon.materialEmpty.stillUnsorted").parentElement as HTMLElement;
+    expect(line).toHaveTextContent("1");
+    expect(line).not.toHaveTextContent("3");
+  });
+
   it("renders active filter badges for structure mappings and fallback value", () => {
     const { rerender } = render(
       <ClassicThoughtsPanel

@@ -12,6 +12,7 @@ import ThoughtsEmptyState from "@/components/sermon/ThoughtsEmptyState";
 import { Chip } from "@/components/ui/Chip";
 import { useSourceNotes } from "@/hooks/useSermonNoteLinks";
 import { getSectionLabel } from "@/lib/sections";
+import { sortScratch } from "@/utils/scratchPlacement";
 import { useTranslation } from "@locales/useTranslation";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
@@ -209,9 +210,11 @@ export default function ClassicThoughtsPanel({
     () => atomsOwnedByNotes(sourceNotes, scratchNotes),
     [sourceNotes, scratchNotes]
   );
+  /** Still to sort = still in the pool: a note filed under a part or a point on the board is sorted. */
+  const unsortedScratch = useMemo(() => sortScratch(scratchNotes, sermonOutline ?? undefined).pool, [scratchNotes, sermonOutline]);
   const homelessAtoms = useMemo(
-    () => scratchNotes.filter((atom) => !ownedByNotes.has(atom.id)),
-    [scratchNotes, ownedByNotes]
+    () => unsortedScratch.filter((atom) => !ownedByNotes.has(atom.id)),
+    [unsortedScratch, ownedByNotes]
   );
 
   return (
@@ -380,11 +383,11 @@ export default function ClassicThoughtsPanel({
         {/* Thoughts exist but the material they were cut from has not run out: say so, quietly,
             where the person is already looking. Judged by UNSORTED ATOMS rather than by the
             thought count — two thoughts beside twenty atoms is not "the note is used up". */}
-        {hasThoughts && scratchNotes.length > 0 && (
+        {hasThoughts && unsortedScratch.length > 0 && (
           <p className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
             <span>{t('sermon.materialEmpty.stillUnsorted')}</span>
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
-              {scratchNotes.length}
+              {unsortedScratch.length}
             </span>
             {onOpenScratch && (
               <button

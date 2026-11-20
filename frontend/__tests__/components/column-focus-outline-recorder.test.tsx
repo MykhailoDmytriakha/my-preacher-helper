@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { within, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
@@ -41,15 +41,17 @@ jest.mock('@/components/AudioRecorder', () => ({
   AudioRecorder: () => <div data-testid="audio-recorder-stub" />,
 }));
 
-jest.mock('@/components/FlatRecorderButton', () => ({
-  FlatRecorderButton: (props: any) => (
+// The point header and each sub-point lane use the same round recorder.
+jest.mock('@/components/FocusRecorderButton', () => ({
+  FocusRecorderButton: (props: any) => (
     <button
       type="button"
-      data-testid="flat-recorder-stub"
+      title="audio.newRecording"
+      data-testid="round-recorder-stub"
       data-disabled={String(Boolean(props.disabled))}
       onClick={() => props.onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}
     >
-      Subpoint recorder
+      Recorder
     </button>
   ),
 }));
@@ -92,7 +94,7 @@ describe('Focus mode: mic icon per outline point', () => {
     expect(micButtons).toHaveLength(outlinePoints.length);
   });
 
-  it('renders a flat recorder in each sub-point lane and records into that sub-point', async () => {
+  it('renders the round recorder in each sub-point lane and records into that sub-point', async () => {
     mockCreateAudioThought.mockResolvedValueOnce({
       id: 'thought-1',
       text: 'Subpoint thought',
@@ -123,7 +125,7 @@ describe('Focus mode: mic icon per outline point', () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId('flat-recorder-stub'));
+    fireEvent.click(within(screen.getByTestId('sub-point-drop-sp-1')).getByTestId('round-recorder-stub'));
 
     await waitFor(() => {
       expect(mockCreateAudioThought).toHaveBeenCalledWith(

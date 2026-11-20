@@ -10,7 +10,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { resolveNoteSlot, type Point } from '@/utils/boardDnd';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
-import { placeScratchNotes, POOL_PLACE, sameScratchPlace, scratchPlaceOf, sortScratch, type ScratchPlace } from '@/utils/scratchPlacement';
+import { materializedNoteId, outlineNoteSketches, outlineNoteTargetOf, placeScratchNotes, POOL_PLACE, sameScratchPlace, scratchPlaceOf, sortScratch, type ScratchPlace } from '@/utils/scratchPlacement';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';
@@ -149,7 +149,7 @@ export default function ScratchSortingBoard({
   const titleEditor = (target: OutlineNoteTarget, initial: string) => (
     <TitleEditor initial={initial} label={target.kind === 'point' ? t('scratch.sort.pointTitle') : t('scratch.sort.subPointTitle')}
       saveLabel={t('scratch.card.save')} cancelLabel={t('scratch.card.cancel')}
-      onCancel={() => setRenaming(null)} onSave={(text) => { onRenameTitle(target, text); setRenaming(null); }} />
+      onCancel={() => setRenaming(null)} onSave={(text) => { if (!isReadOnly) onRenameTitle(target, text); setRenaming(null); }} />
   );
   const requestEdit = (id: string) => {
     setExpanded((current) => ({ ...current, [id]: true }));
@@ -171,8 +171,10 @@ export default function ScratchSortingBoard({
   const sorted = useMemo(() => sortScratch(notes, outline), [notes, outline]);
   /** A move that would leave every note where it is and in the same order. */
   const changesNothing = useCallback((ids: string[], place: ScratchPlace, beforeId?: string) => {
+    // The board shows the nodes' old one-line reminders as notes too, so the check runs on the same list.
+    const shown = [...outlineNoteSketches(outline), ...notes];
     const signature = (list: readonly ScratchNote[]) => list.map((note) => `${note.id}@${placeKey(scratchPlaceOf(note, outline))}`).join(',');
-    return signature(placeScratchNotes(notes, ids, place, beforeId)) === signature(notes);
+    return signature(placeScratchNotes(shown, ids, place, beforeId)) === signature(shown);
   }, [notes, outline]);
   /** Each place's notes in the order the board shows them (the stored order). */
   const orderByPlace = useMemo(() => {
@@ -201,7 +203,16 @@ export default function ScratchSortingBoard({
     });
     return places;
   }, [sorted]);
-  const placed = notes.length - sorted.pool.length;
+  // The board shows the nodes' old one-line reminders as notes too, so they count like notes.
+  const total = placeById.size;
+  const placed = total - sorted.pool.length;
+  const shownNotes = useMemo(() => [...outlineNoteSketches(outline), ...notes], [notes, outline]);
+  /** The id a note has after a move: an old reminder becomes an ordinary note under its stable id. */
+  const idAfterMove = useCallback((id: string) => {
+    const target = outlineNoteTargetOf(id);
+    const shown = target ? shownNotes.find((note) => note.id === id) : undefined;
+    return target && shown ? materializedNoteId(target, shown.text) : id;
+  }, [shownNotes]);
 
   // Ticks and the open panel follow the notes: a note that left or vanished is no longer picked.
   useEffect(() => {
@@ -252,13 +263,13 @@ export default function ScratchSortingBoard({
     moving.forEach((id) => {
       const from = placeById.get(id) ?? POOL_PLACE;
       const key = placeKey(from);
-      back.set(key, { ids: [...(back.get(key)?.ids ?? []), id], place: from });
+      back.set(key, { ids: [...(back.get(key)?.ids ?? []), idAfterMove(id)], place: from });
     });
     onPlace(moving, place, beforeId);
-    setJustPlaced(moving);
+    setJustPlaced(moving.map(idAfterMove));
     setSelected((current) => current.filter((id) => !moving.includes(id)));
     setLastMove({ words: t('scratch.sort.moved', { what: t(NOTE_COUNT_KEY, { count: moving.length }), where: targetLabel(place) }), back: [...back.values()] });
-  }, [changesNothing, isReadOnly, onPlace, placeById, t, targetLabel]);
+  }, [changesNothing, idAfterMove, isReadOnly, onPlace, placeById, t, targetLabel]);
   const undoLastMove = () => {
     if (isReadOnly) return;
     lastMove?.back.forEach(({ ids, place }) => onPlace(ids, place));
@@ -267,6 +278,7 @@ export default function ScratchSortingBoard({
 
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]);
   const collect = (ids: string[]) => {
+    if (isReadOnly) return;
     const title = groupTitle.trim();
     if (!title || !groupSection || !ids.length || isReadOnly) return;
     onCreatePoint(groupSection, title, ids);
@@ -278,12 +290,12 @@ export default function ScratchSortingBoard({
     setSheet(null);
   };
   const addPoint = (section: SectionKey) => {
-    if (pointDraft.trim()) onAddPoint(section, pointDraft);
+    if (pointDraft.trim() && !isReadOnly) onAddPoint(section, pointDraft);
     setAddingPoint(null);
     setPointDraft('');
   };
   const addSubPoint = (pointId: string) => {
-    if (subDraft.trim()) onAddSubPoint(pointId, subDraft);
+    if (subDraft.trim() && !isReadOnly) onAddSubPoint(pointId, subDraft);
     setAddingSub(null);
     setSubDraft('');
   };
@@ -295,7 +307,7 @@ export default function ScratchSortingBoard({
       confirmText: { key: 'common.delete' },
       cancelText: { key: 'common.cancel' },
     });
-    if (accepted) onRemovePoint(pointId);
+    if (accepted && !isReadOnly) onRemovePoint(pointId);
   };
   const removeSubPoint = async (subPointId: string, title: string) => {
     const accepted = await confirm({
@@ -304,7 +316,7 @@ export default function ScratchSortingBoard({
       confirmText: { key: 'common.delete' },
       cancelText: { key: 'common.cancel' },
     });
-    if (accepted) onRemoveSubPoint(subPointId);
+    if (accepted && !isReadOnly) onRemoveSubPoint(subPointId);
   };
 
   const sensors = useSensors(
@@ -384,14 +396,17 @@ export default function ScratchSortingBoard({
   // The screen reader hears the place the card goes to: «→ Вступление».
   const placeOf = useCallback((over: { id: string | number }) => dropPlaces.get(String(over.id))?.label ?? null, [dropPlaces]);
   const dndAccessibility = useDndKitAccessibility({ placeOf });
-  const draggedNote = dragging ? notes.find((note) => note.id === dragging) : undefined;
+  const draggedNote = dragging ? shownNotes.find((note) => note.id === dragging) : undefined;
 
   const card = (note: ScratchNote, variant: 'pool' | 'plan', selectable: boolean) => (
     <ScratchSketchCard key={note.id} note={note} variant={variant} isReadOnly={isReadOnly}
       selected={selected.includes(note.id)} onToggleSelect={selectable ? () => toggle(note.id) : undefined}
       expanded={Boolean(expanded[note.id])} onToggleExpanded={() => setExpanded((current) => ({ ...current, [note.id]: !current[note.id] }))}
       text={renderText(note, editRequest?.id === note.id ? editRequest.n : 0,
-        (editing) => setEditingId((current) => (editing ? note.id : current === note.id ? null : current)))}
+        (editing) => {
+          setEditingId((current) => (editing ? note.id : current === note.id ? null : current));
+          if (editing) setEditRequest((current) => (current?.id === note.id ? null : current));
+        })}
       editing={editingId === note.id} noteLocked={isNoteLocked} onEdit={() => requestEdit(note.id)} targets={targets} currentKey={placeKey(placeById.get(note.id) ?? POOL_PLACE)}
       onMove={(place) => move([note.id], place)} onOpenMoveSheet={() => setSheet({ kind: 'move', ids: [note.id] })}
       onDelete={() => onDelete(note.id)}
@@ -433,7 +448,7 @@ export default function ScratchSortingBoard({
             <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => setTab(name)}
               className={`h-11 flex-1 rounded-xl border text-[15px] font-semibold transition-colors ${tab === name
                 ? 'border-violet-600 bg-violet-600 text-white' : 'border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200'}`}>
-              {name === 'pool' ? t('scratch.sort.tabPool', { count: sorted.pool.length }) : t('scratch.sort.tabPlan', { placed, total: notes.length })}
+              {name === 'pool' ? t('scratch.sort.tabPool', { count: sorted.pool.length }) : t('scratch.sort.tabPlan', { placed, total })}
             </button>
           ))}
         </div>
@@ -494,9 +509,9 @@ export default function ScratchSortingBoard({
           <section aria-label={t('scratch.sort.plan')} className={`${tab === 'plan' ? 'block' : 'hidden'} min-w-0 md:block md:flex-1`}>
             <div className="mb-3 flex items-center gap-3">
               <h2 className="hidden text-lg font-semibold text-gray-900 md:block dark:text-gray-100">{t('scratch.sort.plan')}</h2>
-              <span className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{t('scratch.sort.progress', { placed, total: notes.length })}</span>
+              <span className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{t('scratch.sort.progress', { placed, total })}</span>
               <div aria-hidden="true" className="h-1.5 flex-1 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-950">
-                <div className="h-full rounded-full bg-violet-600" style={{ width: `${notes.length ? Math.round((placed / notes.length) * 100) : 0}%` }} />
+                <div className="h-full rounded-full bg-violet-600" style={{ width: `${total ? Math.round((placed / total) * 100) : 0}%` }} />
               </div>
             </div>
             <div className="flex flex-col gap-4">

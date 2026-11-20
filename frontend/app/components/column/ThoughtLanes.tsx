@@ -3,16 +3,28 @@
 
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CheckIcon, PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
-import PointNote from '@/components/PointNote';
+import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 
 import { BG_GRAY_LIGHT_DARK } from './constants';
+import { getSubPointStyles } from './subPointStyles';
+import { useSubPointActions, type SubPointActionHandlers } from './useSubPointActions';
+
+type SubPointActions = ReturnType<typeof useSubPointActions>;
+const noop = () => undefined;
+const LANE_ICON = 'h-3.5 w-3.5';
+const SAVE_KEY = 'common.save';
+const CANCEL_KEY = 'common.cancel';
+const DELETE_KEY = 'common.delete';
+/** With a mouse a lane's rename and delete wait for the pointer; a finger has no hover, so they stay. */
+const LANE_TOOLS_ON_HOVER = 'transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/lane:opacity-100 group-focus-within/lane:opacity-100';
 
 import type { ThoughtItemRenderer, Translate } from './types';
 import type { Item, SubPoint } from '@/models/models';
@@ -122,7 +134,11 @@ const SubPointDropTarget: React.FC<{
   showNotes?: boolean;
   isReadOnly?: boolean;
   onEditNote?: (note?: string) => void;
-}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder, showNotes = false, isReadOnly = false, onEditNote }) => {
+  /** Rename and remove this sub-point here (the structure page has no list of sub-points above the lanes). */
+  manage?: SubPointActions;
+}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder, showNotes = false, isReadOnly = false, onEditNote, manage }) => {
+  const editing = manage?.editingId === subPoint.id;
+  const styles = getSubPointStyles(false);
   const { captureNoteEdit } = useStructureWriter();
   const { setNodeRef, isOver } = useDroppable({
     id: `sub-point-${subPoint.id}`,
@@ -139,7 +155,7 @@ const SubPointDropTarget: React.FC<{
     <div
       ref={setNodeRef}
       data-testid={`sub-point-drop-${subPoint.id}`}
-      className={`relative ${structureSubPointInsetClass} rounded-2xl border py-3 shadow-sm transition-all duration-200 ${
+      className={`group/lane relative ${structureSubPointInsetClass} rounded-2xl border py-3 shadow-sm transition-all duration-200 ${
         isHovered
           ? "border-blue-300 bg-blue-50/50 ring-1 ring-blue-200/50 dark:border-blue-600 dark:bg-blue-900/15 dark:ring-blue-700/30"
           : "border-slate-200/90 bg-slate-50/90 dark:border-slate-700/70 dark:bg-slate-900/30"
@@ -165,9 +181,32 @@ const SubPointDropTarget: React.FC<{
               isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
             }`}
           />
-          <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
-            <ScriptureText text={subPoint.text} />
-          </span>
+          {editing && manage ? (
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <input ref={manage.editInputRef} type="text" value={manage.editText} aria-label={t('structure.subPointPlaceholder', { defaultValue: 'Sub-point name...' })}
+                onChange={(event) => manage.changeEditText(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') manage.handleEditSave(); if (event.key === 'Escape') manage.cancelEdit(); }}
+                className={styles.inputClass} />
+              <button type="button" onClick={manage.handleEditSave} className={styles.saveBtnClass} aria-label={t(SAVE_KEY)}><CheckIcon className={LANE_ICON} /></button>
+              <button type="button" onClick={manage.cancelEdit} className={styles.cancelBtnClass} aria-label={t(CANCEL_KEY)}><XMarkIcon className={LANE_ICON} /></button>
+            </div>
+          ) : (
+            <>
+              <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
+                <ScriptureText text={subPoint.text} />
+              </span>
+              {manage && !isReadOnly && (
+                <span className={`flex shrink-0 items-center gap-0.5 ${LANE_TOOLS_ON_HOVER}`}>
+                  <button type="button" onClick={() => manage.startEditing(subPoint)} className={styles.editButtonClass} aria-label={t('common.edit')} title={t('common.edit')}>
+                    <PencilIcon className={LANE_ICON} />
+                  </button>
+                  <button type="button" onClick={() => manage.requestDelete(subPoint.id)} className={styles.deleteButtonClass} aria-label={t(DELETE_KEY)} title={t(DELETE_KEY)}>
+                    <TrashIcon className={LANE_ICON} />
+                  </button>
+                </span>
+              )}
+            </>
+          )}
         </div>
         {renderRecorder ? (
           <div className="shrink-0">
@@ -175,15 +214,24 @@ const SubPointDropTarget: React.FC<{
           </div>
         ) : null}
       </div>
+      {manage?.confirmDeleteId === subPoint.id && (
+        <div className={`mx-4 ${styles.confirmDeleteWrapperClass}`} role="alertdialog" aria-label={t(DELETE_KEY)}>
+          <span className={styles.confirmDeleteMessageClass}>
+            {manage.confirmThoughtCount > 0
+              ? t('structure.subPointDeleteConfirm', { defaultValue: '{{count}} thought(s) will be ungrouped', count: manage.confirmThoughtCount })
+              : t('structure.subPointDeleteTextConfirm')}
+          </span>
+          <div className={styles.confirmDeleteRowClass}>
+            <button type="button" onClick={manage.confirmDelete} className={styles.confirmDeleteBtnClass}>{t(DELETE_KEY)}</button>
+            <button type="button" onClick={manage.cancelDelete} className={styles.confirmDeleteCancelBtnClass} aria-label={t(CANCEL_KEY)}><XMarkIcon className={LANE_ICON} /></button>
+          </div>
+        </div>
+      )}
       {showNotes && (
         <div className="mt-1 pl-4 pr-1">
-          <PointNote
-            note={subPoint.note}
-            onChange={(note) => onEditNote?.(note)}
-            captureSave={captureNoteEdit && (() => captureNoteEdit({ kind: 'subpoint', id: subPoint.id }, subPoint.note))}
-            isReadOnly={isReadOnly}
-            addRevealClass="opacity-100"
-          />
+          <NodeSketches node={{ kind: 'subpoint', id: subPoint.id }} isReadOnly={isReadOnly} addRevealClass="opacity-100"
+            outlineNote={{ text: subPoint.note, onChange: (note) => onEditNote?.(note),
+              captureSave: captureNoteEdit && (() => captureNoteEdit({ kind: 'subpoint', id: subPoint.id }, subPoint.note)) }} />
         </div>
       )}
       <div
@@ -219,12 +267,23 @@ export const PointThoughtLane: React.FC<{
   showNotes?: boolean;
   isPointLocked?: boolean;
   onSetSubPointNote?: (outlinePointId: string, subPointId: string, note?: string) => void;
+  onAddSubPoint?: SubPointActionHandlers['onAdd'];
+  onEditSubPoint?: SubPointActionHandlers['onEdit'];
+  onDeleteSubPoint?: SubPointActionHandlers['onDelete'];
+  getAffectedThoughtCount?: (subPointId: string) => number;
   t: Translate;
 }> = ({
   setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems,
-  renderItem, activeId, renderSubPointRecorder, showNotes = false, isPointLocked = false, onSetSubPointNote, t
+  renderItem, activeId, renderSubPointRecorder, showNotes = false, isPointLocked = false, onSetSubPointNote,
+  onAddSubPoint, onEditSubPoint, onDeleteSubPoint, getAffectedThoughtCount, t
 }) => {
   const hasSubPoints = subPoints.length > 0;
+  const canManage = Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint);
+  const manage = useSubPointActions({
+    subPoints, outlinePointId, isPointLocked,
+    onAdd: onAddSubPoint ?? noop, onEdit: onEditSubPoint ?? noop, onDelete: onDeleteSubPoint ?? noop, getAffectedThoughtCount,
+  }, canManage);
+  const styles = getSubPointStyles(false);
 
   // Interleave items and sub-point headers sorted by position
   const renderOrder = buildSubPointRenderableEntries(pointItems, subPoints);
@@ -281,6 +340,7 @@ export const PointThoughtLane: React.FC<{
                     showNotes={showNotes}
                     isReadOnly={isPointLocked}
                     onEditNote={(note) => onSetSubPointNote?.(outlinePointId, sp.id, note)}
+                    manage={canManage ? manage : undefined}
                   />
                   {gapSlot}
                 </React.Fragment>
@@ -290,6 +350,27 @@ export const PointThoughtLane: React.FC<{
             {/* Minimal spacer at bottom for collision detection */}
           </div>
         </SortableContext>
+      )}
+      {/* A sub-point is added the way a point is: a button under the last one, then a field. */}
+      {canManage && !isPointLocked && (
+        <div className="mt-3">
+          {manage.isAdding ? (
+            <div className="flex items-center gap-1 pl-1.5">
+              <span className="h-1 w-1 flex-shrink-0 rounded-full bg-blue-300 dark:bg-blue-500" />
+              <input ref={manage.addInputRef} type="text" value={manage.addText}
+                onChange={(event) => manage.setAddText(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') manage.handleAdd(); if (event.key === 'Escape') manage.cancelAdd(); }}
+                placeholder={t('structure.subPointPlaceholder', { defaultValue: 'Sub-point name...' })} className={styles.inputClass} />
+              <button type="button" onClick={manage.handleAdd} className={styles.saveBtnClass} aria-label={t(SAVE_KEY)}><CheckIcon className={LANE_ICON} /></button>
+              <button type="button" onClick={manage.cancelAdd} className={styles.cancelBtnClass} aria-label={t(CANCEL_KEY)}><XMarkIcon className={LANE_ICON} /></button>
+            </div>
+          ) : (
+            <button type="button" onClick={manage.startAdding} className={styles.addButtonClass}>
+              <PlusIcon className="mr-0.5 h-3.5 w-3.5" />
+              <span>{t('structure.addSubPoint', { defaultValue: 'Add sub-point' })}</span>
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
+import { readOutlineNoteText, withOutlineNoteText, type OutlineNoteTarget } from '@/utils/sermonNoteText';
 import { sortSubPointsByPosition } from '@/utils/subPoints';
 
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from '@/models/models';
@@ -79,10 +80,149 @@ export function sameScratchPlace(a: ScratchPlace, b: ScratchPlace): boolean {
   return a.section === b.section && a.pointId === b.pointId && a.subPointId === b.subPointId;
 }
 
-/** Every note in its place, in the sermon's note order; points and sub-points in outline order. */
-export function sortScratch(notes: readonly ScratchNote[], outline: SermonOutline | undefined): SortedScratch {
+/* ------------------------------------------------------ the old one-line reminder */
+
+/**
+ * A point or a sub-point used to keep ONE reminder, `note`: a second reminder was glued onto the first.
+ * The owner's decision (2026-11-19): a reminder and a scratch note filed there are one thing — pieces,
+ * several to a node. Nothing rewrites the old field in bulk (an old app version on another device may
+ * still write it, so it must be read anyway): every reader sees it as one more note of its node, the
+ * first one, under a fixed id. Editing and clearing it keep its own guarded path; moving it on the board
+ * turns it into an ordinary note (`useScratchDataDocument`).
+ */
+const OUTLINE_NOTE_ID = 'outline-note:';
+export const outlineNoteSketchId = (target: OutlineNoteTarget) => `${OUTLINE_NOTE_ID}${target.kind}:${target.id}`;
+
+/** The point or sub-point whose old reminder this note id stands for; null for an ordinary note. */
+export function outlineNoteTargetOf(id: string): OutlineNoteTarget | null {
+  if (!id.startsWith(OUTLINE_NOTE_ID)) return null;
+  const rest = id.slice(OUTLINE_NOTE_ID.length);
+  const colon = rest.indexOf(':');
+  const kind = rest.slice(0, colon);
+  const nodeId = rest.slice(colon + 1);
+  return colon > 0 && nodeId && (kind === 'point' || kind === 'subpoint') ? { kind, id: nodeId } : null;
+}
+
+/** Each non-empty old reminder as a note of its point or sub-point, in outline order. */
+export function outlineNoteSketches(outline: SermonOutline | undefined): ScratchNote[] {
+  const sketches: ScratchNote[] = [];
+  for (const section of SECTION_KEYS) {
+    for (const point of outline?.[section] ?? []) {
+      if (point.note?.trim()) {
+        sketches.push({ id: outlineNoteSketchId({ kind: 'point', id: point.id }), text: point.note, createdAt: '', section, outlinePointId: point.id });
+      }
+      for (const subPoint of sortSubPointsByPosition(point.subPoints ?? [])) {
+        if (!subPoint.note?.trim()) continue;
+        sketches.push({ id: outlineNoteSketchId({ kind: 'subpoint', id: subPoint.id }), text: subPoint.note, createdAt: '', section,
+          outlinePointId: point.id, subPointId: subPoint.id });
+      }
+    }
+  }
+  return sketches;
+}
+
+/** A short stable hash of words, the same on every device. */
+function wordsHash(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  return hash.toString(36);
+}
+
+/**
+ * The id an old reminder gets when it becomes an ordinary note: made from its node and its words, so two
+ * devices turning the same reminder into a note write the same row instead of two (one person, devices
+ * one after another, but an offline device catches up later); different words make a different note.
+ */
+export const materializedNoteId = (target: OutlineNoteTarget, text: string) => `from-outline:${target.kind}:${target.id}:${wordsHash(text.trim())}`;
+
+/**
+ * When an old reminder was written is not known; its note gets one fixed time, the same on every device,
+ * so two devices writing the same converted note write the same row (a different time would conflict).
+ */
+export const OLD_REMINDER_CREATED_AT = '1970-01-01T00:00:00.000Z';
+
+/**
+ * Turn old one-line reminders (`outline-note:` ids) into ordinary notes of the same node: the words move
+ * into a note in front of the list (they were shown first) under `materializedNoteId`, and the node's
+ * `note` is cleared. A reminder already gone or emptied is skipped; a note with that id already present
+ * (another device did it first) is not added twice. Returns the ids the reminders now have.
+ */
+export function materializeOutlineNotes(outline: SermonOutline | undefined, notes: readonly ScratchNote[],
+  sketchIds: readonly string[]): { outline: SermonOutline; notes: ScratchNote[]; ids: Map<string, string> } {
+  let nextOutline = outlineOrEmpty(outline);
+  const made: ScratchNote[] = [];
+  const ids = new Map<string, string>();
+  for (const sketchId of new Set(sketchIds)) {
+    const target = outlineNoteTargetOf(sketchId);
+    const text = target ? readOutlineNoteText(nextOutline, target)?.text : undefined;
+    const place = target ? placeOfNode(nextOutline, target) : null;
+    if (!target || !text?.trim() || !place) continue;
+    const cleared = withOutlineNoteText(nextOutline, target, undefined);
+    if (!cleared) continue;
+    nextOutline = cleared;
+    const id = materializedNoteId(target, text);
+    ids.set(sketchId, id);
+    if (!notes.some((note) => note.id === id) && !made.some((note) => note.id === id)) made.push(scratchNoteAt(place, { id, text, createdAt: OLD_REMINDER_CREATED_AT }));
+  }
+  return { outline: nextOutline, notes: [...made, ...notes], ids };
+}
+
+/**
+ * Scratch notes follow their nodes through an outline change, the way thoughts do (`replaceSermonOutline`
+ * calls this). Read against the outline as it was, each filed note keeps its node: a moved point takes its
+ * notes to its new part, a re-parented sub-point to its new point, a point nested under another becomes that
+ * point's sub-point and a promoted sub-point a point — the notes with them. A removed sub-point leaves its
+ * notes on its point; a removed point leaves them in the part it stood in. A removed node's old one-line
+ * reminder becomes a note at that same place, so no words are lost with the node.
+ */
+export function scratchAfterOutlineChange(notes: readonly ScratchNote[], before: SermonOutline | undefined,
+  after: SermonOutline | undefined): ScratchNote[] {
+  const was = indexOutline(before);
+  const now = indexOutline(after);
+  /** Where a node of the old outline is now, or where its notes go when it is gone. */
+  const follow = (place: ScratchPlace): ScratchPlace => {
+    if (!place.section || !place.pointId) return place;
+    const nodeId = place.subPointId ?? place.pointId;
+    const parent = now.subPointParent.get(nodeId);
+    if (parent) return { section: now.pointSection.get(parent) ?? place.section, pointId: parent, subPointId: nodeId };
+    const asPoint = now.pointSection.get(nodeId);
+    if (asPoint) return { section: asPoint, pointId: nodeId, subPointId: null };
+    // The node is gone: a sub-point's notes go to its point (wherever it is now), a point's stay in its part.
+    if (place.subPointId) return follow({ section: place.section, pointId: place.pointId, subPointId: null });
+    return { section: place.section, pointId: null, subPointId: null };
+  };
+  const moved = notes.map((note) => {
+    const shown = resolve(note, was);
+    if (!shown.pointId) return note;
+    const next = follow(shown);
+    // Compared with what is stored, not with how it reads: a dangling id to a removed node must go too.
+    if ((note.section ?? null) === next.section && (note.outlinePointId ?? null) === next.pointId
+      && (note.subPointId ?? null) === next.subPointId) return note;
+    const { section: _section, outlinePointId: _point, subPointId: _sub, ...rest } = note;
+    return scratchNoteAt(next, rest);
+  });
+  const kept: ScratchNote[] = [];
+  for (const sketch of outlineNoteSketches(before)) {
+    const target = outlineNoteTargetOf(sketch.id)!;
+    if (now.pointSection.has(target.id) || now.subPointParent.has(target.id)) continue;
+    const id = materializedNoteId(target, sketch.text);
+    if (moved.some((note) => note.id === id) || kept.some((note) => note.id === id)) continue;
+    kept.push(scratchNoteAt(follow(resolve(sketch, was)), { id, text: sketch.text, createdAt: OLD_REMINDER_CREATED_AT }));
+  }
+  // A node back with the same reminder (an undo in the structure editor) takes back its converted copy —
+  // only while the copy still has those very words: a copy the person has since edited is theirs now.
+  const back = new Map(outlineNoteSketches(after).map((sketch) => [materializedNoteId(outlineNoteTargetOf(sketch.id)!, sketch.text), sketch.text.trim()]));
+  return [...kept, ...moved].filter((note) => back.get(note.id) !== note.text.trim());
+}
+
+/**
+ * Every note in its place, in the sermon's note order; points and sub-points in outline order. The old
+ * one-line reminders come first in their node (`outlineNoteSketches`) unless `withOutlineNotes` is false.
+ */
+export function sortScratch(notes: readonly ScratchNote[], outline: SermonOutline | undefined, withOutlineNotes = true): SortedScratch {
   const index = indexOutline(outline);
-  const placed = notes.map((note) => ({ note, place: resolve(note, index) }));
+  const all = withOutlineNotes ? [...outlineNoteSketches(outline), ...notes] : notes;
+  const placed = all.map((note) => ({ note, place: resolve(note, index) }));
   const pool = placed.filter(({ place }) => !place.section).map(({ note }) => note);
   const sections = Object.fromEntries(SECTION_KEYS.map((section) => {
     const inSection = placed.filter(({ place }) => place.section === section);
@@ -124,6 +264,21 @@ export function placeScratchNotes(notes: readonly ScratchNote[], ids: readonly s
   return at < 0 ? [...rest, ...moved] : [...rest.slice(0, at), ...moved, ...rest.slice(at)];
 }
 
+/**
+ * Each outline node's own notes — a point's (without its sub-points') and each sub-point's — for the screens
+ * that only show where the notes were filed (the structure page, the structure editor).
+ */
+export function scratchByOutlineNode(notes: readonly ScratchNote[], outline: SermonOutline | undefined): Map<string, ScratchNote[]> {
+  const byNode = new Map<string, ScratchNote[]>();
+  // The old one-line reminders are drawn by each node from its own live value, not from this map.
+  const sorted = sortScratch(notes, outline, false);
+  SECTION_KEYS.forEach((section) => sorted.sections[section].points.forEach(({ point, notes: onPoint, subPoints }) => {
+    if (onPoint.length) byNode.set(point.id, onPoint);
+    subPoints.forEach(({ subPoint, notes: onSub }) => { if (onSub.length) byNode.set(subPoint.id, onSub); });
+  }));
+  return byNode;
+}
+
 export function outlineOrEmpty(outline: SermonOutline | undefined): SermonOutline {
   return {
     introduction: outline?.introduction ?? EMPTY_OUTLINE.introduction,
@@ -151,10 +306,19 @@ export function outlineWithSubPoint(outline: SermonOutline | undefined, pointId:
 }
 
 /** The outline without one point; its notes keep their part (see `scratchPlaceOf`). */
-/** The part a point stands in right now, or undefined when the outline no longer has it. */
-export function sectionOfPoint(outline: SermonOutline | undefined, pointId: string): SectionKey | undefined {
-  const current = outlineOrEmpty(outline);
-  return (['introduction', 'main', 'conclusion'] as const).find((section) => current[section].some((point) => point.id === pointId));
+/** Where a note added on a point or a sub-point is filed: the node's part, point and sub-point; null when it is gone. */
+export function placeOfNode(outline: SermonOutline | undefined, target: OutlineNoteTarget): ScratchPlace | null {
+  const index = indexOutline(outline);
+  const pointId = target.kind === 'point' ? target.id : index.subPointParent.get(target.id);
+  const section = pointId ? index.pointSection.get(pointId) : undefined;
+  if (!pointId || !section) return null;
+  return { section, pointId, subPointId: target.kind === 'subpoint' ? target.id : null };
+}
+
+/** A new note filed on a place; the place fields only, the way `placeScratchNotes` writes them. */
+export function scratchNoteAt(place: ScratchPlace, note: Omit<ScratchNote, 'section' | 'outlinePointId' | 'subPointId'>): ScratchNote {
+  return { ...note, ...(place.section ? { section: place.section } : {}), ...(place.section && place.pointId ? { outlinePointId: place.pointId } : {}),
+    ...(place.section && place.pointId && place.subPointId ? { subPointId: place.subPointId } : {}) };
 }
 
 export function outlineWithoutPoint(outline: SermonOutline | undefined, pointId: string): SermonOutline {
@@ -163,7 +327,7 @@ export function outlineWithoutPoint(outline: SermonOutline | undefined, pointId:
   return { introduction: current.introduction.filter(keep), main: current.main.filter(keep), conclusion: current.conclusion.filter(keep) };
 }
 
-/** The outline without one sub-point; its notes stay on the point (see `releaseScratchFromSubPoint`). */
+/** The outline without one sub-point; its notes stay on the point (`scratchAfterOutlineChange`, run by `replaceSermonOutline`). */
 export function outlineWithoutSubPoint(outline: SermonOutline | undefined, subPointId: string): SermonOutline {
   const current = outlineOrEmpty(outline);
   const drop = (point: OutlinePoint): OutlinePoint => point.subPoints?.some((sub) => sub.id === subPointId)
@@ -171,24 +335,3 @@ export function outlineWithoutSubPoint(outline: SermonOutline | undefined, subPo
   return { introduction: current.introduction.map(drop), main: current.main.map(drop), conclusion: current.conclusion.map(drop) };
 }
 
-/** Notes on a removed sub-point stay on its point. */
-export function releaseScratchFromSubPoint(notes: readonly ScratchNote[], subPointId: string): ScratchNote[] {
-  return notes.map((note) => {
-    if (note.subPointId !== subPointId) return note;
-    const next: ScratchNote = { ...note };
-    delete next.subPointId;
-    return next;
-  });
-}
-
-/** Notes on a removed point lose the point but stay in its part. */
-export function releaseScratchFromPoint(notes: readonly ScratchNote[], pointId: string, section: SectionKey | undefined): ScratchNote[] {
-  return notes.map((note) => {
-    if (note.outlinePointId !== pointId) return note;
-    // The point's part as the outline has it now; a point already gone leaves each note its own part.
-    const next: ScratchNote = section ? { ...note, section } : { ...note };
-    delete next.outlinePointId;
-    delete next.subPointId;
-    return next;
-  });
-}
