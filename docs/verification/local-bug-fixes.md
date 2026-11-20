@@ -10068,3 +10068,12 @@ Groups → a group → select a step in Group Flow. An old queued rename could o
 Four server regressions failed before the change. Engine and group Jest passed 4,349 tests in 187 suites with 15 skipped. Targeted verification on the final code passed 1,280 tests. TypeScript, scoped ESLint with zero errors, and independent source review passed. Four hidden Chrome sessions verified both choices and the two chronology directions for content bundled with a disputed title. Both local emulators were isolated. The visual evidence, logs and environment cleanup are in `artifacts/action-chronology-356/group-flow-titles-20261120/verification.md` in the local case.
 
 After authorized deployment, use a disposable group with two steps. In two brief QA sessions, rename a block or step offline, change and restore the same name in the other session, and independently change the words. Reconnect the first session and compare titles if needed. Reopen Group Flow to check the title, words and neighboring step. Close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Preserve returned council section titles
+
+Heart matters → Brothers’ council → a council → edit a section. A legacy rename could replace a title restored on another device. If the title had a proved order and the explanation needed a choice, the old response could omit the established title. The server now keeps opening evidence for the title and makes the proved result available during the neighboring choice. A winning queued title keeps its original observed revision and action interval.
+
+Three server cases failed before the fixes. Final engine and council Jest passed 4,221 tests in 178 suites with 15 skipped. Two mounted editor scenarios verified both orders of the title during an explanation choice. TypeScript, scoped ESLint with zero errors and independent source review passed. Five hidden Chrome scenarios in local Auth and Firestore verified both buttons, both directions of the mixed save and the result after reload. Evidence is in `artifacts/action-chronology-356/council-section-title-20261120/verification.md` in the local case.
+
+After authorized deployment, use a disposable council and two short QA sessions. Rename a section offline, then change and return its title in the other session. Save a different explanation. Reconnect and verify the proved title or compare the two titles. When only the explanation is disputed, select it and verify the title and independent section after reload. Close both sessions.

@@ -45,7 +45,7 @@ import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeField
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { readServiceOrderTitleConflict } from './rowConflictDetails';
-import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedGroupFlowTextProofs } from './rowFieldAutosave';
+import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -1012,7 +1012,7 @@ export class EditorController {
             for (const { path, time } of kept) session.stageReviewedCouncilText(path, time ?? null);
           } else {
             const queued = group!.settled.flatMap(({ field, side }) => side === 'mine' ? [field] : []);
-            session.retainUnreviewedAutosaveActions(withQueuedGroupFlowTextProofs(keptTail ? source : decided, queued), review.fields);
+            session.retainUnreviewedAutosaveActions(withQueuedRowFieldProofs(keptTail ? source : decided, queued), review.fields);
             for (const { path, time } of kept) {
               if (equalValues(path, ['description'])) session.stageReviewedGroupDescription(time ?? null);
               else session.stageReviewedGroupFlowText([path], time ?? null);

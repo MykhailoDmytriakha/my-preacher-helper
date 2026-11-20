@@ -1,7 +1,7 @@
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from '../groupFlowTitleAction';
 import { groupTextDecision, projectGroupTextDecisions, readGroupTextReview } from '../groupTextReview';
 import { readGroupFlowFieldConflict } from '../rowConflictDetails';
-import { withQueuedGroupFlowTextProofs } from '../rowFieldAutosave';
+import { withQueuedRowFieldProofs } from '../rowFieldAutosave';
 import { DataSession, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from '../session';
 
 import type { ResourceSnapshot } from '../types';
@@ -83,7 +83,7 @@ describe('group flow title comparison', () => {
     expect(projectGroupTextDecisions(pendingReview, [decision])?.templates).toMatchObject([{ title: template.title, content }]);
 
     const queued = pendingReview.settled.flatMap(item => item.side === 'mine' ? [item.field] : []);
-    const evidence = withQueuedGroupFlowTextProofs(checkpoint, queued);
+    const evidence = withQueuedRowFieldProofs(checkpoint, queued);
     expect(evidence.groupBlockContentDrafts?.[template.id]?.action).toEqual(code === GROUP_FLOW_TEXT_QUEUED ? contentAction : undefined);
   });
 

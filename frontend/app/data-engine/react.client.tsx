@@ -27,6 +27,7 @@ import { readCouncilSummaryChoice as councilSummaryChoice, readPrivateCouncilCom
 import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
 import { councilTopicTextConflict, councilTopicTextId as topicTextId, replaceCouncilTopicText as replaceTopicText } from './councilTopicTextAction';
 import { readCouncilTopicTextComparison as councilTopicTextComparison } from './councilTopicTextReview';
+import { councilTopicTitleRow } from './councilTopicTitleAction';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
@@ -1477,7 +1478,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || readGroupTextReview(compared)
-        || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path)))
+        || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time, titles));

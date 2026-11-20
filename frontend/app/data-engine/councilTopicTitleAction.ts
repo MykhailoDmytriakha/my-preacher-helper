@@ -20,7 +20,8 @@ export const COUNCIL_TOPIC_ID: RowFieldTarget<string> = { field: 'topics', leaf:
 export const COUNCIL_TOPIC_TITLE_POLICY: RowDetailPolicy<'title', string> = {
   collection: 'councils', fields: ['title'], birth: COUNCIL_TOPIC_ID, target: () => COUNCIL_TOPIC_TITLE,
   proofs: 'councilTopicTitleProofs', actions: 'councilTopicTitleActions', history: '_topicTitleHistory',
-  repeatedFields: ['title'], allowUnclocked: true,
+  repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
+  rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
 
 export function councilTopicTitleRow(path: readonly string[] | undefined): string | undefined {

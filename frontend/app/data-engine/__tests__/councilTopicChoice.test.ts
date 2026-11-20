@@ -538,6 +538,44 @@ describe('council nested text choices through the durable editor', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each([
+    { code: COUNCIL_TOPIC_TEXT_SETTLED, chooseLocal: true, expectedTitle: 'Section' },
+    { code: COUNCIL_TOPIC_TEXT_QUEUED, chooseLocal: false, expectedTitle: 'Local section' },
+  ])('keeps the decided section title through a summary choice: $code', async ({ code, chooseLocal, expectedTitle }) => {
+    const { h, engine, editor } = await open();
+    try {
+      const titleTime = at(35);
+      const first = editor.getState().checkpoint;
+      await editor.edit({ ...first.draft!, topics: [{ ...opening, title: 'Local section' }] }, first,
+        { field: 'council-topic-title', rowId: opening.id, time: titleTime });
+      const second = editor.getState().checkpoint;
+      await editor.edit({ ...second.draft!, topics: [{ ...opening, title: 'Local section', summary: 'Local summary' }] }, second,
+        { field: 'council-topic-summary', rowId: opening.id, time: null });
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, summary: 'Saved summary' }] });
+      delay(h, [
+        { path: ['topics', 'id:topic', 'title'], code, base: rowConflictValue(opening.title),
+          mine: rowConflictValue('Local section'), theirs: rowConflictValue(opening.title) },
+        { path: ['topics', 'id:topic', 'summary'], base: rowConflictValue(opening.summary),
+          mine: rowConflictValue('Local summary'), theirs: rowConflictValue('Saved summary') },
+      ]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'summary', mine: 'Local summary', stored: 'Saved summary',
+      }));
+      const compared = editor.getState().checkpoint;
+      if (chooseLocal) await editor.keepLocal(undefined, compared, at(80));
+      else await editor.acceptRemote(undefined, compared);
+      await waitFor(() => expect(h.server.value?.topics).toMatchObject([{
+        title: expectedTitle, summary: chooseLocal ? 'Local summary' : 'Saved summary', questions: opening.questions, options: opening.options,
+      }]));
+      const last = jest.mocked(h.transport.send).mock.calls.at(-1)?.[0];
+      expect(last?.kind === 'update' && last.councilTopicTitleActions).toEqual(chooseLocal ? undefined : [{
+        rowId: opening.id, rowCreatedAt: opening.id, before: opening.title, after: 'Local section', observedRevision: 1, time: titleTime,
+      }]);
+    } finally { engine.dispose(); }
+  });
+
   it('leaves a saved question in place while the council title is reviewed', async () => {
     const { h, engine, editor, editField } = await open();
     try {

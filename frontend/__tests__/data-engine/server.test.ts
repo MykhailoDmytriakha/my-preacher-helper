@@ -4121,6 +4121,73 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'legacy', time: undefined },
+    { label: 'without an action clock', time: null },
+  ])('retains the returned council section title for a delayed rename $label', async ({ time }) => {
+    const resource = { collection: 'councils', id: 'topic-title-return' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const section = { id: 'opening', title: 'Opening title', summary: 'Opening explanation', questions: [], options: [] };
+    const other = { ...section, id: 'closing', title: 'Closing section' };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [section, other] },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: typeof section, after: typeof section, observedRevision: number, clock?: null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: [before, other] }, after: { exists: true, value: [after, other] } }],
+      ...(clock !== undefined && { councilTopicTitleActions: [{ rowId: section.id, rowCreatedAt: section.id,
+        before: before.title, after: after.title, observedRevision, time: clock }] }),
+    });
+    const temporary = { ...section, title: 'Temporary title' };
+    const restored = { ...section, summary: 'Independent later explanation' };
+    expect(await processCommand(base.owner, rename('change', section, temporary, 1, null))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('return', temporary, restored, 2, null))).toMatchObject({ kind: 'acknowledged' });
+    const delayed = rename('delayed', section, { ...section, title: 'Phone title' }, 1, time);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { topics: [restored, other] } },
+      conflicts: [{ path: ['topics', 'id:opening', 'title'], mine: { value: 'Phone title' }, theirs: { value: section.title } }],
+    });
+    expect(await processCommand(base.owner, delayed)).toEqual(result);
+    const currentRevision = result.kind === 'conflict' ? result.snapshot.metadata!.revision : 0;
+    const chosen = { ...restored, title: 'Phone title' };
+    expect(await processCommand(base.owner, rename('choice', restored, chosen, currentRevision, null)))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: [chosen, other] } } });
+  });
+
+  it.each([
+    { at: 20, expected: 'council-topic-text-settled' },
+    { at: 80, expected: 'council-topic-text-queued' },
+  ])('reports a proved council title separately when summary still needs a choice at $at', async ({ at, expected }) => {
+    const resource = { collection: 'councils', id: 'topic-title-and-summary' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const section = { id: 'opening', title: 'Opening title', summary: 'Opening words', questions: [], options: [] };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [section] },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const edit = (operationId: string, before: typeof section, after: typeof section, observedRevision: number, offset: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+      councilTopicTitleActions: [{ rowId: section.id, rowCreatedAt: section.id, before: before.title, after: after.title,
+        observedRevision, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } }],
+    });
+    const temporary = { ...section, title: 'Temporary title', summary: 'Desktop words' };
+    const restored = { ...temporary, title: section.title };
+    expect(await processCommand(base.owner, edit('desktop', section, temporary, 1, 40))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, edit('restore', temporary, restored, 2, 60))).toMatchObject({ kind: 'acknowledged' });
+    const delayed = edit('phone', section, { ...section, title: 'Phone title', summary: 'Phone words' }, 1, at);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { topics: [restored] } } });
+    expect(result.kind === 'conflict' ? result.conflicts : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['topics', 'id:opening', 'summary'] }),
+      expect.objectContaining({ path: ['topics', 'id:opening', 'title'], code: expected,
+        mine: { exists: true, value: 'Phone title' }, theirs: { exists: true, value: section.title } }),
+    ]));
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/topic-title-and-summary/_topicTitleHistory/'));
+    expect(history).toHaveLength(at < 60 ? 1 : 0);
+  });
+
+  it.each([
     { label: 'phone first', at: 15, winner: 'filled', kind: 'acknowledged' },
     { label: 'phone last', at: 100, winner: 'empty', kind: 'acknowledged' },
     { label: 'unknown order', at: null, winner: 'filled', kind: 'conflict' },

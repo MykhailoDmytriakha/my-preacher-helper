@@ -258,20 +258,19 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
   if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
 }
 
-export function withQueuedGroupFlowTextProofs(source: SessionCheckpoint,
-  fields: readonly { path: string[]; birth: string; before: Value; mine: Value }[]): SessionCheckpoint {
-  const metadata = source.confirmed.metadata;
-  if (!fields.length || source.confirmed.resource.collection !== 'groups'
-    || !metadata || metadata.generation !== source.remoteCandidate?.metadata?.generation) return source;
+export function withQueuedRowFieldProofs(source: SessionCheckpoint,
+  fields: readonly { path: string[]; birth: string; before?: Value; mine: Value }[]): SessionCheckpoint {
+  const { resource, metadata } = source.confirmed;
+  if (!fields.length || !metadata || metadata.generation !== source.remoteCandidate?.metadata?.generation) return source;
   const retained = { ...source };
-  for (const target of targetsFor('groups')) {
+  for (const target of targetsFor(resource.collection)) {
     const field = target.policy.target(target.field);
     for (const queued of fields) {
       const rowId = rowConflictId(queued.path, field);
       if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId)) continue;
       const action = Object.values(source.pending).flatMap(request => request[target.action] ?? []).find(item =>
-        item.rowId === rowId && item.rowCreatedAt === queued.birth && equalValues(item.before, queued.before)
-        && equalValues(item.after, queued.mine) && item.time !== null);
+        item.rowId === rowId && item.rowCreatedAt === queued.birth && (queued.before === undefined || equalValues(item.before, queued.before))
+        && equalValues(item.after, queued.mine) && item.time != null);
       if (!action || equalValues(retained[target.draft]?.[rowId]?.action.after, queued.mine)) continue;
       retained[target.draft] = { ...retained[target.draft], [rowId]: { generation: metadata.generation, action } };
     }

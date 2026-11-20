@@ -10,6 +10,7 @@ import { COUNCIL_TOPIC_ID, COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE, co
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, existingRowFields, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { withQueuedRowFieldProofs } from './rowFieldAutosave';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -89,7 +90,7 @@ export function councilTopicTextVersions(path: string[], opening: DocumentData, 
   const removedTopic = stored === undefined && councilTopicMissing(accepted.topics, field.topicId);
   const removed = removedTopic || (stored === undefined && councilTopicTextItemMissing(accepted.topics, id));
   if (!removed && (existingRowField(accepted.topics, id, birthTarget) !== birth || stored === undefined)) return undefined;
-  return { ...field, scope: 'row' as const, path, birth, mine, stored: stored ?? null,
+  return { ...field, scope: 'row' as const, path, birth, before: read(opening), mine, stored: stored ?? null,
     ...(removed && { removed: true as const }), ...(removedTopic && { removedTopic: true as const }) };
 }
 
@@ -144,7 +145,8 @@ export function readCouncilTopicTextReview(checkpoint: SessionCheckpoint) {
   if (confirmed.resource.collection !== 'councils' || !opening || !draft || !stored
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate?.metadata?.generation
     || !requestId || groupTextReview?.separateDraft || (groupTextReview && requestId !== groupTextReview.requestId)
-    || !conflicts.some(({ path }) => councilTopicTextConflict(path) || isNestedItemPath(path))) return undefined;
+    || !conflicts.some(({ path, code }) => councilTopicTextConflict(path) || councilTopicTitleRow(path) || isNestedItemPath(path)
+      || code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED)) return undefined;
 
   const settled = new Map<string, { field: ComparedField; side: 'mine' | 'stored' }>();
   let proposed = writeField(writeField(draft, ['rev'], readField(opening, ['rev'])), ['updatedAt'], readField(opening, ['updatedAt']));
@@ -152,8 +154,9 @@ export function readCouncilTopicTextReview(checkpoint: SessionCheckpoint) {
     const side = conflict.code === COUNCIL_TOPIC_TEXT_SETTLED ? 'stored' : conflict.code === COUNCIL_TOPIC_TEXT_QUEUED ? 'mine' : undefined;
     if (!side) continue;
     const field = councilTopicTextVersions(conflict.path, opening, draft, stored);
+    const header = field?.scope === 'row' && (field.field === 'summary' || field.field === 'topic-title');
     if (!field || field.removed || !equalValues(conflict.mine, rowConflictValue(field.mine))
-      || !equalValues(conflict.theirs, rowConflictValue(field.stored))) continue;
+      || (!header && !equalValues(conflict.theirs, rowConflictValue(field.stored)))) continue;
     settled.set(JSON.stringify(conflict.path), { field, side });
     if (side === 'stored') {
       const selected = projectCouncilTopicText(proposed, field, side);
@@ -268,14 +271,8 @@ export function reviewedCouncilDetailAction(review: NonNullable<ReturnType<typeo
 
 /** A known incoming winner keeps its original proof when a different field held its packet. */
 export function withQueuedCouncilTopicTextProofs(source: SessionCheckpoint, review: NonNullable<ReturnType<typeof readCouncilTopicTextReview>>): SessionCheckpoint {
-  const generation = source.confirmed.metadata?.generation;
-  if (!generation || generation !== source.remoteCandidate?.metadata?.generation) return source;
-  const sent = Object.values(source.pending).flatMap(request => request.councilTopicTextActions ?? []);
-  const staged = { ...source.councilTopicTextDrafts };
-  for (const { field, side } of review.settled) {
-    if (side !== 'mine' || field.scope !== 'row') continue;
-    const action = sent.find(item => item.rowId === field.id && item.rowCreatedAt === field.birth && item.after === field.mine && item.time);
-    if (action && staged[action.rowId]?.action.after !== field.mine) staged[action.rowId] = { generation, action };
-  }
-  return { ...source, councilTopicTextDrafts: staged };
+  const queued = review.settled.flatMap(({ field, side }) => side === 'mine' && field.scope === 'row'
+    ? [{ path: field.path, birth: field.birth, before: field.field === 'summary' || field.field === 'topic-title' ? field.before : undefined,
+      mine: field.mine }] : []);
+  return withQueuedRowFieldProofs(source, queued);
 }

@@ -26,7 +26,7 @@ import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind
 import { COUNCIL_TOPIC_PLACEMENT_HISTORY, metadataAfterCouncilTopicPlacement } from './councilTopicPlacement.server';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED, councilTopicTextConflict } from './councilTopicTextAction';
 import { boundCouncilTopicTextMetadata, councilTopicTextOrderPolicy, orderCouncilTopicText, settledCouncilTopicDetails } from './councilTopicTextOrder.server';
-import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
+import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleRow, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode } from './documentFieldAction';
@@ -276,7 +276,7 @@ const comparesAuthoredList = (conflicts: readonly ConflictDetail[]) =>
 function preservesExactConflict(result: ExactConflict, command: DataCommand): boolean {
   return comparesAuthoredList(result.conflicts)
     || (command.resource.collection === 'sermons' && result.conflicts.some(({ path }) => preachDateNoteConflictId(path) !== undefined))
-    || (command.resource.collection === 'councils' && result.conflicts.some(({ path }) => councilTopicTextConflict(path) !== undefined))
+    || (command.resource.collection === 'councils' && result.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
     || (command.resource.collection === 'groups' && result.conflicts.some(({ code }) => isOrderedGroupFlowText(code)))
     || (command.kind === 'update' && command.resource.collection === 'studyNotes'
       && isOrdinaryReferenceDocument(result.snapshot.value) && command.changes.some(change => equalValues(change.path, studyNoteReferencesPath)));
@@ -1184,7 +1184,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       serviceStepTitleOrder = orderRowText(serviceFlagOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_TITLE_POLICY);
       serviceStepScriptureOrder = orderServiceStepScripture(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved);
       serviceStepBodyOrder = orderRowText(serviceStepScriptureOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_BODY_POLICY);
-      councilTopicTitleOrder = orderRowDetails(serviceStepBodyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
+      councilTopicTitleOrder = orderRowText(serviceStepBodyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
       councilTopicSummaryOrder = orderRowText(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_SUMMARY_POLICY);
       councilTopicTextOrder = orderCouncilTopicText(councilTopicSummaryOrder.command, current, raw?._dataEngine, serverMs);
       councilAssemblyOrder = orderRowDetails(councilTopicTextOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
@@ -1242,12 +1242,15 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         plans.flatMap(plan => plan.stamp ? [JSON.stringify(rowConflictPath(plan.stamp.rowId, preachDateFieldTarget(field)))] : [])));
       uncertain.push(...analysisFrameOrder.conflicts,
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine, orderedPreachingPaths));
-      const nestedCouncilReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
+      const councilTextReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
+        || councilTopicTitleOrder.uncertain.length || councilTopicTitleOrder.displaced.length
         || (command.resource.collection === 'councils' && planned.result.kind === 'conflict'
-          && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path)));
-      const settledCouncilDetails = nestedCouncilReview
+          && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)));
+      const settledCouncilDetails = councilTextReview
         ? [...settledCouncilTopicDetails(command, current, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder),
-          ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder)] : [];
+          ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder),
+          ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder),
+          ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder)] : [];
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison
         ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled,
@@ -1303,6 +1306,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       if (result.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED)) {
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder);
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
+        persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder);
+        persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder);
       }
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
