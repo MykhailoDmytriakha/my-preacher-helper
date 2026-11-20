@@ -22,7 +22,7 @@ import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pe
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { withQueuedGroupScalarProofs } from './documentFieldAction';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
-import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText, readDocumentTextChoice } from './documentTextChoice';
+import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
@@ -851,12 +851,38 @@ export class EditorController {
     }
   }
 
+  /** An online choice uses the displayed words or stops to show any newly contested field. */
+  private async refreshPrayerChoice(expected: EditorRecord): Promise<EditorRecord> {
+    const { checkpoint } = expected;
+    const review = readDocumentTextChoice(checkpoint);
+    const shown = checkpoint.remoteCandidate;
+    if (!review?.complete || !shown) return expected;
+    this.assertRecoveryChoice(expected);
+    const saved = await this.options.readWriteTarget?.(shown.resource).catch(() => null);
+    this.assertCurrent();
+    this.assertRecoveryChoice(expected);
+    if (!saved || !canReplaceSnapshot(shown, saved) || equalValues(shown, saved)) return expected;
+    this.session.observe(saved, { source: 'server' });
+    const refreshed = this.record();
+    await this.persist();
+    this.assertCurrent();
+    this.assertRecoveryChoice(refreshed);
+    const updated = readDocumentTextChoice(refreshed.checkpoint);
+    if (!updated?.complete || !equalValues(updated.checkpoint.conflicts, review.checkpoint.conflicts)) {
+      throw Object.assign(new Error('The shown prayer text changed'), { code: 'commit-changed' });
+    }
+    return refreshed;
+  }
+
   /** Publish an editor's explicit choice only with its durable checkpoint. */
   private async resolveCommitChoice(choice: 'local' | 'remote', captures: ReadonlySet<object>,
     selection?: readonly ManualPath[], expected?: EditorRecord,
     correction?: { base: DocumentData; value: DocumentData },
     remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
+    if (expected && !selection && !correction && expected.checkpoint.confirmed.resource.collection === 'prayerRequests') {
+      expected = await this.refreshPrayerChoice(expected);
+    }
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
     const shown = this.record();
@@ -956,7 +982,11 @@ export class EditorController {
         source = record.checkpoint;
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
-        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
+        const answered = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
+        const reviewedSeriesDescription = selection && choice === 'remote'
+          && isManualSeriesDescriptionChoice(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection);
+        const documentTextChoice = (!selection || reviewedSeriesDescription) && !correction ? readDocumentTextChoice(answered) : undefined;
+        const decided = documentTextChoice?.checkpoint ?? answered;
         const orderedDateField = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(isOrderedPreachDateField);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
@@ -971,9 +1001,6 @@ export class EditorController {
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
-        const reviewedSeriesDescription = selection && choice === 'remote'
-          && isManualSeriesDescriptionChoice(decided.confirmed, decided.remoteCandidate, decided.conflicts, selection);
-        const documentTextChoice = (!selection || reviewedSeriesDescription) && !correction ? readDocumentTextChoice(decided) : undefined;
         const stepText = !selection && !correction ? readServiceStepTextChoice(decided, local) : undefined;
         const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
         const scriptureRows = scriptureRow ? [scriptureRow]
@@ -1234,7 +1261,7 @@ export class EditorController {
             ? projectFirstGroupMeetingChoice(decided.remoteCandidate.value, meeting, 'remote') : undefined;
           const retainedOutline = projectOutlineParentChoice(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote', titles);
           const retainedDocumentFields = documentTextChoice?.complete && decided.confirmed.value && decided.draft && decided.remoteCandidate?.value
-            ? keepUncontestedDocumentText(decided.confirmed.value, decided.draft, decided.remoteCandidate.value, Object.keys(documentTextChoice.openings))
+            ? keepUncontestedDocumentText(decided.confirmed.value, decided.draft, decided.remoteCandidate.value, documentTextChoice.fields, decided.confirmed.resource.collection)
             : undefined;
           const retainedPreachDate = orderedDateField
             ? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts) : undefined;
@@ -1281,10 +1308,10 @@ export class EditorController {
         }
         if (documentTextChoice && (choice === 'local' || documentTextChoice.complete) && session.checkpoint().dirty) {
           const time = choiceTime ?? null;
+          const original = ordinary?.first ?? retired.find(request => answered.pending[request.id] && request.result?.kind === 'conflict');
           const action = decided.confirmed.resource.collection === 'series'
             ? { kind: 'document-metadata' as const, time: choice === 'local' ? time : null }
-            : choice === 'remote' ? undefined
-              : { kind: 'prayer-text' as const, text: { time, openings: documentTextChoice.openings } };
+            : retryPrayerTextChoice(documentTextChoice, choice, original, session.checkpoint().draft, time);
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }

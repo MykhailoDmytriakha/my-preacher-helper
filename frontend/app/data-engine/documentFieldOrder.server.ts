@@ -13,6 +13,7 @@ import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
+import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 
@@ -69,7 +70,8 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksTitleReturns = (target: DocumentFieldTarget) =>
-  target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction' || target.action === 'groupTitleAction';
+  target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
+    || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction';
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
@@ -338,6 +340,20 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
     return { target, order };
   });
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
+}
+
+export function orderedPrayerText(command: DataCommand, current: ResourceSnapshot,
+  orders: ReturnType<typeof orderDocumentFields>, conflicts: readonly ConflictDetail[]): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'prayerRequests'
+    || !conflicts.some(({ path }) => path.length === 1 && ['title', 'description', 'answerText'].includes(path[0]))) return [];
+  return orders.fields.flatMap(({ target, order }) => {
+    if ((target.action !== 'prayerTextActions' && target.action !== 'prayerTitleAction') || !order.displaced) return [];
+    const change = documentFieldChange(command.changes, target);
+    const stored = documentFieldValue(current.value, target);
+    if (!change || !stored) return [];
+    const code = equalValues(order.displaced.winnerValue, stored) ? PRAYER_TEXT_SETTLED : PRAYER_TEXT_QUEUED;
+    return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
+  });
 }
 
 export function orderedSermonMetadata(command: DataCommand, current: ResourceSnapshot,

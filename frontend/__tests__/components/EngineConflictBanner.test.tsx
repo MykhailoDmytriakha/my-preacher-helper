@@ -90,6 +90,104 @@ it.each([['#54A0FF', '#54A0FF'], ['', 'settings.tagColorHistory.notSet']])(
   }
 });
 
+it.each([
+  { side: 'mine', ordering: 'none' }, { side: 'stored', ordering: 'none' },
+  { side: 'mine', ordering: 'settled' }, { side: 'stored', ordering: 'settled' },
+  { side: 'mine', ordering: 'queued' }, { side: 'stored', ordering: 'queued' },
+  { side: 'mine', ordering: 'return' }, { side: 'stored', ordering: 'return' },
+  { side: 'mine', ordering: 'overlap' }, { side: 'stored', ordering: 'overlap' },
+  { side: 'mine', ordering: 'moved-title' }, { side: 'stored', ordering: 'moved-title' },
+  { side: 'mine', ordering: 'tag' }, { side: 'stored', ordering: 'tag' },
+])('reviews a restored prayer title and keeps a separate description ($side, $ordering)', async ({ side, ordering }) => {
+  process.env[ON_ENGINE] = 'prayerRequests';
+  actions = null;
+  const prayer = { collection: 'prayerRequests', id: 'prayer-title-restore' };
+  const value = { userId: 'owner', title: 'Restored prayer', description: 'Opening description', status: 'active',
+    updates: [{ id: 'answer-1', text: 'Keep this update', createdAt: '2026-11-20T00:00:00.000Z' }] };
+  const localTitle = 'Phone prayer';
+  const newStoredTitle = 'The title changed again';
+  const tag = 'An older tag';
+  const localDescription = 'An independent change to the description';
+  const remoteDescription = 'Description written on the desktop';
+  const serverOrder = ordering === 'settled' || ordering === 'queued';
+  const originalTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+  const h = documentEngineHarness({ resource: prayer, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const field = (words: string) => ({ exists: true, value: words });
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ title: 'Intermediate title', ...(serverOrder && { description: remoteDescription }) });
+    h.silentRemote({ title: value.title });
+    const send = jest.mocked(h.transport.send);
+    const updateTransport = send.getMockImplementation()!;
+    send.mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+      conflicts: [{ path: ['title'], base: field(value.title), mine: field(localTitle), theirs: field(value.title) },
+        ...(serverOrder ? [{ path: ['description'], code: 'prayer-text-' + ordering, base: field(value.description),
+          mine: field(localDescription), theirs: field(remoteDescription) }] : [])],
+    }));
+    // This transport implements plain merges. Reproduce the server's known later description decision.
+    if (ordering === 'queued') send.mockImplementationOnce(command => {
+      if (command.kind !== 'update') throw new Error('Expected the replacement prayer update');
+      expect(command.prayerTextActions?.description).toMatchObject({ observedRevision: 1, time: originalTime });
+      return updateTransport({ ...command, changes: command.changes.map(change => change.path[0] === 'description'
+        ? { ...change, before: field(remoteDescription) } : change) });
+    });
+    const membership = { tag, before: false, after: true, time: originalTime, generation: 'g1', revision: 1 };
+    if (ordering === 'tag') send.mockImplementationOnce(command => {
+      if (command.kind !== 'update') throw new Error('Expected the replacement prayer update');
+      expect(command.tagMembershipActions).toMatchObject([{ tag, before: false, after: true, observedRevision: 1, time: originalTime }]);
+      return updateTransport({ ...command, changes: command.changes.filter(change => change.path[0] !== 'tags') });
+    });
+    await act(async () => {
+      await actions!.commit(prayer, current => ({ ...current!, title: localTitle, description: localDescription,
+        ...(ordering === 'tag' && { tags: [tag] }) }), {
+        kind: 'prayer-text', ...(ordering === 'tag' && { tagMembership: [membership] }), text: { time: originalTime, openings: {
+          description: { generation: 'g1', revision: 1, value: field(value.description) },
+        } },
+      });
+      await settleEngine();
+    });
+    expect(await screen.findByRole('region', { name: 'dataSync.versionComparison' })).toBeInTheDocument();
+    expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent(localTitle);
+    expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(value.title);
+    if (ordering === 'return') {
+      await act(async () => {
+        h.silentRemote({ description: remoteDescription });
+        await h.remote({ description: value.description });
+      });
+    }
+    const choose = async () => {
+      const confirmation = screen.queryAllByLabelText('dataSync.storedVersion').length > 1
+        ? 'dataSync.confirmStoredFields.confirm' : 'dataSync.confirmStoredField.confirm';
+      if (side === 'stored') await confirmTextAction('dataSync.useStoredVersion', confirmation);
+      else fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+    };
+    const storedTitle = ordering === 'moved-title' ? newStoredTitle : value.title;
+    if (ordering === 'overlap' || ordering === 'moved-title') {
+      h.silentRemote(ordering === 'overlap' ? { description: remoteDescription } : { title: storedTitle });
+      await choose();
+      const names = ordering === 'overlap' ? [storedTitle, remoteDescription] : [storedTitle];
+      await waitFor(() => expect(screen.getAllByLabelText('dataSync.storedVersion').map(element => element.textContent)).toEqual(names));
+      expect(send).toHaveBeenCalledTimes(1);
+    }
+
+    await choose();
+    const useRemoteDescription = ordering === 'settled' || (ordering === 'overlap' && side === 'stored');
+    await waitFor(() => expect(h.server.value).toMatchObject({ title: side === 'mine' ? localTitle : storedTitle,
+      description: useRemoteDescription ? remoteDescription : localDescription, updates: value.updates }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument());
+    const replacement = jest.mocked(h.transport.send).mock.calls.at(-1)?.[0];
+    if (side === 'mine') expect(replacement).toMatchObject({ prayerTitleAction: {
+      before: storedTitle, after: localTitle, observedRevision: ['overlap', 'moved-title'].includes(ordering) ? 4 : ordering === 'return' ? 5 : 3, time: null,
+    } });
+    if (ordering === 'tag') expect(h.server.value?.tags).toBeUndefined();
+    if (ordering !== 'settled' && ordering !== 'overlap') expect(replacement).toMatchObject({
+      prayerTextActions: { description: { observedRevision: 1, time: originalTime } },
+    });
+  } finally { delete process.env[ON_ENGINE]; }
+});
+
 it('shows the projected Scripture list in a choice that also changes the service title', async () => {
   process.env[ON_ENGINE] = 'serviceOrders';
   actions = null;

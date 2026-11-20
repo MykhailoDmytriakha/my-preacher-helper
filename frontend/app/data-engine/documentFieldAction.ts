@@ -8,7 +8,7 @@ import { isAuthoredStringList } from './authoredStringList';
 import { isSermonChurch } from './churchFieldValue';
 import { commentPlaceValue, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
-import { equalValues, object, readField, writeField } from './fieldValues';
+import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
 import { PRAYER_TEXT_TARGETS } from './prayerTextAction';
 import { rowConflictValue } from './rowFieldAction';
@@ -611,7 +611,9 @@ export function capturePrayerText(baseline: ResourceSnapshot, draft: DocumentDat
   const actions = PRAYER_TEXT_TARGETS.flatMap(target => {
     const seen = capture.openings[target.field];
     const after = readField(draft, [target.field]);
-    if (!seen || seen.generation !== metadata.generation || !Number.isSafeInteger(seen.revision)
+    const original = capture.originalTimes;
+    const fieldTime = original && own(original, target.field) ? original[target.field] : time;
+    if ((fieldTime !== null && !boundedActionTime(fieldTime)) || fieldTime === undefined || !seen || seen.generation !== metadata.generation || !Number.isSafeInteger(seen.revision)
       || seen.revision < 1 || seen.revision > metadata.revision || !acceptsDocumentField(seen.value, target)
       || !acceptsDocumentField(after, target) || equalValues(seen.value, after)) return [];
     const request = seen.requestId && records.find(row => row.id === seen.requestId);
@@ -620,7 +622,7 @@ export function capturePrayerText(baseline: ResourceSnapshot, draft: DocumentDat
       && request.baseline.metadata?.generation === seen.generation && action.observedRevision === seen.revision
       && equalValues(action.after, seen.value) && !['conflict', 'refused', 'cancelled'].includes(request.state);
     if (seen.requestId && !known && !equalValues(readField(baseline.value ?? {}, [target.field]), seen.value)) return [];
-    return [[target.field, { before: seen.value, after, observedRevision: seen.revision, time,
+    return [[target.field, { before: seen.value, after, observedRevision: seen.revision, time: fieldTime,
       ...(known && { predecessorOperationId: seen.requestId }) }]];
   });
   return actions.length ? Object.fromEntries(actions) : undefined;

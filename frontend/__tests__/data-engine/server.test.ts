@@ -5817,6 +5817,93 @@ describe('transactional DataEngine server', () => {
       await expect(listPrayerTitleHistory(owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
     });
 
+    it.each(['restored', 'repeated'] as const)('protects a %s prayer title from a legacy rename without ordering evidence', async scenario => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const middle = 'Computer prayer';
+      expect((await processCommand(owner, change('desktop-rename', middle, 40))).kind).toBe('acknowledged');
+      const currentTitle = scenario === 'restored' ? title : middle;
+      const opening = scenario === 'restored' ? middle : title;
+      const words = (before: string, after: string) => [{ path: ['title'], before: { exists: true, value: before },
+        after: { exists: true, value: after } }];
+      const legacy = (operationId: string, before: string, after: string) => ({
+        ...base, operationId, kind: 'update', generation: 'prayer-create', changes: words(before, after),
+      });
+      expect((await processCommand(owner, legacy('desktop-confirmation', opening, currentTitle))).kind).toBe('acknowledged');
+
+      const offline = legacy('phone-rename', currentTitle, 'Phone prayer');
+      const result = await processCommand(owner, offline);
+      expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { title: currentTitle, description, updates } },
+        conflicts: [{ path: ['title'], mine: { value: 'Phone prayer' }, theirs: { value: currentTitle } }] });
+      expect(await processCommand(owner, offline)).toEqual(result);
+
+      if (result.kind !== 'conflict') throw new Error('Missing reviewed prayer');
+      const explicit = { ...legacy('choose-title', currentTitle, 'Phone prayer'),
+        prayerTitleAction: { before: currentTitle, after: 'Phone prayer', time: null, observedRevision: result.snapshot.metadata!.revision } };
+      expect(await processCommand(owner, explicit)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Phone prayer', description, updates } } });
+    });
+
+    it.each([
+      { phoneAt: 20, code: 'prayer-text-settled' }, { phoneAt: 80, code: 'prayer-text-queued' },
+    ])('reports an independently ordered description during a returned prayer title choice ($code)', async ({ phoneAt, code }) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const field = (name: string, before: string, after: string) => ({ path: [name],
+        before: { exists: true, value: before }, after: { exists: true, value: after } });
+      const timedText = (at: number, revision = 1) => ({ description: { observedRevision: revision,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } });
+      const desktopText = 'Computer description', phoneText = 'Phone description';
+      const desk = change('desktop-rename', 'Computer title', 40);
+      expect((await processCommand(owner, { ...desk, changes: [...desk.changes, field('description', description, desktopText)],
+        prayerTextActions: timedText(40) })).kind).toBe('acknowledged');
+      const restore = change('desktop-restore', title, 55);
+      expect((await processCommand(owner, { ...restore, changes: [field('title', 'Computer title', title)],
+        prayerTitleAction: { ...restore.prayerTitleAction, before: 'Computer title', observedRevision: 2 } })).kind).toBe('acknowledged');
+
+      const { prayerTitleAction, ...legacy } = change('phone-rename', 'Phone title', phoneAt);
+      const phone = { ...legacy, changes: [...legacy.changes, field('description', description, phoneText)], prayerTextActions: timedText(phoneAt) };
+      const answer = await processCommand(owner, phone);
+      expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { title, description: desktopText, updates } },
+        conflicts: [{ path: ['title'] }, { path: ['description'], code, mine: { value: phoneText }, theirs: { value: desktopText } }] });
+
+      if (code === 'prayer-text-queued') {
+        const editedDescription = (operationId: string, before: string, after: string, at: number, revision: number) =>
+          processCommand(owner, { ...legacy, operationId, changes: [field('description', before, after)], prayerTextActions: timedText(at, revision) });
+        expect((await editedDescription('desktop-text-new', desktopText, 'Temporary description', 95, 3)).kind).toBe('acknowledged');
+        expect((await editedDescription('desktop-text-return', 'Temporary description', desktopText, 105, 4)).kind).toBe('acknowledged');
+        const saved = await processCommand(owner, { ...phone, operationId: 'choose-phone-title',
+          prayerTitleAction: { ...prayerTitleAction, observedRevision: 5 } });
+        expect(saved).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Phone title', description: desktopText, updates } } });
+      }
+    });
+
+    it('keeps a later tag removal when choosing the title from an older combined prayer edit', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const tag = 'Temporary tag';
+      const value = (input: string | string[]) => ({ exists: true, value: input });
+      const clock = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at });
+      const membership = (before: boolean, at: number, observedRevision: number) => ({
+        tag, before, after: !before, observedRevision, time: clock(at),
+      });
+      const add = { path: ['tags'], before: { exists: false }, after: value([tag]) };
+      const remove = { path: ['tags'], before: value([tag]), after: { exists: false } };
+      const desk = change('desk-title-and-tag', 'Temporary title', 40);
+      expect((await processCommand(owner, { ...desk, changes: [...desk.changes, add],
+        tagMembershipActions: [membership(false, 40, 1)] })).kind).toBe('acknowledged');
+      const restore = change('desk-restore', title, 65);
+      expect((await processCommand(owner, { ...restore,
+        changes: [{ path: ['title'], before: value('Temporary title'), after: value(title) }, remove],
+        prayerTitleAction: { ...restore.prayerTitleAction, before: 'Temporary title', observedRevision: 2 },
+        tagMembershipActions: [membership(true, 65, 2)],
+      })).kind).toBe('acknowledged');
+      const { prayerTitleAction, ...legacy } = change('phone-title-and-tag', 'Phone prayer', 20);
+      const original = { ...legacy, changes: [...legacy.changes, add], tagMembershipActions: [membership(false, 20, 1)] };
+      expect(await processCommand(owner, original)).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['title'] }] });
+      const chosen = await processCommand(owner, { ...original, operationId: 'choose-phone-title',
+        prayerTitleAction: { ...prayerTitleAction, observedRevision: 3, time: clock(80) } });
+      expect(chosen).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Phone prayer', description, updates } } });
+      if (chosen.kind !== 'acknowledged') throw new Error('Missing prayer choice receipt');
+      expect(chosen.snapshot.value?.tags ?? []).toEqual([]);
+    });
+
     it('offers a choice for an unseen title after the opening text was restored elsewhere', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       const desk = 'Computer prayer';

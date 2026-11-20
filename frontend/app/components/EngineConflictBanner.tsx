@@ -618,9 +618,8 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
     // whole note until it moves to the engine's editing session (BUG-20261118-note-page-codex-fixes-wait-for-engine-session).
     const noteFields = STUDY_NOTE_FIELD_CHOICES && entry.resource.collection === 'studyNotes' && entry.records.length === 1
       ? readStudyNoteFieldsComparison(checkpoint) : undefined;
-    const textFields = ['prayerRequests', 'series'].includes(entry.resource.collection) && entry.records.length === 1
-      && readDocumentTextComparison(checkpoint)?.complete
-      ? checkpoint.conflicts : undefined;
+    const textReview = entry.records.length === 1 ? readDocumentTextComparison(checkpoint) : undefined;
+    const textFields = textReview?.complete ? textReview.checkpoint.conflicts : undefined;
     if (!referenceReview && waitsForStudyNoteReferenceReview(checkpoint)) {
       return notice(<div role="status" className={NOTICE_BOX}>
         <p className={NOTICE_BODY}>{t('dataSync.referenceComparisonUnavailable')}</p>
@@ -628,6 +627,7 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
       </div>);
     }
     const comparingField = Boolean(comparison || sourceNotes || referenceReview || noteFields || textFields);
+    const comparingTextFields = (noteFields?.length ?? 0) > 1 || (textFields?.length ?? 0) > 1;
     return notice(
       <>
         {comparingField && <section aria-label={t('dataSync.versionComparison')} className="mb-3">
@@ -655,12 +655,12 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
         <SaveConflictBanner
           entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
           pendingText={comparingField ? undefined : mine || undefined}
-          description={comparingField ? t((referenceReview?.fields.length || (noteFields?.length ?? 0) > 1) ? 'dataSync.noteFieldsChanged' : 'dataSync.fieldVersionChanged') : undefined}
+          description={comparingField ? t((referenceReview?.fields.length || comparingTextFields) ? 'dataSync.noteFieldsChanged' : 'dataSync.fieldVersionChanged') : undefined}
           keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
           onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint) || noteFields || textFields)); }}
-          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean((referenceReview?.fields.length && referenceReview.rows.length) || (noteFields?.length ?? 0) > 1)); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean((referenceReview?.fields.length && referenceReview.rows.length) || comparingTextFields)); }}
           busy={busy}
           className="mb-3"
         />

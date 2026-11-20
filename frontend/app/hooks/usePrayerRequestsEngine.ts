@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { prayerTextEditAction } from '@/data-engine/prayerTextAction';
 import { captureTagIntents, isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
@@ -202,10 +203,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       && matchesPrayerText(seenDescription.value, openingDescription) ? seenDescription : undefined;
     const time = title || observedTags || description ? actions.captureActionTime() ?? null : null;
     const tagMembership = observedTags ? captureTagIntents(baseline?.tags, patch.tags, observedTags, time) : undefined;
-    const titleCapture = title && { seen: title, time };
-    const action = description ? { kind: 'prayer-text' as const, text: { time, openings: { description } }, title: titleCapture, tagMembership }
-      : titleCapture ? { kind: 'prayer-title' as const, title: titleCapture, ...(tagMembership && { tagMembership }) }
-        : tagMembership ? { kind: 'document-tags' as const, tagMembership } : undefined;
+    const action = prayerTextEditAction(time, description ? { description } : {}, title && { seen: title, time }, tagMembership);
     return once(`prayer:update:${id}:${JSON.stringify(patch)}`, async () => {
       const held = saveConflictRef.current;
       const cleared = clearablePrayerFields.filter(field => Object.hasOwn(patch, field) && patch[field] === undefined);
@@ -282,10 +280,11 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     if (!saveConflict) return Promise.resolve();
     const { id, tagMembership } = saveConflict.payload;
     const patch = persistedPrayerPatch(saveConflict.payload);
+    const prayer = prayerRequests.find(candidate => candidate.id === id);
+    const title = prayer && typeof patch.title === 'string' && patch.title !== prayer.title ? observeTitle(prayer) : undefined;
     const description = reviewedText(id, 'description', patch);
-    const action = description ? { kind: 'prayer-text' as const, tagMembership,
-      text: { time: actions.captureActionTime() ?? null, openings: { description } } }
-      : tagMembership ? { kind: 'document-tags' as const, tagMembership } : undefined;
+    const time = title || description ? actions.captureActionTime() ?? null : null;
+    const action = prayerTextEditAction(time, description ? { description } : {}, title && { seen: title, time }, tagMembership);
     return resolve(() => guardedEdit(id, PRAYER_CORE_AGGREGATE, patch, null, action), () => setSaveConflict(null, id, saveConflict));
   };
 

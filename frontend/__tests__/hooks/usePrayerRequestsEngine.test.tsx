@@ -68,6 +68,34 @@ describe('prayers on the engine', () => {
     expect(result.current.saveConflict).toBeNull();
   });
 
+  it.each([false, true])('binds an explicit title choice to the displayed prayer and click time (description=%s)', async alsoDescription => {
+    const resource = { collection: 'prayerRequests', id: 'p1' };
+    const metadata = { protocol: 1, revision: 7, generation: 'prayer-v1', deleted: false };
+    const time = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+    actions.captureActionTime.mockReturnValueOnce(time);
+    const hook = render();
+    jest.mocked(useDataCollection).mockReturnValue({ state: {
+      snapshots: [{ resource, metadata, value: stored }],
+      documents: [{ resource, value: stored }], complete: true, freshness: 'server', version: 2,
+    }, loading: false, refresh: jest.fn() } as never);
+    hook.rerender();
+    await act(async () => {
+      const changes = { title: 'My prayer', ...(alsoDescription && { description: 'My description' }) };
+      const baseline = { title: 'Earlier title', ...(alsoDescription && { description: 'Earlier description' }) };
+      await hook.result.current.updatePrayer('p1', changes, 1, baseline).catch(() => undefined);
+    });
+    expect(hook.result.current.saveConflict).not.toBeNull();
+    expect(current.title).toBe(stored.title);
+    await act(async () => { await hook.result.current.keepMineOnConflict(); });
+    const title = { seen: { title: stored.title, generation: metadata.generation, revision: metadata.revision }, time };
+    expect(actions.commit).toHaveBeenLastCalledWith(resource, expect.any(Function), alsoDescription ? {
+      kind: 'prayer-text', title, text: { time, openings: { description: { value: { exists: true, value: stored.description },
+        generation: metadata.generation, revision: metadata.revision } } },
+    } : { kind: 'prayer-title', title });
+    expect(current).toMatchObject({ title: 'My prayer', description: alsoDescription ? 'My description' : stored.description });
+    expect(hook.result.current.saveConflict).toBeNull();
+  });
+
   it('saves an authored description without treating the untouched opening title as another rename', async () => {
     const { result } = render();
     await act(async () => { await result.current.updatePrayer('p1', { title: 'Opening title', description: 'New description', tags: undefined },
