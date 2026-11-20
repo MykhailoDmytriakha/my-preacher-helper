@@ -5130,6 +5130,45 @@ describe('transactional DataEngine server', () => {
       expect((await listCouncilMetadataHistory(base.owner, resource.id, 'council-seed')).entries).toHaveLength(0);
     });
 
+    it.each(['return', 'reaffirm'])('holds a legacy council title after a deliberate %s', async kind => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = change('council-desk', 'Temporary council', '2099-04-20', 40);
+      if (kind === 'return') expect((await processCommand(base.owner, desk)).kind).toBe('acknowledged');
+      const { councilTitleAction: _title, councilDateAction: _date, ...legacy } = desk;
+      expect((await processCommand(base.owner, { ...legacy, operationId: 'council-return',
+        changes: [{ path: ['title'], before: day('Temporary council'), after: day(title) }] })).kind).toBe('acknowledged');
+      const delayed = { ...legacy, operationId: 'council-delayed',
+        changes: [{ path: ['title'], before: day(title), after: day('Phone council') }] };
+      const result = await processCommand(base.owner, delayed);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['title'], mine: day('Phone council'), theirs: day(title) }],
+        snapshot: { value: { title, date: kind === 'return' ? '2099-04-20' : date, topics } },
+      });
+      expect(await processCommand(base.owner, delayed)).toEqual(result);
+    });
+
+    it.each([20, 80])('reports the proved date order while a returned council title needs review (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = change('council-desk', 'Temporary council', '2099-04-20', 40);
+      expect((await processCommand(base.owner, desk)).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, { ...desk, operationId: 'council-return', changes: [
+        { path: ['title'], before: day('Temporary council'), after: day(title) },
+      ], councilTitleAction: { ...desk.councilTitleAction, before: 'Temporary council', after: title, observedRevision: 2 } })).kind).toBe('acknowledged');
+      const { councilTitleAction: _title, ...delayed } = change('council-delayed', 'Phone council', null, offset);
+      const result = await processCommand(base.owner, delayed);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [
+          { path: ['title'], mine: day('Phone council'), theirs: day(title) },
+          { path: ['date'], code: offset < 40 ? 'council-topic-text-settled' : 'council-topic-text-queued',
+            base: day(date), mine: day(null), theirs: day('2099-04-20') },
+        ],
+        snapshot: { value: { title, date: '2099-04-20', topics } },
+      });
+      const history = await listCouncilMetadataHistory(base.owner, resource.id, 'council-seed');
+      if (offset < 40) expect(history.entries).toMatchObject([{ fields: [{ field: 'date', value: null, winner: '2099-04-20' }] }]);
+      else expect(history.entries).toHaveLength(0);
+    });
+
     it('preserves ordinary choices if the two council action intervals overlap', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       expect((await processCommand(base.owner, change('council-desk', 'Desk council', '2099-04-20', 40))).kind).toBe('acknowledged');

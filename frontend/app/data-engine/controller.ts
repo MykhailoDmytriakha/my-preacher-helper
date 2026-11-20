@@ -10,11 +10,12 @@ import { keepUncontestedCommentFields } from './commentKindChoice';
 import { commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, keepUncontestedCommentPlace, readCommentPlaceComparison } from './commentPlaceChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
+import { isReturnedCouncilTitle } from './councilFieldAction';
 import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
 import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
-import { councilTopicTextDecision, councilTopicTextVersions, projectCouncilTopicTextDecisions, readCouncilTopicTextReview, retainedCouncilTopicWords, reviewedCouncilDetailAction, withQueuedCouncilTopicTextProofs } from './councilTopicTextReview';
+import { councilTopicTextDecision, councilTopicTextVersions, projectCouncilTopicTextDecisions, readCouncilTopicTextReview, retainedCouncilTopicWords, reviewedCouncilDetailAction, withCouncilReviewProofs } from './councilTopicTextReview';
 import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
@@ -854,9 +855,17 @@ export class EditorController {
   /** An online choice uses the displayed words or stops to show any newly contested field. */
   private async refreshDocumentTextChoice(expected: EditorRecord): Promise<EditorRecord> {
     const { checkpoint } = expected;
-    const review = readDocumentTextChoice(checkpoint);
+    const compare = (state: SessionCheckpoint) => {
+      if (state.confirmed.resource.collection === 'councils') {
+        const review = readCouncilTopicTextReview(state);
+        return review && { fields: review.fields, settled: review.settled };
+      }
+      const review = readDocumentTextChoice(state);
+      return review?.complete ? review.checkpoint.conflicts : undefined;
+    };
+    const review = compare(checkpoint);
     const shown = checkpoint.remoteCandidate;
-    if (!review?.complete || !shown) return expected;
+    if (!review || !shown) return expected;
     this.assertRecoveryChoice(expected);
     const saved = await this.options.readWriteTarget?.(shown.resource).catch(() => null);
     this.assertCurrent();
@@ -867,8 +876,8 @@ export class EditorController {
     await this.persist();
     this.assertCurrent();
     this.assertRecoveryChoice(refreshed);
-    const updated = readDocumentTextChoice(refreshed.checkpoint);
-    if (!updated?.complete || !equalValues(updated.checkpoint.conflicts, review.checkpoint.conflicts)) {
+    const updated = compare(refreshed.checkpoint);
+    if (!equalValues(updated, review)) {
       throw Object.assign(new Error('The shown saved text changed'), { code: 'commit-changed' });
     }
     return refreshed;
@@ -882,7 +891,8 @@ export class EditorController {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const shownCollection = expected?.checkpoint.confirmed.resource.collection;
     if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates'
-      || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title')))) {
+      || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title'))
+      || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isReturnedCouncilTitle)))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
@@ -1038,7 +1048,7 @@ export class EditorController {
           session.edit(keptTail ?? chosen);
           const kept = decisions.filter(decision => decision.side === 'local');
           if (council) {
-            session.retainUnreviewedAutosaveActions(withQueuedCouncilTopicTextProofs(keptTail ? source : decided, council), council.fields);
+            session.retainUnreviewedAutosaveActions(withCouncilReviewProofs(keptTail ? source : decided, council, keptTail ?? chosen), council.fields);
             for (const { path, time } of kept) session.stageReviewedCouncilText(path, time ?? null);
           } else {
             const queued = group!.settled.flatMap(({ field, side }) => side === 'mine' ? [field] : []);

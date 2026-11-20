@@ -9,6 +9,7 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
 import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
+import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
 import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
@@ -73,7 +74,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 const tracksTitleReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
-    || (target.action === 'seriesFieldActions' && target.field === 'title');
+    || target.action === 'councilTitleAction' || (target.action === 'seriesFieldActions' && target.field === 'title');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
@@ -358,17 +359,31 @@ export function orderedPrayerText(command: DataCommand, current: ResourceSnapsho
   });
 }
 
-export function orderedSeriesMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
-  if (command.kind !== 'update' || command.resource.collection !== 'series'
-    || !orders.uncertain.some(({ path }) => path.length === 1 && path[0] === 'title')) return [];
+function orderedMetadataComparisons(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
+  orders: ReturnType<typeof orderDocumentFields>, includes: (target: DocumentFieldTarget) => boolean,
+  codes: { settled: string; queued: string }): ConflictDetail[] {
   return orders.fields.flatMap(({ target, order }) => {
-    if (!order.displaced || target.action !== 'seriesFieldActions' || target.field === 'title') return [];
+    if (!order.displaced || !includes(target)) return [];
     const change = documentFieldChange(command.changes, target);
     const stored = documentFieldValue(current.value, target);
     if (!change || !stored) return [];
-    const code = equalValues(order.displaced.winnerValue, stored) ? SERIES_METADATA_SETTLED : SERIES_METADATA_QUEUED;
+    const code = equalValues(order.displaced.winnerValue, stored) ? codes.settled : codes.queued;
     return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
   });
+}
+
+export function orderedSeriesMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'series'
+    || !orders.uncertain.some(({ path }) => path.length === 1 && path[0] === 'title')) return [];
+  return orderedMetadataComparisons(command, current, orders, target => target.action === 'seriesFieldActions' && target.field !== 'title',
+    { settled: SERIES_METADATA_SETTLED, queued: SERIES_METADATA_QUEUED });
+}
+
+export function orderedCouncilMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'councils') return [];
+  return orderedMetadataComparisons(command, current, orders,
+    target => target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction',
+    { settled: COUNCIL_TOPIC_TEXT_SETTLED, queued: COUNCIL_TOPIC_TEXT_QUEUED });
 }
 
 export function orderedSermonMetadata(command: DataCommand, current: ResourceSnapshot,

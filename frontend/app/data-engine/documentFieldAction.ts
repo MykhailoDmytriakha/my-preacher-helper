@@ -825,6 +825,24 @@ export function withQueuedGroupScalarProofs(source: SessionCheckpoint,
   return retained;
 }
 
+/** Keep the submitted proof of a sibling that already belongs to the projected result. */
+export function withSubmittedScalarProofs(source: SessionCheckpoint, requestId: string, chosen: DocumentData): SessionCheckpoint {
+  const { resource, metadata } = source.confirmed;
+  const submitted = source.pending[requestId];
+  if (!submitted || !metadata || metadata.generation !== source.remoteCandidate?.metadata?.generation) return source;
+  const retained = { ...source };
+  for (const target of autosaveFieldTargets(resource.collection)) {
+    const action = submitted[target.action];
+    const after = autosaveFieldValue(chosen, target);
+    if (!action || !equalValues(action.after, after) || equalValues(after, autosaveFieldValue(source.remoteCandidate.value, target))) continue;
+    const staged = retained[target.draft];
+    if (staged?.generation !== metadata.generation || !equalValues(staged.action.after, after)) {
+      retained[target.draft] = { generation: metadata.generation, action };
+    }
+  }
+  return retained;
+}
+
 export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,
   keep: (path: readonly string[]) => boolean): void {
   for (const field of autosaveFieldTargets(target.confirmed.resource.collection)) {

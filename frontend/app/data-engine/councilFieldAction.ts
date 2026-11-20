@@ -1,9 +1,9 @@
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 
-import { readField } from './fieldValues';
+import { equalValues, readField } from './fieldValues';
 
 import type { DocumentFieldObservation } from './documentFieldAction';
-import type { DocumentData, FieldChange, FieldValue } from './types';
+import type { ConflictDetail, DocumentData, FieldChange, FieldValue } from './types';
 
 export type CouncilTimedField = 'title' | 'date';
 export type CouncilHistoryField = CouncilTimedField | 'heldAt';
@@ -27,6 +27,10 @@ export const COUNCIL_LIFECYCLE = { field: 'heldAt', action: 'councilLifecycleAct
 } as const;
 
 export type CouncilFieldTarget = typeof COUNCIL_TIMED_FIELDS[number] | typeof COUNCIL_LIFECYCLE;
+
+export function isReturnedCouncilTitle({ path, base, theirs }: ConflictDetail): boolean {
+  return path.length === 1 && path[0] === 'title' && equalValues(base, theirs);
+}
 
 export function councilStatusOf(heldAt: FieldValue): 'held' | 'preparing' {
   return heldAt.exists ? 'held' : 'preparing';

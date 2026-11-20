@@ -1,12 +1,13 @@
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
-import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
+import { councilLifecycleValue, isReturnedCouncilTitle, withCouncilLifecycle } from './councilFieldAction';
 import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow } from './councilOutcomeAction';
 import { councilOutcomeOptionAvailable, readCouncilOutcomeVersions } from './councilPrivateFields';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TEXT, COUNCIL_TOPIC_TEXT_POLICY, COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED, councilTopicMissing, councilTopicTextConflict, councilTopicTextItemMissing, withoutCouncilTopicTextItem } from './councilTopicTextAction';
 import { COUNCIL_TOPIC_ID, COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
+import { withSubmittedScalarProofs } from './documentFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, existingRowFields, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
@@ -145,8 +146,11 @@ export function readCouncilTopicTextReview(checkpoint: SessionCheckpoint) {
   if (confirmed.resource.collection !== 'councils' || !opening || !draft || !stored
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate?.metadata?.generation
     || !requestId || groupTextReview?.separateDraft || (groupTextReview && requestId !== groupTextReview.requestId)
-    || !conflicts.some(({ path, code }) => councilTopicTextConflict(path) || councilTopicTitleRow(path) || isNestedItemPath(path)
-      || code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED)) return undefined;
+    || !conflicts.some(conflict => {
+      const { path, code } = conflict;
+      return isReturnedCouncilTitle(conflict) || councilTopicTextConflict(path) || councilTopicTitleRow(path) || isNestedItemPath(path)
+        || code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED;
+    })) return undefined;
 
   const settled = new Map<string, { field: ComparedField; side: 'mine' | 'stored' }>();
   let proposed = writeField(writeField(draft, ['rev'], readField(opening, ['rev'])), ['updatedAt'], readField(opening, ['updatedAt']));
@@ -270,9 +274,10 @@ export function reviewedCouncilDetailAction(review: NonNullable<ReturnType<typeo
 }
 
 /** A known incoming winner keeps its original proof when a different field held its packet. */
-export function withQueuedCouncilTopicTextProofs(source: SessionCheckpoint, review: NonNullable<ReturnType<typeof readCouncilTopicTextReview>>): SessionCheckpoint {
+export function withCouncilReviewProofs(source: SessionCheckpoint, review: NonNullable<ReturnType<typeof readCouncilTopicTextReview>>,
+  chosen: DocumentData): SessionCheckpoint {
   const queued = review.settled.flatMap(({ field, side }) => side === 'mine' && field.scope === 'row'
     ? [{ path: field.path, birth: field.birth, before: field.field === 'summary' || field.field === 'topic-title' ? field.before : undefined,
       mine: field.mine }] : []);
-  return withQueuedRowFieldProofs(source, queued);
+  return withQueuedRowFieldProofs(withSubmittedScalarProofs(source, review.requestId, chosen), queued);
 }

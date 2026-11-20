@@ -20,6 +20,7 @@ import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkT
 import { MAX_COMMAND_BYTES } from './commandSize';
 import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
+import { isReturnedCouncilTitle } from './councilFieldAction';
 import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
 import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind, type CouncilTopicKindHistoryPage } from './councilTopicKindAction';
@@ -30,7 +31,7 @@ import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, councilTopicT
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode } from './documentFieldAction';
-import { isGroupScalarText, metadataAfterDocumentFields, orderDocumentFields, orderedGroupScalarText, orderedPrayerText, orderedSeriesMetadata, orderedSermonMetadata, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
+import { isGroupScalarText, metadataAfterDocumentFields, orderDocumentFields, orderedCouncilMetadata, orderedGroupScalarText, orderedPrayerText, orderedSeriesMetadata, orderedSermonMetadata, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -1249,10 +1250,11 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine, orderedPreachingPaths));
       const councilTextReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
         || councilTopicTitleOrder.uncertain.length || councilTopicTitleOrder.displaced.length
-        || (command.resource.collection === 'councils' && planned.result.kind === 'conflict'
-          && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)));
+        || (command.resource.collection === 'councils' && (fieldOrder.uncertain.some(isReturnedCouncilTitle)
+          || (planned.result.kind === 'conflict' && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))));
       const settledCouncilDetails = councilTextReview
-        ? [...settledCouncilTopicDetails(command, current, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder),
+        ? [...orderedCouncilMetadata(command, current, fieldOrder),
+          ...settledCouncilTopicDetails(command, current, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder),
           ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder),
           ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder),
           ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder)] : [];
@@ -1315,6 +1317,10 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder);
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder);
+        const fields = (fieldOrder?.fields ?? []).filter(({ target }) => result.kind === 'conflict'
+          && result.conflicts.some(({ code, path }) => code === COUNCIL_TOPIC_TEXT_SETTLED
+            && path.length === 1 && path[0] === target.field));
+        persistDocumentFieldHistory(transaction, command, result.snapshot, fields);
       }
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);

@@ -198,8 +198,8 @@ describe('council nested text choices through the durable editor', () => {
       kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts,
     }));
   };
-  const open = async () => {
-    const h = documentEngineHarness(initial);
+  const open = async (fields?: DocumentData) => {
+    const h = documentEngineHarness(fields ? { ...initial, value: { ...initial.value, ...fields } } : initial);
     const engine = h.createBrowser().engine;
     engine.setOwner(owner); engine.setOnline(false);
     const editor = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'council', 'first'));
@@ -573,6 +573,94 @@ describe('council nested text choices through the durable editor', () => {
       expect(last?.kind === 'update' && last.councilTopicTitleActions).toEqual(chooseLocal ? undefined : [{
         rowId: opening.id, rowCreatedAt: opening.id, before: opening.title, after: 'Local section', observedRevision: 1, time: titleTime,
       }]);
+    } finally { engine.dispose(); }
+  });
+
+  it.each(['mine', 'stored'])('compares a returned council title on its own ($side)', async side => {
+    const { h, engine, editor } = await open();
+    try {
+      const title = 'Title typed on the phone';
+      const checkpoint = editor.getState().checkpoint;
+      await editor.edit({ ...checkpoint.draft!, title }, checkpoint, { field: 'title', time: at(20) });
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, summary: 'New section text' }] });
+      delay(h, [{ path: ['title'], base: rowConflictValue('Council'), mine: rowConflictValue(title), theirs: rowConflictValue('Council') }]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-title', mine: title, stored: 'Council',
+      }));
+      const shown = editor.getState().checkpoint;
+      if (side === 'mine') {
+        await editor.keepLocal(undefined, shown, at(80));
+        await waitFor(() => expect(h.server.value?.title).toBe(title));
+        expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          councilTitleAction: { before: 'Council', after: title, observedRevision: 2, time: at(80) },
+        }));
+      } else await editor.acceptRemote(undefined, shown);
+      expect(editor.getState().checkpoint.draft?.title).toBe(side === 'mine' ? title : 'Council');
+      expect(h.server.value?.topics).toMatchObject([{ summary: 'New section text' }]);
+    } finally { engine.dispose(); }
+  });
+
+  it.each([false, true])('keeps the decided date when the returned council title needs review (phone later: %s)', async phoneLater => {
+    const originalDate = '2026-11-20', updatedDate = '2026-11-23';
+    const { h, engine, editor } = await open({ date: originalDate });
+    try {
+      const title = 'Phone council title';
+      const first = editor.getState().checkpoint;
+      await editor.edit({ ...first.draft!, title }, first, { field: 'title', time: at(10) });
+      const second = editor.getState().checkpoint;
+      const { date: _date, ...withoutDate } = second.draft!;
+      const dateTime = at(phoneLater ? 50 : 12);
+      await editor.edit(withoutDate, second, { field: 'date', time: dateTime });
+      await editor.save();
+      h.silentRemote({ date: updatedDate, topics: [{ ...opening, summary: 'New section text' }] });
+      delay(h, [
+        { path: ['title'], base: rowConflictValue('Council'), mine: rowConflictValue(title), theirs: rowConflictValue('Council') },
+        { path: ['date'], base: rowConflictValue(originalDate), mine: rowConflictValue(null), theirs: rowConflictValue(updatedDate),
+          code: phoneLater ? COUNCIL_TOPIC_TEXT_QUEUED : COUNCIL_TOPIC_TEXT_SETTLED },
+      ]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-title', mine: title, stored: 'Council',
+      }));
+      if (phoneLater) jest.mocked(h.transport.send).mockImplementationOnce(async command => {
+        expect(command).toMatchObject({ kind: 'update', councilDateAction: { observedRevision: 1, time: dateTime },
+          changes: [{ path: ['date'], before: rowConflictValue(originalDate), after: rowConflictValue(null) }] });
+        const { date: _date, ...undated } = h.server.value!;
+        return { kind: 'acknowledged', operationId: command.operationId,
+          snapshot: { ...h.server, value: undated, metadata: { ...h.server.metadata!, revision: 3 } } };
+      });
+      const shown = editor.getState().checkpoint;
+      if (phoneLater) await editor.acceptRemote(undefined, shown);
+      else await editor.keepLocal(undefined, shown, at(70));
+      await waitFor(() => expect(editor.getState().checkpoint.confirmed.value?.date).toBe(phoneLater ? undefined : updatedDate));
+      const final = editor.getState().checkpoint.confirmed.value;
+      expect(final).toMatchObject({ title: phoneLater ? 'Council' : title, topics: [{ summary: 'New section text' }] });
+      if (!phoneLater) expect(jest.mocked(h.transport.send).mock.calls.at(-1)?.[0]).not.toHaveProperty('councilDateAction');
+    } finally { engine.dispose(); }
+  });
+
+  it('refreshes the returned council title before applying a choice about the displayed words', async () => {
+    const { h, engine, editor } = await open();
+    try {
+      const title = 'Phone council title';
+      const first = editor.getState().checkpoint;
+      await editor.edit({ ...first.draft!, title }, first, { field: 'title', time: at(10) });
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, summary: 'New section text' }] });
+      delay(h, [{ path: ['title'], base: rowConflictValue('Council'), mine: rowConflictValue(title), theirs: rowConflictValue('Council') }]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ stored: 'Council' }));
+      h.silentRemote({ title: 'Newest words' });
+      await expect(editor.keepLocal(undefined, editor.getState().checkpoint, at(50))).rejects.toMatchObject({ code: 'commit-changed' });
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ mine: title, stored: 'Newest words' });
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(80));
+      await waitFor(() => expect(h.server.value?.title).toBe(title));
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTitleAction: { before: 'Newest words', after: title, observedRevision: 3, time: at(80) },
+      }));
     } finally { engine.dispose(); }
   });
 
