@@ -77,6 +77,7 @@ ui-debug.log
 .playwright-mcp
 output/
 .claude/codex-logs
+.claude/agy-logs
 .logs/
 .demo/
 
