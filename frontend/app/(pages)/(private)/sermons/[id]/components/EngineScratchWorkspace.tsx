@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useRecoveryDiscovery, waitsForOutlineParentReview } from '@/data-engine/react.client';
@@ -11,6 +10,7 @@ import { useTranslation } from '@locales/useTranslation';
 import { useScratchDataDocument } from '../hooks/useScratchDataDocument';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
+import type { Thought } from '@/models/models';
 
 interface EngineScratchWorkspaceProps {
   sermonId: string;
@@ -23,7 +23,6 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const { t } = useTranslation();
   const { owner } = useDataEngine();
   const scratch = useScratchDataDocument(sermonId);
-  const [proposalOpen, setProposalOpen] = useState(false);
   const latest = useRef(scratch); latest.current = scratch;
   const identity = useMemo(() => ({ owner, sermonId }), [owner, sermonId]);
   const scope = useRef(identity); scope.current = identity;
@@ -58,6 +57,8 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const deleted = Boolean(confirmed?.metadata?.deleted || (confirmed && confirmed.value === null && scratch.presence?.kind !== 'creating')
     || (scratch.remote && scratch.remote.value === null) || scratch.remote?.metadata?.deleted);
 
+  const thoughts = scratch.data?.thoughts as unknown as Thought[] | undefined;
+  const pointThoughtCount = useCallback((pointId: string) => (thoughts ?? []).filter(thought => thought.outlinePointId === pointId).length, [thoughts]);
   const phase = scratch.status?.phase;
   const canEditQueuedNotes = Boolean(scratch.state?.durable
     && (phase === 'queued' || phase === 'sending' || phase === 'unknown'));
@@ -75,11 +76,12 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}
       addRecordedScratchNote={scratch.addRecordedScratchNote}
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}
-      captureScratchText={scratch.captureScratchText} updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
-      isScratchWritePending={scratch.isWritePending} canEditQueuedNotes={canEditQueuedNotes} scratchRevision={scratch.scratchRevision}
-      onEditPlan={() => setProposalOpen(true)}
+      captureScratchText={scratch.captureScratchText} updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote}
+      placeScratchNotes={scratch.placeScratchNotes} createPointWithScratch={scratch.createPointWithScratch}
+      addOutlinePoint={scratch.addOutlinePoint} addOutlineSubPoint={scratch.addOutlineSubPoint} removeOutlinePoint={scratch.removeOutlinePoint}
+      renameOutlineTitle={scratch.renameOutlineTitle} removeOutlineSubPoint={scratch.removeOutlineSubPoint}
+      pointThoughtCount={pointThoughtCount}
+      isScratchWritePending={scratch.isWritePending} canEditQueuedNotes={canEditQueuedNotes}
       isReadOnly={isReadOnly || deleted || !owner} />}
-    {proposalOpen && !isReadOnly && !deleted && owner && <EngineOutlineModal key={`${owner}:${sermonId}`} sermonId={sermonId}
-      withScratch onClose={() => setProposalOpen(false)} />}
   </section>;
 }

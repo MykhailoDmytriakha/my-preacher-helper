@@ -9,6 +9,8 @@ jest.mock('react-i18next', () => ({
 
 // Minimal mocks for heavy deps used in various pages
 jest.mock('@dnd-kit/core', () => ({
+  // The real module first: the scratch board extends its sensors when the sermon page is imported.
+  ...jest.requireActual('@dnd-kit/core'),
   MeasuringStrategy: { Always: 'always' },
   DndContext: ({ children }: any) => <div>{children}</div>,
   DragOverlay: ({ children }: any) => <div>{children}</div>,

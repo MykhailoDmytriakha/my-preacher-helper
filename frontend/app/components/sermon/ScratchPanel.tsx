@@ -1,60 +1,36 @@
 "use client";
 
-import { motion } from "framer-motion";
-import {
-  Check,
-  Pencil,
-  Sparkles,
-  X,
-} from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, X } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { AudioRecorder } from "@/components/AudioRecorder";
-import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
+import PointNote from '@/components/PointNote';
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { showUndoNotice } from "@/components/ui/showUndoNotice";
 import { useAiUsage } from "@/hooks/useAiUsage";
-import { usePendingAiResultAttempt } from "@/hooks/usePendingAiResultAttempt";
 import { useTextDictation } from '@/hooks/useTextDictation';
-import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
-import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
-import { aiResultFailureKey, SCRATCH_COMPOSE_UI_TIMEOUT_MS } from '@/utils/aiResultOperation';
-import { ranOutOfTime } from "@/utils/aiTimeFailure";
+import { sayFailure } from '@/utils/actionFailureMessage';
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
-import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
-import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
-import { scratchComposeRequest } from '@/utils/scratchComposeSource';
-import { outlinePointGridClass } from "@/utils/structureBoardLayout";
-import { getSectionLabel } from "@lib/sections";
 import { useTranslation } from "@locales/useTranslation";
 
-import {
-  placementKey, getScratchSignature, getOutlineSignature,
-  stripScratchMetadataWithIdMap, stripScratchMetadata, collectComposedScratchNoteIds,
-  remapPlacement, cloneSermonOutline, appendScratchPlacementToOutline, getComposeNoticeKey,
-} from './scratch/scratchBoardModel';
-import ScratchNoteCard, { useScratchNoteLabels, type ScratchPlaceTarget } from './scratch/ScratchNoteCard';
+import { useScratchNoteLabels } from './scratch/ScratchNoteCard';
+import ScratchSortingBoard from './scratch/ScratchSortingBoard';
 
-import type { ComposedPlanOutline } from "@/config/schemas/zod";
 import type { ScratchNote, SermonOutline } from "@/models/models";
-import type { ScratchPlacement } from '@/utils/scratchPlacementRemap';
+import type { SectionKey } from '@/utils/outlineDnd';
+import type { ScratchPlace } from '@/utils/scratchPlacement';
+import type { OutlineNoteTarget } from '@/utils/sermonNoteText';
 
 const VOICE_ERROR_KEY = "scratch.voice.error";
-const VOICE_APPLY_IN_PROGRESS_KEY = "scratch.voice.applyInProgress";
-const BOARD_APPLY_ERROR_KEY = "scratch.board.applyError";
 const MANUAL_ADD_LABEL_KEY = "scratch.capture.manualAdd";
 const MANUAL_INPUT_LABEL_KEY = "scratch.capture.manualLabel";
 
-type ScratchPatch = {
-  text?: string;
-  section?: SectionKey | null;
-};
 interface ScratchPanelProps {
   sermonId: string;
   notes: ScratchNote[];
@@ -62,127 +38,70 @@ interface ScratchPanelProps {
   addScratchNote: (text: string, section?: SectionKey) => ScratchNote | null;
   addRecordedScratchNote: (text: string, recordingId: string) => Promise<ScratchNote | null>;
   restoreScratchNote: (note: ScratchNote) => Promise<ScratchNote | null>;
-  updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
+  updateScratchNote: (noteId: string, patch: { text?: string }) => void;
   captureScratchText?: (note: ScratchNote) => (text: string) => Promise<void>;
   deleteScratchNote: (noteId: string) => void;
-  /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
-  moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
+  placeScratchNotes: (noteIds: string[], place: ScratchPlace, beforeId?: string) => void;
+  createPointWithScratch: (section: SectionKey, title: string, noteIds: string[]) => void;
+  addOutlinePoint: (section: SectionKey, title: string) => void;
+  addOutlineSubPoint: (pointId: string, title: string) => void;
+  removeOutlinePoint: (pointId: string) => void;
+  renameOutlineTitle: (target: OutlineNoteTarget, title: string) => void;
+  removeOutlineSubPoint: (subPointId: string) => void;
+  pointThoughtCount: (pointId: string) => number;
   isScratchWritePending: boolean;
   canEditQueuedNotes?: boolean;
-  scratchRevision: number;
-  onEditPlan?: () => void;
-  onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | { delivery: 'queued' } | Promise<void | { delivery: 'queued' }>;
-  onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
   isReadOnly?: boolean;
 }
 
-const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
 /** Enough of the note to recognise which one is about to go, without a wall of text. */
 const CONFIRM_PREVIEW_LIMIT = 100;
 
 function truncateForConfirm(text: string) {
   const clean = text.trim();
-  return clean.length > CONFIRM_PREVIEW_LIMIT
-    ? `${clean.slice(0, CONFIRM_PREVIEW_LIMIT)}…`
-    : clean;
-}
-
-async function waitForSettleWithTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timeoutId = setTimeout(() => resolve("timeout"), timeoutMs);
-  });
-
-  try {
-    const result = await Promise.race([promise.then(() => "settled" as const), timeoutPromise]);
-    return result === "settled";
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
+  return clean.length > CONFIRM_PREVIEW_LIMIT ? `${clean.slice(0, CONFIRM_PREVIEW_LIMIT)}…` : clean;
 }
 
 function createVoiceRecoveryUrl(audioBlob: Blob | null) {
-  if (!audioBlob || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
-    return null;
-  }
+  if (!audioBlob || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
   return URL.createObjectURL(audioBlob);
 }
 
 function revokeVoiceRecoveryUrl(audioUrl: string | null) {
-  if (!audioUrl || typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
-    return;
-  }
+  if (!audioUrl || typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") return;
   URL.revokeObjectURL(audioUrl);
 }
 
+/**
+ * «Наброски»: what the preacher will speak about, captured by voice or by hand, then sorted into the
+ * plan on the same page (`ScratchSortingBoard`). Every move is saved at once and a note stays a piece
+ * of its own; there is no draft to apply and no second board in a window.
+ */
 export default function ScratchPanel({
-  sermonId,
-  notes,
-  outline,
-  addScratchNote,
-  addRecordedScratchNote,
-  restoreScratchNote,
-  updateScratchNote,
-  captureScratchText,
-  deleteScratchNote,
-  moveScratchNote,
-  isScratchWritePending,
-  canEditQueuedNotes = false,
-  scratchRevision,
-  onApplyOutline,
-  onOutlineChange,
-  onEditPlan,
+  sermonId, notes, outline, addScratchNote, addRecordedScratchNote, restoreScratchNote, updateScratchNote,
+  captureScratchText, deleteScratchNote, placeScratchNotes, createPointWithScratch, addOutlinePoint,
+  addOutlineSubPoint, removeOutlinePoint, renameOutlineTitle, removeOutlineSubPoint, pointThoughtCount, isScratchWritePending, canEditQueuedNotes = false,
   isReadOnly = false,
 }: ScratchPanelProps) {
   const { t } = useTranslation();
-  const boardNoteLabels = useScratchNoteLabels();
-  const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+  const noteLabels = useScratchNoteLabels();
+  const { blocked, blockedLabelKey } = useAiUsage();
   const transcriptionBlocked = blocked('dictation');
   const dictationBlockedKey = blockedLabelKey('dictation');
   const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
-  const [composedOutline, setComposedOutline] = useState<ComposedPlanOutline | null>(null);
-  const [manualOutline, setManualOutline] = useState<SermonOutline | null>(null);
-  const [composeNoticeKey, setComposeNoticeKey] = useState<string | null>(null);
-  /** How many notes the model skipped. They are in the plan, but placed by fallback. */
-  const [composeUnplacedCount, setComposeUnplacedCount] = useState(0);
-  const [composeError, setComposeError] = useState<FailureWords | null>(null);
-  const [isComposing, setIsComposing] = useState(false);
-  const [placements, setPlacements] = useState<Record<string, ScratchPlacement>>({});
   const [voiceRecoveryUrl, setVoiceRecoveryUrl] = useState<string | null>(null);
-  const [isApplying, setIsApplying] = useState(false);
-  /** Note queued for deletion — the trash click only ARMS it, the modal confirms. */
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
-  const isCaptureLocked = isReadOnly || isApplying;
-  const isBoardLocked = isCaptureLocked || isScratchWritePending;
+  const isCaptureLocked = isReadOnly;
   const isNoteEditingLocked = isCaptureLocked || (isScratchWritePending && !canEditQueuedNotes);
-  const scratchSignature = useMemo(() => getScratchSignature(notes), [notes]);
-  const scratchRevisionRef = useRef(scratchRevision);
-  const scratchWritePendingRef = useRef(isScratchWritePending);
-  const scratchSignatureRef = useRef(scratchSignature);
-  const scratchMutationLockedRef = useRef(isCaptureLocked);
-  const isApplyingRef = useRef(isApplying);
-  const localScratchChangeRef = useRef(0);
-  const outlineRevisionRef = useRef(0);
-  const pendingManualOutlineSignatureRef = useRef<string | null>(null);
+  const lockedRef = useRef(isCaptureLocked);
+  lockedRef.current = isCaptureLocked;
   const manualInputRef = useRef<HTMLTextAreaElement | null>(null);
   const storedVoiceBlobRef = useRef<Blob | null>(null);
   const voiceRecoveryUrlRef = useRef<string | null>(null);
-  const composeRequestIdRef = useRef(0);
-
-  scratchRevisionRef.current = scratchRevision;
-  scratchWritePendingRef.current = isScratchWritePending;
-  scratchSignatureRef.current = scratchSignature;
-  scratchMutationLockedRef.current = isCaptureLocked;
-  isApplyingRef.current = isApplying;
-
-  const markScratchChanged = useCallback(() => {
-    localScratchChangeRef.current += 1;
-    scratchWritePendingRef.current = true;
-  }, []);
 
   const replaceStoredVoiceBlob = useCallback((audioBlob: Blob | null) => {
     revokeVoiceRecoveryUrl(voiceRecoveryUrlRef.current);
@@ -192,617 +111,187 @@ export default function ScratchPanel({
     setVoiceRecoveryUrl(nextUrl);
   }, []);
 
-  useEffect(() => {
-    return () => revokeVoiceRecoveryUrl(voiceRecoveryUrlRef.current);
-  }, []);
-
-  const currentOutline = manualOutline ?? outline;
-  const incomingOutlineSignature = useMemo(() => getOutlineSignature(outline), [outline]);
-  const boardOutline = useMemo(
-    () => composedOutline ?? cloneSermonOutline(currentOutline),
-    [composedOutline, currentOutline]
-  );
-  const strippedProposedOutline = useMemo(
-    () => (composedOutline ? stripScratchMetadataWithIdMap(composedOutline) : null),
-    [composedOutline]
-  );
-  const cleanProposedOutline = strippedProposedOutline?.outline ?? null;
-  const boardOutlineLookup = useMemo(() => {
-    const pointIds = new Set<string>();
-    const subPointParentById = new Map<string, string>();
-
-    SECTION_KEYS.forEach((key) => {
-      (boardOutline[key] ?? []).forEach((point) => {
-        pointIds.add(point.id);
-        (point.subPoints ?? []).forEach((subPoint) => {
-          subPointParentById.set(subPoint.id, point.id);
-        });
-      });
-    });
-
-    return { pointIds, subPointParentById };
-  }, [boardOutline]);
-  const pooledNotes = useMemo(
-    () => notes.filter((note) => !placements[note.id]),
-    [notes, placements]
-  );
-  const notesById = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes]);
-  const placementCount = Object.keys(placements).length;
-  const hasPlacements = placementCount > 0;
-
-  const pooledNoteIds = pooledNotes.map(note => note.id);
-  const { canRecover, recheck: recheckComposeRecovery } = usePendingAiResultAttempt(
-    aiBlocked, scratchComposeRequest(sermonId, currentOutline, pooledNoteIds),
-  );
-  const cannotStartCompose = aiBlocked && !canRecover;
-  const canCompose =
-    pooledNotes.length > 0 &&
-    !cannotStartCompose &&
-    !isScratchWritePending &&
-    !isComposing &&
-    !isApplying &&
-    !isReadOnly;
-
-  const clearComposition = useCallback(() => {
-    setComposedOutline(null);
-    setComposeNoticeKey(null);
-    setComposeUnplacedCount(0);
-    setComposeError(null);
-  }, []);
-
-  useEffect(() => {
-    if (isManualCaptureOpen) {
-      manualInputRef.current?.focus();
-    }
-  }, [isManualCaptureOpen]);
-
-  useEffect(() => {
-    outlineRevisionRef.current += 1;
-    setManualOutline((current) => {
-      if (!current) {
-        pendingManualOutlineSignatureRef.current = null;
-        return null;
-      }
-
-      const pendingSignature = pendingManualOutlineSignatureRef.current;
-      if (!pendingSignature || pendingSignature === incomingOutlineSignature) {
-        pendingManualOutlineSignatureRef.current = null;
-        return null;
-      }
-
-      return current;
-    });
-  }, [incomingOutlineSignature]);
-
-  useEffect(() => {
-    setPlacements((current) => {
-      let changed = false;
-      const next: Record<string, ScratchPlacement> = {};
-
-      Object.entries(current).forEach(([noteId, placement]) => {
-        const parentPointId = placement.subPointId
-          ? boardOutlineLookup.subPointParentById.get(placement.subPointId)
-          : placement.pointId;
-        const isValidPoint = boardOutlineLookup.pointIds.has(placement.pointId);
-        const isValidSubPoint = !placement.subPointId || parentPointId === placement.pointId;
-
-        if (isValidPoint && isValidSubPoint) {
-          next[noteId] = placement;
-        } else {
-          changed = true;
-        }
-      });
-
-      return changed ? next : current;
-    });
-  }, [boardOutlineLookup]);
-
-  const handleAddManualNote = useCallback((text: string) => {
-    if (scratchMutationLockedRef.current) return false;
-    const note = addScratchNote(text);
-    if (!note) return false;
-    markScratchChanged();
-    clearComposition();
-    return true;
-  }, [addScratchNote, clearComposition, markScratchChanged]);
+  useEffect(() => () => revokeVoiceRecoveryUrl(voiceRecoveryUrlRef.current), []);
+  useEffect(() => { if (isManualCaptureOpen) manualInputRef.current?.focus(); }, [isManualCaptureOpen]);
 
   /** Closing keeps what was typed — a stray click on the head must not eat a draft. */
-  const collapseManualCapture = useCallback(() => {
-    setIsManualCaptureOpen(false);
-  }, []);
+  const collapseManualCapture = useCallback(() => setIsManualCaptureOpen(false), []);
 
   const handleManualSubmit = useCallback(() => {
     const nextText = manualDraft.trim();
     if (!nextText) return;
-    if (handleAddManualNote(nextText)) {
+    if (!lockedRef.current && addScratchNote(nextText)) {
       setManualDraft("");
       manualInputRef.current?.focus();
     } else {
       toast.error(t("scratch.capture.manualError"));
     }
-  }, [handleAddManualNote, manualDraft, t]);
+  }, [addScratchNote, manualDraft, t]);
 
-  const [voiceGuardError, setVoiceGuardError] = useState<FailureWords | null>(null);
   const voice = useTextDictation({
     recordingContext: { context: 'scratch', contextId: sermonId },
     transcribe: transcribeThoughtAudio,
     fallbackErrorKey: VOICE_ERROR_KEY,
     acceptAfterText: true,
-    canTranscribe: () => {
-      if (!isApplyingRef.current) return true;
-      setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
-      toast.error(t(VOICE_APPLY_IN_PROGRESS_KEY));
-      return false;
-    },
-    onStart: () => setVoiceGuardError(null),
     onText: async (text, sourceId) => {
-      if (isApplyingRef.current) {
-        setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
-        throw new Error('The scratch plan is being applied');
-      }
       if (!sourceId) throw new Error('The scratch recording identity is required');
       const note = await addRecordedScratchNote(text, sourceId);
       if (!note) throw new Error('The voice note was not accepted');
-      markScratchChanged();
       replaceStoredVoiceBlob(null);
-      clearComposition();
       toast.success(t('scratch.voice.success'), SCRATCH_TOAST_OPTIONS);
     },
     onEmpty: () => toast.error(t(VOICE_ERROR_KEY)),
-    onError: words => { if (!isApplyingRef.current) toast.error(sayFailure(words, t)); },
+    onError: words => toast.error(sayFailure(words, t)),
   });
   const isVoiceProcessing = voice.isProcessing;
-  const voiceError = voiceGuardError ?? voice.error;
+  const voiceError = voice.error;
   const voiceRetryCount = voice.retryCount;
-  const surfaceVoiceApplyRecovery = () => {
-    setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
-    toast.error(t(VOICE_APPLY_IN_PROGRESS_KEY));
-  };
   const handleVoiceComplete = (audioBlob: Blob) => {
     replaceStoredVoiceBlob(audioBlob);
     voice.complete(audioBlob);
   };
-  const handleRetryVoice = () => {
-    if (isApplyingRef.current) { surfaceVoiceApplyRecovery(); return; }
-    voice.retry();
-  };
-  const handleClearVoiceError = () => {
-    replaceStoredVoiceBlob(null); setVoiceGuardError(null); voice.clear();
-  };
-  const handleRecordVoiceAgain = handleClearVoiceError;
+  const handleRetryVoice = () => voice.retry();
+  const handleClearVoiceError = () => { replaceStoredVoiceBlob(null); voice.clear(); };
   const handleDiscardVoice = async () => { await voice.discard(); handleClearVoiceError(); };
-
   const handleDownloadVoiceRecovery = useCallback(() => {
     const blob = storedVoiceBlobRef.current;
-    if (!blob) return;
-    downloadBlobToDevice(blob, buildRecordingFilename(blob.type));
+    if (blob) downloadBlobToDevice(blob, buildRecordingFilename(blob.type));
   }, []);
 
-  const handleEditNote = useCallback(
-    (noteId: string, text: string, save?: (text: string) => Promise<void>) => {
-      if (scratchMutationLockedRef.current) return;
-      markScratchChanged();
-      clearComposition();
-      if (save) return save(text);
-      updateScratchNote(noteId, { text });
-    },
-    [clearComposition, markScratchChanged, updateScratchNote]
-  );
+  const handleEditNote = useCallback((noteId: string, text: string, save?: (text: string) => Promise<void>) => {
+    if (lockedRef.current) return;
+    if (save) return save(text);
+    updateScratchNote(noteId, { text });
+  }, [updateScratchNote]);
 
-  const handleDeleteNote = useCallback(
-    (noteId: string) => {
-      if (scratchMutationLockedRef.current) return;
-      const deletedNote = notes.find((note) => note.id === noteId);
-      markScratchChanged();
-      setPlacements((current) => {
-        if (!current[noteId]) return current;
-        const next = { ...current };
-        delete next[noteId];
-        return next;
-      });
-      deleteScratchNote(noteId);
-      clearComposition();
-      if (!deletedNote) return;
-      showUndoNotice({
-        ...SCRATCH_TOAST_OPTIONS,
-        kind: "success",
-        message: t("scratch.card.deleteSuccess"),
-        label: t("scratch.card.undoDelete"),
-        saving: t("dataSync.phase.savingLocally"),
-        onUndo: async () => {
-          if (scratchMutationLockedRef.current) throw new Error("Scratch notes are read-only");
-          if (!await restoreScratchNote(deletedNote)) throw new Error("The scratch note could not be restored");
-          markScratchChanged();
-          clearComposition();
-        },
-        failureMessage: error => {
-          console.error("Failed to restore a scratch note", error);
-          return t("common.saveError");
-        },
-      });
-    },
-    [clearComposition, deleteScratchNote, markScratchChanged, notes, restoreScratchNote, t]
-  );
+  const handleDeleteNote = useCallback((noteId: string) => {
+    if (lockedRef.current) return;
+    const deletedNote = notes.find((note) => note.id === noteId);
+    deleteScratchNote(noteId);
+    if (!deletedNote) return;
+    showUndoNotice({
+      ...SCRATCH_TOAST_OPTIONS,
+      kind: "success",
+      message: t("scratch.card.deleteSuccess"),
+      label: t("scratch.card.undoDelete"),
+      saving: t("dataSync.phase.savingLocally"),
+      onUndo: async () => {
+        if (lockedRef.current) throw new Error("Scratch notes are read-only");
+        if (!await restoreScratchNote(deletedNote)) throw new Error("The scratch note could not be restored");
+      },
+      failureMessage: error => {
+        console.error("Failed to restore a scratch note", error);
+        return t("common.saveError");
+      },
+    });
+  }, [deleteScratchNote, notes, restoreScratchNote, t]);
 
   /**
    * Deleting a scratch note is one click away from an idea the preacher cannot retype,
    * so the click only ARMS the delete; the modal is what actually pulls the trigger.
    * Both delete paths funnel here — the trash button and clearing the note text to empty.
    */
-  const requestDeleteNote = useCallback(
-    (noteId: string) => {
-      if (scratchMutationLockedRef.current) return;
-      setPendingDeleteNoteId(noteId);
-    },
-    []
-  );
-
+  const requestDeleteNote = useCallback((noteId: string) => {
+    if (!lockedRef.current) setPendingDeleteNoteId(noteId);
+  }, []);
   const cancelDeleteNote = useCallback(() => setPendingDeleteNoteId(null), []);
-
   const confirmDeleteNote = useCallback(() => {
     const noteId = pendingDeleteNoteId;
     setPendingDeleteNoteId(null);
     if (!noteId || isNoteEditingLocked) return;
     handleDeleteNote(noteId);
   }, [handleDeleteNote, isNoteEditingLocked, pendingDeleteNoteId]);
+  const pendingDeleteNote = pendingDeleteNoteId ? notes.find((note) => note.id === pendingDeleteNoteId) ?? null : null;
 
-  const pendingDeleteNote = pendingDeleteNoteId
-    ? notes.find((note) => note.id === pendingDeleteNoteId) ?? null
-    : null;
+  /** The note's words, edited in place with the shared note editor; clearing them asks to delete. */
+  const renderText = (note: ScratchNote, editSignal: number, onEditingChange: (editing: boolean) => void) => (
+    <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} data-testid={`scratch-note-text-${note.id}`}>
+      <PointNote
+        note={note.text}
+        onChange={(next) => { if (next) handleEditNote(note.id, next); else requestDeleteNote(note.id); }}
+        captureSave={captureScratchText && (() => {
+          const save = captureScratchText(note);
+          return text => text ? handleEditNote(note.id, text, save) : requestDeleteNote(note.id);
+        })}
+        isReadOnly={isNoteEditingLocked}
+        addRevealClass="opacity-100"
+        hideClearButton
+        tone="neutral"
+        appearance="body"
+        clickToEdit={false}
+        editSignal={editSignal}
+        editActions={{ save: t('scratch.card.save'), cancel: t('scratch.card.cancel') }}
+        onEditingChange={onEditingChange}
+        labels={noteLabels}
+      />
+    </div>
+  );
 
-  const handleScratchPlace = useCallback(
-    (noteId: string, target: ScratchPlacement | null) => {
-      if (isBoardLocked || !notes.some((note) => note.id === noteId)) return;
-
-      const currentPlacement = placements[noteId];
-      const isSamePlacement =
-        currentPlacement?.pointId === target?.pointId &&
-        currentPlacement?.subPointId === target?.subPointId;
-      if (isSamePlacement) return;
-
-      markScratchChanged();
-      setPlacements((current) => {
-        if (target === null) {
-          const next = { ...current };
-          delete next[noteId];
-          return next;
-        }
-        return { ...current, [noteId]: target };
-      });
-    },
-    [isBoardLocked, markScratchChanged, notes, placements]
+  const renderManualCaptureControl = () => (
+    // Open = the button is the HEAD of the form below it: same violet accent, squared bottom, no gap.
+    <button
+      type="button"
+      onClick={() => {
+        if (isCaptureLocked) return;
+        if (isManualCaptureOpen) { collapseManualCapture(); return; }
+        setIsManualCaptureOpen(true);
+        manualInputRef.current?.focus();
+      }}
+      className={[
+        "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch border px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
+        isManualCaptureOpen
+          ? "rounded-xl border-violet-400 bg-violet-50 text-violet-900 focus-visible:ring-violet-400 dark:border-violet-500 dark:bg-violet-600/15 dark:text-violet-100"
+          : "rounded-xl border-gray-300 bg-gray-100 text-gray-700 shadow-sm hover:bg-gray-200 focus-visible:ring-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700",
+      ].join(" ")}
+      disabled={isCaptureLocked}
+      title={t(MANUAL_ADD_LABEL_KEY)}
+      aria-label={t(MANUAL_ADD_LABEL_KEY)}
+      aria-expanded={isManualCaptureOpen}
+    >
+      <Pencil className={["h-4 w-4 shrink-0", isManualCaptureOpen ? "text-violet-600 dark:text-violet-300" : "text-gray-500 dark:text-gray-400"].join(" ")} aria-hidden="true" />
+      <span className="min-w-0 text-center leading-tight">{t(MANUAL_ADD_LABEL_KEY)}</span>
+    </button>
   );
 
   /**
-   * One drop, one operation: WHICH container the note goes to and WHERE among its
-   * notes. The container is a draft that lives until Apply; the order is part of
-   * the notes themselves and is written straight through — the same split as
-   * before, done in one call so the two halves can never disagree.
+   * The form is always there and opens or closes by one smooth height move, so the hint and the notes
+   * below glide instead of jumping up and back (the owner, 2026-11-19). Closed, it is inert: no field
+   * to tab into, nothing read aloud.
    */
-  const handleScratchMove = useCallback(
-    (noteId: string, target: ScratchPlacement | null, neighbourIds: string[], index: number) => {
-      if (isBoardLocked || !notes.some((note) => note.id === noteId)) return;
-      markScratchChanged();
-      setPlacements((current) => {
-        if (target === null) {
-          if (!current[noteId]) return current;
-          const next = { ...current };
-          delete next[noteId];
-          return next;
-        }
-        return { ...current, [noteId]: target };
-      });
-      moveScratchNote?.(noteId, neighbourIds, index);
-    },
-    [isBoardLocked, markScratchChanged, moveScratchNote, notes]
-  );
-
-  /** Every container a note can be filed into, in reading order: pool, then section → point → sub-point. */
-  const placeTargets = useMemo<ScratchPlaceTarget[]>(() => {
-    const targets: ScratchPlaceTarget[] = [{ key: "pool", label: t("scratch.card.placeIntoPool"), depth: 0, target: null }];
-    SECTION_KEYS.forEach((key) => {
-      const sectionLabel = getSectionLabel(t, key);
-      (boardOutline[key] ?? []).forEach((point) => {
-        targets.push({ key: `point:${point.id}`, label: `${sectionLabel}: ${point.text}`, depth: 0, target: { pointId: point.id } });
-        (point.subPoints ?? []).forEach((subPoint) => {
-          targets.push({ key: `sub:${subPoint.id}`, label: subPoint.text, depth: 1, target: { pointId: point.id, subPointId: subPoint.id } });
-        });
-      });
-    });
-    return targets;
-  }, [boardOutline, t]);
-
-  /** The menu's outcome is a drop at the END of the chosen container — same operation, no gesture. */
-  const handlePlaceInto = useCallback(
-    (noteId: string, target: ScratchPlacement | null) => {
-      const targetKey = placementKey(target);
-      const neighbourIds = notes
-        .filter((note) => note.id !== noteId && placementKey(placements[note.id]) === targetKey)
-        .map((note) => note.id);
-      handleScratchMove(noteId, target, neighbourIds, neighbourIds.length);
-    },
-    [handleScratchMove, notes, placements]
-  );
-
-  const handleManualOutlineChange = useCallback(
-    (nextOutline: SermonOutline) => {
-      if (isBoardLocked) return;
-
-      if (composedOutline) {
-        setComposedOutline(cloneSermonOutline(nextOutline));
-        setComposeError(null);
-        return;
-      }
-
-      const cleanOutline = stripScratchMetadata(nextOutline as ComposedPlanOutline);
-      outlineRevisionRef.current += 1;
-      pendingManualOutlineSignatureRef.current = getOutlineSignature(cleanOutline);
-      setManualOutline(cleanOutline);
-      void Promise.resolve(onOutlineChange?.(cleanOutline)).catch((error) => {
-        toast.error(refusalMessage(error, t, BOARD_APPLY_ERROR_KEY));
-      });
-    },
-    [composedOutline, isBoardLocked, onOutlineChange, t]
-  );
-
-  const handleCompose = async () => {
-    if (!canCompose || isApplying) return;
-    const requestId = composeRequestIdRef.current + 1;
-    composeRequestIdRef.current = requestId;
-    const composeRevision = scratchRevisionRef.current;
-    const composeSignature = scratchSignatureRef.current;
-    const composeLocalScratchChange = localScratchChangeRef.current;
-    const composeOutlineRevision = outlineRevisionRef.current;
-    setIsComposing(true);
-    setComposeNoticeKey(null);
-    setComposeUnplacedCount(0);
-    setComposeError(null);
-
-    const isLatestRequest = () => composeRequestIdRef.current === requestId;
-    const isStillValid = () =>
-      scratchRevisionRef.current === composeRevision &&
-      scratchSignatureRef.current === composeSignature &&
-      localScratchChangeRef.current === composeLocalScratchChange &&
-      outlineRevisionRef.current === composeOutlineRevision &&
-      !scratchWritePendingRef.current;
-
-    const timeoutId = window.setTimeout(() => {
-      if (!isLatestRequest()) return;
-      composeRequestIdRef.current = requestId + 1;
-      setIsComposing(false);
-      setComposeError({ key: "scratch.board.composeTimeout" });
-      toast.error(t("scratch.board.composeTimeout"));
-    }, SCRATCH_COMPOSE_UI_TIMEOUT_MS);
-
-    try {
-      const { outline: outlineFromScratch, unplacedScratchNoteIds, acknowledge } = await composePlanFromScratch(
-        sermonId,
-        currentOutline,
-        pooledNoteIds,
-        undefined,
-        { recoverOnly: aiBlocked },
-      );
-
-      if (!isLatestRequest()) {
-        return;
-      }
-      if (!isStillValid()) {
-        setComposeError({ key: "scratch.board.composeStale" });
-        toast.error(t("scratch.board.composeStale"));
-        return;
-      }
-
-      setComposedOutline(outlineFromScratch);
-      acknowledge?.();
-      setComposeNoticeKey(getComposeNoticeKey(outlineFromScratch));
-      setComposeUnplacedCount(unplacedScratchNoteIds.length);
-      setComposeError(null);
-      await refreshAiUsage();
-    } catch (error) {
-      if (!isLatestRequest()) return;
-      // A bare 504 from the 60 s ceiling is a timeout too, not a "Gateway Timeout" to print.
-      const isTimeout =
-        ranOutOfTime(error) ||
-        (error instanceof Error &&
-          (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out")));
-      const isOffline = isKnownOffline();
-      const recoveryKey = aiResultFailureKey(error);
-      // Kept as words and said when shown (BUG-20261006-screen-error-kept-as-translated-sentence).
-      const words: FailureWords = isOffline
-        ? { key: "scratch.board.composeOffline" }
-        : recoveryKey ? { key: recoveryKey }
-        : isTimeout
-        ? { key: "scratch.board.composeTimeout" }
-        : error instanceof Error && error.message
-          ? { said: error.message }
-          : { key: "scratch.board.composeError" };
-      setComposeError(words);
-      toast.error(sayFailure(words, t));
-    } finally {
-      window.clearTimeout(timeoutId);
-      recheckComposeRecovery();
-      if (isLatestRequest()) {
-        setIsComposing(false);
-      }
-    }
-  };
-
-  const applyOutline = async () => {
-    if (
-      (!cleanProposedOutline && !hasPlacements) ||
-      isScratchWritePending ||
-      isVoiceProcessing ||
-      isReadOnly ||
-      isApplying
-    ) return;
-
-    setIsApplying(true);
-    let didReportApplyError = false;
-    const reportApplyError = (error: unknown) => {
-      if (didReportApplyError) return;
-      didReportApplyError = true;
-      toast.error(refusalMessage(error, t, BOARD_APPLY_ERROR_KEY));
-    };
-
-    try {
-      const finalOutline = cloneSermonOutline(cleanProposedOutline ?? currentOutline);
-      const consumedNoteIds = cleanProposedOutline
-        ? collectComposedScratchNoteIds(composedOutline)
-        : new Set<string>();
-      const failedPlacementNoteIds: string[] = [];
-
-      Object.entries(placements).forEach(([noteId, placement]) => {
-        const note = notesById.get(noteId);
-        if (!note) return;
-        const finalPlacement = remapPlacement(placement, strippedProposedOutline?.idMap);
-        if (appendScratchPlacementToOutline(finalOutline, finalPlacement, note.text)) {
-          consumedNoteIds.add(noteId);
-        } else {
-          failedPlacementNoteIds.push(noteId);
-        }
-      });
-
-      if (failedPlacementNoteIds.length > 0) {
-        throw saidError("scratch.board.applyPlacementError");
-      }
-
-      let deliveryQueued = false;
-      const persistApply = Promise.resolve(onApplyOutline?.(finalOutline, Array.from(consumedNoteIds))).then(result => {
-        deliveryQueued = result?.delivery === 'queued';
-      });
-      void persistApply.catch(reportApplyError);
-
-      let didOnlineWriteSettle = false;
-      if (!isBrowserOffline()) {
-        didOnlineWriteSettle = await waitForSettleWithTimeout(persistApply, APPLY_SETTLE_TIMEOUT_MS);
-      }
-
-      if (didReportApplyError) return;
-
-      if (consumedNoteIds.size > 0) {
-        markScratchChanged();
-      }
-      setPlacements({});
-      clearComposition();
-      // Apply supersedes any pending manual-edit draft: drop the local `manualOutline`
-      // shadow so the board renders the freshly-applied outline (which already folded that
-      // edit in) instead of keeping the stale pre-Apply draft until a remount. (Review r8.)
-      setManualOutline(null);
-      if (deliveryQueued) {
-        setComposeNoticeKey('scratch.board.applyQueued');
-      } else if (didOnlineWriteSettle) {
-        toast.success(t("scratch.board.applySuccess"), SCRATCH_TOAST_OPTIONS);
-      }
-    } catch (error) {
-      reportApplyError(error);
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, cannotStartCompose, pooledNotes.length);
-  const composeDisabledTitle = composeDisabledKey ? t(composeDisabledKey) : undefined;
-
-  const hasApplicableOutlineChanges = Boolean(cleanProposedOutline) || hasPlacements;
-  const applyDisabledTitle = onEditPlan ? undefined : isReadOnly
-    ? t("scratch.board.applyReadOnly")
-    : isVoiceProcessing
-      ? t("scratch.board.applyVoiceProcessing")
-      : isScratchWritePending
-      ? t("scratch.board.applyPendingWrites")
-      : !hasApplicableOutlineChanges
-        ? t("scratch.board.applyNeedsProposal")
-        : undefined;
-
-  const renderManualCaptureControl = () => {
-    // Open = the button is the HEAD of the form below it: same violet accent, squared
-    // bottom, no gap. Otherwise the panel reads as a stray card owned by nothing.
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          if (isCaptureLocked) return;
-          if (isManualCaptureOpen) {
-            collapseManualCapture();
-            return;
-          }
-          setIsManualCaptureOpen(true);
-          manualInputRef.current?.focus();
-        }}
-        className={[
-          "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch border px-4 py-3 font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-          isManualCaptureOpen
-            ? "rounded-xl rounded-b-none border-b-0 border-violet-400 bg-violet-50 text-violet-900 focus:ring-violet-400 dark:border-violet-500 dark:bg-violet-600/15 dark:text-violet-100"
-            : "rounded-xl border-gray-300 bg-gray-100 text-gray-700 shadow-sm hover:bg-gray-200 focus:ring-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700",
-        ].join(" ")}
-        disabled={isCaptureLocked}
-        title={t(MANUAL_ADD_LABEL_KEY)}
-        aria-label={t(MANUAL_ADD_LABEL_KEY)}
-        aria-expanded={isManualCaptureOpen}
-      >
-        <Pencil
-          className={[
-            "h-5 w-5 shrink-0",
-            isManualCaptureOpen
-              ? "text-violet-600 dark:text-violet-300"
-              : "text-gray-500 dark:text-gray-400",
-          ].join(" ")}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 text-center leading-tight">{t(MANUAL_ADD_LABEL_KEY)}</span>
-      </button>
-    );
-  };
-
-  const renderManualCaptureForm = () => {
-    if (!isManualCaptureOpen) return null;
-
-    return (
-      // Open = manual mode: the recorder button steps aside, the head goes full width and
-      // this panel continues it — one shape, so it is obvious what you are doing.
+  const renderManualCaptureForm = () => (
+    <div className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${isManualCaptureOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+      inert={!isManualCaptureOpen} aria-hidden={!isManualCaptureOpen || undefined}>
+      <div className="min-h-0 overflow-hidden">
       <form
-        className="mb-4 rounded-xl rounded-t-none border border-t-0 border-violet-400 bg-violet-50/60 p-3 dark:border-violet-500 dark:bg-violet-600/[0.07] sm:p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleManualSubmit();
-        }}
+        className="mt-2 rounded-xl border border-violet-300 bg-violet-50/60 p-3 dark:border-violet-500 dark:bg-violet-600/[0.07]"
+        onSubmit={(event) => { event.preventDefault(); handleManualSubmit(); }}
       >
-        {/* The head above already names the mode — no second title here. */}
-        <label htmlFor="scratch-manual-note-input" className="sr-only">
-          {t(MANUAL_INPUT_LABEL_KEY)}
-        </label>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <label htmlFor="scratch-manual-note-input" className="sr-only">{t(MANUAL_INPUT_LABEL_KEY)}</label>
+        <div className="flex flex-col gap-2">
           <TextareaAutosize
             id="scratch-manual-note-input"
             ref={manualInputRef}
             minRows={2}
             value={manualDraft}
-            onChange={(event) => {
-              if (!isCaptureLocked) setManualDraft(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                collapseManualCapture();
-              }
-            }}
+            onChange={(event) => { if (!isCaptureLocked) setManualDraft(event.target.value); }}
+            onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); collapseManualCapture(); } }}
             placeholder={t(MANUAL_INPUT_LABEL_KEY)}
             aria-label={t(MANUAL_INPUT_LABEL_KEY)}
-            className="min-w-0 flex-1 resize-none rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-violet-400/70 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-violet-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-violet-300/40 dark:focus:ring-violet-900/40"
+            className="min-w-0 flex-1 resize-none rounded-lg border border-violet-200 bg-white px-3 py-2 text-base text-gray-900 placeholder-violet-400/70 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 md:text-sm dark:border-violet-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-violet-300/40 dark:focus:ring-violet-900/40"
             disabled={isCaptureLocked}
           />
-          <div className="flex items-start gap-2">
+          <div className="flex items-center gap-2">
             <button
               type="submit"
               disabled={!manualDraft.trim() || isCaptureLocked}
-              className="inline-flex flex-1 items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400 sm:flex-none"
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white transition hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-violet-500 dark:hover:bg-violet-400"
             >
               {t("scratch.capture.add")}
             </button>
             <button
               type="button"
               onClick={collapseManualCapture}
-              className="shrink-0 rounded-lg p-2 text-violet-500 transition hover:bg-violet-100 hover:text-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:text-violet-300 dark:hover:bg-violet-900/50 dark:hover:text-violet-100"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-violet-500 transition hover:bg-violet-100 hover:text-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:text-violet-300 dark:hover:bg-violet-900/50 dark:hover:text-violet-100"
               aria-label={t("common.close")}
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -810,41 +299,14 @@ export default function ScratchPanel({
           </div>
         </div>
       </form>
-    );
-  };
-
-  const renderVoiceRecoveryPanel = () => (
-    <AudioRecoveryPanel
-      show={Boolean(voiceError && storedVoiceBlobRef.current && voiceRecoveryUrl)}
-      audioUrl={voiceRecoveryUrl}
-      errorMessage={voiceError ? sayFailure(voiceError, t) : null}
-      appliedVariant="standard"
-      retryCount={voiceRetryCount}
-      maxRetries={3}
-      isProcessing={isVoiceProcessing || isApplying}
-      onRetry={handleRetryVoice}
-      onRecordAgain={handleRecordVoiceAgain}
-      onDiscard={() => { void handleDiscardVoice().catch(() => toast.error(t('audio.draft.discardFailed'))); }}
-      onDownload={handleDownloadVoiceRecovery}
-      t={t}
-      className="mb-4"
-    />
+      </div>
+    </div>
   );
 
-  /**
-   * Recording and the manual note — the two ways a thought gets in.
-   *
-   * They used to live only on the capture screen, so writing something down while
-   * arranging the plan meant leaving the board and coming back. The same controls
-   * now render inside the board's pool as well. Only ONE of them is mounted at a
-   * time (the view switch renders either capture or board), so the recorder keeps
-   * a single instance and `capturePortal` a single target.
-   */
-  const renderCaptureControls = () => (
+  /** Recording and the manual note — the two ways a thought gets in; they head the pool. */
+  const capture = (
     <>
-      {/* No gap under the recorder row while the manual form is open — the button and
-          the panel below it have to read as one block, not two stacked cards. */}
-      <div className={isManualCaptureOpen ? "" : "mb-4"} ref={setCapturePortal} />
+      <div ref={setCapturePortal} />
       <AudioRecorderPortalBridge
         key={voice.recordingKey}
         onDiscardRecording={handleDiscardVoice}
@@ -862,180 +324,62 @@ export default function ScratchPanel({
         isRecorderDisabled={isCaptureLocked || transcriptionBlocked}
         recorderTitle={transcriptionUnavailableLabel}
         isManualDisabled={isCaptureLocked}
-        onOpenCreateModal={() => {
-          if (!isCaptureLocked) setIsManualCaptureOpen(true);
-        }}
+        onOpenCreateModal={() => { if (!isCaptureLocked) setIsManualCaptureOpen(true); }}
         manualControl={renderManualCaptureControl()}
         manualThoughtTitle={t(MANUAL_ADD_LABEL_KEY)}
         manualButtonPlacement="right"
         manualButtonSeparate
-        hideRecordButton={isManualCaptureOpen}
+        recorderVariant="mini"
       />
       {renderManualCaptureForm()}
-      {renderVoiceRecoveryPanel()}
-      <RecordingDraftBanner context="scratch" contextId={sermonId} isProcessing={isVoiceProcessing || isApplying}
+      <AudioRecoveryPanel
+        show={Boolean(voiceError && storedVoiceBlobRef.current && voiceRecoveryUrl)}
+        audioUrl={voiceRecoveryUrl}
+        errorMessage={voiceError ? sayFailure(voiceError, t) : null}
+        appliedVariant="standard"
+        retryCount={voiceRetryCount}
+        maxRetries={3}
+        isProcessing={isVoiceProcessing}
+        onRetry={handleRetryVoice}
+        onRecordAgain={handleClearVoiceError}
+        onDiscard={() => { void handleDiscardVoice().catch(() => toast.error(t('audio.draft.discardFailed'))); }}
+        onDownload={handleDownloadVoiceRecovery}
+        t={t}
+        className="mt-2"
+      />
+      <RecordingDraftBanner context="scratch" contextId={sermonId} isProcessing={isVoiceProcessing}
         resendDisabled={transcriptionBlocked || isCaptureLocked} excludeDraftIds={voice.appliedDraftIds}
         onResend={(_blob, source) => voice.recover(source)} />
     </>
   );
 
-  const renderScratchNote = (
-    note: ScratchNote,
-    dragHandleProps: DragHandleProps | null | undefined,
-    options?: { overlay?: boolean }
-  ) => {
-    const currentNote = notesById.get(note.id) ?? note;
-    if (options?.overlay) {
-      return <ScratchNoteCard note={currentNote} isOverlay onEdit={() => {}} onDelete={() => {}} />;
-    }
-    return (
-      <ScratchNoteCard
-        note={currentNote}
-        isReadOnly={isNoteEditingLocked}
-        dragHandleProps={onEditPlan || isBoardLocked ? undefined : dragHandleProps}
-        onEdit={handleEditNote}
-        captureEdit={captureScratchText && (note => {
-          const save = captureScratchText(note);
-          return text => handleEditNote(note.id, text, save);
-        })}
-        onDelete={requestDeleteNote}
-        onUnplace={!isBoardLocked && placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
-        placeTargets={onEditPlan || isBoardLocked ? undefined : placeTargets}
-        currentTargetKey={placementKey(placements[currentNote.id])}
-        onPlaceInto={handlePlaceInto}
-      />
-    );
-  };
-
-  const renderPoolHeader = () => (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          {t("scratch.board.pool")}
-        </h3>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-            {pooledNotes.length}
-          </span>
-          {!onEditPlan && <button
-            type="button"
-            onClick={handleCompose}
-            disabled={!canCompose}
-            title={composeDisabledTitle}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 shadow-sm transition-all duration-200 hover:bg-violet-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200 dark:hover:bg-violet-900/40 sm:w-auto"
-          >
-            <Sparkles className={["h-4 w-4", isComposing ? "animate-spin" : ""].join(" ")} aria-hidden="true" />
-            {isComposing ? t("scratch.board.composing") : t("scratch.board.compose")}
-          </button>}
-        </div>
-      </div>
-
-      {/* Capture lives here too: a thought that arrives while the plan is being
-          arranged should not cost a trip back to another screen. */}
-      <div data-testid="board-capture-controls">{renderCaptureControls()}</div>
-
-      {composeNoticeKey && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
-          {t(composeNoticeKey)}
-        </div>
-      )}
-
-      {composeUnplacedCount > 0 && (
-        <div
-          data-testid="compose-unplaced-notice"
-          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
-        >
-          {t("scratch.board.composeUnplaced", { count: composeUnplacedCount })}
-        </div>
-      )}
-
-      {composeError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
-          {sayFailure(composeError, t)}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderBoard = () => (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20 sm:flex-row sm:items-start sm:justify-between sm:p-5">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-gray-950 dark:text-gray-100">
-            {t("scratch.board.title")}
-          </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {t("scratch.board.subtitle")}
-          </p>
-        </div>
-        <span title={applyDisabledTitle}>
-          <button
-            type="button"
-            onClick={onEditPlan ?? applyOutline}
-            disabled={
-              (!onEditPlan && !hasApplicableOutlineChanges) ||
-              isApplying ||
-              isVoiceProcessing ||
-              isReadOnly ||
-              isScratchWritePending
-            }
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.01] hover:bg-violet-700 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400 sm:w-auto"
-          >
-            <Check className="h-4 w-4" aria-hidden="true" />
-            {onEditPlan ? t("planEditor.title") : isApplying ? t("common.saving") : t("scratch.board.apply")}
-          </button>
-        </span>
-      </div>
-
-      {/* Recovery lives with the recorder, inside the pool — one instance only. */}
-      <OutlineBoard
-        className={`${outlinePointGridClass} items-start gap-3 sm:gap-4`}
-        value={boardOutline}
-        onChange={handleManualOutlineChange}
-        showNotes
-        isReadOnly={isBoardLocked || Boolean(onEditPlan)}
-        scratch={{
-          pool: pooledNotes,
-          notesById,
-          placements,
-          onPlace: handleScratchPlace,
-          onMove: handleScratchMove,
-          renderNote: renderScratchNote,
-          poolHeader: renderPoolHeader(),
-          poolEmptyLabel: t("scratch.board.poolEmpty"),
-          noteLabels: boardNoteLabels,
-        }}
-      />
-    </div>
-  );
-
   return (
-    <motion.div layout={false} className="space-y-4 sm:space-y-6" data-scratch-count={notes.length}>
-      {/*
-        ONE SCREEN, NOT TWO.
-        The capture screen showed the same notes the board's pool already shows,
-        so reaching the plan cost a trip through a screen that repeated itself.
-        Capture (recording, manual note) lives in the pool; the board is the page.
-      */}
-      {renderBoard()}
+    <div data-scratch-count={notes.length}>
+      <ScratchSortingBoard
+        notes={notes}
+        outline={outline}
+        capture={capture}
+        isReadOnly={isReadOnly}
+        isNoteLocked={isNoteEditingLocked}
+        pointThoughtCount={pointThoughtCount}
+        renderText={renderText}
+        onDelete={requestDeleteNote}
+        onPlace={placeScratchNotes}
+        onCreatePoint={createPointWithScratch}
+        onAddPoint={addOutlinePoint}
+        onAddSubPoint={addOutlineSubPoint}
+        onRemovePoint={removeOutlinePoint}
+        onRenameTitle={renameOutlineTitle}
+        onRemoveSubPoint={removeOutlineSubPoint}
+      />
       <ConfirmModal
         isOpen={Boolean(pendingDeleteNote)}
         onClose={cancelDeleteNote}
         onConfirm={confirmDeleteNote}
         title={t("scratch.card.deleteConfirmTitle")}
-        description={t("scratch.card.deleteConfirm", {
-          text: truncateForConfirm(pendingDeleteNote?.text ?? ""),
-        })}
+        description={t("scratch.card.deleteConfirm", { text: truncateForConfirm(pendingDeleteNote?.text ?? "") })}
         confirmText={t("common.delete")}
       />
-    </motion.div>
+    </div>
   );
-}
-
-// Not the connection icon: pressing makes the request, and a failed one says so (owner, 2026-10-10).
-function getComposeDisabledKey(pending: boolean, aiBlocked: boolean, noteCount: number): string | undefined {
-  if (pending) return "scratch.board.composePendingWrites";
-  if (aiBlocked) return "settings.usage.aiUsageExhausted";
-  if (noteCount === 0) return "scratch.board.composeEmpty";
-  return undefined;
 }

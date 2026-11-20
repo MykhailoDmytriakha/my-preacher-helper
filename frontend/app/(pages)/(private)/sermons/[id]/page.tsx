@@ -245,6 +245,18 @@ function SermonPageContent({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
+  /**
+   * The mode the strip has finished sliding to. The three panes stand in one row, so the row is as
+   * tall as the tallest pane — a short mode left a long empty scroll under it
+   * (BUG-20261119-sermon-mode-track-keeps-tallest-height). A pane that is neither shown nor sliding
+   * out folds to no height; it stays mounted, so its editors keep their state.
+   */
+  const [settledMode, setSettledMode] = useState<SermonUiMode>(uiMode);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledMode(uiMode), 900);
+    return () => clearTimeout(timer);
+  }, [uiMode]);
+  const paneClass = (mode: SermonUiMode) => `basis-1/3 shrink-0 overflow-x-clip ${uiMode !== mode && settledMode !== mode ? 'h-0 overflow-y-hidden' : ''}`;
 
   const { t } = useTranslation();
   const sermonRef = useRef<Sermon | null>(sermon);
@@ -705,15 +717,18 @@ function SermonPageContent({ id }: { id: string }) {
         error={engineThoughts.error} errorWords={engineThoughts.errorWords} comparison={thoughtComparison} onRetry={engineThoughts.retry}
         onKeepLocal={() => engineThoughts.keepLocal(thoughtCheckpoint)} onAcceptRemote={() => engineThoughts.acceptRemote(thoughtCheckpoint)} />}
       <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />
-      <div className="lg:hidden">
-        <StructureStats
-          sermon={sermon!}
-          tagCounts={tagCounts}
-          totalThoughts={sermon?.thoughts?.length ?? 0}
-          hasInconsistentThoughts={hasInconsistentThoughts}
-          onOpenPlanEditor={openPlanEditor}
-        />
-      </div>
+      {/* Thought counts belong to the thought rooms; «Наброски» sorts raw notes and shows its own plan. */}
+      {uiMode !== 'raw' && (
+        <div className="lg:hidden">
+          <StructureStats
+            sermon={sermon!}
+            tagCounts={tagCounts}
+            totalThoughts={sermon?.thoughts?.length ?? 0}
+            hasInconsistentThoughts={hasInconsistentThoughts}
+            onOpenPlanEditor={openPlanEditor}
+          />
+        </div>
+      )}
 
       {uiMode !== 'raw' && sermon && (
         <RecordingDraftBanner
@@ -755,10 +770,11 @@ function SermonPageContent({ id }: { id: string }) {
             initial={false}
             animate={{ x: PANE_TRANSLATE_X_BY_MODE[uiMode] }}
             transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
+            onAnimationComplete={() => setSettledMode(uiMode)}
             style={{ width: '300%', willChange: 'transform' }}
           >
           {/* Clip each pane horizontally so offscreen card shadows cannot bleed into its neighbor. */}
-          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'prep' || undefined} inert={uiMode !== 'prep'}>
+          <div className={paneClass('prep')} aria-hidden={uiMode !== 'prep' || undefined} inert={uiMode !== 'prep'}>
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderPrepContent()}
@@ -769,7 +785,7 @@ function SermonPageContent({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'classic' || undefined} inert={uiMode !== 'classic'}>
+          <div className={paneClass('classic')} aria-hidden={uiMode !== 'classic' || undefined} inert={uiMode !== 'classic'}>
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderClassicContent({ portalRef: setClassicPortal })}
@@ -796,7 +812,7 @@ function SermonPageContent({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'raw' || undefined} inert={uiMode !== 'raw'}>
+          <div className={paneClass('raw')} aria-hidden={uiMode !== 'raw' || undefined} inert={uiMode !== 'raw'}>
             {renderRawContent()}
           </div>
           </motion.div>

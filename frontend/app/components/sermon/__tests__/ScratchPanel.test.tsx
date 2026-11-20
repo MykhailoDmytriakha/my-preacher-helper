@@ -59,10 +59,6 @@ jest.mock("@/providers/ConnectionProvider", () => ({
   useConnection: () => ({ isMagicAvailable: true }),
 }));
 
-jest.mock("@/services/scratch.service", () => ({
-  composePlanFromScratch: jest.fn(),
-}));
-
 jest.mock("@/services/thought.service", () => ({
   transcribeThoughtAudio: jest.fn(),
 }));
@@ -157,9 +153,14 @@ function renderScratchPanel(overrides: Partial<ComponentProps<typeof ScratchPane
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
     isScratchWritePending: false,
-    scratchRevision: 0,
-    onApplyOutline: jest.fn(),
-    onOutlineChange: jest.fn(),
+    placeScratchNotes: jest.fn(),
+    createPointWithScratch: jest.fn(),
+    addOutlinePoint: jest.fn(),
+    addOutlineSubPoint: jest.fn(),
+    removeOutlinePoint: jest.fn(),
+    renameOutlineTitle: jest.fn(),
+    removeOutlineSubPoint: jest.fn(),
+    pointThoughtCount: jest.fn(() => 0),
     ...overrides,
   };
 
@@ -199,15 +200,12 @@ describe("ScratchPanel", () => {
     expect(screen.queryByRole("textbox", { name: "Write a note" })).not.toBeInTheDocument();
   });
 
-  it("edits a durably queued scratch note while the structure editor still waits", () => {
+  it("edits a durably queued scratch note while a write is still pending", () => {
     const note = { id: "note-1", text: "Already saved on this device", createdAt: "2026-07-05" };
-    const onEditPlan = jest.fn();
-    const queued = { notes: [note], isScratchWritePending: true, canEditQueuedNotes: true, onEditPlan };
-    const props = renderScratchPanel(queued);
-    const card = within(screen.getByTestId("scratch-note-card-note-1"));
+    const props = renderScratchPanel({ notes: [note], isScratchWritePending: true, canEditQueuedNotes: true });
+    const card = within(screen.getByTestId("scratch-sketch-note-1"));
 
-    expect(screen.getByRole("button", { name: "planEditor.title" })).toBeDisabled();
-    fireEvent.click(card.getByText(note.text));
+    fireEvent.click(card.getByRole("button", { name: "Edit note" }));
     const editor = card.getByRole("textbox");
     fireEvent.change(editor, { target: { value: "Continued while offline" } });
     fireEvent.keyDown(editor, { key: "Enter" });
@@ -216,14 +214,13 @@ describe("ScratchPanel", () => {
     fireEvent.click(card.getByRole("button", { name: "Delete note" }));
     expect(screen.getByRole("dialog")).toBeVisible();
     expect(props.deleteScratchNote).not.toHaveBeenCalled();
-    expect(onEditPlan).not.toHaveBeenCalled();
   });
 
   it("hands off words already typed if delivery needs a decision before Enter", () => {
     const note = { id: "note-1", text: "Already saved on this device", createdAt: "2026-07-05" };
     const props = renderScratchPanel({ notes: [note], isScratchWritePending: true, canEditQueuedNotes: true });
-    const card = within(screen.getByTestId("scratch-note-card-note-1"));
-    fireEvent.click(card.getByText(note.text));
+    const card = within(screen.getByTestId("scratch-sketch-note-1"));
+    fireEvent.click(card.getByRole("button", { name: "Edit note" }));
     const editor = card.getByRole("textbox");
     fireEvent.change(editor, { target: { value: "Words typed before the refusal" } });
 
@@ -231,17 +228,22 @@ describe("ScratchPanel", () => {
     fireEvent.keyDown(editor, { key: "Enter" });
 
     expect(props.updateScratchNote).toHaveBeenCalledWith("note-1", { text: "Words typed before the refusal" });
-    fireEvent.click(card.getByText(note.text));
+    fireEvent.click(card.getByRole("button", { name: "Edit note" }));
     expect(card.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("keeps an unproven pending note read-only", () => {
     const note = { id: "note-1", text: "Pending local storage", createdAt: "2026-07-05" };
     const props = renderScratchPanel({ notes: [note], isScratchWritePending: true });
-    const card = within(screen.getByTestId("scratch-note-card-note-1"));
-    fireEvent.click(card.getByText(note.text));
+    const card = within(screen.getByTestId("scratch-sketch-note-1"));
+    // The pencil and the bin stay on the card, switched off until the write is kept on the device.
+    expect(card.getByRole("button", { name: "Edit note" })).toBeDisabled();
+    expect(card.getByRole("button", { name: "Delete note" })).toBeDisabled();
+    fireEvent.click(card.getByRole("button", { name: "Edit note" }));
     expect(card.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(card.queryByRole("button", { name: "Delete note" })).not.toBeInTheDocument();
+    fireEvent.click(card.getByRole("button", { name: "Delete note" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(props.deleteScratchNote).not.toHaveBeenCalled();
     expect(props.updateScratchNote).not.toHaveBeenCalled();
   });
 
@@ -253,7 +255,7 @@ describe("ScratchPanel", () => {
     };
     const props = renderScratchPanel({ notes: [note] });
 
-    const card = screen.getByTestId("scratch-note-card-note-1");
+    const card = screen.getByTestId("scratch-sketch-note-1");
     expect(within(card).queryByText("Scratch")).not.toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole("button", { name: "Delete note" }));
@@ -282,7 +284,7 @@ describe("ScratchPanel", () => {
     const capture = new Promise<ScratchNote | null>(resolve => { settle = resolve; });
     const restore = jest.fn(() => capture);
     renderScratchPanel({ notes: [note], restoreScratchNote: restore });
-    fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+    fireEvent.click(within(screen.getByTestId("scratch-sketch-note-1")).getByRole("button", { name: "Delete note" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     const options = toastMock().success.mock.calls[0][1] as { action: { onClick: (event: MouseEvent) => Promise<void> } };
     let first!: Promise<void>; let second!: Promise<void>;
@@ -300,7 +302,7 @@ describe("ScratchPanel", () => {
     let settle!: (value: ScratchNote) => void;
     const capture = new Promise<ScratchNote>(resolve => { settle = resolve; });
     renderScratchPanel({ notes: [note], restoreScratchNote: () => capture });
-    fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+    fireEvent.click(within(screen.getByTestId("scratch-sketch-note-1")).getByRole("button", { name: "Delete note" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
 
     const [, options] = toastMock().success.mock.calls[0] as [
@@ -335,7 +337,7 @@ describe("ScratchPanel", () => {
     const report = jest.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const props = renderScratchPanel({ notes: [note], restoreScratchNote: jest.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(note) });
-      fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+      fireEvent.click(within(screen.getByTestId("scratch-sketch-note-1")).getByRole("button", { name: "Delete note" }));
       fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
       const options = toastMock().success.mock.calls[0][1] as { action: { onClick: (event: MouseEvent) => Promise<void> } };
       await act(async () => { await options.action.onClick(new MouseEvent("click", { cancelable: true })); });
@@ -363,7 +365,7 @@ describe("ScratchPanel", () => {
     const props = renderScratchPanel({ notes: [note] });
 
     fireEvent.click(
-      within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", {
+      within(screen.getByTestId("scratch-sketch-note-1")).getByRole("button", {
         name: "Delete note",
       })
     );
@@ -382,7 +384,7 @@ describe("ScratchPanel", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(props.deleteScratchNote).not.toHaveBeenCalled();
     expect(toastMock().success).not.toHaveBeenCalled();
-    expect(screen.getByTestId("scratch-note-card-note-1")).toBeInTheDocument();
+    expect(screen.getByTestId("scratch-sketch-note-1")).toBeInTheDocument();
   });
 
   it("routes an emptied note through the same confirmation instead of deleting silently", () => {
@@ -393,7 +395,7 @@ describe("ScratchPanel", () => {
     };
     const props = renderScratchPanel({ notes: [note] });
 
-    fireEvent.click(screen.getByText("A note about to be cleared"));
+    fireEvent.click(within(screen.getByTestId("scratch-sketch-note-1")).getByRole("button", { name: "Edit note" }));
     const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "   " } });
     fireEvent.blur(textarea);

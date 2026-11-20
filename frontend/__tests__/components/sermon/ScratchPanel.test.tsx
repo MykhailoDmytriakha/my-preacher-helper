@@ -16,23 +16,9 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: {} });
 });
 
-
-import type { ComposedPlanOutline } from '@/config/schemas/zod';
 import type { ScratchNote, SermonOutline } from '@/models/models';
 import { aiUsageStub } from '@test-utils/aiUsage';
 
-import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
-
-/**
- * The board runs on dnd-kit now, so a simulated drop is `{active, over}` — the
- * only two things the handler reads. Ids carry their own meaning: `note:<id>`
- * for what is dragged, and the drop target's own id for where it landed.
- */
-let mockScratchOnDragEnd: ((event: {
-  active: { id: string };
-  over: { id: string } | null;
-}) => void) | undefined;
-let scratchRecordingComplete: ((audioBlob: Blob) => void | Promise<void>) | undefined;
 
 jest.mock('framer-motion', () => ({
   motion: {
@@ -58,47 +44,6 @@ jest.mock('react-i18next', () => ({
     },
   }),
 }));
-
-jest.mock('@dnd-kit/core', () => {
-  const React = jest.requireActual('react') as typeof import('react');
-
-  return {
-    DndContext: ({
-      onDragEnd,
-      children,
-    }: {
-      onDragEnd: NonNullable<typeof mockScratchOnDragEnd>;
-      children: React.ReactNode;
-    }) => {
-      mockScratchOnDragEnd = onDragEnd;
-      return <div data-testid="scratch-dnd-context">{children}</div>;
-    },
-    DragOverlay: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-    PointerSensor: function PointerSensor() {},
-    KeyboardSensor: function KeyboardSensor() {},
-    pointerWithin: jest.fn(() => []),
-    // The board asks dnd-kit to re-measure on every drag; the mock has to carry
-    // the enum it reads, or the component throws before it can render.
-    MeasuringStrategy: { Always: 'always', BeforeDragging: 'before', WhileDragging: 'while' },
-    useSensor: () => ({}),
-    useSensors: (...sensors: unknown[]) => sensors,
-    useDraggable: ({ id }: { id: string }) => ({
-      setNodeRef: jest.fn(),
-      attributes: {},
-      listeners: { 'data-drag-handle': id },
-      isDragging: false,
-    }),
-    useDroppable: ({ id }: { id: string }) => ({
-      setNodeRef: jest.fn(),
-      isOver: false,
-      node: { current: null },
-      rect: { current: null },
-      over: null,
-      active: null,
-      __dropId: id,
-    }),
-  };
-});
 
 jest.mock('sonner', () => ({
   toast: {
@@ -164,8 +109,6 @@ jest.mock('@/components/sermon/AudioRecorderPortalBridge', () => ({
     isRecorderDisabled?: boolean;
     recorderTitle?: string;
   }) => {
-    scratchRecordingComplete = onRecordingComplete;
-
     return (
       <div data-testid="scratch-capture-bridge" data-placement={manualButtonPlacement}>
         {manualControl}
@@ -242,10 +185,6 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
-jest.mock('@/services/scratch.service', () => ({
-  composePlanFromScratch: jest.fn(),
-}));
-
 jest.mock('@/services/thought.service', () => ({
   transcribeThoughtAudio: jest.fn(),
 }));
@@ -254,8 +193,6 @@ jest.mock('@/utils/clientId', () => ({
   newClientId: jest.fn(),
 }));
 
-const composePlanFromScratchMock = () =>
-  (jest.requireMock('@/services/scratch.service') as { composePlanFromScratch: jest.Mock }).composePlanFromScratch;
 const transcribeThoughtAudioMock = () =>
   (jest.requireMock('@/services/thought.service') as { transcribeThoughtAudio: jest.Mock }).transcribeThoughtAudio;
 const newClientIdMock = () =>
@@ -272,22 +209,6 @@ const baseNotes: ScratchNote[] = [
   { id: 'n2', text: 'Second scratch note', createdAt: '2026-07-04T00:01:00.000Z', section: 'introduction' },
 ];
 
-/**
- * Compose now answers with the outline PLUS the notes the model skipped, so the panel can
- * say so out loud. Tests that do not care about skipped notes get an empty list.
- */
-const composeOutline = (
-  outline: Partial<ComposedPlanOutline>,
-  unplacedScratchNoteIds: string[] = []
-) => ({
-  outline: {
-    introduction: outline.introduction ?? [],
-    main: outline.main ?? [],
-    conclusion: outline.conclusion ?? [],
-  } as ComposedPlanOutline,
-  unplacedScratchNoteIds,
-});
-
 function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof ScratchPanel>> = {}) {
   const props: React.ComponentProps<typeof ScratchPanel> = {
     sermonId: 'sermon-1',
@@ -299,9 +220,14 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
     isScratchWritePending: false,
-    scratchRevision: 0,
-    onApplyOutline: jest.fn().mockResolvedValue(undefined),
-    onOutlineChange: jest.fn().mockResolvedValue(undefined),
+    placeScratchNotes: jest.fn(),
+    createPointWithScratch: jest.fn(),
+    addOutlinePoint: jest.fn(),
+    addOutlineSubPoint: jest.fn(),
+    removeOutlinePoint: jest.fn(),
+    renameOutlineTitle: jest.fn(),
+    removeOutlineSubPoint: jest.fn(),
+    pointThoughtCount: jest.fn(() => 0),
     ...overrides,
   };
 
@@ -323,31 +249,9 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
   };
 }
 
-/**
- * The board IS the screen now — there is no capture view to leave, so this is a
- * no-op kept for readability at the call sites that used to open it.
- */
-async function openBoard(_user: ReturnType<typeof userEvent.setup>) {
-  await Promise.resolve();
-}
-
-function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
-  const noteText = within(container).getByText(text);
-  const noteRoot = noteText.closest('div');
-  if (!noteRoot) throw new Error(`Missing note root for ${text}`);
-  expect(noteRoot).toHaveClass('text-xs', 'italic', 'text-slate-500', 'dark:text-gray-400');
-  const icons = Array.from(noteRoot.querySelectorAll('svg'));
-  expect(
-    icons.some((icon) =>
-      icon.getAttribute('class')?.includes('text-gray-400')
-    )
-  ).toBe(true);
-}
-
 describe('ScratchPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    composePlanFromScratchMock().mockReset();
     transcribeThoughtAudioMock().mockReset();
     mockHasAiResultAttempt.mockReset().mockResolvedValue(false);
     mockUseAiUsage.mockReturnValue(aiUsageStub());
@@ -364,8 +268,6 @@ describe('ScratchPanel', () => {
       configurable: true,
       value: jest.fn(),
     });
-    mockScratchOnDragEnd = undefined;
-    scratchRecordingComplete = undefined;
     let idCounter = 0;
     newClientIdMock().mockImplementation(() => `fresh-id-${++idCounter}`);
   });
@@ -430,11 +332,13 @@ describe('ScratchPanel', () => {
     expect(transcribeThoughtAudioMock()).toHaveBeenCalledTimes(1);
   });
 
-  it('renders scratch note cards with the plan-editor PointNote visual treatment', () => {
-    renderScratchPanel();
+  it('renders a note on a point as plain neutral body text, not as a styled reminder', () => {
+    const outline: SermonOutline = { introduction: [], main: [{ id: 'p1', text: 'Point one' }], conclusion: [] };
+    renderScratchPanel({ outline, notes: [{ id: 'n1', text: 'First scratch note', createdAt: 'now', section: 'main', outlinePointId: 'p1' }] });
 
-    const card = screen.getByTestId('scratch-note-card-n1');
-    expectPlanEditorNoteVisual(card, 'First scratch note');
+    const card = screen.getByTestId('scratch-sketch-n1');
+    const words = within(card).getByText('First scratch note');
+    expect(words.closest('div')).not.toHaveClass('italic');
   });
 
   it('renders capture controls and scratch note cards as read-only under the capture lock', async () => {
@@ -451,9 +355,10 @@ describe('ScratchPanel', () => {
     expect(screen.getByRole('button', { name: 'scratch.capture.manualAdd' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'scratch.card.delete' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'scratch.card.edit' })).not.toBeInTheDocument();
 
     await user.click(screen.getByText('First scratch note'));
-    expect(screen.queryByRole('textbox', { name: 'planEditor.note.placeholder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(addScratchNote).not.toHaveBeenCalled();
     expect(updateScratchNote).not.toHaveBeenCalled();
     expect(deleteScratchNote).not.toHaveBeenCalled();
@@ -486,918 +391,37 @@ describe('ScratchPanel', () => {
    * back to the capture screen and another one forward. Recording and the manual
    * note now sit in the board's pool, so the plan never has to be left.
    */
-  it('offers recording and the manual note without leaving the board', async () => {
+  it('offers recording and the manual note on the board itself', () => {
     const outline: SermonOutline = {
       introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
       main: [{ id: 'existing-main', text: 'Existing main point' }],
       conclusion: [],
     };
-    const { user } = renderScratchPanel({ outline });
+    renderScratchPanel({ outline });
 
-    await openBoard(user);
-
-    const pool = screen.getByTestId('board-capture-controls');
-    expect(within(pool).getByRole('button', { name: 'audio.newRecording' })).toBeEnabled();
-    expect(within(pool).getByRole('button', { name: 'scratch.capture.manualAdd' })).toBeEnabled();
-    // Still the board, not the capture screen behind it.
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeInTheDocument();
+    const board = screen.getByTestId('scratch-sorting-board');
+    expect(within(board).getByRole('button', { name: 'audio.newRecording' })).toBeEnabled();
+    expect(within(board).getByRole('button', { name: 'scratch.capture.manualAdd' })).toBeEnabled();
+    expect(screen.getByTestId('scratch-sketch-n1')).toBeInTheDocument();
   });
 
-  it('renders existing sermon outline in board columns with point and sub-point drop zones', async () => {
-    const existingOutline: SermonOutline = {
-      introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
-      main: [
-        {
-          id: 'existing-main',
-          text: 'Existing main point',
-          subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000 }],
-        },
-      ],
+  it('files a note through the «Move to…» menu — the path without dragging', async () => {
+    const outline: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'existing-main', text: 'Existing main point', subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000 }] }],
       conclusion: [],
     };
-    renderScratchPanel({ outline: existingOutline });
+    const { user, props } = renderScratchPanel({ outline });
 
-    // The board is the page: no button to press, no capture screen behind it.
-    expect(screen.queryByRole('button', { name: 'Работать над планом' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('scratch-note-pool-band')).toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('Second scratch note')).toBeInTheDocument();
-    expect(screen.getByText('Existing intro point')).toBeInTheDocument();
-    expect(screen.getByText('Existing main point')).toBeInTheDocument();
-    expect(screen.getByText('Existing sub-point')).toBeInTheDocument();
-    // The "drag a note here" strips exist as targets but stay EMPTY until a note
-    // is actually in the air — an invitation shown at all times was the clutter
-    // the owner reported. Their presence is what matters here.
-    expect(screen.getByTestId('scratch-point-drop-zone-existing-main')).toBeInTheDocument();
-    expect(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).toBeInTheDocument();
-    expect(screen.getByTestId('outline-board-column-introduction')).toBeInTheDocument();
-    expect(screen.getByTestId('outline-board-column-main')).toBeInTheDocument();
-    expect(screen.getByTestId('outline-board-column-conclusion')).toBeInTheDocument();
-    // Columns ARE the drop targets now — there is no wrapper element per section,
-    // so their own test ids above are what proves they render. The board still
-    // lives inside one drag context, and notes still carry a grab handle.
-    expect(screen.getByTestId('scratch-dnd-context')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Drag to reorder').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('structure.addPointButton')).toHaveLength(3);
-    expect(screen.getAllByText('structure.addSubPoint')).toHaveLength(2);
-  });
+    const card = screen.getByTestId('scratch-sketch-n1');
+    // Two buttons carry the label: the wide-screen menu and the phone's sheet opener; CSS picks one.
+    await user.click(within(card).getAllByRole('button', { name: 'scratch.sort.moveTo' })[0]);
+    await user.click(await screen.findByRole('menuitem', { name: /Existing sub-point/ }));
 
-  it('persists manual outline edits through the silent outline-change handler', async () => {
-    const onOutlineChange = jest.fn().mockResolvedValue(undefined);
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    const { user } = renderScratchPanel({ onOutlineChange, onApplyOutline });
-
-    await openBoard(user);
-    const introCol = screen.getByTestId('outline-board-column-introduction');
-    await user.click(within(introCol).getByText('structure.addPointButton'));
-    const input = within(introCol).getByPlaceholderText('structure.addPointPlaceholder');
-    await user.type(input, 'manual point{enter}');
-
-    await waitFor(() => expect(onOutlineChange).toHaveBeenCalledTimes(1));
-    expect(onOutlineChange.mock.calls[0][0].introduction[0].text).toBe('Manual point');
-    expect(onApplyOutline).not.toHaveBeenCalled();
-  });
-
-  it('keeps the latest manual outline draft visible when an older outline prop arrives', async () => {
-    const initialOutline: SermonOutline = {
-      introduction: [{ id: 'p1', text: 'Initial point' }],
-      main: [],
-      conclusion: [],
-    };
-    const onOutlineChange = jest.fn(() => new Promise<void>(() => undefined));
-    const { user, props, rerender } = renderScratchPanel({ outline: initialOutline, onOutlineChange });
-
-    await openBoard(user);
-    const introCol = screen.getByTestId('outline-board-column-introduction');
-    await user.click(within(introCol).getByLabelText('common.edit'));
-    fireEvent.change(within(introCol).getByDisplayValue('Initial point'), {
-      target: { value: 'first edit' },
-    });
-    await user.click(within(introCol).getByLabelText('common.save'));
-    await waitFor(() => expect(onOutlineChange).toHaveBeenCalledTimes(1));
-
-    await user.click(within(introCol).getByLabelText('common.edit'));
-    fireEvent.change(within(introCol).getByDisplayValue('First edit'), {
-      target: { value: 'second edit' },
-    });
-    await user.click(within(introCol).getByLabelText('common.save'));
-    await waitFor(() => expect(onOutlineChange).toHaveBeenCalledTimes(2));
-
-    const [[olderAckOutline]] = onOutlineChange.mock.calls as unknown as [SermonOutline][];
-    rerender(<ScratchPanel {...props} outline={olderAckOutline} />);
-
-    expect(screen.getByText('Second edit')).toBeInTheDocument();
-    expect(screen.queryByText('First edit')).not.toBeInTheDocument();
-  });
-
-  it('files a note through the «place into…» menu — the path without dragging', async () => {
-    const moveScratchNote = jest.fn();
-    const { user } = renderScratchPanel({
-      outline: {
-        introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
-        main: [
-          {
-            id: 'existing-main',
-            text: 'Existing main point',
-            subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000 }],
-          },
-        ],
-        conclusion: [],
-      },
-      moveScratchNote,
-    });
-
-    const firstCard = screen.getByTestId('scratch-note-card-n1');
-    await user.click(within(firstCard).getByRole('button', { name: 'scratch.card.placeInto' }));
-    const menu = within(firstCard).getByRole('menu');
-    // Every OTHER container is offered — the note is in the pool, so the pool is not;
-    // points carry their section, sub-points sit under their point.
-    const offered = within(menu).getAllByRole('menuitem').map((item) => item.textContent);
-    expect(offered).toEqual([
-      expect.stringContaining('Existing intro point'),
-      expect.stringContaining('Existing main point'),
-      expect.stringContaining('Existing sub-point'),
-    ]);
-    expect(offered).not.toContain('scratch.card.placeIntoPool');
-
-    await user.click(within(menu).getByRole('menuitem', { name: /Existing sub-point/ }));
-
-    expect(within(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).getByText('First scratch note')).toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-note-pool-band')).queryByText('First scratch note')).not.toBeInTheDocument();
-    // Same operation as a drop: the note goes to the END of that container.
-    expect(moveScratchNote).toHaveBeenCalledWith('n1', [], 0);
-    expect(within(firstCard).queryByRole('menu')).not.toBeInTheDocument();
-
-    // Filed on the sub-point, the menu now offers the pool and leaves the sub-point out.
-    const placedCard = screen.getByTestId('scratch-note-card-n1');
-    await user.click(within(placedCard).getByRole('button', { name: 'scratch.card.placeInto' }));
-    const placedOffered = within(within(placedCard).getByRole('menu')).getAllByRole('menuitem').map((item) => item.textContent);
-    expect(placedOffered).toContain('scratch.card.placeIntoPool');
-    expect(placedOffered).not.toEqual(expect.arrayContaining([expect.stringContaining('Existing sub-point')]));
-
-    // Escape closes it and hands focus back to the button that opened it.
-    const placedTrigger = within(placedCard).getByRole('button', { name: 'scratch.card.placeInto' });
-    fireEvent.keyDown(within(placedCard).getByRole('menu'), { key: 'Escape' });
-    expect(within(placedCard).queryByRole('menu')).not.toBeInTheDocument();
-    expect(placedTrigger).toHaveFocus();
-
-    // A second note sent to the same sub-point lands AFTER the first: same operation as a drop.
-    const secondCard = screen.getByTestId('scratch-note-card-n2');
-    await user.click(within(secondCard).getByRole('button', { name: 'scratch.card.placeInto' }));
-    await user.click(within(within(secondCard).getByRole('menu')).getByRole('menuitem', { name: /Existing sub-point/ }));
-    expect(moveScratchNote).toHaveBeenLastCalledWith('n2', ['n1'], 1);
-  });
-
-  it('places notes on point and sub-point drop zones, supports pool round-trip, and applies notes additively', async () => {
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [
-        {
-          id: 'existing-main',
-          text: 'Existing main point',
-          note: 'Existing point note',
-          subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000, note: 'Existing sub note' }],
-        },
-      ],
-      conclusion: [],
-    };
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    const deleteScratchNote = jest.fn();
-    const { user, props } = renderScratchPanel({
-      outline: existingOutline,
-      onApplyOutline,
-      deleteScratchNote,
-    });
-
-    await openBoard(user);
-    const applyButton = screen.getByRole('button', { name: 'scratch.board.apply' });
-    expect(applyButton).toBeDisabled();
-
-    expect(mockScratchOnDragEnd).toBeDefined();
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: null,
-      });
-    });
-    expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled();
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-    expect(within(screen.getByTestId('scratch-note-pool-band')).queryByText('First scratch note')).not.toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).getByText('First scratch note')).toBeInTheDocument();
-    expect(screen.getByTestId('scratch-placed-note-n1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeEnabled();
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'scratch-note-pool' },
-      });
-    });
-    expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).queryByText('First scratch note')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled();
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-sub:existing-sub' },
-      });
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n2' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-
-    expect(within(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).getByText('First scratch note')).toBeInTheDocument();
-    expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).getByText('Second scratch note')).toBeInTheDocument();
-    expect(props.updateScratchNote).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(onApplyOutline).toHaveBeenCalledTimes(1));
-    expect(onApplyOutline.mock.calls[0][0]).toEqual({
-      introduction: [],
-      main: [
-        {
-          id: 'existing-main',
-          text: 'Existing main point',
-          note: 'Existing point note\nSecond scratch note',
-          subPoints: [
-            {
-              id: 'existing-sub',
-              text: 'Existing sub-point',
-              position: 1000,
-              note: 'Existing sub note\nFirst scratch note',
-            },
-          ],
-        },
-      ],
-      conclusion: [],
-    });
-    expect(new Set(onApplyOutline.mock.calls[0][1])).toEqual(new Set(['n1', 'n2']));
-    expect(deleteScratchNote).not.toHaveBeenCalled();
-  });
-
-  it('disables Apply and ignores its click handler while a voice transcription is processing', async () => {
-    let resolveTranscription: (value: { polishedText: string }) => void = () => undefined;
-    transcribeThoughtAudioMock().mockReturnValueOnce(
-      new Promise<{ polishedText: string }>((resolve) => {
-        resolveTranscription = resolve;
-      })
+    expect(props.placeScratchNotes).toHaveBeenCalledWith(
+      ['n1'],
+      { section: 'main', pointId: 'existing-main', subPointId: 'existing-sub' },
+      undefined,
     );
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [{ id: 'existing-main', text: 'Existing main point' }],
-      conclusion: [],
-    };
-    const addScratchNote = jest.fn((text: string) => ({ id: `new-${text}`, text, createdAt: 'now' }));
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    const { user } = renderScratchPanel({ outline: existingOutline, addScratchNote, onApplyOutline });
-
-    await user.click(screen.getByRole('button', { name: 'audio.newRecording' }));
-    await waitFor(() => expect(transcribeThoughtAudioMock()).toHaveBeenCalledTimes(1));
-    await openBoard(user);
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-
-    const applyButton = screen.getByRole('button', { name: 'scratch.board.apply' });
-    expect(applyButton).toBeDisabled();
-    expect(applyButton.closest('span')).toHaveAttribute('title', 'scratch.board.applyVoiceProcessing');
-
-    applyButton.removeAttribute('disabled');
-    fireEvent.click(applyButton);
-    expect(onApplyOutline).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveTranscription({ polishedText: 'Voice note after guarded apply' });
-    });
-
-    await waitFor(() => expect(addScratchNote).toHaveBeenCalledWith('Voice note after guarded apply'));
   });
-
-  it('does not hang Apply while offline when the Firestore apply promise never settles', async () => {
-    Object.defineProperty(navigator, 'onLine', {
-      configurable: true,
-      value: false,
-    });
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [{ id: 'existing-main', text: 'Existing main point' }],
-      conclusion: [],
-    };
-    const onApplyOutline = jest.fn(() => new Promise<void>(() => undefined));
-    const { user } = renderScratchPanel({ outline: existingOutline, onApplyOutline });
-
-    await openBoard(user);
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(onApplyOutline).toHaveBeenCalledTimes(1));
-    const [[appliedOutline, consumedNoteIds]] = onApplyOutline.mock.calls as unknown as [
-      SermonOutline,
-      string[],
-    ][];
-    expect(appliedOutline.main[0].note).toBe('First scratch note');
-    expect(consumedNoteIds).toEqual(['n1']);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled());
-    expect(screen.queryByRole('button', { name: 'common.saving' })).not.toBeInTheDocument();
-  });
-
-  it('locks board edits, note placement, and compose while Apply is in flight', async () => {
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [{ id: 'existing-main', text: 'Existing main point' }],
-      conclusion: [],
-    };
-    let resolveApply: () => void = () => undefined;
-    const applyPromise = new Promise<void>((resolve) => {
-      resolveApply = resolve;
-    });
-    const onApplyOutline = jest.fn(() => applyPromise);
-    const onOutlineChange = jest.fn().mockResolvedValue(undefined);
-    const { user } = renderScratchPanel({ outline: existingOutline, onApplyOutline, onOutlineChange });
-
-    await openBoard(user);
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'common.saving' })).toBeDisabled());
-    // Nothing to navigate away to any more — the board is the page. What has to
-    // hold is that everything on it is frozen while the write is in flight.
-    expect(screen.queryByText('structure.addPointButton')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled();
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n2' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-    expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).queryByText('Second scratch note')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(composePlanFromScratchMock()).not.toHaveBeenCalled();
-    expect(onOutlineChange).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveApply();
-      await applyPromise;
-    });
-  });
-
-  it('retains a completed voice blob during Apply and retries it after Apply clears', async () => {
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [{ id: 'existing-main', text: 'Existing main point' }],
-      conclusion: [],
-    };
-    let resolveApply: () => void = () => undefined;
-    const applyPromise = new Promise<void>((resolve) => {
-      resolveApply = resolve;
-    });
-    const onApplyOutline = jest.fn(() => applyPromise);
-    const addScratchNote = jest.fn((text: string) => ({ id: `new-${text}`, text, createdAt: 'now' }));
-    transcribeThoughtAudioMock().mockResolvedValueOnce({ polishedText: 'Voice thought after apply' });
-    const { user } = renderScratchPanel({ outline: existingOutline, onApplyOutline, addScratchNote });
-    const completeRecording = scratchRecordingComplete;
-
-    expect(completeRecording).toBeDefined();
-    await openBoard(user);
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'common.saving' })).toBeDisabled());
-
-    await act(async () => {
-      await completeRecording?.(new Blob(['voice-during-apply']));
-    });
-
-    expect(transcribeThoughtAudioMock()).not.toHaveBeenCalled();
-    expect(addScratchNote).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveApply();
-      await applyPromise;
-    });
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'common.saving' })).not.toBeInTheDocument());
-
-    expect(screen.getByText('audio.savedRecording')).toBeInTheDocument();
-    expect(screen.getByText('scratch.voice.applyInProgress')).toBeInTheDocument();
-    expect(screen.getByLabelText('audio.playRecording')).toHaveAttribute('src', 'blob:scratch-voice-recovery');
-
-    await user.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
-
-    await waitFor(() => expect(transcribeThoughtAudioMock()).toHaveBeenCalledTimes(1));
-    expect(transcribeThoughtAudioMock()).toHaveBeenCalledWith(expect.any(Blob));
-    await waitFor(() => expect(addScratchNote).toHaveBeenCalledWith('Voice thought after apply'));
-  });
-
-  it('sends only pooled scratch notes to compose when another note is manually placed', async () => {
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [{ id: 'existing-main', text: 'Existing main point' }],
-      conclusion: [],
-    };
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            id: 'composed-from-pooled',
-            scratchNoteId: 'n2',
-            text: 'Composed from pooled note',
-            source: 'ai',
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel({ outline: existingOutline });
-
-    await openBoard(user);
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n1' },
-        over: { id: 'note-point:existing-main' },
-      });
-    });
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    await waitFor(() => expect(composePlanFromScratchMock()).toHaveBeenCalledTimes(1));
-    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', existingOutline, ['n2'], undefined, { recoverOnly: false });
-    expect(await screen.findByText('Composed from pooled note')).toBeInTheDocument();
-  });
-
-  it('says out loud when the model skipped notes, instead of quietly adding orphan points', async () => {
-    // A measured run placed 17 of 25 notes and reported nothing; the other eight were
-    // appended as their own points and looked like a deliberate choice.
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline(
-        {
-          main: [
-            { id: 'p1', scratchNoteId: 'n1', text: 'Placed by judgement', source: 'ai' },
-            { id: 'p2', scratchNoteId: 'n2', text: 'Placed by fallback', source: 'ai' },
-          ],
-        },
-        ['n2']
-      )
-    );
-    const { user } = renderScratchPanel();
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    expect(await screen.findByTestId('compose-unplaced-notice')).toBeInTheDocument();
-  });
-
-  it('stays quiet when every note was placed', async () => {
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [{ id: 'p1', scratchNoteId: 'n1', text: 'Placed by judgement', source: 'ai' }],
-      })
-    );
-    const { user } = renderScratchPanel();
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    await screen.findByText('Placed by judgement');
-    expect(screen.queryByTestId('compose-unplaced-notice')).not.toBeInTheDocument();
-  });
-
-  it('keeps edits to an AI proposal local until Apply and consumes the composed source note', async () => {
-    const onOutlineChange = jest.fn().mockResolvedValue(undefined);
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            id: 'ai-point',
-            scratchNoteId: 'n1',
-            text: 'AI proposed point',
-            source: 'ai',
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel({ onOutlineChange, onApplyOutline });
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(await screen.findByText('AI proposed point')).toBeInTheDocument();
-
-    const mainCol = screen.getByTestId('outline-board-column-main');
-    await user.click(within(mainCol).getByLabelText('common.edit'));
-    const input = within(mainCol).getByDisplayValue('AI proposed point');
-    fireEvent.change(input, { target: { value: 'edited proposal point' } });
-    await user.click(within(mainCol).getByLabelText('common.save'));
-
-    expect(onOutlineChange).not.toHaveBeenCalled();
-    expect(onApplyOutline).not.toHaveBeenCalled();
-    expect(screen.getByText('Edited proposal point')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(onApplyOutline).toHaveBeenCalledTimes(1));
-    expect(onApplyOutline.mock.calls[0][0].main[0]).toMatchObject({
-      id: 'fresh-id-2',
-      text: 'Edited proposal point',
-    });
-    expect(onApplyOutline.mock.calls[0][1]).toEqual(['n1']);
-  });
-
-  it('remaps a manual placement onto an AI-composed point before Apply strips scratch ids', async () => {
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            id: 'ai-point',
-            scratchNoteId: 'n1',
-            text: 'AI proposed point',
-            source: 'ai',
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel({ onApplyOutline });
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(await screen.findByText('AI proposed point')).toBeInTheDocument();
-
-    act(() => {
-      mockScratchOnDragEnd?.({
-        active: { id: 'note:n2' },
-        over: { id: 'note-point:ai-point' },
-      });
-    });
-    expect(within(screen.getByTestId('scratch-point-drop-zone-ai-point')).getByText('Second scratch note')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(onApplyOutline).toHaveBeenCalledTimes(1));
-    expect(onApplyOutline.mock.calls[0][0]).toEqual({
-      introduction: [],
-      main: [
-        {
-          id: 'fresh-id-1',
-          text: 'AI proposed point',
-          note: 'Second scratch note',
-        },
-      ],
-      conclusion: [],
-    });
-    expect(new Set(onApplyOutline.mock.calls[0][1])).toEqual(new Set(['n1', 'n2']));
-  });
-
-  it('renders composed plans inside the full OutlineBoard editor', async () => {
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        introduction: [
-          {
-            id: 'p-manual',
-            scratchNoteId: 'n2',
-            text: 'Manual intro point',
-            note: 'Pinned by preacher',
-            source: 'manual',
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel();
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', emptyOutline, ['n1', 'n2'], undefined, { recoverOnly: false });
-    expect(await screen.findByText('Manual intro point')).toBeInTheDocument();
-    expectPlanEditorNoteVisual(document.body, 'Pinned by preacher');
-    expect(screen.queryByText('scratch.board.aiBadge')).not.toBeInTheDocument();
-    expect(screen.queryByText('scratch.board.manualBadge')).not.toBeInTheDocument();
-    expect(screen.getByTestId('outline-board-column-introduction')).toBeInTheDocument();
-    expect(screen.getAllByText('structure.addPointButton')).toHaveLength(3);
-    expect(screen.getByText('scratch.board.composeSuccessAllManual')).toBeInTheDocument();
-  });
-
-  it('applies the merged outline additively, preserving existing ids and stripping scratch metadata', async () => {
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    const existingOutline: SermonOutline = {
-      introduction: [],
-      main: [
-        {
-          id: 'existing-main',
-          text: 'Existing main point',
-          note: 'Existing note',
-          isReviewed: true,
-          subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000, note: 'Keep sub note' }],
-        },
-      ],
-      conclusion: [],
-    };
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            ...existingOutline.main[0],
-            subPoints: [
-              ...(existingOutline.main[0].subPoints ?? []),
-              {
-                id: 'server-ai-sub',
-                scratchNoteId: 'n1',
-                text: 'AI sub-point',
-                note: 'Keep this note',
-                position: 2000,
-                source: 'ai',
-              },
-            ],
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel({ outline: existingOutline, onApplyOutline });
-
-    await openBoard(user);
-    expect(screen.getByText('Existing main point')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(await screen.findByText('AI sub-point')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(onApplyOutline).toHaveBeenCalledTimes(1));
-    expect(onApplyOutline.mock.calls[0][0]).toEqual({
-      introduction: [],
-      main: [
-        {
-          id: 'existing-main',
-          text: 'Existing main point',
-          note: 'Existing note',
-          isReviewed: true,
-          subPoints: [
-            { id: 'existing-sub', text: 'Existing sub-point', position: 1000, note: 'Keep sub note' },
-            { id: 'fresh-id-1', text: 'AI sub-point', note: 'Keep this note', position: 2000 },
-          ],
-        },
-      ],
-      conclusion: [],
-    });
-    expect(onApplyOutline.mock.calls[0][0].main[0]).not.toHaveProperty('source');
-    expect(onApplyOutline.mock.calls[0][0].main[0].subPoints[1]).not.toHaveProperty('source');
-    expect(onApplyOutline.mock.calls[0][0].main[0].subPoints[1]).not.toHaveProperty('scratchNoteId');
-    expect(onApplyOutline.mock.calls[0][1]).toEqual(['n1']);
-  });
-
-  it('shows an error toast and no success toast when an online Apply write rejects', async () => {
-    const onApplyOutline = jest.fn().mockRejectedValueOnce(new Error('permission denied'));
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            id: 'ai-point',
-            scratchNoteId: 'n1',
-            text: 'AI point',
-            note: 'First scratch note',
-            source: 'ai',
-          },
-        ],
-      })
-    );
-    const { user } = renderScratchPanel({ onApplyOutline });
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(await screen.findByText('AI point')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-
-    await waitFor(() => expect(toastMock().error).toHaveBeenCalledWith('permission denied'));
-    expect(toastMock().success).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeEnabled();
-  });
-
-  it('disables compose and apply while scratch writes are pending', async () => {
-    const onApplyOutline = jest.fn().mockResolvedValue(undefined);
-    composePlanFromScratchMock().mockResolvedValueOnce(
-      composeOutline({
-        main: [
-          {
-            id: 'p-ai',
-            scratchNoteId: 'n1',
-            text: 'Fresh composed point',
-            source: 'ai',
-          },
-        ],
-      })
-    );
-    const { user, props, rerender } = renderScratchPanel({ onApplyOutline });
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(await screen.findByText('Fresh composed point')).toBeInTheDocument();
-
-    rerender(<ScratchPanel {...props} isScratchWritePending />);
-
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled();
-
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-    expect(onApplyOutline).not.toHaveBeenCalled();
-  });
-
-  it('discards a composed response if scratch notes changed while the request was in flight', async () => {
-    let resolveCompose: (result: ReturnType<typeof composeOutline>) => void = () => undefined;
-    composePlanFromScratchMock().mockReturnValueOnce(
-      new Promise<ReturnType<typeof composeOutline>>((resolve) => {
-        resolveCompose = resolve;
-      })
-    );
-    const { user, props, rerender } = renderScratchPanel();
-
-    await openBoard(user);
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
-
-    rerender(
-      <ScratchPanel
-        {...props}
-        notes={[{ ...baseNotes[0], text: 'Edited while composing' }, baseNotes[1]]}
-        scratchRevision={1}
-      />
-    );
-
-    await act(async () => {
-      resolveCompose(
-        composeOutline({
-          main: [
-            {
-              id: 'stale-point',
-              scratchNoteId: 'n1',
-              text: 'Stale composed point',
-              source: 'ai',
-            },
-          ],
-        })
-      );
-    });
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled());
-    expect(screen.queryByText('Stale composed point')).not.toBeInTheDocument();
-    expect(screen.getByText('scratch.board.composeStale')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled();
-  });
-
-  it('allows recovery of an earlier compose at the usage limit without enabling fresh generation', async () => {
-    mockUseAiUsage.mockReturnValue(aiUsageStub({ aiBlocked: true }));
-    mockHasAiResultAttempt.mockResolvedValueOnce(true);
-    const acknowledge = jest.fn();
-    composePlanFromScratchMock().mockResolvedValueOnce({ ...composeOutline(emptyOutline), acknowledge });
-    renderScratchPanel();
-    const button = screen.getByRole('button', { name: 'scratch.board.compose' });
-
-    await waitFor(() => expect(button).toBeEnabled());
-    fireEvent.click(button);
-    await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
-    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', emptyOutline, ['n1', 'n2'], undefined, { recoverOnly: true });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled());
-  });
-
-  it('times out compose, shows an error, and re-enables the button', async () => {
-    jest.useFakeTimers();
-    composePlanFromScratchMock().mockReturnValueOnce(new Promise(() => undefined));
-    renderScratchPanel();
-
-    fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
-
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(56_000);
-    });
-    expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
-    expect(screen.queryByText('scratch.board.composeTimeout')).not.toBeInTheDocument();
-
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(14_000);
-    });
-
-    expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
-  });
-
-  describe('a failed compose with the phone flag saying offline', () => {
-    beforeEach(() => {
-      __resetConnectivityForTests();
-      Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
-    });
-    afterEach(() => {
-      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
-      __resetConnectivityForTests();
-    });
-
-    it('says there is no network while nothing has reached the server', async () => {
-      composePlanFromScratchMock().mockRejectedValueOnce(new Error('Scratch compose is unavailable offline'));
-      renderScratchPanel();
-      fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-      expect(await screen.findByText('scratch.board.composeOffline')).toBeInTheDocument();
-    });
-
-    it('names the real failure once a request has reached the server (BUG-20261011-raw-phone-flag-in-read-paths)', async () => {
-      getConnectivityStatus();
-      reportServerReachable();
-      composePlanFromScratchMock().mockRejectedValueOnce(new Error('The model refused'));
-      renderScratchPanel();
-      fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-      expect(await screen.findByText('The model refused')).toBeInTheDocument();
-      expect(screen.queryByText('scratch.board.composeOffline')).not.toBeInTheDocument();
-    });
-  });
-
-  it('says compose timed out on a bare 504 instead of printing the status line', async () => {
-    composePlanFromScratchMock().mockRejectedValueOnce(Object.assign(new Error('Gateway Timeout'), { status: 504 }));
-    renderScratchPanel();
-
-    fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    expect(await screen.findByText('scratch.board.composeTimeout')).toBeInTheDocument();
-    expect(screen.queryByText('Gateway Timeout')).not.toBeInTheDocument();
-  });
-
-  it('ignores a late compose response after timeout and keeps the surfaced error', async () => {
-    jest.useFakeTimers();
-    let resolveCompose: (result: ReturnType<typeof composeOutline>) => void = () => undefined;
-    composePlanFromScratchMock().mockReturnValueOnce(
-      new Promise<ReturnType<typeof composeOutline>>((resolve) => {
-        resolveCompose = resolve;
-      })
-    );
-    renderScratchPanel();
-
-    fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(70_000);
-    });
-    expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
-
-    await act(async () => {
-      resolveCompose(
-        composeOutline({
-          main: [
-            {
-              id: 'late-valid-point',
-              scratchNoteId: 'n1',
-              text: 'Late valid composed point',
-              source: 'ai',
-            },
-          ],
-        })
-      );
-    });
-
-    expect(screen.queryByText('Late valid composed point')).not.toBeInTheDocument();
-    expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
-  });
-  it('treats explicit queued Apply as local delivery and keeps compose disabled until canonical pending clears', async () => {
-    const onApplyOutline = jest.fn().mockResolvedValue({ delivery: 'queued' });
-    composePlanFromScratchMock().mockResolvedValueOnce(composeOutline({ main: [{ id: 'ai-point', scratchNoteId: 'n1', text: 'Queued proposed point', source: 'ai' }] }));
-    const { user, props, rerender } = renderScratchPanel({ onApplyOutline });
-    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
-    await screen.findByText('Queued proposed point');
-    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
-    await screen.findByText('scratch.board.applyQueued');
-    expect(onApplyOutline).toHaveBeenCalledTimes(1);
-    expect(toastMock().success).not.toHaveBeenCalled();
-    rerender(<ScratchPanel {...props} isScratchWritePending />);
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
-    rerender(<ScratchPanel {...props} isScratchWritePending={false} scratchRevision={1} />);
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
-  });
-
 });

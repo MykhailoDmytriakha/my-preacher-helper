@@ -1,6 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
 
-import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine } from '@/data-engine/react.client';
@@ -11,7 +10,6 @@ import { EngineScratchWorkspace } from '../EngineScratchWorkspace';
 import type { RecoveryCheckpoint } from '@/data-engine/controller';
 import type { Json, ResourceSnapshot } from '@/data-engine/types';
 
-jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal: jest.fn(() => <div data-testid="proposal" />) }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: jest.fn(),
@@ -34,8 +32,9 @@ function setup(overrides: Partial<ReturnType<typeof useScratchDataDocument>> = {
     confirmed, remote: null, data: confirmed.value, state: null,
     status: syncStatus('saved'), recoveryIdentity: {}, error: null, loading: false, notes: [{ id: 'note', text: 'Local note', createdAt: '2026-09-12' }],
     outline: { introduction: [], main: [], conclusion: [] }, scratchRevision: 3, isWritePending: true,
-    addScratchNote: jest.fn(), restoreScratchNote: jest.fn(), updateScratchNote: jest.fn(), deleteScratchNote: jest.fn(), moveScratchNote: jest.fn(),
-    applyOutlineAndConsume: jest.fn(async () => ({ delivery: 'queued' as const })), onOutlineChange: jest.fn(async () => ({ delivery: 'queued' as const })),
+    addScratchNote: jest.fn(), restoreScratchNote: jest.fn(), updateScratchNote: jest.fn(), deleteScratchNote: jest.fn(),
+    placeScratchNotes: jest.fn(), createPointWithScratch: jest.fn(), addOutlinePoint: jest.fn(), addOutlineSubPoint: jest.fn(),
+    removeOutlinePoint: jest.fn(), renameOutlineTitle: jest.fn(), removeOutlineSubPoint: jest.fn(),
     keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
     listRecoverable: jest.fn(async (): Promise<RecoveryCheckpoint[]> => []), discardRecovery: jest.fn(async () => undefined), recover: jest.fn(async () => undefined),
     ...overrides,
@@ -58,15 +57,16 @@ const recovered = (id: string, title: unknown = 'Recovery', scratch: unknown = [
 describe('EngineScratchWorkspace', () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
-  it('passes domain interactions and queued Apply, leaves delivery of the document to the header and lists saved drafts once the document is ready', async () => {
-    const scratch = setup(); render(<EngineScratchWorkspace sermonId="sermon" />);
+  it('passes the note and plan operations, counts thoughts per point, leaves delivery of the document to the header and lists saved drafts once the document is ready', async () => {
+    const scratch = setup(); scratch.data = { ...scratch.data!, thoughts: [{ outlinePointId: 'p1' }, { outlinePointId: 'p1' }, { outlinePointId: 'p2' }] as unknown as Json };
+    render(<EngineScratchWorkspace sermonId="sermon" />);
     expect(useScratchDataDocument).toHaveBeenCalledWith('sermon');
     expect(screen.getByTestId('sync-status')).toBeInTheDocument();
-    expect(panelProps()).toMatchObject({ sermonId: 'sermon', notes: scratch.notes, outline: scratch.outline, scratchRevision: 3, isScratchWritePending: true, isReadOnly: false });
-    for (const key of ['addScratchNote', 'restoreScratchNote', 'updateScratchNote', 'deleteScratchNote', 'moveScratchNote'] as const) expect(panelProps()[key]).toBe(scratch[key]);
-    expect(panelProps().onApplyOutline).toBeUndefined();
-    expect(panelProps().onOutlineChange).toBeUndefined();
-    expect(panelProps().onEditPlan).toEqual(expect.any(Function));
+    expect(panelProps()).toMatchObject({ sermonId: 'sermon', notes: scratch.notes, outline: scratch.outline, isScratchWritePending: true, isReadOnly: false });
+    for (const key of ['addScratchNote', 'restoreScratchNote', 'updateScratchNote', 'deleteScratchNote', 'placeScratchNotes', 'createPointWithScratch', 'addOutlinePoint', 'addOutlineSubPoint', 'removeOutlinePoint', 'renameOutlineTitle', 'removeOutlineSubPoint'] as const) expect(panelProps()[key]).toBe(scratch[key]);
+    expect(panelProps().pointThoughtCount('p1')).toBe(2);
+    expect(panelProps().pointThoughtCount('p2')).toBe(1);
+    expect(panelProps().pointThoughtCount('none')).toBe(0);
     await act(async () => {});
     expect(scratch.listRecoverable).toHaveBeenCalledTimes(1);
     expect(scratch.recover).not.toHaveBeenCalled();
@@ -250,14 +250,6 @@ describe('EngineScratchWorkspace', () => {
     await act(async () => { old.resolve([recovered('stale')]); });
     expect(statusProps().recoveryChoices?.[0].id).toBe('new');
   });
-});
-
-it('opens a pinned proposal form instead of using late outline callbacks', () => {
-  setup(); const view = render(<EngineScratchWorkspace sermonId="sermon" />);
-  act(() => { panelProps().onEditPlan!(); });
-  expect(jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'sermon', withScratch: true });
-  act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
-  expect(screen.queryByTestId('proposal')).not.toBeInTheDocument(); view.unmount();
 });
 
 it('keeps pending-created sermon scratch editable while retaining actual deletion and reading locks', () => {

@@ -36,20 +36,20 @@ export const MainRecordButton = ({
   if (!show) return null;
 
   const baseStyles =
-    "relative overflow-hidden transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:transform-none disabled:hover:scale-100";
+    "relative overflow-hidden transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:transform-none disabled:hover:scale-100";
   const scaleStyles = "transform scale-[0.95] hover:scale-100 active:scale-95";
 
   const getButtonStyles = () => {
     switch (recordingState) {
       case "processing":
-        return `${baseStyles} ${scaleStyles} bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 cursor-wait`;
+        return `${baseStyles} ${scaleStyles} bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-blue-500 cursor-wait`;
       case "initializing":
-        return `${baseStyles} ${scaleStyles} bg-yellow-500 hover:bg-yellow-600 text-white focus:ring-yellow-500 cursor-wait`;
+        return `${baseStyles} ${scaleStyles} bg-yellow-500 hover:bg-yellow-600 text-white focus-visible:ring-yellow-500 cursor-wait`;
       case "recording":
       case "paused":
-        return `${baseStyles} ${scaleStyles} bg-red-500 hover:bg-red-600 text-white focus:ring-red-500 shadow-lg shadow-red-500/25`;
+        return `${baseStyles} ${scaleStyles} bg-red-500 hover:bg-red-600 text-white focus-visible:ring-red-500 shadow-lg shadow-red-500/25`;
       default:
-        return `${baseStyles} ${scaleStyles} bg-green-600 hover:bg-green-700 text-white focus:ring-green-500 shadow-lg hover:shadow-green-500/25`;
+        return `${baseStyles} ${scaleStyles} bg-green-600 hover:bg-green-700 text-white focus-visible:ring-green-500 shadow-lg hover:shadow-green-500/25`;
     }
   };
 
@@ -131,7 +131,7 @@ const MiniRecordingControls = ({
       <button
         type="button"
         onClick={onStop}
-        className="flex-1 rounded-xl bg-rose-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-rose-500/25 transition-all duration-200 hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2"
+        className="flex-1 rounded-xl bg-rose-500 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-rose-500/25 transition-all duration-200 hover:bg-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
         aria-label={t(AUDIO_TRANSLATION_KEYS.STOP_RECORDING)}
         title={t(AUDIO_TRANSLATION_KEYS.STOP_RECORDING)}
       >
@@ -157,7 +157,7 @@ const MiniRecordingControls = ({
           console.log("AudioRecorder: Mini variant Pause button clicked");
           onPause();
         }}
-        className={`rounded-xl px-3.5 py-3 transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 ${isPaused ? "bg-green-500 text-white hover:bg-green-600 focus:ring-green-500" : "bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500"}`}
+        className={`rounded-xl px-3.5 py-3 transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${isPaused ? "bg-green-500 text-white hover:bg-green-600 focus-visible:ring-green-500" : "bg-yellow-500 text-white hover:bg-yellow-600 focus-visible:ring-yellow-500"}`}
         aria-label={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
         title={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       >
@@ -179,7 +179,7 @@ const MiniRecordingControls = ({
           console.log("AudioRecorder: Mini variant Cancel button clicked");
           onCancel();
         }}
-        className="rounded-xl bg-gray-100 px-3.5 py-3 text-gray-600 transition-all duration-200 hover:scale-110 hover:bg-gray-200 active:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+        className="rounded-xl bg-gray-100 px-3.5 py-3 text-gray-600 transition-all duration-200 hover:scale-110 hover:bg-gray-200 active:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
         aria-label={t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
         title={`${t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)} (Esc)`}
       >
@@ -212,7 +212,7 @@ const StandardRecordingControls = ({
           console.log("AudioRecorder: Standard variant Pause button clicked");
           onPause();
         }}
-        className={`rounded-lg border px-4 py-2 transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 ${isPaused ? "border-green-500 bg-green-50 text-green-700 hover:bg-green-100 focus:ring-green-500 dark:border-green-600 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50" : "border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 focus:ring-yellow-500 dark:border-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-300 dark:hover:bg-yellow-900/50"}`}
+        className={`rounded-lg border px-4 py-2 transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus-visible:ring-2 ${isPaused ? "border-green-500 bg-green-50 text-green-700 hover:bg-green-100 focus-visible:ring-green-500 dark:border-green-600 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50" : "border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 focus-visible:ring-yellow-500 dark:border-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-300 dark:hover:bg-yellow-900/50"}`}
         aria-label={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       >
         {isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
@@ -224,7 +224,7 @@ const StandardRecordingControls = ({
           console.log("AudioRecorder: Cancel button clicked");
           onCancel();
         }}
-        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 transition-all duration-200 hover:scale-105 hover:bg-gray-50 active:scale-100 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 transition-all duration-200 hover:scale-105 hover:bg-gray-50 active:scale-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
         aria-label={t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
       >
         {t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
@@ -246,7 +246,7 @@ export const RecordingActionButtons = ({
 }: RecordingActionButtonsProps) => {
   if (isInitializing) {
     return <button type="button" onClick={onCancel}
-      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
       aria-label={t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}>
       {t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
     </button>;
@@ -291,7 +291,7 @@ export const RetryTranscriptionButton = ({
     <button
       type="button"
       onClick={onRetry}
-      className={`${appliedVariant === "mini" ? "px-4 py-2 text-sm font-medium" : "px-4 py-2"} rounded-lg border border-orange-300 bg-orange-50 text-orange-700 transition-colors hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50`}
+      className={`${appliedVariant === "mini" ? "px-4 py-2 text-sm font-medium" : "px-4 py-2"} rounded-lg border border-orange-300 bg-orange-50 text-orange-700 transition-colors hover:bg-orange-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50`}
       aria-label={t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)}
     >
       {t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)} ({retryCount + 1}/{maxRetries})
@@ -507,7 +507,7 @@ export const ErrorBanner = ({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-full p-1 text-red-500 transition-colors hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:text-red-400 dark:hover:text-red-200"
+          className="rounded-full p-1 text-red-500 transition-colors hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:text-red-400 dark:hover:text-red-200"
           aria-label={t("audio.closeError")}
           title={t("audio.closeError")}
         >
@@ -569,7 +569,7 @@ export const SplitRecordButton = ({
           type="button"
           onClick={onStart}
           disabled={isButtonDisabled}
-          className={`flex-1 bg-green-600 px-6 py-3 font-medium text-white transition-all duration-200 active:scale-[0.98] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-green-600 disabled:active:scale-100 ${separate ? "rounded-xl shadow-lg" : ""}`}
+          className={`flex-1 bg-green-600 px-6 py-3 font-medium text-white transition-all duration-200 active:scale-[0.98] hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-green-600 disabled:active:scale-100 ${separate ? "rounded-xl shadow-lg" : ""}`}
           aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
           title={title ?? `${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
         >

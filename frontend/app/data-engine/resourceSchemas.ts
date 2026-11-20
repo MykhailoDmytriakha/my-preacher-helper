@@ -46,7 +46,7 @@ const outline = object({ introduction: children(point), main: children(point), c
   }
 });
 const thought = object({ id, text, tags: strings, date: text, outlinePointId: id.nullable().optional(), subPointId: id.nullable().optional(), position: number.optional(), isLocked: boolean.optional(), keyFragments: strings.optional() });
-const scratch = object({ id, text, createdAt: text, section: section.optional(), source: object({ noteId: id, heading: text }).optional() });
+const scratch = object({ id, text, createdAt: text, section: section.optional(), outlinePointId: id.optional(), subPointId: id.optional(), source: object({ noteId: id, heading: text }).optional() });
 const bySection = object({ introduction: strings, main: strings, conclusion: strings, ambiguous: strings.optional() });
 const planSection = object({ outline: text, outlinePoints: z.record(text).optional() });
 const plan = object({ introduction: planSection, main: planSection, conclusion: planSection });

@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Pencil } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { FailureWords } from "@/utils/actionFailureMessage";
@@ -26,6 +26,7 @@ interface RecorderLikeProps {
   splitSeparate?: boolean;
   hideRecordButton?: boolean;
   enableAudioLevelMonitoring?: boolean;
+  variant?: "standard" | "mini";
 }
 
 interface AudioRecorderPortalBridgeProps {
@@ -52,6 +53,11 @@ interface AudioRecorderPortalBridgeProps {
   manualButtonSeparate?: boolean;
   /** Hide the record button so the manual control owns the whole row (manual form open). */
   hideRecordButton?: boolean;
+  /**
+   * The recorder picks its layout from the WINDOW width; a host that is narrow on a wide screen (the
+   * scratch pool's rail) asks for the compact one, or the recording controls spill out of it.
+   */
+  recorderVariant?: "standard" | "mini";
 }
 
 function AutoHeight({
@@ -66,30 +72,50 @@ function AutoHeight({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
   const [height, setHeight] = useState<number | undefined>(undefined);
+  const lastHeight = useRef<number | undefined>(undefined);
+  const unclipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Clip only while the height moves. At rest a button that grows on hover, its shadow and its focus
+   * ring must not be cut at the box's edge (the owner, 2026-11-19: the pause button "grows and is cut").
+   * The clip is set on the element in the same frame the content changes — a state update would come a
+   * frame late and let the new content spill over what lies below for that frame.
+   */
+  const clipWhileMoving = useCallback((next: number) => {
+    if (next === lastHeight.current) return;
+    lastHeight.current = next;
+    if (boxRef.current) boxRef.current.style.overflow = "hidden";
+    if (unclipTimer.current) clearTimeout(unclipTimer.current);
+    unclipTimer.current = setTimeout(() => {
+      if (boxRef.current) boxRef.current.style.overflow = "visible";
+    }, (duration + delay) * 1000 + 60);
+    setHeight(next);
+  }, [delay, duration]);
+  useEffect(() => () => { if (unclipTimer.current) clearTimeout(unclipTimer.current); }, []);
 
   useEffect(() => {
     if (!containerRef.current || typeof window === "undefined") return;
     const ResizeObserverCtor = window.ResizeObserver;
     if (!ResizeObserverCtor) {
-      setHeight(containerRef.current.getBoundingClientRect().height);
+      clipWhileMoving(containerRef.current.getBoundingClientRect().height);
       return;
     }
     const observer = new ResizeObserverCtor((entries) => {
       const cr = entries[0]?.contentRect;
-      if (cr && typeof cr.height === "number") setHeight(cr.height);
+      if (cr && typeof cr.height === "number") clipWhileMoving(cr.height);
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [clipWhileMoving]);
 
   return (
     <motion.div
+      ref={boxRef}
       className={className}
       initial={false}
       animate={height !== undefined ? { height } : undefined}
       transition={{ duration, ease: "easeInOut", delay }}
-      style={{ overflow: "hidden" }}
     >
       <div ref={containerRef}>{children}</div>
     </motion.div>
@@ -118,6 +144,7 @@ export default function AudioRecorderPortalBridge({
   manualControl,
   manualButtonSeparate,
   hideRecordButton,
+  recorderVariant,
 }: AudioRecorderPortalBridgeProps) {
   /**
    * A REASON TO REFUSE ADDS TO THE OTHERS, IT DOES NOT REPLACE THEM.
@@ -160,6 +187,7 @@ export default function AudioRecorderPortalBridge({
       splitSeparate={manualButtonSeparate}
       hideRecordButton={hideRecordButton}
       enableAudioLevelMonitoring={false}
+      variant={recorderVariant}
     />
   );
 

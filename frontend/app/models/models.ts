@@ -28,11 +28,19 @@ export interface ScratchNoteSource {
   heading: string;
 }
 
+/**
+ * A scratch note — "what I will speak about" — kept as its own piece even once it is sorted.
+ * Its place mirrors a thought's: the part (`section`), then optionally a plan point and one of its
+ * sub-points. The point's position in the outline wins over `section`; `utils/scratchPlacement.ts`
+ * is the one reader of a note's place.
+ */
 export interface ScratchNote {
   id: string;
   text: string;
   createdAt: string;
   section?: 'introduction' | 'main' | 'conclusion';
+  outlinePointId?: string;
+  subPointId?: string;
   source?: ScratchNoteSource;
 }
 

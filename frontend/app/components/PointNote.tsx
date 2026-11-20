@@ -35,6 +35,20 @@ interface PointNoteProps {
    */
   tone?: 'note' | 'neutral';
   /**
+   * `'reminder'` (default) — a small italic hint with a lightbulb, the plan editor's reminder note.
+   * `'body'` — the words themselves at reading size, for hosts where the note IS the content
+   * (a scratch note on the sorting board).
+   */
+  appearance?: 'reminder' | 'body';
+  /** `false`: a click on the words does not open editing; the host opens it with `editSignal`. */
+  clickToEdit?: boolean;
+  /** Each new non-zero value opens editing (the host's own «edit» button). */
+  editSignal?: number;
+  /** Visible «Cancel» / «Save» under the field, for hosts where Enter, Escape and a click away are not obvious. */
+  editActions?: { save: string; cancel: string };
+  /** Tells the host when editing opens and closes (it may hide its own buttons meanwhile). */
+  onEditingChange?: (editing: boolean) => void;
+  /**
    * Wording overrides for hosts where "reminder note" is the wrong noun. The scratch
    * board edits a *scratch note* with this same editor, and the plan-editor labels
    * leaking in there make the screen read as if it were about a different entity.
@@ -71,8 +85,14 @@ const PointNote: React.FC<PointNoteProps> = ({
   addRevealClass = 'opacity-100',
   hideClearButton = false,
   tone = 'note',
+  appearance = 'reminder',
+  clickToEdit = true,
+  editSignal = 0,
+  editActions,
+  onEditingChange,
   labels,
 }) => {
+  const body = appearance === 'body';
   const { t } = useTranslation();
   const labelText = labels?.label ?? t('planEditor.note.label');
   const placeholderText = labels?.placeholder ?? t('planEditor.note.placeholder');
@@ -124,6 +144,12 @@ const PointNote: React.FC<PointNoteProps> = ({
     setText(note ?? '');
     setEditing(true);
   };
+  const startEditRef = useRef(startEdit);
+  startEditRef.current = startEdit;
+  useEffect(() => { if (editSignal) startEditRef.current(); }, [editSignal]);
+  const editingChangeRef = useRef(onEditingChange);
+  editingChangeRef.current = onEditingChange;
+  useEffect(() => { editingChangeRef.current?.(editing); }, [editing]);
 
   const commit = () => {
     if (awaitingCapture.current) return;
@@ -196,9 +222,21 @@ const PointNote: React.FC<PointNoteProps> = ({
           }}
           placeholder={placeholderText}
           minRows={2}
-          className={`w-full resize-none overflow-hidden px-2 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${editFieldClass}`}
+          className={`w-full resize-none overflow-hidden rounded border focus:outline-none focus:ring-1 ${body ? 'px-2.5 py-1.5 text-base leading-snug md:text-sm' : 'px-2 py-1 text-xs'} ${editFieldClass}`}
           autoFocus
         />
+        {editActions && (
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancel} disabled={capturing}
+              className="inline-flex h-9 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+              {editActions.cancel}
+            </button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={commit} disabled={capturing}
+              className="inline-flex h-9 items-center rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:bg-violet-500 dark:hover:bg-violet-400">
+              {editActions.save}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -207,13 +245,15 @@ const PointNote: React.FC<PointNoteProps> = ({
     return (
       <>
         <div
-          className={`${indentClass} mt-1 flex items-start gap-1 text-xs italic text-slate-500 dark:text-gray-400 ${
-            isReadOnly ? '' : 'cursor-text hover:text-slate-700 dark:hover:text-gray-300'
+          className={`${indentClass} flex items-start gap-1 ${body
+            ? 'text-[15px] leading-snug text-gray-800 md:text-sm dark:text-gray-100'
+            : 'mt-1 text-xs italic text-slate-500 dark:text-gray-400'} ${
+            isReadOnly || !clickToEdit ? '' : body ? 'cursor-text' : 'cursor-text hover:text-slate-700 dark:hover:text-gray-300'
           }`}
-          onClick={isReadOnly ? undefined : startEdit}
-          title={isReadOnly ? undefined : labelText}
+          onClick={isReadOnly || !clickToEdit ? undefined : startEdit}
+          title={isReadOnly || !clickToEdit ? undefined : labelText}
         >
-          <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
+          {!body && <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />}
           <span className="min-w-0 flex-1 break-words whitespace-pre-wrap"><ScriptureText text={note} /></span>
           {!isReadOnly && !hideClearButton && (
             <button type="button"
