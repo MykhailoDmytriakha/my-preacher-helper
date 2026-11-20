@@ -20,6 +20,8 @@ const mockCreate = jest.fn((_payload: unknown) => persistedWrite(Promise.resolve
 const mockUpdate = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 const mockDelete = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 const mockRefresh = jest.fn().mockResolvedValue({ isError: false });
+const mockObserveName = jest.fn();
+const mockCaptureActionTime = jest.fn();
 let mockTemplates: PlanTemplate[] = [];
 let mockLoading = false;
 
@@ -31,6 +33,8 @@ jest.mock('@/hooks/usePlanTemplates', () => ({
     updateTemplate: mockUpdate,
     deleteTemplate: mockDelete,
     refresh: mockRefresh,
+    observeName: mockObserveName,
+    captureActionTime: mockCaptureActionTime,
   }),
 }));
 
@@ -78,6 +82,8 @@ beforeEach(() => {
   localStorage.clear();
   mockTemplates = [];
   mockLoading = false;
+  mockObserveName.mockReset();
+  mockCaptureActionTime.mockReset();
 });
 afterEach(cleanup);
 
@@ -451,6 +457,22 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
     await waitFor(() =>
       expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 5)
     );
+  });
+
+  it('re-sends a held rename with the shown name and the time of the explicit choice', async () => {
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    const view = render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+    const seen = { title: 'The current name', revision: 7, generation: 'g' };
+    const time = { earliestMs: 1_800_000_000_090, latestMs: 1_800_000_000_099 };
+    mockTemplates = [{ ...tpl('t1', seen.title), rev: { [PLAN_TEMPLATE_AGGREGATE]: 5 } }];
+    mockObserveName.mockReturnValue(seen);
+    mockCaptureActionTime.mockReturnValue(time);
+    view.rerender(<PlanTemplatesSection user={user} />);
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.resolve(undefined)));
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await waitFor(() => expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 5, { seen, time }));
   });
 
   it('brings the choice back when the resend is refused LATE, not before acceptance', async () => {

@@ -5285,6 +5285,33 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it.each(['restored', 'repeated'] as const)('protects a %s template name from a legacy rename without ordering evidence', async scenario => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, rename('desk-name', desk, 40))).kind).toBe('acknowledged');
+      const currentName = scenario === 'restored' ? name : desk;
+      const before = scenario === 'restored' ? desk : name;
+      const legacy = (operationId: string, opening: string, nextName: string) => ({
+        ...base, operationId, kind: 'update', generation: 'template-create',
+        changes: [{ path: ['name'], before: field(opening), after: field(nextName) }],
+      });
+      const next = { ...structure, main: [{ id: 'remote', text: 'Keep the separately saved point' }] };
+      expect(await processCommand(owner, { ...legacy('desktop-confirmation', before, currentName),
+        changes: [...legacy('desktop-confirmation', before, currentName).changes,
+          { path: ['structure'], before: field(structure), after: field(next) }],
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { name: currentName, structure: next } } });
+
+      const delayed = legacy('delayed-phone-name', currentName, phone);
+      const answer = await processCommand(owner, delayed);
+      expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { name: currentName, structure: next } },
+        conflicts: [{ path: ['name'], mine: { value: phone }, theirs: { value: currentName } }] });
+      expect(await processCommand(owner, delayed)).toEqual(answer);
+
+      if (answer.kind !== 'conflict') throw new Error('Missing template choice');
+      expect(await processCommand(owner, { ...legacy('explicit-choice', currentName, phone),
+        planTemplateNameAction: { observedRevision: answer.snapshot.metadata!.revision, time: null },
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { name: phone, structure: next } } });
+    });
+
     it('saves an offline rename alongside a separately edited outline', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       const next = { ...structure, main: [{ id: 'second', text: 'Keep the new point' }] };

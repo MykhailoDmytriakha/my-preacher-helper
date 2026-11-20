@@ -6,7 +6,7 @@ import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
-import type { PrayerTitleSeen } from './documentFieldAction';
+import type { DocumentTitleSeen } from './documentFieldAction';
 import type { ManualPath } from './manualScope';
 import type { PrayerEditableText, PrayerTextField, PrayerTextOpenings } from './prayerTextAction';
 import type { SessionCheckpoint } from './session';
@@ -22,16 +22,19 @@ export function isManualSeriesDescriptionChoice(basis: ResourceSnapshot, stored:
     && selection.some(path => equalValues(path, ['description']));
 }
 
-function projectOrderedPrayerText(checkpoint: SessionCheckpoint) {
+function projectDocumentTextChoice(checkpoint: SessionCheckpoint) {
   const { confirmed, remoteCandidate, draft } = checkpoint;
   const queued: PrayerEditableText[] = [];
-  if (confirmed.resource.collection !== 'prayerRequests' || !confirmed.value || !draft || !remoteCandidate?.value
+  const collection = confirmed.resource.collection;
+  const textFields = collection === 'prayerRequests' ? ['title', 'description', 'answerText']
+    : collection === 'planTemplates' ? ['name'] : undefined;
+  if (!textFields || !confirmed.value || !draft || !remoteCandidate?.value
     || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return { checkpoint, queued };
   let opening = confirmed.value;
   let words = draft;
   const conflicts = checkpoint.conflicts.flatMap(conflict => {
     const { path } = conflict;
-    if (path.length !== 1 || !['title', 'description', 'answerText'].includes(path[0])) return [conflict];
+    if (path.length !== 1 || !textFields.includes(path[0])) return [conflict];
     const field = orderedPrayerTextField(conflict);
     const mine = readField(words, path);
     const theirs = readField(remoteCandidate.value!, path);
@@ -48,7 +51,7 @@ function projectOrderedPrayerText(checkpoint: SessionCheckpoint) {
     return [];
   });
   // A newer snapshot may reveal a second conflict that was absent in the original answer.
-  const merged = rebaseOptionalPrayerTags('prayerRequests', opening, words, remoteCandidate.value,
+  const merged = rebaseOptionalPrayerTags(collection, opening, words, remoteCandidate.value,
     mergeDocumentFields(opening, words, remoteCandidate.value));
   for (const conflict of merged.conflicts) {
     if (!conflicts.some(item => equalValues(item.path, conflict.path))) conflicts.push(conflict);
@@ -57,18 +60,21 @@ function projectOrderedPrayerText(checkpoint: SessionCheckpoint) {
 }
 
 export function readDocumentTextChoice(source: SessionCheckpoint) {
-  const { checkpoint, queued } = projectOrderedPrayerText(source);
+  const { checkpoint, queued } = projectDocumentTextChoice(source);
   const { confirmed, remoteCandidate, draft, conflicts } = checkpoint;
   const collection = confirmed.resource.collection;
-  const targets = collection === 'prayerRequests' ? PRAYER_TEXT_TARGETS : collection === 'series' ? seriesDescription : undefined;
+  const template = collection === 'planTemplates';
+  const targets = collection === 'prayerRequests' ? PRAYER_TEXT_TARGETS : collection === 'series' ? seriesDescription : [];
+  const titleField = template ? 'name' : collection === 'prayerRequests' ? 'title' : undefined;
+  if ((!targets.length && !titleField) || (template && Object.keys(checkpoint.pending).length !== 1)) return;
   const metadata = remoteCandidate?.metadata;
   const saved = remoteCandidate?.value;
-  if (!targets || !confirmed.value || !draft || !saved || !metadata || metadata.deleted
+  if (!confirmed.value || !draft || !saved || !metadata || metadata.deleted
     || confirmed.metadata?.generation !== metadata.generation || !conflicts.length) return;
   const openings: PrayerTextOpenings = {};
-  let title: PrayerTitleSeen | undefined;
+  let title: DocumentTitleSeen | undefined;
   for (const { path, mine, theirs } of conflicts) {
-    if (collection === 'prayerRequests' && path.length === 1 && path[0] === 'title') {
+    if (titleField && path.length === 1 && path[0] === titleField) {
       if (typeof mine.value !== 'string' || typeof theirs.value !== 'string' || !mine.exists || !theirs.exists
         || !equalValues(readField(draft, path), mine) || !equalValues(readField(saved, path), theirs)) return;
       title = { title: theirs.value, generation: metadata.generation, revision: metadata.revision };
@@ -80,7 +86,7 @@ export function readDocumentTextChoice(source: SessionCheckpoint) {
       || (mine.exists && !target.accepts(mine.value)) || (theirs.exists && !target.accepts(theirs.value))) return;
     openings[target.field] = { value: theirs, generation: metadata.generation, revision: metadata.revision };
   }
-  const fields = [...Object.keys(openings), ...(title ? ['title'] : [])];
+  const fields = [...Object.keys(openings), ...(title && titleField ? [titleField] : [])];
   return fields.length ? { openings, title, fields, queued, checkpoint, complete: fields.length === conflicts.length } : undefined;
 }
 

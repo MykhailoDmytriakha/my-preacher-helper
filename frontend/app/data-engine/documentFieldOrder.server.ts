@@ -71,7 +71,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 
 const tracksTitleReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
-    || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction';
+    || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction';
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'

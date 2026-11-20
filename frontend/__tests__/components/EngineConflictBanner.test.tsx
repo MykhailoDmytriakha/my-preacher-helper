@@ -270,6 +270,49 @@ it('shows both names when a single template rename needs a decision', async () =
   }
 });
 
+it.each([
+  { side: 'mine', combined: false }, { side: 'stored', combined: false },
+  { side: 'mine', combined: true }, { side: 'stored', combined: true },
+])('resolves a restored template name while keeping independent point edits ($side, combined=$combined)', async ({ side, combined }) => {
+  process.env[ON_ENGINE] = 'planTemplates';
+  actions = null;
+  const template = { collection: 'planTemplates', id: 'template-restore' };
+  const originalName = 'Restored template';
+  const proposal = 'Phone template';
+  const opening = { introduction: [{ id: 'phone-point', text: 'Opening text on the first point' }],
+    main: [{ id: 'desktop-point', text: 'Opening text on the second point' }], conclusion: [] };
+  const authored = { ...opening, introduction: [{ id: 'phone-point', text: 'Phone words' }] };
+  const saved = { ...opening, main: [{ id: 'desktop-point', text: 'Desktop words' }] };
+  const h = documentEngineHarness({ resource: template, value: { name: originalName, userId: 'owner', structure: opening },
+    metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const field = (value: string) => ({ exists: true, value });
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ name: 'Temporary template', structure: saved });
+    h.silentRemote({ name: originalName });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+      conflicts: [{ path: ['name'], base: field(originalName), mine: field(proposal), theirs: field(originalName) }],
+    }));
+    await act(async () => {
+      await actions!.commit(template, current => ({ ...current!, name: proposal, ...(combined && { structure: authored }) }));
+      await settleEngine();
+    });
+    expect(await screen.findByRole('region', { name: 'dataSync.versionComparison' })).toBeInTheDocument();
+    expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent(proposal);
+    expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(originalName);
+
+    if (side === 'stored') await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
+    else fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+    await waitFor(() => expect(h.server.value).toMatchObject({ name: side === 'mine' ? proposal : originalName,
+      structure: { ...saved, introduction: combined ? authored.introduction : saved.introduction } }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument());
+    const replacement = jest.mocked(h.transport.send).mock.calls.at(-1)?.[0];
+    if (side === 'mine') expect(replacement).toMatchObject({ planTemplateNameAction: { observedRevision: 3, time: null } });
+  } finally { delete process.env[ON_ENGINE]; }
+});
+
 it.each([false, true])('anchors a manual comment-kind choice even when it includes a move (%s)', async moveAfterReview => {
   process.env[ON_ENGINE] = 'studyNotes';
   actions = null;

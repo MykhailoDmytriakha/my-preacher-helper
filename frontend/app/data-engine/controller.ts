@@ -852,7 +852,7 @@ export class EditorController {
   }
 
   /** An online choice uses the displayed words or stops to show any newly contested field. */
-  private async refreshPrayerChoice(expected: EditorRecord): Promise<EditorRecord> {
+  private async refreshDocumentTextChoice(expected: EditorRecord): Promise<EditorRecord> {
     const { checkpoint } = expected;
     const review = readDocumentTextChoice(checkpoint);
     const shown = checkpoint.remoteCandidate;
@@ -869,7 +869,7 @@ export class EditorController {
     this.assertRecoveryChoice(refreshed);
     const updated = readDocumentTextChoice(refreshed.checkpoint);
     if (!updated?.complete || !equalValues(updated.checkpoint.conflicts, review.checkpoint.conflicts)) {
-      throw Object.assign(new Error('The shown prayer text changed'), { code: 'commit-changed' });
+      throw Object.assign(new Error('The shown saved text changed'), { code: 'commit-changed' });
     }
     return refreshed;
   }
@@ -880,8 +880,9 @@ export class EditorController {
     correction?: { base: DocumentData; value: DocumentData },
     remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
-    if (expected && !selection && !correction && expected.checkpoint.confirmed.resource.collection === 'prayerRequests') {
-      expected = await this.refreshPrayerChoice(expected);
+    if (expected && !selection && !correction
+      && ['prayerRequests', 'planTemplates'].includes(expected.checkpoint.confirmed.resource.collection)) {
+      expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
@@ -1309,9 +1310,13 @@ export class EditorController {
         if (documentTextChoice && (choice === 'local' || documentTextChoice.complete) && session.checkpoint().dirty) {
           const time = choiceTime ?? null;
           const original = ordinary?.first ?? retired.find(request => answered.pending[request.id] && request.result?.kind === 'conflict');
-          const action = decided.confirmed.resource.collection === 'series'
-            ? { kind: 'document-metadata' as const, time: choice === 'local' ? time : null }
-            : retryPrayerTextChoice(documentTextChoice, choice, original, session.checkpoint().draft, time);
+          const collection = decided.confirmed.resource.collection;
+          let action: EditorCommitAction | undefined;
+          if (collection === 'series') action = { kind: 'document-metadata', time: choice === 'local' ? time : null };
+          else if (collection === 'prayerRequests') action = retryPrayerTextChoice(documentTextChoice, choice, original, session.checkpoint().draft, time);
+          else if (choice === 'local' && documentTextChoice.title) {
+            action = { kind: 'plan-template-name', name: { seen: documentTextChoice.title, time } };
+          }
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }

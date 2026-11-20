@@ -310,11 +310,15 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
       toast.error(t(STRUCTURE_SAVE_ERROR));
     };
     try {
-      // Adopt the revision the server held AT REFUSAL — a deliberate overwrite.
-      await awaitWriteOperation(
-        updateTemplate(conflict.payload.templateId, conflict.payload.updates, conflict.actualRevision),
-        reportFailure
-      );
+      const { templateId, updates } = conflict.payload;
+      const shown = templatesById.get(templateId);
+      // Pair the refusal revision with the name shown at that revision, when it is available.
+      const seen = shown && typeof updates.name === 'string' && updates.structure === undefined
+        && (shown.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0) === conflict.actualRevision ? observeName?.(templateId, shown.name) : undefined;
+      const resend = seen
+        ? updateTemplate(templateId, updates, conflict.actualRevision, { seen, time: captureActionTime?.() ?? null })
+        : updateTemplate(templateId, updates, conflict.actualRevision);
+      await awaitWriteOperation(resend, reportFailure);
       if (userIdRef.current !== ownerId) return;
       // NAME the template this resolves: the slot is per template, and an unnamed
       // clear would empty whichever one the section is pointing at right now.
