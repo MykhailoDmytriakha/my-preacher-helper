@@ -4234,6 +4234,87 @@ describe('transactional DataEngine server', () => {
     if (phoneAt === null) expect(answer).toMatchObject({ conflicts: [{ path: ['flow', 'id:step', 'instanceTitle'] }] });
   });
 
+  it.each(['block', 'step'] as const)('protects the returned group %s title from an old request', async scope => {
+    const resource = { collection: 'groups', id: 'returned-group-title' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const block = { id: 'block', type: 'custom', title: 'Block title', content: 'Original words', status: 'draft', createdAt: now, updatedAt: now };
+    const step = { id: 'step', templateId: block.id, order: 1, instanceTitle: 'Step title', instanceNotes: 'Original notes' };
+    const neighbor = { ...step, id: 'neighbor', order: 2, instanceTitle: 'Neighboring step' };
+    const field = scope === 'block' ? 'templates' : 'flow';
+    const leaf = scope === 'block' ? 'title' : 'instanceTitle';
+    const key = scope === 'block' ? 'groupBlockTitleActions' : 'groupStepTitleActions';
+    const first = scope === 'block' ? block : step;
+    const openingTitle = scope === 'block' ? block.title : step.instanceTitle;
+    const birth = scope === 'block' ? block.createdAt : step.templateId;
+    const changes = scope === 'block' ? { content: 'Independent saved words' } : { instanceNotes: 'Independent saved notes' };
+    const rows = (value: typeof first) => scope === 'block' ? [value] : [value, neighbor];
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now,
+        templates: [block], flow: [step, neighbor] },
+    })).toMatchObject({ kind: 'acknowledged' });
+
+    const edit = (operationId: string, before: typeof first, after: typeof first, action?: { before: string; after: string; observedRevision: number }) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: [field], before: { exists: true, value: rows(before) }, after: { exists: true, value: rows(after) } }],
+      ...(action && { [key]: [{ rowId: first.id, rowCreatedAt: birth, ...action, time: null }] }),
+    });
+    const temporaryTitle = 'Temporary title';
+    const changed = { ...first, [leaf]: temporaryTitle };
+    const restored = { ...first, ...changes };
+    expect(await processCommand(base.owner, edit('change', first, changed, { before: openingTitle, after: temporaryTitle, observedRevision: 1 })))
+      .toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, edit('return', changed, restored, { before: temporaryTitle, after: openingTitle, observedRevision: 2 })))
+      .toMatchObject({ kind: 'acknowledged' });
+    const delayedTitle = 'Delayed title';
+    const delayed = edit('delayed', first, { ...first, [leaf]: delayedTitle });
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({
+      kind: 'conflict', snapshot: { value: { [field]: rows(restored) } },
+      conflicts: [{ path: [field, 'id:' + first.id, leaf], mine: { value: delayedTitle }, theirs: { value: openingTitle } }],
+    });
+    expect(await processCommand(base.owner, delayed)).toEqual(result);
+    const observedRevision = result.kind === 'conflict' ? result.snapshot.metadata!.revision : 0;
+    const chosen = { ...restored, [leaf]: delayedTitle };
+    expect(await processCommand(base.owner, edit('choice', restored, chosen, { before: openingTitle, after: delayedTitle, observedRevision })))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: rows(chosen) } } });
+  });
+
+  it.each([
+    { at: 20, order: 'earlier', marker: 'group-flow-text-settled' },
+    { at: 80, order: 'later', marker: 'group-flow-text-queued' },
+  ])('reports $order text separately when a group block name needs comparison', async ({ at, marker }) => {
+    const resource = { collection: 'groups', id: 'group-title-and-content' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'block', type: 'custom', title: 'Opening title', content: 'Opening words', status: 'draft', createdAt: now, updatedAt: now };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now,
+        templates: [opening], flow: [{ id: 'step', templateId: opening.id, order: 1 }] },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const edit = (operationId: string, before: typeof opening, after: typeof opening, changedAt?: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['templates'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+      ...(changedAt !== undefined && { groupBlockContentActions: [{ rowId: opening.id, rowCreatedAt: opening.createdAt, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + changedAt, latestMs: 1_800_000_000_010 + changedAt } }] }),
+    });
+    const temporary = { ...opening, title: 'Temporary title', content: 'Desktop words' };
+    const restored = { ...temporary, title: opening.title };
+    expect(await processCommand(base.owner, edit('desktop', opening, temporary, 40))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, edit('return-title', temporary, restored))).toMatchObject({ kind: 'acknowledged' });
+    const delayed = edit('phone', opening, { ...opening, title: 'Phone title', content: 'Phone words' }, at);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { templates: [restored] } } });
+    expect(result.kind === 'conflict' ? result.conflicts : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['templates', 'id:block', 'title'] }),
+      expect.objectContaining({ path: ['templates', 'id:block', 'content'], code: marker,
+        mine: { exists: true, value: 'Phone words' }, theirs: { exists: true, value: 'Desktop words' } }),
+    ]));
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/group-title-and-content/_blockContentHistory/'));
+    expect(history).toHaveLength(at < 40 ? 1 : 0);
+    expect(await processCommand(base.owner, delayed)).toEqual(result);
+  });
+
   it.each([
     { label: 'earlier number', at: 15, phoneMinutes: 24, expected: 40, kind: 'acknowledged' },
     { label: 'later number', at: 100, phoneMinutes: 24, expected: 24, kind: 'acknowledged' },

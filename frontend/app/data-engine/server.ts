@@ -39,7 +39,7 @@ import { equalValues, object, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { groupFirstMeetingComparison } from './groupFirstMeeting';
 import { adoptLegacyFirstGroupMeeting, firstGroupMeetingLegacyMetadata, prepareFirstGroupMeetingOrder, rawFirstGroupMeetingOpening } from './groupFirstMeetingOrder.server';
-import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
+import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, isOrderedGroupFlowText, type GroupFlowHistoryPage } from './groupFlowTitleAction';
 import { metadataAfterGroupFlowTopology } from './groupFlowTopology.server';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
@@ -61,7 +61,7 @@ import { mergeFields, advanceResourceSnapshot, commandFingerprint, getResourcePo
 import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
-import { orderRowText } from './rowTextOrder.server';
+import { orderRowText, settledRowDetailComparisons } from './rowTextOrder.server';
 import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { compareReturnedSermonText, metadataAfterSermonText } from './sermonTextOrder.server';
@@ -277,6 +277,7 @@ function preservesExactConflict(result: ExactConflict, command: DataCommand): bo
   return comparesAuthoredList(result.conflicts)
     || (command.resource.collection === 'sermons' && result.conflicts.some(({ path }) => preachDateNoteConflictId(path) !== undefined))
     || (command.resource.collection === 'councils' && result.conflicts.some(({ path }) => councilTopicTextConflict(path) !== undefined))
+    || (command.resource.collection === 'groups' && result.conflicts.some(({ code }) => isOrderedGroupFlowText(code)))
     || (command.kind === 'update' && command.resource.collection === 'studyNotes'
       && isOrdinaryReferenceDocument(result.snapshot.value) && command.changes.some(change => equalValues(change.path, studyNoteReferencesPath)));
 }
@@ -540,7 +541,8 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
       const path = JSON.stringify(item.path);
       const existing = conflicts.get(path);
       if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_SUBPOINT_REVIEW && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED
-        && existing.code !== COUNCIL_TOPIC_TEXT_SETTLED && existing.code !== COUNCIL_TOPIC_TEXT_QUEUED && !homileticComparisonList(existing))) conflicts.set(path, item);
+        && existing.code !== COUNCIL_TOPIC_TEXT_SETTLED && existing.code !== COUNCIL_TOPIC_TEXT_QUEUED
+        && !isOrderedGroupFlowText(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
@@ -711,13 +713,32 @@ function persistSeriesMembershipWrites(transaction: Transaction, owner: string, 
 }
 
 function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, metadata: unknown, serverMs: number) {
-  const block = orderRowDetails(command, current, metadata, serverMs, GROUP_BLOCK_TITLE_POLICY);
-  const step = orderRowDetails(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
+  const block = orderRowText(command, current, metadata, serverMs, GROUP_BLOCK_TITLE_POLICY);
+  const step = orderRowText(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
   const blockStatus = orderRowDetails(step.command, current, metadata, serverMs, GROUP_BLOCK_STATUS_POLICY);
   const duration = orderRowDetails(blockStatus.command, current, metadata, serverMs, GROUP_STEP_DURATION_POLICY);
   const content = orderRowText(alignGroupStepDurationRepresentation(duration.command, current), current, metadata, serverMs, GROUP_BLOCK_CONTENT_POLICY);
   const notes = orderRowText(content.command, current, metadata, serverMs, GROUP_STEP_NOTES_POLICY);
-  return { block, step, blockStatus, duration, content, notes };
+  const codes = { settled: GROUP_FLOW_TEXT_SETTLED, queued: GROUP_FLOW_TEXT_QUEUED };
+  const settled = [
+    ...settledRowDetailComparisons(command, current, GROUP_BLOCK_TITLE_POLICY, block, codes),
+    ...settledRowDetailComparisons(command, current, GROUP_STEP_TITLE_POLICY, step, codes),
+    ...settledRowDetailComparisons(command, current, GROUP_BLOCK_STATUS_POLICY, blockStatus, codes),
+    ...settledRowDetailComparisons(command, current, GROUP_STEP_DURATION_POLICY, duration, codes),
+    ...settledRowDetailComparisons(command, current, GROUP_BLOCK_CONTENT_POLICY, content, codes),
+    ...settledRowDetailComparisons(command, current, GROUP_STEP_NOTES_POLICY, notes, codes),
+  ];
+  return { block, step, blockStatus, duration, content, notes, settled };
+}
+
+function persistGroupFlowHistory(transaction: Transaction, command: DataCommand, snapshot: ResourceSnapshot,
+  groupFlowOrder?: ReturnType<typeof orderGroupFlowFields>) {
+  persistRowDetailHistory(transaction, command, snapshot, GROUP_BLOCK_TITLE_POLICY, groupFlowOrder?.block);
+  persistRowDetailHistory(transaction, command, snapshot, GROUP_STEP_TITLE_POLICY, groupFlowOrder?.step);
+  persistRowDetailHistory(transaction, command, snapshot, GROUP_BLOCK_STATUS_POLICY, groupFlowOrder?.blockStatus);
+  persistRowDetailHistory(transaction, command, snapshot, GROUP_STEP_DURATION_POLICY, groupFlowOrder?.duration);
+  persistRowTextHistory(transaction, command, snapshot, GROUP_BLOCK_CONTENT_POLICY, groupFlowOrder?.content);
+  persistRowTextHistory(transaction, command, snapshot, GROUP_STEP_NOTES_POLICY, groupFlowOrder?.notes);
 }
 
 async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilTopicTextOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
@@ -931,12 +952,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistHomileticHistory(transaction, command, primarySnapshot, homileticOrder);
   if (outlineTitleOrder) persistRowDetailHistory(transaction, command, primarySnapshot, outlineTitleOrder.policy, outlineTitleOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
-  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_TITLE_POLICY, groupFlowOrder?.block);
-  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_TITLE_POLICY, groupFlowOrder?.step);
-  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_STATUS_POLICY, groupFlowOrder?.blockStatus);
-  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_DURATION_POLICY, groupFlowOrder?.duration);
-  persistRowTextHistory(transaction, command, primarySnapshot, GROUP_BLOCK_CONTENT_POLICY, groupFlowOrder?.content);
-  persistRowTextHistory(transaction, command, primarySnapshot, GROUP_STEP_NOTES_POLICY, groupFlowOrder?.notes);
+  persistGroupFlowHistory(transaction, command, primarySnapshot, groupFlowOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_FLAG_POLICY, serviceFlagOrder);
@@ -1235,7 +1251,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison
         ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled,
-          ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...orderedPreachDateFieldComparisons(command, preachingOrder)]
+          ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...groupFlowOrder.settled,
+          ...orderedPreachDateFieldComparisons(command, preachingOrder)]
         : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
         && orderedCommand.kind === 'update' && current.value) {
@@ -1290,6 +1307,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
       if (meetingOrder) persistRowDetailHistory(transaction, command, result.snapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
+      persistGroupFlowHistory(transaction, command, result.snapshot, groupFlowOrder);
       if (dateOrder?.target === MEETING_DATE_TARGET) persistDatedRowHistory(transaction, command, result.snapshot, dateOrder);
     }
     if (result.kind === 'conflict' && exegeticalOrder?.comparisons?.length) {

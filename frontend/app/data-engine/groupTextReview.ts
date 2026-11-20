@@ -2,12 +2,12 @@ import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
-import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
+import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { groupPlacementSteps } from './groupFlowTopology';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { readPrivateFieldReview } from './privateFieldReview';
 import { mergeDocumentFields } from './protocol';
-import { existingRowField, replaceExistingRowField } from './rowFieldAction';
+import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CouncilOutcome } from './councilOutcomeAction';
@@ -82,7 +82,7 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
       identity: JSON.stringify([checkpoint.editGeneration, checkpoint.groupTextReview, checkpoint.privateFieldReview,
       remoteCandidate?.metadata?.generation, remoteCandidate?.metadata?.revision, path, mine, stored, 'row' in next && next.row]) };
   }
-  if (review && checkpoint.groupTextReview) {
+  if (review && (checkpoint.groupTextReview || review.settled.length)) {
     return { field: 'complete' as const, mine: null, stored: null, completion: true as const,
       identity: JSON.stringify([checkpoint.editGeneration, checkpoint.groupTextReview, remoteCandidate?.metadata?.revision]) };
   }
@@ -130,9 +130,13 @@ function readGroupDescriptionChoice(checkpoint: SessionCheckpoint, draft: Docume
   if (field?.field === 'description' && field.mine !== field.stored) return { ...field, field: 'description' };
 }
 
+function isGroupRowText(field: string | undefined) {
+  return field === 'content' || field === 'notes' || field === 'block' || field === 'step';
+}
+
 function readGroupRowTextChoice(checkpoint: SessionCheckpoint, draft: DocumentData | null) {
   const versions = groupFlowFieldVersions(checkpoint, draft);
-  return versions && (versions.field === 'content' || versions.field === 'notes') ? versions : undefined;
+  return versions && isGroupRowText(versions.field) ? versions : undefined;
 }
 
 export function readGroupFlowTextChoice(checkpoint: SessionCheckpoint, draft = checkpoint.draft) {
@@ -176,6 +180,20 @@ type RemovedGroupText = {
   linkedSteps?: DocumentData[];
 };
 type GroupText = RowText | GroupScalar | RemovedGroupText;
+
+export function sameGroupText(before: DocumentData, after: DocumentData, field: GroupText): boolean {
+  if ('target' in field) {
+    const { id, target, birthTarget } = field;
+    return existingRowField(before[target.field], id, birthTarget) === existingRowField(after[target.field], id, birthTarget)
+      && equalValues(existingRowField(before[target.field], id, target), existingRowField(after[target.field], id, target));
+  }
+  if ('row' in field) {
+    const [root, row] = field.path;
+    return equalValues(findGroupRow(before[root], row.slice(3)), findGroupRow(after[root], row.slice(3)));
+  }
+  return equalValues(readField(before, field.path), readField(after, field.path));
+}
+
 
 /** The terminal Save owns this staged review, so any editor can reopen the same draft. */
 export interface GroupTextReviewStage {
@@ -239,24 +257,48 @@ function textAt(checkpoint: SessionCheckpoint, path: string[]): GroupText | unde
   return groupFlowFieldVersions(checkpoint, checkpoint.draft, path);
 }
 
-export function groupTextDecision(field: GroupText, side: GroupTextDecision['side']): GroupTextDecision {
+export function groupTextDecision(field: GroupText, side: GroupTextDecision['side'], time?: ActionTime | null): GroupTextDecision {
   const { path, mine, stored } = field;
-  return { path, birth: 'birth' in field ? field.birth : null, mine, stored, side, ...('row' in field && { row: field.row, removedBy: field.removedBy, ...(field.linkedSteps?.length && { linkedSteps: field.linkedSteps }) }) };
+  return { path, birth: 'birth' in field ? field.birth : null, mine, stored, side, ...(time !== undefined && { time }),
+    ...('row' in field && { row: field.row, removedBy: field.removedBy, ...(field.linkedSteps?.length && { linkedSteps: field.linkedSteps }) }) };
 }
 
 export function readPrivateGroupTextReview(checkpoint: SessionCheckpoint) {
-  return checkpoint.confirmed.resource.collection === 'groups' ? readPrivateFieldReview(checkpoint, textAt) : undefined;
+  const review = checkpoint.confirmed.resource.collection === 'groups' ? readPrivateFieldReview(checkpoint, textAt) : undefined;
+  return review && { ...review, settled: [] };
 }
 
-export function readGroupTextReview(checkpoint: SessionCheckpoint) {
-  const { confirmed, draft, remoteCandidate, conflicts, pending, groupTextReview } = checkpoint;
+export function readGroupTextReview(source: SessionCheckpoint) {
+  const { confirmed, remoteCandidate, conflicts, pending, groupTextReview } = source;
+  const requests = Object.entries(pending).sort(([, first], [, second]) => first.generation - second.generation);
+  const [requestId, first] = requests[0] ?? [];
+  const useSubmittedFrame = first && (requests.length > 1 || conflicts.some(({ code }) => isOrderedGroupFlowText(code)));
+  const checkpoint = useSubmittedFrame ? { ...source, draft: first.value, pending: { [requestId]: first } } : source;
+  const { draft } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate.metadata?.generation
-    || Object.keys(pending).length !== 1 || !conflicts.length || groupTextReview?.separateDraft) return undefined;
-  const merged = mergeDocumentFields(confirmed.value, draft, remoteCandidate.value);
+    || !requestId || !conflicts.length || groupTextReview?.separateDraft
+    || (groupTextReview && groupTextReview.requestId !== requestId)) return undefined;
+  const settled = new Map<string, { field: RowText; side: 'mine' | 'stored' }>();
+  let proposed = draft;
+  for (const conflict of conflicts) {
+    const side = conflict.code === GROUP_FLOW_TEXT_SETTLED ? 'stored' : conflict.code === GROUP_FLOW_TEXT_QUEUED ? 'mine' : undefined;
+    if (!side) continue;
+    const field = groupFlowFieldVersions(checkpoint, draft, conflict.path);
+    if (!field || !equalValues(conflict.base, rowConflictValue(field.before))
+      || !equalValues(conflict.mine, rowConflictValue(field.mine))) continue;
+    settled.set(JSON.stringify(conflict.path), { field, side });
+    if (side === 'stored') {
+      const accepted = writeGroupFlowTextChoice(proposed, field, side);
+      if (!accepted) return undefined;
+      proposed = accepted;
+    }
+  }
+  const merged = mergeDocumentFields(confirmed.value, proposed, remoteCandidate.value);
   // A deleted row invalidates its prior text choice. A deletion that also conflicts
   // with local row work remains an explicit conflict, never a new live row.
-  const paths = [...new Map([...conflicts, ...merged.conflicts].map(({ path }) => [JSON.stringify(path), path])).values()];
+  const paths = [...new Map([...conflicts, ...merged.conflicts].map(({ path }) => [JSON.stringify(path), path]))]
+    .flatMap(([key, path]) => settled.has(key) ? [] : [path]);
   const removed = merged.conflicts.flatMap(conflict => removedText(checkpoint, conflict) ?? []);
   const fields = paths.filter(path => {
     if (removed.some(item => item.path.length < path.length && equalValues(item.path, path.slice(0, item.path.length)))) return false;
@@ -268,19 +310,24 @@ export function readGroupTextReview(checkpoint: SessionCheckpoint) {
       || merged.conflicts.some(conflict => equalValues(conflict.path, path.slice(0, 2)));
   }).map(path => removed.find(item => equalValues(item.path, path)) ?? textAt(checkpoint, path));
   const submittedDescription = conflicts.some(conflict => equalValues(conflict.path, ['description']));
-  if (fields.some(field => !field) || (!groupTextReview && !submittedDescription
-    && !fields.some(field => field?.field === 'content' || field?.field === 'notes'))) return undefined;
+  if (fields.some(field => !field) || (!groupTextReview && !submittedDescription && !settled.size
+    && !fields.some(field => isGroupRowText(field?.field)))) return undefined;
   const differing = fields.filter((field): field is GroupText => Boolean(field && (!('before' in field) || field.mine !== field.stored)));
   const decisions = (groupTextReview?.decisions ?? []).filter(decision => differing.some(field =>
-    equalValues(decision, groupTextDecision(field, decision.side))));
+    equalValues(decision, groupTextDecision(field, decision.side, decision.time))));
   const remaining = differing.filter(field => !decisions.some(decision => equalValues(decision.path, field.path)));
-  return { fields: differing, decisions, remaining, merged, stored: remoteCandidate.value };
+  return { requestId, fields: differing, decisions, remaining, merged, stored: remoteCandidate.value, settled: [...settled.values()] };
 }
 
-export function projectGroupTextDecisions(review: Pick<NonNullable<ReturnType<typeof readGroupTextReview>>, 'fields' | 'merged' | 'stored'>,
+export function projectGroupTextDecisions(review: Pick<NonNullable<ReturnType<typeof readGroupTextReview>>, 'fields' | 'merged' | 'stored' | 'settled'>,
   decisions: readonly FieldSelection[]): DocumentData | undefined {
   if (!review.merged.value.exists) return undefined;
   let value = review.merged.value.value as DocumentData;
+  for (const { field, side } of review.settled) {
+    const reviewed = writeGroupFlowTextChoice(value, field, side);
+    if (!reviewed) return undefined;
+    value = reviewed;
+  }
   for (const field of review.fields) {
     const decision = decisions.find(item => equalValues(item.path, field.path));
     if (!decision) return undefined;

@@ -1,6 +1,10 @@
 import type { RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
 import type { RowFieldTarget } from './rowFieldAction';
 
+export const GROUP_FLOW_TEXT_SETTLED = 'group-flow-text-settled';
+export const GROUP_FLOW_TEXT_QUEUED = 'group-flow-text-queued';
+export const isOrderedGroupFlowText = (code: string | undefined) => code === GROUP_FLOW_TEXT_SETTLED || code === GROUP_FLOW_TEXT_QUEUED;
+
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isIdentity = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 
@@ -14,7 +18,8 @@ export const GROUP_BLOCK_TITLE_POLICY: RowDetailPolicy<'title', string> = {
   birth: { field: 'templates', leaf: 'createdAt', accepts: isText },
   target: () => GROUP_BLOCK_TITLE,
   proofs: 'groupBlockTitleProofs', actions: 'groupBlockTitleActions', history: '_blockTitleHistory',
-  repeatedFields: ['title'], allowUnclocked: true,
+  repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
+  rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
 
 export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = {
@@ -22,7 +27,8 @@ export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = 
   birth: { field: 'flow', leaf: 'templateId', accepts: isIdentity },
   target: () => GROUP_STEP_TITLE,
   proofs: 'groupStepTitleProofs', actions: 'groupStepTitleActions', history: '_stepTitleHistory',
-  repeatedFields: ['title'], allowUnclocked: true,
+  repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
+  rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
 
 export const GROUP_BLOCK_CONTENT_POLICY: RowDetailPolicy<'content', string> = {

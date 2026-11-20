@@ -1,5 +1,7 @@
+import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from '../groupFlowTitleAction';
 import { groupTextDecision, projectGroupTextDecisions, readGroupTextReview } from '../groupTextReview';
 import { readGroupFlowFieldConflict } from '../rowConflictDetails';
+import { withQueuedGroupFlowTextProofs } from '../rowFieldAutosave';
 import { DataSession, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from '../session';
 
 import type { ResourceSnapshot } from '../types';
@@ -33,7 +35,56 @@ describe('group flow title comparison', () => {
       mine: { exists: true, value: 'Old local' }, theirs: { exists: true, value: 'Old stored' } }];
     expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'block', mine: 'Latest local', stored: 'Latest stored' });
     checkpoint.draft.templates = [{ ...template, title: 'Latest local', content: 'New local words', updatedAt: 'local' }];
-    expect(readGroupFlowFieldConflict(checkpoint)).toBeUndefined();
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'block', mine: 'Latest local', stored: 'Latest stored' });
+    const review = readGroupTextReview(checkpoint)!;
+    const projected = projectGroupTextDecisions(review, [groupTextDecision(review.remaining[0], 'remote')]);
+    expect(projected?.templates).toMatchObject([{ title: 'Latest stored', content: 'New local words' }]);
+  });
+
+  it.each([
+    { code: GROUP_FLOW_TEXT_SETTLED, content: 'Newer desktop words' },
+    { code: GROUP_FLOW_TEXT_QUEUED, content: 'Phone words' },
+  ])('keeps already ordered content through a later title choice: $code', ({ code, content }) => {
+    const checkpoint = new DataSession(opening).checkpoint();
+    const row = { ...template, title: 'Phone title', content: 'Phone words' };
+    checkpoint.draft = { ...value, templates: [row] };
+    const at = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+    const contentAction = { rowId: template.id, rowCreatedAt: template.createdAt, before: template.content,
+      after: row.content, observedRevision: 1, time: at };
+    checkpoint.pending.save = { generation: 1, value: checkpoint.draft, groupBlockContentActions: [contentAction] };
+    checkpoint.remoteCandidate = { ...opening, metadata: { ...metadata, revision: 3 },
+      value: { ...value, templates: [{ ...template, content: 'Desktop words' }] } };
+    const field = (text: string) => ({ exists: true as const, value: text });
+    checkpoint.conflicts = [
+      { path: ['templates', 'id:block', 'title'], base: field(template.title), mine: field(row.title), theirs: field(template.title) },
+      { path: ['templates', 'id:block', 'content'], code, base: field(template.content), mine: field(row.content), theirs: field('Desktop words') },
+    ];
+
+    const review = readGroupTextReview(checkpoint)!;
+    expect(review.remaining).toHaveLength(1);
+    expect(review.remaining[0]).toMatchObject({ field: 'block', mine: row.title, stored: template.title });
+    const decision = groupTextDecision(review.remaining[0], 'remote');
+    const chosen = projectGroupTextDecisions(review, [decision])!;
+    expect(chosen.templates).toMatchObject([{ title: template.title, content: code === GROUP_FLOW_TEXT_SETTLED ? 'Desktop words' : content }]);
+
+    const newer = { ...opening, metadata: { ...metadata, revision: 4 },
+      value: { ...value, templates: [{ ...template, content: 'Newer desktop words' }] } };
+    checkpoint.remoteCandidate = newer;
+    checkpoint.draft = { ...checkpoint.draft, templates: [{ ...row, content: 'Unsaved newer text' }] };
+    const unsavedReview = readGroupTextReview(checkpoint)!;
+    expect(unsavedReview.remaining).toHaveLength(1);
+    expect(projectGroupTextDecisions(unsavedReview, [decision])?.templates).toMatchObject([{ title: template.title, content }]);
+    const laterDraft = { ...checkpoint.pending.save.value, flow: [{ ...step, instanceNotes: 'Later local notes' }] };
+    checkpoint.pending.later = { generation: 2, value: laterDraft };
+    checkpoint.draft = laterDraft;
+    const pendingReview = readGroupTextReview(checkpoint)!;
+    expect(pendingReview.requestId).toBe('save');
+    expect(pendingReview.remaining).toHaveLength(1);
+    expect(projectGroupTextDecisions(pendingReview, [decision])?.templates).toMatchObject([{ title: template.title, content }]);
+
+    const queued = pendingReview.settled.flatMap(item => item.side === 'mine' ? [item.field] : []);
+    const evidence = withQueuedGroupFlowTextProofs(checkpoint, queued);
+    expect(evidence.groupBlockContentDrafts?.[template.id]?.action).toEqual(code === GROUP_FLOW_TEXT_QUEUED ? contentAction : undefined);
   });
 
   it.each(['content', 'instanceNotes'] as const)('shows both exact versions of %s before resolving', leaf => {

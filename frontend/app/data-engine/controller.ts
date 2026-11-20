@@ -27,9 +27,10 @@ import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } fro
 import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
+import { isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
-import { groupTextDecision, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, writeGroupFlowTextChoice } from './groupTextReview';
+import { groupTextDecision, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -44,7 +45,7 @@ import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeField
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { readServiceOrderTitleConflict } from './rowConflictDetails';
-import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
+import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedGroupFlowTextProofs } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -862,10 +863,12 @@ export class EditorController {
     const groupReview = ordinary && readGroupTextReview(shown.checkpoint);
     const councilReview = ordinary && readCouncilTopicTextReview(shown.checkpoint);
     const textReview = councilReview || groupReview;
-    const reviewingText = Boolean(councilReview || groupReview && (shown.checkpoint.groupTextReview || groupReview.remaining.length > 1));
+    const reviewingText = Boolean(councilReview || groupReview && (shown.checkpoint.groupTextReview
+      || ordinary.scope.length > 1 || groupReview.remaining.length > 1 || groupReview.settled.length));
     const hasCouncilTextOrder = shown.checkpoint.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED);
-    if (reviewingText || shown.checkpoint.groupTextReview || hasCouncilTextOrder) {
-      if (!expected || !ordinary || !textReview || (councilReview ? councilReview.requestId !== ordinary.first.id : ordinary.scope.length !== 1)
+    const hasGroupTextOrder = shown.checkpoint.conflicts.some(({ code }) => isOrderedGroupFlowText(code));
+    if (reviewingText || shown.checkpoint.groupTextReview || hasCouncilTextOrder || hasGroupTextOrder) {
+      if (!expected || !ordinary || !textReview || textReview.requestId !== ordinary.first.id
         || (shown.checkpoint.groupTextReview && (ordinary.first.id !== shown.checkpoint.groupTextReview.requestId
           || ordinary.first.revision !== shown.checkpoint.groupTextReview.revision))) {
         throw Object.assign(new Error('Finish comparing the changed fields'), { code: 'decision-changed' });
@@ -876,7 +879,7 @@ export class EditorController {
       if (textReview.remaining.length > 1) {
         const { groupTextReview: _review, ...checkpoint } = shown.checkpoint;
         const next = councilReview ? councilTopicTextDecision(councilReview.remaining[0], choice, choiceTime ?? null)
-          : groupTextDecision(groupReview!.remaining[0], choice);
+          : groupTextDecision(groupReview!.remaining[0], choice, choiceTime);
         const decisions = [...textReview.decisions, next];
         let projected: EditorRecord | undefined;
         await this.options.commits!.stageGroupTextReview(ordinary.first, { checkpoint, decisions }, saved => {
@@ -952,7 +955,7 @@ export class EditorController {
         source = record.checkpoint;
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
-        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, Boolean(councilReview)) : source;
+        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
         const orderedDateField = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(isOrderedPreachDateField);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
@@ -981,22 +984,23 @@ export class EditorController {
           const council = readCouncilTopicTextReview(decided);
           const group = council ? undefined : readGroupTextReview(decided);
           const review = council || group;
-          if (!review || review.remaining.length > 1 || (!council && !ordinary?.first.groupTextReview)) {
+          if (!review || review.remaining.length > 1 || review.requestId !== ordinary?.first.id) {
             throw Object.assign(new Error('The shown text changed'), { code: 'decision-changed' });
           }
           const last = council?.remaining[0] ? councilTopicTextDecision(council.remaining[0], choice, choiceTime ?? null)
-            : group && group.remaining[0] ? groupTextDecision(group.remaining[0], choice) : undefined;
+            : group && group.remaining[0] ? groupTextDecision(group.remaining[0], choice, choiceTime) : undefined;
           const decisions = last ? [...review.decisions, last] : review.decisions;
           const chosen = council ? projectCouncilTopicTextDecisions(council, decisions) : projectGroupTextDecisions(group!, decisions);
           if (!chosen) throw Object.assign(new Error('The reviewed field changed'), { code: 'decision-changed' });
-          const sameWriter = council && ordinary && ordinary.scope.every(request => request.editorId === ordinary.first.editorId);
+          const sameWriter = ordinary && ordinary.scope.every(request => request.editorId === ordinary.first.editorId);
           const tailOpening = sameWriter ? source.pending[ordinary.first.id].value : null;
           const laterDraft = source.draft;
-          const independent = council && tailOpening && laterDraft
-            && [...council.fields, ...council.settled.map(({ field }) => field)].every(({ path }) => {
+          const independent = tailOpening && laterDraft && (group
+            ? [...group.fields, ...group.settled.map(({ field }) => field)].every(field => sameGroupText(tailOpening, laterDraft, field))
+            : council && [...council.fields, ...council.settled.map(({ field }) => field)].every(({ path }) => {
               const later = councilTopicTextVersions(path, tailOpening, laterDraft, tailOpening);
               return later && equalValues(later.mine, later.stored);
-            });
+            }));
           const tail = independent && mergeDocumentFields(tailOpening, laterDraft, chosen);
           const keptTail = tail && tail.value.exists && !tail.conflicts.length ? tail.value.value as DocumentData : undefined;
           session.acceptRemote();
@@ -1007,10 +1011,11 @@ export class EditorController {
             session.retainUnreviewedAutosaveActions(withQueuedCouncilTopicTextProofs(keptTail ? source : decided, council), council.fields);
             for (const { path, time } of kept) session.stageReviewedCouncilText(path, time ?? null);
           } else {
-            session.retainUnreviewedAutosaveActions(decided, review.fields);
-            session.stageReviewedGroupFlowText(kept.map(decision => decision.path), choiceTime ?? null);
-            if (kept.some(decision => equalValues(decision.path, ['description']))) {
-              session.stageReviewedGroupDescription(choiceTime ?? null);
+            const queued = group!.settled.flatMap(({ field, side }) => side === 'mine' ? [field] : []);
+            session.retainUnreviewedAutosaveActions(withQueuedGroupFlowTextProofs(keptTail ? source : decided, queued), review.fields);
+            for (const { path, time } of kept) {
+              if (equalValues(path, ['description'])) session.stageReviewedGroupDescription(time ?? null);
+              else session.stageReviewedGroupFlowText([path], time ?? null);
             }
           }
           const intent = session.checkpoint();
@@ -1018,11 +1023,11 @@ export class EditorController {
           const replacement = this.options.commits!.choiceReplacement(record.editorId, intent, { action: action || undefined });
           if (replacement) session.applyCommit(replacement);
           projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
-          const recovery = council && ordinary && !keptTail ? projectOrdinaryChoiceDependents(
+          const recovery = ordinary && !keptTail ? projectOrdinaryChoiceDependents(
             record.owner, ordinary, projected.checkpoint.confirmed, projected.checkpoint.draft, retired) : undefined;
-          const latest = council && ordinary && !keptTail && ordinary.scope.findLast(request => source!.pending[request.id]);
+          const latest = ordinary && !keptTail && ordinary.scope.findLast(request => source!.pending[request.id]);
           const unsavedTail = latest && anchoredPlacementChoiceTail(source, latest.id);
-          const retained = council && unsavedTail && retainedAnchoredPlacementDraft(record.owner, record.editorId, council.requestId,
+          const retained = unsavedTail && retainedAnchoredPlacementDraft(record.owner, record.editorId, review.requestId,
             'unqueued', source, projected.checkpoint.confirmed, unsavedTail.base, unsavedTail.value);
           const removed = council && retainedCouncilTopicWords(decided, council);
           const removedCopy = council && removed && retainedAnchoredPlacementDraft(record.owner, record.editorId, council.requestId,

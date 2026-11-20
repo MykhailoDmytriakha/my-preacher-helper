@@ -258,9 +258,30 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
   if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
 }
 
+export function withQueuedGroupFlowTextProofs(source: SessionCheckpoint,
+  fields: readonly { path: string[]; birth: string; before: Value; mine: Value }[]): SessionCheckpoint {
+  const metadata = source.confirmed.metadata;
+  if (!fields.length || source.confirmed.resource.collection !== 'groups'
+    || !metadata || metadata.generation !== source.remoteCandidate?.metadata?.generation) return source;
+  const retained = { ...source };
+  for (const target of targetsFor('groups')) {
+    const field = target.policy.target(target.field);
+    for (const queued of fields) {
+      const rowId = rowConflictId(queued.path, field);
+      if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId)) continue;
+      const action = Object.values(source.pending).flatMap(request => request[target.action] ?? []).find(item =>
+        item.rowId === rowId && item.rowCreatedAt === queued.birth && equalValues(item.before, queued.before)
+        && equalValues(item.after, queued.mine) && item.time !== null);
+      if (!action || equalValues(retained[target.draft]?.[rowId]?.action.after, queued.mine)) continue;
+      retained[target.draft] = { ...retained[target.draft], [rowId]: { generation: metadata.generation, action } };
+    }
+  }
+  return retained;
+}
+
 export function stageReviewedGroupFlowText(checkpoint: SessionCheckpoint, paths: readonly (readonly string[])[], time: ActionTime | null): void {
   if (checkpoint.confirmed.resource.collection === 'groups') {
-    stageReviewedRowFields(checkpoint, paths, time, ['group-block-content', 'group-step-notes']);
+    stageReviewedRowFields(checkpoint, paths, time, ['group-block-content', 'group-step-notes', 'group-block-title', 'group-step-title']);
   }
 }
 

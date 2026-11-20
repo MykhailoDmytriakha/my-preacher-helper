@@ -38,6 +38,7 @@ import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
+import { readGroupTextReview } from './groupTextReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -1475,6 +1476,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+        || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
