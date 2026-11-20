@@ -2,8 +2,9 @@ import { boundedActionTime } from './actionClock';
 import { datedRowTarget, existingRowDate, isDateChange, MEETING_DATE_TARGET } from './datedRowAction';
 import { object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
+import { rowDetailConflict } from './rowDetailAction';
 import { boundedRowId, existingRowField, existingRowFields, proofRevision } from './rowFieldAction';
-import { orderConcurrentRowField, readRowAction, uncertainRowChange } from './rowFieldOrder.server';
+import { orderConcurrentRowField, readRowObservation, uncertainRowChange } from './rowFieldOrder.server';
 
 import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence, DatedRowTarget, DisplacedRowDate } from './datedRowAction';
@@ -11,7 +12,8 @@ import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 
 const MAX_PROOFS = 32;
 const MAX_EVICTED_ROWS = 256;
-type Proof = { rowId: string; date: string; time: ActionTime | null; revision: number; operationId?: string; rowCreatedAt?: string };
+const MAX_PRIOR_MEETING_DATES = 8;
+type Proof = { rowId: string; date: string; time: ActionTime | null; revision: number; operationId?: string; rowCreatedAt?: string; pastDates?: string[] | null };
 type DateOrder = { command: DataCommand; target?: DatedRowTarget; action?: DatedRowActionEvidence; displaced?: DisplacedRowDate;
   kept?: Proof; coalesced?: Pick<Proof, 'rowId' | 'date' | 'time'>; uncertain?: ConflictDetail[] };
 
@@ -21,10 +23,15 @@ function proofs(rawMetadata: unknown, target: DatedRowTarget): Proof[] {
   return entries.slice(0, MAX_PROOFS).flatMap((item: unknown) => {
     if (!object(item) || !boundedRowId(item.rowId) || !target.accepts(item.date) || !proofRevision(item.revision)) return [];
     const time = item.time === null && target === MEETING_DATE_TARGET ? null : boundedActionTime(item.time);
-    const operationId = time && isValidIdentifier(item.operationId) ? item.operationId : undefined;
+    const operationId = isValidIdentifier(item.operationId) ? item.operationId : undefined;
     const rowCreatedAt = target.birth.accepts(item.rowCreatedAt) ? item.rowCreatedAt : undefined;
+    const pastDates = target === MEETING_DATE_TARGET && item.pastDates !== undefined
+      ? Array.isArray(item.pastDates) && item.pastDates.length <= MAX_PRIOR_MEETING_DATES && item.pastDates.every(target.accepts)
+        ? item.pastDates : null
+      : undefined;
     return time === undefined ? [] : [{ rowId: item.rowId, date: item.date, time, revision: item.revision,
-      ...(operationId && rowCreatedAt && { operationId, rowCreatedAt }) }];
+      ...(rowCreatedAt && { rowCreatedAt, ...(operationId && { operationId }) }),
+      ...(pastDates !== undefined && { pastDates }) }];
   });
 }
 
@@ -77,7 +84,11 @@ function uncertainDate(command: DataCommand, action: DatedRowActionEvidence, tar
 function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>, target: DatedRowTarget,
   action: DatedRowActionEvidence, previous: Proof): DateOrder {
   const { date, time } = previous;
-  const ordered = orderConcurrentRowField(command, action, target, { value: date, time });
+  if (!action.time) {
+    if (date === action.after) return { command, coalesced: { rowId: action.rowId, date, time: null } };
+    return date === action.before ? uncertainDate(command, action, target) : { command };
+  }
+  const ordered = orderConcurrentRowField(command, { ...action, time: action.time }, target, { value: date, time });
   const { chronology, displaced } = ordered;
   if (date === action.after) {
     if (chronology > 0) return { command, action };
@@ -99,41 +110,74 @@ function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>
     displaced: { ...details, date: value, winnerDate: winnerValue } };
 }
 
+function orderUnprovedMeetingDate(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
+  raw: unknown, knownOpeningRow: string | undefined): DateOrder {
+  const target = MEETING_DATE_TARGET;
+  const change = command.changes.find(item => isDateChange(item, target));
+  if (!change || !current.metadata) return { command };
+  const { revision } = current.metadata;
+  const stored = current.value?.meetingDates;
+  const beginnings = existingRowFields(change.before.value, target.birth);
+  const endings = existingRowFields(change.after.value, target.birth);
+  const births = existingRowFields(stored, target.birth);
+  const openings = existingRowFields(change.before.value, target);
+  const liveDates = existingRowFields(stored, target);
+  const previous = new Map(proofs(raw, target).filter(proof => proof.revision <= revision).map(proof => [proof.rowId, proof]));
+  const result: DateOrder = { command };
+  const uncertain: ConflictDetail[] = [];
+  for (const [rowId, after] of existingRowFields(change.after.value, target)) {
+    const before = openings.get(rowId), live = liveDates.get(rowId), birth = births.get(rowId);
+    if (!birth || beginnings.get(rowId) !== birth || endings.get(rowId) !== birth
+      || before === undefined || after === undefined || before === after) continue;
+    if (live === after) {
+      result.coalesced = { rowId, date: after, time: null };
+      continue;
+    }
+    if (before !== live) continue;
+    const proof = previous.get(rowId);
+    const matching = proof?.date === live && (!proof.rowCreatedAt || proof.rowCreatedAt === birth) ? proof : undefined;
+    const returned = matching?.pastDates === null || matching?.pastDates?.includes(before)
+      || (before === '' && rowId === knownOpeningRow && Boolean(matching));
+    const evicted = dateProofFloor(raw, target, revision, rowId);
+    // The first document revision can evict only a creation, never a return.
+    if (returned || (!matching && evicted > (rowId === knownOpeningRow ? 0 : 1))) {
+      uncertain.push(uncertainRowChange({ rowId, before, after, time: null, observedRevision: 0 }, target));
+    }
+  }
+  return uncertain.length ? { ...result, uncertain } : result;
+}
+
 /** The ordinary merge still decides every neighboring field, row identity and permission. */
 export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, rawMetadata: unknown, readTimeMs: number, knownOpeningRow?: string): DateOrder {
   const target = datedRowTarget(command.resource.collection);
   if (!target || command.kind !== 'update' || !current.metadata
     || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
   const submitted = command[target.evidence];
-  const action = readRowAction(command, submitted, target, readTimeMs);
+  const action = readRowObservation(command, submitted, target, readTimeMs, { allowUnclocked: target === MEETING_DATE_TARGET });
   if (!action || action.observedRevision > current.metadata.revision) {
-    if (target === MEETING_DATE_TARGET && knownOpeningRow) {
-      const change = command.changes.find(item => isDateChange(item, target));
-      const after = existingRowDate(change?.after.value, knownOpeningRow, target);
-      const before = existingRowDate(change?.before.value, knownOpeningRow, target);
-      const live = existingRowDate(current.value?.meetingDates, knownOpeningRow, target);
-      if (before === '' && after && live === after) {
-        return { command, coalesced: { rowId: knownOpeningRow, date: after, time: null } };
-      }
-      const cleared = proofs(rawMetadata, target).some(proof => proof.rowId === knownOpeningRow && proof.date === ''
-        && proof.revision <= current.metadata!.revision);
-      if (before === '' && live === '' && after && (cleared || dateProofFloor(rawMetadata, target, current.metadata.revision, knownOpeningRow) > 0)) {
-        return { command, uncertain: [uncertainRowChange({ rowId: knownOpeningRow, before, after, time: null, observedRevision: 0 }, target)] };
-      }
-    }
-    return { command };
+    return target === MEETING_DATE_TARGET ? orderUnprovedMeetingDate(command, current, rawMetadata, knownOpeningRow) : { command };
   }
-  const currentDate = existingRowDate(current.value?.[target.field], action.rowId, target);
+  const rows = current.value?.[target.field];
+  const currentDate = existingRowDate(rows, action.rowId, target);
   if (currentDate === undefined) return { command };
+  const birth = existingRowField(rows, action.rowId, target.birth);
+  if (target === MEETING_DATE_TARGET) {
+    const change = command.changes.find(item => isDateChange(item, target));
+    const opening = existingRowField(change?.before.value, action.rowId, target.birth);
+    const proposed = existingRowField(change?.after.value, action.rowId, target.birth);
+    if (opening && opening === proposed && birth && opening !== birth && currentDate !== action.after) {
+      return { command, uncertain: [rowDetailConflict({ ...action, rowCreatedAt: opening }, target, currentDate)] };
+    }
+    if (!birth || opening !== birth || proposed !== birth) return { command };
+  }
   const previous = proofs(rawMetadata, target).find(item => item.rowId === action.rowId && item.date === currentDate
-    && item.revision <= current.metadata!.revision);
+    && (!item.rowCreatedAt || item.rowCreatedAt === birth) && item.revision <= current.metadata!.revision);
   if (previous && previous.revision > action.observedRevision) {
     if (previous.operationId && previous.operationId === submitted?.predecessorOperationId && currentDate === action.before) {
       const change = command.changes.find(item => isDateChange(item, target));
-      const born = existingRowField(current.value?.[target.field], action.rowId, target.birth);
-      if (change && born && previous.rowCreatedAt === born
-        && existingRowField(change.before.value, action.rowId, target.birth) === born
-        && existingRowField(change.after.value, action.rowId, target.birth) === born) return { command, action };
+      if (change && birth && previous.rowCreatedAt === birth
+        && existingRowField(change.before.value, action.rowId, target.birth) === birth
+        && existingRowField(change.after.value, action.rowId, target.birth) === birth) return { command, action };
     }
     return compareUnobservedDate(command, target, action, previous);
   }
@@ -145,10 +189,30 @@ export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, r
   return { command, action };
 }
 
-function unstampedMeetingDates(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined): Proof[] {
-  const previous = existingRowFields(raw?.meetingDates, MEETING_DATE_TARGET);
-  return [...existingRowFields(snapshot.value?.meetingDates, MEETING_DATE_TARGET)].flatMap(([rowId, date]) =>
-    !boundedRowId(rowId) || date === undefined || date === previous.get(rowId) ? [] : [{ rowId, date, revision: snapshot.metadata!.revision, time: null }]);
+function meetingDateDepartures(previous: Proof | undefined, opening: string | undefined): string[] | null {
+  if (opening === undefined) return [];
+  const remembered = previous?.pastDates;
+  if (remembered === null) return null;
+  const dates = remembered ?? [];
+  if (dates.includes(opening)) return dates;
+  return dates.length < MAX_PRIOR_MEETING_DATES ? [...dates, opening] : null;
+}
+
+function unstampedMeetingDates(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, previous: readonly Proof[]): Proof[] {
+  const target = MEETING_DATE_TARGET;
+  const before = existingRowFields(raw?.meetingDates, target);
+  const earlierBirths = existingRowFields(raw?.meetingDates, target.birth);
+  const births = existingRowFields(snapshot.value?.meetingDates, target.birth);
+  const prior = new Map(previous.map(proof => [proof.rowId, proof]));
+  return [...existingRowFields(snapshot.value?.meetingDates, target)].flatMap(([rowId, date]) => {
+    if (!boundedRowId(rowId) || date === undefined) return [];
+    const birth = births.get(rowId);
+    const sameRow = birth && earlierBirths.get(rowId) === birth;
+    const opening = sameRow ? before.get(rowId) : undefined;
+    if (date === opening) return [];
+    return [{ rowId, date, revision: snapshot.metadata!.revision, time: null,
+      ...(birth && { rowCreatedAt: birth }), pastDates: meetingDateDepartures(prior.get(rowId), opening) }];
+  });
 }
 
 /** An unstamped meeting edit retires the previous timestamp, even when the date later returns. */
@@ -157,24 +221,31 @@ export function metadataAfterDatedRow(snapshot: ResourceSnapshot, raw: Record<st
   if (!target || !snapshot.value || !snapshot.metadata) return snapshot.metadata;
   const rows = snapshot.value[target.field];
   const directChange = submitted?.kind === 'update' && submitted.changes.find(change => isDateChange(change, target));
-  const keep = proofs(raw?._dataEngine, target).filter(proof => {
+  const previous = proofs(raw?._dataEngine, target);
+  const keep = previous.filter(proof => {
     if (existingRowDate(rows, proof.rowId, target) !== proof.date) return false;
     if (!directChange || target === MEETING_DATE_TARGET) return true;
     return existingRowDate(directChange.before.value, proof.rowId, target) === existingRowDate(directChange.after.value, proof.rowId, target);
   }).map(proof => {
-    if (!proof.operationId || proof.rowCreatedAt === existingRowField(rows, proof.rowId, target.birth)) return proof;
+    if (!proof.rowCreatedAt || proof.rowCreatedAt === existingRowField(rows, proof.rowId, target.birth)) return proof;
     const { rowId, date, time, revision } = proof;
     return { rowId, date, time, revision };
   });
-  if (target === MEETING_DATE_TARGET) keep.unshift(...unstampedMeetingDates(snapshot, raw));
+  if (target === MEETING_DATE_TARGET) keep.unshift(...unstampedMeetingDates(snapshot, raw, previous));
   const action = order?.action;
   if (action && existingRowDate(rows, action.rowId, target) === action.after) {
     const rowCreatedAt = existingRowField(rows, action.rowId, target.birth);
     const { operationId, revision } = snapshot.metadata;
-    keep.unshift({ rowId: action.rowId, date: action.after, time: action.time, revision,
-      ...(operationId && rowCreatedAt && { operationId, rowCreatedAt }) });
+    const opening = keep.find(proof => proof.rowId === action.rowId);
+    const reaffirmed = target === MEETING_DATE_TARGET && existingRowField(raw?.meetingDates, action.rowId, target) === action.after;
+    keep.unshift({ ...opening, rowId: action.rowId, date: action.after, time: action.time, revision,
+      ...(operationId && rowCreatedAt && { operationId, rowCreatedAt }),
+      ...(reaffirmed && { pastDates: meetingDateDepartures(opening, action.after) }) });
   } else if (order?.coalesced && existingRowDate(rows, order.coalesced.rowId, target) === order.coalesced.date) {
-    keep.unshift({ ...order.coalesced, revision: snapshot.metadata.revision });
+    const opening = keep.find(proof => proof.rowId === order.coalesced?.rowId);
+    keep.unshift({ ...order.coalesced, revision: snapshot.metadata.revision,
+      ...(opening?.rowCreatedAt && { rowCreatedAt: opening.rowCreatedAt }),
+      ...(target === MEETING_DATE_TARGET && { pastDates: meetingDateDepartures(opening, order.coalesced.date) }) });
   } else if (order?.kept) keep.unshift(order.kept);
   const unique = [...new Map(keep.slice().reverse().map(proof => [proof.rowId, proof])).values()].reverse();
   const retained = unique.slice(0, MAX_PROOFS);

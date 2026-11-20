@@ -27,6 +27,7 @@ import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } fro
 import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
+import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, writeGroupFlowTextChoice } from './groupTextReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
@@ -1249,6 +1250,16 @@ export class EditorController {
           }
         }
         const replacements: CommitRequest[] = [];
+        const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
+        if (meeting) {
+          const next = session.checkpoint();
+          const request = retired.find(item => item.result?.kind === 'conflict' && firstGroupMeetingReview(item.result.conflicts));
+          const review = captureGroupMeetingReview(next.confirmed, next.draft, meeting, decided.conflicts, choiceTime ?? null, request);
+          if (review && next.dirty) {
+            const replacement = this.options.commits!.choiceReplacement(record.editorId, { ...next, groupMeetingReview: review }, {});
+            if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
+          }
+        }
         if (orderedDateField || (choice === 'local' && decided.conflicts.some(unresolvedPreachDateField))) {
           const next = session.checkpoint();
           const request = ordinary?.first ?? retired.find(item => decided.pending[item.id]

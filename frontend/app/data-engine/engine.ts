@@ -2944,8 +2944,9 @@ export class DataEngine {
           if (amendment && scope) await scope.cancel();
         } else {
           const controller = parent.controller!;
-          const choiceTime = action?.kind === 'document-metadata' && controller.getState().checkpoint.conflicts.some(unresolvedPreachDateField)
-            ? action.time : undefined;
+          const conflicts = controller.getState().checkpoint.conflicts;
+          const choiceTime = action?.kind === 'document-metadata'
+            && (conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(conflicts)) ? action.time : undefined;
           await controller.keepLocal(selection, amendment, expectedParent, choiceTime, titles); active();
           await controller.save(undefined, selection, undefined, undefined, action); active();
           // Only the durable replacement request may retire the suspended correction copy.

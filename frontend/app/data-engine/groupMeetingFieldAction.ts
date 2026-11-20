@@ -2,7 +2,7 @@ import { isOrderedMeetingFieldValue } from '@/utils/groupMeeting';
 
 import { boundedActionTime } from './actionClock';
 import { firstMeetingProofChanges, withFirstMeetingOpening } from './groupFirstMeeting';
-import { replacedRowDetail, type RowDetailAction, type RowDetailActions, type RowDetailHistoryEntry, type RowDetailPolicy } from './rowDetailAction';
+import { replacedRowDetail, type RowDetailActions, type RowDetailObservation, type RowDetailHistoryEntry, type RowDetailPolicy } from './rowDetailAction';
 import { captureRowDetailActions, matchingRowDetailActions, type RowDetailCaptures } from './rowDetailCapture';
 import { boundedRowId, existingRowField } from './rowFieldAction';
 
@@ -14,10 +14,10 @@ import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from
 export const GROUP_MEETING_FIELDS = ['location', 'audience'] as const;
 export type GroupMeetingValue = string | null;
 export type GroupMeetingField = typeof GROUP_MEETING_FIELDS[number];
-export type GroupMeetingFieldAction = RowDetailAction<GroupMeetingValue>;
-export type GroupMeetingFieldActions = RowDetailActions<GroupMeetingField, GroupMeetingValue>;
-export type GroupMeetingFieldInput = { field: GroupMeetingField; rowId: string; time: ActionTime };
-export type GroupMeetingFieldCaptures = RowDetailCaptures<GroupMeetingField, GroupMeetingValue>;
+export type GroupMeetingFieldAction = RowDetailObservation<GroupMeetingValue>;
+export type GroupMeetingFieldActions = RowDetailActions<GroupMeetingField, GroupMeetingValue, ActionTime | null>;
+export type GroupMeetingFieldInput = { field: GroupMeetingField; rowId: string; time: ActionTime | null };
+export type GroupMeetingFieldCaptures = RowDetailCaptures<GroupMeetingField, GroupMeetingValue, ActionTime | null>;
 export type GroupMeetingFieldHistoryEntry = RowDetailHistoryEntry<GroupMeetingField, GroupMeetingValue>;
 export type GroupMeetingFieldHistoryPage = {
   owner: string; groupId: string; generation: string; nextCursor: string | null;
@@ -36,6 +36,7 @@ export function meetingFieldTarget(leaf: GroupMeetingField): RowFieldTarget<Grou
 export const GROUP_MEETING_FIELD_POLICY: RowDetailPolicy<GroupMeetingField, GroupMeetingValue> = {
   collection: 'groups', fields: GROUP_MEETING_FIELDS, birth: MEETING_ROW_BIRTH, target: meetingFieldTarget,
   proofs: 'groupMeetingFieldProofs', actions: 'groupMeetingFieldActions', history: '_meetingFieldHistory',
+  allowUnclocked: true, rememberOpenings: true, rememberReaffirmations: true, seedOpeningFromStoredValue: true,
 };
 
 /** A stage holds the last action for each exact leaf. Unrelated inputs leave that action intact. */
@@ -44,9 +45,9 @@ export function stageMeetingFieldCaptures(previous: GroupMeetingFieldCaptures | 
   if (!previous && !input) return undefined;
   const opening = withFirstMeetingOpening(current, next);
   const captures = GROUP_MEETING_FIELDS.flatMap(field => {
-    const time = input?.field === field ? boundedActionTime(input.time) : undefined;
+    const time = input?.field === field ? input.time === null ? null : boundedActionTime(input.time) : undefined;
     const existing = previous?.[field];
-    const rowId = time ? input!.rowId : existing?.rowId;
+    const rowId = time !== undefined ? input!.rowId : existing?.rowId;
     if (!boundedRowId(rowId)) return [];
     const target = meetingFieldTarget(field);
     const before = existingRowField(opening?.meetingDates, rowId, target);
@@ -54,7 +55,7 @@ export function stageMeetingFieldCaptures(previous: GroupMeetingFieldCaptures | 
     const rowCreatedAt = existingRowField(opening?.meetingDates, rowId, MEETING_ROW_BIRTH);
     if (after === undefined || before === undefined || !rowCreatedAt
       || rowCreatedAt !== existingRowField(next.meetingDates, rowId, MEETING_ROW_BIRTH)) return [];
-    if (time && before !== after) return [[field, { rowId, rowCreatedAt, after, time }]] as const;
+    if (time !== undefined && before !== after) return [[field, { rowId, rowCreatedAt, after, time }]] as const;
     return before === after && existing?.rowId === rowId && existing.rowCreatedAt === rowCreatedAt && existing.after === after ? [[field, existing]] as const : [];
   });
   return captures.length ? Object.fromEntries(captures) : undefined;

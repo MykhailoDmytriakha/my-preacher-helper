@@ -118,7 +118,8 @@ describe('manual form scope', () => {
     }
     const restored = ManualScope.restore(test.options, test.disk());
     await restored.save();
-    expect(test.save.mock.calls[0][2]).not.toHaveProperty('meetingDateAction');
+    if (reason === 'unknown time') expect(test.save.mock.calls[0][2]).toMatchObject({ meetingDateAction: { rowId: 'meeting', after: '2026-12-25', time: null } });
+    else expect(test.save.mock.calls[0][2]).not.toHaveProperty('meetingDateAction');
   });
 
   it('recognizes a new preaching date with an audience as durable before there is a dated row to compare', async () => {

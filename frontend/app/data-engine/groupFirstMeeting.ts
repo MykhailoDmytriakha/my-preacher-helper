@@ -18,7 +18,7 @@ function firstRow(field: FieldValue): DocumentData | undefined {
   return object(row) ? row : undefined;
 }
 
-function sameBirth(row: DocumentData | undefined, opening: MeetingOpening): boolean {
+function sameBirth(row: DocumentData | undefined, opening: Pick<MeetingOpening, 'id' | 'createdAt'>): boolean {
   return row?.id === opening.id && row.createdAt === opening.createdAt;
 }
 
@@ -105,19 +105,24 @@ export function groupFirstMeetingComparison(change: FieldChange, effective: Fiel
   const opening = firstMeetingOpening(change.before, change.after);
   const stored = firstRow(live);
   const first = firstRow(change.after);
-  if (!first || !emptyList(change.before) || !Array.isArray(change.after.value) || change.after.value.length !== 1) return;
+  const addingFirst = emptyList(change.before);
+  if (!first || (addingFirst && (!Array.isArray(change.after.value) || change.after.value.length !== 1))) return;
+  const prior = firstRow(change.before);
+  const existing = typeof prior?.id === 'string' && typeof prior.createdAt === 'string' && prior.createdAt
+    ? { id: prior.id, createdAt: prior.createdAt } : undefined;
+  const observed = opening && groupFirstMeetingState(current, opening) === 'active' ? opening : existing;
 
   let mine: DocumentData | undefined;
   let remote: DocumentData | undefined = stored;
   if (conflicts.some(item => equalValues(item.path, change.path))) {
-    if (!opening && !(typeof stored?.id === 'string' && initialMeetingId.test(stored.id))) return;
+    if (!addingFirst || (!opening && !(typeof stored?.id === 'string' && initialMeetingId.test(stored.id)))) return;
     mine = stored ?? firstGroupMeetingIdentity(current);
     if (mine) for (const field of FIRST_GROUP_MEETING_FIELDS) {
       const value = first[field];
       if (typeof value === 'string' && value) mine = { ...mine, [field]: value };
     }
-  } else if (opening && groupFirstMeetingState(current, opening) === 'active' && stored) {
-    const root = ['meetingDates', 'id:' + opening.id];
+  } else if (observed && stored && sameBirth(stored, observed) && sameBirth(first, observed)) {
+    const root = ['meetingDates', 'id:' + observed.id];
     const compared = conflicts.filter(item => equalValues(item.path.slice(0, 2), root) && item.path.length === 3
       && FIRST_GROUP_MEETING_FIELDS.some(field => field === item.path[2]));
     if (!compared.length) return;

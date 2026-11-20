@@ -4,9 +4,11 @@ import { toast } from 'sonner';
 import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
+import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { editorIdentity } from '@/data-engine/editorIdentity';
-import { applyCommand } from '@/data-engine/protocol';
+import { groupFirstMeetingComparison } from '@/data-engine/groupFirstMeeting';
+import { applyCommand, mergeFields } from '@/data-engine/protocol';
 import { planDataCommand } from '@/data-engine/serverRelations';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
@@ -670,6 +672,63 @@ describe('GroupDetailPage', () => {
     });
     await act(async () => { await settleEngine(); harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
     await waitFor(() => expect((harness.server.value as any).meetingDates[0].location).toBe('Hall before the next render'));
+  });
+
+  it('sends the observed meeting date and details when the browser has no action clock', async () => {
+    const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(undefined);
+    const { delivered, harness, view } = setupGroupPage();
+    try {
+      fireEvent.change(await screen.findByDisplayValue('Hall'), { target: { value: 'Library' } });
+      fireEvent.change(screen.getByDisplayValue('Youth'), { target: { value: 'Leaders' } });
+      fireEvent.change(screen.getByDisplayValue('2026-02-11'), { target: { value: '2026-03-25' } });
+      expect((await delivered()).meetingDates[0]).toMatchObject({ date: '2026-03-25', location: 'Library', audience: 'Leaders' });
+      expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        meetingDateAction: { rowId: 'date-1', before: '2026-02-11', after: '2026-03-25', observedRevision: 1, time: null },
+        groupMeetingFieldActions: {
+          location: { rowId: 'date-1', rowCreatedAt: 'x', before: 'Hall', after: 'Library', observedRevision: 1, time: null },
+          audience: { rowId: 'date-1', rowCreatedAt: 'x', before: 'Youth', after: 'Leaders', observedRevision: 1, time: null },
+        },
+      }));
+    } finally {
+      view.unmount();
+      clock.mockRestore();
+    }
+  });
+
+  it('shows both locations for a returned field on an existing first meeting', async () => {
+    const { delivered, harness, view } = setupGroupPage();
+    const opening = createMockGroup().meetingDates[0];
+    const stored = harness.server;
+    jest.mocked(harness.transport.send).mockImplementationOnce(async command => {
+      if (command.kind !== 'update' || !stored.value) throw new Error('Expected a meeting update');
+      const change = command.changes.find(({ path }) => path[0] === 'meetingDates');
+      if (!change) throw new Error('Expected meeting dates');
+      const field = (value: string) => ({ exists: true, value });
+      const conflicts = [{ path: ['meetingDates', 'id:' + opening.id, 'location'],
+        base: field(opening.location), mine: field('Library'), theirs: field(opening.location) }];
+      const comparison = groupFirstMeetingComparison(change, change, stored.value, conflicts, mergeFields);
+      return { kind: 'conflict', operationId: command.operationId, snapshot: stored,
+        conflicts: comparison ? [...conflicts, comparison] : conflicts };
+    });
+    fireEvent.change(await screen.findByDisplayValue('Hall'), { target: { value: 'Library' } });
+    await delivered();
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent('Library');
+    expect(comparison).toHaveTextContent('Hall');
+    expect(comparison).toHaveTextContent('Youth');
+    const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+    const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+      expect((await delivered()).meetingDates[0]).toEqual({ ...opening, location: 'Library' });
+      expect(harness.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ groupMeetingFieldActions: {
+        location: { rowId: opening.id, rowCreatedAt: opening.createdAt, before: opening.location,
+          after: 'Library', observedRevision: stored.metadata!.revision, time },
+      } }));
+    } finally {
+      clock.mockRestore();
+      view.unmount();
+    }
   });
 
   it('batches a finished date and the following detail into the same autosave', async () => {

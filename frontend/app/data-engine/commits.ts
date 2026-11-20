@@ -33,6 +33,7 @@ import { writeField } from './fieldValues';
 import { captureFirstGroupMeetingChange } from './groupFirstMeeting';
 import { matchingGroupFlowCopySources, matchingGroupFlowRetirements } from './groupFlowTopology';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
+import { groupMeetingReviewForSave } from './groupMeetingReview';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
@@ -831,7 +832,9 @@ export class CommitQueue {
       planTextEvidence.planSubpointTransfer = transfer;
     }
     const dateTarget = datedRowTarget(baseline.resource.collection);
-    const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records);
+    const reviewedMeeting = groupMeetingReviewForSave(intent.groupMeetingReview, baseline, intent.draft);
+    const action = dateTarget && (captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records)
+      ?? reviewedMeeting?.date);
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined, records);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
@@ -903,7 +906,8 @@ export class CommitQueue {
     const rowFields = groupMove || councilMove ? {}
       : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds, frozenOptions?.thoughtTextId);
     const thoughtTagActions = captureThoughtTagActions(baseline, predecessor, intent.draft, frozenOptions?.thoughtTagId, frozenOptions?.documentMetadataTime, records);
-    const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
+    const stagedMeetingFields = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
+    const groupMeetingFieldActions = reviewedMeeting?.fields ? { ...reviewedMeeting.fields, ...stagedMeetingFields } : stagedMeetingFields;
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
     const basis = predecessor?.value ?? baseline.value;

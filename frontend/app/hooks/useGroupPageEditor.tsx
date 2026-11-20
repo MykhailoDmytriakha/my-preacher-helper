@@ -126,7 +126,8 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     deleteGroupDetail: data.deleteGroupDetail,
     feedbackSubject,
     feedback: <DataSyncStatus comparison={comparison || undefined} subject={feedbackSubject} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
-      onKeepLocal={manual ? meeting.form.keepLocal : () => data.keepLocal(comparison ? checkpoint : undefined)}
+      onKeepLocal={manual ? () => meeting.form.keepLocal(undefined, reviewedMeeting ? meeting.form.captureDocumentMetadataAction() : undefined)
+        : () => data.keepLocal(comparison ? checkpoint : undefined)}
       onAcceptRemote={manual ? meeting.form.acceptRemote : () => data.acceptRemote(comparison ? checkpoint : undefined)} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}
       recoveryLoading={recovery.loading || meeting.recovery.loading} recoveryError={recovery.error || meeting.recovery.error}

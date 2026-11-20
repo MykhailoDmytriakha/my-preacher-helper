@@ -9,7 +9,7 @@ import { PREACH_ROW_BIRTH } from './preachDateFieldAction';
 import { boundedRowId, existingRowField, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
 
 import type { CommitRequest } from './commits';
-import type { RowFieldEvidence, RowFieldTarget } from './rowFieldAction';
+import type { RowFieldObservation, RowFieldTarget } from './rowFieldAction';
 import type { DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
 export type DisplacedRowDate = {
@@ -23,10 +23,10 @@ export type MeetingDateHistoryPage = {
   owner: string; groupId: string; generation: string; entries: Array<DisplacedRowDate & { id: string; acceptedAt: string }>; nextCursor: string | null;
 };
 
-export type DatedRowActionCapture = { rowId: string; time: ActionTime; after?: string };
+export type DatedRowActionCapture = { rowId: string; time: ActionTime | null; after?: string };
 export type MeetingDateInput = { meetingDate: { time: ActionTime | null } };
 export type MeetingDateCapture = DatedRowActionCapture & { after: string; rowCreatedAt: string };
-export type DatedRowActionEvidence = RowFieldEvidence<string> & { predecessorOperationId?: string };
+export type DatedRowActionEvidence = RowFieldObservation<string> & { predecessorOperationId?: string };
 
 type DateField = 'preachDates' | 'meetingDates';
 type DateEvidenceField = 'preachDateAction' | 'meetingDateAction';
@@ -69,12 +69,12 @@ export function stageMeetingDate(previous: MeetingDateCapture | undefined, curre
     || existingRowField(before?.meetingDates, row.id, MEETING_ROW_BIRTH) !== birth) return;
   const earlierDay = beforeRow.date.trim();
   if (input && earlierDay !== after) {
-    const time = boundedActionTime(input.meetingDate.time);
-    return time ? { rowId: row.id, rowCreatedAt: birth, after, time } : undefined;
+    const time = input.meetingDate.time === null ? null : boundedActionTime(input.meetingDate.time);
+    return time !== undefined ? { rowId: row.id, rowCreatedAt: birth, after, time } : undefined;
   }
   // Normalization and edits to other fields may keep, but never replace, the date's clock.
   if (previous?.rowId === row.id && previous.rowCreatedAt === birth && previous.after === after
-    && earlierDay === after && boundedActionTime(previous.time)) return previous;
+    && earlierDay === after && (previous.time === null || boundedActionTime(previous.time))) return previous;
 }
 
 /** Only a still-changed, matching stage can attach its original evidence to a Save. */
@@ -112,7 +112,8 @@ function knownDatePredecessor(baseline: ResourceSnapshot, predecessor: CommitReq
 export function captureDatedRowAction(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   after: DocumentData | null, capture: DatedRowActionCapture | undefined, records: readonly CommitRequest[]): DatedRowActionEvidence | undefined {
   const target = datedRowTarget(baseline.resource.collection);
-  if (!target || !baseline.metadata?.generation || !capture || !isActionTime(capture.time)) return undefined;
+  if (!target || !baseline.metadata?.generation || !capture
+    || (!(target === MEETING_DATE_TARGET && capture.time === null) && !isActionTime(capture.time))) return undefined;
   const rawBefore = predecessor ? predecessor.value : baseline.value;
   const before = target === MEETING_DATE_TARGET ? withFirstMeetingOpening(rawBefore, after) : rawBefore;
   const previousDate = existingRowDate(before?.[target.field], capture.rowId, target);

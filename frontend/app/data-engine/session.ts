@@ -47,6 +47,7 @@ import type { ActionTime } from './actionClock';
 import type { CommentPlaceObservation } from './commentPlaceAction';
 import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
+import type { GroupMeetingReview } from './groupMeetingReview';
 import type { GroupTextDecision } from './groupTextReview';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
@@ -67,6 +68,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   unreadableRowProofs?: UnreadableRowProof[];
   unreadableExegeticalProofs?: UnreadableExegeticalProof[];
   privateFieldReview?: { revision: number; decisions: PrivateFieldDecision[] };
+  groupMeetingReview?: GroupMeetingReview;
   groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
@@ -356,6 +358,10 @@ export class DataSession {
     }
     if (request.sourceNoteLink && this.state.sourceNoteLinkRetry && request.editGeneration === this.state.editGeneration
       && equalValues(request.sourceNoteLink.opening, this.state.sourceNoteLinkRetry.opening)) delete this.state.sourceNoteLinkRetry;
+    if (this.state.groupMeetingReview && request.editGeneration === this.state.editGeneration
+      && (request.meetingDateAction || request.groupMeetingFieldActions) && equalValues(this.state.draft, request.value)) {
+      delete this.state.groupMeetingReview;
+    }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
       && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {

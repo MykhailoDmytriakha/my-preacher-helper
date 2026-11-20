@@ -36,6 +36,7 @@ import { readDocumentTextChoice } from './documentTextChoice';
 import { ACTION_SLOT, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
+import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -1473,7 +1474,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
-      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
@@ -1735,15 +1736,11 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       run(form => form.update(updater, fieldInput), false),
     captureOutlineSubpoint: (subPointId: string) => ({ outlineSubpoint: { subPointId,
       time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
-    captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined => {
-      const time = owner && current() && actionClock.capture(owner);
-      return time ? { field, rowId, time } : undefined;
-    },
+    captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined =>
+      owner && current() ? { field, rowId, time: actionClock.capture(owner) ?? null } : undefined,
     captureMeetingDateInput: () => ({ meetingDate: { time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
-    captureDateAction: (rowId: string, after: string): DatedRowActionCapture | undefined => {
-      const time = owner && current() && actionClock.capture(owner);
-      return time ? { rowId, after, time } : undefined;
-    },
+    captureDateAction: (rowId: string, after: string): DatedRowActionCapture | undefined =>
+      owner && current() ? { rowId, after, time: actionClock.capture(owner) ?? null } : undefined,
     captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId?: string; thoughtTagId?: string; thoughtTextId?: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
       const date = target && 'rowId' in target ? target : undefined;

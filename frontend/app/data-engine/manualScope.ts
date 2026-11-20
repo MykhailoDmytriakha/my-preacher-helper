@@ -426,7 +426,8 @@ export class ManualScope {
       const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
       if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
         this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
-          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage, meetingDateCapture: before.meetingDateCapture, outlineSubpointMoves: before.outlineSubpointMoves } : {}) };
+          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage, meetingDateCapture: before.meetingDateCapture, groupMeetingFieldCaptures: before.groupMeetingFieldCaptures,
+            outlineSubpointMoves: before.outlineSubpointMoves } : {}) };
       } else {
         // Keep the real saved ancestor for the remaining stage. In particular, returning to the
         // original sentence is still an edit against that ancestor. Its retired request remains

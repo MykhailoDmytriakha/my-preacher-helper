@@ -296,9 +296,11 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
         ? [digest(born, oldValue, oldScope)]
         : remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged || reselected || reaffirmed === true) : undefined;
       const bound = policy.requireObserved && queueDigest && (changed || scopeChanged);
+      // A coalesced value can make an older opening ambiguous without proving this request authored it.
+      const causalRefresh = policy.rememberOpenings && (reselected || (reaffirmed && !unordered.has(rowId)));
       return [{ rowId: proofId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
         ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),
-        ...(policy.allowUnclocked && (changed || enteredScope || bound || (policy.rememberOpenings && (reselected || reaffirmed))) && { causal: true as const }) }];
+        ...(policy.allowUnclocked && (changed || enteredScope || bound || causalRefresh) && { causal: true as const }) }];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {

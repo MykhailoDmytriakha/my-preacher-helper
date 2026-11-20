@@ -10,6 +10,7 @@ import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText } from './
 import { manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
+import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -174,6 +175,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }
   const resolved = afterChoice(decision.stored, draft, checkpoint.editGeneration + 1);
+  if (meeting && request.result?.kind === 'conflict') {
+    const review = captureGroupMeetingReview(stored, draft, meeting, request.result.conflicts, decision.choiceTime ?? null, request);
+    if (review) resolved.groupMeetingReview = review;
+  }
   carryOrderedPreachDateFields(resolved, request);
   if (outline && request.result?.kind === 'conflict') {
     const held = checkpoint.pending[request.id];

@@ -574,6 +574,14 @@ function persistBibleMarkOrder(transaction: Transaction, command: DataCommand, s
   }
 }
 
+function persistDatedRowHistory(transaction: Transaction, command: DataCommand, snapshot: ResourceSnapshot,
+  order?: ReturnType<typeof orderDatedRow>): void {
+  const displaced = order?.displaced, target = order?.target;
+  if (!displaced || !target || existingRowDate(snapshot.value?.[target.field], displaced.rowId, target) !== displaced.winnerDate) return;
+  const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
+  transaction.set(history.doc(historyEntryId(snapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
+}
+
 function retainedRowDetailHistory<Field extends string, Value extends RowValue>(snapshot: ResourceSnapshot,
   policy: RowDetailPolicy<Field, Value>, order?: RowDetailOrder<Field, Value>) {
   const rows = snapshot.value?.[policy.birth.field];
@@ -919,12 +927,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(EXEGETICAL_POINT_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...pointHistory, generation: primarySnapshot.metadata!.generation });
   }
-  const displaced = dateOrder?.displaced;
-  const target = dateOrder?.target;
-  if (displaced && target && existingRowDate(primarySnapshot.value?.[target.field], displaced.rowId, target) === displaced.winnerDate) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
-  }
+  persistDatedRowHistory(transaction, command, primarySnapshot, dateOrder);
   persistHomileticHistory(transaction, command, primarySnapshot, homileticOrder);
   if (outlineTitleOrder) persistRowDetailHistory(transaction, command, primarySnapshot, outlineTitleOrder.policy, outlineTitleOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
@@ -1286,6 +1289,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       }
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
+      if (meetingOrder) persistRowDetailHistory(transaction, command, result.snapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
+      if (dateOrder?.target === MEETING_DATE_TARGET) persistDatedRowHistory(transaction, command, result.snapshot, dateOrder);
     }
     if (result.kind === 'conflict' && exegeticalOrder?.comparisons?.length) {
       const points = new Set(result.conflicts.map(({ path }) => exegeticalPointConflictId(path)));

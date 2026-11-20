@@ -2724,7 +2724,7 @@ describe('transactional DataEngine server', () => {
       await expect(listMeetingDateHistory('another-owner', resource.id, 'group-seed')).rejects.toMatchObject({ status: 403 });
       await expect(listMeetingDateHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
     }
-    if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['meetingDates', 'id:first-meeting', 'date'] }] });
+    if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:first-meeting', 'date'] })]) });
   });
 
   it.each([
@@ -2789,7 +2789,99 @@ describe('transactional DataEngine server', () => {
     expect(result).toMatchObject({ kind, snapshot: { value: {
       title: 'Group', meetingDates: [{ ...first, [field]: winner }, { ...second, location: 'Library' }],
     } } });
-    if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['meetingDates', 'id:first-meeting', field] }] });
+    if (kind === 'conflict') expect(result).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:first-meeting', field] })]) });
+  });
+
+  it.each([
+    { field: 'location', earlier: 'Phone room', intermediate: 'Temporary room' },
+    { field: 'audience', earlier: 'Leaders', intermediate: 'Adults' },
+    { field: 'date', earlier: '2026-12-27', intermediate: '' },
+  ] as const)('preserves the restored meeting $field when a first delivery has no clock', async ({ field, earlier, intermediate }) => {
+    const owner = 'owner-1';
+    const resource = { collection: 'groups', id: 'meeting-return' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const first = { id: 'first', date: '2026-12-13', location: 'Main hall', audience: 'Youth', notes: 'Opening notes', createdAt: now };
+    const sibling = { ...first, id: 'second', date: '2027-01-03', location: 'Annex' };
+    const value = { userId: owner, title: 'Group', status: 'draft', flow: [], templates: [],
+      meetingDates: [first, sibling], createdAt: now, updatedAt: now };
+    expect((await processCommand(owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const save = (operationId: string, before: typeof value.meetingDates, after: typeof value.meetingDates) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const phone = save('unclocked-offline-edit', value.meetingDates, [{ ...first, [field]: earlier }, sibling]);
+    const temporary = [{ ...first, [field]: intermediate }, { ...sibling, notes: 'Independent notes' }];
+    expect((await processCommand(owner, save('desktop-edit', value.meetingDates, temporary))).kind).toBe('acknowledged');
+    const restored = [first, temporary[1]];
+    expect((await processCommand(owner, save('desktop-restore', temporary, restored))).kind).toBe('acknowledged');
+    const result = await processCommand(owner, phone);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: restored } },
+      conflicts: expect.arrayContaining([
+        expect.objectContaining({ path: ['meetingDates', 'id:first', field],
+          mine: { exists: true, value: earlier }, theirs: { exists: true, value: first[field] } }),
+        expect.objectContaining({ path: ['meetingDates', 'id:first'], code: 'first-group-meeting-comparison' }),
+      ]) });
+    expect(await processCommand(owner, phone)).toEqual(result);
+  });
+
+  it.each([
+    { field: 'date', first: '2026-12-20', delayed: '2026-12-27' },
+    { field: 'location', first: 'Library', delayed: 'Annex' },
+    { field: 'audience', first: 'Adults', delayed: 'Leaders' },
+  ] as const)('retains a newer reaffirmation of a meeting $field against a legacy queued change', async ({ field, first, delayed }) => {
+    const resource = { collection: 'groups', id: 'meeting-reaffirmed' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const createdAt = '2026-11-08T00:00:00.000Z';
+    const row = { id: 'meeting', date: '2026-12-13', location: 'Hall', audience: 'Youth', createdAt };
+    const accepted = { ...row, [field]: first };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [row], createdAt, updatedAt: createdAt },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof row, after: typeof row) => ({ ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+    });
+    const reaffirm = (operationId: string, at: number) => {
+      const proof = { rowId: row.id, rowCreatedAt: createdAt, before: row[field], after: first, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at } };
+      return { ...edit(operationId, row, accepted), ...(field === 'date' ? { meetingDateAction: proof }
+        : { groupMeetingFieldActions: { [field]: proof } }) };
+    };
+    expect((await processCommand(base.owner, reaffirm('first', 20))).kind).toBe('acknowledged');
+    const offline = edit('legacy-offline', accepted, { ...accepted, [field]: delayed });
+    expect((await processCommand(base.owner, reaffirm('newer-same-value', 65))).kind).toBe('acknowledged');
+    expect(await processCommand(base.owner, offline)).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: [accepted] } } });
+  });
+
+  it.each([20, 80])('keeps the ordered location at offset %s in both existing meeting audience choices', async offset => {
+    const resource = { collection: 'groups', id: 'existing-meeting-mixed' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const createdAt = '2026-11-08T00:00:00.000Z';
+    const row = { id: 'meeting', date: '2026-12-13', location: 'Hall', audience: 'Youth', createdAt };
+    const current = { ...row, location: 'Desktop room', audience: 'Adults' };
+    const phone = { ...row, location: 'Library', audience: 'Leaders' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [row], createdAt, updatedAt: createdAt },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof row, at: number) => ({ ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [row] }, after: { exists: true, value: [after] } }],
+      groupMeetingFieldActions: { location: { rowId: row.id, rowCreatedAt: createdAt, before: row.location, after: after.location,
+        observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at } } },
+    });
+    expect((await processCommand(base.owner, edit('desktop', current, 45))).kind).toBe('acknowledged');
+    const command = edit('phone', phone, offset);
+    const answer = await processCommand(base.owner, command);
+    const location = offset < 45 ? current.location : phone.location;
+    expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: [current] } }, conflicts: expect.arrayContaining([
+      expect.objectContaining({ path: ['meetingDates', 'id:meeting', 'audience'] }),
+      expect.objectContaining({ code: 'first-group-meeting-comparison', mine: { exists: true, value: { ...phone, location } },
+        theirs: { exists: true, value: { ...current, location } } }),
+    ]) });
+    const history = await listGroupMeetingFieldHistory(base.owner, resource.id, 'seed');
+    expect(history.entries).toEqual(offset < 45 ? [expect.objectContaining({ fields: [expect.objectContaining({
+      field: 'location', value: phone.location, winnerValue: current.location,
+    })] })] : []);
+    expect(await processCommand(base.owner, command)).toEqual(answer);
   });
 
   it('orders both meeting fields independently in the same update and archives each displaced value once', async () => {
@@ -3393,7 +3485,7 @@ describe('transactional DataEngine server', () => {
     expect(await processCommand(base.owner, { ...edit('offline', meeting.date, '2026-12-20'),
       meetingDateAction: { rowId: meeting.id, before: meeting.date, after: '2026-12-20', observedRevision: 1,
         time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
-    })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting', 'date'] }],
+    })).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:meeting', 'date'] })]),
       snapshot: { value: { meetingDates: [meeting] } } });
     expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
@@ -4634,7 +4726,7 @@ describe('transactional DataEngine server', () => {
     expect(await processCommand(base.owner, { ...edit('offline', rows, [{ ...rows[0], date: '2026-12-20' }, ...rows.slice(1)]),
       meetingDateAction: { rowId: rows[0].id, before: rows[0].date, after: '2026-12-20', observedRevision: 1,
         time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
-    })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting-0', 'date'] }],
+    })).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:meeting-0', 'date'] })]),
       snapshot: { value: { meetingDates: changed } } });
   });
 

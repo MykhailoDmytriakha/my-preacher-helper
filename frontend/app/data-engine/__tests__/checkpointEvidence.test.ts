@@ -60,6 +60,7 @@ const evidence = {
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
   preachDateAudienceDrafts: rowDrafts, preachDateCityDrafts: { row: { generation: 'g', action: cityObservation } },
   preachDateChurchDrafts: { row: { generation: 'g', action: churchObservation } },
+  groupMeetingReview: { generation: 'g', rowId: row.rowId, rowCreatedAt: row.rowCreatedAt, fields: { location: row } },
   groupTextReview, privateFieldReview: { revision: 1, decisions: groupTextReview.decisions }, groupFlowStepPlacementRetry: groupPlacement, councilTopicPlacementRetry: councilPlacement, sourceNoteLinkRetry: links,
 } satisfies Record<EvidenceKey, unknown>;
 const placementRetries = {
