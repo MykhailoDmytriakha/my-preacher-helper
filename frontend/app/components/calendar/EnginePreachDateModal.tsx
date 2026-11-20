@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { equalValues } from '@/data-engine/fieldValues';
+import { preachDateNoteConflictId, readPreachDateFieldVersions } from '@/data-engine/preachDateFieldAction';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { contentFingerprint } from '@/utils/contentFingerprint';
@@ -12,9 +14,10 @@ import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { useTranslation } from '@locales/useTranslation';
 
 import { PreachDateFields } from './PreachDateFields';
-import { canRestorePreachDateField, canRestorePreachStatus, patchPreachDate, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';
+import { canRestorePreachDateField, canRestorePreachStatus, patchPreachDate, preachDateComparison, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';
 
 import type { PreachDateAction } from './preachDateForm';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { DocumentData } from '@/data-engine/types';
 import type { PreachDate, Sermon } from '@/models/models';
 
@@ -22,7 +25,7 @@ import type { PreachDate, Sermon } from '@/models/models';
 export function EnginePreachDateModal({ sermonId, action, onClose }: {
   sermonId: string; action: PreachDateAction; onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const restoreKey = action.restoreField ? ':field:' + action.restoreField.historyId
     : action.restoreStatus ? ':status:' + action.restoreStatus.historyId : '';
   const slot = `preach-date:${action.kind}:${action.dateId ?? 'new'}${action.restoreDate !== undefined ? ':' + action.restoreDate : ''}${restoreKey}`;
@@ -67,6 +70,18 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
       title: String(source.record.baseline.value?.title ?? sermonId), preview: ((source.record.stage[0]?.value ?? []) as unknown as PreachDate[])
         .map(date => [date.date, date.church.name, date.audience, date.notes].filter(Boolean).join(' · ')).join('\n').slice(0, 500),
       discard: () => form.discardRecovery(source) })), recover: form.recover });
+  const shown = form.comparison;
+  const versions = shown?.stored.value ? shown.conflictPaths.flatMap(path => {
+    const version = readPreachDateFieldVersions(path, shown.mine, shown.stored.value!);
+    return version && version.rowId === target && !equalValues(version.mine, version.stored) ? [version] : [];
+  }) : [];
+  const comparison: TextComparison | undefined = shown && versions.length && versions.length === shown.conflictPaths.length
+    ? { ...preachDateComparison(versions, shown.identity, t, language), scopedChoice: form.exactChoice ? true : undefined }
+    : undefined;
+  const reviewRecoveryId = form.status?.phase === 'conflict' && !form.dirty && !form.exactChoice && form.borrowedRecoveryIds?.length === 1
+    ? form.borrowedRecoveryIds[0] : undefined;
+  const keepLocal = () => shown?.conflictPaths.some(preachDateNoteConflictId)
+    ? form.keepLocal(undefined, form.captureDocumentMetadataAction()) : form.keepLocal();
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try {
@@ -84,9 +99,9 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
       submitLabel={t(action.kind === 'delete' ? 'common.delete' : 'buttons.save')} savingLabel={t('buttons.saving')}
       saving={form.busy} cancelDisabled={form.busy} unsaved={unsaved} submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
-    <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-      onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
-      recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
+    <DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
+      onKeepLocal={valid ? keepLocal : undefined} onAcceptRemote={form.acceptRemote}
+      recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}
       onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
     {!unavailableRestore && action.restoreStatus?.value && <p role="status" className="mb-3 text-sm">
       {t('calendar.restorePreachStatusTo', { status: t(action.restoreStatus.value === 'preached' ? 'calendar.status.preached' : 'calendar.status.planned') })}
@@ -94,7 +109,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     {unavailableRestore ? <p role="alert">{t('calendar.preachDetailUnavailableForDate')}</p> : removal ? <p>{action.kind === 'delete' ? initialRow?.date || t('calendar.dateNotSet') : value?.title}</p>
       : row && <PreachDateFields value={{ date: row.date ?? '', church: row.church, audience: row.audience ?? '', notes: row.notes ?? '' }}
         disabled={readOnly} dateRequired={!dateOptional} onChange={(patch, churchDetail) => {
-          const detail = patch.audience !== undefined ? 'audience' : churchDetail;
+          const detail = patch.audience !== undefined ? 'audience' : patch.notes !== undefined ? 'notes' : churchDetail;
           void form.update(current => patchPreachDate(current, target, patch), detail ? { detail, rowId: target } : undefined).catch(() => undefined);
         }} />}
   </FormDialog>;

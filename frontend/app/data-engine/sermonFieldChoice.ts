@@ -8,6 +8,8 @@ import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { projectOutlineParentChoice } from './outlineParentChoice';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
+import { orderedPreachDateNote, preachDateNoteChoiceFrames, withoutPreachDateRow } from './preachDateChoice';
+import { preachDateNoteConflictId, samePreachDateRow } from './preachDateFieldAction';
 import { mergeDocumentFields } from './protocol';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
@@ -23,7 +25,7 @@ export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
     || isPlanCellPath(path) || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
-    || thoughtTextConflictId(path) !== undefined
+    || thoughtTextConflictId(path) !== undefined || preachDateNoteConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
 
@@ -66,10 +68,10 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
   if (path[0] === 'verse' || path[0] === 'planMode') return withField(data, path[0], selected);
   if (preparationConfirmationField(path)) return writeField(data, path, selected);
-  const [field, id, leaf] = path;
+  const [field, id, ...leaf] = path;
   const rows = data[field];
   if (!Array.isArray(rows) || !rows.some(value => isRow(value, id))) return undefined;
-  return { ...data, [field]: rows.map(value => object(value) && isRow(value, id) ? withField(value, leaf, selected) : value) };
+  return { ...data, [field]: rows.map(value => object(value) && isRow(value, id) ? writeField(value, leaf, selected) : value) };
 }
 
 function rebaseStoredThoughtPlacement(base: DocumentData, draft: DocumentData, stored: DocumentData,
@@ -109,11 +111,39 @@ function rebaseStoredThoughtPlacement(base: DocumentData, draft: DocumentData, s
   return { base: project(base), draft: project(draft) };
 }
 
+function keepPreachDateEditsWithStoredFields(basis: DocumentData, draft: DocumentData, stored: DocumentData,
+  conflicts: readonly ConflictDetail[]) {
+  const notes = preachDateNoteChoiceFrames(basis, draft, stored, conflicts, true);
+  let corrected = notes.draft!;
+  for (const conflict of conflicts) {
+    const { path } = conflict;
+    if (orderedPreachDateNote(conflict)) continue;
+    const selected = readSermonConflictField(stored, path);
+    if (path[0] === 'preachDates' && path.length >= 3) {
+      corrected = withSelectedField(corrected, path, selected) ?? corrected;
+    } else if (path.length === 1) {
+      corrected = writeField(corrected, path, selected);
+    }
+  }
+  // Confirmed wins the reviewed overlap and remains the source of bookkeeping.
+  const acceptedAt = withField(corrected, 'updatedAt', readField(stored, ['updatedAt']));
+  const acceptedMetadata = withField(acceptedAt, 'rev', readField(stored, ['rev']));
+  const merged = mergeDocumentFields(notes.basis, stored, acceptedMetadata);
+  if (merged.value.exists) return merged.value.value as DocumentData;
+}
+
 /** The saved side wins the reviewed field. Independent changes from the same Save still belong to the owner. */
 export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]): DocumentData | undefined {
   if (basis.resource.collection !== 'sermons' || !conflicts.length) return undefined;
   if (conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) return undefined;
+  if (basis.value && draft && stored?.value && basis.metadata?.generation === stored.metadata?.generation) {
+    const dateFields = conflicts.every(({ path }) => path[0] === 'preachDates' && path.length >= 3 && path[1].startsWith('id:')
+      && samePreachDateRow(path[1].slice(3), basis.value!, stored.value!));
+    if (dateFields || conflicts.some(orderedPreachDateNote)) {
+      return keepPreachDateEditsWithStoredFields(basis.value, draft, stored.value, conflicts);
+    }
+  }
   if (conflicts.length === 1 && outlineTitleConflictTarget(conflicts[0].path)) {
     return keepUncontestedOutlineTitle(basis, draft, stored, conflicts);
   }
@@ -148,11 +178,16 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
     }
   } else {
     const path = conflicts[0].path;
-    if (path[0] === 'preachDates' && !readSermonConflictField(stored.value, path.slice(0, 2)).exists) throw changed();
+    const dateId = preachDateNoteConflictId(path);
+    if (path[0] === 'preachDates' && !dateId && !readSermonConflictField(stored.value, path.slice(0, 2)).exists) throw changed();
     const pointId = exegeticalPointConflictId(path);
     const thoughtId = thoughtTextConflictId(path);
     if (thoughtId && !readThoughtTextConflict(thoughtId, draft, stored.value)) throw changed();
-    if (sermonNoteConflictTarget(path)) {
+    if (dateId && !samePreachDateRow(dateId, opening, stored.value)) {
+      // Taking the saved version cannot move edits from the old date onto its replacement.
+      opening = withoutPreachDateRow(opening, dateId);
+      corrected = withoutPreachDateRow(draft, dateId);
+    } else if (sermonNoteConflictTarget(path)) {
       const note = sermonNoteConflictText(path, draft, stored.value);
       if (!note) return undefined;
       if (note.mine !== conflicts[0].mine.value || note.stored !== conflicts[0].theirs.value) throw changed();

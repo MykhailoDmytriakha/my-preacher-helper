@@ -1,20 +1,22 @@
 import { isChurchValue, type ChurchValue } from './churchFieldValue';
-import { equalValues, readField } from './fieldValues';
+import { equalValues, object, readField } from './fieldValues';
 import { replacedRowDetail, rowDetailConflict } from './rowDetailAction';
 import { captureRowDetailActions, type RowDetailCaptures } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
-import type { RowDetailActions, RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
+import type { RowDetailActions, RowDetailHistoryEntry, RowDetailPolicy, RowTextStamp } from './rowDetailAction';
 import type { RowFieldTarget } from './rowFieldAction';
-import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
+import type { ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
 
-export const PREACH_DATE_FIELDS = ['audience', 'churchCity', 'church'] as const;
+export const PREACH_DATE_FIELDS = ['audience', 'churchCity', 'church', 'notes'] as const;
 export type PreachDateField = typeof PREACH_DATE_FIELDS[number];
 export type PreachDateFieldValue = string | null | ChurchValue;
 export type PreachDateFieldActions = RowDetailActions<PreachDateField, PreachDateFieldValue>;
-export type PreachDateFieldHistoryEntry = RowDetailHistoryEntry<PreachDateField, PreachDateFieldValue>;
+export type PreachDateFieldWire = Omit<PreachDateFieldActions, 'notes'> & { notes?: RowTextStamp };
+type PreachDateNotesHistory = Omit<RowDetailHistoryEntry<'notes', string | null>, 'winnerValue'>;
+export type PreachDateFieldHistoryEntry = RowDetailHistoryEntry<Exclude<PreachDateField, 'notes'>, PreachDateFieldValue> | PreachDateNotesHistory;
 export type PreachDateFieldHistoryPage = {
   owner: string; sermonId: string; generation: string; nextCursor: string | null;
   entries: Array<{ id: string; acceptedAt: string; fields: PreachDateFieldHistoryEntry[] }>;
@@ -29,6 +31,8 @@ export const PREACH_ROW_BIRTH: RowFieldTarget<string> = {
 };
 
 const CHURCH: RowFieldTarget<ChurchValue> = { field: 'preachDates', leaf: 'church', accepts: isChurchValue };
+const NOTES: RowFieldTarget<string | null> = { field: 'preachDates', leaf: 'notes', missing: null,
+  accepts: (value): value is string | null => value === null || typeof value === 'string' };
 const AUDIENCE: RowFieldTarget<string | null> = { field: 'preachDates', leaf: 'audience', missing: null, accepts: optionalShort };
 const CITY: RowFieldTarget<string | null> = { field: 'preachDates', leaf: ['church', 'city'], missing: null, accepts: optionalShort };
 
@@ -37,6 +41,7 @@ export const churchIdentity = (value: PreachDateFieldValue | undefined): Documen
 
 export function preachDateFieldTarget(field: PreachDateField): RowFieldTarget<PreachDateFieldValue> {
   if (field === 'audience') return AUDIENCE;
+  if (field === 'notes') return NOTES;
   if (field === 'churchCity') return CITY;
   return CHURCH;
 }
@@ -84,6 +89,10 @@ export function capturePreachDateFields(baseline: ResourceSnapshot, predecessor:
     const after = existingRowField(afterRows, rowId, AUDIENCE);
     if (after !== undefined) captures.audience = { rowId, rowCreatedAt, time, after };
   }
+  if (fields?.notes === true) {
+    const after = existingRowField(afterRows, rowId, NOTES);
+    if (after !== undefined) captures.notes = { rowId, rowCreatedAt, time, after };
+  }
   if (fields?.church === true || fields?.churchCity === true) {
     const before = existingRowField(beforeRows, rowId, CHURCH), after = existingRowField(afterRows, rowId, CHURCH);
     if (before && after) {
@@ -92,6 +101,49 @@ export function capturePreachDateFields(baseline: ResourceSnapshot, predecessor:
     }
   }
   return captureRowDetailActions(baseline, predecessor, draft, captures, records, PREACH_DATE_FIELD_POLICY, request => request.preachDateFieldActions);
+}
+
+/** The keyed row change already carries the two values, so the wire only needs the observation. */
+export function compactPreachDateFields({ notes, ...fields }: PreachDateFieldActions): PreachDateFieldWire {
+  if (!notes) return fields;
+  const { rowId, rowCreatedAt, observedRevision, time, predecessorOperationId } = notes;
+  return { ...fields, notes: { rowId, rowCreatedAt, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) } };
+}
+
+export function expandPreachDateNotes(command: Extract<DataCommand, { kind: 'update' }>) {
+  const notes = command.preachDateFieldActions?.notes;
+  if (!object(notes) || !boundedRowId(notes.rowId)) return;
+  const change = command.changes.find(item => item.path.length === 1 && item.path[0] === NOTES.field);
+  const before = existingRowField(change?.before.value, notes.rowId, NOTES);
+  const after = existingRowField(change?.after.value, notes.rowId, NOTES);
+  if (before !== undefined && after !== undefined) return { ...notes, before, after };
+}
+
+export const PREACH_DATE_NOTE_SETTLED = 'preach-date-note-settled';
+export const PREACH_DATE_NOTE_QUEUED = 'preach-date-note-queued';
+
+export function preachDateNoteConflictId(path: readonly string[]): string | undefined {
+  return path.length === 3 && path[0] === NOTES.field && path[1].startsWith('id:') && path[2] === NOTES.leaf
+    ? path[1].slice(3) || undefined : undefined;
+}
+
+export function samePreachDateRow(rowId: string, opening: DocumentData, current: DocumentData): boolean {
+  const birth = existingRowField(opening.preachDates, rowId, PREACH_ROW_BIRTH);
+  return Boolean(birth && existingRowField(current.preachDates, rowId, PREACH_ROW_BIRTH) === birth);
+}
+
+export function readPreachDateFieldVersions(path: readonly string[], mine: DocumentData, stored: DocumentData) {
+  const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
+  if (!rowId || !samePreachDateRow(rowId, mine, stored)) return;
+  const simple = path.length === 3 && path[0] === 'preachDates' && (path[2] === 'date' || path[2] === 'status') ? path[2] : undefined;
+  const field = simple ?? PREACH_DATE_FIELDS.find(name => equalValues(path, rowConflictPath(rowId, preachDateFieldTarget(name))));
+  if (!field) return;
+  const target: RowFieldTarget<PreachDateFieldValue> = field === 'date' || field === 'status'
+    ? { field: 'preachDates', leaf: field, missing: null, accepts: (value): value is string | null => typeof value === 'string' || value === null }
+    : preachDateFieldTarget(field);
+  const local = existingRowField(mine.preachDates, rowId, target);
+  const saved = existingRowField(stored.preachDates, rowId, target);
+  if (local !== undefined && saved !== undefined) return { rowId, field, mine: local, stored: saved };
 }
 
 export function preachDateRebaseChoices(snapshot: ResourceSnapshot, ancestor: DocumentData | null,

@@ -54,7 +54,7 @@ const evidence = {
   exegeticalPointDrafts: [{ nodeId: 'point', kind: 'title', observedRevision: 1, time, predecessorOperationId: 'earlier-save',
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
-  accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts,
+  accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
   groupTextReview, privateFieldReview: { revision: 1, decisions: groupTextReview.decisions }, groupFlowStepPlacementRetry: groupPlacement, councilTopicPlacementRetry: councilPlacement, sourceNoteLinkRetry: links,
 } satisfies Record<EvidenceKey, unknown>;
 const placementRetries = {
@@ -70,7 +70,7 @@ const pendingEvidence = {
   councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
   councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
-  outlinePointPlacement: outlineRetry, outlineTitleActions: [row], groupFlowStepPlacement: groupPlacement,
+  outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
   councilTopicPlacement: councilPlacement, commentPlaceAction,
 } satisfies Record<PendingEvidenceKey, unknown>;
 // Group title and status are causal: an unclocked autosave carries `time: null` (documentFieldAction.ts:637).
@@ -106,6 +106,12 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
   const source = titleRecord();
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
   if (key === 'sourceNoteLinkRetry') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+  if (key === 'preachDateNotesDrafts') {
+    source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    const date = { id: row.rowId, createdAt: row.rowCreatedAt, notes: row.before };
+    source.checkpoint.confirmed.value = { ...source.checkpoint.confirmed.value, preachDates: [date] };
+    source.checkpoint.draft = { ...source.checkpoint.draft, preachDates: [{ ...date, notes: row.after }] };
+  }
   if (key === 'groupTextReview') source.checkpoint.pending.request = { generation: 1, value: source.checkpoint.draft };
   if (key.startsWith('groupBlock') || key.startsWith('groupStep')) {
     const block = { id: row.rowId, createdAt: row.rowCreatedAt, title: row.after, content: row.after, status: 'filled' };
@@ -134,7 +140,7 @@ it.each([...Object.entries(pendingEvidence), ...unclockedGroupActions.map(([key,
   'keeps valid pending %s through native write, read, discovery and fork', async (label, value) => {
     const key = label.replace(' (unclocked)', '');
     const source = titleRecord();
-    if (key === 'outlinePointPlacement') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    if (key === 'outlinePointPlacement' || key === 'preachDateNotesActions') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     if (key === 'councilTopicPlacement') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
     if (key === 'commentPlaceAction') source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     const record = { ...source, checkpoint: { ...source.checkpoint,

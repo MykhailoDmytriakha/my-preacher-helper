@@ -4,6 +4,7 @@ import { projectExactManualChoice, projectSavedChoiceDependents, recoverManualCh
 import { manualComparison } from '../manualComparison';
 import { projectOutlineParentChoice, readOutlineParentComparison } from '../outlineParentChoice';
 import { replaceResourceOutline } from '../outlinePlacementResource';
+import { preachDateReviewConflicts } from '../preachDateChoice';
 import { mergeDocumentFields } from '../protocol';
 import { validateRecoveryRecord } from '../recovery.client';
 import { keepUncontestedSermonFields, readSermonPlanModeComparison } from '../sermonFieldChoice';
@@ -13,6 +14,116 @@ import type { CommitRequest } from '../commits';
 import type { ManualScope } from '../manualScope';
 import type { DocumentData, ResourceSnapshot } from '../types';
 import type { SermonOutline } from '@/models/models';
+
+it.each(['same words', 'replaced date', 'removed date'])('can accept stored preaching notes after the server has %s', scenario => {
+  const row = { id: 'date', createdAt: 'original date', notes: 'Opening words', audience: 'Opening audience' };
+  const mine = { ...row, notes: 'My words', audience: 'My audience' };
+  const value: DocumentData = { preachDates: [row], verse: 'Opening verse' };
+  const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' }, value,
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } };
+  const replacement = { ...row, createdAt: 'replacement date', notes: 'Other date words' };
+  const liveRows = scenario === 'same words' ? [{ ...row, notes: mine.notes }] : scenario === 'replaced date' ? [replacement] : [];
+  const stored: ResourceSnapshot = { ...basis, value: { ...value, preachDates: liveRows },
+    metadata: { ...basis.metadata!, revision: 4 } };
+  const draft = { ...value, preachDates: [mine], verse: 'Independent edit' };
+  const conflicts = [{ path: ['preachDates', 'id:date', 'notes'],
+    base: { exists: true, value: row.notes }, mine: { exists: true, value: mine.notes },
+    theirs: { exists: true, value: 'Previously compared words' } }];
+
+  expect(keepUncontestedSermonFields(basis, draft, stored, conflicts)).toEqual({
+    preachDates: scenario === 'same words' ? [mine] : liveRows, verse: 'Independent edit',
+  });
+});
+
+it.each([
+  ['preach-date-note-settled', 'local'], ['preach-date-note-settled', 'remote'],
+  ['preach-date-note-queued', 'local'], ['preach-date-note-queued', 'remote'],
+] as const)('keeps the %s note when a manual Save chooses %s audience', (noteResult, choice) => {
+  const row = { id: 'date', createdAt: 'original date', notes: 'Opening notes', audience: 'Opening audience' };
+  const phone = { ...row, notes: 'Phone notes', audience: 'Phone audience' };
+  const laptop = { ...row, audience: 'Laptop audience' };
+  const value: DocumentData = { preachDates: [row] };
+  const draft: DocumentData = { preachDates: [phone] };
+  const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' }, value,
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } };
+  const stored: ResourceSnapshot = { ...basis, value: { preachDates: [laptop] },
+    metadata: { ...basis.metadata!, revision: 3 } };
+  const field = (value: string) => ({ exists: true, value });
+  const conflicts = [
+    { path: ['preachDates', 'id:date', 'audience'], base: field(row.audience), mine: field(phone.audience), theirs: field(laptop.audience) },
+    { path: ['preachDates', 'id:date', 'notes'], code: noteResult, base: field(row.notes), mine: field(phone.notes), theirs: field(laptop.notes) },
+  ];
+  const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 };
+  const action = { rowId: row.id, rowCreatedAt: row.createdAt, before: row.notes, after: phone.notes, observedRevision: 1, time };
+  const request: CommitRequest = { id: 'date-save', owner: 'owner', editorId: 'date-form', editGeneration: 1, predecessor: null,
+    preachDateFieldActions: { notes: action },
+    baseline: basis, value: draft, revision: 1, initialized: true, working: basis, intended: draft, command: null, submitted: draft,
+    sequence: 0, state: 'conflict', unfinalized: [],
+    result: { kind: 'conflict', operationId: 'date-save', snapshot: stored, conflicts } };
+  const checkpoint: SessionCheckpoint = { confirmed: basis, draft, remoteCandidate: stored, conflicts, dirty: true,
+    editGeneration: 1, pending: { [request.id]: { generation: 1, value: draft } } };
+
+  const exact = projectExactManualChoice({ owner: 'owner', editorId: 'document', checkpoint, prepared: null, unfinalized: [] },
+    { choice, request, value: draft, stored, selection: [['preachDates'], ['isPreached']] }, [request])[0].checkpoint;
+  expect(exact.draft?.preachDates).toEqual([{ ...row, audience: choice === 'local' ? phone.audience : laptop.audience,
+    notes: noteResult === 'preach-date-note-queued' ? phone.notes : laptop.notes }]);
+  expect(exact.preachDateNotesDrafts?.[row.id]?.action).toEqual(noteResult === 'preach-date-note-queued' ? action : undefined);
+
+  const noteOnly = { ...request, result: { ...request.result!, kind: 'conflict' as const, snapshot: stored, conflicts: [
+    { ...conflicts[1], code: undefined },
+  ] } };
+  const choiceTime = { earliestMs: 1_800_000_000_180, latestMs: 1_800_000_000_185 };
+  const chosen = projectExactManualChoice({ owner: 'owner', editorId: 'document', checkpoint, prepared: null, unfinalized: [] },
+    { choice: 'local', request: noteOnly, value: draft, stored, selection: [['preachDates']], choiceTime }, [noteOnly])[0].checkpoint;
+  expect(chosen.preachDateNotesDrafts?.[row.id]?.action).toMatchObject({ time: choiceTime, observedRevision: 3, after: phone.notes });
+});
+
+it.each(['changed the date', 'replaced the row', 'removed the row'])(
+  'keeps the remote choice usable when the stored copy has %s since the audience conflict', change => {
+    const row = { id: 'date', createdAt: 'opened date', date: '2026-11-20', notes: 'Opening notes', audience: 'Opening audience' };
+    const other = { ...row, id: 'other' };
+    const phone = { ...row, date: '2026-11-23', notes: 'Ordered phone notes', audience: 'Phone audience' };
+    const laptop = { ...row, audience: 'Laptop audience' };
+    const latest = change === 'changed the date' ? { ...laptop, date: '2026-11-25' }
+      : change === 'replaced the row' ? { ...laptop, createdAt: 'replaced date', notes: 'Replacement words' } : null;
+    const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' },
+      value: { preachDates: [row, other] }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+    const stored: ResourceSnapshot = { ...basis, value: { preachDates: latest ? [latest, other] : [other] },
+      metadata: { ...basis.metadata!, revision: 4 } };
+    const independent = { ...other, notes: 'Independent notes on another date' };
+    const draft = { preachDates: [phone, independent] };
+    const field = (value: string) => ({ exists: true, value });
+    const originalConflicts = [
+      { path: ['preachDates', 'id:date', 'audience'], base: field(row.audience), mine: field(phone.audience), theirs: field(laptop.audience) },
+      { path: ['preachDates', 'id:date', 'notes'], code: 'preach-date-note-queued', base: field(row.notes), mine: field(phone.notes), theirs: field(laptop.notes) },
+    ];
+    if (change === 'changed the date') {
+      const paths = preachDateReviewConflicts(basis.value, draft, stored.value, originalConflicts).map(({ path }) => path);
+      expect(paths).toEqual([['preachDates', 'id:date', 'audience'], ['preachDates', 'id:date', 'date']]);
+      const converged = { ...stored.value, preachDates: [{ ...latest, audience: phone.audience }, other] };
+      expect(preachDateReviewConflicts(basis.value, draft, converged, originalConflicts).map(({ path }) => path))
+        .toEqual([['preachDates', 'id:date', 'date']]);
+    }
+    const projected = keepUncontestedSermonFields(basis, draft, stored, originalConflicts);
+    const expected = change === 'changed the date' ? [{ ...latest, notes: phone.notes }, independent]
+      : latest ? [latest, independent] : [independent];
+    expect(projected?.preachDates).toEqual(expected);
+  });
+
+it('accepts several shown preaching date fields and keeps unrelated authored edits', () => {
+  const row = { id: 'date', date: '2026-11-20', createdAt: 'original', notes: 'Opening notes', audience: 'Opening audience' };
+  const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' },
+    value: { preachDates: [row] }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  const phone = { ...row, date: '2026-11-21', notes: 'Phone notes', audience: 'Phone audience' };
+  const laptop = { ...row, notes: 'Laptop notes', audience: 'Laptop audience' };
+  const draft = { preachDates: [phone] };
+  const stored: ResourceSnapshot = { ...basis, value: { preachDates: [laptop] },
+    metadata: { ...basis.metadata!, revision: 3 } };
+  const { conflicts } = mergeDocumentFields(basis.value, draft, stored.value);
+  expect(conflicts.map(({ path }) => path[2])).toEqual(['notes', 'audience']);
+  expect(keepUncontestedSermonFields(basis, draft, stored, conflicts)?.preachDates)
+    .toEqual([{ ...laptop, date: phone.date }]);
+});
 
 it.each(['local', 'remote'] as const)('keeps the ordered return while choosing the %s notes', side => {
   const original: SermonOutline = { introduction: [], conclusion: [], main: [

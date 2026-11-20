@@ -10,7 +10,7 @@ import { captureGroupFlowCommandProofs } from './groupFlowTopology';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
-import { isSermonTextRoot } from './sermonTextOpenings';
+import { isSermonTextRoot, sermonTextChanges } from './sermonTextOpenings';
 
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
@@ -188,7 +188,8 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
     prepared.command.analysisFrameObservedRevision = confirmed.metadata.revision;
   }
   if (prepared.command.kind === 'update' && confirmed.resource.collection === 'sermons' && confirmed.metadata
-    && prepared.command.changes.some(change => isSermonTextRoot(change.path[0]))) {
+    && (prepared.command.changes.some(change => change.path[0] !== 'preachDates' && isSermonTextRoot(change.path[0]))
+      || sermonTextChanges(prepared.command.changes.filter(change => change.path[0] === 'preachDates')).length)) {
     prepared.command.sermonTextObservedRevision = confirmed.metadata.revision;
   }
   const command = confirmed.resource.collection === 'sermons' && prepared.command.kind === 'update'

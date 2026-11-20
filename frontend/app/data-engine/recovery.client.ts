@@ -91,7 +91,7 @@ const pendingShape = {
   groupBlockContentActions: z.array(titleAction).optional(), groupStepNotesActions: z.array(nullableTitleAction).optional(),
   groupBlockStatusActions: z.array(titleAction).optional(), groupStepDurationActions: z.array(storedRowAction).optional(),
   thoughtLockActions: z.array(storedRowAction).optional(), thoughtPlacementActions: z.array(storedRowAction).optional(),
-  outlineTitleActions: z.array(titleAction).optional(),
+  outlineTitleActions: z.array(titleAction).optional(), preachDateNotesActions: z.array(nullableTitleAction).optional(),
 } satisfies Record<keyof SessionCheckpoint['pending'][string], z.ZodTypeAny>;
 const sourceNoteSelection = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
   z.object({ exists: z.literal(true), value: z.array(id) })]);
@@ -139,7 +139,7 @@ const recordSchema = z.object({
     conflicts: z.array(checkpointConflict).default([]),
     unreadableScalarProof: z.array(z.string()).min(1).max(5).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'groupBlockTitleDrafts',
-      'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts']),
+      'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
@@ -162,7 +162,7 @@ const recordSchema = z.object({
     groupStepTitleDrafts: rowDrafts(nullableTitleAction).optional(),
     groupBlockContentDrafts: rowDrafts(titleAction).optional(), groupStepNotesDrafts: rowDrafts(nullableTitleAction).optional(), groupStepDurationDrafts: rowDrafts(storedRowAction).optional(),
     thoughtTextDrafts: rowDrafts(titleAction).optional(), thoughtLockDrafts: rowDrafts(storedRowAction).optional(), thoughtPlacementDrafts: rowDrafts(storedRowAction).optional(),
-    outlineTitleDrafts: rowDrafts(titleAction).optional(),
+    outlineTitleDrafts: rowDrafts(titleAction).optional(), preachDateNotesDrafts: rowDrafts(nullableTitleAction).optional(),
     pending: z.record(id, z.object(pendingShape)),
   } satisfies Record<keyof Omit<SessionCheckpoint, PlacementRetry>, z.ZodTypeAny>),
 });

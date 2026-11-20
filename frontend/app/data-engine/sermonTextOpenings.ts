@@ -4,7 +4,7 @@ import { equalValues, object, own } from './fieldValues';
 
 import type { CommandResult, DataCommand, DocumentData, FieldChange, FieldValue, Json } from './types';
 
-export const SERMON_TEXT_ROOTS = ['planText', 'outline', 'scratch'] as const;
+export const SERMON_TEXT_ROOTS = ['planText', 'outline', 'scratch', 'preachDates'] as const;
 export type SermonTextRoot = typeof SERMON_TEXT_ROOTS[number];
 export type SermonTextOpenings = Record<string, number | null>;
 type SermonTextLeaf = { key: string; path: string[]; value: FieldValue };
@@ -12,7 +12,7 @@ type SermonTextChange = FieldChange & { key: string };
 export type CommittedSermonText = { operationId: string; changes: Pick<SermonTextChange, 'key' | 'path' | 'after'>[] };
 
 export const isSermonTextRoot = (field: string): field is SermonTextRoot =>
-  field === 'planText' || field === 'outline' || field === 'scratch';
+  field === 'planText' || field === 'outline' || field === 'scratch' || field === 'preachDates';
 export const sermonTextKey = (root: SermonTextRoot, id: string, birth?: string) => JSON.stringify([root, id, birth]);
 export const isPlanCellPath = (path: readonly string[]) => path.length === 2 && path[0] === 'planText';
 const text = (value: Json | undefined): FieldValue => typeof value === 'string' ? { exists: true, value } : { exists: false };
@@ -53,6 +53,11 @@ export function sermonTextLeaves(root: SermonTextRoot, value: Json | undefined):
     }
   } else if (root === 'outline') {
     for (const { id, path, note } of outlineNotes(value)) add(sermonTextKey(root, id), path, text(note));
+  } else if (root === 'preachDates') {
+    for (const row of rows(value)) {
+      if (typeof row.id !== 'string' || typeof row.createdAt !== 'string') continue;
+      add(sermonTextKey(root, row.id, row.createdAt), [root, 'id:' + row.id, 'notes'], text(row.notes));
+    }
   } else {
     for (const row of rows(value)) {
       if (typeof row.id !== 'string' || typeof row.createdAt !== 'string' || typeof row.text !== 'string') continue;

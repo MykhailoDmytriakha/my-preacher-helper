@@ -1,16 +1,45 @@
 import { isUnspecifiedChurch } from '@/utils/church';
 import { serializeContent } from '@/utils/contentFingerprint';
+import { formatDateForLocale } from '@/utils/dateFormatter';
+import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { getEffectivePreachDateStatus, getPreferredDateToMarkAsPreached } from '@/utils/preachDateStatus';
 
 import type { PreachDateValues } from './PreachDateFields';
-import type { PreachDateFieldHistoryEntry } from '@/data-engine/preachDateFieldAction';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
+import type { PreachDateFieldHistoryEntry, PreachDateFieldValue, readPreachDateFieldVersions } from '@/data-engine/preachDateFieldAction';
 import type { PreachStatusHistoryEntry } from '@/data-engine/preachStatusAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { PreachDate, PreachDateStatus, Sermon } from '@/models/models';
+import type { TFunction } from 'i18next';
 
 export type PreachDateAction = { kind: 'add' | 'edit' | 'mark' | 'unmark' | 'delete'; dateId?: string; status?: PreachDateStatus; restoreDate?: string; restoreField?: PreachDateFieldHistoryEntry & { historyId: string };
   restoreStatus?: PreachStatusHistoryEntry & { historyId: string } };
+type DateVersion = NonNullable<ReturnType<typeof readPreachDateFieldVersions>>;
+
+export function preachDateComparison(versions: DateVersion[], identity: string, t: TFunction, language: string): TextComparison {
+  const label = ({ field }: DateVersion) => t(field === 'churchCity' ? 'calendar.city'
+    : field === 'status' ? 'calendar.preachStatusLabel' : `calendar.${field}`);
+  const words = (field: DateVersion['field'], value: PreachDateFieldValue): string => {
+    if (field === 'date') {
+      if (typeof value !== 'string' || !value) return t('calendar.dateNotSet');
+      const day = shownDayOf(value);
+      return isDateOnlyKey(day) ? formatDateForLocale(day, language, { month: 'short', day: 'numeric', year: 'numeric' }) || value : value;
+    }
+    if (field === 'status' && (value === 'planned' || value === 'preached')) return t(`calendar.status.${value}`);
+    return (value && typeof value === 'object' ? [value.name, value.city].filter(Boolean).join(' · ') : value) || t('dataSync.emptyField');
+  };
+  if (versions.length === 1) {
+    const [version] = versions;
+    return { identity, title: label(version), valueKind: 'field', scopedChoice: true,
+      mine: words(version.field, version.mine), stored: words(version.field, version.stored) };
+  }
+  const side = (key: 'mine' | 'stored') => versions.map(version => label(version) + ' — ' + words(version.field, version[key])).join('\n');
+  return { identity, valueKind: 'field', scopedChoice: true, mine: side('mine'), stored: side('stored'),
+    description: t('dataSync.noteFieldsChanged'),
+    actions: { local: t('dataSync.useLocalVersion'), stored: t('dataSync.confirmStoredFields.confirm'), confirmStored: 'dataSync.confirmStoredFields' } };
+}
+
 export const PREACH_DATE_SELECTION = [['preachDates'], ['isPreached']] as const;
 
 function writeDates(source: Sermon, dates: PreachDate[]): DocumentData {
@@ -55,9 +84,9 @@ export function restoredPreachDateField(row: PreachDate, entry: PreachDateFieldH
     return { ...next, church: { id: value.id, name: value.name, ...(value.city !== undefined && { city: value.city }) } };
   }
   if (value !== null && typeof value !== 'string') throw new Error('Invalid archived field');
-  if (entry.field === 'audience') {
-    if (value === null) delete next.audience;
-    else next.audience = value;
+  if (entry.field === 'audience' || entry.field === 'notes') {
+    if (value === null) delete next[entry.field];
+    else next[entry.field] = value;
   } else if (value === null) delete next.church.city;
   else next.church.city = value;
   return next;

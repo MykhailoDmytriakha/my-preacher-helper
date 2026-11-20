@@ -27,7 +27,7 @@ import { projectOutlineParentChoice, type OutlineTitleDecision } from './outline
 import { outlinePlacementField } from './outlinePlacementResource';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
-import { chooseLocalPreachDateEdits } from './preachDateChoice';
+import { chooseLocalPreachDateEdits, orderedPreachDateNote, preachDateNoteChoiceFrames } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
@@ -760,12 +760,13 @@ export class DataSession {
       const pointIds = this.state.conflicts.flatMap(({ path, code }) => code === UNREADABLE_EXEGETICAL_PROOF ? [] : exegeticalPointConflictId(path) ?? []);
       const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
       const outline = outlineTitleChoiceFrames(this.state.confirmed, this.state.draft, candidate, this.state.conflicts);
-      const basis = marks?.baseline ?? outline.basis;
+      const note = preachDateNoteChoiceFrames(outline.basis, outline.draft, candidate.value, this.state.conflicts);
+      const basis = marks?.baseline ?? note.basis;
       const draft = pointChoices.reduce((value, choice) => {
         const neutral = value && choice.apply(value, 'opening');
         if (!neutral) throw unavailablePoint();
         return neutral;
-      }, marks?.value ?? outline.draft);
+      }, marks?.value ?? note.draft);
       const recoveringCopy = candidate.resource.collection === 'groups'
         && this.state.conflicts.some(conflict => conflict.code === GROUP_FLOW_COPY_CONTENT_MISSING);
       const merged = point?.rebased ?? (recoveringCopy ? mergeGroupFlowRebase(basis, draft, candidate.value)
@@ -777,10 +778,10 @@ export class DataSession {
       }
       const parentChoice = projectOutlineParentChoice(this.state.confirmed, this.state.draft, candidate, this.state.conflicts, 'local', titles);
       const chosen = parentChoice ?? chooseLocalPlacement(this.state.confirmed.resource.collection,
-        outline.basis, outline.draft, candidate.value,
+        note.basis, note.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
-      const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
+      const statusChoice = chooseLocalPreachDateEdits({ ...this.state.confirmed, value: note.basis }, note.draft, candidate, preachStatuses);
       const exactLists = keepReviewedAuthoredLists(candidate.resource.collection, statusChoice ?? chosen, this.state.conflicts);
       const exactTags = keepExactLocalDocumentTags(this.state, exactLists);
       const withRows = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
@@ -832,7 +833,8 @@ export class DataSession {
     if (candidate) {
       this.retainOutlineTitleActions(titleSource);
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
-      stageReviewedRowFields(this.state, this.state.conflicts.map(({ path }) => path), choiceTime, ['thought-text']);
+      const selectedPaths = this.state.conflicts.filter(conflict => !orderedPreachDateNote(conflict)).map(({ path }) => path);
+      stageReviewedRowFields(this.state, selectedPaths, choiceTime, ['thought-text', 'preach-date-notes']);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
       this.stageOutlineReviewTitles(titles, choiceTime);
       if (reviewingRows) this.stageReviewedGroupFlowText(this.state.conflicts.filter(issue => issue.code === UNREADABLE_ROW_PROOF).map(issue => issue.path), choiceTime);

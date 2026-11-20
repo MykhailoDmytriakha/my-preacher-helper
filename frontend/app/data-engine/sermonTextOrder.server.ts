@@ -20,6 +20,8 @@ function history(raw: unknown, generation: string, revision: number): HistoryByR
   const evidence = object(raw) ? raw[PROOF] : undefined;
   const read = (root: typeof roots[number]): History => {
     if (evidence === undefined) return empty();
+    // Records written before date notes joined this policy have no notes history.
+    if (root === 'preachDates' && object(evidence) && evidence.generation === generation && !own(evidence, root)) return empty();
     const entries = object(evidence) && evidence.generation === generation ? evidence[root] : undefined;
     if (!object(entries) || !Array.isArray(entries.departures) || entries.departures.length > MAX_DEPARTURES
       || !(entries.floor === 0 || (proofRevision(entries.floor) && entries.floor <= revision))) return { floor: revision, departures: [] };
@@ -31,10 +33,10 @@ function history(raw: unknown, generation: string, revision: number): HistoryByR
     }
     return { floor: entries.floor, departures };
   };
-  return { planText: read('planText'), outline: read('outline'), scratch: read('scratch') };
+  return { planText: read('planText'), outline: read('outline'), scratch: read('scratch'), preachDates: read('preachDates') };
 }
 
-export function compareReturnedSermonText(command: DataCommand, current: ResourceSnapshot, raw: unknown): ConflictDetail[] {
+export function compareReturnedSermonText(command: DataCommand, current: ResourceSnapshot, raw: unknown, orderedPreachNote?: string): ConflictDetail[] {
   const { metadata, value } = current;
   if (command.kind !== 'update' || command.resource.collection !== 'sermons' || !value || !metadata
     || command.generation !== metadata.generation || !object(raw) || raw[PROOF] === undefined) return [];
@@ -45,6 +47,7 @@ export function compareReturnedSermonText(command: DataCommand, current: Resourc
   return changes.flatMap(({ key, path, before, after }) => {
     const root = path[0];
     if (!isSermonTextRoot(root)) return [];
+    if (orderedPreachNote !== undefined && root === 'preachDates' && path[1] === 'id:' + orderedPreachNote) return [];
     const field = live.get(root)?.get(key);
     if (!field && !isPlanCellPath(path)) return [];
     const stored = field?.value ?? { exists: false };

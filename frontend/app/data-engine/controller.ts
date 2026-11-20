@@ -36,11 +36,11 @@ import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceC
 import { projectOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
-import { chooseLocalPreachDateEdits } from './preachDateChoice';
+import { chooseLocalPreachDateEdits, orderedPreachDateNote, preachDateNoteChoiceFrames, unresolvedPreachDateNote } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
-import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
+import { carryPreachDateNoteAction, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepBody, keepUncontestedServiceStepScripture, readServiceStepBodyChoice, reviewedServiceStepScriptureRows, serviceStepBodyRetry, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepChoice';
@@ -940,6 +940,7 @@ export class EditorController {
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const orderedDateNote = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(orderedPreachDateNote);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
         const groupText = !reviewingGroup && !selection && readGroupFlowTextChoice(decided, local);
@@ -1160,11 +1161,12 @@ export class EditorController {
           }
           if (correction) {
             const current = session.checkpoint();
-            const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
-            const status = chooseLocalPreachDateEdits({ ...decided.confirmed, value: correction.base }, correction.value,
+            const note = preachDateNoteChoiceFrames(correction.base, correction.value, current.draft, decided.conflicts);
+            const merged = mergeDocumentFields(note.basis, note.draft, current.draft);
+            const status = chooseLocalPreachDateEdits({ ...decided.confirmed, value: note.basis }, note.draft,
               { ...current.confirmed, value: current.draft }, statusActions);
             session.edit(status ?? chooseLocalPlacement(current.confirmed.resource.collection,
-              correction.base, correction.value, current.draft,
+              note.basis, note.draft, current.draft,
               merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
           }
         } else {
@@ -1180,7 +1182,9 @@ export class EditorController {
           const retainedDocumentFields = documentTextChoice?.complete && decided.confirmed.value && decided.draft && decided.remoteCandidate?.value
             ? keepUncontestedDocumentText(decided.confirmed.value, decided.draft, decided.remoteCandidate.value, Object.keys(documentTextChoice.openings))
             : undefined;
-          const retained = retainedMeeting ?? retainedOutline ?? retainedDocumentFields ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+          const retainedPreachDate = orderedDateNote
+            ? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts) : undefined;
+          const retained = retainedMeeting ?? retainedOutline ?? retainedDocumentFields ?? retainedPreachDate ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (stepBody ? keepUncontestedServiceStepBody(decided, local, stepBody.rowId) : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1203,6 +1207,14 @@ export class EditorController {
           }
         }
         const replacements: CommitRequest[] = [];
+        if (orderedDateNote || (choice === 'local' && decided.conflicts.some(unresolvedPreachDateNote))) {
+          const next = session.checkpoint();
+          const request = ordinary?.first ?? retired.find(item => decided.pending[item.id]
+            && item.result?.kind === 'conflict' && item.result.conflicts.some(orderedPreachDateNote));
+          carryPreachDateNoteAction(next, request);
+          const replacement = next.dirty && this.options.commits!.choiceReplacement(record.editorId, next, {});
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
+        }
         if (documentTextChoice && (choice === 'local' || documentTextChoice.complete) && session.checkpoint().dirty) {
           const time = choiceTime ?? null;
           const action = decided.confirmed.resource.collection === 'series'

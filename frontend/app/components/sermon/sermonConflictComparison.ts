@@ -1,3 +1,4 @@
+import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
 import { readSermonConflict } from '@/data-engine/react.client';
@@ -18,6 +19,7 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   const comparison = readSermonConflict(checkpoint);
   if (!comparison) return undefined;
   const { identity, kind } = comparison;
+  if (kind === 'preach-date-detail') return preachDateComparison(comparison.versions, identity, t, language);
   if (kind === 'note-text' || kind === 'plan-cell') {
     const title = kind === 'plan-cell' ? fieldLabel(t, 'planText')
       : t(comparison.scratch ? 'scratch.card.label' : 'planEditor.note.label');

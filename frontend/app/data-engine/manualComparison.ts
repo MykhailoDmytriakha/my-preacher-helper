@@ -6,6 +6,8 @@ import { projectHomileticReview, reviewedHomileticList } from './homileticPlanCh
 import { exactManualWords, manualChoiceFrames, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
 import { readOutlineParentComparison } from './outlineParentChoice';
+import { preachDateReviewConflicts } from './preachDateChoice';
+import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
@@ -39,8 +41,9 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       const observed = parent.remoteCandidate ?? parent.confirmed;
       if (canReplaceSnapshot(stored, observed)) stored = observed;
       if (!stored.value || stored.metadata?.deleted) return undefined;
-      const conflicts = request.result.conflicts;
       const authored = exact ? exactManualWords(form, exact) : form.value;
+      const { basis, reviewed } = manualChoiceFrames(request, authored, stored);
+      const conflicts = preachDateReviewConflicts(basis.value, reviewed, stored.value, request.result.conflicts);
       const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
         conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
       const meeting = firstGroupMeetingReview(conflicts);
@@ -63,6 +66,11 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
       }
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
+      const dateField = form.record.selection.some(path => equalValues(path, ['preachDates']))
+        && request.baseline.metadata?.generation === stored.metadata?.generation && conflicts.some(({ path }) => {
+          const versions = readPreachDateFieldVersions(path, mine, stored.value!);
+          return versions && !equalValues(versions.mine, versions.stored);
+        });
       // The server can prove that series text changed and returned to the same opening words.
       const seriesDescription = isManualSeriesDescriptionChoice(request.baseline, stored, conflicts, form.record.selection)
         && !sameManualSelection(mine, stored.value, ['description']);
@@ -78,7 +86,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || seriesDescription || exactVerse || exactThoughtText || exactList || outlineParent) {
+      if (changed || seriesDescription || exactVerse || dateField || exactThoughtText || exactList || outlineParent) {
         const observedConflicts = exactVerse && stored !== request.result.snapshot
           ? mergeDocumentFields(request.baseline.value, mine, stored.value).conflicts.filter(conflict => conflict.path[0] !== 'verse') : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,

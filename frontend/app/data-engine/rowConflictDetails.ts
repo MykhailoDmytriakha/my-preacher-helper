@@ -10,7 +10,9 @@ import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAc
 import { exegeticalPlan, exegeticalPointConflictId, readExegeticalPointChoice } from './exegeticalPointAction';
 import { readUnreadableExegeticalChoice, UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object } from './fieldValues';
-import { existingRowField, replaceExistingRowField } from './rowFieldAction';
+import { preachDateReviewConflicts } from './preachDateChoice';
+import { readPreachDateFieldVersions } from './preachDateFieldAction';
+import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
@@ -136,7 +138,8 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
 
 
 export function readSermonConflict(checkpoint: SessionCheckpoint) {
-  const { conflicts, draft, remoteCandidate } = checkpoint;
+  const { draft, remoteCandidate } = checkpoint;
+  const conflicts = preachDateReviewConflicts(checkpoint.confirmed.value, draft, remoteCandidate?.value ?? null, checkpoint.conflicts);
   if (!conflicts.length || !draft || !remoteCandidate?.value) return undefined;
   const points = conflicts.flatMap(({ path, code }) => {
     const id = exegeticalPointConflictId(path);
@@ -165,6 +168,18 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
     const localAvailable = versions.every(version => version.localAvailable)
       && !conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF && !exegeticalPointConflictId(conflict.path));
     return { kind: 'exegetical-point' as const, identity, versions, localAvailable, scoped: conflicts.length === 1 };
+  }
+  if (checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation) {
+    const versions = conflicts.flatMap(({ path, mine, theirs }) => {
+      const row = readPreachDateFieldVersions(path, draft, remoteCandidate.value!);
+      if (!row || equalValues(row.mine, row.stored) || !equalValues(rowConflictValue(row.mine), mine)
+        || !equalValues(rowConflictValue(row.stored), theirs)) return [];
+      return [row];
+    });
+    if (versions.length === conflicts.length && (versions.length > 1 || versions[0].field !== 'date')) {
+      return { kind: 'preach-date-detail' as const, versions,
+        identity: JSON.stringify([conflicts, remoteCandidate.metadata, checkpoint.editGeneration]) };
+    }
   }
   if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];

@@ -2,13 +2,13 @@ import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 
 import { PREACH_DATE_TARGET } from './datedRowAction';
 import { equalValues, object } from './fieldValues';
-import { PREACH_ROW_BIRTH } from './preachDateFieldAction';
+import { PREACH_DATE_NOTE_QUEUED, PREACH_DATE_NOTE_SETTLED, PREACH_ROW_BIRTH, preachDateFieldTarget, preachDateNoteConflictId, readPreachDateFieldVersions, samePreachDateRow } from './preachDateFieldAction';
 import { alignImplicitPreachStatuses, PREACH_STATUS_TARGET, replacePreachStatuses } from './preachStatusAction';
 import { mergeDocumentFields } from './protocol';
-import { existingRowFields, replaceExistingRowField } from './rowFieldAction';
+import { existingRowField, existingRowFields, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 
 import type { PreachStatusAction } from './preachStatusAction';
-import type { DocumentData, Json, ResourceSnapshot } from './types';
+import type { ConflictDetail, DocumentData, Json, ResourceSnapshot } from './types';
 
 function rowDetails(rows: Json | undefined, id: string, status: boolean, date: boolean): DocumentData | undefined {
   const row = Array.isArray(rows) ? rows.find(item => object(item) && item.id === id) : undefined;
@@ -37,6 +37,64 @@ function datedRows(value: Json | undefined): Map<string, DocumentData> {
     for (const item of value) if (object(item) && typeof item.id === 'string') rows.set(item.id, item);
   }
   return rows;
+}
+
+const NOTES = preachDateFieldTarget('notes');
+
+export function withoutPreachDateRow(value: DocumentData, rowId: string): DocumentData {
+  return Array.isArray(value.preachDates)
+    ? { ...value, preachDates: value.preachDates.filter(row => !object(row) || row.id !== rowId) } : value;
+}
+
+export function orderedPreachDateNote(conflict: ConflictDetail): boolean {
+  return (conflict.code === PREACH_DATE_NOTE_QUEUED || conflict.code === PREACH_DATE_NOTE_SETTLED)
+    && preachDateNoteConflictId(conflict.path) !== undefined;
+}
+
+/** A choice about a different field cannot reverse the server's note decision. */
+export function preachDateNoteChoiceFrames(basis: DocumentData | null, draft: DocumentData | null,
+  stored: DocumentData | null, conflicts: readonly ConflictDetail[], acceptStored = false) {
+  const result = { basis, draft };
+  if (!basis || !draft || !stored) return result;
+  const note = conflicts.find(orderedPreachDateNote);
+  const id = note && preachDateNoteConflictId(note.path);
+  if (!note || !id || !samePreachDateRow(id, basis, draft)) return result;
+  const mine = existingRowField(draft.preachDates, id, NOTES);
+  const opening = existingRowField(basis.preachDates, id, NOTES);
+  if (mine === undefined || opening === undefined || !equalValues(rowConflictValue(mine), note.mine)) return result;
+
+  if (acceptStored && !samePreachDateRow(id, basis, stored)) {
+    return { basis: withoutPreachDateRow(basis, id), draft: withoutPreachDateRow(draft, id) };
+  }
+  if (note.code === PREACH_DATE_NOTE_SETTLED) {
+    const rows = replaceExistingRowField(draft.preachDates, id, opening, NOTES);
+    return rows === undefined ? result : { basis, draft: { ...draft, preachDates: rows } };
+  }
+  if (!samePreachDateRow(id, basis, stored)) throw retainedEdits();
+  const saved = existingRowField(stored.preachDates, id, NOTES);
+  const rows = saved === undefined ? undefined : replaceExistingRowField(basis.preachDates, id, saved, NOTES);
+  return rows === undefined ? result : { basis: { ...basis, preachDates: rows }, draft };
+}
+
+/** A later server copy can reveal another independently contested field in this Save. */
+export function preachDateReviewConflicts(basis: DocumentData | null, draft: DocumentData | null,
+  stored: DocumentData | null, conflicts: readonly ConflictDetail[]): ConflictDetail[] {
+  const result = conflicts.filter(conflict => !orderedPreachDateNote(conflict));
+  if (!conflicts.some(orderedPreachDateNote)) return result;
+  const notes = preachDateNoteChoiceFrames(basis, draft, stored, conflicts, true);
+  const entries = new Map(result.flatMap(conflict => {
+    const versions = draft && stored && readPreachDateFieldVersions(conflict.path, draft, stored);
+    if (!versions) return [[JSON.stringify(conflict.path), conflict]] as const;
+    if (equalValues(versions.mine, versions.stored)) return [];
+    return [[JSON.stringify(conflict.path), { ...conflict,
+      mine: rowConflictValue(versions.mine), theirs: rowConflictValue(versions.stored) }]] as const;
+  }));
+  for (const conflict of mergeDocumentFields(notes.basis, notes.draft, stored).conflicts) entries.set(JSON.stringify(conflict.path), conflict);
+  return [...entries.values()];
+}
+
+export function unresolvedPreachDateNote(conflict: ConflictDetail): boolean {
+  return !orderedPreachDateNote(conflict) && preachDateNoteConflictId(conflict.path) !== undefined;
 }
 
 const retainedEdits = () => Object.assign(new Error('The preaching date changed and has edits to recover'), { code: 'preach-date-edits-retained' });

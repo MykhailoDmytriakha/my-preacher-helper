@@ -1406,6 +1406,103 @@ describe('Durable commit requests', () => {
       intended: { title: 'Local sermon title', preparation: { ...preparation, exegeticalPlan: [editedNeighbor] } } });
   });
 
+  it('durably retries an ordered preaching note with its original action when stored audience is chosen', async () => {
+    const row = { id: 'date', date: '2026-11-20', createdAt: '2026-11-12', church: { id: 'church', name: 'Chapel' },
+      notes: 'Opening notes', audience: 'Opening audience' };
+    const phone = { ...row, notes: 'Original phone action', audience: 'Phone audience' };
+    const laptop = { ...row, audience: 'Laptop audience' };
+    const basis = initial();
+    const opening = { ...basis, value: { ...basis.value, verse: 'John 1:1', date: row.date, thoughts: [], preachDates: [row] } };
+    const returned = { ...opening, value: { ...opening.value, rev: { core: 3 }, preachDates: [laptop] },
+      metadata: { ...basis.metadata!, revision: 3, operationId: 'returned-notes' } };
+    const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 };
+    const s = setup({ opening, nativeChoice: true });
+    const existingTransport = jest.mocked(s.transport.send).getMockImplementation()!;
+    const field = (value: string) => ({ exists: true, value });
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: returned,
+      conflicts: [
+        { path: ['preachDates', 'id:date', 'audience'], base: field(row.audience), mine: field(phone.audience), theirs: field(laptop.audience) },
+        { path: ['preachDates', 'id:date', 'notes'], code: 'preach-date-note-queued', base: field(row.notes), mine: field(phone.notes), theirs: field(laptop.notes) },
+      ],
+    })).mockImplementation(existingTransport);
+
+    const first = s.makeEngine();
+    const editorId = editorIdentity('phone', opening.resource, ACTION_SLOT, 'choice');
+    const editor = await first.openEditor(opening.resource, editorId);
+    try {
+      await editor.edit({ ...opening.value, preachDates: [phone] }, undefined, { field: 'preach-date-notes', rowId: row.id, time });
+      await editor.save();
+      s.replace(returned);
+      first.setOnline(true);
+      await first.retry();
+      await settle();
+      expect(editor.getState().checkpoint.conflicts).toHaveLength(2);
+      first.setOnline(false);
+      await editor.acceptRemote();
+      const persisted = await s.checkpoints.read('owner', editorId);
+      expect(persisted?.checkpoint.draft?.preachDates).toEqual([{ ...laptop, notes: phone.notes }]);
+      expect(persisted?.checkpoint.draft?.rev).toEqual({ core: 3 });
+      const pending = Object.values(persisted!.checkpoint.pending);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].preachDateNotesActions?.[0]).toMatchObject({ before: row.notes, after: phone.notes, observedRevision: 1, time });
+      editor.close({ flush: false });
+    } finally { first.dispose(); }
+
+    const newer = { ...returned, value: { ...returned.value, rev: { core: 4 }, preachDates: [{ ...laptop, notes: 'Newer laptop words' }] },
+      metadata: { ...returned.metadata, revision: 4, operationId: 'newer-laptop-note' } };
+    s.replace(newer);
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+      kind: 'acknowledged', operationId: command.operationId, snapshot: newer,
+    }));
+    const restarted = s.makeEngine();
+    try {
+      restarted.setOnline(true);
+      await restarted.retry();
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledTimes(2);
+      expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        preachDateFieldActions: { notes: { rowId: row.id, rowCreatedAt: row.createdAt, observedRevision: 1, time } },
+        changes: expect.arrayContaining([{ path: ['preachDates'], before: { exists: true, value: [laptop] },
+          after: { exists: true, value: [{ ...laptop, notes: phone.notes }] } }]),
+      }));
+    } finally { restarted.dispose(); }
+  });
+
+  it.each(['clocked', 'unclocked'] as const)('pins the opening of a %s date note across a prior Save ACK', async clock => {
+    const date = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned',
+      church: { id: 'church', name: 'Chapel' }, notes: 'Opening notes' };
+    const basis = initial();
+    const opening = { ...basis, value: { ...basis.value, verse: 'John 3:16', date: date.createdAt, thoughts: [], preachDates: [date] } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    editor.edit({ ...opening.value, preachDates: [{ ...date, audience: 'Phone audience' }] });
+    const first = (await queue.save('date-form', editor.checkpoint()))!;
+    editor.applyCommit(first);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    editor.edit({ ...first.value, preachDates: [{ ...date, audience: 'Phone audience', notes: 'Earlier offline notes' }] });
+    const second = (await queue.save('date-form', editor.checkpoint(), { predecessorId: first.id,
+      ...(clock === 'clocked' && { preachDateFieldSave: {
+        rowId: date.id, rowCreatedAt: date.createdAt, fields: { notes: true }, time,
+      } }),
+    }))!;
+    expect(second.baseline.metadata?.revision).toBe(1);
+
+    // Desktop has edited the notes and restored the original before the audience write reaches it.
+    s.replace({ ...opening, metadata: { ...opening.metadata!, revision: 3, operationId: 'returned-desktop-notes' } });
+    await queue.drain(true);
+    const secondCommand = jest.mocked(s.transport.send).mock.calls.map(([command]) => command).find(command => command.operationId === second.id);
+    expect(secondCommand?.kind).toBe('update');
+    if (secondCommand?.kind !== 'update') return;
+    const address = JSON.stringify(['preachDates', date.id, date.createdAt]);
+    const observed = secondCommand.sermonTextOpenings?.[address] ?? secondCommand.sermonTextObservedRevision;
+    expect(observed).toBe(1);
+    if (clock === 'clocked') expect(secondCommand.preachDateFieldActions?.notes).toEqual({
+      rowId: date.id, rowCreatedAt: date.createdAt, observedRevision: 1, time,
+    });
+  });
+
   it('never stamps an inferred church as a choice when only the city was edited', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

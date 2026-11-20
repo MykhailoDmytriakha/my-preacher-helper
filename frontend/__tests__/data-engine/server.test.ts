@@ -2575,6 +2575,136 @@ describe('transactional DataEngine server', () => {
     }
   });
 
+  it.each([
+    { scenario: 'earlier action', offset: 20, delayed: 'Earlier offline notes', kind: 'acknowledged', winner: 'Original notes' },
+    { scenario: 'later action', offset: 80, delayed: 'Later offline notes', kind: 'acknowledged', winner: 'Later offline notes' },
+    { scenario: 'overlapping clocks', offset: 65, delayed: 'Earlier offline notes', kind: 'conflict', winner: 'Original notes' },
+    { scenario: 'legacy first delivery', offset: null, delayed: 'Earlier offline notes', kind: 'conflict', winner: 'Original notes' },
+    { scenario: 'legacy first delivery clearing notes', offset: null, delayed: '', kind: 'conflict', winner: 'Original notes' },
+  ])('protects returned preaching date notes on $scenario', async ({ offset, delayed, kind, winner }) => {
+    const owner = 'owner-1';
+    const row = { id: 'preaching-row', date: '2026-11-20', church: { id: 'church-id', name: 'Grace Church' },
+      notes: 'Original notes', createdAt: '2026-11-18T12:00:00.000Z' };
+    const creation = create('preach-notes-generation');
+    if (creation.kind !== 'create') throw Error('Expected creation');
+    const opened = await processCommand(owner, { ...creation, value: { ...creation.value, preachDates: [row] } });
+    if (opened.kind !== 'acknowledged') throw Error('Could not create the sermon');
+
+    const write = (basis: typeof opened.snapshot, operationId: string, after: string, at: number | null) => {
+      const { command } = prepareDomainCommand(owner, operationId, basis, {
+        ...basis.value, preachDates: [{ ...row, notes: after }],
+      });
+      if (command?.kind !== 'update') throw Error('Expected a preaching date update');
+      if (at === null) {
+        const { sermonTextObservedRevision: _proof, ...legacy } = command;
+        return legacy;
+      }
+      return { ...command, preachDateFieldActions: { notes: {
+        rowId: row.id, rowCreatedAt: row.createdAt, observedRevision: basis.metadata!.revision,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+      } } };
+    };
+    const latePhone = write(opened.snapshot, 'phone-offline-notes', delayed, offset);
+    const laptopEdit = await processCommand(owner, write(opened.snapshot, 'laptop-later-notes', 'Edited notes', 40));
+    if (laptopEdit.kind !== 'acknowledged') throw Error('Expected the later edit to be accepted');
+    const returned = await processCommand(owner, write(laptopEdit.snapshot, 'laptop-returns-notes', row.notes, 60));
+    expect(returned.kind).toBe('acknowledged');
+
+    const delivered = await processCommand(owner, latePhone);
+    expect(delivered).toMatchObject({ kind, snapshot: { value: { preachDates: [{ ...row, notes: winner }] } } });
+    expect((await readDocument(owner, resource)).value?.preachDates).toMatchObject([{ ...row, notes: winner }]);
+    if (kind === 'conflict') {
+      expect(delivered).toMatchObject({ conflicts: [{ path: ['preachDates', 'id:preaching-row', 'notes'],
+        mine: { exists: true, value: delayed }, theirs: { exists: true, value: row.notes } }] });
+    } else {
+      const displaced = winner === delayed ? row.notes : delayed;
+      const history = await listPreachDateFieldHistory(owner, resource.id, 'preach-notes-generation');
+      expect(history.entries).toEqual([expect.objectContaining({ fields: [expect.objectContaining({
+        field: 'notes', rowId: row.id, value: displaced,
+      })] })]);
+    }
+  });
+
+  it('replays a large preaching date notes comparison with both versions intact', async () => {
+    const owner = 'owner-1';
+    const notes = 'a'.repeat(350_000);
+    const phoneNotes = 'b'.repeat(350_000);
+    const row = { id: 'date', date: '2026-11-20', church: { id: 'church', name: 'Church' },
+      notes, createdAt: '2026-11-18T12:00:00.000Z' };
+    const creation = create('large-preach-notes');
+    if (creation.kind !== 'create') throw Error('Expected creation');
+    const opening = await processCommand(owner, { ...creation, value: { ...creation.value, preachDates: [row] } });
+    if (opening.kind !== 'acknowledged') throw Error('Could not create the sermon');
+    const write = (basis: typeof opening.snapshot, operationId: string, after: string) => prepareDomainCommand(owner, operationId, basis, {
+      ...basis.value, preachDates: [{ ...row, notes: after }],
+    }).command;
+    const delayed = write(opening.snapshot, 'delayed-large-notes', phoneNotes);
+    const interim = await processCommand(owner, write(opening.snapshot, 'edit-after-phone', 'Intermediate words'));
+    if (interim.kind !== 'acknowledged') throw Error('Could not write the intermediate words');
+    expect((await processCommand(owner, write(interim.snapshot, 'return-after-phone', notes))).kind).toBe('acknowledged');
+
+    const comparison = await processCommand(owner, delayed);
+    expect(comparison.kind).toBe('conflict');
+    if (comparison.kind !== 'conflict') return;
+    const [conflict] = comparison.conflicts;
+    expect(conflict.path).toEqual(['preachDates', 'id:date', 'notes']);
+    expect(conflict.mine.value).toBe(phoneNotes);
+    expect(conflict.theirs.value).toBe(notes);
+    expect(await processCommand(owner, delayed)).toEqual(comparison);
+  });
+
+  it.each([
+    { offset: 20, decision: 'preach-date-note-settled' },
+    { offset: 80, decision: 'preach-date-note-queued' },
+  ])('retains the $decision result when the audience edit needs a choice', async ({ offset, decision }) => {
+    const owner = 'owner-1';
+    const row = { id: 'date', date: '2026-11-20', church: { id: 'church', name: 'Church' },
+      notes: 'Opening notes', audience: 'Opening audience', createdAt: '2026-11-18T12:00:00.000Z' };
+    const creation = create('mixed-preach-notes');
+    if (creation.kind !== 'create') throw Error('Expected creation');
+    const opening = await processCommand(owner, { ...creation, value: { ...creation.value, preachDates: [row] } });
+    if (opening.kind !== 'acknowledged') throw Error('Could not create the sermon');
+    const write = (basis: typeof opening.snapshot, operationId: string, next: typeof row, at: number) => {
+      const { command } = prepareDomainCommand(owner, operationId, basis, { ...basis.value, preachDates: [next] });
+      if (command.kind !== 'update') throw Error('Expected a preaching date update');
+      return { ...command, preachDateFieldActions: { notes: {
+        rowId: row.id, rowCreatedAt: row.createdAt, observedRevision: basis.metadata!.revision,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+      } } };
+    };
+    const phone = write(opening.snapshot, 'mixed-phone', { ...row, notes: 'Phone notes', audience: 'Phone audience' }, offset);
+    const desktop = { ...row, audience: 'Desktop audience' };
+    const interim = await processCommand(owner, write(opening.snapshot, 'mixed-desktop-edit', { ...desktop, notes: 'Edited notes' }, 40));
+    if (interim.kind !== 'acknowledged') throw Error('Could not write the intermediate words');
+    expect((await processCommand(owner, write(interim.snapshot, 'mixed-desktop-return', desktop, 60))).kind).toBe('acknowledged');
+
+    const reply = await processCommand(owner, phone);
+    expect(reply).toMatchObject({ kind: 'conflict', snapshot: { value: { preachDates: [desktop] } },
+      conflicts: expect.arrayContaining([
+        expect.objectContaining({ path: ['preachDates', 'id:date', 'audience'] }),
+        expect.objectContaining({ path: ['preachDates', 'id:date', 'notes'], code: decision,
+          mine: { exists: true, value: 'Phone notes' }, theirs: { exists: true, value: row.notes } }),
+      ]),
+    });
+    const history = await listPreachDateFieldHistory(owner, resource.id, 'mixed-preach-notes');
+    if (decision === 'preach-date-note-settled') {
+      expect(history.entries).toEqual([expect.objectContaining({ fields: [expect.objectContaining({ field: 'notes', value: 'Phone notes' })] })]);
+    } else {
+      expect(history.entries).toEqual([]);
+    }
+    expect(await processCommand(owner, phone)).toEqual(reply);
+    if (reply.kind !== 'conflict' || decision !== 'preach-date-note-queued') return;
+
+    const laterDesktop = { ...desktop, notes: 'New words while reviewing' };
+    expect((await processCommand(owner, write(reply.snapshot, 'newer-desktop-notes', laterDesktop, 120))).kind).toBe('acknowledged');
+    const retried = write(reply.snapshot, 'resolve-audience-with-separate-note', { ...desktop, notes: 'Phone notes' }, 80);
+    retried.preachDateFieldActions.notes = phone.preachDateFieldActions.notes;
+    const accepted = await processCommand(owner, retried);
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preachDates: [laterDesktop] } } });
+    expect((await listPreachDateFieldHistory(owner, resource.id, 'mixed-preach-notes')).entries)
+      .toEqual([expect.objectContaining({ fields: [expect.objectContaining({ field: 'notes', value: 'Phone notes' })] })]);
+  });
+
   it.each([true, false])('keeps competing church identities together with clock evidence: %s', async timed => {
     const resource = { collection: 'sermons', id: 'sermon-church-choice' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };

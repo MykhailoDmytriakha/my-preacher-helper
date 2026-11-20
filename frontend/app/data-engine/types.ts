@@ -17,7 +17,7 @@ import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, Hom
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PrayerTextCapture, PrayerTextStamps } from './prayerTextAction';
-import type { PreachDateFieldActions } from './preachDateFieldAction';
+import type { PreachDateFieldWire } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { RowTextStamp } from './rowDetailAction';
 import type { AutosaveRowFieldActions } from './rowFieldAutosave';
@@ -251,7 +251,7 @@ export type DataCommand = CommandBase & (
       preachDateAction?: DatedRowActionEvidence;
       meetingDateAction?: DatedRowActionEvidence;
       groupMeetingFieldActions?: GroupMeetingFieldActions;
-      preachDateFieldActions?: PreachDateFieldActions;
+      preachDateFieldActions?: PreachDateFieldWire;
       preachStatusActions?: PreachStatusAction[];
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;

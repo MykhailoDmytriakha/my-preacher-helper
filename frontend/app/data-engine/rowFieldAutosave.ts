@@ -8,6 +8,7 @@ import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
+import { PREACH_DATE_FIELD_POLICY, PREACH_DATE_NOTE_QUEUED, preachDateNoteConflictId } from './preachDateFieldAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
@@ -26,9 +27,9 @@ import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action; reviewed?: true };
-type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts';
-type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions';
-export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts' | 'preachDateNotesDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions' | 'preachDateNotesActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title' | 'preach-date-notes';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string; titleOpening?: OutlineTitleOpening } | { rowIds: readonly string[] }
 );
@@ -60,6 +61,7 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(THOUGHT_TEXT_POLICY, 'text', 'thought-text', 'thoughtTextDrafts', 'thoughtTextActions'),
   autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
   autosaveTarget(THOUGHT_PLACEMENT_POLICY, 'outlineLocation', 'thought-placement', 'thoughtPlacementDrafts', 'thoughtPlacementActions'),
+  autosaveTarget(PREACH_DATE_FIELD_POLICY, 'notes', 'preach-date-notes', 'preachDateNotesDrafts', 'preachDateNotesActions'),
   ...['sermons', 'planTemplates'].map(collection => autosaveTarget(outlineTitlePolicy(collection)!, 'text', 'outline-title',
     'outlineTitleDrafts', 'outlineTitleActions')),
 ];
@@ -314,6 +316,25 @@ export function carryOutlineTitleActions(source: SessionCheckpoint, checkpoint: 
       && candidate.observedRevision <= metadata.revision && birthAt(confirmed.value, rowId, target) === candidate.rowCreatedAt);
     if (action) checkpoint.outlineTitleDrafts = { ...checkpoint.outlineTitleDrafts, [rowId]: { generation: metadata.generation, action } };
   }
+}
+
+/** Retry a known local winner with its original opening and action time after a sibling choice. */
+export function carryPreachDateNoteAction(checkpoint: SessionCheckpoint, request: CommitRequest | undefined): void {
+  const target = TARGETS.find(item => item.stamp === 'preach-date-notes')!;
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  const answer = request?.result;
+  if (!request || !metadata || metadata.deleted || answer?.kind !== 'conflict'
+    || request.baseline.resource.collection !== confirmed.resource.collection || request.baseline.resource.id !== confirmed.resource.id
+    || request.baseline.metadata?.generation !== metadata.generation) return;
+  const result = answer.conflicts.find(({ code, path }) => code === PREACH_DATE_NOTE_QUEUED && preachDateNoteConflictId(path));
+  const id = result && preachDateNoteConflictId(result.path);
+  const action = request.preachDateNotesActions?.find(item => item.rowId === id) ?? request.preachDateFieldActions?.notes;
+  if (!result || !id || !action?.time || action.rowId !== id || action.observedRevision > metadata.revision
+    || !equalValues(rowConflictValue(action.after), result.mine) || fieldAt(draft, id, target) !== action.after
+    || fieldAt(confirmed.value, id, target) === action.after || birthAt(draft, id, target) !== action.rowCreatedAt
+    || birthAt(confirmed.value, id, target) !== action.rowCreatedAt) return;
+  checkpoint.preachDateNotesDrafts = { [id]: { generation: metadata.generation, action } };
 }
 
 function uncaptured(checkpoint: SessionCheckpoint, target: Target) {

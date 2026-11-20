@@ -43,6 +43,7 @@ import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentCom
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
+import { unresolvedPreachDateNote } from './preachDateChoice';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -1464,7 +1465,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
-      const time = owner && (collection === 'series' || compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateNote) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time, titles));

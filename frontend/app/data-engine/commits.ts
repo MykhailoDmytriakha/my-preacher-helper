@@ -39,7 +39,7 @@ import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
 import { noteCorrectionOpening, oversizedNoteOpening, shortenedNoteContent } from './oversizedNoteCorrection';
-import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
+import { capturePreachDateFields, compactPreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, isValidIdentifier, mergeDocumentAfterAcknowledgement, MAX_RELATION_RESOURCES } from './protocol';
 import { compactRowTextStamps } from './rowDetailAction';
@@ -1618,7 +1618,7 @@ export class CommitQueue {
       if (meetingActions) command.groupMeetingFieldActions = meetingActions;
       if (record.sermonChurchFill && command.changes.some(change => change.path[0] === 'preachDates')) command.sermonChurchFill = record.sermonChurchFill;
       const preachActions = matchingRowDetailActions(command.changes, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY);
-      if (preachActions) command.preachDateFieldActions = preachActions;
+      if (preachActions) command.preachDateFieldActions = compactPreachDateFields(preachActions);
       const flags = record.serviceOrderFlagActions;
       if (flags && matchesServiceOrderStep(command.changes, SERVICE_ORDER_FLAG_TARGET, flags.flagged)) command.serviceOrderFlagActions = flags;
       const stepTitles = record.serviceOrderStepTitleActions;
@@ -1654,8 +1654,12 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, preachDateNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
       Object.assign(command, rowFields);
+      const retriedNote = preachDateNotesActions?.[0];
+      if (retriedNote && !command.preachDateFieldActions?.notes) {
+        command.preachDateFieldActions = { ...command.preachDateFieldActions, notes: compactRowTextStamps([retriedNote])[0] };
+      }
       // The two row arrays on the command already carry these exact values.
       for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions })) {
         if (actions) Object.assign(command, { [key]: compactRowTextStamps(actions) });

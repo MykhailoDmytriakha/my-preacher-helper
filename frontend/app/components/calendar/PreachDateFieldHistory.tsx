@@ -62,13 +62,13 @@ export function PreachDateFieldHistory({ owner, sermonId, generation, dates, dis
       {entries.length > 0 && <ul className="space-y-2">{entries.map(({ id, row, entry }) => {
         const date = parseDateOnlyAsLocalDate(row.date);
         const field = entry.field;
-        const label = t(field === 'status' ? 'calendar.preachStatusLabel' : field === 'audience' ? 'calendar.audience' : field === 'churchCity' ? 'calendar.city' : 'calendar.church');
-        const current = field === 'status' ? row.status ?? null : field === 'audience' ? row.audience ?? null : field === 'churchCity' ? row.church.city ?? null : row.church;
+        const label = t(field === 'status' ? 'calendar.preachStatusLabel' : field === 'churchCity' ? 'calendar.city' : `calendar.${field}`);
+        const current = field === 'churchCity' ? row.church.city ?? null : row[field] ?? null;
         const canRestore = field === 'status' ? canRestorePreachStatus(row, entry) : canRestorePreachDateField(row, entry);
         return <li key={id} className="space-y-1 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
           <p className="font-medium">{label} · {date ? format(date, 'PP', { locale: dateLocale }) : row.date || t('calendar.dateNotSet')}</p>
-          <p className="break-words">{display(entry.value, field)}</p>
-          <p className="break-words">{t('calendar.preachDetailKept', { value: display(entry.winnerValue, field) })}</p>
+          <p className="whitespace-pre-wrap break-words">{display(entry.value, field)}</p>
+          {'winnerValue' in entry && <p className="break-words">{t('calendar.preachDetailKept', { value: display(entry.winnerValue, field) })}</p>}
           <button type="button" className={link}
             disabled={disabled || !canRestore || serializeContent(current) === serializeContent(entry.value)}
             onClick={() => onRestore(entry, id)}>{t('calendar.useEarlierPreachDetail')}</button>
