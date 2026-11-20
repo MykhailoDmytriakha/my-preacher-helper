@@ -1,3 +1,4 @@
+import { withQueuedGroupScalarProofs } from '../documentFieldAction';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from '../groupFlowTitleAction';
 import { groupTextDecision, projectGroupTextDecisions, readGroupTextReview } from '../groupTextReview';
 import { readGroupFlowFieldConflict } from '../rowConflictDetails';
@@ -82,9 +83,36 @@ describe('group flow title comparison', () => {
     expect(pendingReview.remaining).toHaveLength(1);
     expect(projectGroupTextDecisions(pendingReview, [decision])?.templates).toMatchObject([{ title: template.title, content }]);
 
-    const queued = pendingReview.settled.flatMap(item => item.side === 'mine' ? [item.field] : []);
+    const queued = pendingReview.settled.flatMap(item => item.side === 'mine' && 'target' in item.field ? [item.field] : []);
     const evidence = withQueuedRowFieldProofs(checkpoint, queued);
     expect(evidence.groupBlockContentDrafts?.[template.id]?.action).toEqual(code === GROUP_FLOW_TEXT_QUEUED ? contentAction : undefined);
+  });
+
+  it.each([
+    { code: GROUP_FLOW_TEXT_SETTLED, winner: 'Saved description' },
+    { code: GROUP_FLOW_TEXT_QUEUED, winner: 'Offline description' },
+  ])('keeps the proved description after choosing the group title: $code', ({ code, winner }) => {
+    const initial = { ...opening, value: { ...value, title: 'Group', description: 'Original description' } };
+    const checkpoint = new DataSession(initial).checkpoint();
+    checkpoint.draft = { ...initial.value, title: 'Offline name', description: 'Offline description' };
+    const words = (text: string) => ({ exists: true as const, value: text });
+    const action = { before: words('Original description'), after: words('Offline description'), observedRevision: 1,
+      time: { earliestMs: 1_800_000_000_090, latestMs: 1_800_000_000_100 } };
+    checkpoint.pending.save = { generation: 1, value: checkpoint.draft, groupDescriptionAction: action };
+    checkpoint.remoteCandidate = { ...initial, value: { ...initial.value, description: 'Saved description' },
+      metadata: { ...metadata, revision: 4 } };
+    checkpoint.conflicts = [
+      { path: ['title'], base: words('Group'), mine: words('Offline name'), theirs: words('Group') },
+      { path: ['description'], code, base: action.before, mine: action.after, theirs: words('Saved description') },
+    ];
+    const review = readGroupTextReview(checkpoint)!;
+    expect(review.remaining).toHaveLength(1);
+    expect(review.remaining[0]).toMatchObject({ field: 'title', mine: 'Offline name', stored: 'Group' });
+    expect(projectGroupTextDecisions(review, [groupTextDecision(review.remaining[0], 'remote')]))
+      .toMatchObject({ title: 'Group', description: winner });
+    const queued = review.settled.flatMap(item => item.side === 'mine' && !('target' in item.field) ? [item.field] : []);
+    const retained = withQueuedGroupScalarProofs(checkpoint, queued);
+    expect(retained.groupDescriptionDraft?.action).toEqual(code === GROUP_FLOW_TEXT_QUEUED ? action : undefined);
   });
 
   it.each(['content', 'instanceNotes'] as const)('shows both exact versions of %s before resolving', leaf => {

@@ -11,6 +11,7 @@ import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matches
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
 import { PRAYER_TEXT_TARGETS } from './prayerTextAction';
+import { rowConflictValue } from './rowFieldAction';
 import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
 
@@ -778,6 +779,26 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
   if (!acceptsAutosaveField(before, target) || equalValues(before, nextValue)) return undefined;
   const observedRevision = prior?.observedRevision ?? pending?.[target.action]?.observedRevision ?? visible.confirmed.metadata!.revision;
   return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time } };
+}
+
+export function withQueuedGroupScalarProofs(source: SessionCheckpoint,
+  fields: readonly { path: string[]; before: string | null; mine: string | null }[]): SessionCheckpoint {
+  const { resource, metadata } = source.confirmed;
+  if (!fields.length || resource.collection !== 'groups' || !metadata
+    || metadata.generation !== source.remoteCandidate?.metadata?.generation) return source;
+  const retained = { ...source };
+  for (const target of GROUP_TIMED_FIELDS) {
+    const field = fields.find(choice => choice.path.length === 1 && choice.path[0] === target.field);
+    if (!field) continue;
+    const before = rowConflictValue(field.before), after = rowConflictValue(field.mine);
+    const action = Object.values(source.pending).map(request => request[target.action]).find(item =>
+      item?.time && equalValues(observedValue(item.before), before) && equalValues(observedValue(item.after), after));
+    const staged = retained[target.draft];
+    if (action && (!staged || !equalValues(observedValue(staged.action.after), after))) {
+      retained[target.draft] = { generation: metadata.generation, action };
+    }
+  }
+  return retained;
 }
 
 export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,

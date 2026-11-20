@@ -20,6 +20,7 @@ import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
 import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pendingStandaloneCreation, type PendingRemovalOpening } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
+import { withQueuedGroupScalarProofs } from './documentFieldAction';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { isManualSeriesDescriptionChoice, keepUncontestedDocumentText, readDocumentTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
@@ -1012,9 +1013,13 @@ export class EditorController {
             for (const { path, time } of kept) session.stageReviewedCouncilText(path, time ?? null);
           } else {
             const queued = group!.settled.flatMap(({ field, side }) => side === 'mine' ? [field] : []);
-            session.retainUnreviewedAutosaveActions(withQueuedRowFieldProofs(keptTail ? source : decided, queued), review.fields);
+            const scalars = queued.flatMap(field => !('target' in field) ? [field] : []);
+            const rows = queued.flatMap(field => 'target' in field ? [field] : []);
+            const retained = withQueuedGroupScalarProofs(keptTail ? source : decided, scalars);
+            session.retainUnreviewedAutosaveActions(withQueuedRowFieldProofs(retained, rows), review.fields);
             for (const { path, time } of kept) {
-              if (equalValues(path, ['description'])) session.stageReviewedGroupDescription(time ?? null);
+              const [field] = path;
+              if (path.length === 1 && (field === 'description' || field === 'title')) session.stageReviewedGroupField(field, time ?? null);
               else session.stageReviewedGroupFlowText([path], time ?? null);
             }
           }
@@ -1185,7 +1190,7 @@ export class EditorController {
             const reviewed = writeGroupFlowTextChoice(session.checkpoint().draft, groupText, 'mine');
             if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
             session.edit(reviewed);
-            if (groupText.field === 'description') session.stageReviewedGroupDescription(choiceTime ?? null);
+            if (groupText.field === 'description' || groupText.field === 'title') session.stageReviewedGroupField(groupText.field, choiceTime ?? null);
             else session.stageReviewedGroupFlowText([groupText.path], choiceTime ?? null);
           }
           if (councilSummary) {

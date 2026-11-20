@@ -30,7 +30,7 @@ import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, councilTopicT
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode } from './documentFieldAction';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
+import { isGroupScalarText, metadataAfterDocumentFields, orderDocumentFields, orderedGroupScalarText, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -741,6 +741,57 @@ function persistGroupFlowHistory(transaction: Transaction, command: DataCommand,
   persistRowTextHistory(transaction, command, snapshot, GROUP_STEP_NOTES_POLICY, groupFlowOrder?.notes);
 }
 
+function persistDocumentFieldHistory(transaction: Transaction, command: DataCommand, primarySnapshot: ResourceSnapshot,
+  fields: ReturnType<typeof orderDocumentFields>['fields']) {
+  const metadataHistory = [];
+  for (const { target, order } of fields) {
+    const displaced = order.displaced;
+    if (!displaced || !primarySnapshot.value) continue;
+    const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
+      : readField(primarySnapshot.value, documentFieldPath(target));
+    if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
+    if (target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target)) {
+      if (!primarySnapshot.metadata) continue;
+      const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
+      const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');
+      // Keep one exact version per history document and identify the winner by digest.
+      transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId) + '-' + target.field), {
+        generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+        fields: [{ field: target.field, value: displaced.value.value ?? null, winnerDigest,
+          actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime }],
+      });
+      continue;
+    }
+    if (target.field === 'color' || target.action === 'commentPlaceAction' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'accountPreferenceActions') {
+      metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
+        actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
+      continue;
+    }
+    const field = target.field === 'name' ? 'title' : target.field;
+    const destination = {
+      title: { collection: DOCUMENT_TITLE_HISTORY, winner: 'winnerTitle' },
+      status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
+      verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
+      church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
+      paragraph: { collection: COMMENT_KIND_HISTORY, winner: 'winnerParagraph' },
+      planMode: { collection: SERMON_PLAN_MODE_HISTORY, winner: 'winnerPlanMode' },
+      type: { collection: target.action === 'studyNoteTypeAction' ? STUDY_NOTE_TYPE_HISTORY : SERMON_GOAL_TYPE_HISTORY, winner: 'winnerType' },
+    }[field];
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
+    const { value, winnerValue, ...evidence } = displaced;
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      ...evidence, [field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
+    });
+  }
+  if (metadataHistory.length && primarySnapshot.metadata) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      fields: metadataHistory, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+    });
+  }
+}
+
 async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilTopicTextOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
@@ -967,53 +1018,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, THOUGHT_LOCK_POLICY, thoughtLockOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, THOUGHT_PLACEMENT_POLICY, thoughtPlacementOrder);
-  const metadataHistory = [];
-  for (const { target, order } of fieldOrder?.fields ?? []) {
-    const displaced = order.displaced;
-    if (!displaced || !primarySnapshot.value) continue;
-    const valueAtTarget = target.action === 'commentPlaceAction' ? documentFieldValue(primarySnapshot.value, target)
-      : readField(primarySnapshot.value, documentFieldPath(target));
-    if (!equalValues(valueAtTarget, displaced.winnerValue)) continue;
-    if (target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target)) {
-      if (!primarySnapshot.metadata) continue;
-      const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
-      const winnerDigest = createHash('sha256').update(commandFingerprint(displaced.winnerValue)).digest('base64url');
-      // Keep one exact version per history document and identify the winner by digest.
-      transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId) + '-' + target.field), {
-        generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
-        fields: [{ field: target.field, value: displaced.value.value ?? null, winnerDigest,
-          actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime }],
-      });
-      continue;
-    }
-    if (target.field === 'color' || target.action === 'commentPlaceAction' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
-      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'accountPreferenceActions') {
-      metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
-        actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
-      continue;
-    }
-    const field = target.field === 'name' ? 'title' : target.field;
-    const destination = {
-      title: { collection: DOCUMENT_TITLE_HISTORY, winner: 'winnerTitle' },
-      status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
-      verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
-      church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
-      paragraph: { collection: COMMENT_KIND_HISTORY, winner: 'winnerParagraph' },
-      planMode: { collection: SERMON_PLAN_MODE_HISTORY, winner: 'winnerPlanMode' },
-      type: { collection: target.action === 'studyNoteTypeAction' ? STUDY_NOTE_TYPE_HISTORY : SERMON_GOAL_TYPE_HISTORY, winner: 'winnerType' },
-    }[field];
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
-    const { value, winnerValue, ...evidence } = displaced;
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      ...evidence, [field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
-    });
-  }
-  if (metadataHistory.length && primarySnapshot.metadata) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      fields: metadataHistory, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
-    });
-  }
+  persistDocumentFieldHistory(transaction, command, primarySnapshot, fieldOrder?.fields ?? []);
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
   if (seriesMembershipWrites.length) persistSeriesMembershipWrites(transaction, owner, command.operationId, seriesMembershipWrites, effects, feedWrites);
   persistFeedWrites(transaction, feedWrites);
@@ -1255,7 +1260,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison
         ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled,
           ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...groupFlowOrder.settled,
-          ...orderedPreachDateFieldComparisons(command, preachingOrder)]
+          ...orderedGroupScalarText(command, current, fieldOrder), ...orderedPreachDateFieldComparisons(command, preachingOrder)]
         : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
         && orderedCommand.kind === 'update' && current.value) {
@@ -1313,6 +1318,9 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
       if (meetingOrder) persistRowDetailHistory(transaction, command, result.snapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
       persistGroupFlowHistory(transaction, command, result.snapshot, groupFlowOrder);
+      if (command.resource.collection === 'groups') {
+        persistDocumentFieldHistory(transaction, command, result.snapshot, (fieldOrder?.fields ?? []).filter(({ target }) => isGroupScalarText(target)));
+      }
       if (dateOrder?.target === MEETING_DATE_TARGET) persistDatedRowHistory(transaction, command, result.snapshot, dateOrder);
     }
     if (result.kind === 'conflict' && exegeticalOrder?.comparisons?.length) {

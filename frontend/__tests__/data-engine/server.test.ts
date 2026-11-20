@@ -7763,6 +7763,77 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { name: 'legacy rename', time: undefined },
+    { name: 'rename without an action clock', time: null },
+  ])('protects a restored group name from a delayed $name', async ({ time }) => {
+    const resource = { collection: 'groups', id: 'returned-group-name' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const original = 'Original group', temporary = 'Temporary group', offline = 'Title entered offline';
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: original, description: 'Keep original description', status: 'draft',
+        templates: [], flow: [], meetingDates: [], createdAt: now, updatedAt: now },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: string, after: string, observedRevision: number, clock?: null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      ...(clock !== undefined && { groupTitleAction: { before, after, observedRevision, time: clock } }),
+    });
+    expect(await processCommand(base.owner, rename('change', original, temporary, 1, null))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('restore', temporary, original, 2, null))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, { ...base, kind: 'update', operationId: 'separate', generation: 'seed',
+      changes: [{ path: ['description'], before: { exists: true, value: 'Keep original description' },
+        after: { exists: true, value: 'Later independent description' } }],
+    })).toMatchObject({ kind: 'acknowledged' });
+    const delayed = rename('delayed', original, offline, 1, time);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { title: original, description: 'Later independent description' } },
+      conflicts: [{ path: ['title'], mine: { value: offline }, theirs: { value: original } }],
+    });
+    expect(await processCommand(base.owner, delayed)).toEqual(result);
+    const revision = result.kind === 'conflict' ? result.snapshot.metadata!.revision : 0;
+    expect(await processCommand(base.owner, rename('choice', original, offline, revision, null)))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: offline, description: 'Later independent description' } } });
+  });
+
+  it.each([
+    { clock: 20, expected: 'group-flow-text-settled' },
+    { clock: 80, expected: 'group-flow-text-queued' },
+  ])('reports proved group description independently of a returned title at $clock', async ({ clock, expected }) => {
+    const resource = { collection: 'groups', id: 'group-name-and-description' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { title: 'Opening title', description: 'Original description' };
+    const changed = { title: 'Temporary title', description: 'Desktop description' };
+    const returned = { ...changed, title: opening.title };
+    const proposal = { title: 'Offline title', description: 'Phone description' };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, status: 'draft', templates: [], flow: [], meetingDates: [], ...opening, createdAt: now, updatedAt: now },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const save = (operationId: string, before: typeof opening, after: typeof opening, descriptionAt?: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: (['title', 'description'] as const).flatMap(field => before[field] === after[field] ? [] : [{
+        path: [field], before: { exists: true, value: before[field] }, after: { exists: true, value: after[field] },
+      }]),
+      ...(descriptionAt !== undefined && { groupDescriptionAction: {
+        observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + descriptionAt, latestMs: 1_800_000_000_010 + descriptionAt },
+      } }),
+    });
+    expect(await processCommand(base.owner, save('desktop', opening, changed, 40))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, save('return-title', changed, returned))).toMatchObject({ kind: 'acknowledged' });
+    const delayed = save('phone', opening, proposal, clock);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: returned } });
+    expect(result.kind === 'conflict' ? result.conflicts : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['title'] }),
+      expect.objectContaining({ path: ['description'], code: expected,
+        mine: { exists: true, value: proposal.description }, theirs: { exists: true, value: returned.description } }),
+    ]));
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/group-name-and-description/_metadataHistory/'));
+    expect(history).toHaveLength(clock < 40 ? 1 : 0);
+  });
+
+  it.each([
     { scenario: 'earlier offline title', offset: 20, title: 'Phone', winner: 'Desk', archived: 'Phone', kind: 'acknowledged' },
     { scenario: 'later offline title', offset: 60, title: 'Phone', winner: 'Phone', archived: 'Desk', kind: 'acknowledged' },
     { scenario: 'overlapping time', offset: 45, title: 'Phone', winner: 'Desk', archived: null, kind: 'conflict' },
@@ -8574,6 +8645,7 @@ describe('transactional DataEngine server', () => {
     { order: 'an earlier', time: 20, expected: 'acknowledged' },
     { order: 'a later', time: 60, expected: 'conflict' },
     { order: 'an unclocked', time: null, expected: 'conflict' },
+    { order: 'a legacy', time: undefined, expected: 'conflict' },
   ])('protects the title from a legacy rename after $order same-title edit', async ({ time, expected }) => {
     const resource = { collection: 'serviceOrders', id: 'title-reaffirmed' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
@@ -8585,10 +8657,10 @@ describe('transactional DataEngine server', () => {
       ...base, kind: 'update', generation: 'seed', operationId,
       changes: [{ path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
     });
-    const sameTitle = (operationId: string, offset: number | null) => ({
+    const sameTitle = (operationId: string, offset: number | null | undefined) => ({
       ...rename(operationId, 'Original', 'My title'),
-      serviceOrderTitleAction: { before: 'Original', after: 'My title', observedRevision: 1,
-        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } },
+      ...(offset !== undefined && { serviceOrderTitleAction: { before: 'Original', after: 'My title', observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } } }),
     });
     expect(await processCommand(base.owner, sameTitle('first', 40))).toMatchObject({ kind: 'acknowledged' });
     expect(await processCommand(base.owner, sameTitle('also-my-title', time))).toMatchObject({ kind: 'acknowledged' });

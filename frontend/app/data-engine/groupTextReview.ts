@@ -56,6 +56,10 @@ function findGroupRow(rows: DocumentData[string] | undefined, id: string): Docum
   return Array.isArray(rows) ? rows.find((row): row is DocumentData => object(row) && row.id === id) : undefined;
 }
 
+function returnedGroupTitle(conflict: ConflictDetail): boolean {
+  return equalValues(conflict.path, ['title']) && equalValues(conflict.base, conflict.theirs);
+}
+
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, remoteCandidate } = checkpoint;
   const review = readPrivateGroupTextReview(checkpoint) ?? readGroupTextReview(checkpoint);
@@ -91,8 +95,7 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
   // A return to the opening title is an explicit server comparison even though an ordinary value merge sees equality.
   if (confirmed.resource.collection === 'groups' && confirmed.metadata
     && confirmed.metadata.generation === remoteCandidate?.metadata?.generation && remoteCandidate.value && draft
-    && Object.keys(checkpoint.pending).length === 1 && conflict.path.length === 1 && conflict.path[0] === 'title'
-    && equalValues(conflict.base, conflict.theirs)) {
+    && Object.keys(checkpoint.pending).length === 1 && returnedGroupTitle(conflict)) {
     const { title: mine } = draft;
     const { title: stored } = remoteCandidate.value;
     if (typeof mine === 'string' && typeof stored === 'string' && mine !== stored) {
@@ -100,10 +103,10 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
         identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata.generation, remoteCandidate.metadata.revision, conflict.path, mine, stored]) };
     }
   }
-  const description = readGroupDescriptionChoice(checkpoint, draft);
-  if (description) return { field: description.field, mine: description.mine, stored: description.stored,
+  const scalar = readGroupScalarTextChoice(checkpoint, draft);
+  if (scalar) return { field: scalar.field, mine: scalar.mine, stored: scalar.stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.generation, remoteCandidate?.metadata?.revision,
-      description.path, description.mine, description.stored]) };
+      scalar.path, scalar.mine, scalar.stored]) };
   const versions = groupFlowFieldVersions(checkpoint, draft);
   if (!versions || versions.mine === versions.stored || !draft || !confirmed.value || !remoteCandidate) return undefined;
   const { field, target, id, path, before, mine, stored } = versions;
@@ -119,15 +122,19 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
 }
 
-type DescriptionChoice = GroupScalar & { field: 'description' };
+type ScalarTextChoice = GroupScalar & { field: 'description' | 'title' };
 
-function readGroupDescriptionChoice(checkpoint: SessionCheckpoint, draft: DocumentData | null): DescriptionChoice | undefined {
+function readGroupScalarTextChoice(checkpoint: SessionCheckpoint, draft: DocumentData | null): ScalarTextChoice | undefined {
   const { confirmed, remoteCandidate, conflicts, pending } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate.metadata?.generation
-    || Object.keys(pending).length !== 1 || conflicts.length !== 1 || !equalValues(conflicts[0].path, ['description'])) return;
-  const field = textAt({ ...checkpoint, draft }, conflicts[0].path);
-  if (field?.field === 'description' && field.mine !== field.stored) return { ...field, field: 'description' };
+    || Object.keys(pending).length !== 1 || conflicts.length !== 1) return;
+  const [conflict] = conflicts;
+  const field = textAt({ ...checkpoint, draft }, conflict.path);
+  if ((field?.field === 'description' || (field?.field === 'title' && returnedGroupTitle(conflict)))
+    && 'before' in field && field.mine !== field.stored) {
+    return { ...field, field: field.field };
+  }
 }
 
 function isGroupRowText(field: string | undefined) {
@@ -141,14 +148,14 @@ function readGroupRowTextChoice(checkpoint: SessionCheckpoint, draft: DocumentDa
 
 export function readGroupFlowTextChoice(checkpoint: SessionCheckpoint, draft = checkpoint.draft) {
   if (checkpoint.conflicts.length !== 1) return undefined;
-  return readGroupDescriptionChoice(checkpoint, draft) ?? readGroupRowTextChoice(checkpoint, draft);
+  return readGroupScalarTextChoice(checkpoint, draft) ?? readGroupRowTextChoice(checkpoint, draft);
 }
 
 /** Replace only the compared text on the exact block or step it belonged to. */
-export function writeGroupFlowTextChoice(value: DocumentData | null, choice: NonNullable<ReturnType<typeof readGroupFlowTextChoice>>,
+export function writeGroupFlowTextChoice(value: DocumentData | null, choice: GroupScalar | RowText,
   side: 'before' | 'mine' | 'stored'): DocumentData | undefined {
   if (!value) return undefined;
-  if (choice.field === 'description') return writeGroupScalarChoice(value, choice, side);
+  if (!('target' in choice)) return writeGroupScalarChoice(value, choice, side);
   const { target, birthTarget, birth, id } = choice;
   if (existingRowField(value[target.field], id, birthTarget) !== birth
     || existingRowField(value[target.field], id, target) === undefined) return undefined;
@@ -279,13 +286,13 @@ export function readGroupTextReview(source: SessionCheckpoint) {
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate.metadata?.generation
     || !requestId || !conflicts.length || groupTextReview?.separateDraft
     || (groupTextReview && groupTextReview.requestId !== requestId)) return undefined;
-  const settled = new Map<string, { field: RowText; side: 'mine' | 'stored' }>();
+  const settled = new Map<string, { field: GroupScalar | RowText; side: 'mine' | 'stored' }>();
   let proposed = draft;
   for (const conflict of conflicts) {
     const side = conflict.code === GROUP_FLOW_TEXT_SETTLED ? 'stored' : conflict.code === GROUP_FLOW_TEXT_QUEUED ? 'mine' : undefined;
     if (!side) continue;
-    const field = groupFlowFieldVersions(checkpoint, draft, conflict.path);
-    if (!field || !equalValues(conflict.base, rowConflictValue(field.before))
+    const field = textAt(checkpoint, conflict.path);
+    if (!field || !('before' in field) || !equalValues(conflict.base, rowConflictValue(field.before))
       || !equalValues(conflict.mine, rowConflictValue(field.mine))) continue;
     settled.set(JSON.stringify(conflict.path), { field, side });
     if (side === 'stored') {
@@ -309,8 +316,8 @@ export function readGroupTextReview(source: SessionCheckpoint) {
     return !Array.isArray(rows) || rows.some(row => object(row) && row.id === id)
       || merged.conflicts.some(conflict => equalValues(conflict.path, path.slice(0, 2)));
   }).map(path => removed.find(item => equalValues(item.path, path)) ?? textAt(checkpoint, path));
-  const submittedDescription = conflicts.some(conflict => equalValues(conflict.path, ['description']));
-  if (fields.some(field => !field) || (!groupTextReview && !submittedDescription && !settled.size
+  const submittedScalarText = conflicts.some(conflict => equalValues(conflict.path, ['description']) || returnedGroupTitle(conflict));
+  if (fields.some(field => !field) || (!groupTextReview && !submittedScalarText && !settled.size
     && !fields.some(field => isGroupRowText(field?.field)))) return undefined;
   const differing = fields.filter((field): field is GroupText => Boolean(field && (!('before' in field) || field.mine !== field.stored)));
   const decisions = (groupTextReview?.decisions ?? []).filter(decision => differing.some(field =>

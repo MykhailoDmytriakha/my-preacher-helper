@@ -1362,7 +1362,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       const action = options?.action;
       const time = action && owner ? actionClock.capture(owner) : undefined;
       const field = action === 'council-date' ? 'date' : action === 'group-status' ? 'status' : action === 'group-description' ? 'description' : 'title';
-      const observeWithoutClock = owner && (action === 'council-title' || action === 'council-date' || action === 'group-description');
+      const observeWithoutClock = owner && (action === 'council-title' || action === 'council-date'
+        || action === 'group-title' || action === 'group-description');
       let refused: { error: unknown } | null = null;
       return run(editor => {
         const live = editor.getState().checkpoint, shown = current?.state.checkpoint;

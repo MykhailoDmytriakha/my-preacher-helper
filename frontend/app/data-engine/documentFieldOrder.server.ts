@@ -11,6 +11,7 @@ import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.
 import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_REPEATED_WORDS } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
+import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 
@@ -65,8 +66,11 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
   return (past?.length ?? 0) < MAX_FIELD_OPENINGS ? [...past ?? [], digest] : null;
 }
 
+const tracksTitleReturns = (target: DocumentFieldTarget) =>
+  target.action === 'serviceOrderTitleAction' || target.action === 'groupTitleAction';
+
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  target.action === 'serviceOrderTitleAction' || target.action === 'sermonThesisFieldActions'
+  tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
     || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
@@ -167,7 +171,7 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
     if (order < 0) return { command, previous };
     return { command, stamp: order > 0 ? action.time : null,
       ...(!order && repeatedWords && { acknowledgedListChoice: true }),
-      ...((target.action === 'sermonPreparationTextActions' || target.action === 'serviceOrderTitleAction') && { reaffirmedOpening: true }) };
+      ...((target.action === 'sermonPreparationTextActions' || tracksTitleReturns(target)) && { reaffirmedOpening: true }) };
   }
   if (!order || !time || !action.time) {
     const needsReview = repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
@@ -217,6 +221,10 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   // The study-note page sends no proof of the text it saw yet; until it does (BUG-20261118-note-page-codex-fixes-wait-for-engine-session)
   // an unproven note or comment text keeps the plain base check, as before this rule. A text sent with its proof
   // (the comment window, when it has one) is ordered by the action above.
+  if (!action && tracksTitleReturns(target) && acceptsDocumentField(change.before, target)
+    && !sameFieldOpening(stored, change.before, target) && equalValues(change.after, stored)) {
+    return { command, stamp: null, reaffirmedOpening: true };
+  }
   if (!action && tracksOpeningReturns(target) && target.action !== 'studyNoteContentAction' && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot distinguish a restored value from an untouched opening.
@@ -328,6 +336,25 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
     return { target, order };
   });
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
+}
+
+export function isGroupScalarText(target: DocumentFieldTarget): boolean {
+  return target.action === 'groupDescriptionAction' || target.action === 'groupTitleAction';
+}
+
+export function orderedGroupScalarText(command: DataCommand, current: ResourceSnapshot,
+  orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
+  if (command.kind !== 'update' || command.resource.collection !== 'groups') return [];
+  return orders.fields.flatMap(({ target, order }) => {
+    if (!order.displaced || !isGroupScalarText(target)) return [];
+    const change = documentFieldChange(command.changes, target);
+    const stored = documentFieldValue(current.value, target);
+    if (!change || !stored) return [];
+    const { value, winnerValue } = order.displaced;
+    const code = equalValues(stored, winnerValue) && equalValues(change.after, value) ? GROUP_FLOW_TEXT_SETTLED
+      : equalValues(stored, value) && equalValues(change.after, winnerValue) ? GROUP_FLOW_TEXT_QUEUED : undefined;
+    return code ? [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }] : [];
+  });
 }
 
 export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, fields?: ReturnType<typeof orderDocumentFields>) {

@@ -845,7 +845,7 @@ export class DataSession {
       this.stageOutlineReviewTitles(titles, choiceTime);
       if (reviewingRows) this.stageReviewedGroupFlowText(this.state.conflicts.filter(issue => issue.code === UNREADABLE_ROW_PROOF).map(issue => issue.path), choiceTime);
       if (reviewingUnreadableProof && this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF
-        && equalValues(conflict.path, ['description']))) this.stageReviewedGroupDescription(choiceTime);
+        && equalValues(conflict.path, ['description']))) this.stageReviewedGroupField('description', choiceTime);
     }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
@@ -881,11 +881,11 @@ export class DataSession {
     stageReviewedGroupFlowText(this.state, paths, time);
   }
 
-  stageReviewedGroupDescription(time: ActionTime | null): void {
-    const target = autosaveFieldTargets(this.state.confirmed.resource.collection).find(field => field.field === 'description');
+  stageReviewedGroupField(field: 'description' | 'title', time: ActionTime | null): void {
+    const target = autosaveFieldTargets(this.state.confirmed.resource.collection).find(candidate => candidate.field === field);
     if (!target) return;
     const confirmed = { ...this.state, draft: this.state.confirmed.value };
-    const action = stageAutosaveField(confirmed, this.state.draft, undefined, target, { field: 'description', time });
+    const action = stageAutosaveField(confirmed, this.state.draft, undefined, target, { field, time });
     if (action) this.state[target.draft] = action;
   }
 

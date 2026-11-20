@@ -10077,3 +10077,12 @@ Heart matters → Brothers’ council → a council → edit a section. A legacy
 Three server cases failed before the fixes. Final engine and council Jest passed 4,221 tests in 178 suites with 15 skipped. Two mounted editor scenarios verified both orders of the title during an explanation choice. TypeScript, scoped ESLint with zero errors and independent source review passed. Five hidden Chrome scenarios in local Auth and Firestore verified both buttons, both directions of the mixed save and the result after reload. Evidence is in `artifacts/action-chronology-356/council-section-title-20261120/verification.md` in the local case.
 
 After authorized deployment, use a disposable council and two short QA sessions. Rename a section offline, then change and return its title in the other session. Save a different explanation. Reconnect and verify the proved title or compare the two titles. When only the explanation is disputed, select it and verify the title and independent section after reload. Close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Preserve a restored group name
+
+Groups → a group → the name in its header. A legacy request could replace a restored name. A cold browser now retains its observed name and revision without assigning a time. A repeated legacy proposal can make an opening ambiguous without gaining authority as a causal predecessor. The same legacy protection applies to the service order title. When a group description already has a proved order, its result and the original proof of a queued winner survive the name choice.
+
+The server regressions reproduced the old overwrites before the fix. Final engine and group Jest passed 4,362 tests in 187 suites with 15 skipped. TypeScript, scoped ESLint with zero errors and independent source review passed. Four hidden Chrome scenarios used local Auth and Firestore and verified both buttons, the cold action, both chronology directions for a compound name and description save, and the meeting after reload. Evidence is in `artifacts/action-chronology-356/group-name-20261120/verification.md` in the local case.
+
+After authorized deployment, use two short sessions on a disposable group with a meeting. Rename the group offline. Change and return the name in the other session and save a separate description. Reconnect. Verify the proved later title or select an available comparison. Reopen the group and verify the name, description and meeting before closing both sessions.
