@@ -9,8 +9,8 @@ import type { RowDetailActions, RowDetailObservation, RowDetailPolicy } from './
 import type { RowValue } from './rowFieldAction';
 import type { DocumentData, FieldChange, ResourceSnapshot } from './types';
 
-export type RowDetailCaptures<Field extends string, Value extends RowValue> = Partial<Record<Field, {
-  rowId: string; rowCreatedAt: string; after: Value; time: ActionTime;
+export type RowDetailCaptures<Field extends string, Value extends RowValue, Time extends ActionTime | null = ActionTime> = Partial<Record<Field, {
+  rowId: string; rowCreatedAt: string; after: Value; time: Time;
 }>>;
 
 export function knownRowDetailPredecessor<Field extends string, Value extends RowValue>(predecessor: CommitRequest | undefined,
@@ -33,9 +33,9 @@ export function knownRowDetailPredecessor<Field extends string, Value extends Ro
   }
 }
 
-export function captureRowDetailActions<Field extends string, Value extends RowValue>(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
-  draft: DocumentData | null, captures: RowDetailCaptures<Field, Value> | undefined, records: readonly CommitRequest[],
-  policy: RowDetailPolicy<Field, Value>, actionsFor: (request: CommitRequest) => RowDetailActions<Field, Value> | undefined): RowDetailActions<Field, Value> | undefined {
+export function captureRowDetailActions<Field extends string, Value extends RowValue, Time extends ActionTime | null>(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
+  draft: DocumentData | null, captures: RowDetailCaptures<Field, Value, Time> | undefined, records: readonly CommitRequest[],
+  policy: RowDetailPolicy<Field, Value>, actionsFor: (request: CommitRequest) => RowDetailActions<Field, Value, Time> | undefined): RowDetailActions<Field, Value, Time> | undefined {
   if (!captures || baseline.resource.collection !== policy.collection || !baseline.metadata || baseline.metadata.deleted) return undefined;
   const { revision: observedRevision } = baseline.metadata;
   const ancestor = predecessor ? predecessor.value : baseline.value;
@@ -44,32 +44,32 @@ export function captureRowDetailActions<Field extends string, Value extends RowV
     const capture = captures[field];
     if (!object(capture) || !boundedRowId(capture.rowId)) return [];
     const { rowId } = capture;
-    const time = boundedActionTime(capture.time);
+    const time = capture.time === null && policy.allowUnclocked ? null : boundedActionTime(capture.time);
     const target = policy.target(field);
     const beforeRows = ancestor?.[target.field], afterRows = draft?.[target.field];
     const before = existingRowField(beforeRows, rowId, target), after = existingRowField(afterRows, rowId, target);
     const rowCreatedAt = existingRowField(beforeRows, rowId, policy.birth);
     const scopes = policy.scopes?.(beforeRows, field);
     const scope = scopes?.get(rowId);
-    if (!time || before === undefined || after === undefined || equalValues(before, after) || !equalValues(after, capture.after) || !rowCreatedAt
+    if (time === undefined || before === undefined || after === undefined || equalValues(before, after) || !equalValues(after, capture.after) || !rowCreatedAt
       || rowCreatedAt !== capture.rowCreatedAt || rowCreatedAt !== existingRowField(afterRows, rowId, policy.birth)
       || (scopes && (scope === undefined || !equalValues(scope, policy.scopes?.(afterRows, field)?.get(rowId))))) return [];
     const predecessorOperationId = knownRowDetailPredecessor(predecessor, requests, baseline, policy, request => actionsFor(request)?.[field], field, rowId, rowCreatedAt, before, scope);
     return [[field, { rowId, rowCreatedAt, before, after, time, observedRevision,
       ...(predecessorOperationId && { predecessorOperationId }) }]] as const;
   });
-  return actions.length ? Object.fromEntries(actions) as RowDetailActions<Field, Value> : undefined;
+  return actions.length ? Object.fromEntries(actions) as RowDetailActions<Field, Value, Time> : undefined;
 }
 
-export function matchingRowDetailActions<Field extends string, Value extends RowValue>(changes: FieldChange[],
-  actions: RowDetailActions<Field, Value> | undefined, policy: RowDetailPolicy<Field, Value>): RowDetailActions<Field, Value> | undefined {
+export function matchingRowDetailActions<Field extends string, Value extends RowValue, Time extends ActionTime | null>(changes: FieldChange[],
+  actions: RowDetailActions<Field, Value, Time> | undefined, policy: RowDetailPolicy<Field, Value>): RowDetailActions<Field, Value, Time> | undefined {
   if (!actions) return undefined;
   const matching = policy.fields.flatMap(field => {
     const action = actions[field];
     return action && matchesRowDetailBirth(changes, action, policy.birth) && matchesRowAction(changes, action, policy.target(field))
       ? [[field, action]] as const : [];
   });
-  return matching.length ? Object.fromEntries(matching) as RowDetailActions<Field, Value> : undefined;
+  return matching.length ? Object.fromEntries(matching) as RowDetailActions<Field, Value, Time> : undefined;
 }
 
 export function pendingRowDetailRebases<Field extends string, Value extends RowValue>(record: CommitRequest,

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react';
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { EnginePreachDateChips } from '@/components/calendar/EnginePreachDateChips';
+import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
@@ -55,6 +56,24 @@ it('stages fields and merges another remote row in one command', async () => {
   await save(); await deliver(harness); expect(dates(harness)).toMatchObject([{ id: 'first', notes: 'Mine' }, { id: 'second', notes: 'Remote sibling' }]);
   expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
 });
+it('saves the displayed audience and its revision when the action clock is unavailable', async () => {
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(undefined);
+  const snapshot = { ...original, value: { ...original.value!, preachDates: [{ ...first, audience: 'Youth' }, second] } };
+  const { harness, view } = setup({ kind: 'edit', dateId: 'first' }, snapshot);
+  try {
+    await ready();
+    fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Leaders' } });
+    await save();
+    await deliver(harness);
+    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      preachDateFieldActions: { audience: { rowId: first.id, rowCreatedAt: first.createdAt,
+        before: 'Youth', after: 'Leaders', observedRevision: 1, time: null } },
+    }));
+  } finally {
+    view.unmount();
+    clock.mockRestore();
+  }
+});
 it.each(['local', 'remote'] as const)('resolves same-date conflict with explicit %s choice', async choice => {
   const { harness, view } = setup(); await ready(); editNotes('Mine'); await settle();
   harness.replace({ ...original, value: { ...original.value!, preachDates: [{ ...first, notes: 'Theirs' }, second] }, metadata: { ...original.metadata!, revision: 2 } });
@@ -65,6 +84,36 @@ it.each(['local', 'remote'] as const)('resolves same-date conflict with explicit
   fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
   if (choice === 'remote') fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
   await deliver(harness); expect(dates(harness)[0].notes).toBe(choice === 'local' ? 'Mine' : 'Theirs'); view.unmount();
+});
+it('records when the owner chooses their audience instead of the saved audience', async () => {
+  const saveTime = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_020 };
+  const choiceTime = { earliestMs: 1_800_000_000_110, latestMs: 1_800_000_000_120 };
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(saveTime);
+  const opening = { ...first, audience: 'Youth' };
+  const snapshot = { ...original, value: { ...original.value!, preachDates: [opening, second] } };
+  const { harness, view } = setup({ kind: 'edit', dateId: 'first' }, snapshot);
+  try {
+    await ready();
+    fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Leaders' } });
+    await settle();
+    harness.replace({ ...snapshot, value: { ...snapshot.value, preachDates: [{ ...opening, audience: 'Adults' }, second] },
+      metadata: { ...snapshot.metadata!, revision: 2 } });
+    await deliver(harness);
+    await save();
+    await deliver(harness);
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await ready();
+    clock.mockReturnValue(choiceTime);
+    fireEvent.click(await screen.findByRole('button', { name: 'dataSync.useLocalVersion' }));
+    await deliver(harness);
+    expect(harness.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      preachDateFieldActions: { audience: { rowId: opening.id, rowCreatedAt: opening.createdAt,
+        before: 'Adults', after: 'Leaders', observedRevision: 2, time: choiceTime } },
+    }));
+  } finally {
+    view.unmount();
+    clock.mockRestore();
+  }
 });
 it('recovers a new date and all fields without submitting or duplicating it', async () => {
   const { harness, Workspace, view } = setup({ kind: 'add', status: 'planned' }); await ready(); editNotes('Recovered note');

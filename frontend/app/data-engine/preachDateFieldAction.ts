@@ -8,12 +8,12 @@ import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { RowDetailActions, RowDetailHistoryEntry, RowDetailPolicy, RowTextStamp } from './rowDetailAction';
 import type { RowFieldTarget } from './rowFieldAction';
-import type { ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
+import type { ConflictDetail, DataCommand, DocumentData, Json, ResourceSnapshot } from './types';
 
 export const PREACH_DATE_FIELDS = ['audience', 'churchCity', 'church', 'notes'] as const;
 export type PreachDateField = typeof PREACH_DATE_FIELDS[number];
 export type PreachDateFieldValue = string | null | ChurchValue;
-export type PreachDateFieldActions = RowDetailActions<PreachDateField, PreachDateFieldValue>;
+export type PreachDateFieldActions = RowDetailActions<PreachDateField, PreachDateFieldValue, ActionTime | null>;
 export type PreachDateFieldWire = Omit<PreachDateFieldActions, 'notes'> & { notes?: RowTextStamp };
 type PreachDateNotesHistory = Omit<RowDetailHistoryEntry<'notes', string | null>, 'winnerValue'>;
 export type PreachDateFieldHistoryEntry = RowDetailHistoryEntry<Exclude<PreachDateField, 'notes'>, PreachDateFieldValue> | PreachDateNotesHistory;
@@ -49,7 +49,7 @@ export function preachDateFieldTarget(field: PreachDateField): RowFieldTarget<Pr
 /** A city belongs to the shown church. A replacement church includes its city as part of the selection. */
 export const PREACH_DATE_FIELD_POLICY: RowDetailPolicy<PreachDateField, PreachDateFieldValue> = {
   collection: 'sermons', fields: PREACH_DATE_FIELDS, birth: PREACH_ROW_BIRTH, target: preachDateFieldTarget,
-  proofs: 'preachDateFieldProofs', actions: 'preachDateFieldActions', history: '_preachDateFieldHistory',
+  proofs: 'preachDateFieldProofs', actions: 'preachDateFieldActions', history: '_preachDateFieldHistory', allowUnclocked: true,
   scopes: (rows, field) => field === 'churchCity'
     ? new Map([...existingRowFields(rows, CHURCH)].map(([id, church]) => [id, churchIdentity(church)]))
     : undefined,
@@ -62,9 +62,9 @@ export const PREACH_DATE_FIELD_POLICY: RowDetailPolicy<PreachDateField, PreachDa
 
 export type PreachDateFieldInput = { detail: PreachDateField; rowId: string };
 export type PreachDateFieldDraft = { rowId: string; rowCreatedAt: string; fields: Partial<Record<PreachDateField, true>> };
-export type PreachDateFieldSave = PreachDateFieldDraft & { time: ActionTime };
+export type PreachDateFieldSave = PreachDateFieldDraft & { time: ActionTime | null };
 
-/** Persist authored fields with the draft. A confirmed manual Save supplies the clock. */
+/** Persist authored fields with the draft. A confirmed manual Save supplies the available action time. */
 export function stagePreachDateField(previous: PreachDateFieldDraft | undefined, input: PreachDateFieldInput,
   current: DocumentData, next: DocumentData): PreachDateFieldDraft | undefined {
   const { rowId, detail } = input;
@@ -84,7 +84,7 @@ export function capturePreachDateFields(baseline: ResourceSnapshot, predecessor:
   const { rowId, rowCreatedAt, fields, time } = saved;
   const beforeRows = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const afterRows = draft?.preachDates;
-  const captures: RowDetailCaptures<PreachDateField, PreachDateFieldValue> = {};
+  const captures: RowDetailCaptures<PreachDateField, PreachDateFieldValue, ActionTime | null> = {};
   if (fields?.audience === true) {
     const after = existingRowField(afterRows, rowId, AUDIENCE);
     if (after !== undefined) captures.audience = { rowId, rowCreatedAt, time, after };
@@ -121,10 +121,31 @@ export function expandPreachDateNotes(command: Extract<DataCommand, { kind: 'upd
 
 export const PREACH_DATE_NOTE_SETTLED = 'preach-date-note-settled';
 export const PREACH_DATE_NOTE_QUEUED = 'preach-date-note-queued';
+export const PREACH_DATE_DETAIL_SETTLED = 'preach-date-detail-settled';
+export const PREACH_DATE_DETAIL_QUEUED = 'preach-date-detail-queued';
+
+export function preachDateDetailConflict(path: readonly string[]) {
+  const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
+  if (!rowId) return;
+  const field = PREACH_DATE_FIELDS.find(field => equalValues(path, rowConflictPath(rowId, preachDateFieldTarget(field))));
+  if (field) return { rowId, field };
+}
+
+export function orderedPreachDateFieldConflict({ path, code }: ConflictDetail) {
+  const detail = preachDateDetailConflict(path);
+  if (!detail) return;
+  const [settled, queued] = detail.field === 'notes' ? [PREACH_DATE_NOTE_SETTLED, PREACH_DATE_NOTE_QUEUED]
+    : [PREACH_DATE_DETAIL_SETTLED, PREACH_DATE_DETAIL_QUEUED];
+  if (code === settled || code === queued) return { ...detail, queued: code === queued };
+}
 
 export function preachDateNoteConflictId(path: readonly string[]): string | undefined {
   return path.length === 3 && path[0] === NOTES.field && path[1].startsWith('id:') && path[2] === NOTES.leaf
     ? path[1].slice(3) || undefined : undefined;
+}
+
+export function preachDateFieldScope(rows: Json | undefined, rowId: string, field: PreachDateField) {
+  return PREACH_DATE_FIELD_POLICY.scopes?.(rows, field)?.get(rowId);
 }
 
 export function samePreachDateRow(rowId: string, opening: DocumentData, current: DocumentData): boolean {
@@ -136,7 +157,7 @@ export function readPreachDateFieldVersions(path: readonly string[], mine: Docum
   const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
   if (!rowId || !samePreachDateRow(rowId, mine, stored)) return;
   const simple = path.length === 3 && path[0] === 'preachDates' && (path[2] === 'date' || path[2] === 'status') ? path[2] : undefined;
-  const field = simple ?? PREACH_DATE_FIELDS.find(name => equalValues(path, rowConflictPath(rowId, preachDateFieldTarget(name))));
+  const field = simple ?? preachDateDetailConflict(path)?.field;
   if (!field) return;
   const target: RowFieldTarget<PreachDateFieldValue> = field === 'date' || field === 'status'
     ? { field: 'preachDates', leaf: field, missing: null, accepts: (value): value is string | null => typeof value === 'string' || value === null }

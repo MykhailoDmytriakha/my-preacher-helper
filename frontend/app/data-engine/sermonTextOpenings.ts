@@ -1,5 +1,6 @@
 import { SECTION_KEYS } from '@/utils/outlineDnd';
 
+import { isChurchValue } from './churchFieldValue';
 import { equalValues, object, own } from './fieldValues';
 
 import type { CommandResult, DataCommand, DocumentData, FieldChange, FieldValue, Json } from './types';
@@ -7,7 +8,7 @@ import type { CommandResult, DataCommand, DocumentData, FieldChange, FieldValue,
 export const SERMON_TEXT_ROOTS = ['planText', 'outline', 'scratch', 'preachDates'] as const;
 export type SermonTextRoot = typeof SERMON_TEXT_ROOTS[number];
 export type SermonTextOpenings = Record<string, number | null>;
-type SermonTextLeaf = { key: string; path: string[]; value: FieldValue };
+type SermonTextLeaf = { key: string; path: string[]; value: FieldValue; churchIdentity?: string };
 type SermonTextChange = FieldChange & { key: string };
 export type CommittedSermonText = { operationId: string; changes: Pick<SermonTextChange, 'key' | 'path' | 'after'>[] };
 
@@ -37,13 +38,28 @@ function* outlineNotes(value: Json | undefined) {
   }
 }
 
+function* preachDateLeaves(value: Json | undefined): Generator<SermonTextLeaf> {
+  const root = 'preachDates';
+  for (const row of rows(value)) {
+    if (typeof row.id !== 'string' || typeof row.createdAt !== 'string') continue;
+    const path = [root, 'id:' + row.id];
+    const key = [root, row.id, row.createdAt];
+    yield { key: sermonTextKey(root, row.id, row.createdAt), path: [...path, 'notes'], value: text(row.notes) };
+    yield { key: JSON.stringify([...key, 'audience']), path: [...path, 'audience'], value: text(row.audience) };
+    if (!isChurchValue(row.church)) continue;
+    const identity = JSON.stringify([row.church.id, row.church.name]);
+    yield { key: JSON.stringify([...key, 'church']), path: [...path, 'church'], value: { exists: true, value: row.church }, churchIdentity: identity };
+    yield { key: JSON.stringify([...key, 'churchCity', identity]), path: [...path, 'church', 'city'], value: text(row.church.city) };
+  }
+}
+
 /** Identity follows outline moves. Ambiguous legacy IDs do not identify an editable leaf. */
 export function sermonTextLeaves(root: SermonTextRoot, value: Json | undefined): Map<string, SermonTextLeaf> {
   const leaves = new Map<string, SermonTextLeaf>();
   const seen = new Set<string>();
-  const add = (key: string, path: string[], value: FieldValue) => {
+  const add = (key: string, path: string[], value: FieldValue, churchIdentity?: string) => {
     if (seen.has(key)) leaves.delete(key);
-    else { seen.add(key); leaves.set(key, { key, path, value }); }
+    else { seen.add(key); leaves.set(key, { key, path, value, churchIdentity }); }
   };
   if (root === 'planText') {
     if (object(value)) {
@@ -54,10 +70,7 @@ export function sermonTextLeaves(root: SermonTextRoot, value: Json | undefined):
   } else if (root === 'outline') {
     for (const { id, path, note } of outlineNotes(value)) add(sermonTextKey(root, id), path, text(note));
   } else if (root === 'preachDates') {
-    for (const row of rows(value)) {
-      if (typeof row.id !== 'string' || typeof row.createdAt !== 'string') continue;
-      add(sermonTextKey(root, row.id, row.createdAt), [root, 'id:' + row.id, 'notes'], text(row.notes));
-    }
+    for (const leaf of preachDateLeaves(value)) add(leaf.key, leaf.path, leaf.value, leaf.churchIdentity);
   } else {
     for (const row of rows(value)) {
       if (typeof row.id !== 'string' || typeof row.createdAt !== 'string' || typeof row.text !== 'string') continue;
@@ -74,6 +87,7 @@ export function changedSermonText(root: SermonTextRoot, opening: Map<string, Ser
   for (const key of keys) {
     const before = opening.get(key), after = next.get(key);
     if (root !== 'planText' && (!before || (!after && !trackRemoval))) continue;
+    if (before?.churchIdentity !== undefined && before.churchIdentity === after?.churchIdentity) continue;
     const beforeText = before?.value ?? text(undefined), afterText = after?.value ?? text(undefined);
     if (!equalValues(beforeText, afterText)) changes.push({ key, path: (after ?? before)!.path, before: beforeText, after: afterText });
   }

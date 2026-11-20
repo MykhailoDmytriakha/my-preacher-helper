@@ -9,10 +9,10 @@ import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_NOTES_
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
-import { PREACH_DATE_FIELD_POLICY, PREACH_DATE_NOTE_QUEUED, preachDateNoteConflictId } from './preachDateFieldAction';
+import { orderedPreachDateFieldConflict, PREACH_DATE_FIELD_POLICY, preachDateFieldScope } from './preachDateFieldAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
-import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 import { THOUGHT_TEXT_POLICY } from './thoughtTextAction';
@@ -26,11 +26,11 @@ import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 
 type Value = string | number | boolean | null | DocumentData;
-type Action = RowDetailObservation<Value>;
+type Action = RowDetailObservation<Value> & { scope?: DocumentData };
 type Draft = { generation: string; action: Action; reviewed?: true };
-type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'councilTopicTextDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts' | 'preachDateNotesDrafts';
-type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'councilTopicTextActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions' | 'preachDateNotesActions';
-export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'council-topic-text' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title' | 'preach-date-notes';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'councilTopicTextDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts' | 'preachDateNotesDrafts' | 'preachDateAudienceDrafts' | 'preachDateCityDrafts' | 'preachDateChurchDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'councilTopicTextActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions' | 'preachDateNotesActions' | 'preachDateAudienceActions' | 'preachDateCityActions' | 'preachDateChurchActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'council-topic-text' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title' | 'preach-date-notes' | 'preach-date-audience' | 'preach-date-city' | 'preach-date-church';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string; titleOpening?: OutlineTitleOpening } | { rowIds: readonly string[] }
 );
@@ -39,14 +39,14 @@ export type AutosaveRowFieldActions = Partial<Record<ActionKey, Action[]>>;
 
 type Target = {
   stamp: RowFieldActionKind; draft: DraftKey; action: ActionKey; field: string; keepReselection: boolean;
-  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'acceptsRowId' | 'proofs' | 'actions' | 'history'>;
+  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'acceptsRowId' | 'scopes' | 'proofs' | 'actions' | 'history'>;
 };
 
 function autosaveTarget<Field extends string, Item extends Value>(policy: RowDetailPolicy<Field, Item>, field: Field,
   stamp: RowFieldActionKind, draft: DraftKey, action: ActionKey): Target {
-  const { collection, birth, proofs, actions, history, acceptsRowId } = policy;
+  const { collection, birth, proofs, actions, history, acceptsRowId, scopes } = policy;
   return { stamp, draft, action, field, keepReselection: Boolean(policy.allowUnchanged), policy: { collection, birth, proofs, actions, history, acceptsRowId,
-    fields: [field], target: () => policy.target(field) } };
+    fields: [field], target: () => policy.target(field), ...(stamp === 'preach-date-city' && scopes && { scopes: rows => scopes(rows, field) }) } };
 }
 
 const TARGETS: readonly Target[] = [
@@ -64,18 +64,26 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
   autosaveTarget(THOUGHT_PLACEMENT_POLICY, 'outlineLocation', 'thought-placement', 'thoughtPlacementDrafts', 'thoughtPlacementActions'),
   autosaveTarget(PREACH_DATE_FIELD_POLICY, 'notes', 'preach-date-notes', 'preachDateNotesDrafts', 'preachDateNotesActions'),
+  autosaveTarget(PREACH_DATE_FIELD_POLICY, 'audience', 'preach-date-audience', 'preachDateAudienceDrafts', 'preachDateAudienceActions'),
+  autosaveTarget(PREACH_DATE_FIELD_POLICY, 'churchCity', 'preach-date-city', 'preachDateCityDrafts', 'preachDateCityActions'),
+  autosaveTarget(PREACH_DATE_FIELD_POLICY, 'church', 'preach-date-church', 'preachDateChurchDrafts', 'preachDateChurchActions'),
   ...['sermons', 'planTemplates'].map(collection => autosaveTarget(outlineTitlePolicy(collection)!, 'text', 'outline-title',
     'outlineTitleDrafts', 'outlineTitleActions')),
 ];
 
 const targetsFor = (collection: string) => TARGETS.filter(target => target.policy.collection === collection);
+export const PREACH_DATE_REVIEW_FIELDS = ['preach-date-notes', 'preach-date-audience', 'preach-date-city', 'preach-date-church'] as const;
+const scopeAt = (rows: unknown, rowId: string, target: Target) => target.policy.scopes?.(rows, target.field)?.get(rowId);
+const matchesScope = (rows: unknown, action: Action, target: Target) =>
+  target.stamp !== 'preach-date-city' || (action.scope !== undefined && equalValues(action.scope, scopeAt(rows, action.rowId, target)));
+
 const fieldAt = (value: DocumentData | null | undefined, id: string, target: Target) =>
   existingRowField(value?.[target.policy.birth.field], id, target.policy.target(target.field));
 const birthAt = (value: DocumentData | null | undefined, id: string, target: Target) =>
   existingRowField(value?.[target.policy.birth.field], id, target.policy.birth);
 const sameCapture = (first: Action, second: Action) => first.rowId === second.rowId
   && first.rowCreatedAt === second.rowCreatedAt && equalValues(first.before, second.before) && equalValues(first.after, second.after)
-  && first.observedRevision === second.observedRevision && equalValues(first.time, second.time);
+  && first.observedRevision === second.observedRevision && equalValues(first.time, second.time) && equalValues(first.scope, second.scope);
 const isCaptured = (checkpoint: SessionCheckpoint, action: Action, target: Target) => Object.values(checkpoint.pending)
   .some(request => request[target.action]?.some(captured => sameCapture(action, captured)));
 
@@ -102,7 +110,9 @@ export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'con
     const action = proof.action;
     if (action.rowId !== id || !(target.policy.acceptsRowId ?? boundedRowId)(id)
       || typeof action.observedRevision !== 'number' || action.observedRevision > metadata.revision
-      || births.get(id) !== action.rowCreatedAt || !equalValues(values.get(id), action.after)) return false;
+      || births.get(id) !== action.rowCreatedAt || !equalValues(values.get(id), action.after)
+      || (target.stamp === 'preach-date-city' && (!object(action.scope)
+        || !equalValues(action.scope, scopeAt(draft[field.field], id, target))))) return false;
     // Placement and outline-title edits have separately validated frames that can differ
     // from the document field's value at the same revision.
     if (target.stamp === 'thought-placement' || target.stamp === 'outline-title') return true;
@@ -169,7 +179,8 @@ function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, 
   if (!metadata || metadata.deleted) return [];
   return Object.values(checkpoint[target.draft] ?? {}).filter(({ generation, action }) => generation === metadata.generation
     && action.observedRevision <= metadata.revision && equalValues(fieldAt(value, action.rowId, target), action.after)
-    && birthAt(value, action.rowId, target) === action.rowCreatedAt);
+    && birthAt(value, action.rowId, target) === action.rowCreatedAt
+    && matchesScope(value?.[target.policy.birth.field], action, target));
 }
 
 function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | null, visible: ShownCopy,
@@ -267,8 +278,10 @@ export function stageReviewedRowFields(checkpoint: SessionCheckpoint, paths: rea
       const rowCreatedAt = birthAt(confirmed.value, rowId, target);
       if (before === undefined || after === undefined || equalValues(before, after) || rowCreatedAt === undefined
         || birthAt(draft, rowId, target) !== rowCreatedAt) continue;
-      checkpoint[target.draft] = { ...checkpoint[target.draft],
-        [rowId]: { generation: metadata.generation, action: { rowId, rowCreatedAt, before, after, observedRevision: metadata.revision, time } } };
+      const scope = target.stamp === 'preach-date-city' ? scopeAt(confirmed.value?.[field.field], rowId, target) : undefined;
+      if (target.stamp === 'preach-date-city' && (!object(scope) || !equalValues(scope, scopeAt(draft[field.field], rowId, target)))) continue;
+      checkpoint[target.draft] = { ...checkpoint[target.draft], [rowId]: { generation: metadata.generation,
+        action: { rowId, rowCreatedAt, before, after, observedRevision: metadata.revision, time, ...(object(scope) && { scope }) } } };
     }
   }
 }
@@ -319,23 +332,30 @@ export function carryOutlineTitleActions(source: SessionCheckpoint, checkpoint: 
   }
 }
 
-/** Retry a known local winner with its original opening and action time after a sibling choice. */
-export function carryPreachDateNoteAction(checkpoint: SessionCheckpoint, request: CommitRequest | undefined): void {
-  const target = TARGETS.find(item => item.stamp === 'preach-date-notes')!;
+/** Retry a known local winner with its original opening and time after a sibling choice. */
+export function carryOrderedPreachDateFields(checkpoint: SessionCheckpoint, request: CommitRequest | undefined): void {
   const { confirmed, draft } = checkpoint;
   const metadata = confirmed.metadata;
   const answer = request?.result;
   if (!request || !metadata || metadata.deleted || answer?.kind !== 'conflict'
     || request.baseline.resource.collection !== confirmed.resource.collection || request.baseline.resource.id !== confirmed.resource.id
     || request.baseline.metadata?.generation !== metadata.generation) return;
-  const result = answer.conflicts.find(({ code, path }) => code === PREACH_DATE_NOTE_QUEUED && preachDateNoteConflictId(path));
-  const id = result && preachDateNoteConflictId(result.path);
-  const action = request.preachDateNotesActions?.find(item => item.rowId === id) ?? request.preachDateFieldActions?.notes;
-  if (!result || !id || !action?.time || action.rowId !== id || action.observedRevision > metadata.revision
-    || !equalValues(rowConflictValue(action.after), result.mine) || fieldAt(draft, id, target) !== action.after
-    || fieldAt(confirmed.value, id, target) === action.after || birthAt(draft, id, target) !== action.rowCreatedAt
-    || birthAt(confirmed.value, id, target) !== action.rowCreatedAt) return;
-  checkpoint.preachDateNotesDrafts = { [id]: { generation: metadata.generation, action } };
+  for (const conflict of answer.conflicts) {
+    const ordered = orderedPreachDateFieldConflict(conflict);
+    if (!ordered?.queued) continue;
+    const { rowId, field } = ordered;
+    const target = TARGETS.find(item => item.policy.birth.field === 'preachDates' && item.field === field)!;
+    const action = request[target.action]?.find(item => item.rowId === rowId) ?? request.preachDateFieldActions?.[field];
+    if (!action?.time || action.rowId !== rowId || action.observedRevision > metadata.revision
+      || !equalValues(rowConflictValue(action.after), conflict.mine) || !equalValues(fieldAt(draft, rowId, target), action.after)
+      || equalValues(fieldAt(confirmed.value, rowId, target), action.after) || birthAt(draft, rowId, target) !== action.rowCreatedAt
+      || birthAt(confirmed.value, rowId, target) !== action.rowCreatedAt) continue;
+    const opening = request.command?.kind === 'update' && request.command.changes.find(change => isRowChange(change, target.policy.target(field)));
+    const scope = preachDateFieldScope(opening ? opening.before.value : request.baseline.value?.preachDates, rowId, field);
+    const retry = { ...action, ...(object(scope) && { scope }) };
+    if (!matchesScope(draft?.preachDates, retry, target) || !matchesScope(confirmed.value?.preachDates, retry, target)) continue;
+    checkpoint[target.draft] = { ...checkpoint[target.draft], [rowId]: { generation: metadata.generation, action: retry } };
+  }
 }
 
 function uncaptured(checkpoint: SessionCheckpoint, target: Target) {
@@ -376,7 +396,8 @@ export function captureRowFields(checkpoint: SessionCheckpoint, baseline: Resour
     const manual = manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementIds, thoughtTextId);
     const autosavedIds = new Set(autosaved.map(action => action.rowId));
     const actions = [...autosaved, ...manual.filter(action => !autosavedIds.has(action.rowId))]
-      .filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
+      .filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt
+        && matchesScope(opening?.[target.policy.birth.field], action, target))
       .map(action => {
         const outcome = target.action === 'councilOutcomeActions';
         const policy: RowDetailPolicy<string, Value> = outcome
@@ -403,8 +424,11 @@ export function captureRowFields(checkpoint: SessionCheckpoint, baseline: Resour
 export function matchingRowFields(changes: FieldChange[], captured: AutosaveRowFieldActions, collection: string): AutosaveRowFieldActions {
   const result: AutosaveRowFieldActions = {};
   for (const target of targetsFor(collection)) {
+    const field = target.policy.target(target.field);
+    const change = target.stamp === 'preach-date-city' ? changes.find(change => isRowChange(change, field)) : undefined;
     const actions = captured[target.action]?.filter(action => matchesRowDetailBirth(changes, action, target.policy.birth)
-      && matchesRowAction(changes, action, target.policy.target(target.field)));
+      && matchesRowAction(changes, action, field) && matchesScope(change?.before.value, action, target)
+      && matchesScope(change?.after.value, action, target));
     if (actions?.length) result[target.action] = actions;
   }
   return result;
@@ -462,7 +486,8 @@ export function rowFieldAckAncestor(ancestor: DocumentData | null, accepted: Res
     for (const { action } of validDrafts(checkpoint, checkpoint.draft, target)) {
       const stored = fieldAt(accepted.value, action.rowId, target);
       if (stored !== undefined && equalValues(fieldAt(ancestor, action.rowId, target), action.before)
-        && birthAt(accepted.value, action.rowId, target) === action.rowCreatedAt) {
+        && birthAt(accepted.value, action.rowId, target) === action.rowCreatedAt
+        && matchesScope(rows, action, target) && matchesScope(accepted.value?.[field], action, target)) {
         rows = replaceExistingRowField(rows, action.rowId, stored, target.policy.target(target.field)) ?? rows;
       }
     }
@@ -477,7 +502,8 @@ export function sameAutosaveRowFieldCaptures(first: CommitRequest, second: Commi
 
 export function pendingAutosaveRowFieldRebases(record: CommitRequest) {
   return targetsFor(record.baseline.resource.collection).flatMap(target =>
-    (record[target.action] ?? []).flatMap(action => pendingRowDetailRebases(record, { [target.field]: action }, target.policy)));
+    (record[target.action] ?? []).flatMap(action => matchesScope(record.working.value?.[target.policy.birth.field], action, target)
+      ? pendingRowDetailRebases(record, { [target.field]: action }, target.policy) : []));
 }
 
 /** Keep the observed pair whole until the server can compare it with the accepted outline. */

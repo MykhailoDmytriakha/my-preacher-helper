@@ -45,8 +45,8 @@ import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentCom
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
-import { unresolvedPreachDateNote } from './preachDateChoice';
-import { preachDateNoteConflictId as dateNoteConflictId, readChangedPreachDateFieldVersions as changedDateFieldVersions } from './preachDateFieldAction';
+import { unresolvedPreachDateField } from './preachDateChoice';
+import { readChangedPreachDateFieldVersions as changedDateFieldVersions } from './preachDateFieldAction';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -110,7 +110,6 @@ export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof reb
 export function councilTopicTextId(...args: Parameters<typeof topicTextId>) { return topicTextId(...args); }
 export function replaceCouncilTopicText(...args: Parameters<typeof replaceTopicText>) { return replaceTopicText(...args); }
 export function readCouncilTopicTextComparison(checkpoint: SessionCheckpoint) { return councilTopicTextComparison(checkpoint); }
-export function preachDateNoteConflictId(path: readonly string[]) { return dateNoteConflictId(path); }
 export function readChangedPreachDateFieldVersions(...args: Parameters<typeof changedDateFieldVersions>) { return changedDateFieldVersions(...args); }
 
 export function readCouncilSummaryChoice(checkpoint: SessionCheckpoint) { return councilSummaryChoice(checkpoint); }
@@ -1474,7 +1473,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
-      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateNote) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;

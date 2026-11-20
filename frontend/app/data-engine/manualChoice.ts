@@ -16,10 +16,10 @@ import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
-import { chooseLocalPreachDateEdits, orderedPreachDateNote, preachDateNoteChoiceFrames } from './preachDateChoice';
+import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
 import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { carryOutlineTitleActions, carryPreachDateNoteAction, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
+import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -156,7 +156,7 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       const id = thoughtTextConflictId(path);
       return id && (!reviewed || !readThoughtTextConflict(id, reviewed, stored.value!));
     })) throw Object.assign(new Error('The thought that was compared has changed'), { code: 'decision-changed' });
-    const note = preachDateNoteChoiceFrames(basis.value, reviewed, stored.value,
+    const note = preachDateChoiceFrames(basis.value, reviewed, stored.value,
       request.result?.kind === 'conflict' ? request.result.conflicts : []);
     const dateEdits = chooseLocalPreachDateEdits({ ...basis, value: note.basis }, note.draft, stored, request.preachStatusActions);
     const explicit = request.result?.kind === 'conflict'
@@ -174,15 +174,15 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }
   const resolved = afterChoice(decision.stored, draft, checkpoint.editGeneration + 1);
-  carryPreachDateNoteAction(resolved, request);
+  carryOrderedPreachDateFields(resolved, request);
   if (outline && request.result?.kind === 'conflict') {
     const held = checkpoint.pending[request.id];
     carryOutlineTitleActions({ ...checkpoint, confirmed: basis, conflicts: request.result.conflicts,
       pending: { [request.id]: { ...held, outlineTitleActions: request.outlineTitleActions ?? held.outlineTitleActions } } }, resolved);
   }
   if (decision.choice === 'local' && request.result?.kind === 'conflict') {
-    const selectedPaths = request.result.conflicts.filter(conflict => !orderedPreachDateNote(conflict)).map(({ path }) => path);
-    stageReviewedRowFields(resolved, selectedPaths, decision.choiceTime ?? null, ['thought-text', 'preach-date-notes']);
+    const selectedPaths = request.result.conflicts.filter(conflict => !isOrderedPreachDateField(conflict)).map(({ path }) => path);
+    stageReviewedRowFields(resolved, selectedPaths, decision.choiceTime ?? null, ['thought-text', ...PREACH_DATE_REVIEW_FIELDS]);
   }
   if (decision.titles) stageReviewedOutlineTitleIds(resolved, decision.titles.filter(title => title.side === 'local' && !title.field).map(title => title.id), null);
   const decided = { ...record, checkpoint: resolved,

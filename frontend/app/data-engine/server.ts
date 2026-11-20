@@ -55,7 +55,7 @@ import { OUTLINE_SUBPOINT_REVIEW } from './outlineSubpointMove';
 import { metadataAfterOutlineSubpointOrder, orderOutlineSubpoints } from './outlineSubpointOrder.server';
 import { OUTLINE_TITLE_HISTORY, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_REVIEW, OUTLINE_TITLE_SETTLED, outlineTitlePolicy, type OutlineTitleCollection, type OutlineTitleHistoryPage } from './outlineTitleAction';
 import { boundOutlineTitleMetadata, orderOutlineTitles, outlineTitleProofPolicy } from './outlineTitleOrder.server';
-import { expandPreachDateNotes, PREACH_DATE_FIELD_POLICY, PREACH_DATE_NOTE_QUEUED, PREACH_DATE_NOTE_SETTLED, preachDateFieldTarget, preachDateNoteConflictId, type PreachDateField, type PreachDateFieldHistoryPage, type PreachDateFieldValue } from './preachDateFieldAction';
+import { expandPreachDateNotes, PREACH_DATE_DETAIL_QUEUED, PREACH_DATE_DETAIL_SETTLED, PREACH_DATE_FIELD_POLICY, PREACH_DATE_NOTE_QUEUED, PREACH_DATE_NOTE_SETTLED, preachDateFieldTarget, preachDateNoteConflictId, type PreachDateField, type PreachDateFieldHistoryPage, type PreachDateFieldValue } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
 import { mergeFields, advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
@@ -583,15 +583,18 @@ function retainedRowDetailHistory<Field extends string, Value extends RowValue>(
     && (entry.scope === undefined || equalValues(entry.scope, policy.scopes?.(rows, entry.field)?.get(entry.rowId)))) ?? [];
 }
 
-function orderedPreachDateNoteComparison(command: DataCommand, order: RowDetailOrder<PreachDateField, PreachDateFieldValue>): ConflictDetail[] {
+function orderedPreachDateFieldComparisons(command: DataCommand, order: RowDetailOrder<PreachDateField, PreachDateFieldValue>): ConflictDetail[] {
   if (command.kind !== 'update') return [];
-  const note = expandPreachDateNotes(command);
-  const displaced = order.displaced.find(entry => entry.field === 'notes' && entry.rowId === note?.rowId);
-  if (!note || !displaced) return [];
-  const stored = displaced.value === note.after ? displaced.winnerValue : displaced.value;
-  return [{ path: rowConflictPath(note.rowId, preachDateFieldTarget('notes')),
-    code: stored === displaced.winnerValue ? PREACH_DATE_NOTE_SETTLED : PREACH_DATE_NOTE_QUEUED,
-    base: rowConflictValue(note.before), mine: rowConflictValue(note.after), theirs: rowConflictValue(stored) }];
+  const notes = expandPreachDateNotes(command);
+  return order.displaced.flatMap(({ field, rowId, value, winnerValue }) => {
+    const action = field === 'notes' ? notes : command.preachDateFieldActions?.[field];
+    if (action?.rowId !== rowId) return [];
+    const settled = equalValues(value, action.after);
+    return [{ path: rowConflictPath(rowId, preachDateFieldTarget(field)),
+      code: field === 'notes' ? (settled ? PREACH_DATE_NOTE_SETTLED : PREACH_DATE_NOTE_QUEUED)
+        : (settled ? PREACH_DATE_DETAIL_SETTLED : PREACH_DATE_DETAIL_QUEUED),
+      base: rowConflictValue(action.before), mine: rowConflictValue(action.after), theirs: rowConflictValue(settled ? winnerValue : value) }];
+  });
 }
 
 function persistRowDetailHistory<Field extends string, Value extends RowValue>(transaction: Transaction, command: DataCommand,
@@ -1216,9 +1219,10 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       });
       const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepBodyOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilTopicSummaryOrder.uncertain, ...councilTopicTextOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtTextOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
+      const orderedPreachingPaths = new Set([...preachingOrder.fields].flatMap(([field, plans]) =>
+        plans.flatMap(plan => plan.stamp ? [JSON.stringify(rowConflictPath(plan.stamp.rowId, preachDateFieldTarget(field)))] : [])));
       uncertain.push(...analysisFrameOrder.conflicts,
-        ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine,
-          preachingOrder.fields.get('notes')?.find(plan => plan.stamp)?.stamp?.rowId));
+        ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine, orderedPreachingPaths));
       const nestedCouncilReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
         || (command.resource.collection === 'councils' && planned.result.kind === 'conflict'
           && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path)));
@@ -1228,7 +1232,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison
         ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled,
-          ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...orderedPreachDateNoteComparison(command, preachingOrder)]
+          ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...orderedPreachDateFieldComparisons(command, preachingOrder)]
         : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
         && orderedCommand.kind === 'update' && current.value) {
@@ -1281,9 +1285,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
       }
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
-      if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, {
-        ...preachingOrder, displaced: preachingOrder.displaced.filter(entry => entry.field === 'notes'),
-      });
+      if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
     }
     if (result.kind === 'conflict' && exegeticalOrder?.comparisons?.length) {
       const points = new Set(result.conflicts.map(({ path }) => exegeticalPointConflictId(path)));

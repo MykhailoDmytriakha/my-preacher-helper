@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { preachDateNoteConflictId, readChangedPreachDateFieldVersions, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { readChangedPreachDateFieldVersions, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
@@ -78,8 +78,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     : undefined;
   const reviewRecoveryId = form.status?.phase === 'conflict' && !form.dirty && !form.exactChoice && form.borrowedRecoveryIds?.length === 1
     ? form.borrowedRecoveryIds[0] : undefined;
-  const keepLocal = () => shown?.conflictPaths.some(preachDateNoteConflictId)
-    ? form.keepLocal(undefined, form.captureDocumentMetadataAction()) : form.keepLocal();
+  const keepLocal = () => form.keepLocal(undefined, form.captureDocumentMetadataAction());
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try {

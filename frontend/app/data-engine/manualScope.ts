@@ -268,8 +268,8 @@ export class ManualScope {
     const preachStatusCapture = status && dateTarget?.evidence === 'preachDateAction' && openingDates?.exists
       ? capturePreachStatusOpening(openingDates.value, copy(status)) : undefined;
     const detail = captured.preachDateFieldDraft;
-    const preachDateFieldSave = detail && dateTarget?.evidence === 'preachDateAction' && explicitDate?.rowId === detail.rowId
-      ? { ...detail, time: explicitDate.time } : undefined;
+    const preachDateFieldSave = detail && dateTarget?.evidence === 'preachDateAction' && (!explicitDate || explicitDate.rowId === detail.rowId)
+      ? { ...detail, time: explicitDate?.time ?? null } : undefined;
     this.tail = { generation: captured.generation, stage: copy(captured.stage) };
     const saving = this.enqueuePersistence(this.captures.register(async captureComplete => {
       if (!admitted) this.assertCurrent();

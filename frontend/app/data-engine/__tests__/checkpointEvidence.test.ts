@@ -23,6 +23,9 @@ const row = { ...observation, rowId: 'row', rowCreatedAt: '2026-11-12' };
 const fieldDraft = { generation: 'g', action: observation };
 const optionalDraft = { generation: 'g', action: optionalObservation };
 const rowDrafts = { row: { generation: 'g', action: row } };
+const church = { id: 'first-church', name: 'First church' };
+const cityObservation = { ...row, scope: church };
+const churchObservation = { ...row, before: church, after: { id: 'next-church', name: 'Next church', city: 'Next city' } };
 const gap = { previous: { id: 'first', generation: 'g' }, next: null };
 const placement = { observedRevision: 1, time, predecessorOperationId: 'earlier-save', opening: gap, destination: gap };
 const pointGap = { section: 'main', previous: null, next: 'other' };
@@ -55,6 +58,8 @@ const evidence = {
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
+  preachDateAudienceDrafts: rowDrafts, preachDateCityDrafts: { row: { generation: 'g', action: cityObservation } },
+  preachDateChurchDrafts: { row: { generation: 'g', action: churchObservation } },
   groupTextReview, privateFieldReview: { revision: 1, decisions: groupTextReview.decisions }, groupFlowStepPlacementRetry: groupPlacement, councilTopicPlacementRetry: councilPlacement, sourceNoteLinkRetry: links,
 } satisfies Record<EvidenceKey, unknown>;
 const placementRetries = {
@@ -71,6 +76,7 @@ const pendingEvidence = {
   councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], councilTopicTextActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
+  preachDateAudienceActions: [row], preachDateCityActions: [cityObservation], preachDateChurchActions: [churchObservation],
   councilTopicPlacement: councilPlacement, commentPlaceAction,
 } satisfies Record<PendingEvidenceKey, unknown>;
 // Group title and status are causal: an unclocked autosave carries `time: null` (documentFieldAction.ts:637).
@@ -106,11 +112,14 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
   const source = titleRecord();
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
   if (key === 'sourceNoteLinkRetry') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
-  if (key === 'preachDateNotesDrafts') {
+  if (key.startsWith('preachDate')) {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
-    const date = { id: row.rowId, createdAt: row.rowCreatedAt, notes: row.before };
+    const date = { id: row.rowId, createdAt: row.rowCreatedAt, notes: row.before, audience: row.before,
+      church: key === 'preachDateChurchDrafts' ? church : { ...church, city: row.before } };
+    const next = { ...date, notes: row.after, audience: row.after,
+      church: key === 'preachDateChurchDrafts' ? churchObservation.after : { ...church, city: row.after } };
     source.checkpoint.confirmed.value = { ...source.checkpoint.confirmed.value, preachDates: [date] };
-    source.checkpoint.draft = { ...source.checkpoint.draft, preachDates: [{ ...date, notes: row.after }] };
+    source.checkpoint.draft = { ...source.checkpoint.draft, preachDates: [next] };
   }
   if (key === 'groupTextReview') source.checkpoint.pending.request = { generation: 1, value: source.checkpoint.draft };
   if (key.startsWith('groupBlock') || key.startsWith('groupStep')) {

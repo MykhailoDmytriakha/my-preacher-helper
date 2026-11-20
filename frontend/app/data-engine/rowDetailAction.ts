@@ -1,6 +1,7 @@
 import { equalValues } from './fieldValues';
 import { existingRowField, isRowChange, rowConflictPath, rowConflictValue } from './rowFieldAction';
 
+import type { ActionTime } from './actionClock';
 import type { DisplacedRowField, RowFieldEvidence, RowFieldObservation, RowFieldTarget, RowValue } from './rowFieldAction';
 import type { ConflictDetail, FieldChange, ResourceSnapshot } from './types';
 
@@ -15,7 +16,8 @@ export function compactRowTextStamps(actions: readonly RowDetailObservation<RowV
 }
 
 export type RowDetailHistoryEntry<Field extends string, Value extends RowValue> = DisplacedRowField<Value> & { field: Field; rowCreatedAt: string; scope?: RowValue };
-export type RowDetailActions<Field extends string, Value extends RowValue> = Partial<Record<Field, RowDetailAction<Value>>>;
+export type RowDetailActions<Field extends string, Value extends RowValue, Time extends ActionTime | null = ActionTime> =
+  Partial<Record<Field, RowDetailObservation<Value> & { time: Time }>>;
 
 export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   collection: string;

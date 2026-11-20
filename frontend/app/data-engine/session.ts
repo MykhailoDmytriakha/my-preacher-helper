@@ -27,12 +27,12 @@ import { projectOutlineParentChoice, type OutlineTitleDecision } from './outline
 import { outlinePlacementField } from './outlinePlacementResource';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
 import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
-import { chooseLocalPreachDateEdits, orderedPreachDateNote, preachDateNoteChoiceFrames } from './preachDateChoice';
+import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
 import { compactRowTextStamps } from './rowDetailAction';
-import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
+import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
@@ -760,7 +760,7 @@ export class DataSession {
       const pointIds = this.state.conflicts.flatMap(({ path, code }) => code === UNREADABLE_EXEGETICAL_PROOF ? [] : exegeticalPointConflictId(path) ?? []);
       const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
       const outline = outlineTitleChoiceFrames(this.state.confirmed, this.state.draft, candidate, this.state.conflicts);
-      const note = preachDateNoteChoiceFrames(outline.basis, outline.draft, candidate.value, this.state.conflicts);
+      const note = preachDateChoiceFrames(outline.basis, outline.draft, candidate.value, this.state.conflicts);
       const basis = marks?.baseline ?? note.basis;
       const draft = pointChoices.reduce((value, choice) => {
         const neutral = value && choice.apply(value, 'opening');
@@ -833,8 +833,8 @@ export class DataSession {
     if (candidate) {
       this.retainOutlineTitleActions(titleSource);
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
-      const selectedPaths = this.state.conflicts.filter(conflict => !orderedPreachDateNote(conflict)).map(({ path }) => path);
-      stageReviewedRowFields(this.state, selectedPaths, choiceTime, ['thought-text', 'preach-date-notes']);
+      const selectedPaths = this.state.conflicts.filter(conflict => !isOrderedPreachDateField(conflict)).map(({ path }) => path);
+      stageReviewedRowFields(this.state, selectedPaths, choiceTime, ['thought-text', ...PREACH_DATE_REVIEW_FIELDS]);
       stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
       this.stageOutlineReviewTitles(titles, choiceTime);
       if (reviewingRows) this.stageReviewedGroupFlowText(this.state.conflicts.filter(issue => issue.code === UNREADABLE_ROW_PROOF).map(issue => issue.path), choiceTime);

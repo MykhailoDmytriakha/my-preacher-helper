@@ -42,6 +42,7 @@ import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerC
 import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { oversizedNoteOpening } from './oversizedNoteCorrection';
+import { unresolvedPreachDateField } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
@@ -2942,8 +2943,11 @@ export class DataEngine {
           }
           if (amendment && scope) await scope.cancel();
         } else {
-          await parent.controller!.keepLocal(selection, amendment, expectedParent, undefined, titles); active();
-          await parent.controller!.save(undefined, selection, undefined, undefined, action); active();
+          const controller = parent.controller!;
+          const choiceTime = action?.kind === 'document-metadata' && controller.getState().checkpoint.conflicts.some(unresolvedPreachDateField)
+            ? action.time : undefined;
+          await controller.keepLocal(selection, amendment, expectedParent, choiceTime, titles); active();
+          await controller.save(undefined, selection, undefined, undefined, action); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();
           this.prepareCommitsInBackground(); this.backgroundDrain();

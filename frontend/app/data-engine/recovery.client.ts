@@ -63,6 +63,8 @@ const storedRowValue = z.union([z.string(), z.number().finite(), z.boolean(), z.
 const storedRowAction = rowValues(storedRowValue);
 const titleAction = rowValues(z.string());
 const nullableTitleAction = rowValues(z.string().nullable());
+const preachDateCityAction = nullableTitleAction.extend({ scope: z.object({ id: z.string(), name: z.string() }) });
+const preachDateChurchAction = rowValues(z.object({ id: z.string(), name: z.string(), city: z.string().optional() }));
 const councilDateAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
 const councilDateDraft = z.object({ generation: id, action: councilDateAction });
 const exegeticalPointDraft = fieldAction.extend({
@@ -92,6 +94,8 @@ const pendingShape = {
   groupBlockStatusActions: z.array(titleAction).optional(), groupStepDurationActions: z.array(storedRowAction).optional(),
   thoughtLockActions: z.array(storedRowAction).optional(), thoughtPlacementActions: z.array(storedRowAction).optional(),
   outlineTitleActions: z.array(titleAction).optional(), preachDateNotesActions: z.array(nullableTitleAction).optional(),
+  preachDateAudienceActions: z.array(nullableTitleAction).optional(), preachDateCityActions: z.array(preachDateCityAction).optional(),
+  preachDateChurchActions: z.array(preachDateChurchAction).optional(),
 } satisfies Record<keyof SessionCheckpoint['pending'][string], z.ZodTypeAny>;
 const sourceNoteSelection = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }),
   z.object({ exists: z.literal(true), value: z.array(id) })]);
@@ -140,7 +144,8 @@ const recordSchema = z.object({
     conflicts: z.array(checkpointConflict).default([]),
     unreadableScalarProof: z.array(z.string()).min(1).max(5).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
-      'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts']),
+      'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
+      'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
@@ -165,6 +170,8 @@ const recordSchema = z.object({
     groupBlockContentDrafts: rowDrafts(titleAction).optional(), groupStepNotesDrafts: rowDrafts(nullableTitleAction).optional(), groupStepDurationDrafts: rowDrafts(storedRowAction).optional(),
     thoughtTextDrafts: rowDrafts(titleAction).optional(), thoughtLockDrafts: rowDrafts(storedRowAction).optional(), thoughtPlacementDrafts: rowDrafts(storedRowAction).optional(),
     outlineTitleDrafts: rowDrafts(titleAction).optional(), preachDateNotesDrafts: rowDrafts(nullableTitleAction).optional(),
+    preachDateAudienceDrafts: rowDrafts(nullableTitleAction).optional(), preachDateCityDrafts: rowDrafts(preachDateCityAction).optional(),
+    preachDateChurchDrafts: rowDrafts(preachDateChurchAction).optional(),
     pending: z.record(id, z.object(pendingShape)),
   } satisfies Record<keyof Omit<SessionCheckpoint, PlacementRetry>, z.ZodTypeAny>),
 });

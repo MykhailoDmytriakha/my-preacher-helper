@@ -36,7 +36,7 @@ function history(raw: unknown, generation: string, revision: number): HistoryByR
   return { planText: read('planText'), outline: read('outline'), scratch: read('scratch'), preachDates: read('preachDates') };
 }
 
-export function compareReturnedSermonText(command: DataCommand, current: ResourceSnapshot, raw: unknown, orderedPreachNote?: string): ConflictDetail[] {
+export function compareReturnedSermonText(command: DataCommand, current: ResourceSnapshot, raw: unknown, orderedPaths: ReadonlySet<string>): ConflictDetail[] {
   const { metadata, value } = current;
   if (command.kind !== 'update' || command.resource.collection !== 'sermons' || !value || !metadata
     || command.generation !== metadata.generation || !object(raw) || raw[PROOF] === undefined) return [];
@@ -47,7 +47,7 @@ export function compareReturnedSermonText(command: DataCommand, current: Resourc
   return changes.flatMap(({ key, path, before, after }) => {
     const root = path[0];
     if (!isSermonTextRoot(root)) return [];
-    if (orderedPreachNote !== undefined && root === 'preachDates' && path[1] === 'id:' + orderedPreachNote) return [];
+    if (orderedPaths.has(JSON.stringify(path))) return [];
     const field = live.get(root)?.get(key);
     if (!field && !isPlanCellPath(path)) return [];
     const stored = field?.value ?? { exists: false };

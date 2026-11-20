@@ -1658,11 +1658,20 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      const { councilOutcomeActions, councilTopicSummaryActions, councilTopicTextActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, preachDateNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      const { councilOutcomeActions, councilTopicSummaryActions, councilTopicTextActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions,
+        preachDateNotesActions, preachDateAudienceActions, preachDateCityActions, preachDateChurchActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
       Object.assign(command, rowFields);
       const retriedNote = preachDateNotesActions?.[0];
       if (retriedNote && !command.preachDateFieldActions?.notes) {
         command.preachDateFieldActions = { ...command.preachDateFieldActions, notes: compactRowTextStamps([retriedNote])[0] };
+      }
+      for (const [field, retry] of [['audience', preachDateAudienceActions?.[0]], ['churchCity', preachDateCityActions?.[0]], ['church', preachDateChurchActions?.[0]]] as const) {
+        if (!retry || command.preachDateFieldActions?.[field]) continue;
+        const target = PREACH_DATE_FIELD_POLICY.target(field);
+        const { before, after, scope: _scope, ...observation } = retry;
+        if (target.accepts(before) && target.accepts(after)) {
+          command.preachDateFieldActions = { ...command.preachDateFieldActions, [field]: { ...observation, before, after } };
+        }
       }
       // The two row arrays on the command already carry these exact values.
       for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, councilTopicTextActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions })) {

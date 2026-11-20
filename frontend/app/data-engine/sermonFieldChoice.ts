@@ -8,7 +8,7 @@ import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { projectOutlineParentChoice } from './outlineParentChoice';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
-import { orderedPreachDateNote, preachDateNoteChoiceFrames, withoutPreachDateRow } from './preachDateChoice';
+import { isOrderedPreachDateField, preachDateChoiceFrames, withoutPreachDateRow } from './preachDateChoice';
 import { preachDateNoteConflictId, samePreachDateRow } from './preachDateFieldAction';
 import { mergeDocumentFields } from './protocol';
 import { isPlanCellPath } from './sermonTextOpenings';
@@ -113,11 +113,11 @@ function rebaseStoredThoughtPlacement(base: DocumentData, draft: DocumentData, s
 
 function keepPreachDateEditsWithStoredFields(basis: DocumentData, draft: DocumentData, stored: DocumentData,
   conflicts: readonly ConflictDetail[]) {
-  const notes = preachDateNoteChoiceFrames(basis, draft, stored, conflicts, true);
+  const notes = preachDateChoiceFrames(basis, draft, stored, conflicts, true);
   let corrected = notes.draft!;
   for (const conflict of conflicts) {
     const { path } = conflict;
-    if (orderedPreachDateNote(conflict)) continue;
+    if (isOrderedPreachDateField(conflict)) continue;
     const selected = readSermonConflictField(stored, path);
     if (path[0] === 'preachDates' && path.length >= 3) {
       corrected = withSelectedField(corrected, path, selected) ?? corrected;
@@ -140,7 +140,7 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
   if (basis.value && draft && stored?.value && basis.metadata?.generation === stored.metadata?.generation) {
     const dateFields = conflicts.every(({ path }) => path[0] === 'preachDates' && path.length >= 3 && path[1].startsWith('id:')
       && samePreachDateRow(path[1].slice(3), basis.value!, stored.value!));
-    if (dateFields || conflicts.some(orderedPreachDateNote)) {
+    if (dateFields || conflicts.some(isOrderedPreachDateField)) {
       return keepPreachDateEditsWithStoredFields(basis.value, draft, stored.value, conflicts);
     }
   }

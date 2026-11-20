@@ -78,6 +78,39 @@ it.each([
   expect(chosen.preachDateNotesDrafts?.[row.id]?.action).toMatchObject({ time: choiceTime, observedRevision: 3, after: phone.notes });
 });
 
+it.each([
+  ['preach-date-detail-settled', 'local'], ['preach-date-detail-settled', 'remote'],
+  ['preach-date-detail-queued', 'local'], ['preach-date-detail-queued', 'remote'],
+] as const)('preserves the %s audience during a %s choice about notes', (audienceResult, choice) => {
+  const row = { id: 'date', createdAt: 'birth', notes: 'Opening notes', audience: 'Youth' };
+  const phone = { ...row, notes: 'Phone notes', audience: 'Leaders' };
+  const desktop = { ...row, notes: 'Desktop notes' };
+  const basis: ResourceSnapshot = { resource: { collection: 'sermons', id: 'sermon' }, value: { preachDates: [row] },
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } };
+  const draft = { preachDates: [phone] };
+  const stored: ResourceSnapshot = { ...basis, value: { preachDates: [desktop] }, metadata: { ...basis.metadata!, revision: 3 } };
+  const field = (value: string) => ({ exists: true, value });
+  const conflicts = [
+    { path: ['preachDates', 'id:date', 'audience'], code: audienceResult, base: field(row.audience), mine: field(phone.audience), theirs: field(desktop.audience) },
+    { path: ['preachDates', 'id:date', 'notes'], base: field(row.notes), mine: field(phone.notes), theirs: field(desktop.notes) },
+  ];
+  const action = { rowId: row.id, rowCreatedAt: row.createdAt, before: row.audience, after: phone.audience, observedRevision: 1,
+    time: { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 } };
+  const request: CommitRequest = { id: 'date-save', owner: 'owner', editorId: 'date-form', editGeneration: 1, predecessor: null,
+    preachDateFieldActions: { audience: action }, baseline: basis, value: draft, revision: 1, initialized: true, working: basis,
+    intended: draft, command: null, submitted: draft, sequence: 0, state: 'conflict', unfinalized: [],
+    result: { kind: 'conflict', operationId: 'date-save', snapshot: stored, conflicts } };
+  const checkpoint: SessionCheckpoint = { confirmed: basis, draft, remoteCandidate: stored, conflicts, dirty: true,
+    editGeneration: 1, pending: { [request.id]: { generation: 1, value: draft } } };
+  const [resolved] = projectExactManualChoice({ owner: 'owner', editorId: 'document', checkpoint, prepared: null, unfinalized: [] },
+    { choice, request, value: draft, stored, selection: [['preachDates']] }, [request]);
+  const queued = audienceResult === 'preach-date-detail-queued';
+  expect(resolved.checkpoint.draft?.preachDates).toEqual([{ ...row, notes: choice === 'local' ? phone.notes : desktop.notes,
+    audience: queued ? phone.audience : desktop.audience }]);
+  expect(resolved.checkpoint.preachDateAudienceDrafts?.[row.id]?.action).toEqual(queued ? action : undefined);
+  expect(preachDateReviewConflicts(basis.value, draft, stored.value, conflicts).map(({ path }) => path.at(-1))).toEqual(['notes']);
+});
+
 it.each(['changed the date', 'replaced the row', 'removed the row'])(
   'keeps the remote choice usable when the stored copy has %s since the audience conflict', change => {
     const row = { id: 'date', createdAt: 'opened date', date: '2026-11-20', notes: 'Opening notes', audience: 'Opening audience' };
