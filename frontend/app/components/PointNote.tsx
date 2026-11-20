@@ -155,7 +155,11 @@ const PointNote: React.FC<PointNoteProps> = ({
     if (awaitingCapture.current) return;
     const next = text.trim() || undefined;
     // The saved note can refresh while this field still displays the opening text.
-    const capture = next !== openingText.current && next !== note ? (openedSave.current ?? onChange)(next) : undefined;
+    // One declared signature: a call through `a ?? b` of two function types is typed by reducing a union of
+    // their return types, and TypeScript's incremental check reduced `void | Promise<void>` to `void` with a
+    // cache from an older build, failing the Vercel build of 9a1c075c6 on this very line.
+    const save: SaveSermonNoteText = openedSave.current ?? onChange;
+    const capture = next !== openingText.current && next !== note ? save(next) : undefined;
     if (!capture) {
       setEditing(false);
       return;
