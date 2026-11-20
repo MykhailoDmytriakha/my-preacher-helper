@@ -29,7 +29,6 @@ interface OptionMenuProps {
   onUpdate?: (updatedSermon: Sermon) => void;
   /** When provided, the menu also offers series actions (add / move / remove). */
   series?: Series[];
-  alignStartOnPhone?: boolean;
 }
 
 
@@ -38,7 +37,6 @@ export default function OptionMenu({
   onDelete,
   onUpdate,
   series,
-  alignStartOnPhone = false,
 }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -200,7 +198,7 @@ export default function OptionMenu({
       </button>
 
       {open && (
-        <div className={`absolute ${alignStartOnPhone ? 'left-0 sm:left-auto sm:right-0' : 'right-0'} mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50`}>
+        <div className={`absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50`}>
           <div className="py-1" role="menu" aria-orientation="vertical" aria-label={t('optionMenu.options')}>
             <button
               onClick={handleEdit}

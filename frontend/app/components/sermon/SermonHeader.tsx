@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
 
-import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/ActionButton';
+import ActionButton from '@/components/common/ActionButton';
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import SourceNoteChips from '@/components/sermon/SourceNoteChips';
@@ -62,6 +62,15 @@ export interface SermonHeaderProps {
   /** The sermon's preach dates, shown once in the line under the title (`EnginePreachDateChips`). */
   dates?: React.ReactNode;
 }
+
+/**
+ * The header's action row holds five buttons and the «⋮» menu. On a phone the buttons may narrow to
+ * 44px (icons and short labels) so the menu stays on the same line at its end; at 64px each the row
+ * was wider than a 390px screen and the menu dropped to a line of its own.
+ */
+const HEADER_ACTION_SLOT_CLASS = 'flex-1 basis-0 min-w-[44px] sm:min-w-[64px]';
+/** «Проповедовать»: an icon on a phone, the whole word from `sm` on — one min-width per breakpoint, so none overrides the other. */
+const PREACH_SLOT_CLASS = 'flex-1 basis-0 min-w-[44px] sm:min-w-[150px]';
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor, dates }) => {
   const { t } = useTranslation();
@@ -207,11 +216,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
           disabledFormats={['pdf']} // Disable PDF export here
           enableAudio={enableAudio}
           sermonTitle={sermon.title}
-          slotClassName={ACTION_BUTTON_SLOT_CLASS}
-          className="w-full sm:w-auto"
+          slotClassName={HEADER_ACTION_SLOT_CLASS}
+          className="min-w-0 flex-1 sm:w-auto sm:flex-none"
           planData={getSermonPlanData(sermon)}
           extraButtons={
-            <div className={`${ACTION_BUTTON_SLOT_CLASS} sm:min-w-[150px]`}>
+            <div className={PREACH_SLOT_CLASS}>
               <ActionButton
                 onClick={handleStartPreaching}
                 className="bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
@@ -231,7 +240,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
         {!editor.isReadOnly && <OptionMenu
           sermon={sermon}
           series={series}
-          alignStartOnPhone
           onDelete={() => router.replace('/sermons')}
         />}
         {/* Mode toggle moved to global DashboardNav */}
