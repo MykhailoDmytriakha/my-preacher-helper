@@ -4366,6 +4366,69 @@ describe('transactional DataEngine server', () => {
     }
   });
 
+  it.each([
+    { label: 'legacy', time: undefined },
+    { label: 'without an action clock', time: null },
+  ])('keeps the returned service step title for a delayed rename $label', async ({ time }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-title-return' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', title: 'Opening', body: 'Old words', scriptureRefs: [] };
+    const other = { ...opening, id: 'closing', title: 'Closing', body: 'Another step' };
+    const temporary = { ...opening, title: 'Temporary name' };
+    const restored = { ...opening, body: 'Independent saved words' };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: [opening, other] },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: typeof opening, after: typeof opening, observedRevision: number, time?: null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: [before, other] }, after: { exists: true, value: [after, other] } }],
+      ...(time !== undefined && { serviceOrderStepTitleActions: { title: { rowId: opening.id, rowCreatedAt: opening.id,
+        before: before.title, after: after.title, observedRevision, time } } }),
+    });
+    expect(await processCommand(base.owner, rename('computer', opening, temporary, 1, null))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('return', temporary, restored, 2, null))).toMatchObject({ kind: 'acknowledged' });
+    const delayed = rename('phone', opening, { ...opening, title: 'Old offline title' }, 1, time);
+    const result = await processCommand(base.owner, delayed);
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { steps: [restored, other] } },
+      conflicts: [{ path: ['steps', 'id:opening', 'title'], mine: { value: 'Old offline title' }, theirs: { value: opening.title } }],
+    });
+    expect(await processCommand(base.owner, delayed)).toEqual(result);
+    const currentRevision = result.kind === 'conflict' ? result.snapshot.metadata!.revision : 0;
+    const chosen = { ...restored, title: 'Old offline title' };
+    expect(await processCommand(base.owner, rename('explicit-choice', restored, chosen, currentRevision, null)))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [chosen, other] } } });
+  });
+
+  it.each([
+    { order: 'an earlier', time: 20, expected: 'acknowledged' },
+    { order: 'a later', time: 60, expected: 'conflict' },
+    { order: 'an unclocked', time: null, expected: 'conflict' },
+    { order: 'a legacy', time: undefined, expected: 'conflict' },
+  ])('protects a service step title from a legacy rename after $order same-title edit', async ({ time, expected }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-title-reaffirmed' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', title: 'Original', body: 'Opening prayer', scriptureRefs: [] };
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: [opening] },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const rename = (operationId: string, before: string, after: string, time?: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: [{ ...opening, title: before }] },
+        after: { exists: true, value: [{ ...opening, title: after }] } }],
+      ...(time !== undefined && { serviceOrderStepTitleActions: { title: {
+        rowId: opening.id, rowCreatedAt: opening.id, before, after, observedRevision: 1,
+        time: time === null ? null : { earliestMs: 1_800_000_000_000 + time, latestMs: 1_800_000_000_010 + time },
+      } } }),
+    });
+    expect(await processCommand(base.owner, rename('first', opening.title, 'Same title', 40))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('same-title', opening.title, 'Same title', time))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, rename('legacy', 'Same title', 'Queued title'))).toMatchObject({
+      kind: expected, snapshot: { value: { steps: [{ ...opening, title: expected === 'conflict' ? 'Same title' : 'Queued title' }] } },
+    });
+  });
+
   describe.each(['sermons', 'serviceOrders'] as const)('delayed addition from an empty list in %s', collection => {
     it.each([
       { label: 'earlier addition of the replaced item', phoneAt: 12, replace: true, expected: 'saved', kind: 'acknowledged' },

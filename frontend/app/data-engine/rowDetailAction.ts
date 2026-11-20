@@ -34,6 +34,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   requireObserved?: true;
   rememberOpenings?: true;
   rememberReaffirmations?: true;
+  rememberLegacyReaffirmations?: true;
   seedOpeningFromStoredValue?: true;
   mergesIndependently?: (before: Value, after: Value, stored: Value) => boolean;
   causalScopeEntry?: boolean;

@@ -15,8 +15,8 @@ import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { isPlanCellPath } from './sermonTextOpenings';
-import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
-import { readServiceStepBodyChoice } from './serviceOrderStepChoice';
+import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
+import { readServiceStepTextChoice } from './serviceOrderStepChoice';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { readThoughtPlacementChoice } from './thoughtPlacementAction';
 import { readThoughtTagChoice } from './thoughtTagAction';
@@ -107,8 +107,8 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   const target = serviceOrderStepField(conflicts[0]?.path);
   if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
   const { id, field } = target;
-  if (field === 'body') {
-    const comparison = readServiceStepBodyChoice(checkpoint);
+  if (field === 'body' || field === 'title') {
+    const comparison = readServiceStepTextChoice(checkpoint);
     return comparison && { field, mine: comparison.mine, stored: comparison.stored };
   }
   if (field === 'scriptureRefs') {
@@ -122,16 +122,9 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   const compared = (value: DocumentData) => ({
     ...Object.fromEntries(Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key))),
     steps: Array.isArray(value.steps) ? value.steps.map(step => object(step)
-      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id && field === 'flagged' ? false : Boolean(step.flagged),
-        ...(step.id === id && field === 'title' && { title: '' }) } : step) : value.steps,
+      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id ? false : Boolean(step.flagged) } : step) : value.steps,
   });
   if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
-  if (field === 'title') {
-    const mine = existingRowField(draft.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
-    const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
-    if (mine === undefined || stored === undefined || mine === stored) return undefined;
-    return { field, mine, stored };
-  }
   const mine = existingRowField(draft.steps, id, SERVICE_ORDER_FLAG_TARGET);
   const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_FLAG_TARGET);
   if (mine === undefined || stored === undefined || mine === stored) return undefined;

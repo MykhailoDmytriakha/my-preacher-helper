@@ -72,7 +72,9 @@ export const SERVICE_ORDER_FLAG_POLICY: RowDetailPolicy<'flagged', boolean> = {
 
 export const SERVICE_ORDER_STEP_TITLE_POLICY: RowDetailPolicy<'title', string> = {
   collection: 'serviceOrders', fields: ['title'], birth: STEP_ID, target: () => SERVICE_ORDER_STEP_TITLE_TARGET,
-  proofs: 'serviceOrderStepTitleProofs', actions: 'serviceOrderStepTitleActions', history: '_stepTitleHistory', allowUnclocked: true,
+  proofs: 'serviceOrderStepTitleProofs', actions: 'serviceOrderStepTitleActions', history: '_stepTitleHistory',
+  allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
+  rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
 
 export const SERVICE_ORDER_STEP_BODY_POLICY: RowDetailPolicy<'body', string> = {

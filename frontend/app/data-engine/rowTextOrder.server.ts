@@ -25,28 +25,37 @@ export function orderRowText<Field extends string, Value extends string | null>(
   const beforeBirths = existingRowFields(change.before.value, policy.birth);
   const afterBirths = existingRowFields(change.after.value, policy.birth);
   const rawActions: unknown = Reflect.get(command, policy.actions);
+  const repeated = policy.repeatedFields?.includes(field);
+  const candidates = repeated ? (Array.isArray(rawActions) ? rawActions : [])
+    : object(rawActions) ? [rawActions[field]] : [];
   const seen = new Set<string>(), submitted = new Map<string, object>();
   const acceptsRowId = policy.acceptsRowId ?? boundedRowId;
-  for (const candidate of Array.isArray(rawActions) ? rawActions : []) {
+  for (const candidate of candidates) {
     if (!object(candidate) || !acceptsRowId(candidate.rowId)) continue;
     if (seen.has(candidate.rowId)) { submitted.delete(candidate.rowId); continue; }
     seen.add(candidate.rowId);
     if (typeof candidate.rowCreatedAt !== 'string') continue;
-    const full = { ...candidate, before: opening.get(candidate.rowId), after: proposed.get(candidate.rowId) };
+    const full = repeated ? { ...candidate, before: opening.get(candidate.rowId), after: proposed.get(candidate.rowId) } : candidate;
     const action = readRowObservation(command, full, target, serverMs, { allowUnclocked: true, acceptsRowId,
       allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)) });
     if (action && action.observedRevision <= metadata.revision
       && matchesRowDetailBirth(command.changes, { rowId: action.rowId, rowCreatedAt: candidate.rowCreatedAt }, policy.birth)) submitted.set(action.rowId, full);
   }
-  const projected = orderRowDetails({ ...command, [policy.actions]: [...submitted.values()] }, current, raw, serverMs, policy);
+  const validated = [...submitted.values()];
+  const actions = repeated ? validated : { [field]: validated[0] };
+  const projected = orderRowDetails({ ...command, [policy.actions]: actions }, current, raw, serverMs, policy);
   const { command: rewritten, ...order } = projected;
   const result = { ...order, command: { ...command, changes: rewritten.kind === 'update' ? rewritten.changes : command.changes } };
   for (const [rowId, after] of proposed) {
     const before = opening.get(rowId), saved = live.get(rowId), born = births.get(rowId);
-    if (submitted.has(rowId) || before === undefined || after === undefined || born === undefined || before === after || before !== saved
-      || beforeBirths.get(rowId) !== born || afterBirths.get(rowId) !== born
-      || !needsLegacyRowDetailOpeningReview(raw, policy, field, rowId, born, saved, metadata.revision)) continue;
-    result.uncertain.push(rowDetailConflict({ rowId, rowCreatedAt: born, before, after, observedRevision: 0, time: null }, target, saved));
+    if (submitted.has(rowId) || before === undefined || after === undefined || born === undefined || before === after
+      || beforeBirths.get(rowId) !== born || afterBirths.get(rowId) !== born) continue;
+    if (policy.rememberLegacyReaffirmations && after === saved) {
+      const plans = result.fields.get(field) ?? [];
+      result.fields.set(field, [...plans, { command: result.command, sameValueWithoutOrder: rowId }]);
+    } else if (before === saved && needsLegacyRowDetailOpeningReview(raw, policy, field, rowId, born, saved, metadata.revision)) {
+      result.uncertain.push(rowDetailConflict({ rowId, rowCreatedAt: born, before, after, observedRevision: 0, time: null }, target, saved));
+    }
   }
   return result;
 }

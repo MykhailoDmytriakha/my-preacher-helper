@@ -1165,7 +1165,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       const statusCommand = alignPreachStatusCommand(preachingOrder.command, current);
       statusOrder = orderRowDetails(statusCommand, current, raw?._dataEngine, serverMs, PREACH_STATUS_POLICY);
       serviceFlagOrder = orderRowDetails(statusOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_FLAG_POLICY);
-      serviceStepTitleOrder = orderRowDetails(serviceFlagOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_TITLE_POLICY);
+      serviceStepTitleOrder = orderRowText(serviceFlagOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_TITLE_POLICY);
       serviceStepScriptureOrder = orderServiceStepScripture(serviceStepTitleOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved);
       serviceStepBodyOrder = orderRowText(serviceStepScriptureOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_BODY_POLICY);
       councilTopicTitleOrder = orderRowDetails(serviceStepBodyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);

@@ -766,7 +766,7 @@ export function useDocumentActions() {
             const { checkpoint } = editor.getState();
             if (exactField) publishStoredBody?.(checkpoint.confirmed);
             if (Object.keys(checkpoint.pending).length) continue;
-            if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
+            if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'title', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
               || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
             else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
           } finally { editor.close({ flush: false }); }

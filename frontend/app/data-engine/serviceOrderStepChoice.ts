@@ -2,11 +2,11 @@ import { isAuthoredListComparison } from './authoredStringList';
 import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
-import { SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
+import { SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
 
 import type { ActionTime } from './actionClock';
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
-import type { ServiceOrderStepBodyCapture, ServiceOrderStepScriptureCapture } from './serviceOrderStepAction';
+import type { ServiceOrderStepTitleCapture, ServiceOrderStepScriptureCapture } from './serviceOrderStepAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData } from './types';
 
@@ -34,26 +34,31 @@ export function serviceStepScriptureChoice(checkpoint: SessionCheckpoint, rowId:
   return { generation: confirmed.metadata.generation, observedRevision: confirmed.metadata.revision, rowId, before, after, time };
 }
 
-export function readServiceStepBodyChoice(checkpoint: SessionCheckpoint, local = checkpoint.draft) {
+const STEP_TEXT_TARGETS = { title: SERVICE_ORDER_STEP_TITLE_TARGET, body: SERVICE_ORDER_STEP_BODY_TARGET };
+type StepTextField = keyof typeof STEP_TEXT_TARGETS;
+
+export function readServiceStepTextChoice(checkpoint: SessionCheckpoint, local = checkpoint.draft) {
   const { confirmed, remoteCandidate, conflicts, pending } = checkpoint;
   if (confirmed.resource.collection !== 'serviceOrders' || !confirmed.metadata
     || confirmed.metadata.generation !== remoteCandidate?.metadata?.generation || remoteCandidate.metadata.deleted
     || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
   const row = serviceOrderStepField(conflicts[0].path);
-  if (row?.field !== 'body') return undefined;
-  const before = existingRowField(confirmed.value?.steps, row.id, SERVICE_ORDER_STEP_BODY_TARGET);
-  const mine = existingRowField(local?.steps, row.id, SERVICE_ORDER_STEP_BODY_TARGET);
-  const stored = existingRowField(remoteCandidate.value?.steps, row.id, SERVICE_ORDER_STEP_BODY_TARGET);
+  if (row?.field !== 'body' && row?.field !== 'title') return undefined;
+  const target = STEP_TEXT_TARGETS[row.field];
+  const before = existingRowField(confirmed.value?.steps, row.id, target);
+  const mine = existingRowField(local?.steps, row.id, target);
+  const stored = existingRowField(remoteCandidate.value?.steps, row.id, target);
   if (before === undefined || mine === undefined || stored === undefined || mine === stored) return undefined;
-  return { rowId: row.id, mine, stored };
+  return { rowId: row.id, field: row.field, mine, stored };
 }
 
-export function serviceStepBodyRetry(checkpoint: SessionCheckpoint, rowId: string,
-  time: ActionTime | null): ServiceOrderStepBodyCapture | undefined {
+export function serviceStepTextRetry(checkpoint: SessionCheckpoint, rowId: string, field: StepTextField,
+  time: ActionTime | null): ServiceOrderStepTitleCapture | undefined {
   const { confirmed, draft } = checkpoint;
   if (!confirmed.metadata || confirmed.metadata.deleted) return undefined;
-  const before = existingRowField(confirmed.value?.steps, rowId, SERVICE_ORDER_STEP_BODY_TARGET);
-  const after = existingRowField(draft?.steps, rowId, SERVICE_ORDER_STEP_BODY_TARGET);
+  const target = STEP_TEXT_TARGETS[field];
+  const before = existingRowField(confirmed.value?.steps, rowId, target);
+  const after = existingRowField(draft?.steps, rowId, target);
   if (before === undefined || after === undefined || before === after) return undefined;
   return { generation: confirmed.metadata.generation, observedRevision: confirmed.metadata.revision, rowId, before, after, time };
 }
@@ -62,8 +67,8 @@ export function keepUncontestedServiceStepScripture(checkpoint: SessionCheckpoin
   return keepUncontestedServiceStepField(checkpoint, local, rowId, SERVICE_ORDER_STEP_SCRIPTURE_LIST);
 }
 
-export function keepUncontestedServiceStepBody(checkpoint: SessionCheckpoint, local: DocumentData | null, rowId: string) {
-  return keepUncontestedServiceStepField(checkpoint, local, rowId, SERVICE_ORDER_STEP_BODY_TARGET);
+export function keepUncontestedServiceStepText(checkpoint: SessionCheckpoint, local: DocumentData | null, rowId: string, field: StepTextField) {
+  return keepUncontestedServiceStepField(checkpoint, local, rowId, STEP_TEXT_TARGETS[field]);
 }
 
 function keepUncontestedServiceStepField<Value extends RowValue>(checkpoint: SessionCheckpoint, local: DocumentData | null,

@@ -148,22 +148,19 @@ function fieldComparison(entry: Waiting, t: (key: string) => string, locale: Ret
   if (titleComparison) return { ...titleComparison, title: t('serviceOrders.orderTitle'), valueKind: 'field' };
   const comparison = readServiceStepConflict(checkpoint);
   if (!comparison) return undefined;
-  const { field, mine, stored } = comparison;
-  if (field === 'title') {
-    const untitled = t('serviceOrders.flagHistory.untitled');
-    return { title: t('serviceOrders.stepTitle'), valueKind: 'field', mine: mine || untitled, stored: stored || untitled };
+  if (comparison.field === 'flagged') {
+    const title = comparison.title ?? t('serviceOrders.flag');
+    const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
+    return { title, valueKind: 'field', mine: words(comparison.mine), stored: words(comparison.stored) };
   }
-  if (field === 'body') {
-    const empty = t('dataSync.emptyField');
-    return { title: t('serviceOrders.stepWords'), valueKind: 'field', mine: mine || empty, stored: stored || empty };
-  }
-  if (field === 'scriptureRefs') {
+  if (comparison.field === 'scriptureRefs') {
     const words = (references: string[]) => references.join(', ') || t('legacyRecovery.empty');
-    return { title: t('serviceOrders.refs'), valueKind: 'field', mine: words(mine), stored: words(stored) };
+    return { title: t('serviceOrders.refs'), valueKind: 'field', mine: words(comparison.mine), stored: words(comparison.stored) };
   }
-  const title = comparison.title ?? t('serviceOrders.flag');
-  const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
-  return { title, valueKind: 'field', mine: words(mine), stored: words(stored) };
+  const { field, mine, stored } = comparison;
+  const title = t(field === 'title' ? 'serviceOrders.stepTitle' : 'serviceOrders.stepWords');
+  const empty = t(field === 'title' ? 'serviceOrders.flagHistory.untitled' : 'dataSync.emptyField');
+  return { title, valueKind: 'field', mine: mine || empty, stored: stored || empty };
 }
 
 type SourceNoteComparison = NonNullable<ReturnType<typeof readSourceNoteLinkComparison>>;

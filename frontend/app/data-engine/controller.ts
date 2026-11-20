@@ -47,7 +47,7 @@ import { readServiceOrderTitleConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
-import { keepUncontestedServiceStepBody, keepUncontestedServiceStepScripture, readServiceStepBodyChoice, reviewedServiceStepScriptureRows, serviceStepBodyRetry, serviceStepScriptureChoice, serviceStepScriptureConflict } from './serviceOrderStepChoice';
+import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -970,7 +970,7 @@ export class EditorController {
         const reviewedSeriesDescription = selection && choice === 'remote'
           && isManualSeriesDescriptionChoice(decided.confirmed, decided.remoteCandidate, decided.conflicts, selection);
         const documentTextChoice = (!selection || reviewedSeriesDescription) && !correction ? readDocumentTextChoice(decided) : undefined;
-        const stepBody = !selection && !correction ? readServiceStepBodyChoice(decided, local) : undefined;
+        const stepText = !selection && !correction ? readServiceStepTextChoice(decided, local) : undefined;
         const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
         const scriptureRows = scriptureRow ? [scriptureRow]
           : !selection && !correction ? reviewedServiceStepScriptureRows(decided) : [];
@@ -1229,7 +1229,7 @@ export class EditorController {
           const retainedPreachDate = orderedDateField
             ? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts) : undefined;
           const retained = retainedMeeting ?? retainedOutline ?? retainedDocumentFields ?? retainedPreachDate ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
-            ?? (stepBody ? keepUncontestedServiceStepBody(decided, local, stepBody.rowId) : undefined)
+            ?? (stepText ? keepUncontestedServiceStepText(decided, local, stepText.rowId, stepText.field) : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1311,13 +1311,13 @@ export class EditorController {
             if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
           }
         }
-        if (choice === 'local' && stepBody) {
+        if (choice === 'local' && stepText) {
           const checkpoint = session.checkpoint();
-          const body = serviceStepBodyRetry(checkpoint, stepBody.rowId, choiceTime ?? null);
-          if (!body) throw Object.assign(new Error('The compared service step changed'), { code: 'decision-changed' });
-          const replacement = this.options.commits!.choiceReplacement(record.editorId, checkpoint, {
-            action: { kind: 'service-order-step-body', body },
-          });
+          const text = serviceStepTextRetry(checkpoint, stepText.rowId, stepText.field, choiceTime ?? null);
+          if (!text) throw Object.assign(new Error('The compared service step changed'), { code: 'decision-changed' });
+          const action: EditorCommitAction = stepText.field === 'title'
+            ? { kind: 'service-order-step-title', title: text } : { kind: 'service-order-step-body', body: text };
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, checkpoint, { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         if (choice === 'local' && scriptureRows.length) {
