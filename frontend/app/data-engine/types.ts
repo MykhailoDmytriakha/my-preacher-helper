@@ -311,6 +311,7 @@ export type DataCommand = CommandBase & (
       groupStatusAction?: DocumentFieldObservation;
       groupDescriptionAction?: DocumentFieldStamp;
       councilTopicSummaryActions?: RowTextStamp[];
+      councilTopicTextActions?: RowTextStamp[];
       groupBlockContentActions?: RowTextStamp[];
       groupStepNotesActions?: RowTextStamp[];
       thoughtTextActions?: RowTextStamp[];
@@ -325,7 +326,7 @@ export type DataCommand = CommandBase & (
       /** Transfer and removal are one decision over this exact child and its original parent. */
       planSubpointTransfer?: PlanSubpointTransfer;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions' | 'councilTopicSummaryActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'thoughtTextActions'>
+      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions' | 'councilTopicSummaryActions' | 'councilTopicTextActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'thoughtTextActions'>
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

@@ -1,6 +1,7 @@
 import { boundedActionTime } from './actionClock';
 import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_POLICY, councilOutcomeRow } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
+import { COUNCIL_TOPIC_TEXT_POLICY } from './councilTopicTextAction';
 import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { equalValues, object } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
@@ -11,7 +12,7 @@ import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUE
 import { PREACH_DATE_FIELD_POLICY, PREACH_DATE_NOTE_QUEUED, preachDateNoteConflictId } from './preachDateFieldAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
-import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 import { THOUGHT_TEXT_POLICY } from './thoughtTextAction';
@@ -27,9 +28,9 @@ import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action; reviewed?: true };
-type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts' | 'preachDateNotesDrafts';
-type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions' | 'preachDateNotesActions';
-export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title' | 'preach-date-notes';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'councilTopicSummaryDrafts' | 'councilTopicTextDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockContentDrafts' | 'groupStepNotesDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtTextDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts' | 'preachDateNotesDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'councilTopicSummaryActions' | 'councilTopicTextActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockContentActions' | 'groupStepNotesActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtTextActions' | 'thoughtPlacementActions' | 'outlineTitleActions' | 'preachDateNotesActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'council-topic-summary' | 'council-topic-text' | 'group-block-title' | 'group-step-title' | 'group-block-content' | 'group-step-notes' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-text' | 'thought-placement' | 'outline-title' | 'preach-date-notes';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string; titleOpening?: OutlineTitleOpening } | { rowIds: readonly string[] }
 );
@@ -52,6 +53,7 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(COUNCIL_OUTCOME_POLICY, 'outcome', 'council-topic-outcome', 'councilOutcomeDrafts', 'councilOutcomeActions'),
   autosaveTarget(COUNCIL_TOPIC_TITLE_POLICY, 'title', 'council-topic-title', 'councilTopicTitleDrafts', 'councilTopicTitleActions'),
   autosaveTarget(COUNCIL_TOPIC_SUMMARY_POLICY, 'summary', 'council-topic-summary', 'councilTopicSummaryDrafts', 'councilTopicSummaryActions'),
+  autosaveTarget(COUNCIL_TOPIC_TEXT_POLICY, 'text', 'council-topic-text', 'councilTopicTextDrafts', 'councilTopicTextActions'),
   autosaveTarget(GROUP_BLOCK_TITLE_POLICY, 'title', 'group-block-title', 'groupBlockTitleDrafts', 'groupBlockTitleActions'),
   autosaveTarget(GROUP_STEP_TITLE_POLICY, 'title', 'group-step-title', 'groupStepTitleDrafts', 'groupStepTitleActions'),
   autosaveTarget(GROUP_BLOCK_CONTENT_POLICY, 'content', 'group-block-content', 'groupBlockContentDrafts', 'groupBlockContentActions'),
@@ -84,8 +86,8 @@ export function hasRowProofTarget(collection: string, key: string): boolean {
 export type UnreadableRowProof = { field: DraftKey; rowId: string; birth: string; generation: string };
 
 /** A readable proof must still name this generation and match the exact words on the device. */
-export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'> & { pendingOpening?: DocumentData }, key: string,
-  proofs: Record<string, unknown>): Record<string, unknown> {
+export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'>, key: string,
+  proofs: Record<string, unknown>, pendingOpenings: readonly DocumentData[]): Record<string, unknown> {
   const { confirmed, draft } = checkpoint;
   const metadata = confirmed.metadata;
   const target = targetsFor(confirmed.resource.collection).find(item => item.draft === key);
@@ -106,8 +108,7 @@ export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'con
     if (target.stamp === 'thought-placement' || target.stamp === 'outline-title') return true;
     if (action.observedRevision < metadata.revision || openingBirths.get(id) !== action.rowCreatedAt
       || equalValues(opening.get(id), action.before)) return true;
-    const pending = checkpoint.pendingOpening;
-    return Boolean(pending && birthAt(pending, id, target) === action.rowCreatedAt
+    return pendingOpenings.some(pending => birthAt(pending, id, target) === action.rowCreatedAt
       && equalValues(fieldAt(pending, id, target), action.before));
   }));
 }
@@ -260,8 +261,8 @@ export function stageReviewedRowFields(checkpoint: SessionCheckpoint, paths: rea
   for (const target of targetsFor(confirmed.resource.collection).filter(item => !kinds || kinds.includes(item.stamp))) {
     const field = target.policy.target(target.field);
     for (const path of paths) {
-      const rowId = path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
-      if (!rowId || !equalValues(path, rowConflictPath(rowId, field))) continue;
+      const rowId = rowConflictId(path, field);
+      if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId)) continue;
       const before = fieldAt(confirmed.value, rowId, target), after = fieldAt(draft, rowId, target);
       const rowCreatedAt = birthAt(confirmed.value, rowId, target);
       if (before === undefined || after === undefined || equalValues(before, after) || rowCreatedAt === undefined
@@ -512,8 +513,8 @@ export function isCapturedAutosaveRowFieldConflict(conflict: ConflictDetail, rec
 
 export function isAutosaveRowFieldPath(path: readonly string[] | undefined, collection: string): boolean {
   if (path && outlineTitleId(path, collection)) return true;
-  const id = path?.[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
-  return boundedRowId(id) && targetsFor(collection).some(target => equalValues(path, rowConflictPath(id, target.policy.target(target.field))));
+  return Boolean(path && targetsFor(collection).some(target =>
+    (target.policy.acceptsRowId ?? boundedRowId)(rowConflictId(path, target.policy.target(target.field)))));
 }
 
 export function hasAutosaveRowFieldCaptures(record: CommitRequest): boolean {

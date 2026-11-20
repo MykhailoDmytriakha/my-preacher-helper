@@ -26,13 +26,15 @@ export function orderRowText<Field extends string, Value extends string | null>(
   const afterBirths = existingRowFields(change.after.value, policy.birth);
   const rawActions: unknown = Reflect.get(command, policy.actions);
   const seen = new Set<string>(), submitted = new Map<string, object>();
+  const acceptsRowId = policy.acceptsRowId ?? boundedRowId;
   for (const candidate of Array.isArray(rawActions) ? rawActions : []) {
-    if (!object(candidate) || !boundedRowId(candidate.rowId)) continue;
+    if (!object(candidate) || !acceptsRowId(candidate.rowId)) continue;
     if (seen.has(candidate.rowId)) { submitted.delete(candidate.rowId); continue; }
     seen.add(candidate.rowId);
     if (typeof candidate.rowCreatedAt !== 'string') continue;
     const full = { ...candidate, before: opening.get(candidate.rowId), after: proposed.get(candidate.rowId) };
-    const action = readRowObservation(command, full, target, serverMs, { allowUnclocked: true });
+    const action = readRowObservation(command, full, target, serverMs, { allowUnclocked: true, acceptsRowId,
+      allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)) });
     if (action && action.observedRevision <= metadata.revision
       && matchesRowDetailBirth(command.changes, { rowId: action.rowId, rowCreatedAt: candidate.rowCreatedAt }, policy.birth)) submitted.set(action.rowId, full);
   }

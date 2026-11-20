@@ -146,6 +146,11 @@ export function readPreachDateFieldVersions(path: readonly string[], mine: Docum
   if (local !== undefined && saved !== undefined) return { rowId, field, mine: local, stored: saved };
 }
 
+export function readChangedPreachDateFieldVersions(...args: Parameters<typeof readPreachDateFieldVersions>) {
+  const versions = readPreachDateFieldVersions(...args);
+  return versions && !equalValues(versions.mine, versions.stored) ? versions : undefined;
+}
+
 export function preachDateRebaseChoices(snapshot: ResourceSnapshot, ancestor: DocumentData | null,
   actions: PreachDateFieldActions | undefined): ConflictDetail[] {
   return PREACH_DATE_FIELDS.flatMap(field => {

@@ -860,6 +860,17 @@ export class DataSession {
     stageReviewedRowFields(this.state, [path], time, ['council-topic-summary']);
   }
 
+  stageReviewedCouncilText(path: readonly string[], time: ActionTime | null): void {
+    const target = path.length === 1 && [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE].find(item => item.field === path[0]);
+    if (target) {
+      const opening = { ...this.state, draft: this.state.confirmed.value };
+      const action = stageAutosaveField(opening, this.state.draft, undefined, target, { field: target.field, time });
+      if (action) this.state[target.draft] = action;
+      return;
+    }
+    stageReviewedRowFields(this.state, [path], time, ['council-topic-text', 'council-topic-summary', 'council-topic-title', 'council-topic-outcome']);
+  }
+
   stageReviewedGroupFlowText(paths: readonly (readonly string[])[], time: ActionTime | null): void {
     stageReviewedGroupFlowText(this.state, paths, time);
   }

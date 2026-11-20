@@ -87,7 +87,7 @@ const pendingShape = {
   councilTitleAction: textAction.optional(), councilDateAction: councilDateAction.optional(), councilLifecycleAction: councilDateAction.optional(),
   councilOutcomeActions: z.array(storedRowAction).optional(), councilTopicTitleActions: z.array(titleAction).optional(),
   groupBlockTitleActions: z.array(titleAction).optional(), groupStepTitleActions: z.array(nullableTitleAction).optional(),
-  councilTopicSummaryActions: z.array(nullableTitleAction).optional(), thoughtTextActions: z.array(titleAction).optional(),
+  councilTopicSummaryActions: z.array(nullableTitleAction).optional(), councilTopicTextActions: z.array(nullableTitleAction).optional(), thoughtTextActions: z.array(titleAction).optional(),
   groupBlockContentActions: z.array(titleAction).optional(), groupStepNotesActions: z.array(nullableTitleAction).optional(),
   groupBlockStatusActions: z.array(titleAction).optional(), groupStepDurationActions: z.array(storedRowAction).optional(),
   thoughtLockActions: z.array(storedRowAction).optional(), thoughtPlacementActions: z.array(storedRowAction).optional(),
@@ -111,8 +111,9 @@ const sermonNoteOpening = z.object({
 // These in-memory instructions can resend a move after later typing or an undo.
 type PlacementRetry = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry';
 const groupTextDecision = z.object({
-  path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.null()]),
-  stored: z.union([z.string(), z.number(), z.null()]), side: z.enum(['local', 'remote']),
+  path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.boolean(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
+  stored: z.union([z.string(), z.number(), z.boolean(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]), side: z.enum(['local', 'remote']),
+  time: actionTime.optional(),
   row: z.record(z.string(), z.unknown()).optional(), removedBy: z.enum(['local', 'remote']).optional(),
   linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
 });
@@ -138,7 +139,7 @@ const recordSchema = z.object({
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(checkpointConflict).default([]),
     unreadableScalarProof: z.array(z.string()).min(1).max(5).optional(),
-    unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'groupBlockTitleDrafts',
+    unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
@@ -157,6 +158,7 @@ const recordSchema = z.object({
     councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: councilDateDraft.optional(),
     councilLifecycleDraft: councilDateDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
     councilTopicSummaryDrafts: rowDrafts(nullableTitleAction).optional(),
+    councilTopicTextDrafts: rowDrafts(nullableTitleAction).optional(),
     councilOutcomeDrafts: rowDrafts(storedRowAction).optional(),
     groupBlockTitleDrafts: rowDrafts(titleAction).optional(), groupBlockStatusDrafts: rowDrafts(titleAction).optional(),
     groupStepTitleDrafts: rowDrafts(nullableTitleAction).optional(),
@@ -336,15 +338,19 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       const rowKeys = Object.keys(original).filter(key => original[key] !== undefined && hasRowProofTarget(collection, key));
       const checkOpening = rowKeys.length > 0 || checkPointProofs;
       const parsed = checkOpening ? snapshotSchema.safeParse(confirmed) : undefined;
-      const latestPending = checkOpening && isFields(checkpoint.pending) ? Object.values(checkpoint.pending)
-        .filter(isFields).reduce<Fields | undefined>((latest, intent) =>
-          typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined)
+      const editGeneration = checkpoint.editGeneration;
+      const pending = checkOpening && isFields(checkpoint.pending) ? Object.values(checkpoint.pending).filter(isFields) : [];
+      const latestPending = checkPointProofs ? pending.reduce<Fields | undefined>((latest, intent) =>
+        typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined)
         : undefined;
       const pendingOpening = isFields(latestPending?.value) ? latestPending.value as DocumentData : undefined;
+      const pendingRowOpenings = rowKeys.length ? pending.flatMap(intent => typeof editGeneration === 'number'
+        && typeof intent.generation === 'number' && intent.generation < editGeneration && isFields(intent.value)
+        ? [intent.value as DocumentData] : []) : [];
       const rows = parsed?.success ? rowKeys.flatMap(key => {
         const structurallyReadable = checkpoint[key] ?? splitRowProofs(key, original[key]);
-        const source = { confirmed: parsed.data, draft: checkpoint.draft as EditorRecord['checkpoint']['draft'], pendingOpening };
-        const readable = validRecoveredRowProofs(source, key, isFields(structurallyReadable) ? structurallyReadable : {});
+        const source = { confirmed: parsed.data, draft: checkpoint.draft as EditorRecord['checkpoint']['draft'] };
+        const readable = validRecoveredRowProofs(source, key, isFields(structurallyReadable) ? structurallyReadable : {}, pendingRowOpenings);
         const lost = !isFields(structurallyReadable) || Object.keys(readable).length !== Object.keys(structurallyReadable).length;
         if (!lost && !dropped.includes(key)) return [];
         dropped.push(key);
@@ -396,7 +402,7 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   if (sourceLinks.some(links => links && (ref.collection !== 'sermons' || links.opening.sermonId !== ref.id
     || links.action.observedRevision !== links.opening.revision))) throw new Error('Source note checkpoint identity mismatch');
   const groupTextReview = record.checkpoint.groupTextReview;
-  if (groupTextReview && (ref.collection !== 'groups' || !record.checkpoint.pending[groupTextReview.requestId])) {
+  if (groupTextReview && (!['groups', 'councils'].includes(ref.collection) || !record.checkpoint.pending[groupTextReview.requestId])) {
     throw new Error('Group text review checkpoint identity mismatch');
   }
   validateScopedEvidence(record, ref.collection);

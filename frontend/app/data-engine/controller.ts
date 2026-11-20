@@ -13,6 +13,8 @@ import { councilAssemblyRow } from './councilAssemblyAction';
 import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
 import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
+import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
+import { councilTopicTextDecision, councilTopicTextVersions, projectCouncilTopicTextDecisions, readCouncilTopicTextReview, retainedCouncilTopicWords, reviewedCouncilDetailAction, withQueuedCouncilTopicTextProofs } from './councilTopicTextReview';
 import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
@@ -856,15 +858,24 @@ export class EditorController {
     const shown = this.record();
     const ordinary = !selection && !correction ? await this.ordinaryAnswerFor(cancelled) : undefined;
     const groupReview = ordinary && readGroupTextReview(shown.checkpoint);
-    const reviewingGroup = Boolean(groupReview && (shown.checkpoint.groupTextReview || groupReview.remaining.length > 1));
-    if (reviewingGroup || shown.checkpoint.groupTextReview) {
-      if (!expected || !ordinary || ordinary.scope.length !== 1 || !groupReview || (shown.checkpoint.groupTextReview
-        && (ordinary.first.id !== shown.checkpoint.groupTextReview.requestId || ordinary.first.revision !== shown.checkpoint.groupTextReview.revision))) {
-        throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
+    const councilReview = ordinary && readCouncilTopicTextReview(shown.checkpoint);
+    const textReview = councilReview || groupReview;
+    const reviewingText = Boolean(councilReview || groupReview && (shown.checkpoint.groupTextReview || groupReview.remaining.length > 1));
+    const hasCouncilTextOrder = shown.checkpoint.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED);
+    if (reviewingText || shown.checkpoint.groupTextReview || hasCouncilTextOrder) {
+      if (!expected || !ordinary || !textReview || (councilReview ? councilReview.requestId !== ordinary.first.id : ordinary.scope.length !== 1)
+        || (shown.checkpoint.groupTextReview && (ordinary.first.id !== shown.checkpoint.groupTextReview.requestId
+          || ordinary.first.revision !== shown.checkpoint.groupTextReview.revision))) {
+        throw Object.assign(new Error('Finish comparing the changed fields'), { code: 'decision-changed' });
       }
-      if (groupReview.remaining.length > 1) {
+      if (choice === 'local' && councilReview && councilReview.remaining[0]?.removed) {
+        throw Object.assign(new Error('The section entry has been deleted'), { code: 'topic-gone' });
+      }
+      if (textReview.remaining.length > 1) {
         const { groupTextReview: _review, ...checkpoint } = shown.checkpoint;
-        const decisions = [...groupReview.decisions, groupTextDecision(groupReview.remaining[0], choice)];
+        const next = councilReview ? councilTopicTextDecision(councilReview.remaining[0], choice, choiceTime ?? null)
+          : groupTextDecision(groupReview!.remaining[0], choice);
+        const decisions = [...textReview.decisions, next];
         let projected: EditorRecord | undefined;
         await this.options.commits!.stageGroupTextReview(ordinary.first, { checkpoint, decisions }, saved => {
           this.assertCurrent();
@@ -939,11 +950,11 @@ export class EditorController {
         source = record.checkpoint;
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
-        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, Boolean(councilReview)) : source;
         const orderedDateNote = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(orderedPreachDateNote);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
-        const groupText = !reviewingGroup && !selection && readGroupFlowTextChoice(decided, local);
+        const groupText = !reviewingText && !selection && readGroupFlowTextChoice(decided, local);
         const councilSummary = !selection && !correction && readCouncilSummaryChoice(decided, local);
         const remainingDraft = groupText ? writeGroupFlowTextChoice(local, groupText, 'before')
           : councilSummary ? writeCouncilSummaryChoice(local, councilSummary, 'before') : undefined;
@@ -964,27 +975,58 @@ export class EditorController {
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
-        if (reviewingGroup) {
-          const review = readGroupTextReview(decided);
-          if (!review || review.remaining.length > 1 || !ordinary?.first.groupTextReview) {
-            throw Object.assign(new Error('The shown group text changed'), { code: 'decision-changed' });
+        if (reviewingText) {
+          const council = readCouncilTopicTextReview(decided);
+          const group = council ? undefined : readGroupTextReview(decided);
+          const review = council || group;
+          if (!review || review.remaining.length > 1 || (!council && !ordinary?.first.groupTextReview)) {
+            throw Object.assign(new Error('The shown text changed'), { code: 'decision-changed' });
           }
-          const decisions = review.remaining.length
-            ? [...review.decisions, groupTextDecision(review.remaining[0], choice)] : review.decisions;
-          const chosen = projectGroupTextDecisions(review, decisions);
-          if (!chosen) throw Object.assign(new Error('The reviewed group field changed'), { code: 'decision-changed' });
+          const last = council?.remaining[0] ? councilTopicTextDecision(council.remaining[0], choice, choiceTime ?? null)
+            : group && group.remaining[0] ? groupTextDecision(group.remaining[0], choice) : undefined;
+          const decisions = last ? [...review.decisions, last] : review.decisions;
+          const chosen = council ? projectCouncilTopicTextDecisions(council, decisions) : projectGroupTextDecisions(group!, decisions);
+          if (!chosen) throw Object.assign(new Error('The reviewed field changed'), { code: 'decision-changed' });
+          const sameWriter = council && ordinary && ordinary.scope.every(request => request.editorId === ordinary.first.editorId);
+          const tailOpening = sameWriter ? source.pending[ordinary.first.id].value : null;
+          const laterDraft = source.draft;
+          const independent = council && tailOpening && laterDraft
+            && [...council.fields, ...council.settled.map(({ field }) => field)].every(({ path }) => {
+              const later = councilTopicTextVersions(path, tailOpening, laterDraft, tailOpening);
+              return later && equalValues(later.mine, later.stored);
+            });
+          const tail = independent && mergeDocumentFields(tailOpening, laterDraft, chosen);
+          const keptTail = tail && tail.value.exists && !tail.conflicts.length ? tail.value.value as DocumentData : undefined;
           session.acceptRemote();
           session.clearGroupTextReview();
-          session.edit(chosen);
-          session.retainUnreviewedAutosaveActions(decided, review.fields);
-          session.stageReviewedGroupFlowText(decisions.filter(decision => decision.side === 'local').map(decision => decision.path), choiceTime ?? null);
-          if (decisions.some(decision => decision.side === 'local' && equalValues(decision.path, ['description']))) {
-            session.stageReviewedGroupDescription(choiceTime ?? null);
+          session.edit(keptTail ?? chosen);
+          const kept = decisions.filter(decision => decision.side === 'local');
+          if (council) {
+            session.retainUnreviewedAutosaveActions(withQueuedCouncilTopicTextProofs(keptTail ? source : decided, council), council.fields);
+            for (const { path, time } of kept) session.stageReviewedCouncilText(path, time ?? null);
+          } else {
+            session.retainUnreviewedAutosaveActions(decided, review.fields);
+            session.stageReviewedGroupFlowText(kept.map(decision => decision.path), choiceTime ?? null);
+            if (kept.some(decision => equalValues(decision.path, ['description']))) {
+              session.stageReviewedGroupDescription(choiceTime ?? null);
+            }
           }
-          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint());
+          const intent = session.checkpoint();
+          const action = council && reviewedCouncilDetailAction(council, decisions, intent.confirmed, intent.draft, ordinary?.first);
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, intent, { action: action || undefined });
           if (replacement) session.applyCommit(replacement);
           projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
-          return { editorRecords: [projected], manualRecoveries: [], replacements: replacement ? [replacement] : [] };
+          const recovery = council && ordinary && !keptTail ? projectOrdinaryChoiceDependents(
+            record.owner, ordinary, projected.checkpoint.confirmed, projected.checkpoint.draft, retired) : undefined;
+          const latest = council && ordinary && !keptTail && ordinary.scope.findLast(request => source!.pending[request.id]);
+          const unsavedTail = latest && anchoredPlacementChoiceTail(source, latest.id);
+          const retained = council && unsavedTail && retainedAnchoredPlacementDraft(record.owner, record.editorId, council.requestId,
+            'unqueued', source, projected.checkpoint.confirmed, unsavedTail.base, unsavedTail.value);
+          const removed = council && retainedCouncilTopicWords(decided, council);
+          const removedCopy = council && removed && retainedAnchoredPlacementDraft(record.owner, record.editorId, council.requestId,
+            'removed-topic', decided, projected.checkpoint.confirmed, removed.base, removed.value);
+          return { editorRecords: [projected, ...(recovery?.editorRecords ?? []), ...(retained ? [retained] : []),
+            ...(removedCopy ? [removedCopy] : [])], manualRecoveries: recovery?.manualRecoveries ?? [], replacements: replacement ? [replacement] : [] };
         }
         if (refusedPoint && savedPlan) {
           if (!hasLaterPendingExegeticalTitle(decided, refusedPoint.id)
@@ -1285,10 +1327,10 @@ export class EditorController {
         const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined);
         return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedPlacementTail ? [retainedPlacementTail] : []], replacements };
-      }, ordinary ? { roots: [ordinary.first], ...((sourceNoteTail || placeTail) && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }), ...(reviewingGroup && { groupTextReview: true as const }) }
+      }, ordinary ? { roots: [ordinary.first], ...((sourceNoteTail || placeTail) && { retained: new Set<string>() }), ...(savedOrder && { placementChoice: new Map([[ordinary.first.id, savedOrder]]) }), ...(reviewingText && { groupTextReview: true as const }) }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
-    await this.applyChoiceProjection(source, projected, captures, reviewingGroup ? ordinary?.first.id : anchoredChoice);
+    await this.applyChoiceProjection(source, projected, captures, reviewingText ? ordinary?.first.id : anchoredChoice);
     await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);
   }
 

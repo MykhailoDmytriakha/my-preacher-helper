@@ -291,13 +291,14 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       const hasOpening = policy.rememberOpenings ? previousBirths.get(rowId) === born : oldValue !== undefined;
       const reselected = Boolean(policy.allowUnchanged?.(field, value))
         && (Boolean(stamp && equalValues(stamp.before, stamp.after)) || unordered.has(rowId));
+      const reaffirmed = policy.rememberReaffirmations && !changed && (Boolean(time) || unordered.has(rowId));
       const priorFrames = policy.seedOpeningFromStoredValue && !stored.floor && !prior && oldValue !== undefined && changed
         ? [digest(born, oldValue, oldScope)]
-        : remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged || reselected) : undefined;
+        : remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged || reselected || reaffirmed === true) : undefined;
       const bound = policy.requireObserved && queueDigest && (changed || scopeChanged);
       return [{ rowId: proofId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
         ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),
-        ...(policy.allowUnclocked && (changed || enteredScope || bound || (policy.rememberOpenings && reselected)) && { causal: true as const }) }];
+        ...(policy.allowUnclocked && (changed || enteredScope || bound || (policy.rememberOpenings && (reselected || reaffirmed))) && { causal: true as const }) }];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {

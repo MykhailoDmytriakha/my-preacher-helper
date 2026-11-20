@@ -7,6 +7,8 @@ export type RowValue = string | number | boolean | null | DocumentData | string[
 export type RowFieldTarget<Value extends RowValue> = {
   field: string;
   leaf: string | readonly [string, string];
+  conflictPath?: (rowId: string) => string[] | undefined;
+  conflictRowId?: (path: readonly string[]) => string | undefined;
   container?: {
     rows(value: unknown): readonly DocumentData[];
     replace(rows: Json | undefined, id: string, value: Value): Json | undefined;
@@ -100,7 +102,12 @@ export function matchesRowAction<Value extends RowValue>(changes: FieldChange[],
     && equalValues(existingRowField(change.after.value, action.rowId, target), action.after));
 }
 
-export const rowConflictPath = (rowId: string, target: RowFieldTarget<RowValue>) => [target.field, 'id:' + rowId, ...leafPath(target.leaf)];
+export const rowConflictPath = (rowId: string, target: RowFieldTarget<RowValue>) =>
+  target.conflictPath?.(rowId) ?? [target.field, 'id:' + rowId, ...leafPath(target.leaf)];
+export function rowConflictId(path: readonly string[], target: RowFieldTarget<RowValue>): string | undefined {
+  const id = target.conflictRowId ? target.conflictRowId(path) : path[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
+  return id && equalValues(path, rowConflictPath(id, target)) ? id : undefined;
+}
 export const rowConflictValue = (value: RowValue): FieldValue => value === null ? { exists: false } : { exists: true, value };
 
 export function isCapturedRowConflict<Value extends RowValue>(conflict: ConflictDetail, action: RowFieldObservation<Value>, target: RowFieldTarget<Value>): boolean {

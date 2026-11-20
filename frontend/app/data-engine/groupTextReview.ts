@@ -9,6 +9,8 @@ import { readPrivateFieldReview } from './privateFieldReview';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 
+import type { ActionTime } from './actionClock';
+import type { CouncilOutcome } from './councilOutcomeAction';
 import type { FieldSelection } from './privateFieldReview';
 import type { RowFieldTarget } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
@@ -184,9 +186,10 @@ export interface GroupTextReviewStage {
 export interface GroupTextDecision {
   path: string[];
   birth: string | null;
-  mine: string | number | null;
-  stored: string | number | null;
+  mine: string | number | boolean | CouncilOutcome | null;
+  stored: string | number | boolean | CouncilOutcome | null;
   side: 'local' | 'remote';
+  time?: ActionTime | null;
   row?: DocumentData;
   removedBy?: 'local' | 'remote';
   linkedSteps?: DocumentData[];

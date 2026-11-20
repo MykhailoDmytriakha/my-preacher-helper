@@ -1146,8 +1146,10 @@ export class CommitQueue {
     project: (saved: CommitRequest) => EditorRecord): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records } = await this.planCancellation('', [root.id], false);
-    if (records.length !== 1 || records[0].id !== root.id || records[0].revision !== root.revision
-      || root.state !== 'conflict' || root.baseline.resource.collection !== 'groups') {
+    const current = records.find(request => request.id === root.id);
+    const collection = root.baseline.resource.collection;
+    if (!current || current.revision !== root.revision || root.state !== 'conflict'
+      || (collection === 'groups' ? records.length !== 1 : collection !== 'councils')) {
       throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
     }
     const [saved] = await this.options.store.compareAndSetWithCheckpoint(
@@ -1656,14 +1658,14 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      const { councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, preachDateNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      const { councilOutcomeActions, councilTopicSummaryActions, councilTopicTextActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions, preachDateNotesActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
       Object.assign(command, rowFields);
       const retriedNote = preachDateNotesActions?.[0];
       if (retriedNote && !command.preachDateFieldActions?.notes) {
         command.preachDateFieldActions = { ...command.preachDateFieldActions, notes: compactRowTextStamps([retriedNote])[0] };
       }
       // The two row arrays on the command already carry these exact values.
-      for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions })) {
+      for (const [key, actions] of Object.entries({ councilOutcomeActions, councilTopicSummaryActions, councilTopicTextActions, groupBlockContentActions, groupStepNotesActions, thoughtTextActions })) {
         if (actions) Object.assign(command, { [key]: compactRowTextStamps(actions) });
       }
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);

@@ -212,7 +212,7 @@ function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, s
   };
 }
 
-export function retainedAnchoredPlacementDraft(owner: string, editorId: string, requestId: string, phase: 'unqueued' | 'during-choice',
+export function retainedAnchoredPlacementDraft(owner: string, editorId: string, requestId: string, phase: 'unqueued' | 'during-choice' | 'removed-topic',
   source: SessionCheckpoint, accepted: ResourceSnapshot, base: DocumentData, draft: DocumentData): EditorRecord {
   const record = retainedChoiceDraft(owner, requestId, JSON.stringify([phase, editorId]), accepted, base, draft, editorId);
   return protectPlacementFields(record, source);
@@ -320,7 +320,8 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     if (!formOwned && request.sermonNoteText && !equalValues(laterDraft, basis)) {
       return [retain(request.id, laterDraft, basis, { sermonNoteText: request.sermonNoteText })];
     }
-    if (separatePlacementSaves && !formOwned) {
+    const hasCouncilText = stored.resource.collection === 'councils' && request.councilTopicTextActions?.length;
+    if ((separatePlacementSaves || hasCouncilText) && !formOwned) {
       if (equalValues(laterDraft, basis)) return [];
       return request.value && ancestor.value ? [protectPlacementFields(retain(request.id, request.value, ancestor.value), savedPlacementFields(request))]
         : [retain(request.id, laterDraft, basis)];

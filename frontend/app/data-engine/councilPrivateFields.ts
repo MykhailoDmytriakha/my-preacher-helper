@@ -20,19 +20,30 @@ function words(value: FieldValue | undefined) {
   return !value ? undefined : !value.exists ? null : typeof value.value === 'string' ? value.value : undefined;
 }
 
+export function readCouncilOutcomeVersions(id: string, opening: DocumentData, draft: DocumentData, saved: DocumentData) {
+  const kind = existingRowField(opening.topics, id, COUNCIL_TOPIC_KIND);
+  if (!kind || kind !== existingRowField(draft.topics, id, COUNCIL_TOPIC_KIND)
+    || kind !== existingRowField(saved.topics, id, COUNCIL_TOPIC_KIND)) return undefined;
+  const mine = existingRowField(draft.topics, id, COUNCIL_OUTCOME);
+  const stored = existingRowField(saved.topics, id, COUNCIL_OUTCOME);
+  return mine && stored && !incompatibleCouncilOutcome(mine) && !incompatibleCouncilOutcome(stored) ? { mine, stored } : undefined;
+}
+
+export function councilOutcomeOptionAvailable(topics: unknown, id: string, outcome: CouncilOutcome): boolean {
+  if (!outcome.acceptedOptionId) return true;
+  const topic = Array.isArray(topics) ? topics.find(row => object(row) && row.id === id) : undefined;
+  const options = object(topic) && topic.options;
+  return Array.isArray(options) && options.some(option => object(option) && option.id === outcome.acceptedOptionId);
+}
+
 function readCouncilField(checkpoint: SessionCheckpoint, path: string[]): CouncilPrivateField | undefined {
   const { confirmed, draft, remoteCandidate } = checkpoint;
   const saved = remoteCandidate?.value;
   if (!confirmed.value || !draft || !saved) return undefined;
   const outcome = councilOutcomeRow(path);
   if (outcome) {
-    const opening = existingRowField(confirmed.value.topics, outcome, COUNCIL_TOPIC_KIND);
-    if (!opening || opening !== existingRowField(draft.topics, outcome, COUNCIL_TOPIC_KIND)
-      || opening !== existingRowField(saved.topics, outcome, COUNCIL_TOPIC_KIND)) return undefined;
-    const mine = existingRowField(draft.topics, outcome, COUNCIL_OUTCOME);
-    const stored = existingRowField(saved.topics, outcome, COUNCIL_OUTCOME);
-    return mine && stored && !incompatibleCouncilOutcome(mine) && !incompatibleCouncilOutcome(stored)
-      ? { field: 'outcome', path, birth: outcome, mine, stored } : undefined;
+    const versions = readCouncilOutcomeVersions(outcome, confirmed.value, draft, saved);
+    return versions && { field: 'outcome', path, birth: outcome, ...versions };
   }
   if (path.length === 3 && path[0] === 'topics' && path[1].startsWith('id:') && path[2] === 'summary') {
     const birth = path[1].slice(3), target = COUNCIL_TOPIC_SUMMARY_POLICY.target('summary');
@@ -70,10 +81,7 @@ export function readPrivateCouncilReview(checkpoint: SessionCheckpoint) {
   if (!review) return undefined;
   const topics = review.merged.value.exists && object(review.merged.value.value) && review.merged.value.value.topics;
   const fields = review.fields.map((field): CouncilPrivateField => {
-    if (field.field !== 'outcome' || !field.mine.acceptedOptionId) return field;
-    const topic = Array.isArray(topics) ? topics.find(row => object(row) && row.id === field.birth) : undefined;
-    const options = object(topic) && topic.options;
-    return Array.isArray(options) && options.some(option => object(option) && option.id === field.mine.acceptedOptionId)
+    return field.field !== 'outcome' || councilOutcomeOptionAvailable(topics, field.birth, field.mine)
       ? field : { ...field, localAvailable: false };
   });
   const decisions = review.decisions.filter(decision => decision.side === 'remote' || !fields.some(field =>

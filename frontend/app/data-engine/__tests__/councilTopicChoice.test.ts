@@ -1,10 +1,15 @@
+import { waitFor } from '@testing-library/react';
+
 import { documentEngineHarness, settleEngine } from '../../../test-utils/documentEngineHarness';
 import { initializeCommit } from '../atomicCommits';
 import { captureCouncilTopicPlacement } from '../councilTopicPlacement';
+import { COUNCIL_TOPIC_TEXT, COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED, councilTopicTextId, type CouncilTopicTextField } from '../councilTopicTextAction';
+import { readCouncilTopicTextComparison } from '../councilTopicTextReview';
 import { editorIdentity } from '../editorIdentity';
 import { projectSavedChoiceDependents, recoverManualChoiceCopy } from '../manualChoice';
 import { ordinaryAnswerChoice, ordinaryStoredChoice } from '../ordinaryAnswerChoice';
 import { diffFields } from '../protocol';
+import { existingRowField, replaceExistingRowField, rowConflictPath, rowConflictValue } from '../rowFieldAction';
 import { planDataCommand } from '../serverRelations';
 
 import type { CommitRequest } from '../commits';
@@ -168,5 +173,424 @@ it('keeps unconflicted words in a held council’s local copy until the council 
   const reopened = snapshot('acbd', 'First words', 4);
   expect(recoverManualChoiceCopy(copy, reopened).checkpoint).toMatchObject({
     confirmed: reopened, draft: value('acbd', 'Words to keep locally'), conflicts: [],
+  });
+});
+
+
+describe('council nested text choices through the durable editor', () => {
+  const owner = 'owner';
+  const id = (field: CouncilTopicTextField) => councilTopicTextId('topic', 'item', field);
+  const at = (clock: number) => ({ earliestMs: 1_800_000_000_000 + clock, latestMs: 1_800_000_000_001 + clock });
+  const opening = {
+    id: 'topic', title: 'Section', kind: 'decision', summary: 'Opening summary',
+    questions: [{ id: 'item', question: 'Opening question', answer: 'Opening answer' }],
+    options: [{ id: 'item', text: 'Opening option' }],
+  };
+  const initial: ResourceSnapshot = { resource, metadata, value: { userId: owner, title: 'Council',
+    status: 'preparing', rev: 1, topics: [opening], updatedAt: 'opening' } };
+  const read = (doc: DocumentData | null, field: CouncilTopicTextField) => existingRowField(doc?.topics, id(field), COUNCIL_TOPIC_TEXT);
+  const conflict = (field: CouncilTopicTextField, mine: string, shown: string, code?: string) => ({
+    path: rowConflictPath(id(field), COUNCIL_TOPIC_TEXT), base: rowConflictValue(read(initial.value, field)!),
+    mine: rowConflictValue(mine), theirs: rowConflictValue(shown), ...(code && { code }),
+  });
+  const delay = (h: ReturnType<typeof documentEngineHarness>, conflicts: ReturnType<typeof conflict>[]) => {
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts,
+    }));
+  };
+  const open = async () => {
+    const h = documentEngineHarness(initial);
+    const engine = h.createBrowser().engine;
+    engine.setOwner(owner); engine.setOnline(false);
+    const editor = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'council', 'first'));
+    const editField = async (field: CouncilTopicTextField, text: string, millis: number) => {
+      const checkpoint = editor.getState().checkpoint;
+      const draft = checkpoint.draft!;
+      await editor.edit({ ...draft, topics: replaceExistingRowField(draft.topics, id(field), text, COUNCIL_TOPIC_TEXT)! },
+        checkpoint, { field: 'council-topic-text', rowId: id(field), time: at(millis) });
+    };
+    return { h, engine, editor, editField };
+  };
+
+  it.each(['local', 'saved'] as const)('keeps the ordered winners and independent summary when the %s option is selected', async side => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Earlier local question', 10);
+      await editField('answer', 'Later local answer', 40);
+      await editField('option', 'Uncertain local option', 30);
+      const draft = editor.getState().checkpoint.draft!;
+      const topic = (draft.topics as Record<string, unknown>[])[0];
+      await editor.edit({ ...draft, topics: [{ ...topic, summary: 'Independent summary' } as DocumentData] });
+      await editor.save();
+      h.silentRemote({ rev: 3, updatedAt: 'server', topics: [{ ...opening, options: [{ id: 'item', text: 'Saved option' }] }] });
+      delay(h, [
+        conflict('question', 'Earlier local question', 'Opening question', COUNCIL_TOPIC_TEXT_SETTLED),
+        conflict('answer', 'Later local answer', 'Opening answer', COUNCIL_TOPIC_TEXT_QUEUED),
+        conflict('option', 'Uncertain local option', 'Saved option'),
+      ]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        councilTopicTextActions: expect.arrayContaining([
+          { rowId: id('question'), rowCreatedAt: id('question'), observedRevision: 1, time: at(10) },
+          { rowId: id('answer'), rowCreatedAt: id('answer'), observedRevision: 1, time: at(40) },
+        ]),
+      }));
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({ field: 'option', mine: 'Uncertain local option', stored: 'Saved option' });
+      if (side === 'local') await editor.keepLocal(undefined, compared, at(80));
+      else await editor.acceptRemote(undefined, compared);
+      await waitFor(() => expect(read(h.server.value, 'answer')).toBe('Later local answer'));
+      expect(read(h.server.value, 'question')).toBe('Opening question');
+      expect(read(h.server.value, 'option')).toBe(side === 'local' ? 'Uncertain local option' : 'Saved option');
+      expect(h.server.value?.topics).toMatchObject([{ summary: 'Independent summary' }]);
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTopicTextActions: [
+          { rowId: id('answer'), rowCreatedAt: id('answer'), observedRevision: 1, time: at(40) },
+          ...(side === 'local' ? [{ rowId: id('option'), rowCreatedAt: id('option'), observedRevision: 2, time: at(80) }] : []),
+        ],
+      }));
+    } finally { engine.dispose(); }
+  });
+
+  it.each(['local', 'saved'] as const)('keeps a later question when reviewing the %s outcome', async side => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Later local question', 40);
+      const checkpoint = editor.getState().checkpoint;
+      const draft = checkpoint.draft!;
+      const [topic] = draft.topics as DocumentData[];
+      await editor.edit({ ...draft, topics: [{ ...topic, decision: 'Local outcome' }] }, checkpoint,
+        { field: 'council-topic-outcome', rowId: 'topic', time: null });
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, decision: 'Saved outcome' }] });
+      jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+        kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+          conflict('question', 'Later local question', 'Opening question', COUNCIL_TOPIC_TEXT_QUEUED),
+          { path: ['topics', 'id:topic', 'outcome'], base: rowConflictValue({}),
+            mine: rowConflictValue({ decision: 'Local outcome' }), theirs: rowConflictValue({ decision: 'Saved outcome' }) },
+        ],
+      }));
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({
+        field: 'outcome', mine: { decision: 'Local outcome' }, stored: { decision: 'Saved outcome' },
+      });
+      if (side === 'local') await editor.keepLocal(undefined, compared, at(80));
+      else await editor.acceptRemote(undefined, compared);
+      await waitFor(() => expect(read(h.server.value, 'question')).toBe('Later local question'));
+      expect(h.server.value?.topics).toMatchObject([{ decision: side === 'local' ? 'Local outcome' : 'Saved outcome',
+        options: opening.options }]);
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTopicTextActions: [expect.objectContaining({ rowId: id('question'), time: at(40) })],
+        ...(side === 'local' && { councilOutcomeActions: [expect.objectContaining({ rowId: 'topic', time: at(80) })] }),
+      }));
+    } finally { engine.dispose(); }
+  });
+
+  it.each(['local', 'saved'] as const)('keeps the ordered question when reviewing the %s assembly mark', async side => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Later local question', 40);
+      await editor.commit(draft => {
+        const [topic] = draft!.topics as DocumentData[];
+        return { ...draft, topics: [{ ...topic, forAssembly: true }] };
+      }, { kind: 'council-assembly', flag: {
+        rowId: 'topic', before: false, after: true, generation: metadata.generation, observedRevision: 1, time: null,
+      } });
+      // The other device toggled the same mark off after a concurrent edit; its stored value equals the opening.
+      h.silentRemote({ topics: [{ ...opening, forAssembly: true }] });
+      h.silentRemote({ topics: [{ ...opening, forAssembly: false }] });
+      jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+        kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+          conflict('question', 'Later local question', 'Opening question', COUNCIL_TOPIC_TEXT_QUEUED),
+          { path: ['topics', 'id:topic', 'forAssembly'], base: rowConflictValue(false),
+            mine: rowConflictValue(true), theirs: rowConflictValue(false) },
+        ],
+      }));
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({ field: 'assembly', mine: true, stored: false });
+      if (side === 'local') await editor.keepLocal(undefined, compared, at(80));
+      else await editor.acceptRemote(undefined, compared);
+      await waitFor(() => expect(read(h.server.value, 'question')).toBe('Later local question'));
+      expect(Boolean((h.server.value?.topics as DocumentData[])[0].forAssembly)).toBe(side === 'local');
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTopicTextActions: [expect.objectContaining({ rowId: id('question'), time: at(40) })],
+        ...(side === 'local' && { councilAssemblyActions: { forAssembly: expect.objectContaining({ rowId: 'topic', time: at(80) }) } }),
+      }));
+    } finally { engine.dispose(); }
+  });
+
+  it.each([false, true])('preserves the ordered assembly mark while taking the saved answer (phone later: %s)', async phoneLater => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('answer', 'Uncertain local answer', 40);
+      await editor.commit(draft => {
+        const [topic] = draft!.topics as DocumentData[];
+        return { ...draft, topics: [{ ...topic, forAssembly: true }] };
+      }, { kind: 'council-assembly', flag: {
+        rowId: 'topic', before: false, after: true, generation: metadata.generation, observedRevision: 1, time: at(35),
+      } });
+      h.silentRemote({ topics: [{ ...opening, forAssembly: false,
+        questions: [{ ...opening.questions[0], answer: 'Saved answer' }] }] });
+      jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+        kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+          { path: ['topics', 'id:topic', 'forAssembly'], base: rowConflictValue(false), mine: rowConflictValue(true),
+            theirs: rowConflictValue(false), code: phoneLater ? COUNCIL_TOPIC_TEXT_QUEUED : COUNCIL_TOPIC_TEXT_SETTLED },
+          conflict('answer', 'Uncertain local answer', 'Saved answer'),
+        ],
+      }));
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({ field: 'answer', mine: 'Uncertain local answer', stored: 'Saved answer' });
+      await editor.acceptRemote(undefined, compared);
+      await waitFor(() => expect(Boolean((h.server.value?.topics as DocumentData[])[0].forAssembly)).toBe(phoneLater));
+      expect(read(h.server.value, 'answer')).toBe('Saved answer');
+      if (phoneLater) {
+        expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          councilAssemblyActions: { forAssembly: expect.objectContaining({ rowId: 'topic', observedRevision: 1, time: at(35) }) },
+        }));
+      } else {
+        expect(h.transport.send).toHaveBeenCalledTimes(1);
+      }
+    } finally { engine.dispose(); }
+  });
+
+  it('keeps a later dependent autosave when reviewing the answered question', async () => {
+    const { h, engine, editor, editField } = await open();
+    let unblock = () => {};
+    const held = new Promise<void>(resolve => { unblock = resolve; });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => {
+      await held;
+      return { kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+        conflicts: [conflict('question', 'Local question', 'Saved question')] };
+    });
+    try {
+      await editField('question', 'Local question', 10);
+      await editor.save();
+      engine.setOnline(true);
+      const retrying = engine.retry();
+      await waitFor(() => expect(h.transport.send).toHaveBeenCalledTimes(1));
+      await editField('answer', 'Later dependent answer', 30);
+      await editor.save();
+      await waitFor(() => expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(2));
+      h.silentRemote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }] }] });
+      unblock();
+      await retrying;
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'question', mine: 'Local question', stored: 'Saved question',
+      });
+      await editor.acceptRemote(undefined, editor.getState().checkpoint);
+      await waitFor(() => expect(read(h.server.value, 'answer')).toBe('Later dependent answer'));
+      expect(read(h.server.value, 'question')).toBe('Saved question');
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTopicTextActions: [expect.objectContaining({ rowId: id('answer'), time: at(30) })],
+      }));
+    } finally { unblock(); engine.dispose(); }
+  });
+
+  it('keeps a later change to the reviewed question as separate recoverable work', async () => {
+    const { h, engine, editor, editField } = await open();
+    let unblock = () => {};
+    const held = new Promise<void>(resolve => { unblock = resolve; });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => {
+      await held;
+      return { kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+        conflicts: [conflict('question', 'First local question', 'Saved question')] };
+    });
+    try {
+      await editField('question', 'First local question', 10);
+      await editor.save();
+      engine.setOnline(true);
+      const retrying = engine.retry();
+      await waitFor(() => expect(h.transport.send).toHaveBeenCalledTimes(1));
+      await editField('question', 'Second local question', 30);
+      await editor.save();
+      await waitFor(() => expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(2));
+      h.silentRemote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }] }] });
+      unblock();
+      await retrying;
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ mine: 'First local question' }));
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(80));
+      await waitFor(() => expect(read(h.server.value, 'question')).toBe('First local question'));
+      const retained = (await engine.listRecoverable(resource)).find(item =>
+        read(item.record.checkpoint.draft, 'question') === 'Second local question');
+      expect(retained).toBeDefined();
+      expect(retained?.record.checkpoint.councilTopicTextDrafts?.[id('question')]?.action.time).toEqual(at(30));
+    } finally { unblock(); engine.dispose(); }
+  });
+
+  it.each(['question', 'answer'] as const)('preserves typing a later %s before the first answer', async field => {
+    const { h, engine, editor, editField } = await open();
+    let unblock = () => {};
+    const held = new Promise<void>(resolve => { unblock = resolve; });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => {
+      await held;
+      return { kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+        conflicts: [conflict('question', 'First local question', 'Saved question')] };
+    });
+    try {
+      await editField('question', 'First local question', 10);
+      await editor.save();
+      engine.setOnline(true);
+      const retrying = engine.retry();
+      await waitFor(() => expect(h.transport.send).toHaveBeenCalledTimes(1));
+      await editField(field, 'Later typing', 30);
+      expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(1);
+      h.silentRemote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }] }] });
+      unblock();
+      await retrying;
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({ mine: 'First local question', stored: 'Saved question' });
+      await editor.keepLocal(undefined, compared, at(80));
+      await waitFor(() => expect(read(h.server.value, 'question')).toBe('First local question'));
+      if (field === 'question') {
+        const retained = (await engine.listRecoverable(resource)).find(item =>
+          read(item.record.checkpoint.draft, field) === 'Later typing');
+        expect(retained?.record.checkpoint.councilTopicTextDrafts?.[id(field)]?.action.time).toEqual(at(30));
+      } else {
+        await waitFor(() => expect(read(h.server.value, field)).toBe('Later typing'));
+        expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          councilTopicTextActions: expect.arrayContaining([expect.objectContaining({ rowId: id(field), time: at(30) })]),
+        }));
+      }
+    } finally { unblock(); engine.dispose(); }
+  });
+
+  it('offers the deleted option as stored-only on its first server answer', async () => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('option', 'Private option before deletion', 10);
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, options: [] }] });
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'option', mine: 'Private option before deletion', removed: true,
+      });
+      await editor.acceptRemote(undefined, editor.getState().checkpoint);
+      expect(read(h.server.value, 'option')).toBeUndefined();
+      expect(read(h.server.value, 'question')).toBe('Opening question');
+    } finally { engine.dispose(); }
+  });
+
+  it('shows the deleted option separately and retains the reviewed question', async () => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Local question', 10);
+      await editField('option', 'Local option to keep readable', 15);
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }],
+        options: [{ id: 'item', text: 'Saved option' }] }] });
+      delay(h, [conflict('question', 'Local question', 'Saved question'), conflict('option', 'Local option to keep readable', 'Saved option')]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ field: 'question' }));
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(50));
+      await h.remote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }], options: [] }] });
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'option', mine: 'Local option to keep readable', stored: null, removed: true,
+      }));
+      await expect(editor.keepLocal(undefined, editor.getState().checkpoint, at(80))).rejects.toBeDefined();
+      await editor.acceptRemote(undefined, editor.getState().checkpoint);
+      await waitFor(() => expect(read(h.server.value, 'question')).toBe('Local question'));
+      expect(read(h.server.value, 'option')).toBeUndefined();
+    } finally { engine.dispose(); }
+  });
+
+  it('lets a later deletion of the section finish the open text comparison', async () => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Local question in removed topic', 10);
+      await editField('option', 'Local option in removed topic', 15);
+      const draft = editor.getState().checkpoint.draft!;
+      const [topic] = draft.topics as DocumentData[];
+      await editor.edit({ ...draft, topics: [{ ...topic, title: 'Local renamed section',
+        options: [...topic.options as DocumentData[], { id: 'new', text: 'New option in removed section' }] }] });
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, questions: [{ ...opening.questions[0], question: 'Saved question' }],
+        options: [{ id: 'item', text: 'Saved option' }] }] });
+      delay(h, [conflict('question', 'Local question in removed topic', 'Saved question'),
+        conflict('option', 'Local option in removed topic', 'Saved option')]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ field: 'question' }));
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(50));
+      await h.remote({ topics: [] });
+      const compared = editor.getState().checkpoint;
+      expect(readCouncilTopicTextComparison(compared)).toMatchObject({ field: 'question',
+        mine: 'Local question in removed topic', removed: true });
+      await editor.acceptRemote(undefined, compared);
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ field: 'option',
+        mine: 'Local option in removed topic', removed: true });
+      await editor.acceptRemote(undefined, editor.getState().checkpoint);
+      expect(h.server.value?.topics).toEqual([]);
+      expect(editor.getState().checkpoint.draft?.topics).toEqual([]);
+      const recoveries = await engine.listRecoverable(resource);
+      expect(recoveries.some(item => {
+        const [topic] = (item.record.checkpoint.draft?.topics ?? []) as DocumentData[];
+        return topic?.title === 'Local renamed section'
+          && (topic.options as DocumentData[]).some(option => option.text === 'New option in removed section');
+      })).toBe(true);
+    } finally { engine.dispose(); }
+  });
+
+  it('leaves a saved question in place while the council title is reviewed', async () => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Earlier local question', 10);
+      const draft = editor.getState().checkpoint.draft!;
+      await editor.edit({ ...draft, title: 'Local council title' }, undefined, { field: 'title', time: at(40) });
+      await editor.save();
+      h.silentRemote({ title: 'Saved council title' });
+      delay(h, [
+        conflict('question', 'Earlier local question', 'Opening question', COUNCIL_TOPIC_TEXT_SETTLED),
+        { path: ['title'], base: rowConflictValue('Council'), mine: rowConflictValue('Local council title'),
+          theirs: rowConflictValue('Saved council title') },
+      ]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-title', mine: 'Local council title', stored: 'Saved council title',
+      });
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(80));
+      await waitFor(() => expect(h.server.value?.title).toBe('Local council title'));
+      expect(read(h.server.value, 'question')).toBe('Opening question');
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTitleAction: expect.objectContaining({ after: 'Local council title', time: at(80) }),
+      }));
+    } finally { engine.dispose(); }
+  });
+
+  it('reopens an unfinished comparison and keeps the time of each local choice', async () => {
+    const { h, engine, editor, editField } = await open();
+    try {
+      await editField('question', 'Local question', 10);
+      await editField('answer', 'Local answer', 15);
+      await editor.save();
+      h.silentRemote({ topics: [{ ...opening, questions: [{ id: 'item', question: 'Saved question', answer: 'Saved answer' }] }] });
+      delay(h, [conflict('question', 'Local question', 'Saved question'), conflict('answer', 'Local answer', 'Saved answer')]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ field: 'question' }));
+      await editor.keepLocal(undefined, editor.getState().checkpoint, at(50));
+      expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ field: 'answer' });
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+      editor.close({ flush: false });
+      await settleEngine();
+      const reopened = await engine.openEditor(resource, editorIdentity('tab-A', resource, 'council', 'reopened'));
+      await waitFor(() => expect(readCouncilTopicTextComparison(reopened.getState().checkpoint)).toMatchObject({ field: 'answer' }));
+      await reopened.keepLocal(undefined, reopened.getState().checkpoint, at(90));
+      await waitFor(() => expect(read(h.server.value, 'answer')).toBe('Local answer'));
+      expect(read(h.server.value, 'question')).toBe('Local question');
+      expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        councilTopicTextActions: expect.arrayContaining([
+          { rowId: id('question'), rowCreatedAt: id('question'), observedRevision: 2, time: at(50) },
+          { rowId: id('answer'), rowCreatedAt: id('answer'), observedRevision: 2, time: at(90) },
+        ]),
+      }));
+    } finally { engine.dispose(); }
   });
 });

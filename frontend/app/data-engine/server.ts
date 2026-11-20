@@ -24,6 +24,8 @@ import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPag
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
 import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind, type CouncilTopicKindHistoryPage } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_PLACEMENT_HISTORY, metadataAfterCouncilTopicPlacement } from './councilTopicPlacement.server';
+import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED, councilTopicTextConflict } from './councilTopicTextAction';
+import { boundCouncilTopicTextMetadata, councilTopicTextOrderPolicy, orderCouncilTopicText, settledCouncilTopicDetails } from './councilTopicTextOrder.server';
 import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
@@ -274,6 +276,7 @@ const comparesAuthoredList = (conflicts: readonly ConflictDetail[]) =>
 function preservesExactConflict(result: ExactConflict, command: DataCommand): boolean {
   return comparesAuthoredList(result.conflicts)
     || (command.resource.collection === 'sermons' && result.conflicts.some(({ path }) => preachDateNoteConflictId(path) !== undefined))
+    || (command.resource.collection === 'councils' && result.conflicts.some(({ path }) => councilTopicTextConflict(path) !== undefined))
     || (command.kind === 'update' && command.resource.collection === 'studyNotes'
       && isOrdinaryReferenceDocument(result.snapshot.value) && command.changes.some(change => equalValues(change.path, studyNoteReferencesPath)));
 }
@@ -536,7 +539,8 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
       }
       const path = JSON.stringify(item.path);
       const existing = conflicts.get(path);
-      if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_SUBPOINT_REVIEW && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED && !homileticComparisonList(existing))) conflicts.set(path, item);
+      if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_SUBPOINT_REVIEW && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED
+        && existing.code !== COUNCIL_TOPIC_TEXT_SETTLED && existing.code !== COUNCIL_TOPIC_TEXT_QUEUED && !homileticComparisonList(existing))) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
@@ -705,7 +709,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration, content, notes };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilTopicTextOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -723,6 +727,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   serviceStepScriptureOrder?: ReturnType<typeof orderServiceStepScripture>;
   councilTopicTitleOrder?: RowDetailOrder<'title', string>;
   councilTopicSummaryOrder?: RowDetailOrder<'summary', string | null>;
+  councilTopicTextOrder?: ReturnType<typeof orderCouncilTopicText>;
   councilAssemblyOrder?: RowDetailOrder<'forAssembly', boolean>;
   councilTopicKindOrder?: RowDetailOrder<'kind', CouncilTopicKind>;
   councilOutcomeOrder?: ReturnType<typeof orderCouncilOutcome>;
@@ -775,7 +780,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const stepBody = metadataAfterRowDetails({ ...snapshot, metadata: stepScripture }, raw, SERVICE_ORDER_STEP_BODY_POLICY, primary ? serviceStepBodyOrder : undefined);
     const topicTitle = metadataAfterRowDetails({ ...snapshot, metadata: stepBody }, raw, COUNCIL_TOPIC_TITLE_POLICY, primary ? councilTopicTitleOrder : undefined);
     const topicSummary = metadataAfterRowDetails({ ...snapshot, metadata: topicTitle }, raw, COUNCIL_TOPIC_SUMMARY_POLICY, primary ? councilTopicSummaryOrder : undefined);
-    const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicSummary }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
+    const topicText = metadataAfterRowDetails({ ...snapshot, metadata: topicSummary }, raw, councilTopicTextOrderPolicy, primary ? councilTopicTextOrder : undefined);
+    const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicText }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
     const topicKind = metadataAfterRowDetails({ ...snapshot, metadata: assembly }, raw, COUNCIL_TOPIC_KIND_POLICY, primary ? councilTopicKindOrder : undefined);
     const topicOutcome = metadataAfterRowDetails({ ...snapshot, metadata: topicKind }, raw, COUNCIL_OUTCOME_POLICY, primary ? councilOutcomeOrder : undefined,
       undefined, primary ? councilOutcomeOrder?.queueDigest : undefined);
@@ -828,7 +834,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const withTitles = boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata);
     const sermonMetadata = snapshot.resource.collection === 'sermons'
       ? metadataAfterSermonText({ ...snapshot, metadata: withTitles ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
-      : withTitles;
+      : snapshot.resource.collection === 'councils' ? boundCouncilTopicTextMetadata(value, withTitles) : withTitles;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
       _dataEngine: { ...sermonMetadata, ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
         ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
@@ -933,6 +939,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowTextHistory(transaction, command, primarySnapshot, SERVICE_ORDER_STEP_BODY_POLICY, serviceStepBodyOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder);
   persistRowTextHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_SUMMARY_POLICY, councilTopicSummaryOrder);
+  persistRowTextHistory(transaction, command, primarySnapshot, councilTopicTextOrderPolicy, councilTopicTextOrder);
   persistRowTextHistory(transaction, command, primarySnapshot, THOUGHT_TEXT_POLICY, thoughtTextOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
@@ -1104,6 +1111,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     let serviceStepScriptureOrder: ReturnType<typeof orderServiceStepScripture> | undefined;
     let councilTopicTitleOrder: RowDetailOrder<'title', string> | undefined;
     let councilTopicSummaryOrder: RowDetailOrder<'summary', string | null> | undefined;
+    let councilTopicTextOrder: ReturnType<typeof orderCouncilTopicText> | undefined;
     let councilAssemblyOrder: RowDetailOrder<'forAssembly', boolean> | undefined;
     let councilTopicKindOrder: RowDetailOrder<'kind', CouncilTopicKind> | undefined;
     let councilOutcomeOrder: ReturnType<typeof orderCouncilOutcome> | undefined;
@@ -1156,7 +1164,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       serviceStepBodyOrder = orderRowText(serviceStepScriptureOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_STEP_BODY_POLICY);
       councilTopicTitleOrder = orderRowDetails(serviceStepBodyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_TITLE_POLICY);
       councilTopicSummaryOrder = orderRowText(councilTopicTitleOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_SUMMARY_POLICY);
-      councilAssemblyOrder = orderRowDetails(councilTopicSummaryOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
+      councilTopicTextOrder = orderCouncilTopicText(councilTopicSummaryOrder.command, current, raw?._dataEngine, serverMs);
+      councilAssemblyOrder = orderRowDetails(councilTopicTextOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_ASSEMBLY_POLICY);
       councilTopicKindOrder = orderRowDetails(councilAssemblyOrder.command, current, raw?._dataEngine, serverMs, COUNCIL_TOPIC_KIND_POLICY);
       councilOutcomeOrder = orderCouncilOutcome(councilTopicKindOrder.command, current, raw?._dataEngine, serverMs, command);
       const aligned = alignServiceOrderFlagRepresentation(alignCouncilAssembly(alignCouncilTopicKind(councilOutcomeOrder.command, current), current), current);
@@ -1205,15 +1214,21 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         },
         list: relationListFor(owner, transaction, rawDocuments),
       });
-      const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepBodyOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilTopicSummaryOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtTextOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
+      const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...groupFlowOrder.content.uncertain, ...groupFlowOrder.notes.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepBodyOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilTopicSummaryOrder.uncertain, ...councilTopicTextOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtTextOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
       uncertain.push(...homileticOrder.uncertain, ...outlineSubpointOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
       uncertain.push(...analysisFrameOrder.conflicts,
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine,
           preachingOrder.fields.get('notes')?.find(plan => plan.stamp)?.stamp?.rowId));
+      const nestedCouncilReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
+        || (command.resource.collection === 'councils' && planned.result.kind === 'conflict'
+          && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path)));
+      const settledCouncilDetails = nestedCouncilReview
+        ? [...settledCouncilTopicDetails(command, current, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder),
+          ...settledCouncilTopicDetails(command, current, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder)] : [];
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison
         ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...outlineSubpointOrder.settled,
-          ...(outlineTitleOrder?.settled ?? []), ...orderedPreachDateNoteComparison(command, preachingOrder)]
+          ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...orderedPreachDateNoteComparison(command, preachingOrder)]
         : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
         && orderedCommand.kind === 'update' && current.value) {
@@ -1253,13 +1268,18 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       cleanup = { name: command.baseline.name, after: null, completed: !detachedTagName };
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilTopicTextOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     if (result.kind === 'conflict') {
       // Keep a proven earlier value even if another field blocks the command. Mark a result that
       // still depends on the comparison separately from one already visible in the document.
       persistStudyNoteReferenceHistory(transaction, command, result.snapshot, studyNoteReferenceOrder, true);
       persistHomileticHistory(transaction, command, result.snapshot, homileticOrder, true);
+      persistRowTextHistory(transaction, command, result.snapshot, councilTopicTextOrderPolicy, councilTopicTextOrder);
+      if (result.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED)) {
+        persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder);
+        persistRowDetailHistory(transaction, command, result.snapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
+      }
       if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
       if (preachingOrder) persistRowDetailHistory(transaction, command, result.snapshot, PREACH_DATE_FIELD_POLICY, {
         ...preachingOrder, displaced: preachingOrder.displaced.filter(entry => entry.field === 'notes'),

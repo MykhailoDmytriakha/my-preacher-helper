@@ -60,7 +60,10 @@ it.each(['local', 'remote'] as const)('resolves same-date conflict with explicit
   harness.replace({ ...original, value: { ...original.value!, preachDates: [{ ...first, notes: 'Theirs' }, second] }, metadata: { ...original.metadata!, revision: 2 } });
   await deliver(harness); await save(); await deliver(harness); expect(dates(harness)[0].notes).toBe('Theirs');
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready();
-  fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' }));
+  expect(await screen.findByRole('region', { name: 'dataSync.versionComparison' })).toHaveTextContent('Mine');
+  expect(screen.getByRole('region', { name: 'dataSync.versionComparison' })).toHaveTextContent('Theirs');
+  fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+  if (choice === 'remote') fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
   await deliver(harness); expect(dates(harness)[0].notes).toBe(choice === 'local' ? 'Mine' : 'Theirs'); view.unmount();
 });
 it('recovers a new date and all fields without submitting or duplicating it', async () => {

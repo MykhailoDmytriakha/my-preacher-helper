@@ -31,6 +31,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   atomicChoice?: true;
   requireObserved?: true;
   rememberOpenings?: true;
+  rememberReaffirmations?: true;
   seedOpeningFromStoredValue?: true;
   mergesIndependently?: (before: Value, after: Value, stored: Value) => boolean;
   causalScopeEntry?: boolean;

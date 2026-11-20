@@ -189,7 +189,8 @@ export function anchoredPlacementChoiceTail(source: SessionCheckpoint, requestId
 }
 
 /** An editor holding the suffix can choose its answered Save without submitting the later draft. */
-export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: SessionCheckpoint): SessionCheckpoint {
+export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: SessionCheckpoint,
+  preserveCouncilTextTail = false): SessionCheckpoint {
   const { first, scope } = choice;
   const ids = new Set(scope.map(request => request.id));
   if (!source.pending[first.id] || Object.keys(source.pending).some(id => !ids.has(id))) {
@@ -199,9 +200,9 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   if (scope.length === 1 || !latest) return source;
   const path = new Set(lineage(new Map(scope.map(request => [request.id, request])), latest));
   const templateMove = first.baseline.resource.collection === 'planTemplates' && first.outlinePointPlacement;
-  const separatePlacementTail = (first.groupFlowStepPlacement || first.councilTopicPlacement || templateMove || isAnchoredPlacementRefusal(first))
-    && anchoredPlacementChoiceTail(source, latest.id);
-  if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separatePlacementTail)) {
+  const separateTail = (first.groupFlowStepPlacement || first.councilTopicPlacement || templateMove
+    || isAnchoredPlacementRefusal(first) || preserveCouncilTextTail) && anchoredPlacementChoiceTail(source, latest.id);
+  if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separateTail)) {
     throw Object.assign(new Error('Save or resolve other document changes before choosing'), { code: 'other-changes-first' });
   }
   if (latest.id === first.id) return source;

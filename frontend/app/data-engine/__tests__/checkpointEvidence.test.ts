@@ -47,7 +47,7 @@ type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dir
 const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
-  councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
+  councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, councilTopicTextDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
   groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: { row: { generation: 'g', action: { ...row, before: 'empty', after: 'filled' } } },
   groupStepDurationDrafts: { row: { generation: 'g', action: { ...row, before: 1, after: 2 } } },
   thoughtLockDrafts: rowDrafts, thoughtTextDrafts: rowDrafts, thoughtPlacementDrafts: rowDrafts,
@@ -68,7 +68,7 @@ type PendingEvidenceKey = Exclude<keyof Pending, 'generation' | 'value' | 'opera
 const pendingEvidence = {
   groupTitleAction: observation, groupDescriptionAction: optionalObservation, groupStatusAction: observation, councilTitleAction: observation,
   councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
-  councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
+  councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], councilTopicTextActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
   councilTopicPlacement: councilPlacement, commentPlaceAction,

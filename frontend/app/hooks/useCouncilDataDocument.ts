@@ -3,13 +3,14 @@
 import { useCallback, useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { captureCouncilTopicPlacement, councilTopicReviewCode, projectCapturedCouncilTopic, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureCouncilTopicPlacement, councilTopicReviewCode, councilTopicTextId, projectCapturedCouncilTopic, replaceCouncilTopicText, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
 import { applyOutcome, holdCouncil, reopenCouncil, reorderTopics, setTopicKind, type TopicOutcome } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { CouncilOutcome } from '@/data-engine/councilOutcomeAction';
+import type { CouncilTopicTextField } from '@/data-engine/councilTopicTextAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { Council, CouncilTopic } from '@/models/models';
 
@@ -75,6 +76,16 @@ export function useCouncilDataDocument(councilId: string) {
   const setTopicSummary = (topicId: string, summary: string) =>
     document.update(apply(current => ({ ...current, topics: patchCouncilTopicSummary(current.topics, topicId, summary) })),
       { action: { kind: 'council-topic-summary', rowId: topicId } });
+  const setTopicText = (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => {
+    const rowId = councilTopicTextId(topicId, itemId, field);
+    return document.update(apply(current => {
+      const next = replaceCouncilTopicText(current.topics as unknown as DocumentData['topics'], rowId, value);
+      if (next === undefined) {
+        throw Object.assign(new Error('The topic entry no longer exists'), { code: 'topic-gone' });
+      }
+      return { ...current, topics: next as unknown as CouncilTopic[] };
+    }), { action: { kind: 'council-topic-text', rowId } });
+  };
   const holdTopicSummary = (topicId: string, summary: string) =>
     document.holdDraftAlternative(confirmed => ({
       ...confirmed,
@@ -253,6 +264,7 @@ export function useCouncilDataDocument(councilId: string) {
     keepLocal: document.keepLocal,
     updateCouncil,
     setTopicSummary,
+    setTopicText,
     holdTopicSummary,
     moveTopic,
     recordTopicOutcome,

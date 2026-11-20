@@ -1606,6 +1606,223 @@ describe('sermon preparation text action chronology', () => {
   });
 });
 
+describe('council topic text action chronology', () => {
+  const owner = 'owner-1';
+  const resource = { collection: 'councils', id: 'council-return' };
+  const openingWords = 'Opening council words';
+  const summary = 'Keep the separate explanation';
+  const at = '2026-11-20T17:00:00.000Z';
+  const questionPath = ['topics', 'id:topic', 'questions', 'id:child', 'question'];
+  const fields = [
+    { field: 'question', list: 'questions', leaf: 'question', path: questionPath },
+    { field: 'answer', list: 'questions', leaf: 'answer', path: ['topics', 'id:topic', 'questions', 'id:child', 'answer'] },
+    { field: 'option', list: 'options', leaf: 'text', path: ['topics', 'id:topic', 'options', 'id:child', 'text'] },
+  ] as const;
+  type Target = typeof fields[number];
+
+  const seed = async (hasAnswer = true) => {
+    const topic = { id: 'topic', title: 'Other title', kind: 'decision', summary,
+      questions: [{ id: 'child', question: openingWords, ...(hasAnswer && { answer: openingWords }) }],
+      options: [{ id: 'child', text: openingWords }] };
+    return accepted({ protocol: 1, owner, resource, generation: null, dependsOn: [], kind: 'create', operationId: 'seed-council',
+      value: { userId: owner, title: 'Council chronology QA', status: 'preparing', createdAt: at, updatedAt: at, topics: [topic] } });
+  };
+  const accepted = async (command: DataCommand) => {
+    const answer = await processCommand(owner, command);
+    if (answer.kind !== 'acknowledged') throw Error(`Expected acknowledgement, got ${answer.kind}`);
+    return answer.snapshot;
+  };
+  const snapshot = () => readDocument(owner, resource);
+  const topic = (value: ResourceSnapshot) => (value.value!.topics as Record<string, Json>[])[0];
+  const read = (value: ResourceSnapshot, target: Target) => (topic(value)[target.list] as Record<string, Json>[])[0][target.leaf];
+  const save = (basis: ResourceSnapshot, operationId: string, target: Target, words: string | null,
+    time?: number | null, related?: { field: Target; words: string }) => {
+    const rewrite = (current: Record<string, Json>, at: Target, value: string | null) => ({ ...current,
+      [at.list]: (current[at.list] as Record<string, Json>[]).map(item => writeField(item, [at.leaf],
+        value === null ? { exists: false } : { exists: true, value })) });
+    const selected = rewrite(topic(basis), target, words);
+    const { command } = prepareDomainCommand(owner, operationId, basis,
+      { ...basis.value, topics: [related ? rewrite(selected, related.field, related.words) : selected] });
+    if (time === undefined || command.kind !== 'update') return command;
+    const rowId = JSON.stringify(['topic', 'child', target.field]);
+    return { ...command, councilTopicTextActions: [{ rowId, rowCreatedAt: rowId, observedRevision: basis.metadata!.revision,
+      time: time === null ? null : { earliestMs: time, latestMs: time + 10 } }] };
+  };
+  const history = () => [...documents.entries()].flatMap(([key, value]) =>
+    key.startsWith('councils/council-return/_topicTextHistory/') ? value.fields as unknown[] : []);
+
+  it.each(fields)('holds a stale $field when stored words return to the opening', async target => {
+    const initial = await seed();
+    const delayed = save(initial, 'earlier-offline', target, 'Earlier offline council words');
+    const changed = await accepted(save(initial, 'desktop-edit', target, 'Intermediate council words'));
+    await accepted(save(changed, 'desktop-return', target, openingWords));
+
+    const result = await processCommand(owner, delayed);
+    const current = await snapshot();
+    expect(read(current, target)).toBe(openingWords);
+    expect(topic(current).summary).toBe(summary);
+    expect(result).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: target.path, mine: { exists: true, value: 'Earlier offline council words' },
+        theirs: { exists: true, value: openingWords } }] });
+  });
+
+  it.each([true, false])('retains the exact displaced text and a sibling change (phone later: %s)', async phoneLater => {
+    const [question, answer] = fields;
+    const opened = await seed();
+    const delayed = save(opened, 'earlier-offline', question, 'Phone words', phoneLater ? 4000 : 1000,
+      { field: answer, words: 'Independent answer' });
+    const changed = await accepted(save(opened, 'desktop-edit', question, 'Intermediate council words', 2000));
+    await accepted(save(changed, 'desktop-return', question, openingWords, 3000));
+
+    await accepted(delayed);
+    await accepted(delayed);
+    const current = await snapshot();
+    expect(read(current, question)).toBe(phoneLater ? 'Phone words' : openingWords);
+    expect(read(current, answer)).toBe('Independent answer');
+    expect(history()).toEqual([expect.objectContaining({ value: phoneLater ? openingWords : 'Phone words' })]);
+  });
+
+  it('keeps an initially absent answer absent after a later clear', async () => {
+    const answer = fields[1];
+    const opened = await seed(false);
+    const old = save(opened, 'earlier-offline', answer, 'Offline answer', 1000);
+    const changed = await accepted(save(opened, 'desktop-answer', answer, 'Intermediate answer', 2000));
+    await accepted(save(changed, 'desktop-clear', answer, null, 3000));
+    await accepted(old);
+    expect(read(await snapshot(), answer)).toBeUndefined();
+    expect(history()).toEqual([expect.objectContaining({ value: 'Offline answer' })]);
+  });
+
+  it('retains both settled outcomes while one nested text still needs a choice', async () => {
+    const [question, answer, option] = fields;
+    const opening = await seed();
+    for (const target of fields) {
+      const changed = await accepted(save(await snapshot(), 'desktop-change-' + target.field, target, 'Intermediate ' + target.field, 2000));
+      await accepted(save(changed, 'desktop-return-' + target.field, target, openingWords, 3000));
+    }
+    const oldQuestion = save(opening, 'old-question', question, 'Earlier question', 1000);
+    const laterAnswer = save(opening, 'late-answer', answer, 'Later answer', 4000);
+    const unknownOption = save(opening, 'unknown-option', option, 'Unclocked option', null);
+    if (!('councilTopicTextActions' in oldQuestion && 'councilTopicTextActions' in laterAnswer && 'councilTopicTextActions' in unknownOption)) {
+      throw Error('Expected three captured actions');
+    }
+    const selected = { ...topic(opening), summary: 'Independent explanation',
+      questions: [{ id: 'child', question: 'Earlier question', answer: 'Later answer' }],
+      options: [{ id: 'child', text: 'Unclocked option' }] };
+    const { command } = prepareDomainCommand(owner, 'mixed-delivery', opening, { ...opening.value, topics: [selected] });
+    if (command.kind !== 'update') throw Error('Expected the compound text edit');
+    const mixed = { ...command, councilTopicTextActions: [
+      ...oldQuestion.councilTopicTextActions!, ...laterAnswer.councilTopicTextActions!, ...unknownOption.councilTopicTextActions!,
+    ] };
+    const result = await processCommand(owner, mixed);
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([
+      expect.objectContaining({ path: question.path, code: 'council-topic-text-settled' }),
+      expect.objectContaining({ path: answer.path, code: 'council-topic-text-queued' }),
+      expect.objectContaining({ path: option.path }),
+    ]) });
+    expect(history()).toEqual([expect.objectContaining({ value: 'Earlier question' })]);
+    expect(topic(await snapshot())).toEqual(topic(opening));
+    const optionReview = result.kind === 'conflict' && result.conflicts.find(conflict => conflict.path[2] === 'options');
+    expect(optionReview).not.toHaveProperty('code');
+  });
+
+  it.each(['desktop outcome', 'phone outcome'])('can retry the later question alongside the reviewed %s', async outcome => {
+    const [question] = fields;
+    const opening = await seed();
+    const phone = save(opening, 'phone-question', question, 'Later phone question', 4000);
+    const desktop = save(opening, 'desktop-question', question, 'Earlier desktop question', 2000);
+    if (phone.kind !== 'update' || desktop.kind !== 'update') throw Error('Expected text edits');
+    const withOutcome = (command: typeof phone, words: string, revision: number, reviewed = false) => ({
+      ...command, changes: command.changes.map(change => change.path[0] === 'topics' && Array.isArray(change.after.value)
+        ? { ...change, after: { exists: true as const, value: change.after.value.map(row => ({ ...(row as Record<string, Json>), decision: words })) } }
+        : change),
+      councilOutcomeActions: [{ rowId: 'topic', rowCreatedAt: 'topic', observedRevision: revision,
+        time: reviewed ? { earliestMs: 5000, latestMs: 5010 } : null }],
+    });
+    const live = await accepted(withOutcome(desktop, 'desktop outcome', opening.metadata!.revision));
+    const delayed = withOutcome(phone, 'phone outcome', opening.metadata!.revision);
+    expect(await processCommand(owner, delayed)).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([
+      expect.objectContaining({ path: question.path, code: 'council-topic-text-queued' }),
+      expect.objectContaining({ path: ['topics', 'id:topic', 'outcome'] }),
+    ]) });
+    expect(read(await snapshot(), question)).toBe('Earlier desktop question');
+    const retry = { ...phone, operationId: 'reviewed-outcome', changes: phone.changes.map(change => change.path[0] === 'topics'
+      ? { ...change, before: { exists: true as const, value: [{ ...topic(opening), decision: 'desktop outcome' }] } }
+      : change) };
+    const result = await accepted(withOutcome(retry, outcome, live.metadata!.revision, true));
+    expect(read(result, question)).toBe('Later phone question');
+    expect(topic(result)).toMatchObject({ decision: outcome, options: topic(opening).options });
+    expect(history()).toEqual([expect.objectContaining({ value: 'Earlier desktop question' })]);
+  });
+
+  it('protects the same words after a competing reaffirmation when the old packet has no time', async () => {
+    const [question] = fields;
+    const opening = await seed();
+    const first = await accepted(save(opening, 'first-question', question, 'Same question', 1000));
+    const old = save(first, 'old-unstamped', question, 'Contrary old text');
+    await accepted(save(opening, 'later-same-question', question, 'Same question', 3000));
+    expect(await processCommand(owner, old)).toMatchObject({ kind: 'conflict', conflicts: [
+      expect.objectContaining({ path: question.path }),
+    ] });
+    expect(read(await snapshot(), question)).toBe('Same question');
+  });
+
+  it.each([false, true])('keeps the ordered assembly mark when only the answer needs review (phone later: %s)', async phoneLater => {
+    const answer = fields[1];
+    const opened = await seed();
+    const mark = (basis: ResourceSnapshot, id: string, before: boolean, after: boolean, millis: number, answerText?: string) => {
+      const current = topic(basis);
+      const answers = (current.questions as Record<string, Json>[]).map(item => answerText ? { ...item, answer: answerText } : item);
+      const { command } = prepareDomainCommand(owner, id, basis,
+        { ...basis.value, topics: [{ ...current, forAssembly: after, questions: answers }] });
+      if (command.kind !== 'update') throw Error('Expected a section edit');
+      return { ...command, councilAssemblyActions: { forAssembly: { rowId: 'topic', rowCreatedAt: 'topic', before, after,
+        observedRevision: basis.metadata!.revision, time: { earliestMs: millis, latestMs: millis + 10 } } } };
+    };
+    const delayed = mark(opened, 'phone-mark-and-answer', false, true, phoneLater ? 4000 : 1000, 'Phone answer');
+    const raised = await accepted(mark(opened, 'desktop-mark', false, true, 2000));
+    const lowered = await accepted(mark(raised, 'desktop-unmark', true, false, 3000, 'Desktop answer'));
+    expect(await processCommand(owner, delayed)).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([
+      expect.objectContaining({ path: answer.path }),
+      expect.objectContaining({ path: ['topics', 'id:topic', 'forAssembly'],
+        code: phoneLater ? 'council-topic-text-queued' : 'council-topic-text-settled' }),
+    ]) });
+    expect(topic(await snapshot())).toEqual(topic(lowered));
+  });
+
+  it('replays a large nested answer comparison with both copies intact', async () => {
+    const answer = fields[1];
+    const opened = await seed();
+    const saved = 'a'.repeat(350_000);
+    const phone = 'b'.repeat(350_000);
+    const first = await accepted(save(opened, 'large-council-answer', answer, saved));
+    const delayed = save(first, 'unclocked-long-answer', answer, phone);
+    const changed = await accepted(save(first, 'edited-the-long-answer', answer, 'Intermediate answer'));
+    await accepted(save(changed, 'restored-the-long-answer', answer, saved));
+    const comparison = await processCommand(owner, delayed);
+    expect(comparison.kind).toBe('conflict');
+    if (comparison.kind !== 'conflict') return;
+    const [field] = comparison.conflicts;
+    expect(field.path).toEqual(answer.path);
+    expect(field.mine.value).toBe(phone);
+    expect(field.theirs.value).toBe(saved);
+    expect(await processCommand(owner, delayed)).toEqual(comparison);
+  });
+
+  it('returns the exact nested question versions when timing is unknown', async () => {
+    const [question] = fields;
+    const opened = await seed();
+    const old = save(opened, 'earlier-offline', question, 'Unclocked question', null);
+    const changed = await accepted(save(opened, 'desktop-question', question, 'Intermediate question', null));
+    const live = await accepted(save(changed, 'desktop-return', question, openingWords, null));
+    expect(await processCommand(owner, old)).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: question.path, mine: { exists: true, value: 'Unclocked question' } }] });
+    expect(read(await snapshot(), question)).toBe(openingWords);
+    await accepted(save(live, 'reviewed-question', question, 'Unclocked question', null));
+    expect(read(await snapshot(), question)).toBe('Unclocked question');
+  });
+});
+
 describe('transactional DataEngine server', () => {
   it('commits one effect and returns the same durable receipt to concurrent duplicate senders', async () => {
     const [first, second] = await Promise.all([processCommand('owner-1', create()), processCommand('owner-1', create())]);

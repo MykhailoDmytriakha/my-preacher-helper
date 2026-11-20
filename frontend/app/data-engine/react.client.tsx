@@ -25,6 +25,8 @@ import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceCo
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { readCouncilSummaryChoice as councilSummaryChoice, readPrivateCouncilComparison as privateCouncilComparison } from './councilPrivateFields';
 import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
+import { councilTopicTextConflict, councilTopicTextId as topicTextId, replaceCouncilTopicText as replaceTopicText } from './councilTopicTextAction';
+import { readCouncilTopicTextComparison as councilTopicTextComparison } from './councilTopicTextReview';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
@@ -44,6 +46,7 @@ import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourc
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { unresolvedPreachDateNote } from './preachDateChoice';
+import { preachDateNoteConflictId as dateNoteConflictId, readChangedPreachDateFieldVersions as changedDateFieldVersions } from './preachDateFieldAction';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -104,6 +107,12 @@ export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) 
 export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) { return hasStudyNoteReferenceReview(checkpoint.conflicts); }
 export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) { return studyNoteFieldsComparison(checkpoint); }
 export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
+export function councilTopicTextId(...args: Parameters<typeof topicTextId>) { return topicTextId(...args); }
+export function replaceCouncilTopicText(...args: Parameters<typeof replaceTopicText>) { return replaceTopicText(...args); }
+export function readCouncilTopicTextComparison(checkpoint: SessionCheckpoint) { return councilTopicTextComparison(checkpoint); }
+export function preachDateNoteConflictId(path: readonly string[]) { return dateNoteConflictId(path); }
+export function readChangedPreachDateFieldVersions(...args: Parameters<typeof changedDateFieldVersions>) { return changedDateFieldVersions(...args); }
+
 export function readCouncilSummaryChoice(checkpoint: SessionCheckpoint) { return councilSummaryChoice(checkpoint); }
 export function readPrivateCouncilComparison(checkpoint: SessionCheckpoint) { return privateCouncilComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
@@ -1466,6 +1475,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateNote) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+        || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time, titles));

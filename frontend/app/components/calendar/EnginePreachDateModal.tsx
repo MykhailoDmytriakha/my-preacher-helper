@@ -4,9 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { equalValues } from '@/data-engine/fieldValues';
-import { preachDateNoteConflictId, readPreachDateFieldVersions } from '@/data-engine/preachDateFieldAction';
-import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { preachDateNoteConflictId, readChangedPreachDateFieldVersions, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
@@ -72,8 +70,8 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
       discard: () => form.discardRecovery(source) })), recover: form.recover });
   const shown = form.comparison;
   const versions = shown?.stored.value ? shown.conflictPaths.flatMap(path => {
-    const version = readPreachDateFieldVersions(path, shown.mine, shown.stored.value!);
-    return version && version.rowId === target && !equalValues(version.mine, version.stored) ? [version] : [];
+    const version = readChangedPreachDateFieldVersions(path, shown.mine, shown.stored.value!);
+    return version?.rowId === target ? [version] : [];
   }) : [];
   const comparison: TextComparison | undefined = shown && versions.length && versions.length === shown.conflictPaths.length
     ? { ...preachDateComparison(versions, shown.identity, t, language), scopedChoice: form.exactChoice ? true : undefined }

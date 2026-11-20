@@ -57,6 +57,21 @@ describe('useCouncilDataDocument', () => {
     expect(update).toHaveBeenCalledWith(expect.any(Function), { action: 'council-' + field });
   });
 
+  it('binds each question, answer and option action to the displayed topic and child', async () => {
+    const first = topic('t1', { questions: [{ id: 'same-child', question: 'Question', answer: 'Answer' }],
+      options: [{ id: 'same-child', text: 'Option' }] });
+    const second = { ...first, id: 't2' };
+    const { result, update } = setup(stored([first, second]));
+    await result.current.setTopicText('t2', 'same-child', 'option', 'New option');
+
+    expect(update).toHaveBeenCalledWith(expect.any(Function), { action: {
+      kind: 'council-topic-text', rowId: JSON.stringify(['t2', 'same-child', 'option']),
+    } });
+    expect(applied(update, stored([first, second]))?.topics).toEqual([
+      first, { ...second, options: [{ id: 'same-child', text: 'New option' }] },
+    ]);
+  });
+
   it('captures an existing destination through the same whole-action facade as a new council', async () => {
     const carryCouncilTopicToExisting = jest.fn().mockResolvedValue(undefined);
     const { result, update, commit } = setup(stored(), { carryCouncilTopicToExisting });

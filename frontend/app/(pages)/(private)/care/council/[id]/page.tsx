@@ -66,6 +66,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { CouncilHistoryField, CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { CouncilOutcome } from '@/data-engine/councilOutcomeAction';
+import type { CouncilTopicTextField } from '@/data-engine/councilTopicTextAction';
 import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
 import type { TopicOutcome } from '@/utils/council';
@@ -163,6 +164,9 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       void document.updateCouncil(id, updater, field).catch(report);
     },
     setTopicSummary: document.setTopicSummary,
+    setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => {
+      void document.setTopicText(topicId, itemId, field, value).catch(report);
+    },
     holdTopicSummary: document.holdTopicSummary,
     moveTopic: (topicId: string, toIndex: number) => { void document.moveTopic(topicId, toIndex).catch(report); },
     recordTopicOutcome: (topicId: string, outcome: TopicOutcome, trackChanges: boolean) => {
@@ -206,6 +210,7 @@ interface CouncilDetailSource {
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
   setTopicSummary: (topicId: string, summary: string) => Promise<void>;
+  setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => void;
   holdTopicSummary: (topicId: string, summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   moveTopic: (topicId: string, toIndex: number) => void;
   recordTopicOutcome: (id: string, outcome: TopicOutcome, trackChanges: boolean) => void;
@@ -551,6 +556,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
                 onChangeSummary={summary => source.setTopicSummary(topic.id, summary)}
+                onChangeText={(itemId, field, value) => source.setTopicText(topic.id, itemId, field, value)}
                 onHoldSummary={summary => source.holdTopicSummary(topic.id, summary)}
                 onOutcome={(outcome, trackChanges) => source.recordTopicOutcome(topic.id, outcome, trackChanges)}
                 onRename={(title) => {
@@ -637,6 +643,7 @@ function TopicCard({
   onDone,
   onChange,
   onChangeSummary,
+  onChangeText,
   onHoldSummary,
   onOutcome,
   onRename,
@@ -659,6 +666,7 @@ function TopicCard({
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
   onChangeSummary: (summary: string) => Promise<void>;
+  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => void;
   onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   onOutcome: (outcome: TopicOutcome, trackChanges: boolean) => void;
   onRename: (title: string) => void;
@@ -719,7 +727,7 @@ function TopicCard({
         <div className="min-w-0 flex-1">
           {editing ? (
             <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange}
-              onChangeSummary={onChangeSummary} onHoldSummary={onHoldSummary} onRename={onRename} onSetAssembly={onSetAssembly} onChangeKind={onChangeKind} onRemove={onRemove} onDone={onDone} />
+              onChangeSummary={onChangeSummary} onChangeText={onChangeText} onHoldSummary={onHoldSummary} onRename={onRename} onSetAssembly={onSetAssembly} onChangeKind={onChangeKind} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -1015,6 +1023,7 @@ function TopicEditor({
   topic,
   onChange,
   onChangeSummary,
+  onChangeText,
   onHoldSummary,
   onRename,
   onSetAssembly,
@@ -1026,6 +1035,7 @@ function TopicEditor({
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
   onChangeSummary: (summary: string) => Promise<void>;
+  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => void;
   onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
@@ -1172,27 +1182,13 @@ function TopicEditor({
               <div className="flex-1 space-y-1">
                 <LiveTextInput
                   value={question.question}
-                  onChange={(next) =>
-                    onChange((current) => ({
-                      ...current,
-                      questions: current.questions.map((item) =>
-                        item.id === question.id ? { ...item, question: next } : item
-                      ),
-                    }))
-                  }
+                  onChange={value => onChangeText(question.id, 'question', value)}
                   placeholder={t('council.topic.questionPlaceholder')}
                   className={`${inputClass} font-semibold`}
                 />
                 <LiveTextArea
                   value={question.answer ?? ''}
-                  onChange={(next) =>
-                    onChange((current) => ({
-                      ...current,
-                      questions: current.questions.map((item) =>
-                        item.id === question.id ? { ...item, answer: next } : item
-                      ),
-                    }))
-                  }
+                  onChange={value => onChangeText(question.id, 'answer', value)}
                   placeholder={t('council.topic.answerPlaceholder')}
                   className={inputClass}
                 />
@@ -1227,14 +1223,7 @@ function TopicEditor({
             <li key={option.id} className="flex gap-2">
               <LiveTextInput
                 value={option.text}
-                onChange={(next) =>
-                  onChange((current) => ({
-                    ...current,
-                    options: current.options.map((item) =>
-                      item.id === option.id ? { ...item, text: next } : item
-                    ),
-                  }))
-                }
+                onChange={value => onChangeText(option.id, 'option', value)}
                 placeholder={t('council.topic.optionPlaceholder')}
                 className={inputClass}
               />

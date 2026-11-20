@@ -1,5 +1,5 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
-import { readCouncilSummaryChoice, readCouncilTopicConflict, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
+import { readCouncilSummaryChoice, readCouncilTopicConflict, readCouncilTopicTextComparison, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
 
@@ -10,6 +10,34 @@ import type { CouncilTopic } from '@/models/models';
 export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined, t: (key: string) => string, topics?: readonly CouncilTopic[]): TextComparison | undefined {
   const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
   if (placement) return placement;
+  const nested = checkpoint && readCouncilTopicTextComparison(checkpoint);
+  if (nested && 'complete' in nested) {
+    return { identity: nested.identity, mine: '', stored: '', valueKind: 'field', scopedChoice: true, completeReview: true };
+  }
+  if (nested?.field === 'kind') {
+    const label = (value: typeof nested.mine) => t(value === 'info' ? 'council.topic.kindInfo' : 'council.topic.kindDecision');
+    return { identity: nested.identity, title: t('council.topic.kind'), valueKind: 'field', scopedChoice: true,
+      mine: label(nested.mine), stored: label(nested.stored) };
+  }
+  if (nested?.field === 'assembly') {
+    const label = (value: boolean) => t(value ? 'council.assemblyHistory.marked' : 'council.assemblyHistory.unmarked');
+    return { identity: nested.identity, title: t('council.topic.forAssembly'), valueKind: 'field', scopedChoice: true,
+      mine: label(nested.mine), stored: label(nested.stored) };
+  }
+  if (nested?.field === 'outcome') {
+    const topic = topics?.find(item => item.id === nested.birth);
+    return { identity: nested.identity, title: t('council.topic.atCouncil'), valueKind: 'field', scopedChoice: true,
+      ...(!nested.localAvailable && { keepMineDisabled: true, description: t('council.topic.optionGone') }),
+      mine: councilOutcomeWords(nested.mine, topic, t), stored: councilOutcomeWords(nested.stored, topic, t) };
+  }
+  if (nested) {
+    const labels = { question: 'council.topic.questionPlaceholder', answer: 'council.topic.answerPlaceholder',
+      option: 'council.topic.optionPlaceholder', summary: 'council.topic.summary', 'topic-title': 'council.detail.newTopicPlaceholder',
+      'council-title': 'council.detail.titleLabel', 'council-date': 'council.detail.dateLabel', 'council-lifecycle': 'council.history.lifecycle' };
+    return { identity: nested.identity, title: t(labels[nested.field]), valueKind: 'field', scopedChoice: true,
+      ...(nested.removed && { keepMineDisabled: true, valueKind: 'removed-row' as const }),
+      mine: nested.mine || t('dataSync.emptyField'), stored: nested.stored || t('dataSync.emptyField') };
+  }
   const privateField = checkpoint && readPrivateCouncilComparison(checkpoint);
   const summary = privateField?.field === 'summary' ? privateField : checkpoint && readCouncilSummaryChoice(checkpoint);
   if (summary) return { identity: summary.identity, title: t('council.topic.summary'), valueKind: 'field', scopedChoice: true,
