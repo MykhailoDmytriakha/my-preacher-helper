@@ -99,6 +99,12 @@ const queryClient = () => new QueryClient({ defaultOptions: { queries: { retry: 
 const page = (client: QueryClient) => (
   <QueryClientProvider client={client}><DataEngineProvider><ManualConspectusPage /></DataEngineProvider></QueryClientProvider>
 );
+/** Opens every cell of one point card for writing — each cell has its own switch with its text. */
+const openPointCells = (index = 0) => {
+  const card = screen.getAllByRole('heading', { level: 3 })[index].closest('div.rounded-lg') as HTMLElement;
+  within(card).queryAllByTitle('plan.editMode').forEach(button => fireEvent.click(button));
+};
+
 const render = async () => {
   const { id: _id, ...stored } = mockSermon as unknown as Record<string, unknown>;
   harness = documentEngineHarness({
@@ -276,7 +282,7 @@ it.each([
   localStorage.clear();
   mockSermon = sermon({ p1: 'Original manual paragraph.' });
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   if (earlierTyping) {
     typeAtEnd(editor, ' Laptop edit.');
@@ -298,6 +304,34 @@ it.each([
   expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
 });
 
+it('puts the read/write switch with each cell\'s text and opens only that cell', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  await screen.findByText('Child paragraph.');
+  const heading = screen.getAllByRole('heading', { level: 3 })[0];
+  // Not in the point's header any more: one switch inside each cell's text.
+  expect(within(heading).queryByTitle('plan.editMode')).not.toBeInTheDocument();
+  const switches = screen.getAllByTitle('plan.editMode');
+  expect(switches).toHaveLength(2);
+  expect(switches[1].closest('div.rounded-md')).toHaveTextContent('Child paragraph.');
+  fireEvent.click(switches[1]);
+  expect(view.container.querySelectorAll('.tiptap')).toHaveLength(1);
+  expect(screen.getByText('Opening.')).toBeInTheDocument();
+  // While writing, the way back to reading stands at the end of that editor's toolbar.
+  const back = screen.getByTitle('plan.viewMode');
+  const toolbar = back.closest('.rounded-t-xl') as HTMLElement;
+  expect(toolbar).not.toBeNull();
+  expect(within(toolbar).getAllByRole('button').at(-1)).toBe(back);
+  // The keyboard follows the switch both ways.
+  expect(back).toHaveFocus();
+  fireEvent.click(back);
+  expect(view.container.querySelectorAll('.tiptap')).toHaveLength(0);
+  expect(screen.getAllByTitle('plan.editMode')).toHaveLength(2);
+  expect(screen.getAllByTitle('plan.editMode')[1]).toHaveFocus();
+});
+
 it('regression pin: keeps a second requested manual draft replacement undoable in the mounted editor', async () => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Original manual paragraph.' });
@@ -305,7 +339,7 @@ it('regression pin: keeps a second requested manual draft replacement undoable i
   saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1', 'second'), 'Second requested words.', undefined, false, 2);
   const view = await render();
   fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   const before = markdown(editor);
   fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
@@ -322,7 +356,7 @@ it('regression pin: keeps an explicitly applied note-plan AI replacement undoabl
     mockSermon = { ...sermon({ p1: 'Original manual paragraph.' }), sourceNoteIds: ['source-note'] };
     jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p1: 'Requested AI text.' }, missingMaterial: {} });
     const view = await render();
-    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    openPointCells();
     const editor = mountedEditor(view.container);
     fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
     fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
@@ -341,7 +375,7 @@ it('keeps the rescued paragraph when text Undo cannot restore the deleted child'
   mockSermon = sermon({ p1: 'Original manual paragraph.', child: 'Child paragraph.' });
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
   fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
@@ -438,7 +472,7 @@ it('moves the child once when its exact paragraph is already in the parent', asy
   mockSermon = sermon({ p1: 'Opening.\n\nChild paragraph.\n\nClosing.', child: 'Child paragraph.' });
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   typeAtEnd(editor, ' Already typed.');
   const opening = markdown(editor);
@@ -544,7 +578,7 @@ it('leaves both cells intact when the combined transfer is refused', async () =>
   const view = await render();
   let refuse: ((error: Error) => void) | undefined;
   try {
-    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    openPointCells();
     const parent = mountedEditor(view.container);
     mockRejectRescueOutline = () => new Promise((_resolve, reject) => { refuse = reject; });
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
@@ -576,7 +610,7 @@ it('keeps a parent deleted after its child transfer began', async () => {
   let release: (() => void) | undefined;
   mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
   try {
-    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    openPointCells();
     fireEvent.click(screen.getAllByTitle('plan.deleteSubPoint')[0]);
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
     await waitFor(() => expect(release).toBeDefined());
@@ -607,7 +641,7 @@ it('shows transferred words when the child heading was already removed elsewhere
   let release: (() => void) | undefined;
   mockWaitForRescue = () => new Promise(resolve => { release = resolve; });
   try {
-    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    openPointCells();
     const editor = mountedEditor(view.container);
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
@@ -674,7 +708,7 @@ it('can delete the whole point after deleting one of its children', async () => 
     fireEvent.change(screen.getByRole('textbox', { name: 'plan.renamePoint' }), { target: { value: 'Renamed point' } });
     fireEvent.blur(screen.getByRole('textbox', { name: 'plan.renamePoint' }));
     await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ text: 'Renamed point' }] }));
-    fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+    openPointCells();
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
     await waitFor(() => expect(harness.server.value?.outline).toMatchObject({ introduction: [{ subPoints: [] }] }));
@@ -790,7 +824,7 @@ describe('manual deletion locks', () => {
     const independentBackup = draftKey('user-1', 'sermon-1', `plan:${nodeId}`, 'separate-opening');
     try {
       const pointIndex = nodeId === 'other' ? 1 : 0;
-      fireEvent.click(screen.getAllByTitle('plan.editMode')[pointIndex]);
+      openPointCells(pointIndex);
       const editorRoot = view.container.querySelectorAll<HTMLElement>('.tiptap')[nodeId === 'child' ? 1 : 0];
       const editor = mountedEditor(editorRoot.parentElement!);
       typeAtEnd(editor, ' Typed before removal.');
@@ -874,7 +908,7 @@ describe('manual deletion locks', () => {
 
   it('prevents orphan Discard confirmation during deletion and clears text and dirty state after refusal', async () => {
     const view = await render();
-    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    openPointCells();
     typeAtEnd(mountedEditor(view.container), ' Unsaved local words.');
     const gate = deferred();
     const before = jest.fn(() => gate.promise);
@@ -1020,7 +1054,7 @@ describe('manual deletion locks', () => {
 
   it.each(['point', 'sub-point'] as const)('R02/R04 shows incoming text during a pending %s outline write and preserves it on the next Save', async deletion => {
     const view = await render();
-    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    openPointCells();
     const parent = mountedEditor(view.container);
     const gate = deferred();
     const before = jest.fn(() => gate.promise);
@@ -1068,7 +1102,7 @@ describe('manual deletion locks', () => {
         contentByNodeId: nodeId === 'p1' ? { p1: 'Requested AI words.', child: 'Child words.' } : { child: 'Requested AI words.' }, missingMaterial: {},
       });
       const view = await render();
-      fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+      openPointCells();
       const parent = mountedEditor(view.container);
       fireEvent.click(screen.getAllByRole('button', { name: 'plan.refine.open' })[nodeId === 'p1' ? 0 : 1]);
       fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
@@ -1149,7 +1183,7 @@ describe('manual deletion locks', () => {
     view.unmount();
     await act(async () => { gate.resolve(); });
     const reopened = await render();
-    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    openPointCells();
     expect(mountedEditor(reopened.container).isEditable).toBe(true);
     expect(mockConspectus.busyNodeIds.size).toBe(0);
     screen.getAllByTitle('plan.deletePoint').forEach(button => expect(button).toBeEnabled());
@@ -1258,7 +1292,7 @@ describe('manual deletion locks', () => {
 
   it('locks a deleted point and all its children until a refused outline write finishes', async () => {
     const view = await render();
-    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    openPointCells();
     const parent = mountedEditor(view.container);
     const child = mountedEditor(view.container.querySelectorAll<HTMLElement>('.tiptap')[1].parentElement!);
     const gate = deferred();
@@ -1285,7 +1319,7 @@ it('B80 a refused local child deletion must not opt a later remote rescue into U
   mockSermon = sermon({ p1: original, child });
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   mockFailNextRescue = true;
   fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
@@ -1309,7 +1343,7 @@ it('C13 manual plan saves the arriving table without changing its shape', async 
   localStorage.clear();
   const original = '| A | B |\n| --- | --- |\n| abcdef | Keep |';
   mockSermon = sermon({ p1: original }); const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
   fireEvent.click(screen.getAllByRole('button', { name: 'plan.save' })[0]);
@@ -1340,7 +1374,7 @@ it('keeps the manual plan caret and next character in an unchanged paragraph', a
   const initial = 'Alpha abcdef END\n\nMiddle unchanged\n\nTail';
   mockSermon = sermon({ p1: initial });
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
   act(() => { editor.commands.setTextSelection(10); editor.view.focus(); });
@@ -1363,7 +1397,7 @@ it('stores the next keystroke at the retained caret after an adjacent arrival in
   const initial = 'First words\n\nLast words\n\nTail';
   mockSermon = sermon({ p1: initial });
   const view = await render();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.editMode' }));
+  openPointCells();
   const editor = mountedEditor(view.container);
   const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
   act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });

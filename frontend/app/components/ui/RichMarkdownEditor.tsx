@@ -30,6 +30,8 @@ interface EditorAppearance {
     stickyToolbarTop?: number;
     /** False holds the text still — a save being accepted must not take later keystrokes away with it. */
     editable?: boolean;
+    /** Shown at the end of the formatting toolbar — a control of the screen that belongs with this text. */
+    toolbarEnd?: React.ReactNode;
 }
 
 /** Every screen except the study note: a controlled value, buffered and installed by the editor. */
@@ -80,6 +82,7 @@ function OwnedMarkdownEditor({
     autoFocus = false,
     stickyToolbarTop,
     editable = true,
+    toolbarEnd,
 }: EditorAppearance & OwnedProps) {
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
     const ownedDocument = useRef<ReturnType<typeof ownedTextDocument> | null>(null);
@@ -128,7 +131,7 @@ function OwnedMarkdownEditor({
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} />
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} end={toolbarEnd} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}
@@ -221,6 +224,7 @@ function BufferedMarkdownEditor({
     autoFocus = false,
     stickyToolbarTop,
     editable = true,
+    toolbarEnd,
 }: EditorAppearance & ValueProps) {
     const observedAppend = confirmedTextTransfer ?? appendedText;
     const { draft, change, getPending, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
@@ -446,7 +450,7 @@ function BufferedMarkdownEditor({
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!canEdit} />
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!canEdit} end={toolbarEnd} />
             <div ref={editorContainer} className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}

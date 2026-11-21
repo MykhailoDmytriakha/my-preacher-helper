@@ -1,5 +1,5 @@
-import { FileText, Key, Lightbulb, List, Pencil, Save } from "lucide-react";
-import React, { createContext, useContext, useEffect } from "react";
+import { Key, Lightbulb, List, Save } from "lucide-react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { SwitchViewIcon } from "@/components/Icons";
@@ -23,6 +23,7 @@ import {
   SECTION_TONE_CLASSES,
   TRANSLATION_KEYS,
 } from "./constants";
+import { PlanCellEditToggle } from "./PlanCellEditToggle";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { planNodesForPoint } from "./planNodes";
 
@@ -192,7 +193,8 @@ interface PlanMainLayoutContextValue {
    * text would silently drop the rest.
    */
   onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
-  onToggleEditMode: (outlinePointId: string) => void;
+  /** One cell (the point's own text or a sub-point's) between reading and writing. */
+  onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   onAuthorCell?: (nodeId: string, text: string) => void;
@@ -387,7 +389,16 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
   } = usePlanMainLayoutContext();
 
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
-  const isEditMode = !readOnly && Boolean(editModePoints[outlinePoint.id]);
+  const nodes = planNodesForPoint(outlinePoint, pointIndex);
+  // Each cell opens for writing on its own, by the switch standing with its text.
+  const cellEditing = (nodeId: string) => !readOnly && Boolean(editModePoints[nodeId]);
+  // The keyboard follows the switch: it moves to the toolbar's end on opening, back to the corner on closing.
+  const [switchedId, setSwitchedId] = useState<string | null>(null);
+  const toggleCell = (nodeId: string) => {
+    setSwitchedId(nodeId);
+    onToggleEditMode(nodeId, outlinePoint.id);
+  };
+  const isEditMode = nodes.some(node => cellEditing(node.id));
 
   /**
    * THE CELLS OF THIS POINT — its own, then one per sub-point.
@@ -397,7 +408,6 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
    * appeared when preaching and NOWHERE on the screen where the plan is edited: the preacher
    * met his own plan looking half empty, with no way to reach the missing half.
    */
-  const nodes = planNodesForPoint(outlinePoint, pointIndex);
   const currentContent = generatedContent[outlinePoint.id] || "";
   const isModified = nodes.some((node) => Boolean(modifiedContent[node.id]));
   const isSaved = nodes.some((node) => Boolean(savedSermonPoints[node.id]));
@@ -434,14 +444,6 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
           >
             <Save className="h-4 w-4" />
           </Button>
-          <Button
-            className="text-sm px-2 py-1 h-8"
-            onClick={() => onToggleEditMode(outlinePoint.id)}
-            variant="default"
-            title={isEditMode ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-          >
-            {isEditMode ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-          </Button>
         </div>}
       </h3>
 
@@ -461,8 +463,9 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                   <span className="min-w-0 flex-1">{node.heading}</span>
                 </h4>
               )}
-              {isEditMode ? (
+              {cellEditing(node.id) ? (
                 <RichMarkdownEditor
+                  toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                   value={nodeContent}
                   onHoldText={typed => onHoldCellText?.(node.id, typed)}
                   editable={!generatingIds[node.id]}
@@ -483,7 +486,9 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                   data-testid="plan-point-preview-surface"
                   className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
                 >
-                  <div className="p-4 md:p-5">
+                  <div className="plan-cell-reading flow-root p-4 md:p-5">
+                    {!readOnly && <PlanCellEditToggle editing={false} className="float-right -mr-2 -mt-2 ml-2"
+                      takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                     <MarkdownRenderer markdown={nodeContent || noContentText} section={sectionKey} />
                   </div>
                 </div>
@@ -668,7 +673,8 @@ export interface PlanMainLayoutProps {
    * text would silently drop the rest.
    */
   onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
-  onToggleEditMode: (outlinePointId: string) => void;
+  /** One cell (the point's own text or a sub-point's) between reading and writing. */
+  onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   onAuthorCell?: (nodeId: string, text: string) => void;

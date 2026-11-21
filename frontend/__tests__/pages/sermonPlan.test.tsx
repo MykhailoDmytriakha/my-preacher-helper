@@ -1303,7 +1303,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     try {
       const intro = await screen.findByTestId('plan-introduction-right-section');
       const main = screen.getByTestId('plan-main-right-section');
-      fireEvent.click(within(intro).getByTitle('Edit Mode'));
+      // Each cell has its own switch now: open the point's text and its sub-point's.
+      within(intro).getAllByTitle('Edit Mode').forEach(button => fireEvent.click(button));
       fireEvent.click(within(main).getByTitle('Edit Mode'));
       const editor = mountedEditor(intro);
       const child = mountedEditor(intro.querySelectorAll<HTMLElement>('.tiptap')[1].parentElement!);

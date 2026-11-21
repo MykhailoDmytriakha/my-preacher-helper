@@ -28,9 +28,11 @@ interface RichMarkdownToolbarProps {
      */
     elementRef?: React.Ref<HTMLDivElement>;
     disabled?: boolean;
+    /** A control of the screen that belongs with this text (e.g. back to reading), at the row's end. */
+    end?: React.ReactNode;
 }
 
-export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = false }: RichMarkdownToolbarProps) {
+export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = false, end }: RichMarkdownToolbarProps) {
     // A button's name is its tooltip and what a screen reader says: in the interface's language.
     const { t } = useTranslation();
     const toolbarState = useEditorState({
@@ -145,6 +147,7 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = 
             >
                 <Quote className="w-4 h-4" />
             </ToolbarButton>
+            {end && <div className="ml-auto flex items-center">{end}</div>}
         </div>
     );
 }

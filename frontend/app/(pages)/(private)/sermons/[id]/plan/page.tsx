@@ -306,7 +306,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
 
   // A reference in the plan, or its verse, opens over the plan. The window offers the Bible page only
   // while no point is open for editing: its words are not saved anywhere yet, and leaving would lose them.
-  const editingPoint = Object.values(editModePoints).some(Boolean);
+  // Only cells the outline still has: a sub-point removed while open has no words left to lose.
+  const editingPoint = Object.entries(editModePoints).some(([nodeId, open]) => open && livePlanNodes.has(nodeId));
 
   const [modalSermonPointId, setModalSermonPointId] = useState<string | null>(null);
 
@@ -688,11 +689,11 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     return saveSermonPoint(...args);
   }, [saveSermonPoint]);
 
-  // Toggle edit mode for an outline point
-  const toggleEditMode = (outlinePointId: string) => {
+  // One cell (a point's own text or a sub-point's) between reading and writing
+  const toggleEditMode = (nodeId: string, outlinePointId: string) => {
     setEditModePoints(prev => ({
       ...prev,
-      [outlinePointId]: !prev[outlinePointId]
+      [nodeId]: !prev[nodeId]
     }));
 
     // After toggling, equalize only this pair to avoid page-wide jumps
