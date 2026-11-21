@@ -446,6 +446,49 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
+  it.each(['mine', 'saved', 'changed'] as const)('resolves a returned preparation confirmation without replaying its sibling (%s)', async scenario => {
+    const s = setup({ online: false, nativeChoice: true });
+    const sermon = { collection: 'sermons', id: 'returned-preparation-confirmation' };
+    const key = keyOf('owner', sermon);
+    const path = ['preparation', 'spiritual', 'readAndPrayedConfirmed'];
+    const words = 'Independent goal statement';
+    const preparation = (checked: boolean, other: boolean) => ({ spiritual: { readAndPrayedConfirmed: checked },
+      textContext: { readWholeBookOnceConfirmed: other }, preachingGoal: { statement: words } });
+    const before: ResourceSnapshot = { ...initial(), resource: sermon, value: {
+      userId: 'owner', title: 'Confirmation QA', verse: 'John 3:16', date: '2026-11-20', thoughts: [],
+      preparation: preparation(false, false) } };
+    const stored = { ...before, metadata: { ...before.metadata!, revision: 3 },
+      value: { ...before.value!, preparation: preparation(false, true) } };
+    s.server.set(key, before);
+    s.cache.set(key, before);
+    const editor = await s.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'sermon', 'initial'));
+    const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+    const field = (value: boolean) => ({ exists: true, value });
+    try {
+      await editor.commit(draft => ({ ...draft, preparation: preparation(true, false) }));
+      s.server.set(key, stored);
+      jest.mocked(s.transport.send).mockImplementationOnce(async ({ operationId }) => ({
+        kind: 'conflict', operationId, snapshot: stored,
+        conflicts: [{ path, base: field(false), mine: field(true), theirs: field(false) }],
+      }));
+      s.engine.setOnline(true); await s.engine.retry(); await drainMicrotasks();
+      const compared = editor.getState().checkpoint;
+      expect(compared.conflicts).toHaveLength(1);
+      if (scenario === 'changed') {
+        s.server.set(key, { ...stored, metadata: { ...stored.metadata, revision: 4 },
+          value: { ...stored.value, preparation: preparation(true, true) } });
+        await expect(editor.keepLocal(undefined, compared, time)).rejects.toMatchObject({ code: 'decision-changed' });
+      } else if (scenario === 'mine') await editor.keepLocal(undefined, compared, time);
+      else await editor.acceptRemote(undefined, compared);
+      await s.engine.retry(sermon); await drainMicrotasks();
+      expect(s.server.get(key)?.value?.preparation).toEqual(preparation(scenario !== 'saved', true));
+      if (scenario === 'mine') expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        sermonPreparationCheckActions: { readAndPrayedConfirmed: { observedRevision: 3, time, reviewed: true } },
+      }));
+      else expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { s.engine.dispose(); }
+  });
+
   it('preserves terminal choices for a restored checkpoint with a legacy prepared command', async () => {
     const s = setup({ online: false }), session = new DataSession(initial());
     session.edit({ ...initial().value, content: 'Legacy words' });

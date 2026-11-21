@@ -10221,3 +10221,12 @@ Open Sermon plan from a sermon. A legacy switch that arrives after a restored mo
 Four regressions reproduced before the fix. The related gate passed 6,365 tests in 372 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore covered the mode switch and note entry, both choices, reopening and both proved orders. Peak sampled Next.js memory was 4.85 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/plan-mode-return-20261120/verification.md` in the local case.
 
 After authorized deployment, use a disposable sermon with a linked note in two short sessions. Save From note offline on one device. Change and restore the mode and edit independent plan text on the second. Reconnect and verify the documented order or choose from the comparison. Reopen through Sermon plan and verify the mode, words and outline.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect restored preparation checkboxes
+
+Sermons → open a sermon → Preparation. Both confirmation checkboxes now compare an old unproved action after the checked state was returned. The explicit local choice creates a durable replacement for the reviewed field with a checked revision. A different checkbox and independent goal statement remain. If a legacy missing value and an explicit false both mean unchecked, an already-satisfied reviewed choice acknowledges the stored representation.
+
+Five regressions reproduced before the fix, and a sixth reproduced the equivalent unchecked review issue found during review. The related gate passed 5,870 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore verified both checkboxes, both comparison buttons, reopening and both proven orders. Peak sampled Next.js memory was 4.59 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/prep-check-return-20261120/verification.md` in the local case.
+
+After authorized deployment, mark a checkbox offline in one short session on a disposable sermon. In a second session mark and unmark that checkbox, then set the other checkbox. Reconnect, verify chronology or the field comparison and reload. Verify both checkboxes and the independently saved goal statement. Close both sessions.

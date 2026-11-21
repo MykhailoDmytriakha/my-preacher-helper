@@ -31,9 +31,11 @@ export const SERMON_VERSE_REVIEW_CHANGED = 'sermon-verse-review-changed';
 export const SERMON_CHURCH_REVIEW_CHANGED = 'sermon-church-review-changed';
 export const SERMON_GOAL_TYPE_REVIEW_CHANGED = 'sermon-goal-type-review-changed';
 export const SERMON_PLAN_MODE_REVIEW_CHANGED = 'sermon-plan-mode-review-changed';
+export const SERMON_PREPARATION_CHECK_REVIEW_CHANGED = 'sermon-preparation-check-review-changed';
 export function isStaleSermonFieldReview(code: string | undefined): boolean {
   return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED
-    || code === SERMON_GOAL_TYPE_REVIEW_CHANGED || code === SERMON_PLAN_MODE_REVIEW_CHANGED;
+    || code === SERMON_GOAL_TYPE_REVIEW_CHANGED || code === SERMON_PLAN_MODE_REVIEW_CHANGED
+    || code === SERMON_PREPARATION_CHECK_REVIEW_CHANGED;
 }
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
@@ -178,7 +180,7 @@ const PREPARATION_CONFIRMATION_TARGETS: readonly PreparationConfirmationTarget[]
     accepts: (value): value is boolean => typeof value === 'boolean', causal: true, optional: true,
   }));
 
-export type PreparationConfirmationObservations = Partial<Record<PreparationConfirmation, DocumentFieldObservation<FieldValue>>>;
+export type PreparationConfirmationObservations = Partial<Record<PreparationConfirmation, ReviewedSermonFieldObservation<FieldValue>>>;
 
 export type SermonGoalTypeHistoryPage = {
   owner: string; sermonId: string; generation: string; nextCursor: string | null;
@@ -704,13 +706,15 @@ function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: Com
 }
 
 export function capturePreparationConfirmation(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
-  draft: DocumentData | null, capture: { field: PreparationConfirmation; time: ActionTime | null }, records: readonly CommitRequest[]): PreparationConfirmationObservations | undefined {
+  draft: DocumentData | null, capture: { field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }, records: readonly CommitRequest[]): PreparationConfirmationObservations | undefined {
   if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;
   const target = PREPARATION_CONFIRMATION_TARGETS.find(item => item.field === capture.field);
   const time = capture.time === null ? null : boundedActionTime(capture.time);
   if (!target || time === undefined) return;
   const observation = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
-  if (observation?.after.exists) return { [target.field]: observation };
+  if (observation && (observation.after.exists || capture.reviewed)) {
+    return { [target.field]: { ...observation, ...(capture.reviewed && { reviewed: true as const }) } };
+  }
 }
 
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
@@ -976,7 +980,11 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions' || target.action === 'prayerTextActions' || target.action === 'sermonPreparationTextActions') {
+  if (target.action === 'sermonPreparationCheckActions') {
+    return { ...command, sermonPreparationCheckActions: { ...command.sermonPreparationCheckActions,
+      [target.field]: { ...stamp, ...(action.reviewed && { reviewed: true }) } } };
+  }
+  if (target.action === 'sermonThesisFieldActions' || target.action === 'prayerTextActions' || target.action === 'sermonPreparationTextActions') {
     return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };
   }
   if (target.action === 'sermonPlanModeAction') {

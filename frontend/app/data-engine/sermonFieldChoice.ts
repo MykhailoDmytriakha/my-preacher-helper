@@ -116,8 +116,26 @@ export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
   if (!acceptsDocumentField(mine, SERMON_PLAN_MODE) || !acceptsDocumentField(stored, SERMON_PLAN_MODE)
     || equalValues(mine, stored) || !equalValues(mine, conflicts[0].mine)) return undefined;
   if (mergeDocumentFields(confirmed.value, draft, remoteCandidate.value).conflicts.some(({ path }) => path[0] !== 'planMode')) return undefined;
-  return { mine, stored, identity: JSON.stringify([editGeneration, remoteCandidate.metadata.generation,
+  return { mine, stored, path: SERMON_PLAN_MODE.path, identity: JSON.stringify([editGeneration, remoteCandidate.metadata.generation,
     remoteCandidate.metadata.revision, mine, stored]) };
+}
+
+export function readSermonPreparationConfirmation(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, editGeneration } = checkpoint;
+  if (confirmed.resource.collection !== 'sermons' || !draft || !remoteCandidate?.value || !confirmed.metadata
+    || confirmed.metadata.generation !== remoteCandidate.metadata?.generation || conflicts.length !== 1) return;
+  const { path } = conflicts[0];
+  const field = preparationConfirmationField(path);
+  if (!field) return;
+  const mine = readField(draft, path), stored = readField(remoteCandidate.value, path);
+  if ((mine.exists && typeof mine.value !== 'boolean') || (stored.exists && typeof stored.value !== 'boolean')
+    || (mine.value === true) === (stored.value === true) || !equalValues(mine, conflicts[0].mine)) return;
+  if (mergeDocumentFields(confirmed.value, draft, remoteCandidate.value).conflicts.some(conflict => !equalValues(conflict.path, path))) return;
+  return { field, path, mine, stored, identity: JSON.stringify([path, editGeneration, remoteCandidate.metadata, mine, stored]) };
+}
+
+export function readSermonSettingComparison(checkpoint: SessionCheckpoint) {
+  return readSermonPlanModeComparison(checkpoint) ?? readSermonPreparationConfirmation(checkpoint);
 }
 
 const isRow = (value: unknown, key: string) => object(value) && value.id === key.slice(3);

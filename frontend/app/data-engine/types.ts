@@ -91,7 +91,7 @@ export type EditorCommitAction =
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
   | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonMetadataReview?: import('./documentFieldAction').SermonMetadataReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview }
-  | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
+  | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
   | { kind: 'service-order-step-placement'; move: ServiceOrderStepPlacementCapture }
@@ -297,7 +297,7 @@ export type DataCommand = CommandBase & (
       councilTopicPlacement?: ServiceOrderStepPlacement;
       outlinePointPlacement?: OutlinePointPlacement;
       outlineSubpointMoves?: OutlineSubpointMove[];
-      sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
+      sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, import('./documentFieldAction').ReviewedSermonFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
       homileticTitleActions?: HomileticTitleActions;

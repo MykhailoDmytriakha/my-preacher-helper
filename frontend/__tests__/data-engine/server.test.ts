@@ -8104,6 +8104,49 @@ describe('transactional DataEngine server', () => {
           ...opening, spiritual: { readAndPrayedConfirmed: true }, textContext: { readWholeBookOnceConfirmed: true },
         } } } });
     });
+
+    it.each([
+      { name: 'read and prayed', field: 'prayer', reaffirmed: false },
+      { name: 'read the book', field: 'book', reaffirmed: false },
+      { name: 'reaffirmed book unchecked', field: 'book', reaffirmed: true },
+    ] as const)('keeps the returned preparation confirmation after an old $name request', async ({ field, reaffirmed }) => {
+      const owner = await seed();
+      const other = field === 'prayer' ? 'book' : 'prayer';
+      const current = preparation(other, true);
+      const legacy = (id: string, before: typeof opening, after: typeof opening) => ({
+        ...update(id, 'prep-check-seed'),
+        changes: [{ path: ['preparation'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      });
+      const marked = preparation(field, true);
+      if (!reaffirmed) expect((await processCommand(owner, legacy('mark', opening, marked))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, legacy('return', marked, current))).kind).toBe('acknowledged');
+      const late = legacy('old-request', opening, marked);
+      const answer = await processCommand(owner, late);
+      const { section, key } = fields[field];
+      expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { preparation: current } },
+        conflicts: [{ path: ['preparation', section, key], base: { exists: true, value: false },
+          mine: { exists: true, value: true }, theirs: { exists: true, value: false } }] });
+      expect(await processCommand(owner, late)).toEqual(answer);
+    });
+
+    it('coalesces a reviewed removal with an explicitly unchecked preparation box', async () => {
+      const owner = await seed();
+      const checked = preparation('book', true);
+      expect((await processCommand(owner, saveConfirmation('checked', 'book', false, true, 20))).kind).toBe('acknowledged');
+      const markOff = saveConfirmation('unchecked', 'book', true, false, 40);
+      markOff.sermonPreparationCheckActions.readWholeBookOnceConfirmed!.observedRevision = 2;
+      expect((await processCommand(owner, markOff)).kind).toBe('acknowledged');
+      const request = {
+        ...saveConfirmation('reviewed-unchecked', 'book', true, false, 60),
+        changes: [{ path: ['preparation'], before: { exists: true, value: checked },
+          after: { exists: true, value: { ...opening, textContext: {} } } }],
+        sermonPreparationCheckActions: { readWholeBookOnceConfirmed: { observedRevision: 2, time: null, reviewed: true as const } },
+      };
+      expect(await processCommand(owner, request)).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { preparation: opening } },
+      });
+      expect(documents.get('sermons/sermon-1')?.preparation).toEqual(opening);
+    });
   });
 
   describe('sermon church chronology', () => {

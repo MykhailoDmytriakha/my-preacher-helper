@@ -1,5 +1,4 @@
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
-import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { sermonNoteConflictText } from '@/utils/sermonNoteText';
 
 import { isAuthoredListComparison, isAuthoredStringList } from './authoredStringList';
@@ -13,7 +12,7 @@ import { equalValues, object } from './fieldValues';
 import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
-import { readSermonConflictField } from './sermonFieldChoice';
+import { readSermonConflictField, readSermonPreparationConfirmation } from './sermonFieldChoice';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
 import { readServiceStepTextChoice } from './serviceOrderStepChoice';
@@ -204,9 +203,10 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
   if (path.length === 1 && field === 'verse' && typeof mine.value === 'string' && typeof stored.value === 'string') {
     return { kind: 'verse' as const, identity, mine: mine.value, stored: stored.value };
   }
-  const confirmation = preparationConfirmationField(path);
-  if (confirmation && (!mine.exists || typeof mine.value === 'boolean') && (!stored.exists || typeof stored.value === 'boolean')) {
-    return { kind: 'preparation-confirmation' as const, identity, field: confirmation, mine: mine.value === true, stored: stored.value === true };
+  const confirmation = readSermonPreparationConfirmation(checkpoint);
+  if (confirmation) {
+    return { kind: 'preparation-confirmation' as const, identity: confirmation.identity, field: confirmation.field,
+      mine: confirmation.mine.value === true, stored: confirmation.stored.value === true };
   }
   if (field !== 'preachDates' || !rowId?.startsWith('id:')) return undefined;
   if (path.length === 3 && property === 'date' && readSermonConflictField(remoteCandidate.value, path.slice(0, 2)).exists) {
