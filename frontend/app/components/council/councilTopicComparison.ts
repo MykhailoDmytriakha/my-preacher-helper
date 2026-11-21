@@ -1,5 +1,6 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
 import { readCouncilSummaryChoice, readCouncilTopicConflict, readCouncilTopicTextComparison, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
+import { shownDayOf } from '@/utils/dateOnly';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
 
@@ -31,12 +32,15 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
       mine: councilOutcomeWords(nested.mine, topic, t), stored: councilOutcomeWords(nested.stored, topic, t) };
   }
   if (nested) {
+    const version = (value: string | null) => nested.field === 'council-date'
+      ? value ? shownDayOf(value) : t('council.noDate')
+      : value || t('dataSync.emptyField');
     const labels = { question: 'council.topic.questionPlaceholder', answer: 'council.topic.answerPlaceholder',
       option: 'council.topic.optionPlaceholder', summary: 'council.topic.summary', 'topic-title': 'council.detail.newTopicPlaceholder',
       'council-title': 'council.detail.titleLabel', 'council-date': 'council.detail.dateLabel', 'council-lifecycle': 'council.history.lifecycle' };
     return { identity: nested.identity, title: t(labels[nested.field]), valueKind: 'field', scopedChoice: true,
       ...(nested.removed && { keepMineDisabled: true, valueKind: 'removed-row' as const }),
-      mine: nested.mine || t('dataSync.emptyField'), stored: nested.stored || t('dataSync.emptyField') };
+      mine: version(nested.mine), stored: version(nested.stored) };
   }
   const privateField = checkpoint && readPrivateCouncilComparison(checkpoint);
   const summary = privateField?.field === 'summary' ? privateField : checkpoint && readCouncilSummaryChoice(checkpoint);

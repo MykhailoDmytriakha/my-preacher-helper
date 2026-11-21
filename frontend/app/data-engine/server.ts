@@ -20,7 +20,7 @@ import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkT
 import { MAX_COMMAND_BYTES } from './commandSize';
 import { conflictReceiptDigest, readConflictJsonParts, splitConflictJson, validConflictPartCount } from './conflictReceiptParts.server';
 import { alignCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, type CouncilAssemblyHistoryPage } from './councilAssemblyAction';
-import { isReturnedCouncilTitle } from './councilFieldAction';
+import { isCouncilHeaderComparison } from './councilFieldAction';
 import { COUNCIL_OUTCOME_POLICY, isCouncilOutcome, type CouncilOutcomeHistoryPage } from './councilOutcomeAction';
 import { orderCouncilOutcome } from './councilOutcomeOrder.server';
 import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind, type CouncilTopicKindHistoryPage } from './councilTopicKindAction';
@@ -1250,8 +1250,9 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         ...compareReturnedSermonText(orderedCommand, current, raw?._dataEngine, orderedPreachingPaths));
       const councilTextReview = councilTopicTextOrder.settled.length || councilTopicTextOrder.uncertain.length
         || councilTopicTitleOrder.uncertain.length || councilTopicTitleOrder.displaced.length
-        || (command.resource.collection === 'councils' && (fieldOrder.uncertain.some(isReturnedCouncilTitle)
-          || (planned.result.kind === 'conflict' && planned.result.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))));
+        || (command.resource.collection === 'councils' && (fieldOrder.uncertain.some(isCouncilHeaderComparison)
+          || (planned.result.kind === 'conflict' && planned.result.conflicts.some(conflict =>
+            isCouncilHeaderComparison(conflict) || councilTopicTextConflict(conflict.path) || councilTopicTitleRow(conflict.path)))));
       const settledCouncilDetails = councilTextReview
         ? [...orderedCouncilMetadata(command, current, fieldOrder),
           ...settledCouncilTopicDetails(command, current, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder),

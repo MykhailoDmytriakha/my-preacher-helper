@@ -5056,8 +5056,8 @@ describe('transactional DataEngine server', () => {
     const date = '2099-04-10T00:00:00.000Z';
     const title = 'Opening council';
     const topics = [{ id: 'section', title: 'Keep the section', kind: 'info', questions: [], options: [], discussed: true }];
-    const seed = () => processCommand(base.owner, { ...base, operationId: 'council-seed', kind: 'create', generation: null,
-      value: { userId: base.owner, title, date, status: 'preparing', topics,
+    const seed = (openingDate: string | null = date) => processCommand(base.owner, { ...base, operationId: 'council-seed', kind: 'create', generation: null,
+      value: { userId: base.owner, title, ...(openingDate !== null && { date: openingDate }), status: 'preparing', topics,
         createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
     const day = (value: string | null) => value === null ? { exists: false } : { exists: true, value };
     const change = (operationId: string, nextTitle: string, nextDate: string | null, offset: number) => {
@@ -5145,6 +5145,63 @@ describe('transactional DataEngine server', () => {
         snapshot: { value: { title, date: kind === 'return' ? '2099-04-20' : date, topics } },
       });
       expect(await processCommand(base.owner, delayed)).toEqual(result);
+    });
+
+    it.each([
+      { opening: null, proposal: '2099-04-27', reaffirm: false },
+      { opening: null, proposal: '2099-04-27', reaffirm: true },
+      { opening: date, proposal: null, reaffirm: false },
+    ])('holds a legacy standalone council date after a return ($opening; reaffirm=$reaffirm)', async ({ opening, proposal, reaffirm }) => {
+      expect((await seed(opening)).kind).toBe('acknowledged');
+      const temp = '2099-04-20';
+      const editDate = (operationId: string, before: string | null, after: string | null) => ({
+        ...base, operationId, kind: 'update', generation: 'council-seed',
+        changes: [{ path: ['date'], before: day(before), after: day(after) }],
+      });
+      if (!reaffirm) expect((await processCommand(base.owner, editDate('council-date-temp', opening, temp))).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, editDate('council-date-return', temp, opening))).kind).toBe('acknowledged');
+      const delayed = editDate('council-date-late', opening, proposal);
+      const result = await processCommand(base.owner, delayed);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['date'], base: day(opening), mine: day(proposal), theirs: day(opening) }],
+        snapshot: { value: { title, status: 'preparing', topics } },
+      });
+      expect(documents.get('councils/timed-council')?.date).toBe(opening ?? undefined);
+      expect(await processCommand(base.owner, delayed)).toEqual(result);
+    });
+
+    it.each([{ stored: date, mine: '2099-04-10' }, { stored: null, mine: '' }])(
+      'does not ask about two representations of the same council date ($stored)', async ({ stored, mine }) => {
+        const opening = '2099-04-01';
+        expect((await seed(opening)).kind).toBe('acknowledged');
+        const update = (operationId: string, after: string | null) => ({
+          ...base, operationId, kind: 'update', generation: 'council-seed',
+          changes: [{ path: ['date'], before: day(opening), after: day(after) }],
+        });
+        expect((await processCommand(base.owner, update('council-date-desk', stored))).kind).toBe('acknowledged');
+        const result = await processCommand(base.owner, update('council-date-phone', mine));
+        expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title, topics } } });
+        expect(documents.get('councils/timed-council')?.date).toBe(stored ?? undefined);
+      });
+
+    it.each([20, 80])('reports the proved title order while a restored council date needs review (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = change('council-desk', 'Desk council', '2099-04-20', 40);
+      expect((await processCommand(base.owner, desk)).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, { ...desk, operationId: 'council-date-return', changes: [
+        { path: ['date'], before: day('2099-04-20'), after: day(date) },
+      ], councilDateAction: { observedRevision: 2, time: {
+        earliestMs: 1_800_000_000_120, latestMs: 1_800_000_000_125,
+      } } })).kind).toBe('acknowledged');
+      const { councilDateAction: _date, ...delayed } = change('council-delayed', 'Phone council', null, offset);
+      const result = await processCommand(base.owner, delayed);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [
+          { path: ['date'], mine: day(null), theirs: day(date) },
+          { path: ['title'], code: offset < 40 ? 'council-topic-text-settled' : 'council-topic-text-queued',
+            base: day(title), mine: day('Phone council'), theirs: day('Desk council') },
+        ], snapshot: { value: { title: 'Desk council', date, topics } },
+      });
     });
 
     it.each([20, 80])('reports the proved date order while a returned council title needs review (%s)', async offset => {

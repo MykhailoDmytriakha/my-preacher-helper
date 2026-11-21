@@ -641,6 +641,56 @@ describe('council nested text choices through the durable editor', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each(['mine', 'stored'])('compares a returned council date on its own and keeps the council (%s)', async side => {
+    const { h, engine, editor } = await open();
+    try {
+      const selected = '2026-11-22';
+      const basis = editor.getState().checkpoint;
+      await editor.edit({ ...basis.draft!, date: selected }, basis, { field: 'date', time: at(20) });
+      await editor.save();
+      h.silentRemote({ title: 'New council title', topics: [{ ...opening, summary: 'New section text' }] });
+      delay(h, [{ path: ['date'], base: rowConflictValue(null), mine: rowConflictValue(selected), theirs: rowConflictValue(null) }]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-date', mine: selected, stored: null,
+      }));
+      const shown = editor.getState().checkpoint;
+      if (side === 'mine') {
+        await editor.keepLocal(undefined, shown, at(80));
+        await waitFor(() => expect(h.server.value?.date).toBe(selected));
+        expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          councilDateAction: { observedRevision: 2, time: at(80) },
+        }));
+      } else await editor.acceptRemote(undefined, shown);
+      const stored = editor.getState().checkpoint.confirmed;
+      expect(stored.value?.date).toBe(side === 'mine' ? selected : undefined);
+      expect(stored.value).toMatchObject({ title: 'New council title', status: 'preparing', topics: [{ summary: 'New section text' }] });
+      expect(stored.metadata?.deleted).toBe(false);
+    } finally { engine.dispose(); }
+  });
+
+  it('does not show a second council date when a newer stored representation is the same day', async () => {
+    const initialDate = '2026-11-20', selected = '2026-11-22';
+    const { h, engine, editor } = await open({ date: initialDate });
+    try {
+      const basis = editor.getState().checkpoint;
+      await editor.edit({ ...basis.draft!, date: selected }, basis, { field: 'date', time: at(20) });
+      await editor.save();
+      h.silentRemote({ date: initialDate });
+      delay(h, [{ path: ['date'], base: rowConflictValue(initialDate), mine: rowConflictValue(selected), theirs: rowConflictValue(initialDate) }]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-date', mine: selected, stored: initialDate,
+      }));
+      const iso = selected + 'T00:00:00.000Z';
+      await h.remote({ date: iso });
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({ complete: true }));
+      await editor.acceptRemote(undefined, editor.getState().checkpoint);
+      expect(editor.getState().checkpoint.confirmed.value?.date).toBe(iso);
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+    } finally { engine.dispose(); }
+  });
+
   it('refreshes the returned council title before applying a choice about the displayed words', async () => {
     const { h, engine, editor } = await open();
     try {

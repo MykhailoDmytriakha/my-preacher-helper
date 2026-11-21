@@ -28,8 +28,20 @@ export const COUNCIL_LIFECYCLE = { field: 'heldAt', action: 'councilLifecycleAct
 
 export type CouncilFieldTarget = typeof COUNCIL_TIMED_FIELDS[number] | typeof COUNCIL_LIFECYCLE;
 
-export function isReturnedCouncilTitle({ path, base, theirs }: ConflictDetail): boolean {
-  return path.length === 1 && path[0] === 'title' && equalValues(base, theirs);
+export function isCouncilHeaderComparison({ path, base, theirs, code }: ConflictDetail): boolean {
+  return path.length === 1 && (path[0] === 'title' && equalValues(base, theirs) || path[0] === 'date' && !code);
+}
+
+function councilDateDay(field: FieldValue): string | null | undefined {
+  if (!field.exists || field.value === '') return null;
+  if (typeof field.value !== 'string') return undefined;
+  const day = shownDayOf(field.value);
+  return isDateOnlyKey(day) ? day : undefined;
+}
+
+export function sameCouncilDate(first: FieldValue, second: FieldValue): boolean {
+  const day = councilDateDay(first);
+  return day !== undefined && day === councilDateDay(second);
 }
 
 export function councilStatusOf(heldAt: FieldValue): 'held' | 'preparing' {

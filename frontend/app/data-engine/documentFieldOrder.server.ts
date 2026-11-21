@@ -8,7 +8,7 @@ import { competingStringListEdits, singleStringListEdit } from './authoredString
 import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
-import { councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
+import { councilStatusOf, matchesCouncilLifecycle, sameCouncilDate } from './councilFieldAction';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
 import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS } from './documentFieldAction';
@@ -71,13 +71,14 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
   return (past?.length ?? 0) < MAX_FIELD_OPENINGS ? [...past ?? [], digest] : null;
 }
 
-const tracksTitleReturns = (target: DocumentFieldTarget) =>
+const tracksScalarReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
-    || target.action === 'councilTitleAction' || (target.action === 'seriesFieldActions' && target.field === 'title');
+    || target.action === 'councilTitleAction' || target.action === 'councilDateAction'
+    || (target.action === 'seriesFieldActions' && target.field === 'title');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  tracksTitleReturns(target) || target.action === 'sermonThesisFieldActions'
+  tracksScalarReturns(target) || target.action === 'sermonThesisFieldActions'
     || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
@@ -178,7 +179,7 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
     if (order < 0) return { command, previous };
     return { command, stamp: order > 0 ? action.time : null,
       ...(!order && repeatedWords && { acknowledgedListChoice: true }),
-      ...((target.action === 'sermonPreparationTextActions' || tracksTitleReturns(target)) && { reaffirmedOpening: true }) };
+      ...((target.action === 'sermonPreparationTextActions' || tracksScalarReturns(target)) && { reaffirmedOpening: true }) };
   }
   if (!order || !time || !action.time) {
     const needsReview = repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
@@ -208,7 +209,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'commentKindAction' && (!command.commentKindAction
     || !matchesCommentKindPlace(current.value, command.commentKindAction.reference))) return { command };
   if (target.action === 'tagColorAction' && current.value?.required !== false) return { command };
-  const change = target.action === 'commentPlaceAction' && !command.commentPlaceAction
+  let change = target.action === 'commentPlaceAction' && !command.commentPlaceAction
     ? placeOfCommentChange(command.changes, true) : documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
   const stored = documentFieldValue(current.value, target);
@@ -218,8 +219,16 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'commentPlaceAction' && !command.commentPlaceAction && equalValues(change.before, change.after)) return { command };
   if (target.action === 'studyNoteContentAction' && (equalValues(change.before, change.after)
     || current.value?.type === 'analysis')) return { command };
-  const action = readAction(command, change, current.metadata.revision, serverMs, target);
   const previous = previousField(raw, current, target);
+  // The date picker works with calendar days. Old timestamp and empty-string spellings are equivalent.
+  if (target.action === 'councilDateAction' && acceptsDocumentField(change.after, target)
+    && !equalValues(stored, change.after) && sameCouncilDate(stored, change.after)) {
+    const before = sameCouncilDate(stored, change.before) ? stored : change.before;
+    command = { ...command, changes: replaceOrderedDocumentField(command.changes, target, before, stored) };
+    if (equalValues(before, stored)) return { command, previous };
+    change = { ...change, before, after: stored };
+  }
+  const action = readAction(command, change, current.metadata.revision, serverMs, target);
   if (target.action === 'commentPlaceAction') {
     const uncertain = commentPlaceReview(command, current, raw, stored, previous, Boolean(action));
     if (uncertain) return { command, uncertain: [uncertain] };
@@ -228,7 +237,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   // The study-note page sends no proof of the text it saw yet; until it does (BUG-20261118-note-page-codex-fixes-wait-for-engine-session)
   // an unproven note or comment text keeps the plain base check, as before this rule. A text sent with its proof
   // (the comment window, when it has one) is ordered by the action above.
-  if (!action && tracksTitleReturns(target) && acceptsDocumentField(change.before, target)
+  if (!action && tracksScalarReturns(target) && acceptsDocumentField(change.before, target)
     && !sameFieldOpening(stored, change.before, target) && equalValues(change.after, stored)) {
     return { command, stamp: null, reaffirmedOpening: true };
   }

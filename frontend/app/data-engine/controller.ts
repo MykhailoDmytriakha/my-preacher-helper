@@ -10,7 +10,7 @@ import { keepUncontestedCommentFields } from './commentKindChoice';
 import { commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, keepUncontestedCommentPlace, readCommentPlaceComparison } from './commentPlaceChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
-import { isReturnedCouncilTitle } from './councilFieldAction';
+import { isCouncilHeaderComparison } from './councilFieldAction';
 import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
 import { councilTopicKindRow } from './councilTopicKindAction';
 import { retryCouncilTopicPlacement } from './councilTopicPlacement';
@@ -892,7 +892,7 @@ export class EditorController {
     const shownCollection = expected?.checkpoint.confirmed.resource.collection;
     if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates'
       || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title'))
-      || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isReturnedCouncilTitle)))) {
+      || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison)))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);

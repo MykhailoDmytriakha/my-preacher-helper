@@ -1,7 +1,7 @@
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
-import { councilLifecycleValue, isReturnedCouncilTitle, withCouncilLifecycle } from './councilFieldAction';
+import { councilLifecycleValue, isCouncilHeaderComparison, sameCouncilDate, withCouncilLifecycle } from './councilFieldAction';
 import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow } from './councilOutcomeAction';
 import { councilOutcomeOptionAvailable, readCouncilOutcomeVersions } from './councilPrivateFields';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
@@ -148,13 +148,18 @@ export function readCouncilTopicTextReview(checkpoint: SessionCheckpoint) {
     || !requestId || groupTextReview?.separateDraft || (groupTextReview && requestId !== groupTextReview.requestId)
     || !conflicts.some(conflict => {
       const { path, code } = conflict;
-      return isReturnedCouncilTitle(conflict) || councilTopicTextConflict(path) || councilTopicTitleRow(path) || isNestedItemPath(path)
+      return isCouncilHeaderComparison(conflict) || councilTopicTextConflict(path) || councilTopicTitleRow(path) || isNestedItemPath(path)
         || code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED;
     })) return undefined;
 
   const settled = new Map<string, { field: ComparedField; side: 'mine' | 'stored' }>();
   let proposed = writeField(writeField(draft, ['rev'], readField(opening, ['rev'])), ['updatedAt'], readField(opening, ['updatedAt']));
+  const datePath = ['date'];
+  const savedDate = readField(stored, datePath);
+  const equivalentDate = sameCouncilDate(readField(draft, datePath), savedDate);
+  if (equivalentDate) proposed = writeField(proposed, datePath, savedDate);
   for (const conflict of conflicts) {
+    if (equivalentDate && equalValues(conflict.path, datePath)) continue;
     const side = conflict.code === COUNCIL_TOPIC_TEXT_SETTLED ? 'stored' : conflict.code === COUNCIL_TOPIC_TEXT_QUEUED ? 'mine' : undefined;
     if (!side) continue;
     const field = councilTopicTextVersions(conflict.path, opening, draft, stored);
@@ -194,7 +199,8 @@ export function readCouncilTopicTextReview(checkpoint: SessionCheckpoint) {
     }
     return [[JSON.stringify(normalized), normalized] as const];
   }));
-  const compared = [...paths].filter(([key]) => !settled.has(key)).map(([, path]) => councilTopicTextVersions(path, opening, draft, stored));
+  const compared = [...paths].filter(([key, path]) => !settled.has(key) && (!equivalentDate || !equalValues(path, datePath)))
+    .map(([, path]) => councilTopicTextVersions(path, opening, draft, stored));
   if (compared.some(field => !field)) return undefined;
   const fields = compared.filter((field): field is ComparedField => field !== undefined && (field.removed === true || !equalValues(field.mine, field.stored)));
   const decisions = (groupTextReview?.decisions ?? []).filter(decision => fields.some(field =>
