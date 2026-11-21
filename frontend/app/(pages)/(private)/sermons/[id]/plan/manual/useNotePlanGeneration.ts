@@ -185,7 +185,16 @@ export function useNotePlanGeneration(options: Options) {
         ownerId: owner, operationId: draft.id, recoverOnly, language: draft.language,
       });
       if (!matchesNodes(result, draft.before)) throw new Error('Invalid generated node map');
-      resolveProposal(scope, { ...draft, state: 'ready', result });
+      // "Refine" asks for a better version of the one on screen: the answer takes its place rather
+      // than standing under it. Only once it has arrived — a failed refinement keeps the old one.
+      // A blank answer, or one written from a note that changed since, is no better version to swap in.
+      const replacement = !result.sourceChanged && Object.values(result.contentByNodeId).some(text => text.trim());
+      if (resolveProposal(scope, { ...draft, state: 'ready', result }) && replacement) {
+        for (const replaced of draft.replaces ?? []) {
+          const old = readProposal(scope, replaced);
+          if (old?.state === 'ready') discardProposal(scope, old);
+        }
+      }
       if (isHere()) {
         setRefining(id, false);
         if (!unchanged(draft)) setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
@@ -239,6 +248,9 @@ export function useNotePlanGeneration(options: Options) {
     const draft = beginProposal(scope, {
       request, before, language: browserInterfaceLanguage(),
       autoApply: !intent && Object.values(before).every(text => !text.trim()),
+      // Only "Refine" asks to replace; a plain Generate next to a waiting version leaves it a choice.
+      replaces: intent ? listProposals(scope).filter(item => item.state === 'ready'
+        && item.request.outlinePointId === point.id && item.request.targetNodeId === targetNodeId).map(item => item.id) : undefined,
       labels: Object.fromEntries(nodes.map(node => [node.nodeId, node.title])),
     });
     setErrors(previous => {

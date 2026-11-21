@@ -16,6 +16,8 @@ const captured = z.object({
   language: z.enum(['en', 'ru', 'uk']).optional(),
   /** Every target cell was empty when the request started: the answer goes straight in, unreviewed. */
   autoApply: z.boolean().optional(),
+  /** Ready versions of the same point on screen when this one was asked for; its answer takes their place. */
+  replaces: z.array(z.string()).optional(),
 });
 
 const schema = z.discriminatedUnion('state', [

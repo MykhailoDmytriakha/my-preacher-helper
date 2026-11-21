@@ -493,6 +493,47 @@ it('skips removed subpoints and ignores queued sibling writes for a targeted req
   expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
 });
 
+it('puts a refined answer in place of the version it was asked to improve — not under it', async () => {
+  const view = setup({ p: 'Mine', sub: 'My detail' });
+  await act(async () => { await view.result.current.generate(point); });
+  const first = view.result.current.proposals.p;
+  jest.mocked(generateNotePlanContent).mockResolvedValueOnce({ contentByNodeId: { p: '- Shorter', sub: '- Shorter detail' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, undefined, { instruction: 'Shorter', mode: 'edit' as const }); });
+  expect(view.result.current.ready).toHaveLength(1);
+  expect(view.result.current.proposals.p.id).not.toBe(first.id);
+  expect(view.result.current.proposals.p.contentByNodeId.p).toBe('- Shorter');
+});
+
+it('keeps the version on screen when the refined answer is blank or written from a changed note', async () => {
+  const view = setup({ p: 'Mine', sub: 'My detail' });
+  await act(async () => { await view.result.current.generate(point); });
+  const first = view.result.current.proposals.p;
+  jest.mocked(generateNotePlanContent).mockResolvedValueOnce({ contentByNodeId: { p: '', sub: '' }, missingMaterial: { p: 'Nothing new' } })
+    .mockResolvedValueOnce({ ...generated, sourceChanged: true });
+  await act(async () => { await view.result.current.generate(point, undefined, { instruction: 'Shorter', mode: 'edit' as const }); });
+  await act(async () => { await view.result.current.generate(point, undefined, { instruction: 'Shorter', mode: 'edit' as const }); });
+  expect(view.result.current.ready.map(proposal => proposal.id)).toContain(first.id);
+});
+
+it('leaves a waiting version a choice when the point is generated again plainly — only Refine replaces', async () => {
+  const view = setup({ p: 'Mine', sub: 'My detail' });
+  await act(async () => { await view.result.current.generate(point); });
+  const first = view.result.current.proposals.p;
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.result.current.ready.map(proposal => proposal.id)).toContain(first.id);
+  expect(view.result.current.ready).toHaveLength(2);
+});
+
+it('keeps the version on screen when the refinement fails', async () => {
+  const view = setup({ p: 'Mine', sub: 'My detail' });
+  await act(async () => { await view.result.current.generate(point); });
+  const first = view.result.current.proposals.p;
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new Error('network'));
+  await act(async () => { await view.result.current.generate(point, undefined, { instruction: 'Shorter', mode: 'edit' as const }); });
+  expect(view.result.current.errors.p).toBe('generationFailed');
+  expect(view.result.current.ready.map(proposal => proposal.id)).toEqual([first.id]);
+});
+
 it('captures current selected draft content with a revision and closes the composer only on success', async () => {
   const view = setup({ p: 'Parent', sub: 'Unsaved child' });
   act(() => { view.result.current.setRefining('sub', true); });
