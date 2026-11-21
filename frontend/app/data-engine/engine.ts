@@ -7,6 +7,7 @@ import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnaly
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
+import { originalAutosaveStillApplies, pendingAutosaveReceipts, recoverableAutosaves } from './automaticDraftResume';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
 import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
@@ -176,9 +177,11 @@ export interface ManagedEditor {
 
 export interface EditorOpenOptions {
   signal?: AbortSignal;
+  autoSaveOnResume?: boolean;
 }
 
 interface EditorEntry {
+  autoSaveOnResume?: boolean;
   retirement?: { owner: string; generation: number; editorId: string; resource: ResourceRef };
   manualChoices?: ManualChoiceSources;
   presence: RecoveryPresenceLease;
@@ -190,6 +193,15 @@ interface EditorEntry {
   listeners: Set<() => void>;
   observation: Observation;
   pendingActionSaves: Map<number, ClosingSaveIntent[]>;
+}
+
+interface StartupDraftRecovery {
+  generation: number;
+  operation: Promise<void> | null;
+  attempts: Map<string, number>;
+  retryRead: boolean;
+  waiting: Set<string>;
+  recheckedReceipts: Set<string>;
 }
 
 interface ManualFormEntry {
@@ -269,6 +281,7 @@ export class DataEngine {
   private readonly projectedCommitEvents = new Map<string, number>();
   private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
   private settling: { owner: string; generation: number; operation: Promise<void> } | null = null;
+  private resumingAutosaves: StartupDraftRecovery | null = null;
   private manualForms = new Map<string, ManualFormEntry>();
   private membershipForms = new Map<string, MembershipScope>();
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
@@ -301,7 +314,9 @@ export class DataEngine {
       if (request.result?.kind === 'acknowledged' && (this.projectedCommitEvents.get(request.id) ?? -1) < request.revision) {
         this.projectedCommitEvents.set(request.id, request.revision);
         const generation = this.generation;
-        const projection = this.completeAcceptedProjection(request.owner, generation, request).catch(error => {
+        const projection = this.completeAcceptedProjection(request.owner, generation, request).then(() => {
+          if (this.current(request.owner, generation) && this.resumingAutosaves?.waiting.has(request.id)) this.backgroundDrain();
+        }).catch(error => {
           if (this.current(request.owner, generation) && this.projectedCommitEvents.get(request.id) === request.revision) {
             this.projectedCommitEvents.delete(request.id);
           }
@@ -1614,9 +1629,9 @@ export class DataEngine {
           const known = await this.knownSnapshot(owner, generation, frozen); active();
           return recoverManualChoiceCopy(record!, known);
         },
-        create: async record => {
+        create: async (record, origin) => {
           active(); presence?.add((record.recoverySources ?? []).map(source => source.id));
-          await store.create(record); active();
+          await store.create(record, ...(origin ? [origin] : [])); active();
         },
       }, owner, sourceId, editorId, frozen);
       const forked = await (cancelled ? Promise.race([forking, cancelled]) : forking);
@@ -1663,6 +1678,97 @@ export class DataEngine {
     return operation;
   }
 
+  private answeredDraftReceipts(state: StartupDraftRecovery): string[] {
+    return [...state.waiting].filter(id => {
+      const result = this.commitRecords.get(id)?.state;
+      return result === 'acknowledged' || result === 'cancelled';
+    });
+  }
+
+  private needsAutosaveRecovery(generation: number): boolean {
+    const state = this.resumingAutosaves;
+    return !state || state.generation !== generation || state.retryRead || this.answeredDraftReceipts(state).length > 0;
+  }
+
+  /** Inspect closed autosaves on startup and when an earlier captured Save actually settles. */
+  private resumeAutosaves(owner: string, generation: number): Promise<void> | undefined {
+    const previous = this.resumingAutosaves?.generation === generation ? this.resumingAutosaves : null;
+    if (previous?.operation) return previous.operation;
+    const store = this.options.checkpoints as Partial<CheckpointRecoveryStore>;
+    if (!this.canSend() || !this.needsAutosaveRecovery(generation) || !store.listRecoverable || !store.pinRecovery
+      || !this.options.commits.createWithCheckpoint) return;
+    const active = () => this.assertCurrent(owner, generation);
+    const state: StartupDraftRecovery = previous ?? { generation, operation: null, attempts: new Map(), retryRead: false,
+      waiting: new Set(), recheckedReceipts: new Set() };
+    for (const id of this.answeredDraftReceipts(state)) state.recheckedReceipts.add(id);
+    state.retryRead = false;
+    const operation = (async () => {
+      const copies = await store.listRecoverable!(owner);
+      active();
+      if (!copies.length) { state.waiting.clear(); return; }
+      const requests = await this.commits.list();
+      active();
+      requests.forEach(request => this.rememberCommit(request));
+      state.waiting.clear();
+      for (const { source, receipts } of pendingAutosaveReceipts(copies, requests)) {
+        if (this.editors.has(source.record.editorId) || await this.recoveryPresence.held(owner, 'checkpoint', source.id) !== false) continue;
+        active();
+        for (const id of receipts) if (!state.recheckedReceipts.has(id)) state.waiting.add(id);
+      }
+      for (const { id, record } of recoverableAutosaves(copies, requests)) {
+        const attempts = state.attempts.get(id) ?? 0;
+        if (attempts >= 2) continue;
+        if (!this.canSend()) { state.retryRead = true; return; }
+        const { resource } = record.checkpoint.confirmed;
+        if (this.editors.has(record.editorId) || await this.recoveryPresence.held(owner, 'checkpoint', id) !== false) continue;
+        active();
+        let fresh: ResourceSnapshot | null;
+        try { fresh = await this.readWriteTarget(resource); }
+        catch (error) {
+          active();
+          if ((error as { code?: unknown } | null)?.code === 'resource-exhausted') { state.retryRead = false; return; }
+          state.attempts.set(id, attempts + 1);
+          state.retryRead ||= attempts === 0;
+          continue;
+        }
+        active();
+        if (!fresh) { state.retryRead = true; continue; }
+        state.attempts.set(id, 2);
+        if (originalAutosaveStillApplies(record, fresh)) await this.captureResumedAutosave(owner, generation, id, record, store.pinRecovery!);
+      }
+    })().catch(error => { if (this.current(owner, generation)) this.reportFailure(error); })
+      .finally(() => { state.operation = null; });
+    state.operation = operation;
+    this.resumingAutosaves = state;
+    return operation;
+  }
+
+  private async captureResumedAutosave(owner: string, generation: number, id: string, source: EditorRecord,
+    pin: NonNullable<CheckpointRecoveryStore['pinRecovery']>): Promise<void> {
+    if (await this.recoveryPresence.held(owner, 'checkpoint', id) !== false) return;
+    this.assertCurrent(owner, generation);
+    const version = await pin(source);
+    this.assertCurrent(owner, generation);
+    if (!version || !this.canSend()) return;
+    const { editorId } = source;
+    try {
+      await this.commits.save(editorId, source.checkpoint, {
+        resumeVersion: version,
+        checkpoint: request => {
+          this.assertCurrent(owner, generation);
+          const session = DataSession.restore(source.checkpoint);
+          const completed = session.applyCommit(request) ? [request.id] : [];
+          return { ...source, checkpoint: session.checkpoint(), completedCommits: [...(source.completedCommits ?? []), ...completed] };
+        },
+      });
+    } catch (error) {
+      // A reopened tab or another startup can consume this exact version first.
+      if (this.current(owner, generation) && (error as { code?: unknown } | null)?.code !== 'commit-changed') {
+        this.reportFailure(error, source.checkpoint.confirmed.resource);
+      }
+    }
+  }
+
   private recoveryStore(): CheckpointRecoveryStore {
     const store = this.options.checkpoints as Partial<CheckpointRecoveryStore>;
     if (typeof store.listRecoverable !== 'function' || typeof store.create !== 'function') throw new Error('Checkpoint recovery is not supported by this store');
@@ -1701,6 +1807,20 @@ export class DataEngine {
         .map(write => about(write.resource, write.operation)));
       await this.completeAcceptedProjections(owner, generation);
       await this.completeCapabilityProjections(owner, generation);
+      if (this.canSend() && this.needsAutosaveRecovery(generation)) {
+        // A Save captured before the interruption still owns its opening. Let its
+        // receipt settle the same closed copy before inspecting the words typed next.
+        await settling;
+        await this.settleClosedEditors(owner, generation);
+        this.assertCurrent(owner, generation);
+      }
+      const resuming = this.resumeAutosaves(owner, generation);
+      if (resuming) {
+        await resuming;
+        this.assertCurrent(owner, generation);
+        await this.commits.drain(this.canSend());
+        await this.completeAcceptedProjections(owner, generation);
+      }
     } finally {
       try {
         await settling;
@@ -1709,6 +1829,9 @@ export class DataEngine {
         await finishCollection?.().catch(error => { if (this.current(owner, generation)) this.reportFailure(error); });
       }
     }
+    // A receipt can arrive between reading the closed copies and reading the queue.
+    const startup = this.resumingAutosaves;
+    if (this.canSend() && startup?.generation === generation && !startup.operation && this.answeredDraftReceipts(startup).length) this.backgroundDrain();
   }
 
   private async completeAcceptedProjections(owner: string, generation: number): Promise<void> {
@@ -1932,6 +2055,7 @@ export class DataEngine {
     const generation = this.generation;
     const frozen = copy(resource);
     const entry: EditorEntry = {
+      autoSaveOnResume: options?.autoSaveOnResume,
       presence: this.recoveryPresence.hold(owner, 'checkpoint', [recoveryCheckpointId(owner, editorId), ...recoverySourceIds]),
       initializing: null,
       controller: null, stopObservation: null, stopController: null, closed: false,
@@ -2012,7 +2136,7 @@ export class DataEngine {
           const cached = await this.persistSnapshot(owner, generation, snapshot);
           if (!canReplaceSnapshot(snapshot, cached)) throw new Error('Confirmed deletion was not stored');
         },
-        commits: this.commits,
+        commits: this.commits, autoSaveOnResume: entry.autoSaveOnResume,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
         manualReturnSources: readManualSources,
         manualChoiceSources: readManualChoices,

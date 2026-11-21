@@ -1173,9 +1173,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     const editorId = recovery?.editorId ?? browser.editorId(ref, slot);
     const cancellation = new AbortController();
     setError(null);
+    const editorOptions = { signal: cancellation.signal, autoSaveOnResume: autoSaveRef.current };
     const opening = recovery ? browser.engine.recoverEditor(ref, editorId, recovery.sourceId, { signal: cancellation.signal }) : create
-      ? browser.engine.createEditor(ref, editorId, { signal: cancellation.signal })
-      : browser.engine.openEditor(ref, editorId, { signal: cancellation.signal });
+      ? browser.engine.createEditor(ref, editorId, editorOptions)
+      : browser.engine.openEditor(ref, editorId, editorOptions);
     void opening.then(value => {
       if (!active) { value.dispose(); return; }
       editor = value;

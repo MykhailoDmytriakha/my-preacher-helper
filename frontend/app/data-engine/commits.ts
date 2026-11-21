@@ -241,7 +241,7 @@ export interface CommitStore {
    * leaves the sweep of retained rows to the next pass, so a page being left writes only what it must keep.
    */
   createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
-    options?: { deferRetention?: true }): Promise<CommitRequest>;
+    options?: { deferRetention?: true; resumeVersion?: string }): Promise<CommitRequest>;
   /** Exact replacement capture and refused-source retirement share one native transaction. */
   createWithTransfer?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
     sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
@@ -442,6 +442,7 @@ type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; comment
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
   deferRetention?: true;
+  resumeVersion?: string;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
 function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke | undefined {
@@ -706,7 +707,7 @@ export class CommitQueue {
     }
     const capture = async (record: CommitRequest): Promise<CaptureTransferResult> => frozenOptions?.transfer
       ? this.options.store.createWithTransfer!(record, frozenOptions.checkpoint!, frozenOptions.transfer.sources)
-      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention), retired: [] };
+      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention, frozenOptions?.resumeVersion), retired: [] };
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
@@ -990,10 +991,13 @@ export class CommitQueue {
     };
   }
 
-  private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord, deferRetention?: true): Promise<CommitRequest> {
+  private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord,
+    deferRetention?: true, resumeVersion?: string): Promise<CommitRequest> {
     if (checkpoint && this.options.store.createWithCheckpoint) {
-      return this.options.store.createWithCheckpoint(record, checkpoint, ...(deferRetention ? [{ deferRetention }] as const : []));
+      return this.options.store.createWithCheckpoint(record, checkpoint,
+        ...(deferRetention || resumeVersion ? [{ deferRetention, resumeVersion }] : []));
     }
+    if (resumeVersion) throw new Error('Automatic draft recovery requires exact checkpoint capture');
     // Custom document-only ports project afterward, without native atomicity.
     return this.options.store.create(record);
   }

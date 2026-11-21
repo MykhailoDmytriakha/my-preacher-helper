@@ -10,6 +10,7 @@ import { checkpointCommitReferences, collectCommitRows, commitProjectionKey, def
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { CheckpointRecoveryStore, EditorRecord, UnreadableCheckpoint } from './controller';
+import type { RecoveryOrigin } from './recoverySource';
 import type { ResourceRef } from './types';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -17,10 +18,20 @@ const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 /** Checkpoint projection and request reference release are one durable transaction. */
 export function createIndexedDbCheckpoints(collect = collectCommitRows): CheckpointRecoveryStore {
   const transaction = createEngineStorageTransaction();
-  const write = (record: EditorRecord, creating: boolean) => {
+  const write = (record: EditorRecord, creating: boolean, origin?: RecoveryOrigin) => {
     const frozen = validateRecoveryRecord(record, record.owner, record.editorId);
     return transaction<void>('readwrite', (store, read, done) => {
-      writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), creating ? collect : deferCollection);
+      const persist = () => writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), creating ? collect : deferCollection);
+      if (!origin) { persist(); return; }
+      const source = recoveryCheckpointEditorId(frozen.owner, origin.id);
+      if (!source || source === frozen.editorId) throw new Error('Invalid checkpoint recovery identity');
+      read(store.get(checkpointKey(frozen.owner, source)), current => {
+        if (current?.recoveryVersion !== origin.version) {
+          throw Object.assign(new Error('Recovery source changed before capture'), { code: 'decision-changed' });
+        }
+        validateRecoveryRecord(current, frozen.owner, source, frozen.checkpoint.confirmed.resource);
+        persist();
+      });
     });
   };
   const list = (owner: string, range: IDBKeyRange) => transaction<Array<[string, unknown]>>('readonly', (store, read, done) => {
@@ -72,7 +83,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
         for (const id of current.completedCommits ?? []) store.delete(commitProjectionKey(current.owner, id));
       },
     }),
-    create: record => write(record, true),
+    create: (record, origin) => write(record, true, origin),
     pinRecovery: record => pinRecoveryVersion(transaction, checkpointKey(record.owner, record.editorId), record,
       value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource)),
     read: (owner, editorId) => transaction('readonly', (store, read, done) => {

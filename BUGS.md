@@ -23,11 +23,11 @@
 1. `BUG-20261112-late-old-text-overwrites-later-undo` — запоздавшая старая правка затирает более позднюю отмену. Оставшийся известный путь открыт на странице заметки и ждёт пункта 5 (`BUG-20261118-note-page-codex-fixes-wait-for-engine-session`).
 2. ~~`BUG-20261114-session-accepts-ahead-of-screen`~~
 3. ~~`BUG-20261117-engine-editor-asks-on-equal-or-sibling-arrival`~~
-4. **← следующая.** Несохранённое досылается само (решение владельца 18.11): копия правки на устройстве, у которой основа не изменилась, отправляется при следующем запуске без вопроса; вопрос остаётся только при настоящем расхождении. Сегодня такая копия только предлагается человеку. Вид ответа «оставить моё» — `SYNC-20261117-keep-mine-moves-later-words-to-saved-drafts`, вместе с владельцем.
+4. ~~Несохранённое досылается само при запуске, если основа правки сохранилась.~~ Вид ответа «оставить моё» остаётся отдельным решением `SYNC-20261117-keep-mine-moves-later-words-to-saved-drafts`.
 
 **Б. Экраны с текстом живут на сеансе движка (проверка 2)** — корень: `BUG-20261118-screens-keep-private-save-beside-engine`
 
-5. Страница заметки переходит на сеанс движка (после 1–4). Закрывает: `BUG-20261118-note-leave-within-pause-stores-nothing`, `BUG-20261118-webkit-tab-close-within-debounce-leaves-no-draft`, `BUG-20261117-note-kept-decision-sent-later-without-base-check`, `BUG-20261118-note-killed-between-device-store-and-engine-answer-asks-about-own-words`, `BUG-20261118-draft-copies-holding-nothing-unsent-never-removed`, `BUG-20261118-draft-without-base-asks-once-on-restore`, `BUG-20261114-note-keystroke-lost-when-leaving-in-same-task`, `BUG-20261118-new-note-killed-before-create-cannot-restore`, `BUG-20261118-note-page-codex-fixes-wait-for-engine-session` (фиксы Codex для этой страницы — с его тестами как готовой проверкой).
+5. **← следующая.** Страница заметки переходит на сеанс движка (после 1–4). Закрывает: `BUG-20261118-note-leave-within-pause-stores-nothing`, `BUG-20261118-webkit-tab-close-within-debounce-leaves-no-draft`, `BUG-20261117-note-kept-decision-sent-later-without-base-check`, `BUG-20261118-note-killed-between-device-store-and-engine-answer-asks-about-own-words`, `BUG-20261118-draft-copies-holding-nothing-unsent-never-removed`, `BUG-20261118-draft-without-base-asks-once-on-restore`, `BUG-20261114-note-keystroke-lost-when-leaving-in-same-task`, `BUG-20261118-new-note-killed-before-create-cannot-restore`, `BUG-20261118-note-page-codex-fixes-wait-for-engine-session` (фиксы Codex для этой страницы — с его тестами как готовой проверкой).
 6. Окно комментария и ячейки плана проповеди тем же ходом: `BUG-20261114-plan-cell-arrival-keystroke-loses-text`, ~~`BUG-20261114-plan-delete-lost-on-leaving`~~, ~~`BUG-20261114-plan-generation-lost-on-leaving`~~ (починены в ветке Codex, забор 18.11), `BUG-20261118-comment-restore-kind-or-place-only-shows-old-words`.
 7. Снять самодельные черновики и таймеры этих экранов, когда 5–6 сделаны.
 
@@ -389,6 +389,12 @@
 | `SharedNoteReader.tsx:111` и `:118` | поражено | два экземпляра смонтированы одновременно |
 | `share/notes/[token]/page.tsx:124` | не поражено | один экземпляр в состояниях загрузки/ошибки |
 | `MobileMenu.tsx:130` · `UserProfileDropdown.tsx:63` | не проверено | поражены, если оба меню бывают смонтированы разом |
+
+### BUG-20261120-group-legacy-description-recovery-meeting-field-warning · Группы: восстановление описания старой группы без списка встреч добавляет ошибку о занятом поле
+**Severity P3.** В Chrome на локальном эмуляторе с документом группы без поля `meetingDates` после «Восстановить выбранный черновик» над двумя кнопками выбора видна красная строка «An unsaved editor already owns a selected field». Воспроизведено при проверке пункта 4. Текст черновика и сохранённое описание остались доступны, выбор серверной версии сработал. Частота таких старых записей в данных владельца неизвестна.
+**Шаги.** Группы → открыть группу без сохранённого `meetingDates` → набрать описание → аварийно закрыть страницу после локальной записи → сохранить другое описание с другого устройства → снова открыть группу → выбрать локальный черновик → «Восстановить выбранный черновик». Скриншот `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/automatic-draft-resume-20261120/verified/legacy-meeting-warning.png`.
+**Причина по коду.** `hydrateGroup` подставляет пустой список встреч в отображаемую группу. Снимок в хранилище сохраняет исходное отсутствующее поле. Форма первой встречи получает пустой список в возвращённом черновике и отсутствие поля в исходной версии. `manualScope.ts`, `captureRecord` принимает эту разницу за несохранённую правку поля встречи.
+**Ожидалось.** Восстановление меняет только описание. Для группы без встреч открываются обычные действия формы даты и остаётся один вопрос о действительно различающемся тексте.
 
 ### BUG-20261118-new-note-killed-before-create-cannot-restore · Новая заметка: страница убита до записи её создания — слова показаны только для чтения и не восстанавливаются
 **Severity P3 (предварительно).** Найдено на стенде страницы с настоящим движком (дело `2026-11-12-dvizhok-dannyh-do-ideala`, `research/188`, F3); одинаково до и после выпуска 18.11.2026; в настоящем браузере не снято. НЕ ПРОВЕРЕНО: якорь в коде.

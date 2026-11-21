@@ -7,8 +7,9 @@ import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { isRetirableOrdinaryEditor } from './editorIdentity';
+import { equalValues } from './fieldValues';
 import { writeManualChoiceRecoveries } from './manualScopes.client';
-import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
+import { reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -40,8 +41,11 @@ function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request:
   });
 }
 
-function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
-  if (frozen.transferredFrom && !transferring) throw new Error('A replacement proof requires atomic source transfer');
+type CaptureAdmission = 'ordinary' | 'transfer' | 'resume';
+
+function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest,
+  done: (record: CommitRequest) => void, admission: CaptureAdmission): void {
+  if (frozen.transferredFrom && admission !== 'transfer') throw new Error('A replacement proof requires atomic source transfer');
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
     const capture = () => checkOwnershipFormat(store, read, frozen, () => {
@@ -61,7 +65,7 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
         });
       });
     });
-    if (isRetirableOrdinaryEditor(frozen.editorId)) {
+    if (admission !== 'resume' && isRetirableOrdinaryEditor(frozen.editorId)) {
       read(store.get(activeOrdinaryEditorKey(frozen.owner, frozen.editorId)), active => {
         if (!active) throw Object.assign(new Error('The editor has already closed'), { code: 'commit-editor-closed' });
         capture();
@@ -71,12 +75,13 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
 }
 
 /** Derive the frontier only once, from rows read in this same native write transaction. */
-function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
-  if (frozen.value !== null) { writeRecord(store, read, frozen, done, transferring); return; }
+function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest,
+  done: (record: CommitRequest) => void, admission: CaptureAdmission = 'ordinary'): void {
+  if (frozen.value !== null) { writeRecord(store, read, frozen, done, admission); return; }
   readCommitRows(store, read, frozen.owner, records => {
     const existing = records.find(record => record.editorId === frozen.editorId && record.editGeneration === frozen.editGeneration);
     const captured = existing ? replayDeleteOrder(frozen, existing) : captureDeleteOrder(frozen, records);
-    writeRecord(store, read, captured, done, transferring);
+    writeRecord(store, read, captured, done, admission);
   });
 }
 
@@ -205,9 +210,31 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     create: request => createBatch([request]).then(records => records[0]),
     createWithCheckpoint: (request, project, options) => {
       const frozen = clone(request);
+      const version = options?.resumeVersion;
       return transaction('readwrite', (store, read, done) => {
-        createRecord(store, read, frozen, saved => {
+        const capture = (admission: CaptureAdmission) => createRecord(store, read, frozen, saved => {
+          if (admission === 'resume' && isRetirableOrdinaryEditor(frozen.editorId)) {
+            store.delete(activeOrdinaryEditorKey(frozen.owner, frozen.editorId));
+          }
           writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved), options?.deferRetention ? deferCollection : collect);
+        }, admission);
+        if (!version) { capture('ordinary'); return; }
+        // Capture at the source identity so a later Discard still sees the queued write.
+        read(store.get(checkpointKey(frozen.owner, frozen.editorId)), value => {
+          if (value?.recoveryVersion !== version) throw changed();
+          const { checkpoint } = validateRecoveryRecord(value, frozen.owner, frozen.editorId, frozen.baseline.resource);
+          if (!checkpoint.dirty || !frozen.value || Object.keys(checkpoint.pending).length
+            || checkpoint.editGeneration !== frozen.editGeneration || !equalValues(checkpoint.draft, frozen.value)
+            || !equalValues(checkpoint.confirmed, frozen.baseline)) throw changed();
+          // A person may have taken over this same source between the presence check
+          // and the transaction. The fork's existing source proof settles the race.
+          const id = recoveryCheckpointId(frozen.owner, frozen.editorId);
+          read(store.getAll(engineOwnerRange('checkpoint', frozen.owner)), records => {
+            const forked = records.some(record => Array.isArray(record?.recoveryOrigins)
+              && record.recoveryOrigins.some((origin: { id?: string; version?: string }) => origin?.id === id && origin.version === version));
+            if (forked) throw changed();
+            capture('resume');
+          });
         });
       });
     },
@@ -228,7 +255,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
             const retired = planCaptureTransfer(saved, expected, records);
             for (const source of retired) { store.put(source, commitRowKey(source)); retainPredecessor(store, source); }
             writeCheckpointRecord(store, read, project(clone(saved)), false, () => done({ request: saved, retired }), collect);
-          }, true);
+          }, 'transfer');
         });
       });
     },

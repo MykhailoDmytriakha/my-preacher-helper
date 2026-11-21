@@ -99,6 +99,8 @@ export interface EditorRecord extends VersionedRecovery {
   owner: string;
   editorId: string;
   checkpoint: SessionCheckpoint;
+  /** The originating screen intended to save ordinary typing without a button. */
+  autoSaveOnResume?: boolean;
   /** Persisted before journal submission so a crash can resume the identical command. */
   prepared: DataCommand | null;
   unfinalized: string[];
@@ -135,7 +137,7 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   listManualChoiceCopies?(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   listUnreadable?(owner: string): Promise<UnreadableCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
-  create(record: EditorRecord): Promise<void>;
+  create(record: EditorRecord, source?: RecoveryOrigin): Promise<void>;
   /** Removes only the exact explicitly selected closed copy, never an unresolved Save. */
   discardRecovery?(record: EditorRecord, isCurrent: () => boolean): Promise<void>;
   /** Exact optional native source pin; unsupported stores retain original copies. */
@@ -173,6 +175,7 @@ interface ControllerOptions {
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
+  autoSaveOnResume?: boolean;
   /** An active private form keeps ordinary root continuation outside its parent editor. */
   canFollowSubmittedWork?: () => boolean;
   manualReturnSources?: (requests: readonly CommitRequest[]) => Promise<ReadonlyMap<string, string>>;
@@ -651,6 +654,7 @@ export class EditorController {
 
   private record(): EditorRecord {
     return { owner: this.options.owner, editorId: this.options.editorId, checkpoint: this.session.checkpoint(), prepared: this.prepared,
+      ...(this.options.autoSaveOnResume !== undefined && { autoSaveOnResume: this.options.autoSaveOnResume }),
       unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits],
       ...(this.recoverySources.length ? { recoverySources: this.recoverySources.map(source => ({ ...source })) } : {}),
       ...(this.recoveryOrigins.length ? { recoveryOrigins: this.recoveryOrigins.map(source => ({ ...source })) } : {}) };

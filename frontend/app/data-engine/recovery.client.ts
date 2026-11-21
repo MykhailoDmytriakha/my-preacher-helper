@@ -130,6 +130,7 @@ const privateFieldDecision = groupTextDecision.omit({ row: true, removedBy: true
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
+  autoSaveOnResume: z.boolean().optional(),
   recoveryVersion: z.string().min(1).optional(),
   retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
@@ -552,13 +553,16 @@ export async function forkCheckpoint(store: Pick<CheckpointRecoveryStore, 'read'
     if (!value) throw Object.assign(new Error('Recovery checkpoint no longer exists'), { code: 'draft-gone' });
     const original = validateRecoveryRecord(value, owner, sourceEditorId, resource);
     if (!isRecoverableCheckpoint(original)) throw Object.assign(new Error('The checkpoint has no pending local work'), { code: 'draft-done' });
-    const version = store.pinRecovery ? await store.pinRecovery(original) : null;
-    if (store.pinRecovery && !version) {
+    const version = await store.pinRecovery?.(original);
+    if (version === null) {
       if (attempt < 2) continue;
       throw Object.assign(new Error('Recovery source changed before capture'), { code: 'decision-changed' });
     }
-    const forked = checkpointForkRecord(original, sourceId, newEditorId, version);
-    try { await store.create(forked); return clone(forked); }
+    const forked = checkpointForkRecord(original, sourceId, newEditorId, version ?? null);
+    try {
+      await store.create(forked, version ? { id: sourceId, version } : undefined);
+      return clone(forked);
+    }
     catch (error) {
       if ((error as { code?: string }).code !== 'commit-reference-changed' || attempt === 2) throw error;
     }
