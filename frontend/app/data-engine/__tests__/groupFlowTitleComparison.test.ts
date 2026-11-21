@@ -26,6 +26,24 @@ describe('group flow title comparison', () => {
     expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'title', mine: 'Recovered group name', stored: 'Original group name' });
   });
 
+  it.each(['local', 'remote'] as const)('only changes the returned group status when choosing %s', side => {
+    const base = { ...opening, value: { ...value, title: 'First title', description: 'First notes', status: 'draft' } };
+    const checkpoint = new DataSession(base).checkpoint();
+    checkpoint.draft = { ...base.value, description: 'Phone notes', status: 'completed' };
+    checkpoint.pending.save = { generation: 1, value: checkpoint.draft };
+    checkpoint.remoteCandidate = { ...base, metadata: { ...metadata, revision: 3 },
+      value: { ...base.value, title: 'Desktop title' } };
+    const field = (value: string) => ({ exists: true, value });
+    checkpoint.conflicts = [{ path: ['status'], base: field('draft'), mine: field('completed'), theirs: field('draft') }];
+
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'groupStatus', mine: 'completed', stored: 'draft' });
+    const review = readGroupTextReview(checkpoint)!;
+    expect(review.remaining).toHaveLength(1);
+    const result = projectGroupTextDecisions(review, [groupTextDecision(review.remaining[0], side)]);
+    expect(result).toMatchObject({ status: side === 'local' ? 'completed' : 'draft',
+      title: 'Desktop title', description: 'Phone notes', templates: [template], flow: [step] });
+  });
+
   it('compares the displayed titles instead of stale words from the original conflict', () => {
     const checkpoint = new DataSession(opening).checkpoint();
     checkpoint.draft = { ...value, templates: [{ ...template, title: 'Latest local', updatedAt: 'local' }] };

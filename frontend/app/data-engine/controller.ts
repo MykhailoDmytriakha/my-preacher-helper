@@ -21,7 +21,7 @@ import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
 import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pendingStandaloneCreation, type PendingRemovalOpening } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
-import { withQueuedGroupScalarProofs } from './documentFieldAction';
+import { withQueuedGroupScalarProofs, withSubmittedScalarProofs } from './documentFieldAction';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
@@ -32,7 +32,7 @@ import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './group
 import { isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
-import { groupTextDecision, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
+import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -860,6 +860,10 @@ export class EditorController {
         const review = readCouncilTopicTextReview(state);
         return review && { fields: review.fields, settled: review.settled };
       }
+      if (state.confirmed.resource.collection === 'groups') {
+        const review = readGroupTextReview(state);
+        return review && { fields: review.fields, settled: review.settled };
+      }
       if (state.confirmed.resource.collection === 'tags') return readTagColorConflict(state);
       const review = readDocumentTextChoice(state);
       return review?.complete ? review.checkpoint.conflicts : undefined;
@@ -893,7 +897,8 @@ export class EditorController {
     const shownCollection = expected?.checkpoint.confirmed.resource.collection;
     if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates' || shownCollection === 'tags'
       || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title'))
-      || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison)))) {
+      || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison))
+      || (shownCollection === 'groups' && expected.checkpoint.conflicts.some(isGroupStatusComparison)))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
@@ -904,7 +909,8 @@ export class EditorController {
     const councilReview = ordinary && readCouncilTopicTextReview(shown.checkpoint);
     const textReview = councilReview || groupReview;
     const reviewingText = Boolean(councilReview || groupReview && (shown.checkpoint.groupTextReview
-      || ordinary.scope.length > 1 || groupReview.remaining.length > 1 || groupReview.settled.length));
+      || ordinary.scope.length > 1 || groupReview.remaining.length > 1 || groupReview.settled.length
+      || shown.checkpoint.conflicts.some(isGroupStatusComparison)));
     const hasCouncilTextOrder = shown.checkpoint.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED);
     const hasGroupTextOrder = shown.checkpoint.conflicts.some(({ code }) => isOrderedGroupFlowText(code));
     if (reviewingText || shown.checkpoint.groupTextReview || hasCouncilTextOrder || hasGroupTextOrder) {
@@ -1055,11 +1061,12 @@ export class EditorController {
             const queued = group!.settled.flatMap(({ field, side }) => side === 'mine' ? [field] : []);
             const scalars = queued.flatMap(field => !('target' in field) ? [field] : []);
             const rows = queued.flatMap(field => 'target' in field ? [field] : []);
-            const retained = withQueuedGroupScalarProofs(keptTail ? source : decided, scalars);
+            const proofSource = keptTail ? source : decided;
+            const retained = withQueuedGroupScalarProofs(withSubmittedScalarProofs(proofSource, review.requestId, keptTail ?? chosen), scalars);
             session.retainUnreviewedAutosaveActions(withQueuedRowFieldProofs(retained, rows), review.fields);
             for (const { path, time } of kept) {
               const [field] = path;
-              if (path.length === 1 && (field === 'description' || field === 'title')) session.stageReviewedGroupField(field, time ?? null);
+              if (path.length === 1 && (field === 'description' || field === 'title' || field === 'status')) session.stageReviewedGroupField(field, time ?? null);
               else session.stageReviewedGroupFlowText([path], time ?? null);
             }
           }
@@ -1230,7 +1237,8 @@ export class EditorController {
             const reviewed = writeGroupFlowTextChoice(session.checkpoint().draft, groupText, 'mine');
             if (!reviewed) throw Object.assign(new Error('The reviewed text changed'), { code: 'decision-changed' });
             session.edit(reviewed);
-            if (groupText.field === 'description' || groupText.field === 'title') session.stageReviewedGroupField(groupText.field, choiceTime ?? null);
+            if (groupText.field === 'groupStatus') session.stageReviewedGroupField('status', choiceTime ?? null);
+            else if (groupText.field === 'description' || groupText.field === 'title') session.stageReviewedGroupField(groupText.field, choiceTime ?? null);
             else session.stageReviewedGroupFlowText([groupText.path], choiceTime ?? null);
           }
           if (councilSummary) {

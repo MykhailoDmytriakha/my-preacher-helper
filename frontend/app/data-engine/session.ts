@@ -881,7 +881,7 @@ export class DataSession {
     stageReviewedGroupFlowText(this.state, paths, time);
   }
 
-  stageReviewedGroupField(field: 'description' | 'title', time: ActionTime | null): void {
+  stageReviewedGroupField(field: 'description' | 'title' | 'status', time: ActionTime | null): void {
     const target = autosaveFieldTargets(this.state.confirmed.resource.collection).find(candidate => candidate.field === field);
     if (!target) return;
     const confirmed = { ...this.state, draft: this.state.confirmed.value };

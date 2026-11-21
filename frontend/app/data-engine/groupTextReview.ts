@@ -122,18 +122,20 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
 }
 
-type ScalarTextChoice = GroupScalar & { field: 'description' | 'title' };
+export function isGroupStatusComparison({ path, code }: ConflictDetail): boolean {
+  return !code && equalValues(path, ['status']);
+}
 
-function readGroupScalarTextChoice(checkpoint: SessionCheckpoint, draft: DocumentData | null): ScalarTextChoice | undefined {
+function readGroupScalarTextChoice(checkpoint: SessionCheckpoint, draft: DocumentData | null): GroupScalar | undefined {
   const { confirmed, remoteCandidate, conflicts, pending } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
     || !confirmed.metadata || confirmed.metadata.generation !== remoteCandidate.metadata?.generation
     || Object.keys(pending).length !== 1 || conflicts.length !== 1) return;
   const [conflict] = conflicts;
   const field = textAt({ ...checkpoint, draft }, conflict.path);
-  if ((field?.field === 'description' || (field?.field === 'title' && returnedGroupTitle(conflict)))
-    && 'before' in field && field.mine !== field.stored) {
-    return { ...field, field: field.field };
+  if ((field?.field === 'description' || (field?.field === 'title' && returnedGroupTitle(conflict))
+    || (field?.field === 'groupStatus' && isGroupStatusComparison(conflict))) && 'before' in field && field.mine !== field.stored) {
+    return field;
   }
 }
 
@@ -316,8 +318,9 @@ export function readGroupTextReview(source: SessionCheckpoint) {
     return !Array.isArray(rows) || rows.some(row => object(row) && row.id === id)
       || merged.conflicts.some(conflict => equalValues(conflict.path, path.slice(0, 2)));
   }).map(path => removed.find(item => equalValues(item.path, path)) ?? textAt(checkpoint, path));
-  const submittedScalarText = conflicts.some(conflict => equalValues(conflict.path, ['description']) || returnedGroupTitle(conflict));
-  if (fields.some(field => !field) || (!groupTextReview && !submittedScalarText && !settled.size
+  const submittedScalar = conflicts.some(conflict => equalValues(conflict.path, ['description'])
+    || returnedGroupTitle(conflict) || isGroupStatusComparison(conflict));
+  if (fields.some(field => !field) || (!groupTextReview && !submittedScalar && !settled.size
     && !fields.some(field => isGroupRowText(field?.field)))) return undefined;
   const differing = fields.filter((field): field is GroupText => Boolean(field && (!('before' in field) || field.mine !== field.stored)));
   const decisions = (groupTextReview?.decisions ?? []).filter(decision => differing.some(field =>

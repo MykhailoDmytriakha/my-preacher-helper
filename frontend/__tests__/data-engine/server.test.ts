@@ -4985,6 +4985,61 @@ describe('transactional DataEngine server', () => {
     if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['status'] }] });
   });
 
+  it.each([false, true])('holds a legacy group status after returning to Draft (reaffirm=%s)', async reaffirm => {
+    const resource = { collection: 'groups', id: 'group-status-return' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const value = { userId: base.owner, title: 'Original title', description: 'Original notes', status: 'draft',
+      templates: [], flow: [], meetingDates: [], createdAt: now, updatedAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const field = (value: string) => ({ exists: true, value });
+    const change = (operationId: string, before: string, after: string) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['status'], before: field(before), after: field(after) }],
+    });
+    if (!reaffirm) expect((await processCommand(base.owner, change('activate', 'draft', 'active'))).kind).toBe('acknowledged');
+    const returned = change('return', 'active', 'draft');
+    expect((await processCommand(base.owner, { ...returned, changes: [...returned.changes,
+      { path: ['description'], before: field(value.description), after: field('Desktop notes') },
+    ] })).kind).toBe('acknowledged');
+    const delayed = change('old-phone', 'draft', 'completed');
+    const outcome = await processCommand(base.owner, delayed);
+    expect(outcome).toMatchObject({
+      kind: 'conflict', conflicts: [{ path: ['status'], base: field('draft'), mine: field('completed'), theirs: field('draft') }],
+      snapshot: { value: { status: 'draft', description: 'Desktop notes', title: value.title } },
+    });
+    expect(documents.get('groups/group-status-return')).toMatchObject({ status: 'draft', description: 'Desktop notes' });
+    expect(await processCommand(base.owner, delayed)).toEqual(outcome);
+  });
+
+  it('can compare a conflicting step removal separately from an already ordered group status', async () => {
+    const resource = { collection: 'groups', id: 'group-status-and-flow' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const template = { id: 'block', type: 'custom', title: 'Block', content: 'Notes', status: 'draft', createdAt: now, updatedAt: now };
+    const flow = (ids: string[]) => ids.map((id, index) => ({ id, templateId: template.id, order: index + 1 }));
+    const opening = flow(['a', 'b', 'c', 'd']);
+    const field = <T,>(value: T) => ({ exists: true, value });
+    const seed = await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', templates: [template], flow: opening,
+        meetingDates: [], createdAt: now, updatedAt: now } });
+    expect(seed).toMatchObject({ kind: 'acknowledged' });
+    const change = (operationId: string, after: string, rows: typeof opening, at: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['status'], before: field('draft'), after: field(after) },
+        { path: ['flow'], before: field(opening), after: field(rows) }],
+      groupStatusAction: { before: 'draft', after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at } },
+    });
+    const revised = opening.map(row => row.id === 'a' ? { ...row, durationMin: 5 } : row);
+    expect((await processCommand(base.owner, change('desktop', 'active', revised, 80))).kind).toBe('acknowledged');
+    expect(await processCommand(base.owner, change('phone', 'completed', flow(['b', 'c', 'd']), 20))).toMatchObject({
+      kind: 'conflict',
+      conflicts: [{ path: ['flow', 'id:a'] }],
+      snapshot: { value: { status: 'active' } },
+    });
+  });
+
   it('orders the status and title in one group command by their different action times', async () => {
     const resource = { collection: 'groups', id: 'group-fields' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
