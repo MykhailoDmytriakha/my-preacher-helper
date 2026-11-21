@@ -5,10 +5,9 @@ import { useEffect, useState } from 'react';
 import { SeriesMembershipHistory } from '@/components/series/SeriesMembershipHistory';
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
-import { isChurchValue } from '@/data-engine/churchFieldValue';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { isChurchValue, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { useTranslation } from '@locales/useTranslation';
 

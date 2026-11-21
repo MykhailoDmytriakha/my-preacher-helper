@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { prayerTextEditAction } from '@/data-engine/prayerTextAction';
-import { captureTagIntents, isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { prayerTextEditAction, captureTagIntents, isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';

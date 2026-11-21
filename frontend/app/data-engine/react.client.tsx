@@ -17,6 +17,7 @@ import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
+import { isChurchValue as churchValue } from './churchFieldValue';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
@@ -33,7 +34,7 @@ import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer 
 import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
 import { makeDocumentTagIntents, observeDocumentTagBasis, validDocumentTagIntents } from './documentTagCapture';
 import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
-import { readDocumentTextChoice } from './documentTextChoice';
+import { seriesTextChoiceFields as seriesChoice, readDocumentTextChoice } from './documentTextChoice';
 import { ACTION_SLOT, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
@@ -48,6 +49,7 @@ import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentCom
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
+import { prayerTextEditAction as capturePrayerTextEdit } from './prayerTextAction';
 import { unresolvedPreachDateField } from './preachDateChoice';
 import { readChangedPreachDateFieldVersions as changedDateFieldVersions } from './preachDateFieldAction';
 import { mergeFields, rebaseAcceptedStudyNoteReferences as rebaseStudyReferences } from './protocol';
@@ -55,7 +57,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
+import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
@@ -162,6 +164,10 @@ export function captureTagIntents(...args: Parameters<typeof makeDocumentTagInte
 export function validTagIntents(...args: Parameters<typeof validDocumentTagIntents>) { return validDocumentTagIntents(...args); }
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
+export const isChurchValue: typeof churchValue = churchValue;
+export function seriesTextChoiceFields(...args: Parameters<typeof seriesChoice>) { return seriesChoice(...args); }
+export function prayerTextEditAction(...args: Parameters<typeof capturePrayerTextEdit>) { return capturePrayerTextEdit(...args); }
+export function readServiceOrderTitleConflict(...args: Parameters<typeof serviceOrderTitleConflict>) { return serviceOrderTitleConflict(...args); }
 export function readSourceNoteLinkComparison(checkpoint: SessionCheckpoint) { return sourceNoteLinkComparison(checkpoint); }
 export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
 export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }

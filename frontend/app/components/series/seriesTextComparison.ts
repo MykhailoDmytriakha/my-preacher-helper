@@ -1,4 +1,4 @@
-import { seriesTextChoiceFields } from '@/data-engine/documentTextChoice';
+import { seriesTextChoiceFields } from '@/data-engine/react.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
