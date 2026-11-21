@@ -1,5 +1,6 @@
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 
+import { groupStatusOutsideChoice } from './documentFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, isOrderedGroupFlowText } from './groupFlowTitleAction';
@@ -306,8 +307,9 @@ export function readGroupTextReview(source: SessionCheckpoint) {
   const merged = mergeDocumentFields(confirmed.value, proposed, remoteCandidate.value);
   // A deleted row invalidates its prior text choice. A deletion that also conflicts
   // with local row work remains an explicit conflict, never a new live row.
+  const separateStatus = groupStatusOutsideChoice(checkpoint, requestId);
   const paths = [...new Map([...conflicts, ...merged.conflicts].map(({ path }) => [JSON.stringify(path), path]))]
-    .flatMap(([key, path]) => settled.has(key) ? [] : [path]);
+    .flatMap(([key, path]) => settled.has(key) || (separateStatus && equalValues(path, ['status'])) ? [] : [path]);
   const removed = merged.conflicts.flatMap(conflict => removedText(checkpoint, conflict) ?? []);
   const fields = paths.filter(path => {
     if (removed.some(item => item.path.length < path.length && equalValues(item.path, path.slice(0, item.path.length)))) return false;

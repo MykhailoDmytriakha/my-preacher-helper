@@ -21,7 +21,7 @@ import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { deletionConflicts } from './deletionContent';
 import { canRemovePendingCreation, isDocumentDeletion, pendingRemovalOpening, pendingStandaloneCreation, type PendingRemovalOpening } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
-import { withQueuedGroupScalarProofs, withSubmittedScalarProofs } from './documentFieldAction';
+import { groupStatusOutsideChoice, withQueuedGroupScalarProofs, withSubmittedScalarProofs } from './documentFieldAction';
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
@@ -910,7 +910,7 @@ export class EditorController {
     const textReview = councilReview || groupReview;
     const reviewingText = Boolean(councilReview || groupReview && (shown.checkpoint.groupTextReview
       || ordinary.scope.length > 1 || groupReview.remaining.length > 1 || groupReview.settled.length
-      || shown.checkpoint.conflicts.some(isGroupStatusComparison)));
+      || (expected && groupStatusOutsideChoice(shown.checkpoint, ordinary.first.id)) || shown.checkpoint.conflicts.some(isGroupStatusComparison)));
     const hasCouncilTextOrder = shown.checkpoint.conflicts.some(({ code }) => code === COUNCIL_TOPIC_TEXT_SETTLED || code === COUNCIL_TOPIC_TEXT_QUEUED);
     const hasGroupTextOrder = shown.checkpoint.conflicts.some(({ code }) => isOrderedGroupFlowText(code));
     if (reviewingText || shown.checkpoint.groupTextReview || hasCouncilTextOrder || hasGroupTextOrder) {
@@ -1006,6 +1006,7 @@ export class EditorController {
           && manualSeriesTextChoiceFields(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection, answered.draft);
         const documentTextChoice = (!selection || reviewedSeriesText) && !correction ? readDocumentTextChoice(answered) : undefined;
         const decided = documentTextChoice?.checkpoint ?? answered;
+        const separateGroupStatus = ordinary && !reviewingText ? groupStatusOutsideChoice(decided, ordinary.first.id) : undefined;
         const orderedDateField = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(isOrderedPreachDateField);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
         const local = atChoice === undefined ? decided.draft : atChoice;
@@ -1015,7 +1016,9 @@ export class EditorController {
           : councilSummary ? writeCouncilSummaryChoice(local, councilSummary, 'before') : undefined;
         const textRemainder = remainingDraft && decided.confirmed.value && decided.remoteCandidate?.value
           ? mergeDocumentFields(decided.confirmed.value, remainingDraft, decided.remoteCandidate.value) : undefined;
-        if (textRemainder?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
+        if (textRemainder?.conflicts.some(({ path }) => !separateGroupStatus || !equalValues(path, ['status']))) {
+          throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
+        }
         const placeOpening = !selection && !correction ? commentPlaceChoiceOpening(decided) : undefined;
         const textChoice = ordinary?.first.commentTextOpening && decided.conflicts.length === 1
           && equalValues(decided.conflicts[0].path, ['content']);
@@ -1308,6 +1311,14 @@ export class EditorController {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
           }
         }
+        if (separateGroupStatus) {
+          const { confirmed, draft } = session.checkpoint();
+          const status = separateGroupStatus.action.after;
+          if (draft && confirmed.value?.status !== status) {
+            session.edit({ ...draft, status });
+            session.retainUnreviewedAutosaveActions({ ...decided, groupStatusDraft: separateGroupStatus });
+          }
+        }
         const replacements: CommitRequest[] = [];
         const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
         if (meeting) {
@@ -1419,6 +1430,10 @@ export class EditorController {
           choiceTime ?? originalSourceLinks?.action.time ?? null, sourceNoteTail,
           originalSourceLinks ? undefined : legacySourceNoteChange(sourceNoteRequest?.command));
         if (sourceNoteRetry) session.stageSourceNoteLinkRetry(sourceNoteRetry);
+        if (separateGroupStatus && !replacements.length) {
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint());
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
+        }
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
         if (!ordinary) return replacements.length ? { editorRecords: [projected], manualRecoveries: [], replacements }
           : retainedPlacementTail ? { editorRecords: [projected, retainedPlacementTail], manualRecoveries: [] } : projected;

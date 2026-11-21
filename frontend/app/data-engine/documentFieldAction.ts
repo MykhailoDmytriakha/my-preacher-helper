@@ -843,6 +843,21 @@ export function withSubmittedScalarProofs(source: SessionCheckpoint, requestId: 
   return retained;
 }
 
+/** A step choice can replay this separate status only with the evidence captured by its Save. */
+export function groupStatusOutsideChoice(source: SessionCheckpoint, requestId: string) {
+  const { confirmed, remoteCandidate, conflicts, draft, pending, groupStatusDraft } = source;
+  const metadata = confirmed.metadata;
+  const submitted = pending[requestId];
+  const action = submitted?.groupStatusAction;
+  if (confirmed.resource.collection !== 'groups' || !metadata || metadata.deleted || !remoteCandidate?.value
+    || metadata.generation !== remoteCandidate.metadata?.generation || !conflicts.length
+    || conflicts.some(({ path }) => !path.length || path[0] === 'status')
+    || !action || !isGroupStatus(action.before) || !isGroupStatus(action.after)
+    || submitted.value?.status !== action.after || draft?.status !== action.after
+    || (groupStatusDraft && submitted.generation < source.editGeneration && !sameAutosaveCapture(groupStatusDraft.action, action))) return undefined;
+  return { generation: metadata.generation, action };
+}
+
 export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,
   keep: (path: readonly string[]) => boolean): void {
   for (const field of autosaveFieldTargets(target.confirmed.resource.collection)) {

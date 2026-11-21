@@ -1,8 +1,10 @@
 import { waitFor } from '@testing-library/react';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
+import { orderDocumentFields } from '@/data-engine/documentFieldOrder.server';
 import { editorIdentity, editorSlot, manualScopeIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
 import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
+import { applyCommand } from '@/data-engine/protocol';
 import { readGroupFlowFieldConflict } from '@/data-engine/rowConflictDetails';
 import { recoveryCheckpointId } from '@/data-engine/recovery.client';
 import { DataSession } from '@/data-engine/session';
@@ -514,6 +516,47 @@ it('retains a nested form field whose item was added by a blocked ordinary counc
     expect(h.server.value?.topics).toEqual([]);
     expect(h.transport.send).toHaveBeenCalledTimes(1);
   } finally { a.dispose(); b.dispose(); }
+});
+
+it('keeps a later phone status when the preacher chooses the saved duration of a removed group step', async () => {
+  const removed = { id: 'removed', templateId: 'block', durationMin: 5, order: 1 };
+  const neighbor = { id: 'neighbor', templateId: 'block', durationMin: 4, order: 2 };
+  const value = { ...original, description: 'Opening description', flow: [removed, neighbor],
+    templates: [{ id: 'block', type: 'custom', title: 'Block', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' }] };
+  const earlier = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_020 };
+  const later = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+  const raw = { groupStatus: { status: 'completed', revision: 2, time: earlier } };
+  const h = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } }, {
+    apply(command, current) {
+      const order = orderDocumentFields(command, current, raw, later.latestMs + 100);
+      return applyCommand(order.command, current);
+    },
+  });
+  const engine = h.createBrowser().engine;
+  engine.setOwner('owner');
+  engine.setOnline(false);
+  try {
+    const editor = await engine.openEditor(resource, editorIdentity('phone', resource, 'group', 'step-removal'));
+    await editor.edit({ ...value, status: 'active' }, undefined, { field: 'status', time: later });
+    await editor.commit(current => ({ ...current!, flow: [{ ...neighbor, order: 1 }] }));
+    const [submitted] = await h.commits.list('owner');
+    expect(submitted.groupStatusAction).toMatchObject({ before: 'draft', after: 'active', observedRevision: 1, time: later });
+    const flow = [{ ...removed, durationMin: 17 }, neighbor];
+    h.silentRemote({ status: 'completed', flow, description: 'Independent desktop description' });
+    engine.setOnline(true);
+    await engine.retry();
+    await waitFor(() => expect(editor.getState().result).toMatchObject({
+      kind: 'conflict', conflicts: expect.arrayContaining([expect.objectContaining({ path: ['flow', 'id:removed'] })]),
+      snapshot: { value: { status: 'completed', flow } },
+    }));
+    await editor.acceptRemote();
+    expect(editor.getState().checkpoint.draft).toMatchObject({ status: 'active', flow, description: 'Independent desktop description' });
+    await editor.save();
+    await waitFor(() => expect(h.server.value).toMatchObject({ status: 'active', flow, description: 'Independent desktop description' }));
+    expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      groupStatusAction: expect.objectContaining({ before: 'draft', after: 'active', observedRevision: 1, time: later }),
+    }));
+  } finally { engine.dispose(); }
 });
 
 it('rejects a field choice if another ordinary continuation lands during retirement', async () => {
