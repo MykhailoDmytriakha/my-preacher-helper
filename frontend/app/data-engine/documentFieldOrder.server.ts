@@ -14,6 +14,7 @@ import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_PREPARATION_CHECK_REVIEW_CHANGED, SERMON_THESIS_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
+import { PRAYER_STATUS_FIELDS, PRAYER_STATUS_QUEUED, PRAYER_STATUS_REVIEW, PRAYER_STATUS_SETTLED } from './prayerStatusAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { isReturnedSeriesField, SERIES_METADATA_QUEUED, SERIES_METADATA_SETTLED } from './seriesFieldAction';
@@ -76,7 +77,8 @@ const tracksScalarReturns = (target: DocumentFieldTarget) =>
     || target.action === 'sermonGoalTypeAction' || target.action === 'sermonPlanModeAction' || target.action === 'sermonPreparationCheckActions'
     || target.action === 'sermonThesisFieldActions' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'groupStatusAction'
-    || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
+    || target.action === 'prayerTitleAction' || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction'
+    || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
     || target.action === 'tagColorAction'
     || (target.action === 'seriesFieldActions' && target.field !== 'description');
@@ -186,9 +188,11 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
       ...((target.action === 'sermonPreparationTextActions' || tracksScalarReturns(target)) && { reaffirmedOpening: true }) };
   }
   if (!order || !time || !action.time) {
-    const needsReview = repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
+    const prayer = target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction';
+    const needsReview = prayer || repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
       || (target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after));
-    const uncertain = needsReview ? [{ path: change.path, base: change.before, mine: change.after, theirs: value }] : undefined;
+    const uncertain = needsReview ? [{ path: change.path, ...(prayer && { code: PRAYER_STATUS_REVIEW }),
+      base: change.before, mine: change.after, theirs: value }] : undefined;
     return { command, uncertain };
   }
   const incomingWins = order > 0;
@@ -240,7 +244,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     : target.action === 'sermonPlanModeAction' && command.sermonPlanModeAction?.reviewed ? SERMON_PLAN_MODE_REVIEW_CHANGED
     : target.action === 'sermonPreparationCheckActions' && command.sermonPreparationCheckActions?.[target.field]?.reviewed
       ? SERMON_PREPARATION_CHECK_REVIEW_CHANGED
-    : target.action === 'sermonThesisFieldActions' && command.sermonThesisFieldActions?.[target.field]?.reviewed ? SERMON_THESIS_REVIEW_CHANGED : undefined;
+    : target.action === 'sermonThesisFieldActions' && command.sermonThesisFieldActions?.[target.field]?.reviewed ? SERMON_THESIS_REVIEW_CHANGED
+    : (target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') && command[target.action]?.reviewed ? PRAYER_STATUS_REVIEW : undefined;
   if (reviewCode) {
     if (equalValues(stored, change.after)) return { command, previous };
     if (target.action === 'sermonPreparationCheckActions' && acceptsDocumentField(change.after, target)
@@ -273,7 +278,9 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot distinguish a restored value from an untouched opening.
     if (past === null || past?.includes(fieldDigest(stored, target))) {
-      return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
+      const prayer = target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction';
+      return { command, uncertain: [{ path: change.path, ...(prayer && { code: PRAYER_STATUS_REVIEW }),
+        base: change.before, mine: change.after, theirs: stored }] };
     }
   }
   if (!action) return target.action === 'sermonPlanModeAction' && equalValues(stored, change.after)
@@ -379,21 +386,35 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
     } else command = order.command;
     return { target, order };
   });
-  return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
+  const uncertain = fields.flatMap(({ order }) => order.uncertain ?? []);
+  if (command.kind === 'update' && command.resource.collection === 'prayerRequests'
+    && uncertain.some(item => item.code === PRAYER_STATUS_REVIEW && item.path[0] === 'status' && item.mine.value === 'answered')
+    && !uncertain.some(item => item.path[0] === 'answeredAt')) {
+    const status = command.prayerStatusAction, answeredAt = command.prayerAnsweredAtAction;
+    const sameMark = !answeredAt || (status && status.reviewed === answeredAt.reviewed && equalValues(status.time, answeredAt.time));
+    const dateOrder = fields.find(({ target }) => target === PRAYER_STATUS_FIELDS[1])?.order;
+    // The date belongs to the same mark. Either its own chronology settles it or both fields must be shown.
+    const date = sameMark && !dateOrder?.displaced && documentFieldChange(command.changes, PRAYER_STATUS_FIELDS[1]);
+    const theirs = readField(current.value ?? {}, ['answeredAt']);
+    if (date && acceptsDocumentField(date.after, PRAYER_STATUS_FIELDS[1]) && !equalValues(date.after, theirs)) {
+      uncertain.push({ path: date.path, base: date.before, mine: date.after, theirs, code: PRAYER_STATUS_REVIEW });
+    }
+  }
+  return { command, fields, uncertain };
 }
 
-export function orderedPrayerText(command: DataCommand, current: ResourceSnapshot,
+export function orderedPrayerFields(command: DataCommand, current: ResourceSnapshot,
   orders: ReturnType<typeof orderDocumentFields>, conflicts: readonly ConflictDetail[]): ConflictDetail[] {
-  if (command.kind !== 'update' || command.resource.collection !== 'prayerRequests'
-    || !conflicts.some(({ path }) => path.length === 1 && ['title', 'description', 'answerText'].includes(path[0]))) return [];
-  return orders.fields.flatMap(({ target, order }) => {
-    if ((target.action !== 'prayerTextActions' && target.action !== 'prayerTitleAction') || !order.displaced) return [];
-    const change = documentFieldChange(command.changes, target);
-    const stored = documentFieldValue(current.value, target);
-    if (!change || !stored) return [];
-    const code = equalValues(order.displaced.winnerValue, stored) ? PRAYER_TEXT_SETTLED : PRAYER_TEXT_QUEUED;
-    return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
-  });
+  if (command.kind !== 'update' || command.resource.collection !== 'prayerRequests') return [];
+  const statusReview = conflicts.some(({ code }) => code === PRAYER_STATUS_REVIEW);
+  if (!statusReview && !conflicts.some(({ path }) => path.length === 1 && ['title', 'description', 'answerText'].includes(path[0]))) return [];
+  const text = orderedMetadataComparisons(command, current, orders,
+    target => target.action === 'prayerTextActions' || target.action === 'prayerTitleAction',
+    { settled: PRAYER_TEXT_SETTLED, queued: PRAYER_TEXT_QUEUED });
+  const status = statusReview ? orderedMetadataComparisons(command, current, orders,
+    target => target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction',
+    { settled: PRAYER_STATUS_SETTLED, queued: PRAYER_STATUS_QUEUED }) : [];
+  return [...text, ...status];
 }
 
 function orderedMetadataComparisons(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,

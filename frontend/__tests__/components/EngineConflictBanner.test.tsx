@@ -230,6 +230,92 @@ it.each([
   } finally { delete process.env[ON_ENGINE]; }
 });
 
+it.each(['mine', 'stored'] as const)('compares the restored prayer status and answer date, then uses %s', async side => {
+  actions = null;
+  const prayer = { collection: 'prayerRequests', id: 'prayer-status-return' };
+  const date = '2026-11-20T14:40:00.000Z';
+  const original = { userId: 'owner', title: 'Restored prayer', status: 'active', answerText: 'Opening answer', updates: [] };
+  const h = documentEngineHarness({ resource: prayer, value: original, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+  await waitFor(() => expect(actions?.ready).toBe(true));
+  h.silentRemote({ status: 'not_answered' });
+  h.silentRemote({ status: 'active' });
+  const send = jest.mocked(h.transport.send);
+  const present = (value: string) => ({ exists: true, value });
+  const absent = { exists: false };
+  send.mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+    { path: ['status'], code: 'prayer-status-review', base: present('active'), mine: present('answered'), theirs: present('active') },
+    { path: ['answeredAt'], code: 'prayer-status-review', base: absent, mine: present(date), theirs: absent },
+  ] }));
+  await act(async () => {
+    await actions!.commit(prayer, current => ({ ...current!, status: 'answered', answeredAt: date, answerText: 'New answer words' }));
+    await settleEngine();
+  });
+  await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(screen.getAllByLabelText('dataSync.yourVersion')[0]).toHaveTextContent('prayer.status.answered');
+  expect(screen.getAllByLabelText('dataSync.storedVersion').map(element => element.textContent)).toEqual(['prayer.status.active', 'prayer.history.notSet']);
+  if (side === 'stored') await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredFields.confirm');
+  else fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+  await waitFor(() => expect(h.server.value).toMatchObject({ status: side === 'mine' ? 'answered' : 'active', answerText: 'New answer words' }));
+  expect(h.server.value?.answeredAt).toBe(side === 'mine' ? date : undefined);
+  const replacement = send.mock.calls.at(-1)?.[0];
+  if (side === 'mine') expect(replacement).toMatchObject({
+    prayerStatusAction: { before: 'active', after: 'answered', observedRevision: 3, reviewed: true },
+    prayerAnsweredAtAction: { observedRevision: 3, reviewed: true },
+  });
+  else expect(replacement?.kind === 'update' && replacement.changes.map(change => change.path)).toEqual([['answerText']]);
+});
+
+it.each(['settled', 'queued'] as const)('preserves the %s original answer and date when only prayer status needs a choice', async order => {
+  actions = null;
+  const resource = { collection: 'prayerRequests', id: 'prayer-status-order' };
+  const firstDate = '2026-11-18T14:40:00.000Z', deskDate = '2026-11-19T14:40:00.000Z', phoneDate = '2026-11-20T14:40:00.000Z';
+  const firstWords = 'Opening answer', deskWords = 'Desk answer', phoneWords = 'Phone answer';
+  const value = { userId: 'owner', title: 'Prayer with an answer', status: 'active', answeredAt: firstDate, answerText: firstWords };
+  const h = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+  await waitFor(() => expect(actions?.ready).toBe(true));
+  h.silentRemote({ status: 'answered', answeredAt: deskDate, answerText: deskWords });
+  h.silentRemote({ status: 'active' });
+  const send = jest.mocked(h.transport.send), post = send.getMockImplementation()!;
+  const field = (value: string) => ({ exists: true, value });
+  const time = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+  send.mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+    { path: ['status'], code: 'prayer-status-review', base: field('active'), mine: field('answered'), theirs: field('active') },
+    { path: ['answeredAt'], code: `prayer-status-${order}`, base: field(firstDate), mine: field(phoneDate), theirs: field(deskDate) },
+    { path: ['answerText'], code: `prayer-text-${order}`, base: field(firstWords), mine: field(phoneWords), theirs: field(deskWords) },
+  ] }));
+  if (order === 'queued') send.mockImplementationOnce(command => {
+    if (command.kind !== 'update') throw new Error('Expected the original answer and date');
+    expect(command.prayerStatusAction).toBeUndefined();
+    expect(command.prayerAnsweredAtAction).toEqual({ observedRevision: 1, time });
+    expect(command.prayerTextActions?.answerText).toEqual({ observedRevision: 1, time });
+    return post({ ...command, changes: command.changes.map(change => ({ ...change,
+      before: field(change.path[0] === 'answeredAt' ? deskDate : deskWords),
+    })) });
+  });
+  await act(async () => {
+    await actions!.commit(resource, current => ({ ...current!, status: 'answered', answeredAt: phoneDate, answerText: phoneWords }), {
+      kind: 'prayer-text', text: { time, openings: { answerText: { generation: 'g1', revision: 1, value: field(firstWords) } } },
+      status: { time, fields: ['status', 'answeredAt'], opening: { generation: 'g1', revision: 1, status: 'active', answeredAt: field(firstDate) } },
+    });
+    await settleEngine();
+  });
+  const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent('prayer.status.answered');
+  expect(panel).not.toHaveTextContent(phoneWords);
+  if (order === 'settled') fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+  else await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
+  await waitFor(() => expect(h.server.value).toMatchObject(order === 'settled'
+    ? { status: 'answered', answeredAt: deskDate, answerText: deskWords }
+    : { status: 'active', answeredAt: phoneDate, answerText: phoneWords }));
+  await waitFor(() => expect(panel).not.toBeInTheDocument());
+  const retried = send.mock.calls.at(-1)?.[0];
+  if (order === 'settled') expect(retried?.kind === 'update' && retried.changes.map(change => change.path)).toEqual([['status']]);
+});
+
 it('shows the projected Scripture list in a choice that also changes the service title', async () => {
   process.env[ON_ENGINE] = 'serviceOrders';
   actions = null;

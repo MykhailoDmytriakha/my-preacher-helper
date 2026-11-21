@@ -659,11 +659,15 @@ export function capturePrayerStatusFields(baseline: ResourceSnapshot, predecesso
   const previous = predecessor ? predecessor.value : baseline.value;
   const openingRevision = capture.opening?.revision ?? metadata.revision;
   return Object.fromEntries(PRAYER_STATUS_FIELDS.flatMap(target => {
-    if (!capture.fields.includes(target.field)) return [];
     const { field } = target;
+    const after = field === 'answeredAt' ? readField(draft, [field]) : draft.status;
+    if (!capture.fields.includes(field)) {
+      const original = capture.original?.[target.action];
+      return original && equalValues(original.after, after) && original.observedRevision <= metadata.revision
+        ? [[target.action, original]] : [];
+    }
     const before = field === 'answeredAt' ? capture.opening?.answeredAt ?? readField(previous ?? {}, [field])
       : capture.opening?.status ?? previous?.status;
-    const after = field === 'answeredAt' ? readField(draft, [field]) : draft.status;
     if (before === undefined || after === undefined || equalValues(before, after)) return [];
     if (field === 'status' ? !target.accepts(before) || !target.accepts(after)
       : !objectFieldValue(before, target) || !objectFieldValue(after, target)) return [];
@@ -678,7 +682,8 @@ export function capturePrayerStatusFields(baseline: ResourceSnapshot, predecesso
     const predecessorOperationId = exact ? request.id
       : knownMetadataFieldPredecessor(baseline, predecessor, target, before as string | FieldValue, records);
     const observedRevision = submittedRevision ?? openingRevision;
-    return [[target.action, { before, after, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) }]];
+    return [[target.action, { before, after, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }),
+      ...(capture.reviewed && { reviewed: true }) }]];
   }));
 }
 
@@ -1003,8 +1008,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction' || target.action === 'sermonGoalTypeAction') {
     return { ...command, [target.action]: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
   }
+  if (target.action === 'prayerAnsweredAtAction') return { ...command, prayerAnsweredAtAction: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
-  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'date' || target.field === 'heldAt') return { ...command, [target.action]: stamp };
   if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };

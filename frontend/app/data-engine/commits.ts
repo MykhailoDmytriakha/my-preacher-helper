@@ -890,7 +890,8 @@ export class CommitQueue {
     const prayerStatus = capturePrayerStatusFields(baseline, predecessor, intent.draft,
       editorAction?.kind === 'prayer-status' ? editorAction.status : prayerTextCapture?.status, records, owner);
     const prayerTextActions = prayerTextCapture && capturePrayerText(baseline, intent.draft, prayerTextCapture.text, records, owner);
-    if (prayerTextCapture && !prayerTextActions) {
+    if (prayerTextCapture && !prayerTextActions
+      && (!Object.keys(prayerStatus).length || Object.keys(prayerTextCapture.text.openings).length > 0)) {
       throw Object.assign(new Error('The prayer text opening changed'), { code: 'prayer-text-basis-changed' });
     }
     const preparationChecks = editorAction?.kind === 'sermon-preparation-check'

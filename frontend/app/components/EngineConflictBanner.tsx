@@ -23,6 +23,7 @@ import { refusalKey, refusalMessage } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleMarksRecoveryValue } from '@/utils/bibleMarksRecovery';
 import { isBibleId } from '@/utils/bibles';
+import { formatDateTimeForLocale } from '@/utils/dateFormatter';
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 import { outlineRecoveryValue } from '@/utils/outlineRecovery';
@@ -37,7 +38,7 @@ import { useTranslation } from '@locales/useTranslation';
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SessionCheckpoint } from '@/data-engine/session';
-import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
+import type { DocumentData, FieldValue, JournalEntry, ResourceRef } from '@/data-engine/types';
 
 /** Off until the study-note page settles field-by-field choices (BUG-20261118-note-page-codex-fixes-wait-for-engine-session). */
 const STUDY_NOTE_FIELD_CHOICES = false;
@@ -620,6 +621,15 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
       ? readStudyNoteFieldsComparison(checkpoint) : undefined;
     const textReview = entry.records.length === 1 ? readDocumentTextComparison(checkpoint) : undefined;
     const textFields = textReview?.complete ? textReview.checkpoint.conflicts : undefined;
+    const prayer = entry.resource.collection === 'prayerRequests';
+    const textValue = (field: string, value: FieldValue) => {
+      if (prayer && field === 'answeredAt') {
+        if (!value.exists) return t('prayer.history.notSet');
+        if (typeof value.value === 'string') return formatDateTimeForLocale(value.value, interfaceLanguage);
+      }
+      if (!value.exists) return t('dataSync.emptyField');
+      return show(prayer ? storedFieldValue(t, 'prayerRequests', field, value.value) : value.value);
+    };
     const exactTagColor = entry.resource.collection === 'tags' && Boolean(comparison);
     if (!referenceReview && waitsForStudyNoteReferenceReview(checkpoint)) {
       return notice(<div role="status" className={NOTICE_BOX}>
@@ -638,10 +648,10 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
                 mine: field === 'type' ? t('studiesWorkspace.type.' + mine) : mine || t('dataSync.emptyField'),
                 stored: field === 'type' ? t('studiesWorkspace.type.' + stored) : stored || t('dataSync.emptyField'),
               }} />)
-            : textFields ? textFields.map(({ path, mine, theirs }) => <FieldComparison key={path[0]} comparison={{
-                title: fieldLabel(t, path[0]), valueKind: 'field',
-                mine: mine.exists ? show(mine.value) : t('dataSync.emptyField'),
-                stored: theirs.exists ? show(theirs.value) : t('dataSync.emptyField'),
+            : textFields ? textFields.map(({ path: [field], mine, theirs }) => <FieldComparison key={field} comparison={{
+                title: prayer && field === 'answeredAt'
+                  ? t('prayer.detail.answeredOn') : fieldLabel(t, field), valueKind: 'field',
+                mine: textValue(field, mine), stored: textValue(field, theirs),
               }} />)
               : comparison && <FieldComparison comparison={comparison} />}
           {referenceReview && <div className="space-y-2">

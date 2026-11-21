@@ -10239,3 +10239,12 @@ Sermons → open a sermon → Preparation → Thesis. The question and plural ke
 Four regressions reproduced on the previous commit. The related gate passed 5,876 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore covered both fields, both choices, reopening and both proved orders. Peak sampled Next.js memory was 4.57 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/thesis-word-return-20261120/verification.md` in the local case.
 
 After authorized deployment, open the Thesis step of one disposable sermon in two short sessions. Save or clear a word offline. On the other device change it and return to the opening value, then save an independent transition. Reconnect and verify chronology or the scoped comparison. Reload to check both words and the transition. Close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Preserve returned prayer status and answer dates
+
+Heart matters → Prayer Journal → open a prayer. Returning a prayer to Active and restoring an answer date record the prior opening. An old or untimed mark can require a comparison of the status and its companion date. A reviewed choice is checked against the shown version. Independently ordered answer words and dates retain their original action evidence.
+
+Two original server regressions failed on `07fb3ba23`. The candidate passed 33 focused checks and 17,157 tests in 1273 suites, TypeScript, scoped ESLint and independent review. One architecture assertion also failed on the parent with the same four internal imports. The Firestore recovery test passed when rerun with its loopback socket permission. Headless Chrome used isolated local Auth and Firestore with a 390 px phone and 1280 px desktop. Both comparison choices were verified after reopening. The Next.js process peaked at 3.59 GiB. The stand released all five ports. Local evidence is in `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/action-chronology-356/prayer-status-return-20261120/verification.md`.
+
+After an authorized deployment, use a disposable prayer in two test-account sessions. Mark it as answered offline, then change the status and reactivate it from the other session. Reconnect. If the two action times establish order, confirm the later status. Otherwise check the choice for status and answer date, including an unset date. Reopen the prayer and verify the stored status, written answer and a separate update.

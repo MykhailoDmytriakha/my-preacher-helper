@@ -6272,6 +6272,88 @@ describe('transactional DataEngine server', () => {
         ...(answeredAt && { prayerAnsweredAtAction: { observedRevision: 1, time } }) };
     };
 
+    it.each(['legacy packet', 'current packet without comparable time', 'queued status predecessor', 'stale reviewed choice'] as const)(
+      'keeps a reactivated prayer open when an older answer arrives as a %s', async encoding => {
+        expect((await seed()).kind).toBe('acknowledged');
+        const mark = change('desk-mark', 'not_answered', 40);
+        expect((await processCommand(owner, mark)).kind).toBe('acknowledged');
+        expect((await processCommand(owner, { ...mark, operationId: 'desk-reactivate',
+          changes: [{ path: ['status'], before: field('not_answered'), after: field('active') }],
+          prayerStatusAction: { before: 'not_answered', after: 'active', observedRevision: 2,
+            time: { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 } },
+        })).kind).toBe('acknowledged');
+        const { prayerStatusAction, prayerAnsweredAtAction, ...phone } = change('old-phone-answer', 'answered', 20, phoneAt);
+        const stamp = { time: null, ...(encoding === 'stale reviewed choice' && { reviewed: true as const }) };
+        const delayed = encoding === 'legacy packet' ? phone : { ...phone,
+          prayerStatusAction: { ...prayerStatusAction, ...stamp },
+          prayerAnsweredAtAction: { ...prayerAnsweredAtAction!, ...stamp, observedRevision: encoding === 'queued status predecessor' ? 2 : 1 } };
+        const result = await processCommand(owner, delayed);
+        expect(result).toMatchObject({ kind: 'conflict', conflicts: [
+          { path: ['status'], code: 'prayer-status-review', mine: field('answered'), theirs: field('active') },
+          { path: ['answeredAt'], code: 'prayer-status-review', mine: field(phoneAt), theirs: field(historicalAt) },
+        ], snapshot: { value: { title, answerText, status: 'active', answeredAt: historicalAt } } });
+        expect(await processCommand(owner, delayed)).toEqual(result);
+      });
+
+    it('keeps the deliberately restored answer date when an old date edit arrives for the first time', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const answer = change('desk-answer', 'answered', 40, deskAt);
+      expect((await processCommand(owner, answer)).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...base, operationId: 'desk-date-history', kind: 'update', generation: 'status-seed',
+        changes: [{ path: ['answeredAt'], before: field(deskAt), after: field(historicalAt) }],
+        prayerAnsweredAtAction: { observedRevision: 2, time: null },
+      })).kind).toBe('acknowledged');
+      const legacy = { ...base, operationId: 'old-phone-date', kind: 'update', generation: 'status-seed',
+        changes: [{ path: ['answeredAt'], before: field(historicalAt), after: field(phoneAt) }],
+      };
+      expect(await processCommand(owner, legacy)).toMatchObject({ kind: 'conflict',
+        conflicts: [{ path: ['answeredAt'], mine: field(phoneAt), theirs: field(historicalAt) }],
+        snapshot: { value: { title, answerText, status: 'answered', answeredAt: historicalAt } } });
+    });
+
+    it('refreshes a reviewed status or date that changed after it was shown', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desk-mark', 'not_answered', 40))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, { ...change('reviewed-status', 'answered', 120),
+        prayerStatusAction: { ...change('unused', 'answered', 120).prayerStatusAction, reviewed: true },
+      })).resolves.toMatchObject({ kind: 'conflict', conflicts: [{ path: ['status'], code: 'prayer-status-review', theirs: field('not_answered') }],
+        snapshot: { value: { status: 'not_answered', answeredAt: historicalAt, answerText } } });
+      const date = (id: string, before: string, after: string, observedRevision: number, reviewed?: true) => ({
+        ...base, operationId: id, kind: 'update', generation: 'status-seed',
+        changes: [{ path: ['answeredAt'], before: field(before), after: field(after) }],
+        prayerAnsweredAtAction: { observedRevision, time: null, ...(reviewed && { reviewed }) },
+      });
+      expect((await processCommand(owner, date('read-later-date', historicalAt, deskAt, 2))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, date('reviewed-old-date', historicalAt, phoneAt, 2, true))).resolves.toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['answeredAt'], code: 'prayer-status-review', theirs: field(deskAt) }],
+      });
+      await expect(processCommand(owner, date('reviewed-current-date', deskAt, phoneAt, 3, true))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { status: 'not_answered', answeredAt: phoneAt, answerText } },
+      });
+    });
+
+    it.each([20, 120])('reports the proven order of date and words beside an uncertain status (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const withWords = (id: string, date: string, words: string, timeOffset: number) => {
+        const mark = change(id, 'answered', timeOffset, date);
+        return { ...mark, changes: [...mark.changes, { path: ['answerText'], before: field(answerText), after: field(words) }],
+          prayerTextActions: { answerText: mark.prayerAnsweredAtAction! } };
+      };
+      expect((await processCommand(owner, withWords('desk-answer-with-words', deskAt, 'Desk words', 40))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...base, operationId: 'desk-return', kind: 'update', generation: 'status-seed',
+        changes: [{ path: ['status'], before: field('answered'), after: field('active') }],
+        prayerStatusAction: { before: 'answered', after: 'active', observedRevision: 2, time: null },
+      })).kind).toBe('acknowledged');
+      const order = offset < 40 ? 'settled' : 'queued';
+      expect(await processCommand(owner, withWords('phone-answer-with-words', phoneAt, 'Phone words', offset))).toMatchObject({
+        kind: 'conflict', conflicts: expect.arrayContaining([
+          expect.objectContaining({ path: ['status'], code: 'prayer-status-review' }),
+          expect.objectContaining({ path: ['answeredAt'], code: `prayer-status-${order}` }),
+          expect.objectContaining({ path: ['answerText'], code: `prayer-text-${order}` }),
+        ]), snapshot: { value: { status: 'active', answeredAt: deskAt, answerText: 'Desk words' } },
+      });
+    });
+
     it.each([20, 80])('orders opposing marks while keeping written words and answer history (%s)', async offset => {
       expect((await seed()).kind).toBe('acknowledged');
       expect((await processCommand(owner, change('desk-mark', 'not_answered', 40))).kind).toBe('acknowledged');
