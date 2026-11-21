@@ -63,6 +63,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { orderRowText, settledRowDetailComparisons } from './rowTextOrder.server';
+import { SERIES_METADATA_SETTLED, type SeriesMetadataHistoryPage } from './seriesFieldAction';
 import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { compareReturnedSermonText, metadataAfterSermonText } from './sermonTextOrder.server';
@@ -98,7 +99,6 @@ import type { ExegeticalPointHistoryPage } from './exegeticalPointAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
-import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
 import type { SeriesMembershipHistoryEntry, SeriesMembershipHistoryPage } from './seriesMembershipHistory';
 import type { FeedWrite } from './serverFeed';
 import type { StepPlacementWrite } from './stepPlacement.server';
@@ -1308,6 +1308,11 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepBodyOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilTopicSummaryOrder, councilTopicTextOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtTextOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, studyNoteReferenceOrder, analysisFrameOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, outlineSubpointOrder, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     if (result.kind === 'conflict') {
+      if (command.resource.collection === 'series') {
+        const settled = result.conflicts.filter(({ code }) => code === SERIES_METADATA_SETTLED);
+        const fields = (fieldOrder?.fields ?? []).filter(({ target }) => settled.some(({ path }) => path.length === 1 && path[0] === target.field));
+        persistDocumentFieldHistory(transaction, command, result.snapshot, fields);
+      }
       // Keep a proven earlier value even if another field blocks the command. Mark a result that
       // still depends on the comparison separately from one already visible in the document.
       persistStudyNoteReferenceHistory(transaction, command, result.snapshot, studyNoteReferenceOrder, true);

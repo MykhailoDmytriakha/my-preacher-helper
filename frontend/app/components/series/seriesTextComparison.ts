@@ -1,15 +1,15 @@
 import { seriesTextChoiceFields } from '@/data-engine/documentTextChoice';
+import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { DocumentData } from '@/data-engine/types';
 
 export function seriesTextComparison(paths: readonly (readonly string[])[], mine: DocumentData | null,
-  stored: DocumentData | null, identity: string, labels: { title: string; description: string }, empty: string): TextComparison | undefined {
+  stored: DocumentData | null, identity: string, t: (key: string) => string): TextComparison | undefined {
   const field = seriesTextChoiceFields(paths, mine, stored)?.[0];
-  if (field !== 'title' && field !== 'description') return;
-  const localText = mine?.[field];
-  const storedText = stored?.[field];
-  if (localText === storedText || (localText !== undefined && typeof localText !== 'string')
-    || (storedText !== undefined && typeof storedText !== 'string')) return;
-  return { identity, title: labels[field], mine: localText || empty, stored: storedText || empty, valueKind: 'field', scopedChoice: true };
+  if (!field) return;
+  const text = (value: unknown) => typeof value === 'string' && value
+    ? String(storedFieldValue(t, 'series', field, value)) : t('dataSync.emptyField');
+  return { identity, title: t('workspaces.series.form.' + field),
+    mine: text(mine?.[field]), stored: text(stored?.[field]), valueKind: 'field', scopedChoice: true };
 }

@@ -6342,6 +6342,35 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(base.owner, rename)).toEqual(answer);
     });
 
+    it.each([
+      { key: 'bookOrTopic', opening: original.bookOrTopic, temporary: desk.bookOrTopic, delayed: phone.bookOrTopic },
+      { key: 'status', opening: original.status, temporary: desk.status, delayed: phone.status },
+      { key: 'color', opening: original.color, temporary: desk.color, delayed: phone.color },
+      { key: 'color', opening: undefined, temporary: desk.color, delayed: phone.color },
+      { key: 'bookOrTopic', opening: original.bookOrTopic, temporary: desk.bookOrTopic, delayed: phone.bookOrTopic, reaffirm: true },
+    ])('holds a legacy series $key save after restoring $opening (reaffirm=$reaffirm)', async ({ key, opening, temporary, delayed, reaffirm }) => {
+      const value: Record<string, string | string[]> = { ...original, ...(opening !== undefined && { [key]: opening }) };
+      if (opening === undefined) delete value[key];
+      expect((await processCommand(base.owner, { ...base, operationId: 'series-seed', kind: 'create', generation: null, value })).kind).toBe('acknowledged');
+      const field = (value?: string) => value === undefined ? { exists: false } : { exists: true, value };
+      const change = (operationId: string, from: string | undefined, to: string | undefined) => ({
+        ...base, kind: 'update', operationId, generation: 'series-seed',
+        changes: [{ path: [key], before: field(from), after: field(to) }],
+      });
+      if (!reaffirm) expect((await processCommand(base.owner, change('series-temp', opening, temporary))).kind).toBe('acknowledged');
+      const undo = change('series-return', temporary, opening);
+      expect((await processCommand(base.owner, { ...undo, changes: [...undo.changes,
+        { path: ['description'], before: field(original.description), after: field('Independent description') },
+      ] })).kind).toBe('acknowledged');
+
+      const command = change('series-late-legacy', opening, delayed);
+      const result = await processCommand(base.owner, command);
+      expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: [key], base: field(opening), mine: field(delayed), theirs: field(opening) }],
+        snapshot: { value: { title: original.title, theme: original.theme, description: 'Independent description' } } });
+      expect(documents.get('series/timed-series')?.[key]).toBe(opening);
+      expect(await processCommand(base.owner, command)).toEqual(result);
+    });
+
     it.each([20, 80])('includes the proven description order when the series title needs review (%s)', async offset => {
       expect((await seed()).kind).toBe('acknowledged');
       const field = (value: string) => ({ exists: true, value });
@@ -6367,6 +6396,37 @@ describe('transactional DataEngine server', () => {
         ]),
         snapshot: { value: { title: original.title, description: 'Desktop description' } },
       });
+    });
+
+    it.each([
+      { offset: 20, code: 'series-metadata-settled', separateTheme: false },
+      { offset: 80, code: 'series-metadata-queued', separateTheme: false },
+      { offset: 20, code: 'series-metadata-settled', separateTheme: true },
+    ])('identifies ordered title siblings while a book choice is pending ($offset, separate=$separateTheme)', async ({ offset, code, separateTheme }) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-desk', { title: desk.title, theme: desk.title, bookOrTopic: desk.bookOrTopic }, 40))).kind)
+        .toBe('acknowledged');
+      const field = (value: string) => ({ exists: true, value });
+      const undo = { ...edit('series-return', {}, null),
+        changes: [{ path: ['bookOrTopic'], before: field(desk.bookOrTopic), after: field(original.bookOrTopic) },
+          ...(separateTheme ? [{ path: ['theme'], before: field(desk.title), after: field('Independent theme') }] : [])] };
+      expect((await processCommand(base.owner, undo)).kind).toBe('acknowledged');
+      const delayed = edit('series-phone', { title: phone.title, theme: phone.title, bookOrTopic: phone.bookOrTopic }, offset);
+      const { bookOrTopic: _book, ...seriesFieldActions } = delayed.seriesFieldActions;
+      const answer = await processCommand(base.owner, { ...delayed, seriesFieldActions });
+      const theme = separateTheme ? { path: ['theme'], theirs: field('Independent theme') }
+        : { path: ['theme'], theirs: field(desk.title), code };
+      expect(answer).toMatchObject({ kind: 'conflict', conflicts: expect.arrayContaining([
+        expect.objectContaining({ path: ['bookOrTopic'], mine: field(phone.bookOrTopic), theirs: field(original.bookOrTopic) }),
+        expect.objectContaining({ path: ['title'], mine: field(phone.title), theirs: field(desk.title), code }),
+        expect.objectContaining(theme),
+      ]) });
+      if (separateTheme && answer.kind === 'conflict') {
+        expect(answer.conflicts.find(({ path }) => path[0] === 'theme')?.code).toBeUndefined();
+      }
+      const history = await listSeriesMetadataHistory(base.owner, resource.id, 'series-seed');
+      if (offset < 40) expect(history).toMatchObject({ entries: [{ fields: [{ field: 'title', value: phone.title, winner: desk.title }] }] });
+      else expect(history.entries).toEqual([]);
     });
 
     it('orders a later custom CSS color and retains a displaced absence for restoration', async () => {

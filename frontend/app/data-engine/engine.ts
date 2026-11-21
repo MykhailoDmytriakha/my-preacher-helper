@@ -2905,7 +2905,7 @@ export class DataEngine {
             request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
           const keepSeriesDescription = stored.resource.collection === 'series' && comparison
             && seriesTextChoiceFields(comparison.conflictPaths, comparison.mine, stored.value)?.includes('description');
-          const comparedTitle = comparison?.returnedSeriesTitle;
+          const comparedSeries = comparison?.returnedSeriesFields;
           const settled = controller.getState().checkpoint.draft;
           const titleReview = comparison?.kind === 'returned-sermon-title' && {
             verse: earlierSermonMetadataProof(request.sermonVerseAction, settled?.verse),
@@ -2918,9 +2918,9 @@ export class DataEngine {
           } : positionReview ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             homileticPositionReview: positionReview,
-          } : comparedTitle ? {
+          } : comparedSeries ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
-            seriesTitleReview: request.seriesFieldActions ?? {},
+            seriesFieldReview: { fields: comparedSeries, original: request.seriesFieldActions ?? {} },
           } : choice === 'remote' && keepSeriesDescription ? { kind: 'document-metadata', time: null } : action;
           await controller.save(undefined, selection, undefined, undefined, checkedAction); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
@@ -2964,10 +2964,9 @@ export class DataEngine {
           const choiceTime = action?.kind === 'document-metadata'
             && (conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(conflicts)) ? action.time : undefined;
           await controller.keepLocal(selection, amendment, expectedParent, choiceTime, titles); active();
-          const seriesFields = comparedRequest?.result?.kind === 'conflict' && comparison
-            ? manualSeriesTextChoiceFields(comparedRequest.baseline, comparison.stored, comparedRequest.result.conflicts, selection, comparison.mine) : undefined;
-          const reviewedAction = seriesFields?.includes('title') && action?.kind === 'document-metadata'
-            ? { ...action, seriesTitleReview: comparedRequest?.seriesFieldActions ?? {} } : action;
+          const seriesFields = comparison?.returnedSeriesFields;
+          const reviewedAction = seriesFields && action?.kind === 'document-metadata'
+            ? { ...action, seriesFieldReview: { fields: seriesFields, original: comparedRequest?.seriesFieldActions ?? {} } } : action;
           await controller.save(undefined, selection, undefined, undefined, reviewedAction); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();

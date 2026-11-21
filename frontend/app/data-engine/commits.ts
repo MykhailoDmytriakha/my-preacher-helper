@@ -899,7 +899,7 @@ export class CommitQueue {
       ? editorAction.time : frozenOptions?.documentMetadataTime;
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
-      titleReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesTitleReview : undefined);
+      titleReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
     const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);

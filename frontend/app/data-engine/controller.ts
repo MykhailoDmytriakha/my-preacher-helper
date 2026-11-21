@@ -48,6 +48,7 @@ import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
+import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -896,7 +897,7 @@ export class EditorController {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const shownCollection = expected?.checkpoint.confirmed.resource.collection;
     if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates' || shownCollection === 'tags'
-      || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title'))
+      || (shownCollection === 'series' && expected.checkpoint.conflicts.some(isReturnedSeriesField))
       || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison))
       || (shownCollection === 'groups' && expected.checkpoint.conflicts.some(isGroupStatusComparison)))) {
       expected = await this.refreshDocumentTextChoice(expected);
@@ -1344,7 +1345,7 @@ export class EditorController {
           const collection = decided.confirmed.resource.collection;
           let action: EditorCommitAction | undefined;
           if (collection === 'series') action = { kind: 'document-metadata', time: choice === 'local' ? time : null,
-            ...(documentTextChoice.fields.includes('title') && { seriesTitleReview: original?.seriesFieldActions ?? {} }) };
+            ...(documentTextChoice.fields[0] !== 'description' && { seriesFieldReview: { fields: documentTextChoice.fields, original: original?.seriesFieldActions ?? {} } }) };
           else if (collection === 'prayerRequests') action = retryPrayerTextChoice(documentTextChoice, choice, original, session.checkpoint().draft, time);
           else if (choice === 'local' && documentTextChoice.title) {
             action = { kind: 'plan-template-name', name: { seen: documentTextChoice.title, time } };

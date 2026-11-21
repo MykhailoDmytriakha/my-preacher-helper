@@ -8,6 +8,7 @@ export type SeriesFieldStamp = DocumentFieldStamp & { openingTheme?: string };
 export type SeriesFieldStamps = Partial<Record<SeriesTimedField, SeriesFieldStamp>>;
 export type SeriesFieldObservation = DocumentFieldObservation<FieldValue> & SeriesFieldStamp;
 export type SeriesFieldObservations = Partial<Record<SeriesTimedField, SeriesFieldObservation>>;
+export type SeriesFieldReview = { fields: readonly string[]; original: SeriesFieldObservations };
 export type SeriesHistoryField =
   | { field: Exclude<SeriesTimedField, 'description'>; value: string | null; winner: string | null }
   | { field: 'description'; value: string | null; winnerDigest: string };
@@ -39,11 +40,12 @@ export type SeriesFieldTarget = typeof SERIES_FIELD_TARGETS[number];
 export const SERIES_METADATA_SETTLED = 'series-metadata-settled';
 export const SERIES_METADATA_QUEUED = 'series-metadata-queued';
 
-export function isReturnedSeriesTitle({ path, base, theirs }: ConflictDetail): boolean {
-  return path.length === 1 && path[0] === 'title' && equalValues(base, theirs);
+export function isReturnedSeriesField({ path, base, theirs, code }: ConflictDetail): boolean {
+  return !code && path.length === 1 && path[0] !== 'description'
+    && SERIES_FIELD_TARGETS.some(({ field }) => field === path[0]) && equalValues(base, theirs);
 }
 
-export function seriesTitleReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot | null,
+export function seriesReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]) {
   if (basis.resource.collection !== 'series' || !basis.value || !reviewed || !stored?.value
     || basis.metadata?.generation !== stored.metadata?.generation) return { basis, reviewed, conflicts };
@@ -51,8 +53,10 @@ export function seriesTitleReviewFrames(basis: ResourceSnapshot, reviewed: Docum
   let draft = reviewed;
   const remaining = conflicts.filter(conflict => {
     const { path, code } = conflict;
-    if (path.length !== 1 || path[0] === 'title' || !SERIES_FIELD_TARGETS.some(({ field }) => field === path[0])
-      || (code !== SERIES_METADATA_SETTLED && code !== SERIES_METADATA_QUEUED)) return true;
+    if (path.length !== 1 || (code !== SERIES_METADATA_SETTLED && code !== SERIES_METADATA_QUEUED)) return true;
+    const mirroredTitle = path[0] === 'theme' && conflicts.some(item => item.path.length === 1 && item.path[0] === 'title'
+      && item.code === code && equalValues(item.mine, conflict.mine) && equalValues(item.theirs, conflict.theirs));
+    if (!mirroredTitle && !SERIES_FIELD_TARGETS.some(({ field }) => field === path[0])) return true;
     const mine = readField(draft, path);
     const saved = readField(stored.value!, path);
     if (equalValues(mine, saved)) return false;

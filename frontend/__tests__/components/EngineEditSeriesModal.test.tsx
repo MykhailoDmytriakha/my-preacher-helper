@@ -292,6 +292,67 @@ it.each([
   } finally { clock.mockRestore(); }
 });
 
+it.each([
+  { side: 'mine', order: 'settled' }, { side: 'stored', order: 'queued' },
+  { side: 'mine', order: 'settled', rename: true }, { side: 'stored', order: 'queued', rename: true },
+])('compares only the restored series book and preserves ordered siblings ($side, $order, rename=$rename)', async ({ side, order, rename }) => {
+  const originalTime = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
+  const choiceTime = { earliestMs: 1_800_000_000_100, latestMs: 1_800_000_000_105 };
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(originalTime);
+  try {
+    const { harness, Workspace, view } = setup('Legacy theme');
+    const book = await screen.findByDisplayValue('Romans');
+    await waitFor(() => expect(book).toBeEnabled());
+    fireEvent.change(book, { target: { value: 'Philippians' } });
+    if (rename) fireEvent.change(screen.getByDisplayValue('Opening title'), { target: { value: 'Phone title' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Phone description' } });
+    await act(async () => { await settleEngine(); });
+    harness.silentRemote({ bookOrTopic: 'Ephesians', description: 'Desktop description', status: 'active',
+      ...(rename && { title: 'Desktop title', theme: 'Desktop title' }) });
+    harness.silentRemote({ bookOrTopic: 'Romans' });
+    const field = (value: string) => ({ exists: true, value });
+    jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: harness.server,
+      conflicts: [
+        { path: ['bookOrTopic'], base: field('Romans'), mine: field('Philippians'), theirs: field('Romans') },
+        { path: ['description'], code: 'series-metadata-' + order,
+          base: field('Opening description'), mine: field('Phone description'), theirs: field('Desktop description') },
+        ...(rename ? ['title', 'theme'].map(name => ({ path: [name], code: 'series-metadata-' + order,
+          base: field(name === 'title' ? 'Opening title' : 'Legacy theme'), mine: field('Phone title'), theirs: field('Desktop title') })) : []),
+      ],
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect(screen.getByTestId('parent-state')).toHaveTextContent('conflict');
+    view.unmount();
+
+    const reopened = render(<Workspace />);
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(comparison).getByLabelText('dataSync.yourVersion')).toHaveTextContent('Philippians');
+    expect(within(comparison).getByLabelText('dataSync.storedVersion')).toHaveTextContent('Romans');
+    clock.mockReturnValue(choiceTime);
+    if (order === 'queued') jest.mocked(harness.transport.send).mockImplementationOnce(async command => {
+      expect(command).toMatchObject({
+        kind: 'update', seriesFieldActions: { description: { observedRevision: 1, time: originalTime },
+          ...(rename && { title: { observedRevision: 1, time: originalTime } }) },
+        changes: expect.arrayContaining([{ path: ['description'], before: field('Opening description'), after: field('Phone description') }]),
+      });
+      harness.silentRemote({ description: 'Phone description', ...(rename && { title: 'Phone title', theme: 'Phone title' }) });
+      return { kind: 'acknowledged', operationId: command.operationId, snapshot: harness.server };
+    });
+    fireEvent.click(within(comparison).getByRole('button', { name: side === 'mine' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    if (side === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    const winningTitle = order === 'queued' ? 'Phone title' : 'Desktop title';
+    await waitFor(() => expect(harness.server.value).toMatchObject({
+      title: rename ? winningTitle : 'Opening title', theme: rename ? winningTitle : 'Legacy theme', status: 'active',
+      bookOrTopic: side === 'mine' ? 'Philippians' : 'Romans', description: order === 'queued' ? 'Phone description' : 'Desktop description' }));
+    if (side === 'mine') expect(harness.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      seriesFieldActions: { bookOrTopic: { observedRevision: 3, time: choiceTime } },
+    }));
+    reopened.unmount();
+  } finally { clock.mockRestore(); }
+});
+
 it('displays the requested series draft when recovery immediately follows native typing', async () => {
   mockRealEditor = true;
   try {

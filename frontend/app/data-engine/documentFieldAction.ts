@@ -20,7 +20,7 @@ import type { CommitRequest } from './commits';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { PrayerStatusCapture, PrayerStatusObservations, PrayerStatusOpening, PrayerStatusTarget } from './prayerStatusAction';
 import type { PrayerTextCapture, PrayerTextObservations, PrayerTextOpenings, PrayerTextTarget } from './prayerTextAction';
-import type { SeriesFieldObservation, SeriesFieldObservations, SeriesFieldTarget } from './seriesFieldAction';
+import type { SeriesFieldObservation, SeriesFieldReview, SeriesFieldTarget } from './seriesFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 import type { Church, Group, Sermon } from '@/models/models';
@@ -704,7 +704,7 @@ export function capturePreparationConfirmation(baseline: ResourceSnapshot, prede
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
 export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[],
-  preferenceFields?: readonly AccountPreferenceField[], sermonTitleReview?: SermonTitleReviewProofs, seriesTitleReview?: SeriesFieldObservations) {
+  preferenceFields?: readonly AccountPreferenceField[], sermonTitleReview?: SermonTitleReviewProofs, seriesFieldReview?: SeriesFieldReview) {
   if (captured === undefined || !baseline.metadata || baseline.metadata.deleted) return {};
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return {};
@@ -718,11 +718,11 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   }
   if (baseline.resource.collection === 'series') {
     const actions = SERIES_FIELD_TARGETS.flatMap(target => {
-      const reviewingSibling = seriesTitleReview !== undefined && target.field !== 'title';
+      const reviewingSibling = seriesFieldReview && !seriesFieldReview.fields.includes(target.field);
       const action: SeriesFieldObservation | undefined = captureStoredMetadataField(
         baseline, predecessor, draft, target, reviewingSibling ? null : time, records);
       if (!action) return [];
-      const earlier = reviewingSibling ? seriesTitleReview[target.field] : undefined;
+      const earlier = reviewingSibling ? seriesFieldReview.original[target.field] : undefined;
       if (earlier && equalValues(earlier.after, action.after)) return [[target.field, earlier]] as const;
       const openingTheme = (predecessor ? predecessor.value : baseline.value)?.theme;
       const mirror = target.field === 'title' && draft?.theme === action.after.value && typeof openingTheme === 'string';

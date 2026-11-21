@@ -2,7 +2,7 @@ import { rebaseOptionalPrayerTags, tagField, tagMembership } from './documentTag
 import { equalValues, readField, writeField } from './fieldValues';
 import { orderedPrayerTextField, prayerTextEditAction, PRAYER_TEXT_SETTLED, PRAYER_TEXT_TARGETS } from './prayerTextAction';
 import { mergeDocumentFields } from './protocol';
-import { isReturnedSeriesTitle, seriesTitleReviewFrames, SERIES_FIELD_TARGETS } from './seriesFieldAction';
+import { isReturnedSeriesField, seriesReviewFrames, SERIES_FIELD_TARGETS } from './seriesFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -16,7 +16,15 @@ const seriesDescription = SERIES_FIELD_TARGETS.filter(target => target.field ===
 
 export function seriesTextChoiceFields(paths: readonly (readonly string[])[], mine: DocumentData | null,
   stored: DocumentData | null): readonly string[] | undefined {
-  if (paths.length === 1 && equalValues(paths[0], ['description'])) return ['description'];
+  if (paths.length === 1 && paths[0].length === 1) {
+    const [field] = paths[0];
+    const target = SERIES_FIELD_TARGETS.find(item => item.field !== 'title' && item.field === field);
+    if (target && mine && stored) {
+      const local = readField(mine, paths[0]), saved = readField(stored, paths[0]);
+      const accepts = (value: typeof local) => value.exists ? target.accepts(value.value) : 'optional' in target;
+      if (accepts(local) && accepts(saved) && !equalValues(local, saved)) return [field];
+    }
+  }
   if (typeof mine?.title !== 'string' || typeof stored?.title !== 'string' || mine.title === stored.title
     || !paths.some(path => equalValues(path, ['title']))) return;
   const mirroredRename = mine.theme === mine.title;
@@ -30,7 +38,7 @@ export function manualSeriesTextChoiceFields(basis: ResourceSnapshot, stored: Re
   if (basis.resource.collection !== 'series' || !basis.metadata || !stored?.value
     || stored.metadata?.generation !== basis.metadata.generation || stored.metadata.deleted) return;
   const fields = seriesTextChoiceFields(conflicts.map(conflict => conflict.path), mine, stored.value);
-  if (fields?.includes('title') && !conflicts.some(isReturnedSeriesTitle)) return;
+  if (fields && fields[0] !== 'description' && !conflicts.some(conflict => conflict.path[0] === fields[0] && isReturnedSeriesField(conflict))) return;
   if (fields?.every(field => selection.some(path => equalValues(path, [field])))) return fields;
 }
 
@@ -83,15 +91,16 @@ export function readDocumentTextChoice(source: SessionCheckpoint) {
   const saved = remoteCandidate?.value;
   if (!confirmed.value || !draft || !saved || !metadata || metadata.deleted
     || confirmed.metadata?.generation !== metadata.generation || !conflicts.length) return;
-  if (collection === 'series' && conflicts.some(isReturnedSeriesTitle) && Object.keys(checkpoint.pending).length === 1) {
-    const series = seriesTitleReviewFrames(confirmed, draft, remoteCandidate, conflicts);
+  if (collection === 'series' && conflicts.some(isReturnedSeriesField) && Object.keys(checkpoint.pending).length === 1) {
+    const series = seriesReviewFrames(confirmed, draft, remoteCandidate, conflicts);
     const revised = series.reviewed!;
     const observed = mergeDocumentFields(series.basis.value, revised, saved).conflicts;
     const paths = [...series.conflicts, ...observed.filter(item => !series.conflicts.some(conflict => equalValues(conflict.path, item.path)))];
     const fields = seriesTextChoiceFields(paths.map(item => item.path), revised, saved);
-    if (fields?.includes('title')) {
-      const compared = paths.filter(item => equalValues(item.path, ['title'])).map(item => ({ ...item,
-        mine: readField(draft, ['title']), theirs: readField(saved, ['title']) }));
+    const field = fields?.[0];
+    if (fields && field && paths.some(conflict => conflict.path[0] === field && isReturnedSeriesField(conflict))) {
+      const compared = paths.filter(item => equalValues(item.path, [field])).map(item => ({ ...item,
+        mine: readField(draft, item.path), theirs: readField(saved, item.path) }));
       return { openings: {}, fields, queued, checkpoint: { ...checkpoint, confirmed: series.basis, draft: revised, conflicts: compared }, complete: true, title: undefined };
     }
   }

@@ -21,7 +21,7 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
-import { isReturnedSeriesTitle, seriesTitleReviewFrames } from './seriesFieldAction';
+import { isReturnedSeriesField, seriesReviewFrames } from './seriesFieldAction';
 import { isReturnedSermonTitle, keepUncontestedSermonFields, sermonTitleReviewFrames } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -82,16 +82,17 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       });
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
-      const returnedTitle = record.resource.collection === 'sermons' ? isReturnedSermonTitle
-        : record.resource.collection === 'series' ? isReturnedSeriesTitle : undefined;
-      const savedTitleReview = returnedTitle && request.result?.kind === 'conflict'
-        && request.result.conflicts.some(returnedTitle) && record.selection.some(path => equalValues(path, ['title']));
-      const sameTitleForm = savedTitleReview && readManualScopeIdentity(request.editorId);
-      const openTitleForm = savedTitleReview && readManualScopeIdentity(record.scopeId);
-      const sameTabTitleForm = sameTitleForm && openTitleForm && sameTitleForm.slot === openTitleForm.slot
-        && editorSlot(sameTitleForm.parentEditorId) === editorSlot(openTitleForm.parentEditorId)
-        && areSameTabManualParents(sameTitleForm.parentEditorId, openTitleForm.parentEditorId, record.resource);
-      if (recovered || sameMeetingForm || sameTabTitleForm || (record.scopeId === request.editorId
+      const returnedField = record.resource.collection === 'sermons' ? isReturnedSermonTitle
+        : record.resource.collection === 'series' ? isReturnedSeriesField : undefined;
+      const savedFieldReview = returnedField && request.result?.kind === 'conflict'
+        && request.result.conflicts.some(conflict => returnedField(conflict)
+          && record.selection.some(path => equalValues(path, conflict.path)));
+      const savedFieldForm = savedFieldReview && readManualScopeIdentity(request.editorId);
+      const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);
+      const sameTabFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
+        && editorSlot(savedFieldForm.parentEditorId) === editorSlot(openFieldForm.parentEditorId)
+        && areSameTabManualParents(savedFieldForm.parentEditorId, openFieldForm.parentEditorId, record.resource);
+      if (recovered || sameMeetingForm || sameTabFieldForm || (record.scopeId === request.editorId
           && (markedList || meeting || thoughtText || dateNotes || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
@@ -127,7 +128,7 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   const ordered = conflicts.filter(isOrderedSermonMetadata);
   if (ordered.length) return { ...sermonTitleReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
     conflicts: conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)) };
-  return seriesTitleReviewFrames(basis, reviewed, stored, conflicts);
+  return seriesReviewFrames(basis, reviewed, stored, conflicts);
 }
 
 /** The comparison decides its one Save. Later branches remain separate drafts until explicitly recovered. */

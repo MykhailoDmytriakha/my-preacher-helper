@@ -11,6 +11,7 @@ import { readOutlineParentComparison } from './outlineParentChoice';
 import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields } from './protocol';
+import { isReturnedSeriesField } from './seriesFieldAction';
 import { isReturnedSermonTitle } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
@@ -20,7 +21,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; returnedSeriesTitle?: true; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; returnedSeriesFields?: readonly string[]; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -78,7 +79,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           return versions && !equalValues(versions.mine, versions.stored);
         });
       // The server can prove that series text changed and returned to the same opening words.
-      const observedSeriesConflicts = stored.resource.collection === 'series' && conflicts.some(({ path }) => equalValues(path, ['title']))
+      const observedSeriesConflicts = stored.resource.collection === 'series' && conflicts.some(isReturnedSeriesField)
         ? mergeDocumentFields(basis.value, reviewed, stored.value).conflicts.filter(item => !conflicts.some(({ path }) => equalValues(path, item.path))) : [];
       const seriesConflicts = [...conflicts, ...observedSeriesConflicts];
       const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, seriesConflicts, form.record.selection, mine);
@@ -107,7 +108,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
           conflictPaths: [...seriesConflicts, ...observedConflicts].map(conflict => conflict.path), mine,
           ...(returnedTitle && { kind: 'returned-sermon-title' as const }),
-          ...(seriesFields?.includes('title') && { returnedSeriesTitle: true as const }),
+          ...(seriesText && seriesFields[0] !== 'description' && { returnedSeriesFields: seriesFields }),
           ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }

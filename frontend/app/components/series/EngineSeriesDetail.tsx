@@ -77,7 +77,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const comparison = shown ? seriesTextComparison(
     shown.conflicts.map(conflict => conflict.path), shown.draft, shown.remoteCandidate?.value ?? null,
     JSON.stringify([shown.editGeneration, shown.remoteCandidate?.metadata?.revision]),
-    { title: t('workspaces.series.form.title'), description: t('workspaces.series.form.description') }, t('dataSync.emptyField')) : undefined;
+    t) : undefined;
   const compared = comparison ? checkpoint : undefined;
   const sync = <DataSyncStatus comparison={editing ? undefined : comparison} subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     onKeepLocal={() => saveKeptSeries(document, compared)} onAcceptRemote={() => compared ? document.acceptRemote(compared) : document.acceptRemote()}

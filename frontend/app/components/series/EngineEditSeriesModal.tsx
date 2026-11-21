@@ -35,9 +35,9 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     recover: form.recover });
   const generation = form.openingGeneration;
   const shown = form.comparison;
-  const comparison = shown && (shown.conflictPaths[0]?.[0] === 'description' || shown.returnedSeriesTitle)
+  const comparison = shown && (shown.conflictPaths[0]?.[0] === 'description' || shown.returnedSeriesFields)
     && shown.stored.metadata?.generation === generation && seriesTextComparison(shown.conflictPaths, shown.mine, shown.stored.value,
-    shown.identity, { title: t('workspaces.series.form.title'), description: t('workspaces.series.form.description') }, t('dataSync.emptyField'));
+    shown.identity, t);
   const values = seriesFormValues(form.data as unknown as Series | undefined);
   // An empty required field is the form's own message; the sync status speaks only of delivery.
   // Kept as words, so a language switch re-says it (BUG-20261003-said-refusal-keeps-old-language).

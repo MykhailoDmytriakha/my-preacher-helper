@@ -16,7 +16,7 @@ import { commandFingerprint, equalValues, object, readField } from './fieldValue
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
-import { SERIES_METADATA_QUEUED, SERIES_METADATA_SETTLED } from './seriesFieldAction';
+import { isReturnedSeriesField, SERIES_METADATA_QUEUED, SERIES_METADATA_SETTLED } from './seriesFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
@@ -77,7 +77,7 @@ const tracksScalarReturns = (target: DocumentFieldTarget) =>
     || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
     || target.action === 'tagColorAction'
-    || (target.action === 'seriesFieldActions' && target.field === 'title');
+    || (target.action === 'seriesFieldActions' && target.field !== 'description');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
   tracksScalarReturns(target) || target.action === 'sermonThesisFieldActions'
@@ -385,9 +385,20 @@ function orderedMetadataComparisons(command: Extract<DataCommand, { kind: 'updat
 
 export function orderedSeriesMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
   if (command.kind !== 'update' || command.resource.collection !== 'series'
-    || !orders.uncertain.some(({ path }) => path.length === 1 && path[0] === 'title')) return [];
-  return orderedMetadataComparisons(command, current, orders, target => target.action === 'seriesFieldActions' && target.field !== 'title',
+    || !orders.uncertain.some(isReturnedSeriesField)) return [];
+  const comparisons = orderedMetadataComparisons(command, current, orders, target => target.action === 'seriesFieldActions',
     { settled: SERIES_METADATA_SETTLED, queued: SERIES_METADATA_QUEUED });
+  const title = comparisons.find(({ path }) => path[0] === 'title');
+  const theme = command.changes.find(({ path }) => equalValues(path, ['theme']));
+  const orderedTheme = orders.command.kind === 'update' && orders.command.changes.find(({ path }) => equalValues(path, ['theme']));
+  if (title && theme && orderedTheme && current.value && equalValues(theme.after, title.mine)) {
+    const saved = readField(current.value, ['theme']);
+    const winner = title.code === SERIES_METADATA_SETTLED ? title.theirs : title.mine;
+    if (equalValues(saved, title.theirs) && equalValues(orderedTheme.before, saved) && equalValues(orderedTheme.after, winner)) {
+      comparisons.push({ path: theme.path, code: title.code, base: theme.before, mine: theme.after, theirs: saved });
+    }
+  }
+  return comparisons;
 }
 
 export function orderedCouncilMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
