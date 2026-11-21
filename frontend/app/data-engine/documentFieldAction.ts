@@ -28,6 +28,10 @@ import type { Church, Group, Sermon } from '@/models/models';
 export const SERMON_METADATA_SETTLED = 'sermon-metadata-settled';
 export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
 export const SERMON_VERSE_REVIEW_CHANGED = 'sermon-verse-review-changed';
+export const SERMON_CHURCH_REVIEW_CHANGED = 'sermon-church-review-changed';
+export function isStaleSermonHeaderReview(code: string | undefined): boolean {
+  return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED;
+}
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
   const metadata = (conflict.path.length === 1 && (field === 'title' || field === 'verse' || field === 'church'))
@@ -37,7 +41,7 @@ export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
 
 type SermonReviewProof = Pick<DocumentFieldStamp, 'time' | 'observedRevision'>;
 export type SermonHeaderReviewProofs = {
-  field: 'title' | 'verse';
+  field: 'title' | 'verse' | 'church';
   title?: SermonReviewProof;
   verse?: SermonReviewProof;
   church?: SermonReviewProof;
@@ -45,8 +49,8 @@ export type SermonHeaderReviewProofs = {
 };
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
-export type SermonVerseStamp = DocumentFieldStamp & { reviewed?: true };
-export type SermonVerseObservation = DocumentFieldObservation & { reviewed?: true };
+export type SermonHeaderStamp = DocumentFieldStamp & { reviewed?: true };
+export type SermonHeaderObservation<Value = string> = DocumentFieldObservation<Value> & { reviewed?: true };
 export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
 export type SermonPlanMode = NonNullable<Sermon['planMode']>;
 export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: FieldValue };
@@ -96,7 +100,7 @@ type TextDocumentFieldTarget = {
 };
 
 export type DocumentFieldTarget = TextDocumentFieldTarget | typeof GROUP_DESCRIPTION | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
-export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
+export type SermonChurchObservation = SermonHeaderObservation<FieldValue>;
 
 export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
   proof: 'sermonRepeatedWords', causal: true, optional: true, accepts: isAuthoredStringList } as const;
@@ -756,7 +760,9 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   return { ...(title && { sermonTitleAction: { ...title, ...sermonHeaderReview?.title } }),
     ...(verse && { sermonVerseAction: { ...verse, ...sermonHeaderReview?.verse,
       ...(sermonHeaderReview?.field === 'verse' && { reviewed: true as const }) } }),
-    ...(church && { sermonChurchAction: { ...church, ...sermonHeaderReview?.church } }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
+    ...(church && { sermonChurchAction: { ...church, ...sermonHeaderReview?.church,
+      ...(sermonHeaderReview?.field === 'church' && { reviewed: true as const }) } }),
+    ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
     ...(repeatedWords?.after.exists && { sermonRepeatedWordsAction: repeatedWords }),
     ...(thesis.length && { sermonThesisFieldActions: Object.fromEntries(thesis) }),
     ...(preparationText.length && { sermonPreparationTextActions: Object.fromEntries(preparationText) }),
@@ -978,11 +984,11 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (target.action === 'commentPlaceAction') {
     return action.paragraph ? { ...command, commentPlaceAction: { ...stamp, paragraph: action.paragraph, ...(action.compound && { compound: true }), ...(action.reviewed && { reviewed: true }) } } : command;
   }
-  if (target.action === 'sermonVerseAction') {
-    return { ...command, sermonVerseAction: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
+  if (target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction') {
+    return { ...command, [target.action]: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
-  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
   if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };

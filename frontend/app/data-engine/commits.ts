@@ -158,7 +158,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   planTemplateNameAction?: DocumentFieldObservation;
   tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
-  sermonVerseAction?: import('./documentFieldAction').SermonVerseObservation;
+  sermonVerseAction?: import('./documentFieldAction').SermonHeaderObservation;
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonThesisFieldActions?: SermonThesisObservations;

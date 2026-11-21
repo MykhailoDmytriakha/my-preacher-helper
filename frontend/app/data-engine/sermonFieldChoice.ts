@@ -2,8 +2,9 @@ import { preparationConfirmationField, preparationTextField } from '@/utils/prep
 import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
+import { isSermonChurch } from './churchFieldValue';
 import { existingRowDate, PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_CHURCH_REVIEW_CHANGED, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
@@ -42,6 +43,18 @@ export function isReturnedSermonTitle(conflict: ConflictDetail): boolean {
 export function isSermonVerseReview(conflict: ConflictDetail): boolean {
   return equalValues(conflict.path, ['verse']) && (conflict.code === SERMON_VERSE_REVIEW_CHANGED
     || (!conflict.code && equalValues(conflict.base, conflict.theirs)));
+}
+
+export function isSermonChurchReview(conflict: ConflictDetail): boolean {
+  return equalValues(conflict.path, ['church']) && (!conflict.code || conflict.code === SERMON_CHURCH_REVIEW_CHANGED)
+    && isSermonChurch(conflict.mine) && isSermonChurch(conflict.theirs);
+}
+
+export function withReviewedSermonChurchDates(opening: DocumentData | null, draft: DocumentData | null,
+  stored: DocumentData | null, selected: FieldValue, fill?: SermonChurchFill): DocumentData | null {
+  if (!draft || !fill) return draft;
+  const dates = rebaseSermonChurchFill(opening?.preachDates, draft.preachDates, stored?.preachDates, selected, fill);
+  return dates === undefined || dates === draft.preachDates ? draft : { ...draft, preachDates: dates };
 }
 
 export function earlierSermonMetadataProof<Value>(action: DocumentFieldObservation<Value> | undefined, after: unknown) {
@@ -83,7 +96,8 @@ export function sermonHeaderReviewFrames(basis: ResourceSnapshot, reviewed: Docu
 
 export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
-    || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path) || isReturnedSermonTitle(conflicts[0]))));
+    || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path)
+      || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]))));
 }
 
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {

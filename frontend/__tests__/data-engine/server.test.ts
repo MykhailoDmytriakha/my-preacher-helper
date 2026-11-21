@@ -8023,6 +8023,41 @@ describe('transactional DataEngine server', () => {
       ? { exists: true, value: church } : { exists: false };
 
     it.each([
+      { name: 'restored church', opening: originalChurch, proposed: phoneChurch, reaffirm: false },
+      { name: 'restored empty church', opening: null, proposed: phoneChurch, reaffirm: false },
+      { name: 'delayed clear after reaffirmation', opening: originalChurch, proposed: null, reaffirm: true },
+    ])('guards an old sermon church save after $name', async ({ opening, proposed, reaffirm }) => {
+      const seed = create('sermon-church-return') as Extract<DataCommand, { kind: 'create' }>;
+      const unnamed = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+      const calendarChurch = { id: 'calendar', name: 'Calendar only', city: 'Calendar city' };
+      const row = { id: 'date', date: '2099-04-10', church: unnamed,
+        status: 'planned', notes: 'Keep these notes', createdAt: '2099-01-01T00:00:00.000Z' };
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, ...(opening && { church: opening }),
+        preachDates: [row] } })).kind).toBe('acknowledged');
+      const church = (before: typeof originalChurch | null, after: typeof originalChurch | null) =>
+        ({ path: ['church'], before: field(before), after: field(after) });
+      const date = (updated: typeof row) => ({ path: ['preachDates'],
+        before: { exists: true, value: [row] }, after: { exists: true, value: [updated] } });
+      const dated = { ...row, church: calendarChurch };
+      if (!reaffirm) expect((await processCommand(seed.owner, {
+        ...update('desk', seed.operationId), changes: [church(opening, deskChurch)],
+      })).kind).toBe('acknowledged');
+      expect((await processCommand(seed.owner, {
+        ...update('return', seed.operationId), changes: [church(deskChurch, opening), date(dated)],
+      })).kind).toBe('acknowledged');
+      const old = {
+        ...update('late-phone', seed.operationId), changes: [church(opening, proposed),
+          ...(proposed ? [date({ ...row, church: proposed })] : [])],
+        ...(proposed && { sermonChurchFill: { rowId: row.id, rowCreatedAt: row.createdAt, church: proposed } }),
+      };
+      const reply = await processCommand(seed.owner, old);
+      expect(reply).toMatchObject({ kind: 'conflict', snapshot: { value: { preachDates: [dated] } },
+        conflicts: [{ path: ['church'], base: field(opening), mine: field(proposed), theirs: field(opening) }] });
+      expect(documents.get('sermons/sermon-1')?.church).toEqual(opening ?? undefined);
+      expect(await processCommand(seed.owner, old)).toEqual(reply);
+    });
+
+    it.each([
       { opening: originalChurch, desk: deskChurch, phone: phoneChurch, offset: 20, winner: deskChurch, loser: phoneChurch },
       { opening: originalChurch, desk: deskChurch, phone: phoneChurch, offset: 80, winner: phoneChurch, loser: deskChurch },
       { opening: originalChurch, desk: deskChurch, phone: null, offset: 80, winner: null, loser: deskChurch },
@@ -8147,6 +8182,48 @@ describe('transactional DataEngine server', () => {
         conflicts: [{ path: ['church'], base: field(originalChurch), mine: field(phone), theirs: field(desk) }],
       });
       expect([...documents.keys()].filter(path => path.includes('/_churchHistory/'))).toEqual([]);
+    });
+
+    it('retains the known title order through an ordinary church conflict', async () => {
+      const seed = create('sermon-church-with-title') as Extract<DataCommand, { kind: 'create' }>;
+      const title = (value: string): FieldValue => ({ exists: true, value });
+      const at = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, title: 'Opening', church: originalChurch } })).kind).toBe('acknowledged');
+      const edit = (operationId: string, name: string, church: typeof originalChurch, offset: number) => ({
+        ...update(operationId, seed.operationId),
+        changes: [{ path: ['title'], before: title('Opening'), after: title(name) },
+          { path: ['church'], before: field(originalChurch), after: field(church) }],
+        sermonTitleAction: { before: 'Opening', after: name, observedRevision: 1, time: at(offset) },
+        sermonChurchAction: { observedRevision: 1, time: null },
+      });
+      expect((await processCommand(seed.owner, edit('desk', 'Desktop title', deskChurch, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(seed.owner, edit('phone', 'Phone title', phoneChurch, 20))).toMatchObject({
+        kind: 'conflict', conflicts: expect.arrayContaining([
+          { path: ['church'], base: field(originalChurch), mine: field(phoneChurch), theirs: field(deskChurch) },
+          { path: ['title'], code: 'sermon-metadata-settled', base: title('Opening'), mine: title('Phone title'), theirs: title('Desktop title') },
+        ]),
+      });
+    });
+
+    it('refreshes a stale reviewed church and coalesces the same chosen value', async () => {
+      const seed = create('sermon-church-reviewed') as Extract<DataCommand, { kind: 'create' }>;
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, church: originalChurch } })).kind).toBe('acknowledged');
+      const edit = (operationId: string, before: typeof originalChurch, after: typeof originalChurch, revision: number, offset: number, reviewed?: true) => ({
+        ...update(operationId, seed.operationId), changes: [{ path: ['church'], before: field(before), after: field(after) }],
+        sermonChurchAction: { observedRevision: revision, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+          ...(reviewed && { reviewed }) },
+      });
+      expect((await processCommand(seed.owner, edit('newer', originalChurch, deskChurch, 1, 20))).kind).toBe('acknowledged');
+      expect(await processCommand(seed.owner, edit('stale-choice', originalChurch, phoneChurch, 1, 40, true))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['church'], code: 'sermon-church-review-changed',
+          base: field(originalChurch), mine: field(phoneChurch), theirs: field(deskChurch) }],
+      });
+      expect(await processCommand(seed.owner, edit('fresh-choice', deskChurch, phoneChurch, 2, 50, true))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { church: phoneChurch } },
+      });
+      expect(await processCommand(seed.owner, edit('same-choice', originalChurch, phoneChurch, 1, 60, true))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { church: phoneChurch } },
+      });
     });
   });
 

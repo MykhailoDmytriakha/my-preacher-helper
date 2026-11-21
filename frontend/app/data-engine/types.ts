@@ -279,8 +279,8 @@ export type DataCommand = CommandBase & (
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;
       sermonTitleAction?: DocumentFieldObservation;
-      sermonVerseAction?: import('./documentFieldAction').SermonVerseStamp;
-      sermonChurchAction?: DocumentFieldStamp;
+      sermonVerseAction?: import('./documentFieldAction').SermonHeaderStamp;
+      sermonChurchAction?: import('./documentFieldAction').SermonHeaderStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonThesisFieldActions?: Partial<Record<SermonThesisField, DocumentFieldStamp>>;
       sermonPreparationTextActions?: Partial<Record<PreparationTextField, DocumentFieldStamp>>;

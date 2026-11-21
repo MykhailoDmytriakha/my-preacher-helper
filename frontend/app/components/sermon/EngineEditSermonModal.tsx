@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { SeriesMembershipHistory } from '@/components/series/SeriesMembershipHistory';
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
+import { isChurchValue } from '@/data-engine/churchFieldValue';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
@@ -61,13 +62,16 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const reviewRecoveryId = form.status?.phase === 'conflict' && !form.dirty && !form.exactChoice && form.borrowedRecoveryIds?.length === 1
     ? form.borrowedRecoveryIds[0] : undefined;
   const versions = form.comparison;
-  const comparisonField = versions?.kind === 'returned-sermon-title' ? 'title' : 'verse';
-  const mine = versions?.mine[comparisonField];
-  const stored = versions?.stored.value?.[comparisonField];
+  const comparisonField = versions?.kind === 'returned-sermon-title' ? 'title' : versions?.kind === 'sermon-church' ? 'church' : 'verse';
+  const churchWords = (value: unknown) => isChurchValue(value) ? [value.name, value.city].filter(Boolean).join(', ') : unspecifiedChurch;
+  const mine = comparisonField === 'church' ? churchWords(versions?.mine.church) : versions?.mine[comparisonField];
+  const stored = comparisonField === 'church' ? churchWords(versions?.stored.value?.church) : versions?.stored.value?.[comparisonField];
+  const comparisonLabel = { title: 'addSermon.titleLabel', verse: 'addSermon.verseLabel', church: 'calendar.church' } as const;
   const comparison: TextComparison | undefined = versions?.conflictPaths.length === 1 && versions.conflictPaths[0].length === 1
-    && versions.conflictPaths[0][0] === comparisonField && typeof mine === 'string' && typeof stored === 'string' && mine !== stored
-    ? { identity: versions.identity, title: t(comparisonField === 'title' ? 'addSermon.titleLabel' : 'addSermon.verseLabel'),
-      mine, stored, scopedChoice: form.exactChoice ? true : undefined } : undefined;
+    && versions.conflictPaths[0][0] === comparisonField && typeof mine === 'string' && typeof stored === 'string'
+    && (comparisonField === 'church' || mine !== stored)
+    ? { identity: versions.identity, title: t(comparisonLabel[comparisonField]), mine, stored,
+      ...(comparisonField === 'church' && { valueKind: 'field' as const }), scopedChoice: form.exactChoice ? true : undefined } : undefined;
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
@@ -89,7 +93,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       session={{ owner, generation, sermonId, field: 'church', restore: church => form.update(current =>
         sermonMetadataPatch(current, { church: church ?? undefined }, plannedId, newDate.createdAt, unspecifiedChurch, openingRow)) }} />}
     formStatus={<DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-        onKeepLocal={comparison && (comparisonField === 'title' || versions?.kind === 'returned-sermon-verse')
+        onKeepLocal={comparison && (comparisonField !== 'verse' || versions?.kind === 'returned-sermon-verse')
           ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : form.keepLocal}
         onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}

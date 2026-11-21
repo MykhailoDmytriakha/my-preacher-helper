@@ -9,7 +9,7 @@ import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataDocumentProvider, DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
-import type { ResourceSnapshot } from '@/data-engine/types';
+import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { PreachDate } from '@/models/models';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -349,6 +349,68 @@ it.each([
       ? { time: chosenTime, observedRevision: changedDuring ? 4 : 3, reviewed: true } : undefined);
     expect(replacement.sermonTitleAction).toEqual(titleOrder === 'queued'
       ? { before: desktopTitle, after: phoneTitle, time: previousTime, observedRevision: 1 } : undefined);
+  } finally { clock.mockRestore(); }
+});
+
+it.each([
+  { choice: 'local', clearing: false }, { choice: 'stored', clearing: true },
+])('compares a restored church and keeps the independent date church ($choice, clear: $clearing)', async ({ choice, clearing }) => {
+  const previousTime = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
+  const chosenTime = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+  const first = { ...originalDates[0], church: unspecifiedChurch };
+  const explicit = { id: 'calendar-church', name: 'Calendar church', city: 'Calendar city' };
+  const draftTitle = 'Phone title', savedTitle = 'Desktop title';
+  const opening = { ...original, value: { ...original.value!, church, preachDates: [first, originalDates[1]] } };
+  const stored = { ...original, metadata: { ...original.metadata!, revision: 3 },
+    value: { ...opening.value, title: savedTitle, preachDates: [{ ...first, church: explicit }, originalDates[1]] } };
+  const harness = membershipEngineHarness([opening]);
+  const browser = harness.createBrowser();
+  browser.engine.setOwner('owner');
+  browser.engine.setOnline(false);
+  const field = (value: string | typeof church | undefined) => value === undefined ? { exists: false } : { exists: true, value };
+  try {
+    const source = await browser.engine.openEditor(resource, browser.editorId(resource, 'sermon'));
+    const form = source.form('sermon-metadata', SERMON_METADATA_SELECTION);
+    await form.begin();
+    await form.save(current => {
+      if (clearing) {
+        const next: DocumentData = { ...current, title: draftTitle };
+        delete next.church;
+        return next;
+      }
+      return { ...current, title: draftTitle, church: mockOtherChurch, preachDates: [{ ...first, church: mockOtherChurch }, originalDates[1]] };
+    }, { documentMetadata: { time: previousTime } });
+    harness.replace(stored);
+    jest.mocked(harness.transport.send).mockImplementationOnce(async ({ operationId }) => ({
+      kind: 'conflict', operationId, snapshot: stored, conflicts: [
+        { path: ['church'], base: field(church), mine: field(clearing ? undefined : mockOtherChurch), theirs: field(church) },
+        { path: ['title'], code: 'sermon-metadata-queued', base: field('Opening'), mine: field(draftTitle), theirs: field(savedTitle) },
+      ],
+    }));
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await waitFor(() => expect(source.getState().result?.kind).toBe('conflict'));
+  } finally { browser.dispose(); }
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <EngineEditSermonModal sermonId="sermon" onClose={jest.fn()} />
+  </DataDocumentProvider></DataEngineProvider>);
+  const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(within(panel).getByText(clearing ? 'calendar.unspecifiedChurch' : 'Other chapel, Other city')).toBeVisible();
+  expect(within(panel).getByText(church.name)).toBeVisible();
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(chosenTime);
+  try {
+    fireEvent.click(within(panel).getByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    await waitFor(() => expect(harness.read(resource).value).toMatchObject({
+      title: draftTitle, church: choice === 'local' ? mockOtherChurch : church, preachDates: stored.value.preachDates,
+    }));
+    const replacement = jest.mocked(harness.transport.send).mock.calls.at(-1)?.[0];
+    if (replacement?.kind !== 'update') throw new Error('No replacement');
+    expect(replacement.sermonChurchAction).toEqual(choice === 'local'
+      ? { observedRevision: 3, time: chosenTime, reviewed: true } : undefined);
+    expect(replacement.sermonTitleAction).toMatchObject({ observedRevision: 1, time: previousTime });
+    expect(replacement.changes.map(({ path }) => path[0])).not.toContain('preachDates');
   } finally { clock.mockRestore(); }
 });
 

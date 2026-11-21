@@ -22,7 +22,7 @@ import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
 import { isReturnedSeriesField, seriesReviewFrames } from './seriesFieldAction';
-import { isReturnedSermonTitle, isSermonVerseReview, keepUncontestedSermonFields, sermonHeaderReviewFrames } from './sermonFieldChoice';
+import { isReturnedSermonTitle, isSermonChurchReview, isSermonVerseReview, keepUncontestedSermonFields, readSermonConflictField, sermonHeaderReviewFrames, withReviewedSermonChurchDates } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -82,12 +82,14 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       });
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
-      const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) => isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict)
+      const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) =>
+        isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict)
         : record.resource.collection === 'series' ? isReturnedSeriesField : undefined;
       const savedFieldReview = returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
           && record.selection.some(path => equalValues(path, conflict.path)));
-      const fieldScope = request.sermonVerseAction?.reviewed ? request.retentionScope ?? request.editorId : request.editorId;
+      const fieldScope = request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed
+        ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
       const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);
       const sameTabFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
@@ -148,7 +150,11 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const { request, stored } = decision;
   let draft = stored.value;
   const prepared = request.initialized && request.command;
-  const { basis, reviewed, conflicts: reviewedConflicts } = manualChoiceFrames(request, decision.value, stored);
+  const { basis, reviewed: intended, conflicts: reviewedConflicts } = manualChoiceFrames(request, decision.value, stored);
+  const churchReview = reviewedConflicts.length === 1 && isSermonChurchReview(reviewedConflicts[0])
+    && request.baseline.resource.collection === 'sermons' && decision.selection.some(path => equalValues(path, ['church']));
+  const chosenChurch = churchReview ? readSermonConflictField(decision.choice === 'local' ? intended ?? {} : stored.value ?? {}, ['church']) : undefined;
+  const reviewed = chosenChurch ? withReviewedSermonChurchDates(basis.value, intended, stored.value, chosenChurch, request.sermonChurchFill) : intended;
   const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
   const meeting = request.result?.kind === 'conflict' && decision.selection.some(path => equalValues(path, ['meetingDates']))
     && firstGroupMeetingReview(request.result.conflicts);
@@ -182,7 +188,8 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     const rebased = replaySavedChoiceDelta(stored.resource, note.basis, note.draft, stored.value, explicit);
     const chosen = keepReviewedAuthoredLists(stored.resource.collection, dateEdits ?? rebased ?? stored.value!,
       request.result?.kind === 'conflict' ? request.result.conflicts : [], decision.value);
-    draft = projectManualSelection(stored.value!, chosen!, decision.selection);
+    const chosenFields = chosenChurch && chosen ? writeField(chosen, ['church'], chosenChurch) : chosen;
+    draft = projectManualSelection(stored.value!, chosenFields!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
     const conflicts = reviewedConflicts;
     const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, conflicts, decision.selection, reviewed);

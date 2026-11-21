@@ -30,7 +30,7 @@ import { boundCouncilTopicTextMetadata, councilTopicTextOrderPolicy, orderCounci
 import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleRow, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode, SERMON_METADATA_SETTLED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { documentFieldPath, documentFieldValue, isLongTextDocumentField, isSermonPlanMode, isStaleSermonHeaderReview, SERMON_METADATA_SETTLED } from './documentFieldAction';
 import { isGroupScalarText, metadataAfterDocumentFields, orderDocumentFields, orderedCouncilMetadata, orderedGroupScalarText, orderedPrayerText, orderedSeriesMetadata, orderedSermonMetadata, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
@@ -543,7 +543,7 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
       const existing = conflicts.get(path);
       if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_SUBPOINT_REVIEW && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED
         && existing.code !== COUNCIL_TOPIC_TEXT_SETTLED && existing.code !== COUNCIL_TOPIC_TEXT_QUEUED
-        && existing.code !== SERMON_VERSE_REVIEW_CHANGED && !isOrderedGroupFlowText(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
+        && !isStaleSermonHeaderReview(existing.code) && !isOrderedGroupFlowText(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
@@ -1265,7 +1265,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
           ...(outlineTitleOrder?.settled ?? []), ...councilTopicTextOrder.settled, ...settledCouncilDetails, ...groupFlowOrder.settled,
           ...orderedGroupScalarText(command, current, fieldOrder),
           ...orderedPrayerText(command, current, fieldOrder, [...uncertain, ...(planned.result.kind === 'conflict' ? planned.result.conflicts : [])]),
-          ...orderedSeriesMetadata(command, current, fieldOrder), ...orderedSermonMetadata(command, current, fieldOrder, dateOrder), ...orderedPreachDateFieldComparisons(command, preachingOrder)]
+          ...orderedSeriesMetadata(command, current, fieldOrder), ...orderedSermonMetadata(command, current, fieldOrder, dateOrder,
+            planned.result.kind === 'conflict' ? planned.result.conflicts : []), ...orderedPreachDateFieldComparisons(command, preachingOrder)]
         : uncertain);
       if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
         && orderedCommand.kind === 'update' && current.value) {
