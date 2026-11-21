@@ -3673,6 +3673,104 @@ describe('transactional DataEngine server', () => {
     expect(await processCommand(base.owner, input)).toEqual(reply);
   });
 
+  describe('the first legacy delivery of returned comment words', () => {
+    const resource = { collection: 'studyNotes', id: 'returned-comment-words' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const at = '2026-11-20T00:00:00.000Z';
+    const original = 'Words at John 3:16', intermediate = 'Other words on the computer', earlier = 'Earlier words from the phone';
+    const reference = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const field = (value: string) => ({ exists: true, value });
+    const save = (operationId: string, before: string, after: string, observedRevision?: number) => processCommand(base.owner, {
+      ...base, kind: 'update', generation: 'comment-opening', operationId,
+      changes: [{ path: ['content'], before: field(before), after: field(after) }],
+      ...(observedRevision && { studyNoteContentAction: { observedRevision, time: null } }),
+    });
+    const seed = async (type: 'comment' | 'note' = 'comment', paragraph = true) => {
+      expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'comment-opening',
+        value: { userId: base.owner, type, title: '', content: original, scriptureRefs: [reference], tags: ['Keep'],
+          ...(type === 'comment' && { paragraph }), isDraft: false, createdAt: at, updatedAt: at },
+      })).kind).toBe('acknowledged');
+    };
+
+    it.each([false, true])('holds the old comment after an explicit return (reaffirmed the opening: %s)', async reaffirmed => {
+      await seed();
+      if (!reaffirmed) expect((await save('computer-edit', original, intermediate, 1)).kind).toBe('acknowledged');
+      expect((await save('computer-return', intermediate, original, reaffirmed ? undefined : 2)).kind).toBe('acknowledged');
+      const refused = await save('phone-first-delivery', original, earlier);
+      expect(refused).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['content'], base: field(original), mine: field(earlier), theirs: field(original) }],
+        snapshot: { value: { type: 'comment', content: original, paragraph: true, tags: ['Keep'], scriptureRefs: [reference] } } });
+      expect(await save('phone-first-delivery', original, earlier)).toEqual(refused);
+      expect((await readDocument(base.owner, resource)).value?.content).toBe(original);
+    });
+
+    it('offers the same exact choice when the current client cannot compare action times', async () => {
+      await seed();
+      expect((await save('desktop-first-edit', original, intermediate, 1)).kind).toBe('acknowledged');
+      expect((await save('desktop-later-return', intermediate, original, 2)).kind).toBe('acknowledged');
+      expect(await save('offline-without-action-clock', original, earlier, 1)).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['content'], code: 'comment-text-review', mine: field(earlier), theirs: field(original) }],
+        snapshot: { value: { content: original } },
+      });
+    });
+
+    it('asks again when the shown comment text changed while a reviewed choice was being delivered', async () => {
+      await seed();
+      expect((await save('desktop-newer-words', original, intermediate, 1)).kind).toBe('acknowledged');
+      const choice = (operationId: string, before: string, observedRevision: number) => processCommand(base.owner, {
+        ...base, kind: 'update', generation: 'comment-opening', operationId,
+        changes: [{ path: ['content'], before: field(before), after: field(earlier) }],
+        studyNoteContentAction: { observedRevision, time: { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 }, reviewed: true },
+      });
+      expect(await choice('choice-about-old-opening', original, 1)).toMatchObject({ kind: 'conflict', conflicts: [{
+        path: ['content'], code: 'comment-text-review', mine: field(earlier), theirs: field(intermediate),
+      }], snapshot: { value: { content: intermediate, paragraph: true, scriptureRefs: [reference] } } });
+      expect(await choice('choice-about-shown-opening', intermediate, 2)).toMatchObject({ kind: 'acknowledged',
+        snapshot: { value: { content: earlier, paragraph: true, scriptureRefs: [reference] } } });
+    });
+
+    it('does not turn a reviewed comment into authority to edit the ordinary note it became', async () => {
+      await seed();
+      const command = { ...base, kind: 'update', generation: 'comment-opening' };
+      expect((await processCommand(base.owner, { ...command, operationId: 'convert-to-note',
+        changes: [{ path: ['type'], before: field('comment'), after: field('note') }],
+      })).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, { ...command, operationId: 'old-comment-choice',
+        changes: [{ path: ['content'], before: field(original), after: field(earlier) }],
+        studyNoteContentAction: { observedRevision: 1, time: null, reviewed: true },
+      })).toMatchObject({ kind: 'conflict', conflicts: [
+        { path: ['type'], code: 'comment-text-review', theirs: field('note') },
+        { path: ['content'], code: 'comment-text-review', mine: field(earlier), theirs: field(original) },
+      ], snapshot: { value: { type: 'note', content: original } } });
+    });
+
+    it('orders a reaffirmed companion kind by its original time even when it matches the stored kind', async () => {
+      await seed('comment', false);
+      const value = (value: boolean) => ({ exists: true, value });
+      const kind = (operationId: string, before: boolean, after: boolean, offset: number, observedRevision: number) => processCommand(base.owner, {
+        ...base, operationId, kind: 'update', generation: 'comment-opening',
+        changes: [{ path: ['paragraph'], before: value(before), after: value(after) }],
+        commentKindAction: { observedRevision, reference: { exists: true, value: [reference] },
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } },
+      });
+      expect((await kind('first-kind', false, true, 20, 1)).kind).toBe('acknowledged');
+      expect((await kind('later-reaffirmation', false, true, 40, 1)).kind).toBe('acknowledged');
+      expect(await kind('delay-between-the-two', true, false, 30, 2)).toMatchObject({ kind: 'acknowledged',
+        snapshot: { value: { content: original, paragraph: true, scriptureRefs: [reference] } } });
+    });
+
+    it.each(['comment', 'note'] as const)('still accepts a legacy write with an untouched opening from a %s', async type => {
+      await seed(type);
+      expect(await save('one-edit', original, earlier)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { type, content: earlier } } });
+    });
+
+    it('leaves an ordinary note with the current page protocol until the engine session migration', async () => {
+      await seed('note');
+      expect((await save('computer-note-edit', original, intermediate, 1)).kind).toBe('acknowledged');
+      expect((await save('computer-note-return', intermediate, original, 2)).kind).toBe('acknowledged');
+      expect(await save('current-note-page', original, earlier)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { type: 'note', content: earlier } } });
+    });
+  });
+
   it.each([
     { label: 'earlier phone', phoneAt: 15, winner: 'note', legacy: false },
     { label: 'later phone', phoneAt: 90, winner: 'question', legacy: false },

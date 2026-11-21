@@ -83,6 +83,7 @@ export interface StudyNoteContentCapture {
   opening: string;
   time: ActionTime | null;
   requestId?: string;
+  reviewed?: true;
 }
 
 export type EditorCommitAction =
@@ -266,7 +267,7 @@ export type DataCommand = CommandBase & (
       prayerTextActions?: PrayerTextStamps;
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
-      studyNoteContentAction?: DocumentFieldStamp;
+      studyNoteContentAction?: DocumentFieldStamp & { reviewed?: true };
       analysisFrameObservedRevision?: number;
       analysisFrameActionTime?: ActionTime | null;
       studyNoteTypeAction?: DocumentFieldStamp;

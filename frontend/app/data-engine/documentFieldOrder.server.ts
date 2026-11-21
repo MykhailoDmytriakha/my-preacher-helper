@@ -19,6 +19,7 @@ import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { isReturnedSeriesField, SERIES_METADATA_QUEUED, SERIES_METADATA_SETTLED } from './seriesFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
+import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 
 import type { ActionTime } from './actionClock';
 import type { orderDatedRow } from './datedRowOrder.server';
@@ -159,7 +160,7 @@ export function previousRepeatedWordRemovals(raw: unknown, current: ResourceSnap
 }
 
 function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, action: DocumentFieldObservation<FieldValue>,
-  previous: FieldProof, target: DocumentFieldTarget): DocumentFieldOrder {
+  previous: FieldProof, target: DocumentFieldTarget, commentText: boolean): DocumentFieldOrder {
   const { value, time } = previous;
   const before = action.before.value, after = action.after.value, stored = value.value;
   const repeatedWords = target.action === 'sermonRepeatedWordsAction';
@@ -189,10 +190,10 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
   }
   if (!order || !time || !action.time) {
     const prayer = target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction';
-    const needsReview = prayer || repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
+    const needsReview = commentText || prayer || repeatedWords || target.action === 'sermonPreparationTextActions' || equalValues(action.before, value)
       || (target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after));
     const uncertain = needsReview ? [{ path: change.path, ...(prayer && { code: PRAYER_STATUS_REVIEW }),
-      base: change.before, mine: change.after, theirs: value }] : undefined;
+      ...(commentText && { code: COMMENT_TEXT_REVIEW }), base: change.before, mine: change.after, theirs: value }] : undefined;
     return { command, uncertain };
   }
   const incomingWins = order > 0;
@@ -226,6 +227,15 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'commentPlaceAction' && command.commentPlaceAction
     && !matchesCommentPlaceScope(current.value, change.before, command.commentPlaceAction.paragraph)) return { command };
   if (target.action === 'commentPlaceAction' && !command.commentPlaceAction && equalValues(change.before, change.after)) return { command };
+  const commentText = target.action === 'studyNoteContentAction' && current.value?.type === 'comment';
+  const reviewedComment = target.action === 'studyNoteContentAction' && command.studyNoteContentAction?.reviewed === true;
+  if (reviewedComment && !commentText && current.value) {
+    const comment = { exists: true, value: 'comment' };
+    return { command, uncertain: [
+      { path: ['type'], code: COMMENT_TEXT_REVIEW, base: comment, mine: comment, theirs: readField(current.value, ['type']) },
+      { path: change.path, code: COMMENT_TEXT_REVIEW, base: change.before, mine: change.after, theirs: stored },
+    ] };
+  }
   if (target.action === 'studyNoteContentAction' && (equalValues(change.before, change.after)
     || current.value?.type === 'analysis')) return { command };
   const previous = previousField(raw, current, target);
@@ -245,7 +255,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     : target.action === 'sermonPreparationCheckActions' && command.sermonPreparationCheckActions?.[target.field]?.reviewed
       ? SERMON_PREPARATION_CHECK_REVIEW_CHANGED
     : target.action === 'sermonThesisFieldActions' && command.sermonThesisFieldActions?.[target.field]?.reviewed ? SERMON_THESIS_REVIEW_CHANGED
-    : (target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') && command[target.action]?.reviewed ? PRAYER_STATUS_REVIEW : undefined;
+    : (target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') && command[target.action]?.reviewed ? PRAYER_STATUS_REVIEW
+    : reviewedComment ? COMMENT_TEXT_REVIEW : undefined;
   if (reviewCode) {
     if (equalValues(stored, change.after)) return { command, previous };
     if (target.action === 'sermonPreparationCheckActions' && acceptsDocumentField(change.after, target)
@@ -266,20 +277,19 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (uncertain) return { command, uncertain: [uncertain] };
     if (command.commentPlaceAction?.compound || command.commentPlaceAction?.reviewed) return { command, stamp: action?.time ?? null };
   }
-  // The study-note page sends no proof of the text it saw yet; until it does (BUG-20261118-note-page-codex-fixes-wait-for-engine-session)
-  // an unproven note or comment text keeps the plain base check, as before this rule. A text sent with its proof
-  // (the comment window, when it has one) is ordered by the action above.
-  if (!action && tracksScalarReturns(target) && acceptsDocumentField(change.before, target)
+  if (!action && (tracksScalarReturns(target) || commentText) && acceptsDocumentField(change.before, target)
     && !(target.action === 'sermonPlanModeAction' && previous?.initialized && !change.before.exists)
     && !sameFieldOpening(stored, change.before, target) && equalValues(change.after, stored)) {
     return { command, stamp: null, reaffirmedOpening: true };
   }
-  if (!action && tracksOpeningReturns(target) && target.action !== 'studyNoteContentAction' && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
+  // The ordinary note page keeps its existing agreement until it moves to an engine editing session.
+  if (!action && tracksOpeningReturns(target) && (target.action !== 'studyNoteContentAction' || commentText)
+    && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot distinguish a restored value from an untouched opening.
     if (past === null || past?.includes(fieldDigest(stored, target))) {
       const prayer = target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction';
-      return { command, uncertain: [{ path: change.path, ...(prayer && { code: PRAYER_STATUS_REVIEW }),
+      return { command, uncertain: [{ path: change.path, ...(prayer && { code: PRAYER_STATUS_REVIEW }), ...(commentText && { code: COMMENT_TEXT_REVIEW }),
         base: change.before, mine: change.after, theirs: stored }] };
     }
   }
@@ -303,7 +313,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && sameFieldOpening(previous.value, action.before, target)) {
       return { command, stamp: action.time };
     }
-    const order = decideUnobservedField(command, change, action, previous, target);
+    const order = decideUnobservedField(command, change, action, previous, target, commentText);
     if (target.action === 'commentKindAction' && order.displaced && !equalValues(order.displaced.winnerValue, change.after)
       && command.changes.some(item => item.path[0] === 'scriptureRefs' && !equalValues(item.before, item.after))) {
       // A move was checked for the chosen kind. Keep both changes together when that kind loses.
@@ -315,7 +325,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     && equalValues(action.before, stored) && !equalValues(action.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     if (past === null || past?.includes(fieldDigest(stored, target))) {
-      return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
+      return { command, uncertain: [{ path: change.path, ...(commentText && { code: COMMENT_TEXT_REVIEW }),
+        base: change.before, mine: change.after, theirs: stored }] };
     }
   }
   if (equalValues(action.after, stored)) {

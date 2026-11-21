@@ -1011,7 +1011,8 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (target.action === 'prayerAnsweredAtAction') return { ...command, prayerAnsweredAtAction: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'date' || target.field === 'heldAt') return { ...command, [target.action]: stamp };
-  if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
+  if (target.action === 'studyNoteContentAction') return { ...command, studyNoteContentAction: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
+  if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

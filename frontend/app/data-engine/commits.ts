@@ -54,11 +54,12 @@ import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } from './sourceNoteLinkAction';
 import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
-import { captureStudyNoteContent } from './studyNoteContentCapture';
+import { captureStudyNoteContent, type StudyNoteContentObservation } from './studyNoteContentCapture';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
 import type { AccountPreferenceObservations } from './accountPreference';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
+import type { CommentCompanionProofs } from './commentPlaceChoice';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { CouncilFieldActions } from './councilFieldAction';
@@ -145,7 +146,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderStepScriptureActions?: ServiceOrderStepScriptureActions;
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
-  studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
+  studyNoteContentAction?: StudyNoteContentObservation;
   /** Original acknowledged frame revision when a replay includes a newer head. */
   analysisFramePredecessorRevision?: number;
   analysisFrameActionTime?: ActionTime;
@@ -423,7 +424,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
   return { knownIds: new Set(records.map(record => record.id)), groups, next: 1 };
 }
 
-type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; commentCompanions?: CommentCompanionProofs; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   pendingRemoval?: PendingRemovalOpening;
   seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
@@ -753,13 +754,13 @@ export class CommitQueue {
 
   /** Build from the exact chosen copy after retiring its answered predecessors. */
   choiceReplacement(editorId: string, intent: SessionCheckpoint,
-    options: { action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue } = {}): CommitRequest | null {
+    options: { action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
     if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
-    const { action, predecessor, commentTextOpening } = options;
+    const { action, predecessor, commentTextOpening, noteContent, commentCompanions } = options;
     const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, {
-      ...(action && { action }), ...(commentTextOpening && { noteContent: null }),
+      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions,
     });
-    return replacement && { ...replacement, ...(commentTextOpening && { commentTextOpening }) };
+    return replacement && { ...replacement, ...commentCompanions, ...(commentTextOpening && { commentTextOpening }) };
   }
 
   private buildRequest(owner: string, editorId: string, intent: SessionCheckpoint, records: readonly CommitRequest[],
@@ -784,9 +785,11 @@ export class CommitQueue {
         : editorAction?.kind === 'service-order-step-body' ? { field: 'body' as const, change: editorAction.body }
         : editorAction?.kind === 'service-order-step-scripture' ? { field: 'scriptureRefs' as const, change: editorAction.scripture }
           : editorAction?.kind === 'service-order-step-scripture-review' ? { field: 'scriptureReview' as const, changes: editorAction.scriptures } : undefined;
+    const commentCompanions = frozenOptions?.commentCompanions;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+      && !commentCompanions?.commentKindAction && !commentCompanions?.commentPlaceAction
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     const baseline = clone(intent.confirmed);
     const removalLineage = frozenOptions?.pendingRemoval && captureRemovalLineage(frozenOptions.pendingRemoval, baseline, predecessor, records);

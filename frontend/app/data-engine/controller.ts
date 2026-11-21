@@ -7,7 +7,7 @@ import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections, ty
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { keepUncontestedCommentFields } from './commentKindChoice';
-import { commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, keepUncontestedCommentPlace, readCommentPlaceComparison } from './commentPlaceChoice';
+import { commentCompanionProofs, commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, commentTextChoiceBasis, keepUncontestedCommentPlace, keepUncontestedCommentText, readCommentPlaceComparison, readReturnedCommentText } from './commentPlaceChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { isCouncilHeaderComparison } from './councilFieldAction';
@@ -57,6 +57,7 @@ import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
+import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -866,6 +867,7 @@ export class EditorController {
         return review && { fields: review.fields, settled: review.settled };
       }
       if (state.confirmed.resource.collection === 'tags') return readTagColorConflict(state);
+      if (state.confirmed.resource.collection === 'studyNotes') return readReturnedCommentText(state);
       const review = readDocumentTextChoice(state);
       return review?.complete ? review.checkpoint.conflicts : undefined;
     };
@@ -899,7 +901,8 @@ export class EditorController {
     if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates' || shownCollection === 'tags'
       || (shownCollection === 'series' && expected.checkpoint.conflicts.some(isReturnedSeriesField))
       || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison))
-      || (shownCollection === 'groups' && expected.checkpoint.conflicts.some(isGroupStatusComparison)))) {
+      || (shownCollection === 'groups' && expected.checkpoint.conflicts.some(isGroupStatusComparison))
+      || (shownCollection === 'studyNotes' && readReturnedCommentText(expected.checkpoint)))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
@@ -1006,7 +1009,12 @@ export class EditorController {
         const reviewedSeriesText = selection && choice === 'remote'
           && manualSeriesTextChoiceFields(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection, answered.draft);
         const documentTextChoice = (!selection || reviewedSeriesText) && !correction ? readDocumentTextChoice(answered) : undefined;
-        const decided = documentTextChoice?.checkpoint ?? answered;
+        const projectedWords = documentTextChoice?.checkpoint ?? answered;
+        const commentWords = !selection && !correction ? readReturnedCommentText(projectedWords) : undefined;
+        const commentOriginal = commentWords && (ordinary?.first ?? retired.find(request => projectedWords.pending[request.id]
+          && request.result?.kind === 'conflict' && request.result.conflicts.some(conflict => conflict.code === COMMENT_TEXT_REVIEW)));
+        const commentCompanions = commentWords ? commentCompanionProofs(projectedWords, commentOriginal) : {};
+        const decided = commentTextChoiceBasis(projectedWords, commentCompanions);
         const separateGroupStatus = ordinary && !reviewingText ? groupStatusOutsideChoice(decided, ordinary.first.id) : undefined;
         const orderedDateField = decided.confirmed.resource.collection === 'sermons' && decided.conflicts.some(isOrderedPreachDateField);
         const atChoice = decided === source ? remoteChoice?.draft : undefined;
@@ -1298,7 +1306,8 @@ export class EditorController {
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? keepUncontestedCommentPlace(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)));
+            ?? keepUncontestedCommentPlace(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+            ?? keepUncontestedCommentText(decided)));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();
@@ -1353,7 +1362,20 @@ export class EditorController {
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
-        if (placeOpening || textChoice) {
+        if (commentWords && (session.checkpoint().dirty || commentCompanions.commentKindAction || commentCompanions.commentPlaceAction)) {
+          const next = session.checkpoint();
+          const { value, metadata } = next.confirmed;
+          if (!metadata || metadata.deleted || value?.content !== commentWords.stored
+            || next.draft?.content !== (choice === 'local' ? commentWords.mine : commentWords.stored)) {
+            throw Object.assign(new Error('The compared comment text changed'), { code: 'decision-changed' });
+          }
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, next, { commentCompanions,
+            ...(choice === 'local' && { noteContent: { generation: metadata.generation, observedRevision: metadata.revision,
+              opening: commentWords.stored, time: choiceTime ?? null, reviewed: true } }),
+          });
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
+        }
+        if (placeOpening || (textChoice && !commentWords)) {
           const accepted = session.checkpoint();
           const text = placeOpening ? commentPlaceTextChange(decided, placeTail?.content) : undefined;
           if (text && accepted.draft && accepted.confirmed.value) {

@@ -22,7 +22,7 @@ import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
 import { firstCommentReference as readCommentReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
-import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison } from './commentPlaceChoice';
+import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison, readReturnedCommentText } from './commentPlaceChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { readCouncilSummaryChoice as councilSummaryChoice, readPrivateCouncilComparison as privateCouncilComparison } from './councilPrivateFields';
 import { captureCouncilTopicPlacement as captureCouncilPlacement, projectCapturedCouncilTopic as projectCouncilPlacement } from './councilTopicPlacement';
@@ -706,7 +706,9 @@ export function useDocumentActions() {
       const comparedSourceNotes = scope?.records.some(({ owner: recordOwner, checkpoint }) => recordOwner === owner
         && checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.confirmed.resource.id === resource.id
         && sourceNoteLinkComparison(checkpoint));
-      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && ['prayerRequests', 'series', 'planTemplates', 'tags'].includes(resource.collection)))
+      const comparedCommentText = exactField && resource.collection === 'studyNotes' && scope?.records.some(({ owner: recordOwner, checkpoint }) =>
+        recordOwner === owner && checkpoint.confirmed.resource.id === resource.id && readReturnedCommentText(checkpoint));
+      const placementTime = choice === 'mine' && (comparedCommentText || resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && ['prayerRequests', 'series', 'planTemplates', 'tags'].includes(resource.collection)))
         ? actionClock.capture(owner) ?? null : undefined;
       const key = documentChoiceKey(owner, resource);
       let applying = applyingDocumentChoices.get(browser);
@@ -756,7 +758,7 @@ export function useDocumentActions() {
             const held = Object.keys(record.checkpoint.pending);
             const capturedByChoice = place && held.length > 0 && !isDirectLegacyDocumentIntent(held, record.prepared?.operationId);
             if (choice === 'mine') {
-              const seen = commentKindChoiceOpening(record.checkpoint);
+              const seen = comparedCommentText ? undefined : commentKindChoiceOpening(record.checkpoint);
               if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
               const time = seen || place ? actionClock.capture(owner) ?? null : null;
               await editor.keepLocal(scope ? shown(record) : undefined, undefined, place ? time : placementTime);
@@ -774,7 +776,7 @@ export function useDocumentActions() {
             const { checkpoint } = editor.getState();
             if (exactField) publishStoredBody?.(checkpoint.confirmed);
             if (Object.keys(checkpoint.pending).length) continue;
-            if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'title', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
+            if (checkpoint.dirty && exactField && (readReturnedCommentText(record.checkpoint) || documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'title', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
               || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
             else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
           } finally { editor.close({ flush: false }); }

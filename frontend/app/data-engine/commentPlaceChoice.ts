@@ -1,8 +1,11 @@
-import { commentPlaceValue, matchesCommentPlaceScope, replaceCommentReference } from './commentPlaceAction';
-import { equalValues, object, readField } from './fieldValues';
+import { commentPlaceValue, matchesCommentPlaceScope, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
+import { equalValues, object, readField, writeField } from './fieldValues';
 import { diffFields, mergeDocumentFields } from './protocol';
+import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 
-import type { CommentPlaceSeen } from './commentPlaceAction';
+import type { CommentKindObservation } from './commentKindAction';
+import type { CommentPlaceObservation, CommentPlaceSeen } from './commentPlaceAction';
+import type { CommitRequest } from './commits';
 import type { OrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from './types';
@@ -35,8 +38,58 @@ export function readCommentTextComparison(checkpoint: SessionCheckpoint) {
   if (confirmed.resource.collection !== 'studyNotes' || draft?.type !== 'comment' || saved?.type !== 'comment'
     || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation || conflicts.length !== 1
     || !equalValues(conflict.path, ['content']) || typeof draft.content !== 'string' || typeof saved.content !== 'string'
-    || conflict.mine.value !== draft.content || conflict.theirs.value !== saved.content) return undefined;
+    || conflict.mine.value !== draft.content || (conflict.code !== COMMENT_TEXT_REVIEW && conflict.theirs.value !== saved.content)) return undefined;
   return { mine: draft.content, stored: saved.content };
+}
+
+export function readReturnedCommentText(checkpoint: SessionCheckpoint) {
+  if (checkpoint.conflicts[0]?.code === COMMENT_TEXT_REVIEW) return readCommentTextComparison(checkpoint);
+}
+
+export type CommentCompanionProofs = { commentKindAction?: CommentKindObservation; commentPlaceAction?: CommentPlaceObservation };
+
+/** Choosing words may retry separately authored fields with their own original proofs. */
+export function commentCompanionProofs(checkpoint: SessionCheckpoint, request: CommitRequest | undefined): CommentCompanionProofs {
+  const { confirmed, draft, remoteCandidate } = checkpoint;
+  if (!request || !draft || !remoteCandidate?.metadata || remoteCandidate.metadata.generation !== request.baseline.metadata?.generation
+    || request.baseline.resource.id !== confirmed.resource.id || request.baseline.resource.collection !== confirmed.resource.collection) return {};
+  const command = request.command?.kind === 'update' ? request.command : undefined;
+  const change = command?.changes.find(({ path }) => equalValues(path, ['paragraph']));
+  const moved = command && placeOfCommentChange(command.changes);
+  const kind = request.commentKindAction ?? (command?.commentKindAction && change ? { ...command.commentKindAction, before: change.before, after: change.after } : undefined);
+  const place = request.commentPlaceAction ?? (command?.commentPlaceAction && moved ? { ...command.commentPlaceAction, before: moved.before, after: moved.after } : undefined);
+  return {
+    ...(kind && equalValues(readField(draft, ['paragraph']), kind.after)
+      && { commentKindAction: kind }),
+    ...(place && equalValues(commentPlaceValue(draft), place.after)
+      && { commentPlaceAction: place }),
+  };
+}
+
+/** Rebase the merge display for independently ordered siblings; the write still uses their original openings. */
+export function commentTextChoiceBasis(checkpoint: SessionCheckpoint, proofs: CommentCompanionProofs): SessionCheckpoint {
+  const { confirmed, remoteCandidate } = checkpoint;
+  if (!confirmed.value || !remoteCandidate?.value || (!proofs.commentKindAction && !proofs.commentPlaceAction)) return checkpoint;
+  let value = confirmed.value;
+  if (proofs.commentKindAction) value = writeField(value, ['paragraph'], readField(remoteCandidate.value, ['paragraph']));
+  if (proofs.commentPlaceAction) {
+    const rows = replaceCommentReference(value.scriptureRefs, commentPlaceValue(remoteCandidate.value));
+    if (rows !== undefined) value = { ...value, scriptureRefs: rows };
+  }
+  return { ...checkpoint, confirmed: { ...confirmed, value } };
+}
+
+/** The displayed choice decides only words and their transcript receipt. */
+export function keepUncontestedCommentText(checkpoint: SessionCheckpoint): DocumentData | undefined {
+  const { confirmed, draft, remoteCandidate } = checkpoint;
+  if (!readReturnedCommentText(checkpoint) || !confirmed.value || !draft || !remoteCandidate?.value) return undefined;
+  let retained = writeField(draft, ['content'], readField(confirmed.value, ['content']));
+  retained = writeField(retained, ['dictationSourceIds'], readField(confirmed.value, ['dictationSourceIds']));
+  const merged = mergeDocumentFields(confirmed.value, retained, remoteCandidate.value);
+  if (merged.conflicts.length || !merged.value.exists) {
+    throw Object.assign(new Error('Other comment changes need review'), { code: 'decision-changed' });
+  }
+  return merged.value.value as DocumentData;
 }
 
 export function commentPlaceChoiceOpening(checkpoint: SessionCheckpoint): CommentPlaceSeen | undefined {

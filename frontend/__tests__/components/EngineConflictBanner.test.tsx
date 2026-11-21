@@ -316,6 +316,69 @@ it.each(['settled', 'queued'] as const)('preserves the %s original answer and da
   if (order === 'settled') expect(retried?.kind === 'update' && retried.changes.map(change => change.path)).toEqual([['status']]);
 });
 
+it.each(['stored', 'mine', 'newer words', 'signed kind', 'reaffirmed kind'] as const)('reviews returned comment text while preserving other fields (%s)', async side => {
+  actions = null;
+  const comment = { collection: 'studyNotes', id: 'returned-comment' };
+  const original = 'Opening comment body', earlier = 'Earlier offline comment', newer = 'Newer comment during comparison';
+  const scriptureRefs = [{ id: 'verse', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 }];
+  const reaffirmed = side === 'reaffirmed kind';
+  const signedKind = side === 'signed kind' || reaffirmed;
+  const openingKind = !signedKind, paragraph = openingKind || reaffirmed;
+  const choice = side === 'stored' || signedKind ? 'stored' : 'mine';
+  const originalTime = { earliestMs: 1_800_000_000_015, latestMs: 1_800_000_000_019 };
+  const value = { userId: 'owner', type: 'comment', content: original, paragraph: openingKind, scriptureRefs, tags: ['Initial tag'], isDraft: false };
+  const h = documentEngineHarness({ resource: comment, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+  await waitFor(() => expect(actions?.ready).toBe(true));
+  h.silentRemote({ content: 'Temporary computer comment', ...(signedKind && { paragraph: true }) });
+  h.silentRemote({ content: original, paragraph });
+  const send = jest.mocked(h.transport.send);
+  const field = (value: string | boolean | typeof scriptureRefs) => ({ exists: true, value });
+  const post = send.getMockImplementation()!;
+  send.mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: h.server, conflicts: [
+    { path: ['content'], code: 'comment-text-review', base: field(original), mine: field(earlier), theirs: field(original) },
+  ] }));
+  if (signedKind) send.mockImplementationOnce(command => {
+    if (command.kind !== 'update') throw new Error('Expected the retry of the original comment kind');
+    expect(command.commentKindAction).toEqual({ observedRevision: 1, time: originalTime, reference: field(scriptureRefs) });
+    expect(command.studyNoteContentAction).toBeUndefined();
+    // The transactional server keeps the later return of kind. The harness uses a plain merge.
+    return reaffirmed ? post(command) : post({ ...command, changes: command.changes.filter(change => change.path[0] !== 'paragraph') });
+  });
+  await act(async () => {
+    await actions!.submit(comment, { kind: 'update', update: current => ({ ...current!, content: earlier,
+      ...(signedKind && { paragraph: true }), ...(reaffirmed ? {} : { tags: ['Initial tag', 'Independent tag'] }) }) }, { noteContent: null,
+      ...(signedKind && { action: { kind: 'comment-kind' as const, commentKind: { time: originalTime,
+        seen: { generation: 'g1', revision: 1, kind: field(false), reference: field(scriptureRefs) } } } }),
+    });
+    await settleEngine();
+  });
+  const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent(earlier);
+  expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(original);
+  const keep = () => fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+  if (side === 'newer words') {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      h.silentRemote({ content: newer });
+      keep();
+      await waitFor(() => expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(newer));
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally { error.mockRestore(); }
+  }
+  if (choice === 'stored') await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
+  else keep();
+  await waitFor(() => expect(h.server.value).toMatchObject({ type: 'comment', content: choice === 'stored' ? original : earlier,
+    paragraph, scriptureRefs, tags: reaffirmed ? ['Initial tag'] : ['Initial tag', 'Independent tag'] }));
+  await waitFor(() => expect(panel).not.toBeInTheDocument());
+  if (reaffirmed) await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+  const replacement = send.mock.calls.at(-1)?.[0];
+  if (choice === 'stored') expect(replacement?.kind === 'update' && replacement.changes.map(change => change.path))
+    .toEqual(reaffirmed ? [['paragraph']] : signedKind ? [['paragraph'], ['tags']] : [['tags']]);
+  else expect(replacement).toMatchObject({ studyNoteContentAction: { observedRevision: side === 'mine' ? 3 : 4, reviewed: true } });
+});
+
 it('shows the projected Scripture list in a choice that also changes the service title', async () => {
   process.env[ON_ENGINE] = 'serviceOrders';
   actions = null;

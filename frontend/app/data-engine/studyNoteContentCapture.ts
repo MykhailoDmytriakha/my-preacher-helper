@@ -6,6 +6,10 @@ import type { CommitRequest } from './commits';
 import type { DocumentFieldObservation } from './documentFieldAction';
 import type { DocumentData, FieldValue, ResourceSnapshot, StudyNoteContentCapture } from './types';
 
+export const COMMENT_TEXT_REVIEW = 'comment-text-review';
+
+export type StudyNoteContentObservation = DocumentFieldObservation<FieldValue> & { reviewed?: true };
+
 /** Follow exact same-document saves that carried the visible text without authoring it. */
 function contentPredecessor(baseline: ResourceSnapshot, opening: string, predecessor: CommitRequest | undefined, records: readonly CommitRequest[]) {
   if (!predecessor) return undefined;
@@ -25,12 +29,13 @@ function contentPredecessor(baseline: ResourceSnapshot, opening: string, predece
 }
 
 export function captureStudyNoteContent(baseline: ResourceSnapshot, draft: DocumentData | null,
-  predecessor: CommitRequest | undefined, capture: StudyNoteContentCapture | null | undefined, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
+  predecessor: CommitRequest | undefined, capture: StudyNoteContentCapture | null | undefined, records: readonly CommitRequest[]): StudyNoteContentObservation | undefined {
   const { metadata, resource, value } = baseline;
   const after = draft?.content;
   // Null explicitly marks a screen whose edit opening could not be verified.
   if (capture === null || resource.collection !== 'studyNotes' || !metadata || metadata.deleted || value?.type === 'analysis'
-    || draft?.type === 'analysis' || typeof after !== 'string') return;
+    || draft?.type === 'analysis' || typeof after !== 'string'
+    || (capture?.reviewed && (value?.type !== 'comment' || capture.opening !== value.content))) return;
 
   const predecessorWords = predecessor?.value?.content;
   const sameGeneration = predecessor?.baseline.metadata?.generation === metadata.generation;
@@ -43,5 +48,5 @@ export function captureStudyNoteContent(baseline: ResourceSnapshot, draft: Docum
     || (capture && capture.generation !== metadata.generation)) return;
   const time = capture?.time == null ? null : boundedActionTime(capture.time) ?? null;
   return { before: { exists: true, value: opening }, after: { exists: true, value: after }, observedRevision, time,
-    ...(previous && { predecessorOperationId: previous.id }) };
+    ...(previous && { predecessorOperationId: previous.id }), ...(capture?.reviewed && { reviewed: true }) };
 }

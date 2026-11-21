@@ -76,6 +76,7 @@ import { metadataAfterServiceOrderStepPlacement, SERVICE_ORDER_STEP_PLACEMENT_HI
 import { orderServiceStepScripture } from './serviceOrderStepScripture.server';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { metadataAfterSourceNoteLinks, orderSourceNoteLinks, retainedSourceNoteLinkHistory, SOURCE_NOTE_LINK_HISTORY, type SourceNoteLinkHistoryEntry } from './sourceNoteLinkOrder.server';
+import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 import { hasStudyNoteReferenceReview, isOrdinaryReferenceDocument, studyNoteReferencesPath, validStudyNoteReferenceAliases } from './studyNoteReferenceMerge';
 import { metadataAfterStudyNoteReferences, planStudyNoteReferenceOrder, retainedStudyNoteReferenceHistory,
   readSplitStudyNoteReferenceHistory, REFERENCE_HISTORY_PARTS, splitLargeStudyNoteReferenceHistory,
@@ -545,7 +546,7 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
       if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_SUBPOINT_REVIEW && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED
         && existing.code !== COUNCIL_TOPIC_TEXT_SETTLED && existing.code !== COUNCIL_TOPIC_TEXT_QUEUED
         && existing.code !== PRAYER_STATUS_REVIEW && existing.code !== PRAYER_STATUS_SETTLED && existing.code !== PRAYER_STATUS_QUEUED
-        && !isStaleSermonFieldReview(existing.code) && !isOrderedGroupFlowText(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
+        && existing.code !== COMMENT_TEXT_REVIEW && !isStaleSermonFieldReview(existing.code) && !isOrderedGroupFlowText(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
