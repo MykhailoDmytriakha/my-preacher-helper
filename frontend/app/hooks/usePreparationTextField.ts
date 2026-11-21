@@ -65,15 +65,23 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
       discard: () => form.discardRecovery(source) })),
     recover: form.recover });
   const encode = (next: T) => codec.save(next, codec.read(valueAt(form.initialData, path)));
-  const comparison = form.comparison ? { identity: form.comparison.identity, mine: codec.describe(codec.read(valueAt(form.comparison.mine, path))),
-    stored: codec.describe(codec.read(valueAt(form.comparison.remotePreview ?? form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined,
-    ...(form.comparison.kind === 'sermon-goal-type' && { valueKind: 'field' as const, scopedChoice: true as const }) } : undefined;
+  const reviewed = form.comparison;
+  const shortThesisReview = reviewed?.preparationField !== undefined && reviewed.preparationField !== 'goalType';
+  const describe = (value: Json | undefined) => {
+    const words = codec.describe(codec.read(value));
+    if (!shortThesisReview) return words;
+    return value === undefined ? t('legacyRecovery.absent') : words || t('dataSync.emptyField');
+  };
+  const comparison = reviewed ? { identity: reviewed.identity, mine: describe(valueAt(reviewed.mine, path)),
+    stored: describe(valueAt(reviewed.remotePreview ?? reviewed.stored.value, path)), title: captionKey ? t(captionKey) : undefined,
+    ...(reviewed.preparationField && { scopedChoice: true as const,
+      ...(reviewed.preparationField === 'goalType' && { valueKind: 'field' as const }) }) } : undefined;
   const selected = codec.read(value);
   const generation = document.confirmed?.metadata?.generation;
   const canSave = !codec.valid || codec.valid(selected);
   const decision = manualFormDecision(form, comparison);
   if (decision) decision.keepLocal = () => form.keepLocal(
-    current => withValue(current, path, encode(codec.read(valueAt(current, path)))),
+    shortThesisReview ? undefined : current => withValue(current, path, encode(codec.read(valueAt(current, path)))),
     captureTime ? form.captureDocumentMetadataAction() : undefined,
   );
   if (decision?.status && (!canSave || form.comparison?.canKeepLocal === false)) decision.status = { ...decision.status, canKeepLocal: false };

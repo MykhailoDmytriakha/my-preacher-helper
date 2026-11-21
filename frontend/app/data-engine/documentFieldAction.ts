@@ -1,5 +1,5 @@
 import { isGroupStatus } from '@/utils/groupDocument';
-import { isSermonGoalType, preparationConfirmationPaths, preparationTextPaths, repeatedWordsPath, type PreparationConfirmation, type PreparationTextField, type SermonGoalType } from '@/utils/preparationFieldValues';
+import { isSermonGoalType, preparationConfirmationPaths, preparationTextPaths, preparationThesisPaths, repeatedWordsPath, type PreparationConfirmation, type PreparationTextField, type SermonGoalType, type SermonThesisField } from '@/utils/preparationFieldValues';
 import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, type OrdinaryStudyNoteType } from '@/utils/studyNoteType';
 
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField, type AccountPreferenceTarget } from './accountPreference';
@@ -32,10 +32,11 @@ export const SERMON_CHURCH_REVIEW_CHANGED = 'sermon-church-review-changed';
 export const SERMON_GOAL_TYPE_REVIEW_CHANGED = 'sermon-goal-type-review-changed';
 export const SERMON_PLAN_MODE_REVIEW_CHANGED = 'sermon-plan-mode-review-changed';
 export const SERMON_PREPARATION_CHECK_REVIEW_CHANGED = 'sermon-preparation-check-review-changed';
+export const SERMON_THESIS_REVIEW_CHANGED = 'sermon-thesis-review-changed';
 export function isStaleSermonFieldReview(code: string | undefined): boolean {
   return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED
     || code === SERMON_GOAL_TYPE_REVIEW_CHANGED || code === SERMON_PLAN_MODE_REVIEW_CHANGED
-    || code === SERMON_PREPARATION_CHECK_REVIEW_CHANGED;
+    || code === SERMON_PREPARATION_CHECK_REVIEW_CHANGED || code === SERMON_THESIS_REVIEW_CHANGED;
 }
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
@@ -46,7 +47,7 @@ export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
 
 type SermonReviewProof = Pick<DocumentFieldStamp, 'time' | 'observedRevision'>;
 export type SermonMetadataReviewProofs = {
-  field: 'title' | 'verse' | 'church' | 'goalType';
+  field: 'title' | 'verse' | 'church' | 'goalType' | SermonThesisField;
   title?: SermonReviewProof;
   verse?: SermonReviewProof;
   church?: SermonReviewProof;
@@ -120,12 +121,12 @@ const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 's
 export const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
   action: 'sermonGoalTypeAction', proof: 'sermonGoalType', causal: true, optional: true, accepts: isSermonGoalType } as const;
 
-export type SermonThesisField = 'questionWord' | 'pluralKey';
-export type SermonThesisObservations = Partial<Record<SermonThesisField, DocumentFieldObservation<FieldValue>>>;
+export type { SermonThesisField } from '@/utils/preparationFieldValues';
+export type SermonThesisObservations = Partial<Record<SermonThesisField, ReviewedSermonFieldObservation<FieldValue>>>;
 
 type SermonThesisTarget = {
   field: SermonThesisField;
-  path: readonly ['preparation', 'thesis', SermonThesisField];
+  path: (typeof preparationThesisPaths)[SermonThesisField];
   action: 'sermonThesisFieldActions';
   proof: `thesis-${SermonThesisField}`;
   accepts: (value: unknown) => value is string;
@@ -133,8 +134,8 @@ type SermonThesisTarget = {
   optional: true;
 };
 
-const SERMON_THESIS_TARGETS: readonly SermonThesisTarget[] = (['questionWord', 'pluralKey'] as const).map(field => ({
-  field, path: ['preparation', 'thesis', field], action: 'sermonThesisFieldActions', proof: `thesis-${field}`,
+const SERMON_THESIS_TARGETS: readonly SermonThesisTarget[] = (Object.keys(preparationThesisPaths) as SermonThesisField[]).map(field => ({
+  field, path: preparationThesisPaths[field], action: 'sermonThesisFieldActions', proof: `thesis-${field}`,
   accepts: (value): value is string => typeof value === 'string', causal: true, optional: true,
 }));
 
@@ -756,7 +757,9 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   const repeatedWords = captureStoredMetadataField(baseline, predecessor, draft, SERMON_REPEATED_WORDS, time, records);
   const thesis = SERMON_THESIS_TARGETS.flatMap(target => {
     const action = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
-    return action?.after.exists ? [[target.field, action] as const] : [];
+    const reviewed = sermonMetadataReview?.field === target.field;
+    return action && (action.after.exists || reviewed)
+      ? [[target.field, { ...action, ...(reviewed && { reviewed: true as const }) }] as const] : [];
   });
   const preparationText = PREPARATION_TEXT_TARGETS.flatMap(target => {
     const action = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
@@ -980,11 +983,11 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.action === 'sermonPreparationCheckActions') {
-    return { ...command, sermonPreparationCheckActions: { ...command.sermonPreparationCheckActions,
+  if (target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions') {
+    return { ...command, [target.action]: { ...command[target.action],
       [target.field]: { ...stamp, ...(action.reviewed && { reviewed: true }) } } };
   }
-  if (target.action === 'sermonThesisFieldActions' || target.action === 'prayerTextActions' || target.action === 'sermonPreparationTextActions') {
+  if (target.action === 'prayerTextActions' || target.action === 'sermonPreparationTextActions') {
     return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };
   }
   if (target.action === 'sermonPlanModeAction') {

@@ -34,6 +34,18 @@ export function preparationTextField(path: readonly string[]): PreparationTextFi
   return target.length === path.length && target.every((part, index) => part === path[index]) ? field : undefined;
 }
 
+export const preparationThesisPaths = {
+  questionWord: ['preparation', 'thesis', 'questionWord'],
+  pluralKey: ['preparation', 'thesis', 'pluralKey'],
+} as const;
+export type SermonThesisField = keyof typeof preparationThesisPaths;
+
+export function preparationThesisField(path: readonly string[]): SermonThesisField | undefined {
+  const field = path[2] as SermonThesisField;
+  if (path.length !== 3 || !Object.hasOwn(preparationThesisPaths, field)) return undefined;
+  return preparationThesisPaths[field].every((part, index) => part === path[index]) ? field : undefined;
+}
+
 export const preparationConfirmationPaths = {
   readAndPrayedConfirmed: ['preparation', 'spiritual', 'readAndPrayedConfirmed'],
   readWholeBookOnceConfirmed: ['preparation', 'textContext', 'readWholeBookOnceConfirmed'],

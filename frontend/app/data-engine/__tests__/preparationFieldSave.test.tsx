@@ -480,6 +480,84 @@ it.each([
 });
 
 
+it.each([
+  { field: 'questionWord', placeholder: 'questionPh', choice: 'local' },
+  { field: 'pluralKey', placeholder: 'pluralKeyPh', choice: 'stored' },
+] as const)('compares a restored short thesis word and retains its transition ($field)', async ({ field, placeholder, choice }) => {
+  const opening = { questionWord: 'Why?', pluralKey: 'Reasons', transitionSentence: 'Opening transition' };
+  const saved = { ...opening, transitionSentence: 'Independently saved transition' };
+  const authored = field === 'questionWord' ? 'How?' : 'Promises';
+  const t = await setup({ section: 'thesis', withStatus: true, initialValue: { ...initial, preparation: { thesis: opening } } });
+  const text = (value: string) => ({ exists: true, value });
+  try {
+    const input = screen.getByPlaceholderText('wizard.steps.thesis.oneSentence.' + placeholder);
+    await waitFor(() => expect(input).toBeEnabled());
+    await act(async () => { t.h.engine.setOnline(false); });
+    fireEvent.change(input, { target: { value: authored } });
+    fireEvent.click(screen.getByTitle('actions.save'));
+    await waitFor(async () => expect((await t.h.commits.list('owner')).some(request =>
+      (request.value?.preparation as { thesis: typeof opening })?.thesis[field] === authored)).toBe(true));
+    t.h.silentRemote({ preparation: { thesis: saved } });
+    jest.mocked(t.h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: t.h.server,
+      conflicts: [{ path: ['preparation', 'thesis', field], base: text(opening[field]), mine: text(authored), theirs: text(opening[field]) }],
+    }));
+    await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent(authored);
+    expect(comparison).toHaveTextContent(opening[field]);
+    fireEvent.click(within(comparison).getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'dataSync.useStoredVersion' }));
+    if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    const expected = choice === 'local' ? authored : opening[field];
+    await waitFor(() => expect(input).toHaveValue(expected));
+    await waitFor(() => expect(t.h.server.value?.preparation).toEqual({ thesis: { ...saved, [field]: expected } }));
+    if (choice === 'local') expect(t.h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      sermonThesisFieldActions: { [field]: expect.objectContaining({ observedRevision: 2, reviewed: true }) },
+    }));
+  } finally { await finish(t.view); }
+});
+
+it('keeps a missing legacy thesis field distinct from a saved empty string', async () => {
+  jest.mocked(useAuth).mockReturnValue({ user: { uid: 'owner' } } as never);
+  const opening = { questionWord: 'Why?', pluralKey: 'Reasons', transitionSentence: 'Opening transition' };
+  const saved = { ...opening, questionWord: '', transitionSentence: 'New transition' };
+  const path = ['preparation', 'thesis', 'questionWord'];
+  const h = documentEngineHarness({ resource, value: { ...initial, preparation: { thesis: opening } },
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false } });
+  const source = h.createBrowser();
+  source.engine.setOwner('owner');
+  source.engine.setOnline(false);
+  try {
+    const editor = await source.engine.openEditor(resource, source.editorId(resource, 'sermon'));
+    const form = editor.form('prep-thesis-questionWord', [path]);
+    await form.begin();
+    const { questionWord: _removed, ...remaining } = opening;
+    await form.save(current => ({ ...current, preparation: { thesis: remaining } }));
+    h.silentRemote({ preparation: { thesis: saved } });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+      conflicts: [{ path, base: { exists: true, value: opening.questionWord }, mine: { exists: false }, theirs: { exists: true, value: '' } }],
+    }));
+    source.engine.setOnline(true);
+    await source.engine.retry();
+    await waitFor(() => expect(editor.getState().result?.kind).toBe('conflict'));
+  } finally { source.dispose(); }
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const view = render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon' }}>
+    <PageField section="thesis" withStatus />
+  </DataDocumentProvider></DataEngineProvider>);
+  try {
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent('legacyRecovery.absent');
+    expect(comparison).toHaveTextContent('dataSync.emptyField');
+    fireEvent.click(within(comparison).getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    await waitFor(() => expect(h.server.value?.preparation).toEqual({ thesis: { pluralKey: saved.pluralKey, transitionSentence: saved.transitionSentence } }));
+    expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      sermonThesisFieldActions: { questionWord: expect.objectContaining({ reviewed: true }) },
+    }));
+  } finally { await finish(view); }
+});
+
 it.each(['authorIntent', 'homileticPlan'] as const)('does not silently overwrite the later stored %s text', async section => {
   const opening = { authorIntent: 'Opening author intent', homileticPlan: { modernTranslation: 'Opening modern translation' } };
   const t = await setup({ section, withStatus: true, initialValue: { ...initial, preparation: { ...initial.preparation, ...opening } } });

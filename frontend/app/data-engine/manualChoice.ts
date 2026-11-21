@@ -22,7 +22,7 @@ import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
 import { isReturnedSeriesField, seriesReviewFrames } from './seriesFieldAction';
-import { isReturnedSermonTitle, isSermonChurchReview, isSermonGoalTypeReview, isSermonVerseReview, keepUncontestedSermonFields, readSermonConflictField, sermonHeaderReviewFrames, withReviewedSermonChurchDates } from './sermonFieldChoice';
+import { isReturnedSermonTitle, isSermonChurchReview, isSermonVerseReview, keepUncontestedSermonFields, readSermonConflictField, reviewedSermonPreparationField, sermonHeaderReviewFrames, withReviewedSermonChurchDates } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -83,12 +83,13 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
       const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) =>
-        isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict) || isSermonGoalTypeReview(conflict)
+        isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict) || reviewedSermonPreparationField(conflict) !== undefined
         : record.resource.collection === 'series' ? isReturnedSeriesField : undefined;
       const savedFieldReview = returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
           && record.selection.some(path => equalValues(path, conflict.path)));
       const fieldScope = request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed || request.sermonGoalTypeAction?.reviewed
+        || Object.values(request.sermonThesisFieldActions ?? {}).some(action => action?.reviewed)
         ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
       const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);

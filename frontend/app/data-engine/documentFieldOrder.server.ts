@@ -11,7 +11,7 @@ import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.
 import { councilStatusOf, matchesCouncilLifecycle, sameCouncilDate } from './councilFieldAction';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
 import { PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_PREPARATION_CHECK_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_PREPARATION_CHECK_REVIEW_CHANGED, SERMON_THESIS_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
@@ -74,7 +74,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 const tracksScalarReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction'
     || target.action === 'sermonGoalTypeAction' || target.action === 'sermonPlanModeAction' || target.action === 'sermonPreparationCheckActions'
-    || target.action === 'serviceOrderTitleAction'
+    || target.action === 'sermonThesisFieldActions' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'groupStatusAction'
     || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
@@ -82,8 +82,7 @@ const tracksScalarReturns = (target: DocumentFieldTarget) =>
     || (target.action === 'seriesFieldActions' && target.field !== 'description');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
-  tracksScalarReturns(target) || target.action === 'sermonThesisFieldActions'
-    || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
+  tracksScalarReturns(target) || target.action === 'sermonRepeatedWordsAction' || isLongTextDocumentField(target);
 
 const wordDigest = (word: string | undefined) => word === undefined ? undefined
   : createHash('sha256').update(JSON.stringify(word)).digest('base64url');
@@ -127,7 +126,8 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
   const { before, after } = change;
   if (!object(action) || ('path' in target && !after.exists
     && target.action !== 'accountPreferenceActions' && target.action !== 'sermonPreparationTextActions'
-    && !(target.action === 'sermonPreparationCheckActions' && action.reviewed === true)) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
+    && !((target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions') && action.reviewed === true))
+    || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
     || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
@@ -239,7 +239,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     : target.action === 'sermonGoalTypeAction' && command.sermonGoalTypeAction?.reviewed ? SERMON_GOAL_TYPE_REVIEW_CHANGED
     : target.action === 'sermonPlanModeAction' && command.sermonPlanModeAction?.reviewed ? SERMON_PLAN_MODE_REVIEW_CHANGED
     : target.action === 'sermonPreparationCheckActions' && command.sermonPreparationCheckActions?.[target.field]?.reviewed
-      ? SERMON_PREPARATION_CHECK_REVIEW_CHANGED : undefined;
+      ? SERMON_PREPARATION_CHECK_REVIEW_CHANGED
+    : target.action === 'sermonThesisFieldActions' && command.sermonThesisFieldActions?.[target.field]?.reviewed ? SERMON_THESIS_REVIEW_CHANGED : undefined;
   if (reviewCode) {
     if (equalValues(stored, change.after)) return { command, previous };
     if (target.action === 'sermonPreparationCheckActions' && acceptsDocumentField(change.after, target)

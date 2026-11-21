@@ -7028,6 +7028,20 @@ describe('transactional DataEngine server', () => {
         .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }], snapshot: { value: { preparation: { thesis: opening } } } });
     });
 
+    it.each(['questionWord', 'pluralKey'] as const)('keeps the explicitly reaffirmed %s after an older packet', async field => {
+      const owner = await seed();
+      const transition = 'Separately saved transition';
+      const reaffirm = save('reaffirmed-word', field, thesis(field, opening[field], transition), null, thesis(field, 'intermediate word'));
+      expect((await processCommand(owner, { ...update(reaffirm.operationId, 'thesis-short-seed'), changes: reaffirm.changes })).kind)
+        .toBe('acknowledged');
+      const old = save('old-word', field, thesis(field, ''), null);
+      const delayed = { ...update(old.operationId, 'thesis-short-seed'), changes: old.changes };
+      const answer = await processCommand(owner, delayed);
+      expect(answer).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }],
+        snapshot: { value: { preparation: { thesis: thesis(field, opening[field], transition) } } } });
+      expect(await processCommand(owner, delayed)).toEqual(answer);
+    });
+
     it('recognizes the exact thesis predecessor after a proven later save chose the same value', async () => {
       const owner = await seed();
       const field = 'pluralKey';
@@ -7051,6 +7065,23 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, save('desktop', field, thesis(field, 'steps'), 40))).toMatchObject({ kind: 'acknowledged' });
       expect(await processCommand(owner, save('phone', field, thesis(field, 'promises'), null)))
         .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }] });
+    });
+
+    it('requires a fresh reviewed thesis word and retains the separately written transition', async () => {
+      const owner = await seed();
+      const field = 'questionWord';
+      const newer = thesis(field, 'when', 'A later transition');
+      expect((await processCommand(owner, save('latest', field, newer, 40))).kind).toBe('acknowledged');
+      const reviewed = (id: string, before: typeof opening, revision: number) => {
+        const command = save(id, field, thesis(field, '', before.transitionSentence), 80, before, revision);
+        return { ...command, sermonThesisFieldActions: { [field]: { ...stamp(80, revision), reviewed: true as const } } };
+      };
+      expect(await processCommand(owner, reviewed('stale-choice', opening, 1))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field], code: 'sermon-thesis-review-changed' }],
+      });
+      expect(await processCommand(owner, reviewed('fresh-choice', newer, 2))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { preparation: { thesis: { ...newer, [field]: '' } } } },
+      });
     });
   });
 

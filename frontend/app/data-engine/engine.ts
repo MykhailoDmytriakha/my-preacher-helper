@@ -2910,7 +2910,7 @@ export class DataEngine {
           const settled = controller.getState().checkpoint.draft;
           const field = comparison?.kind === 'returned-sermon-title' ? 'title'
             : comparison?.kind === 'returned-sermon-verse' ? 'verse' : comparison?.kind === 'sermon-church' ? 'church'
-              : comparison?.kind === 'sermon-goal-type' ? 'goalType' : undefined;
+              : comparison?.preparationField;
           const checkedAction: EditorCommitAction | undefined = field ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             sermonMetadataReview: {
@@ -3048,7 +3048,7 @@ export class DataEngine {
         }
         const checkpoint = parent.controller!.getState().checkpoint;
         const exact = exactRequest(initial, checkpoint);
-        if (exact && (expected?.kind === 'returned-sermon-verse' || expected?.kind === 'sermon-church' || expected?.kind === 'sermon-goal-type')) {
+        if (exact && (expected?.kind === 'returned-sermon-verse' || expected?.kind === 'sermon-church' || expected?.preparationField)) {
           const saved = await this.readWriteTarget(resource).catch(() => null);
           active(); assertComparison();
           if (!saved || !canReplaceSnapshot(expected.stored, saved)) {

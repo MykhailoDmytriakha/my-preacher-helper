@@ -10230,3 +10230,12 @@ Sermons → open a sermon → Preparation. Both confirmation checkboxes now comp
 Five regressions reproduced before the fix, and a sixth reproduced the equivalent unchecked review issue found during review. The related gate passed 5,870 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore verified both checkboxes, both comparison buttons, reopening and both proven orders. Peak sampled Next.js memory was 4.59 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/prep-check-return-20261120/verification.md` in the local case.
 
 After authorized deployment, mark a checkbox offline in one short session on a disposable sermon. In a second session mark and unmark that checkbox, then set the other checkbox. Reconnect, verify chronology or the field comparison and reload. Verify both checkboxes and the independently saved goal statement. Close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect restored thesis words
+
+Sermons → open a sermon → Preparation → Thesis. The question and plural key have an exact field comparison after a legacy reaffirmation or return. The choice checks the displayed version before it is committed and preserves the raw selection, including a missing field or an explicitly empty string. Independent transition text and the other short field remain.
+
+Four regressions reproduced on the previous commit. The related gate passed 5,876 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore covered both fields, both choices, reopening and both proved orders. Peak sampled Next.js memory was 4.57 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/thesis-word-return-20261120/verification.md` in the local case.
+
+After authorized deployment, open the Thesis step of one disposable sermon in two short sessions. Save or clear a word offline. On the other device change it and return to the opening value, then save an independent transition. Reconnect and verify chronology or the scoped comparison. Reload to check both words and the transition. Close both sessions.

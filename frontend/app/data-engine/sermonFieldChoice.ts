@@ -1,10 +1,10 @@
-import { preparationConfirmationField, preparationTextField } from '@/utils/preparationFieldValues';
+import { preparationConfirmationField, preparationTextField, preparationThesisField } from '@/utils/preparationFieldValues';
 import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflictText, withSermonNoteText } from '@/utils/sermonNoteText';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import { isSermonChurch } from './churchFieldValue';
 import { existingRowDate, PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_THESIS_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
@@ -30,7 +30,8 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
     || isPlanCellPath(path) || sermonNoteConflictTarget(path) !== undefined || outlineTitleConflictTarget(path) !== undefined
-    || preparationConfirmationField(path) !== undefined || preparationTextField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
+    || preparationConfirmationField(path) !== undefined || preparationTextField(path) !== undefined
+    || preparationThesisField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || thoughtTextConflictId(path) !== undefined || preachDateNoteConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -50,10 +51,13 @@ export function isSermonChurchReview(conflict: ConflictDetail): boolean {
     && isSermonChurch(conflict.mine) && isSermonChurch(conflict.theirs);
 }
 
-export function isSermonGoalTypeReview(conflict: ConflictDetail): boolean {
-  return equalValues(conflict.path, SERMON_GOAL_TYPE.path)
-    && (!conflict.code || conflict.code === SERMON_GOAL_TYPE_REVIEW_CHANGED)
-    && acceptsDocumentField(conflict.mine, SERMON_GOAL_TYPE) && acceptsDocumentField(conflict.theirs, SERMON_GOAL_TYPE);
+export function reviewedSermonPreparationField(conflict: ConflictDetail) {
+  if (equalValues(conflict.path, SERMON_GOAL_TYPE.path) && (!conflict.code || conflict.code === SERMON_GOAL_TYPE_REVIEW_CHANGED)
+    && acceptsDocumentField(conflict.mine, SERMON_GOAL_TYPE) && acceptsDocumentField(conflict.theirs, SERMON_GOAL_TYPE)) return 'goalType' as const;
+  if (conflict.code && conflict.code !== SERMON_THESIS_REVIEW_CHANGED) return;
+  if ((conflict.mine.exists && typeof conflict.mine.value !== 'string')
+    || (conflict.theirs.exists && typeof conflict.theirs.value !== 'string')) return;
+  return preparationThesisField(conflict.path);
 }
 
 export function withReviewedSermonChurchDates(opening: DocumentData | null, draft: DocumentData | null,
@@ -103,7 +107,7 @@ export function sermonHeaderReviewFrames(basis: ResourceSnapshot, reviewed: Docu
 export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
     || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path)
-      || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]) || isSermonGoalTypeReview(conflicts[0]))));
+      || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]) || reviewedSermonPreparationField(conflicts[0]) !== undefined)));
 }
 
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
@@ -158,7 +162,8 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
   if (path.length === 1) return withField(data, path[0], selected);
-  if (preparationConfirmationField(path) || preparationTextField(path) || equalValues(path, SERMON_GOAL_TYPE.path)) return writeField(data, path, selected);
+  if (preparationConfirmationField(path) || preparationTextField(path) || preparationThesisField(path)
+    || equalValues(path, SERMON_GOAL_TYPE.path)) return writeField(data, path, selected);
   const [field, id, ...leaf] = path;
   const rows = data[field];
   if (!Array.isArray(rows) || !rows.some(value => isRow(value, id))) return undefined;
