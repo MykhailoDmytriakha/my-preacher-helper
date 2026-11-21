@@ -46,7 +46,7 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
-import { readServiceOrderTitleConflict } from './rowConflictDetails';
+import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
@@ -860,6 +860,7 @@ export class EditorController {
         const review = readCouncilTopicTextReview(state);
         return review && { fields: review.fields, settled: review.settled };
       }
+      if (state.confirmed.resource.collection === 'tags') return readTagColorConflict(state);
       const review = readDocumentTextChoice(state);
       return review?.complete ? review.checkpoint.conflicts : undefined;
     };
@@ -890,7 +891,7 @@ export class EditorController {
     remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const shownCollection = expected?.checkpoint.confirmed.resource.collection;
-    if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates'
+    if (expected && !selection && !correction && (shownCollection === 'prayerRequests' || shownCollection === 'planTemplates' || shownCollection === 'tags'
       || (shownCollection === 'series' && readDocumentTextChoice(expected.checkpoint)?.fields.includes('title'))
       || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison)))) {
       expected = await this.refreshDocumentTextChoice(expected);
@@ -1353,6 +1354,19 @@ export class EditorController {
             if (!later) throw new Error('The later comment text could not be captured');
             session.applyCommit(later); replacements.push(later);
           }
+        }
+        const colorReview = !selection && !correction && readTagColorConflict(decided);
+        if (choice === 'local' && colorReview) {
+          const next = session.checkpoint();
+          const { value, metadata } = next.confirmed;
+          if (!metadata || metadata.deleted || value?.color !== colorReview.stored || next.draft?.color !== colorReview.mine) {
+            throw Object.assign(new Error('The compared tag color changed'), { code: 'decision-changed' });
+          }
+          const seen = { color: colorReview.stored, generation: metadata.generation, revision: metadata.revision };
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, next, {
+            action: { kind: 'tag-color', color: { seen, time: choiceTime ?? null } },
+          });
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         if (choice === 'local' && !selection && !correction && readServiceOrderTitleConflict(decided)) {
           const next = session.checkpoint();

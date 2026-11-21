@@ -75,6 +75,7 @@ const tracksScalarReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+    || target.action === 'tagColorAction'
     || (target.action === 'seriesFieldActions' && target.field === 'title');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>

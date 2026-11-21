@@ -620,6 +620,7 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
       ? readStudyNoteFieldsComparison(checkpoint) : undefined;
     const textReview = entry.records.length === 1 ? readDocumentTextComparison(checkpoint) : undefined;
     const textFields = textReview?.complete ? textReview.checkpoint.conflicts : undefined;
+    const exactTagColor = entry.resource.collection === 'tags' && Boolean(comparison);
     if (!referenceReview && waitsForStudyNoteReferenceReview(checkpoint)) {
       return notice(<div role="status" className={NOTICE_BOX}>
         <p className={NOTICE_BODY}>{t('dataSync.referenceComparisonUnavailable')}</p>
@@ -659,7 +660,7 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
           keepMineLabel={comparingField ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparingField ? t('dataSync.useStoredVersion') : undefined}
           keepMineDisabled={placement?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint) || noteFields || textFields)); }}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement || sourceNotes || readStudyNoteReferenceComparison(checkpoint) || readCommentPlaceComparison(checkpoint) || readCommentTextComparison(checkpoint) || noteFields || textFields || exactTagColor)); }}
           onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', comparingField, Boolean((referenceReview?.fields.length && referenceReview.rows.length) || comparingTextFields)); }}
           busy={busy}
           className="mb-3"

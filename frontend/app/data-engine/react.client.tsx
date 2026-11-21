@@ -700,7 +700,7 @@ export function useDocumentActions() {
       const comparedSourceNotes = scope?.records.some(({ owner: recordOwner, checkpoint }) => recordOwner === owner
         && checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.confirmed.resource.id === resource.id
         && sourceNoteLinkComparison(checkpoint));
-      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && ['prayerRequests', 'series', 'planTemplates'].includes(resource.collection)))
+      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement || comparedSourceNotes || (exactField && ['prayerRequests', 'series', 'planTemplates', 'tags'].includes(resource.collection)))
         ? actionClock.capture(owner) ?? null : undefined;
       const key = documentChoiceKey(owner, resource);
       let applying = applyingDocumentChoices.get(browser);

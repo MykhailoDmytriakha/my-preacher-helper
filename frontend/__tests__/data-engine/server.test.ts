@@ -5355,6 +5355,21 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it.each(['return', 'reaffirm'])('holds a legacy recolor after a %s to the saved tag color', async kind => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const { tagColorAction: _action, ...legacy } = recolor('phone-legacy', phone, null);
+      if (kind === 'return') expect((await processCommand(owner, recolor('desk-color', desk, 40))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...legacy, operationId: 'desk-returns-color',
+        changes: [{ path: ['color'], before: field(desk), after: field(color) }],
+      })).kind).toBe('acknowledged');
+      const result = await processCommand(owner, legacy);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['color'], base: field(color), mine: field(phone), theirs: field(color) }],
+        snapshot: { value: { name, color, required: false } },
+      });
+      expect(await processCommand(owner, legacy)).toEqual(result);
+    });
+
     it('keeps a deleted tag deleted when a recolor later arrives', async () => {
       expect((await seed()).kind).toBe('acknowledged');
       expect((await processCommand(owner, { ...base, operationId: 'tag-delete', kind: 'delete', generation: 'tag-create',

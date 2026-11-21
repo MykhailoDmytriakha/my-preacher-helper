@@ -10149,3 +10149,12 @@ Brothers’ council → detail or conduct → Finish / Undo. Legacy requests wit
 Five focused regressions failed before the fix. The related gate passed 4,508 tests in 198 suites with 15 skipped. TypeScript, scoped ESLint with zero errors and independent review passed. Five hidden Chrome scenarios on local Auth and Firestore exercised both choices, earlier and later action time, and a newer finish arriving during review. Both detail and conduct were used. Peak sampled Next memory was 5.42 GiB and all five stand ports were released. Evidence is in `artifacts/action-chronology-356/council-finish-20261120/verification.md` in the local case.
 
 After authorized deployment, open the same disposable council with a topic in two short sessions. Finish it offline. From the other device, finish and undo that finish, then change the planned date. Reconnect the first device. Verify the later proved action or compare preparing with a held meeting. Reopen the council and check the status and time together, plus the topic and new planned date. Close both sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored custom tag color
+
+Settings → Tags → click the swatch of a custom tag. The shared opening history detects a delayed first recolor after a return or reaffirmation. When both action times are known, the later recolor wins. Otherwise the banner compares the exact colors. An explicit override reads the latest snapshot, checks the colors shown, and captures the displayed revision. A newer color refreshes the comparison before any replacement is submitted.
+
+Four focused regressions failed before the fix. The related gate passed 4,535 tests in 198 suites with 15 skipped. TypeScript, scoped ESLint with zero errors and independent review passed. Five hidden Chrome scenarios on local Auth and Firestore verified both choices, earlier and later time, and a newly saved color arriving during comparison. Name and color were checked after reload. Peak sampled Next memory was 4.09 GiB and all five stand ports were released. Evidence is in `artifacts/action-chronology-356/tag-color-20261120/verification.md` in the local case.
+
+After authorized deployment, pick a disposable custom tag. Save a new color offline, then change and return the color in the other short session. Reconnect and use one of the shown versions if the order is unknown. If the other session changes the saved color, verify the banner shows it before the choice takes effect. Reload and check name and color. Close both sessions.

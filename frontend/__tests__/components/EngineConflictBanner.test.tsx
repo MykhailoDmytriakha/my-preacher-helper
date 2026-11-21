@@ -90,6 +90,48 @@ it.each([['#54A0FF', '#54A0FF'], ['', 'settings.tagColorHistory.notSet']])(
   }
 });
 
+it.each([false, true])('uses the current tag color as the basis for an explicit recolor (new color while reviewing: %s)', async changed => {
+  process.env[ON_ENGINE] = 'tags';
+  actions = null;
+  const tag = { collection: 'tags', id: 'tag-return' };
+  const opening = '#808E9B', offered = '#FF6B6B', newest = '#54A0FF';
+  const name = 'Keep the tag name';
+  const h = documentEngineHarness({ resource: tag, value: { userId: 'owner', name, color: opening, required: false },
+    metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ color: newest });
+    h.silentRemote({ color: opening, name: 'New tag name' });
+    const field = (color: string) => ({ exists: true, value: color });
+    jest.mocked(h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: h.server,
+      conflicts: [{ path: ['color'], base: field(opening), mine: field(offered), theirs: field(opening) }],
+    }));
+    await act(async () => {
+      await actions!.commit(tag, current => ({ ...current!, color: offered }));
+      await settleEngine();
+    });
+    await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent(offered);
+    expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(opening);
+    if (changed) {
+      h.silentRemote({ color: newest });
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+      await waitFor(() => expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(newest));
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: 'dataSync.useLocalVersion' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+    await waitFor(() => expect(h.server.value).toMatchObject({ color: offered, name: 'New tag name' }));
+    expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      tagColorAction: { observedRevision: changed ? 4 : 3, time: null },
+      changes: [{ path: ['color'], before: field(changed ? newest : opening), after: field(offered) }],
+    }));
+  } finally { delete process.env[ON_ENGINE]; }
+});
+
 it.each([
   { side: 'mine', ordering: 'none' }, { side: 'stored', ordering: 'none' },
   { side: 'mine', ordering: 'settled' }, { side: 'stored', ordering: 'settled' },

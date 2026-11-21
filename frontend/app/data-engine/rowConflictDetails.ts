@@ -95,6 +95,9 @@ export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) {
 }
 
 export function readTagColorConflict(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate } = checkpoint;
+  if (!remoteCandidate?.metadata || remoteCandidate.metadata.deleted
+    || [confirmed.value, draft, remoteCandidate.value].some(value => value?.required !== false)) return undefined;
   return readExactTextConflict(checkpoint, 'tags', 'color');
 }
 
