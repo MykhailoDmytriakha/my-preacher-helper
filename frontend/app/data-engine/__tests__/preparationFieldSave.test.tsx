@@ -576,6 +576,40 @@ it('does not silently overwrite a later stored goal type', async () => {
   } finally { await finish(t.view); }
 });
 
+it.each(['local', 'stored'] as const)('compares the returned goal type without losing the saved statement (%s)', async choice => {
+  const opening = { preachingGoal: { type: 'informative', statement: 'Opening statement' } };
+  const saved = { preachingGoal: { type: 'informative', statement: 'Separate goal statement' } };
+  const t = await setup({ section: 'goals', withStatus: true, initialValue: { ...initial, preparation: opening } });
+  const field = (value: string) => ({ exists: true, value });
+  try {
+    const select = screen.getByLabelText('wizard.steps.goals.goal.typeLabel');
+    await waitFor(() => expect(select).toBeEnabled());
+    await act(async () => { t.h.engine.setOnline(false); });
+    fireEvent.change(select, { target: { value: 'didactic' } });
+    fireEvent.click(screen.getByTitle('actions.save'));
+    await waitFor(async () => expect((await t.h.commits.list('owner')).some(request =>
+      (request.value?.preparation as typeof opening)?.preachingGoal.type === 'didactic')).toBe(true));
+    t.h.silentRemote({ preparation: saved });
+    jest.mocked(t.h.transport.send).mockImplementationOnce(async command => ({
+      kind: 'conflict', operationId: command.operationId, snapshot: t.h.server,
+      conflicts: [{ path: ['preparation', 'preachingGoal', 'type'], base: field('informative'),
+        mine: field('didactic'), theirs: field('informative') }],
+    }));
+    await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+    const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(comparison).toHaveTextContent('wizard.steps.goals.goal.types.didactic');
+    expect(comparison).toHaveTextContent('wizard.steps.goals.goal.types.informative');
+    fireEvent.click(within(comparison).getByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+    if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    const type = choice === 'local' ? 'didactic' : 'informative';
+    await waitFor(() => expect(select).toHaveValue(type));
+    await waitFor(() => expect(t.h.server.value?.preparation).toEqual({ preachingGoal: { ...saved.preachingGoal, type } }));
+    if (choice === 'local') expect(t.h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      sermonGoalTypeAction: expect.objectContaining({ observedRevision: 2, reviewed: true }),
+    }));
+  } finally { await finish(t.view); }
+});
+
 it.each(['updatedPlan', 'sermonPlan'] as const)('does not silently overwrite later stored %s points', async field => {
   const opening = { modernTranslation: 'Modern words', [field]: [{ id: 'stable-point', title: 'Opening point' }] };
   const t = await setup({ section: 'homileticPlan', withStatus: true, initialValue: { ...initial, preparation: { homileticPlan: opening } } });

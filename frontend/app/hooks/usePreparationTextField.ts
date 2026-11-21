@@ -66,7 +66,8 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
     recover: form.recover });
   const encode = (next: T) => codec.save(next, codec.read(valueAt(form.initialData, path)));
   const comparison = form.comparison ? { identity: form.comparison.identity, mine: codec.describe(codec.read(valueAt(form.comparison.mine, path))),
-    stored: codec.describe(codec.read(valueAt(form.comparison.remotePreview ?? form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined } : undefined;
+    stored: codec.describe(codec.read(valueAt(form.comparison.remotePreview ?? form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined,
+    ...(form.comparison.kind === 'sermon-goal-type' && { valueKind: 'field' as const, scopedChoice: true as const }) } : undefined;
   const selected = codec.read(value);
   const generation = document.confirmed?.metadata?.generation;
   const canSave = !codec.valid || codec.valid(selected);

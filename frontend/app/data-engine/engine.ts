@@ -2908,10 +2908,11 @@ export class DataEngine {
           const comparedSeries = comparison?.returnedSeriesFields;
           const settled = controller.getState().checkpoint.draft;
           const field = comparison?.kind === 'returned-sermon-title' ? 'title'
-            : comparison?.kind === 'returned-sermon-verse' ? 'verse' : comparison?.kind === 'sermon-church' ? 'church' : undefined;
+            : comparison?.kind === 'returned-sermon-verse' ? 'verse' : comparison?.kind === 'sermon-church' ? 'church'
+              : comparison?.kind === 'sermon-goal-type' ? 'goalType' : undefined;
           const checkedAction: EditorCommitAction | undefined = field ? {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
-            sermonHeaderReview: {
+            sermonMetadataReview: {
               field,
               title: field !== 'title' ? earlierSermonMetadataProof(request.sermonTitleAction, settled?.title) : undefined,
               verse: field !== 'verse' ? earlierSermonMetadataProof(request.sermonVerseAction, settled?.verse) : undefined,
@@ -2925,7 +2926,7 @@ export class DataEngine {
             kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
             seriesFieldReview: { fields: comparedSeries, original: request.seriesFieldActions ?? {} },
           } : choice === 'remote' && keepSeriesDescription ? { kind: 'document-metadata', time: null } : action;
-          const reviewScope = field === 'verse' || field === 'church' ? shown.record.scopeId : undefined;
+          const reviewScope = field && field !== 'title' ? shown.record.scopeId : undefined;
           await controller.save(undefined, selection, undefined, reviewScope, checkedAction); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
@@ -3046,7 +3047,7 @@ export class DataEngine {
         }
         const checkpoint = parent.controller!.getState().checkpoint;
         const exact = exactRequest(initial, checkpoint);
-        if (exact && (expected?.kind === 'returned-sermon-verse' || expected?.kind === 'sermon-church')) {
+        if (exact && (expected?.kind === 'returned-sermon-verse' || expected?.kind === 'sermon-church' || expected?.kind === 'sermon-goal-type')) {
           const saved = await this.readWriteTarget(resource).catch(() => null);
           active(); assertComparison();
           if (!saved || !canReplaceSnapshot(expected.stored, saved)) {

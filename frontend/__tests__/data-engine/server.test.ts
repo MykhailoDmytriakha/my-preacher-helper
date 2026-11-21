@@ -6696,6 +6696,50 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, savePreparation('phone', preparation('didactic'), 20)))
         .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', 'A separately edited sentence') } } });
     });
+
+    it.each([false, true])('holds a delayed goal type after returning to its opening (reaffirmed: %s)', async reaffirmed => {
+      const owner = await seed();
+      const words = 'A later independent goal sentence';
+      const temporary = preparation('exhortative');
+      if (!reaffirmed) expect((await processCommand(owner, savePreparation('temporary', temporary))).kind).toBe('acknowledged');
+      const restored = savePreparation('restored', preparation('informative', words));
+      restored.changes[0].before.value = reaffirmed ? preparation('exhortative', words) : temporary;
+      if (reaffirmed) {
+        expect((await processCommand(owner, savePreparation('statement', preparation('informative', words)))).kind).toBe('acknowledged');
+      }
+      expect((await processCommand(owner, restored)).kind).toBe('acknowledged');
+      const delayed = savePreparation('late-phone', preparation('didactic'));
+      const answer = await processCommand(owner, delayed);
+      const field = (value: string) => ({ exists: true, value });
+      expect(answer).toMatchObject({
+        kind: 'conflict', snapshot: { value: { preparation: preparation('informative', words) } },
+        conflicts: [{ path: ['preparation', 'preachingGoal', 'type'], base: field('informative'),
+          mine: field('didactic'), theirs: field('informative') }],
+      });
+      expect(await processCommand(owner, delayed)).toEqual(answer);
+    });
+
+    it('checks the reviewed goal type revision while preserving a separately saved statement', async () => {
+      const owner = await seed();
+      const newer = preparation('proclamation');
+      const words = 'A still newer goal statement';
+      expect((await processCommand(owner, savePreparation('new-type', newer, 40))).kind).toBe('acknowledged');
+      const statement = savePreparation('new-words', preparation('proclamation', words));
+      statement.changes[0].before.value = newer;
+      expect((await processCommand(owner, statement)).kind).toBe('acknowledged');
+      const choice = (id: string, before: typeof opening, revision: number) => {
+        const command = savePreparation(id, preparation('didactic'), 80);
+        command.changes[0].before.value = before;
+        command.changes[0].after.value.preachingGoal.statement = before.preachingGoal.statement;
+        return { ...command, sermonGoalTypeAction: { time: command.sermonGoalTypeAction!.time, observedRevision: revision, reviewed: true as const } };
+      };
+      expect(await processCommand(owner, choice('stale-choice', opening, 1))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'preachingGoal', 'type'], code: 'sermon-goal-type-review-changed' }],
+      });
+      expect(await processCommand(owner, choice('fresh-goal-choice', newer, 2))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', words) } },
+      });
+    });
   });
 
   describe('sermon Preparation repeated words', () => {

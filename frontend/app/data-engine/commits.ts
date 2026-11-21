@@ -158,9 +158,9 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   planTemplateNameAction?: DocumentFieldObservation;
   tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
-  sermonVerseAction?: import('./documentFieldAction').SermonHeaderObservation;
+  sermonVerseAction?: import('./documentFieldAction').ReviewedSermonFieldObservation;
   sermonChurchAction?: SermonChurchObservation;
-  sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
+  sermonGoalTypeAction?: import('./documentFieldAction').ReviewedSermonFieldObservation<FieldValue>;
   sermonThesisFieldActions?: SermonThesisObservations;
   sermonPreparationTextActions?: PreparationTextObservations;
   sermonRepeatedWordsAction?: DocumentFieldObservation<FieldValue>;
@@ -833,7 +833,7 @@ export class CommitQueue {
     }
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const reviewedMeeting = groupMeetingReviewForSave(intent.groupMeetingReview, baseline, intent.draft);
-    const headerReview = editorAction?.kind === 'document-metadata' ? editorAction.sermonHeaderReview : undefined;
+    const headerReview = editorAction?.kind === 'document-metadata' ? editorAction.sermonMetadataReview : undefined;
     const reviewedDate = dateTarget?.evidence === 'preachDateAction' ? headerReview?.date : undefined;
     const datedAction = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft,
       frozenOptions?.[dateTarget.evidence] ?? reviewedDate, records);

@@ -29,8 +29,10 @@ export const SERMON_METADATA_SETTLED = 'sermon-metadata-settled';
 export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
 export const SERMON_VERSE_REVIEW_CHANGED = 'sermon-verse-review-changed';
 export const SERMON_CHURCH_REVIEW_CHANGED = 'sermon-church-review-changed';
-export function isStaleSermonHeaderReview(code: string | undefined): boolean {
-  return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED;
+export const SERMON_GOAL_TYPE_REVIEW_CHANGED = 'sermon-goal-type-review-changed';
+export function isStaleSermonFieldReview(code: string | undefined): boolean {
+  return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED
+    || code === SERMON_GOAL_TYPE_REVIEW_CHANGED;
 }
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
@@ -40,8 +42,8 @@ export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
 }
 
 type SermonReviewProof = Pick<DocumentFieldStamp, 'time' | 'observedRevision'>;
-export type SermonHeaderReviewProofs = {
-  field: 'title' | 'verse' | 'church';
+export type SermonMetadataReviewProofs = {
+  field: 'title' | 'verse' | 'church' | 'goalType';
   title?: SermonReviewProof;
   verse?: SermonReviewProof;
   church?: SermonReviewProof;
@@ -49,8 +51,8 @@ export type SermonHeaderReviewProofs = {
 };
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
-export type SermonHeaderStamp = DocumentFieldStamp & { reviewed?: true };
-export type SermonHeaderObservation<Value = string> = DocumentFieldObservation<Value> & { reviewed?: true };
+export type ReviewedSermonFieldStamp = DocumentFieldStamp & { reviewed?: true };
+export type ReviewedSermonFieldObservation<Value = string> = DocumentFieldObservation<Value> & { reviewed?: true };
 export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
 export type SermonPlanMode = NonNullable<Sermon['planMode']>;
 export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: FieldValue };
@@ -100,7 +102,7 @@ type TextDocumentFieldTarget = {
 };
 
 export type DocumentFieldTarget = TextDocumentFieldTarget | typeof GROUP_DESCRIPTION | typeof STUDY_NOTE_CONTENT | typeof COMMENT_KIND | typeof COMMENT_PLACE | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
-export type SermonChurchObservation = SermonHeaderObservation<FieldValue>;
+export type SermonChurchObservation = ReviewedSermonFieldObservation<FieldValue>;
 
 export const SERMON_REPEATED_WORDS = { field: 'repeatedWords', path: repeatedWordsPath, action: 'sermonRepeatedWordsAction',
   proof: 'sermonRepeatedWords', causal: true, optional: true, accepts: isAuthoredStringList } as const;
@@ -112,7 +114,7 @@ export type GroupStatusHistoryPage = {
 
 const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 'sermonChurch', causal: true } as const;
 
-const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
+export const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
   action: 'sermonGoalTypeAction', proof: 'sermonGoalType', causal: true, optional: true, accepts: isSermonGoalType } as const;
 
 export type SermonThesisField = 'questionWord' | 'pluralKey';
@@ -713,7 +715,7 @@ export function capturePreparationConfirmation(baseline: ResourceSnapshot, prede
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
 export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[],
-  preferenceFields?: readonly AccountPreferenceField[], sermonHeaderReview?: SermonHeaderReviewProofs, seriesFieldReview?: SeriesFieldReview) {
+  preferenceFields?: readonly AccountPreferenceField[], sermonMetadataReview?: SermonMetadataReviewProofs, seriesFieldReview?: SeriesFieldReview) {
   if (captured === undefined || !baseline.metadata || baseline.metadata.deleted) return {};
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return {};
@@ -740,8 +742,8 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
     return actions.length ? { seriesFieldActions: Object.fromEntries(actions) } : {};
   }
   if (baseline.resource.collection !== 'sermons') return {};
-  const timeFor = (field: 'title' | 'verse' | 'church') => sermonHeaderReview && sermonHeaderReview.field !== field
-    ? sermonHeaderReview[field]?.time ?? null : time;
+  const timeFor = (field: 'title' | 'verse' | 'church') => sermonMetadataReview && sermonMetadataReview.field !== field
+    ? sermonMetadataReview[field]?.time ?? null : time;
   const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, timeFor('title'), records);
   const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, timeFor('verse'), records);
   const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, timeFor('church'), records);
@@ -757,12 +759,13 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   });
   const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
-  return { ...(title && { sermonTitleAction: { ...title, ...sermonHeaderReview?.title } }),
-    ...(verse && { sermonVerseAction: { ...verse, ...sermonHeaderReview?.verse,
-      ...(sermonHeaderReview?.field === 'verse' && { reviewed: true as const }) } }),
-    ...(church && { sermonChurchAction: { ...church, ...sermonHeaderReview?.church,
-      ...(sermonHeaderReview?.field === 'church' && { reviewed: true as const }) } }),
-    ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
+  return { ...(title && { sermonTitleAction: { ...title, ...sermonMetadataReview?.title } }),
+    ...(verse && { sermonVerseAction: { ...verse, ...sermonMetadataReview?.verse,
+      ...(sermonMetadataReview?.field === 'verse' && { reviewed: true as const }) } }),
+    ...(church && { sermonChurchAction: { ...church, ...sermonMetadataReview?.church,
+      ...(sermonMetadataReview?.field === 'church' && { reviewed: true as const }) } }),
+    ...(goalType?.after.exists && { sermonGoalTypeAction: { ...goalType,
+      ...(sermonMetadataReview?.field === 'goalType' && { reviewed: true as const }) } }),
     ...(repeatedWords?.after.exists && { sermonRepeatedWordsAction: repeatedWords }),
     ...(thesis.length && { sermonThesisFieldActions: Object.fromEntries(thesis) }),
     ...(preparationText.length && { sermonPreparationTextActions: Object.fromEntries(preparationText) }),
@@ -984,7 +987,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (target.action === 'commentPlaceAction') {
     return action.paragraph ? { ...command, commentPlaceAction: { ...stamp, paragraph: action.paragraph, ...(action.compound && { compound: true }), ...(action.reviewed && { reviewed: true }) } } : command;
   }
-  if (target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction') {
+  if (target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction' || target.action === 'sermonGoalTypeAction') {
     return { ...command, [target.action]: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;

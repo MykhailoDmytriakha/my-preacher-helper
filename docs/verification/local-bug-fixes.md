@@ -10203,3 +10203,12 @@ Sermons → open a sermon → Edit → Church. An old packet without proof of it
 Four regressions reproduced before their fixes. The related gate passed 5,809 tests in 324 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Five hidden Chrome scenarios on local Auth and Firestore covered both choices, empty church, reopening and both proven orders. The proof includes the planned date and its independent church and note. An exploratory run stopped at 6.62 GiB. In the two shorter acceptance runs peak sampled Next.js memory was 4.55 GiB. All five stand ports were released. Evidence is in `artifacts/action-chronology-356/sermon-church-return-20261120/verification.md` in the local case.
 
 After authorized deployment, use a disposable sermon with a separately named church on its planned date in two short sessions. Save a different or cleared sermon church offline. On the other device, change and restore the sermon church. Reconnect the first device and verify chronology or choose from the displayed comparison. Reload and check the church of the sermon, its title and the date with its independently set church and note.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored sermon goal type
+
+Sermons → open a sermon → Preparation → Goals → Sermon goal type. An old save without proof of its order opens the field comparison after a return. The choice uses the selected type and preserves the independently saved goal statement. Once a comparison opens, the saved type is refreshed before choosing and the field revision is checked during delivery. Proven action times still determine the winner.
+
+Four focused regressions reproduced before the fix. The related gate passed 5,856 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome scenarios with local Auth and Firestore covered both choices, reopening and both proven orders. The goal statement and a separate preparation field were checked after reload. Peak sampled Next.js memory was 4.52 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/goal-type-return-20261120/verification.md` in the local case.
+
+After authorized deployment, use one disposable sermon in two short sessions. Save a different goal type offline on one device. Change and restore the goal type on the other, then save a different goal statement. Reconnect and verify the later known action or the scoped comparison. Reload and check the selected type, statement and an independent field.

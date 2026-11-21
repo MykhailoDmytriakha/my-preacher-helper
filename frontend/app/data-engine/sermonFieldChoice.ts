@@ -4,7 +4,7 @@ import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/u
 
 import { isSermonChurch } from './churchFieldValue';
 import { existingRowDate, PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_CHURCH_REVIEW_CHANGED, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
@@ -48,6 +48,12 @@ export function isSermonVerseReview(conflict: ConflictDetail): boolean {
 export function isSermonChurchReview(conflict: ConflictDetail): boolean {
   return equalValues(conflict.path, ['church']) && (!conflict.code || conflict.code === SERMON_CHURCH_REVIEW_CHANGED)
     && isSermonChurch(conflict.mine) && isSermonChurch(conflict.theirs);
+}
+
+export function isSermonGoalTypeReview(conflict: ConflictDetail): boolean {
+  return equalValues(conflict.path, SERMON_GOAL_TYPE.path)
+    && (!conflict.code || conflict.code === SERMON_GOAL_TYPE_REVIEW_CHANGED)
+    && acceptsDocumentField(conflict.mine, SERMON_GOAL_TYPE) && acceptsDocumentField(conflict.theirs, SERMON_GOAL_TYPE);
 }
 
 export function withReviewedSermonChurchDates(opening: DocumentData | null, draft: DocumentData | null,
@@ -97,7 +103,7 @@ export function sermonHeaderReviewFrames(basis: ResourceSnapshot, reviewed: Docu
 export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
     || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path)
-      || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]))));
+      || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]) || isSermonGoalTypeReview(conflicts[0]))));
 }
 
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
@@ -133,7 +139,7 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
   if (path.length === 1) return withField(data, path[0], selected);
-  if (preparationConfirmationField(path) || preparationTextField(path)) return writeField(data, path, selected);
+  if (preparationConfirmationField(path) || preparationTextField(path) || equalValues(path, SERMON_GOAL_TYPE.path)) return writeField(data, path, selected);
   const [field, id, ...leaf] = path;
   const rows = data[field];
   if (!Array.isArray(rows) || !rows.some(value => isRow(value, id))) return undefined;
