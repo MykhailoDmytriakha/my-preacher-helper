@@ -49,7 +49,7 @@ import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
-import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof } from './sermonFieldChoice';
+import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonPlanModeComparison } from './sermonFieldChoice';
 import { DataSession, hasUnreadableDraftProof } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -2323,7 +2323,8 @@ export class DataEngine {
         if (compared && !equalValues(current, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
-        if (current.unreadableExegeticalProofs?.length && !Object.keys(current.pending).length) {
+        if ((current.unreadableExegeticalProofs?.length && !Object.keys(current.pending).length)
+          || (compared && readSermonPlanModeComparison(current))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
           const shown = current.remoteCandidate ?? current.confirmed;

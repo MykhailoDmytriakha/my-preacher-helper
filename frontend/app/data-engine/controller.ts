@@ -49,7 +49,7 @@ import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { isReturnedSeriesField } from './seriesFieldAction';
-import { keepUncontestedSermonFields } from './sermonFieldChoice';
+import { keepUncontestedSermonFields, readSermonPlanModeComparison } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -1398,6 +1398,21 @@ export class EditorController {
             });
             if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
           }
+        }
+        const planMode = choice === 'local' && !selection && !correction && readSermonPlanModeComparison(decided);
+        if (planMode) {
+          const next = session.checkpoint();
+          const { resource, value, metadata } = next.confirmed;
+          if (!metadata || metadata.deleted || !value || !next.draft
+            || !equalValues(readField(value, ['planMode']), planMode.stored)
+            || !equalValues(readField(next.draft, ['planMode']), planMode.mine)) {
+            throw Object.assign(new Error('The compared plan mode changed'), { code: 'decision-changed' });
+          }
+          const seen = { sermonId: resource.id, generation: metadata.generation, revision: metadata.revision, value: planMode.stored };
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, next, {
+            action: { kind: 'sermon-plan-mode', mode: { seen, time: choiceTime ?? null, reviewed: true } },
+          });
+          if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         if (choice === 'local' && stepText) {
           const checkpoint = session.checkpoint();

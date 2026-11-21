@@ -114,7 +114,8 @@ export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
   const mine = readField(draft, SERMON_PLAN_MODE.path);
   const stored = readField(remoteCandidate.value, SERMON_PLAN_MODE.path);
   if (!acceptsDocumentField(mine, SERMON_PLAN_MODE) || !acceptsDocumentField(stored, SERMON_PLAN_MODE)
-    || equalValues(mine, stored) || !equalValues(mine, conflicts[0].mine) || !equalValues(stored, conflicts[0].theirs)) return undefined;
+    || equalValues(mine, stored) || !equalValues(mine, conflicts[0].mine)) return undefined;
+  if (mergeDocumentFields(confirmed.value, draft, remoteCandidate.value).conflicts.some(({ path }) => path[0] !== 'planMode')) return undefined;
   return { mine, stored, identity: JSON.stringify([editGeneration, remoteCandidate.metadata.generation,
     remoteCandidate.metadata.revision, mine, stored]) };
 }

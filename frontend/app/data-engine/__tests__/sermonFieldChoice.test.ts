@@ -429,6 +429,9 @@ it('compares the two plan modes while retaining words independently of the mode 
   expect(readSermonPlanModeComparison(checkpoint)).toMatchObject({ mine, stored: theirs });
   expect(keepUncontestedSermonFields(basis, draft, stored, conflicts)?.planText)
     .toEqual({ opening: 'My edited intro', end: 'Saved conclusion' });
+  const changedWords = { ...stored, metadata: { ...stored.metadata, revision: 4 },
+    value: { ...stored.value, planText: { opening: 'New saved intro', end: 'Saved conclusion' } } };
+  expect(readSermonPlanModeComparison({ ...checkpoint, remoteCandidate: changedWords })).toBeUndefined();
 });
 
 it('keeps the second scratch note opening when the first queued note gets a separate choice', () => {

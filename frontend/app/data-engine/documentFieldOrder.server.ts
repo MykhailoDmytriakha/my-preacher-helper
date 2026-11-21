@@ -11,7 +11,7 @@ import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.
 import { councilStatusOf, matchesCouncilLifecycle, sameCouncilDate } from './councilFieldAction';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
 import { PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
@@ -73,7 +73,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 
 const tracksScalarReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction'
-    || target.action === 'sermonGoalTypeAction' || target.action === 'serviceOrderTitleAction'
+    || target.action === 'sermonGoalTypeAction' || target.action === 'sermonPlanModeAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'groupStatusAction'
     || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
@@ -234,7 +234,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   const reviewCode = target.action === 'sermonVerseAction' && command.sermonVerseAction?.reviewed ? SERMON_VERSE_REVIEW_CHANGED
     : target.action === 'sermonChurchAction' && command.sermonChurchAction?.reviewed ? SERMON_CHURCH_REVIEW_CHANGED
-    : target.action === 'sermonGoalTypeAction' && command.sermonGoalTypeAction?.reviewed ? SERMON_GOAL_TYPE_REVIEW_CHANGED : undefined;
+    : target.action === 'sermonGoalTypeAction' && command.sermonGoalTypeAction?.reviewed ? SERMON_GOAL_TYPE_REVIEW_CHANGED
+    : target.action === 'sermonPlanModeAction' && command.sermonPlanModeAction?.reviewed ? SERMON_PLAN_MODE_REVIEW_CHANGED : undefined;
   if (reviewCode) {
     if (equalValues(stored, change.after)) return { command, previous };
     // A reviewed choice refers to the saved opening, even when its click is newer.
@@ -253,6 +254,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   // an unproven note or comment text keeps the plain base check, as before this rule. A text sent with its proof
   // (the comment window, when it has one) is ordered by the action above.
   if (!action && tracksScalarReturns(target) && acceptsDocumentField(change.before, target)
+    && !(target.action === 'sermonPlanModeAction' && previous?.initialized && !change.before.exists)
     && !sameFieldOpening(stored, change.before, target) && equalValues(change.after, stored)) {
     return { command, stamp: null, reaffirmedOpening: true };
   }

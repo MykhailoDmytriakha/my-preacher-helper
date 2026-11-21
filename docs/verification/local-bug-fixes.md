@@ -10212,3 +10212,12 @@ Sermons → open a sermon → Preparation → Goals → Sermon goal type. An old
 Four focused regressions reproduced before the fix. The related gate passed 5,856 tests in 328 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome scenarios with local Auth and Firestore covered both choices, reopening and both proven orders. The goal statement and a separate preparation field were checked after reload. Peak sampled Next.js memory was 4.52 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/goal-type-return-20261120/verification.md` in the local case.
 
 After authorized deployment, use one disposable sermon in two short sessions. Save a different goal type offline on one device. Change and restore the goal type on the other, then save a different goal statement. Reconnect and verify the later known action or the scoped comparison. Reload and check the selected type, statement and an independent field.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored sermon plan mode
+
+Open Sermon plan from a sermon. A legacy switch that arrives after a restored mode now opens a scoped comparison. The explicit local choice creates a durable confirmed replacement using the checked opening and current action time. A newer saved mode refreshes the comparison. A competing edit to words suppresses the mode-only comparison. The provisional default remains distinct from an explicit choice. Independent plan words, outline and source note are preserved.
+
+Four regressions reproduced before the fix. The related gate passed 6,365 tests in 372 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Four hidden Chrome cases on local Auth and Firestore covered the mode switch and note entry, both choices, reopening and both proved orders. Peak sampled Next.js memory was 4.85 GiB. All stand ports were released. Evidence is in `artifacts/action-chronology-356/plan-mode-return-20261120/verification.md` in the local case.
+
+After authorized deployment, use a disposable sermon with a linked note in two short sessions. Save From note offline on one device. Change and restore the mode and edit independent plan text on the second. Reconnect and verify the documented order or choose from the comparison. Reopen through Sermon plan and verify the mode, words and outline.

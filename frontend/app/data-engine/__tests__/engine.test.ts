@@ -11,6 +11,7 @@ import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
+import { readSermonPlanModeComparison } from '../sermonFieldChoice';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
 import { describeSync } from '../status';
@@ -401,6 +402,47 @@ describe('DataEngine composition', () => {
       expect(describeSync(reopened.getState(), reopened.getObservation(), reopened.getDelivery())).toMatchObject({
         phase: 'saved', canAcceptRemote: false, canKeepLocal: false,
       });
+    } finally { s.engine.dispose(); }
+  });
+
+  it.each(['mine', 'saved', 'changed'] as const)('resolves a returned plan mode with the displayed saved revision (%s)', async scenario => {
+    const s = setup({ online: false, nativeChoice: true });
+    const plan = { collection: 'sermons', id: 'returned-plan-mode' };
+    const key = keyOf('owner', plan);
+    const before: ResourceSnapshot = { ...initial(), resource: plan, value: {
+      userId: 'owner', title: 'Plan mode QA', verse: 'John 3:16', date: '2026-11-20', thoughts: [], planMode: 'manual',
+      planText: { opening: 'Opening words' } } };
+    const saved = { ...before, metadata: { ...before.metadata!, revision: 3 },
+      value: { ...before.value!, planText: { opening: 'Independently saved words' } } };
+    s.server.set(key, before);
+    s.cache.set(key, before);
+    const editor = await s.engine.openEditor(plan, editorIdentity('test-tab', plan, 'plan', 'initial'));
+    const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+    const field = (value: string) => ({ exists: true, value });
+    try {
+      await editor.commit(draft => ({ ...draft, planMode: 'note' }));
+      s.server.set(key, saved);
+      jest.mocked(s.transport.send).mockImplementationOnce(async ({ operationId }) => ({
+        kind: 'conflict', operationId, snapshot: saved,
+        conflicts: [{ path: ['planMode'], base: field('manual'), mine: field('note'), theirs: field('manual') }],
+      }));
+      s.engine.setOnline(true); await s.engine.retry(); await drainMicrotasks();
+      const shown = editor.getState().checkpoint;
+      expect(shown.conflicts).toHaveLength(1);
+      if (scenario === 'changed') {
+        s.server.set(key, { ...saved, value: { ...saved.value, planMode: 'ai' }, metadata: { ...saved.metadata, revision: 4 } });
+        await expect(editor.keepLocal(undefined, shown, time)).rejects.toMatchObject({ code: 'decision-changed' });
+        expect(editor.getState().checkpoint.remoteCandidate?.value?.planMode).toBe('ai');
+        expect(readSermonPlanModeComparison(editor.getState().checkpoint)?.stored).toEqual(field('ai'));
+      } else if (scenario === 'mine') await editor.keepLocal(undefined, shown, time);
+      else await editor.acceptRemote(undefined, shown);
+      await s.engine.retry(plan); await drainMicrotasks();
+      expect(s.server.get(key)?.value).toMatchObject({ planMode: scenario === 'mine' ? 'note' : scenario === 'changed' ? 'ai' : 'manual',
+        planText: saved.value.planText });
+      if (scenario === 'mine') expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+        sermonPlanModeAction: { observedRevision: 3, time, reviewed: true },
+      }));
+      else expect(s.transport.send).toHaveBeenCalledTimes(1);
     } finally { s.engine.dispose(); }
   });
 

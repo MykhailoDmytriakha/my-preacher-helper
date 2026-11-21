@@ -6626,6 +6626,53 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, select('plan-earlier', missing, 'ai', 20)))
         .toMatchObject({ kind: 'acknowledged', snapshot: { value: { planMode: 'note' } } });
     });
+
+    it.each([false, true])('keeps a restored plan mode when an older unproved choice arrives (reaffirmed: %s)', async reaffirmed => {
+      const owner = await seedMode();
+      const legacy = (id: string, from: typeof missing | ReturnType<typeof field>, to: string) => ({
+        ...update(id, 'plan-mode-seed'), changes: [{ path: ['planMode'], before: from, after: field(to) }],
+      });
+      const words = { opening: 'Independently saved plan text' };
+      expect((await processCommand(owner, { ...legacy('opening-plan-mode', missing, 'manual'),
+        changes: [...legacy('opening-plan-mode', missing, 'manual').changes,
+          { path: ['planText'], before: missing, after: { exists: true, value: words } }] })).kind).toBe('acknowledged');
+      if (!reaffirmed) expect((await processCommand(owner, legacy('temporary-mode', field('manual'), 'ai'))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, legacy('return-mode', field('ai'), 'manual'))).kind).toBe('acknowledged');
+      const late = legacy('old-note-entry', field('manual'), 'note');
+      const answer = await processCommand(owner, late);
+      expect(answer).toMatchObject({ kind: 'conflict', snapshot: { value: { planMode: 'manual', planText: words } },
+        conflicts: [{ path: ['planMode'], base: field('manual'), mine: field('note'), theirs: field('manual') }] });
+      expect(await processCommand(owner, late)).toEqual(answer);
+    });
+
+    it('keeps the provisional proof when a legacy copy only repeats the same default', async () => {
+      const owner = await seedMode();
+      const fallback = select('plan-default', missing, 'ai', null, true);
+      expect((await processCommand(owner, fallback)).kind).toBe('acknowledged');
+      const legacy = { ...update('legacy-fallback', 'plan-mode-seed'), changes: fallback.changes };
+      expect((await processCommand(owner, legacy)).kind).toBe('acknowledged');
+      expect(await processCommand(owner, select('real-note-choice', missing, 'note', 60)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { planMode: 'note' } } });
+      expect((await listSermonPlanModeHistory(owner, fallback.resource.id, 'plan-mode-seed')).entries).toEqual([]);
+    });
+
+    it('compares again if a newer plan mode arrives between review and save', async () => {
+      const owner = await seedMode();
+      expect((await processCommand(owner, select('manual-mode', missing, 'manual', 20))).kind).toBe('acknowledged');
+      const next = select('thoughts-mode', field('manual'), 'ai', 40);
+      next.sermonPlanModeAction.observedRevision = 2;
+      expect((await processCommand(owner, next)).kind).toBe('acknowledged');
+      const reviewed = (id: string, from: string, revision: number) => {
+        const command = select(id, field(from), 'note', 80);
+        return { ...command, sermonPlanModeAction: { ...command.sermonPlanModeAction, observedRevision: revision, reviewed: true as const } };
+      };
+      expect(await processCommand(owner, reviewed('stale-choice', 'manual', 2))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['planMode'], code: 'sermon-plan-mode-review-changed', theirs: field('ai') }],
+      });
+      expect(await processCommand(owner, reviewed('fresh-choice', 'ai', 3))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { planMode: 'note' } },
+      });
+    });
   });
 
   describe('sermon preparation goal type chronology', () => {

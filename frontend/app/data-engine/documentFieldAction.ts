@@ -30,9 +30,10 @@ export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
 export const SERMON_VERSE_REVIEW_CHANGED = 'sermon-verse-review-changed';
 export const SERMON_CHURCH_REVIEW_CHANGED = 'sermon-church-review-changed';
 export const SERMON_GOAL_TYPE_REVIEW_CHANGED = 'sermon-goal-type-review-changed';
+export const SERMON_PLAN_MODE_REVIEW_CHANGED = 'sermon-plan-mode-review-changed';
 export function isStaleSermonFieldReview(code: string | undefined): boolean {
   return code === SERMON_VERSE_REVIEW_CHANGED || code === SERMON_CHURCH_REVIEW_CHANGED
-    || code === SERMON_GOAL_TYPE_REVIEW_CHANGED;
+    || code === SERMON_GOAL_TYPE_REVIEW_CHANGED || code === SERMON_PLAN_MODE_REVIEW_CHANGED;
 }
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
@@ -53,11 +54,11 @@ export type SermonMetadataReviewProofs = {
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
 export type ReviewedSermonFieldStamp = DocumentFieldStamp & { reviewed?: true };
 export type ReviewedSermonFieldObservation<Value = string> = DocumentFieldObservation<Value> & { reviewed?: true };
-export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
+export type SermonPlanModeStamp = ReviewedSermonFieldStamp & { initialize?: true };
 export type SermonPlanMode = NonNullable<Sermon['planMode']>;
 export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: FieldValue };
-export type SermonPlanModeCapture = { time: ActionTime | null; seen: SermonPlanModeOpening; initialize?: true };
-export type SermonPlanModeObservation = DocumentFieldObservation<FieldValue> & { initialize?: true };
+export type SermonPlanModeCapture = { time: ActionTime | null; seen: SermonPlanModeOpening; initialize?: true; reviewed?: true };
+export type SermonPlanModeObservation = ReviewedSermonFieldObservation<FieldValue> & { initialize?: true };
 export type DocumentFieldObservation<Value = string> = DocumentFieldStamp & { before: Value; after: Value };
 type TextFieldBasis = { generation: string; revision: number; requestId?: string };
 export type DocumentTitleSeen = TextFieldBasis & { title: string };
@@ -566,7 +567,7 @@ export function permitsSermonPlanModePredecessor(request: CommitRequest | undefi
 
 export function captureSermonPlanMode(baseline: ResourceSnapshot, value: DocumentData | null,
   capture: SermonPlanModeCapture, permittedPredecessor: boolean): SermonPlanModeObservation | undefined {
-  const { seen, initialize } = capture;
+  const { seen, initialize, reviewed } = capture;
   const metadata = baseline.metadata;
   if (baseline.resource.collection !== 'sermons' || baseline.resource.id !== seen.sermonId || !value || !metadata || metadata.deleted
     || metadata.generation !== seen.generation || !Number.isSafeInteger(seen.revision) || seen.revision < 1 || seen.revision > metadata.revision) return undefined;
@@ -574,9 +575,9 @@ export function captureSermonPlanMode(baseline: ResourceSnapshot, value: Documen
   const after = readField(value, SERMON_PLAN_MODE.path);
   const time = capture.time === null ? null : boundedActionTime(capture.time);
   if (!acceptsDocumentField(before, SERMON_PLAN_MODE) || !after.exists || !acceptsDocumentField(after, SERMON_PLAN_MODE)
-    || time === undefined || (initialize && (before.exists || time !== null)) || !permittedPredecessor) return undefined;
+    || time === undefined || (initialize && (before.exists || time !== null || reviewed)) || !permittedPredecessor) return undefined;
   return { before, after, observedRevision: seen.revision, time,
-    ...(seen.requestId && { predecessorOperationId: seen.requestId }), ...(initialize && { initialize }) };
+    ...(seen.requestId && { predecessorOperationId: seen.requestId }), ...(initialize && { initialize }), ...(reviewed && { reviewed }) };
 }
 
 export function submittedPrayerStatus(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
@@ -979,7 +980,8 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };
   }
   if (target.action === 'sermonPlanModeAction') {
-    return { ...command, sermonPlanModeAction: { ...stamp, ...(action.initialize && { initialize: true }) } };
+    return { ...command, sermonPlanModeAction: { ...stamp, ...(action.initialize && { initialize: true }),
+      ...(action.reviewed && { reviewed: true }) } };
   }
   if (target.action === 'commentKindAction') {
     return action.reference ? { ...command, commentKindAction: { ...stamp, reference: action.reference } } : command;
