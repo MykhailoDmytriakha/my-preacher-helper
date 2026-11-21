@@ -15,10 +15,10 @@ import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { jumpToSection, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useSectionProgress } from '@/hooks/useSectionProgress';
 import { useVisibleScriptureReferences } from '@/hooks/useVisibleScriptureReferences';
-import { useWideViewport } from '@/hooks/useWideViewport';
 import { sectionDisplayLabel } from '@/utils/markdownSections';
 import { placeShown, versesPreview } from '@/utils/placeText';
 import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
@@ -32,8 +32,14 @@ const ACTIVE_OFFSET = 96;
 /** A jump's own scroll is not the reader's: scrolls this soon after it, and each soon after the last, belong to it. */
 const JUMP_SETTLE_MS = 400;
 const JUMP_SCROLL_QUIET_MS = 150;
-/** The margins hold the outline and the verses only where there is room for three columns. */
-const WIDE_QUERY = '(min-width: 1024px)';
+/**
+ * The margins hold the outline and the verses on a computer: room for three columns AND a mouse or trackpad as the
+ * main pointer. Width alone cannot tell a computer from a tablet — the owner's iPad is 1200 px wide standing up
+ * (feedback 2026-11-20, version 427181a) and got the computer's margins. A touch screen wider than a phone gets the
+ * tablet's form from the board: the text and a rail of sections. In CSS the same rule is the arbitrary variant
+ * `[@media(min-width:1024px)_and_(pointer:fine)]:`; keep the two in step.
+ */
+const MARGINS_QUERY = '(min-width: 1024px) and (pointer: fine)';
 /** A verse beside the text shows its first verses, not a whole chapter. */
 const VERSES_SHOWN = 3;
 /** Reading speed for «about N minutes of reading»: an unhurried reader of a Bible study. */
@@ -159,7 +165,7 @@ export function NoteReadingView({
     // The places' words, in the Bible the verse window opens (`readTranslation`), fetched only where the margin is
     // drawn: a phone has no column to fill.
     const bible = useMemo(() => readTranslation(locale), [locale]);
-    const wide = useWideViewport();
+    const wide = useMediaQuery(MARGINS_QUERY, false);
     const references = useVisibleScriptureReferences(scrollRoot, wide, content);
     const books = useMemo(() => (wide ? [...new Set(references.map((reference) => reference.book))] : []), [wide, references]);
     const texts = useBookTexts(books, bible);
@@ -176,7 +182,7 @@ export function NoteReadingView({
     // elsewhere, or when the margin does not hold it yet, the page's verse window opens as on the page.
     const openLatest = useRef<(reference: SheetReference) => void>(() => undefined);
     openLatest.current = (reference: SheetReference) => {
-        const wideNow = typeof window !== 'undefined' && window.matchMedia(WIDE_QUERY).matches;
+        const wideNow = typeof window !== 'undefined' && window.matchMedia(MARGINS_QUERY).matches;
         const verse = wideNow ? verses.find((candidate) => sameScriptureReference(candidate.reference, reference)) : undefined;
         if (!verse) {
             onOpenReference(reference);
@@ -227,23 +233,23 @@ export function NoteReadingView({
         >
             {/* The one bar: where you are, and the way out. */}
             <div className="relative flex h-[52px] shrink-0 items-center gap-2 border-b border-gray-200 px-2 md:h-14 md:px-4 dark:border-gray-800">
-                <span className="h-11 w-11 shrink-0 lg:h-9 lg:w-9" aria-hidden />
+                <span className="h-11 w-11 shrink-0 [@media(min-width:1024px)_and_(pointer:fine)]:h-9 [@media(min-width:1024px)_and_(pointer:fine)]:w-9" aria-hidden />
                 <button
                     type="button"
                     onClick={() => setSheetOpen(true)}
                     aria-haspopup="dialog"
-                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 lg:hidden"
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 [@media(min-width:1024px)_and_(pointer:fine)]:hidden"
                 >
                     <span className="min-w-0 truncate text-[15px] font-semibold text-emerald-800 dark:text-emerald-300">{currentTitle}</span>
                     <ChevronDownIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
                 </button>
-                <span className="hidden min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-emerald-800 lg:block dark:text-emerald-300">{currentTitle}</span>
+                <span className="hidden min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-emerald-800 [@media(min-width:1024px)_and_(pointer:fine)]:block dark:text-emerald-300">{currentTitle}</span>
                 <button
                     type="button"
                     onClick={onClose}
                     title={t('notePanel.exitReadingMode')}
                     aria-label={t('notePanel.exitReadingMode')}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 transition-colors hover:bg-emerald-200 lg:h-9 lg:w-9 dark:bg-emerald-900/40 dark:text-emerald-300"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 transition-colors hover:bg-emerald-200 [@media(min-width:1024px)_and_(pointer:fine)]:h-9 [@media(min-width:1024px)_and_(pointer:fine)]:w-9 dark:bg-emerald-900/40 dark:text-emerald-300"
                 >
                     <Glasses className="h-5 w-5" strokeWidth={1.5} aria-hidden />
                 </button>
@@ -251,9 +257,9 @@ export function NoteReadingView({
             </div>
 
             <div ref={setScrollRoot} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-                <div className="flex justify-center gap-12 px-5 md:pl-10 md:pr-[4.5rem] lg:px-8">
+                <div className="flex justify-center gap-12 px-5 md:pl-10 md:pr-[4.5rem] [@media(min-width:1024px)_and_(pointer:fine)]:px-8">
                     {/* Computer: the outline in the left margin, with how much of each section has been read. */}
-                    <nav aria-label={t(OUTLINE_KEY)} className="sticky top-6 hidden max-h-[calc(100dvh-7rem)] w-60 shrink-0 self-start overflow-y-auto pt-2 lg:block">
+                    <nav aria-label={t(OUTLINE_KEY)} className="sticky top-6 hidden max-h-[calc(100dvh-7rem)] w-60 shrink-0 self-start overflow-y-auto pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:block">
                         <div className="px-2.5 pb-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 dark:text-gray-400">{t(OUTLINE_KEY)}</div>
                         {sections.map((section, index) => {
                             const isCurrent = index === currentIndex;
@@ -299,7 +305,7 @@ export function NoteReadingView({
                     </article>
 
                     {/* Computer: the Scripture places on screen now, with their words. */}
-                    <aside ref={versesRef} aria-label={t('notePanel.versesOnScreen')} className="sticky top-6 hidden max-h-[calc(100dvh-10rem)] w-[300px] shrink-0 flex-col gap-2.5 self-start overflow-y-auto pb-2 pr-1 pt-2 lg:flex">
+                    <aside ref={versesRef} aria-label={t('notePanel.versesOnScreen')} className="sticky top-6 hidden max-h-[calc(100dvh-10rem)] w-[300px] shrink-0 flex-col gap-2.5 self-start overflow-y-auto pb-2 pr-1 pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:flex">
                         <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 dark:text-gray-400">{t('notePanel.versesOnScreen')}</div>
                         {verses.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">{t('notePanel.noVersesOnScreen')}</p>}
                         {verses.map((verse) => (
@@ -323,9 +329,10 @@ export function NoteReadingView({
                 </div>
             </div>
 
-            {/* iPad: a rail of sections at the right edge; it scrolls when the sections outnumber its height. */}
+            {/* iPad: a rail of sections at the right edge; it scrolls when the sections outnumber its height, and stops
+                above the text-size button in the corner, which would cover its last ticks. */}
             {sections.length > 1 && (
-                <div className="absolute bottom-0 right-0 top-14 hidden w-14 flex-col gap-0.5 overflow-y-auto border-l [justify-content:safe_center] border-gray-100 bg-white md:flex lg:hidden dark:border-gray-800 dark:bg-gray-900">
+                <div className="absolute bottom-20 right-0 top-14 hidden w-14 flex-col gap-0.5 overflow-y-auto border-l [justify-content:safe_center] border-gray-100 bg-white md:flex [@media(min-width:1024px)_and_(pointer:fine)]:hidden dark:border-gray-800 dark:bg-gray-900">
                     {sections.map((section, index) => {
                         const label = sectionDisplayLabel(section, untitled);
                         const read = (progress.bySection[section.id] ?? 0) > 0.95;
@@ -340,7 +347,7 @@ export function NoteReadingView({
             )}
             {/* The name of the section tapped on the rail, beside it — outside the scrolling rail, which would clip it. */}
             {railPill && (
-                <div className="pointer-events-none absolute right-16 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-lg md:block lg:hidden dark:bg-gray-700">
+                <div className="pointer-events-none absolute right-16 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-lg md:block [@media(min-width:1024px)_and_(pointer:fine)]:hidden dark:bg-gray-700">
                     {sectionDisplayLabel(sections.find((section) => section.id === railPill) ?? sections[0], untitled)}
                 </div>
             )}
