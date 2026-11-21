@@ -67,7 +67,7 @@ import { orderRowText, settledRowDetailComparisons } from './rowTextOrder.server
 import { SERIES_METADATA_SETTLED, type SeriesMetadataHistoryPage } from './seriesFieldAction';
 import { metadataAfterSeriesItemPlacement, SERIES_ITEM_PLACEMENT_HISTORY } from './seriesItemPlacement.server';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
-import { compareReturnedSermonText, metadataAfterSermonText } from './sermonTextOrder.server';
+import { compareReturnedSermonText, metadataAfterSermonText, preachingWithReaffirmations, reaffirmedSermonText } from './sermonTextOrder.server';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand, tagNameIsTaken, type RelationReader } from './serverRelations';
 import { metadataAfterServiceOrderPlacement, SERVICE_ORDER_PLACEMENT_HISTORY, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
@@ -850,6 +850,9 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? { [TOMBSTONE_OWNER_FIELD]: owner }
       : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
     const primary = key === primaryKey;
+    const sermonOpening = snapshot.resource.collection === 'sermons' ? snapshotFromRaw(snapshot.resource, raw) : undefined;
+    const reaffirmedText = primary && sermonOpening
+      ? reaffirmedSermonText(analysisFrameOrder?.command, sermonOpening, snapshot, preachingOrder) : [];
     const meetingOpening = primary ? rawFirstGroupMeetingOpening(command, snapshot, raw) : raw;
     const dated = metadataAfterDatedRow(snapshot, meetingOpening, primary ? command : undefined, primary ? dateOrder : undefined);
     const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, meetingOpening, primary ? meetingOrder : undefined);
@@ -859,7 +862,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const groupStepDuration = metadataAfterRowDetails({ ...snapshot, metadata: groupBlockStatus }, raw, GROUP_STEP_DURATION_POLICY, primary ? groupFlowOrder?.duration : undefined);
     const groupBlockContent = metadataAfterRowDetails({ ...snapshot, metadata: groupStepDuration }, raw, GROUP_BLOCK_CONTENT_POLICY, primary ? groupFlowOrder?.content : undefined);
     const groupStepNotes = metadataAfterRowDetails({ ...snapshot, metadata: groupBlockContent }, raw, GROUP_STEP_NOTES_POLICY, primary ? groupFlowOrder?.notes : undefined);
-    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: groupStepNotes }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
+    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: groupStepNotes }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingWithReaffirmations(preachingOrder, reaffirmedText) : undefined);
     const status = metadataAfterRowDetails({ ...snapshot, metadata: preaching }, raw, PREACH_STATUS_POLICY, primary ? statusOrder : undefined);
     const flag = metadataAfterRowDetails({ ...snapshot, metadata: status }, raw, SERVICE_ORDER_FLAG_POLICY, primary ? serviceFlagOrder : undefined);
     const stepTitle = metadataAfterRowDetails({ ...snapshot, metadata: flag }, raw, SERVICE_ORDER_STEP_TITLE_POLICY, primary ? serviceStepTitleOrder : undefined);
@@ -919,8 +922,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
         primary ? analysisFrameOrder?.accepted : undefined)
       : referenceMetadata;
     const withTitles = boundOutlineTitleMetadata(value, analysisMetadata ?? referenceMetadata);
-    const sermonMetadata = snapshot.resource.collection === 'sermons'
-      ? metadataAfterSermonText({ ...snapshot, metadata: withTitles ?? snapshot.metadata }, snapshotFromRaw(snapshot.resource, raw), raw?._dataEngine)
+    const sermonMetadata = sermonOpening
+      ? metadataAfterSermonText({ ...snapshot, metadata: withTitles ?? snapshot.metadata }, sermonOpening, raw?._dataEngine, reaffirmedText)
       : snapshot.resource.collection === 'councils' ? boundCouncilTopicTextMetadata(value, withTitles) : withTitles;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
       _dataEngine: { ...sermonMetadata, ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),

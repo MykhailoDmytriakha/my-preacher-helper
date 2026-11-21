@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { boundedActionTime } from './actionClock';
+import { boundedActionTime, compareActionTime } from './actionClock';
 import { commandFingerprint, equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth, replacedRowDetail, rowDetailConflict } from './rowDetailAction';
 import { boundedRowId, existingRowField, existingRowFields, isRowChange, proofRevision, replaceExistingRowField } from './rowFieldAction';
@@ -15,7 +15,17 @@ const MAX_PROOFS = 32;
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
 type RepairSource = { digest: string; revision: number };
-type Proof = RepairSource & { rowId: string; time: ActionTime | null; operationId: string; causal?: true; repairs?: RepairSource[]; valueRevision?: number; queueDigest?: string; priorFrames?: string[] };
+type Proof = RepairSource & {
+  rowId: string;
+  time: ActionTime | null;
+  retainedChoiceTime?: ActionTime;
+  operationId: string;
+  causal?: true;
+  repairs?: RepairSource[];
+  valueRevision?: number;
+  queueDigest?: string;
+  priorFrames?: string[];
+};
 type RowRepair<Value extends RowValue> = { before: Value; after: Value };
 const MAX_REPAIR_SOURCES = 4;
 const MAX_PRIOR_FRAMES = 8;
@@ -26,6 +36,9 @@ type FieldPlan<Field extends string, Value extends RowValue> = {
   displaced?: RowDetailHistoryEntry<Field, Value>;
   uncertain?: ConflictDetail;
   sameValueWithoutOrder?: string;
+  timedSameValue?: RowDetailAction<Value>;
+  reaffirmedWithoutTime?: string;
+  supersededSameValue?: string;
   rebasedRepair?: string;
 };
 
@@ -44,9 +57,11 @@ function readProofs(raw: unknown, key: string, field: string) {
     if (!object(item) || !boundedRowId(item.rowId) || !proofRevision(item.revision)
       || typeof item.operationId !== 'string' || !proofDigest(item.digest)) return [];
     const time = item.time === null ? null : boundedActionTime(item.time);
+    const retainedChoiceTime = time === null ? boundedActionTime(item.retainedChoiceTime) : undefined;
     const repairs = Array.isArray(item.repairs) ? item.repairs.slice(0, MAX_REPAIR_SOURCES).flatMap(repair =>
       object(repair) && proofDigest(repair.digest) && proofRevision(repair.revision) ? [{ digest: repair.digest, revision: repair.revision }] : []) : [];
     return time !== undefined ? [{ rowId: item.rowId, digest: item.digest, revision: item.revision, time, operationId: item.operationId,
+      ...(retainedChoiceTime && { retainedChoiceTime }),
       ...(item.causal === true && { causal: true as const }), ...(repairs.length && { repairs }),
       ...(proofRevision(item.valueRevision) && item.valueRevision <= item.revision && { valueRevision: item.valueRevision }),
       ...(proofDigest(item.queueDigest) && { queueDigest: item.queueDigest }),
@@ -192,11 +207,18 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
 
 function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(command: Update, action: RowDetailAction<Value>,
   field: Field, target: RowFieldTarget<Value>, value: Value, previous: Proof, scope?: RowValue, atomicChoice?: true): FieldPlan<Field, Value> {
-  const ordered = orderConcurrentRowField(command, action, target, { value, time: previous.time });
+  // An untimed choice of the same value cannot authorize a later overwrite by time.
+  // A proved earlier edit still loses to the known action that chose this value.
+  const retained = previous.retainedChoiceTime;
+  const time = retained && compareActionTime(action.time, retained) < 0 ? retained : previous.time;
+  const ordered = orderConcurrentRowField(command, action, target, { value, time });
   if (ordered.displaced) return { command: ordered.command, displaced: { ...ordered.displaced, field, rowCreatedAt: action.rowCreatedAt, ...(scope != null && { scope }) },
     ...(ordered.chronology > 0 ? { stamp: action } : {}) };
   if (ordered.chronology > 0) return { command, stamp: action };
-  if (!ordered.chronology && equalValues(value, action.after)) return { command, sameValueWithoutOrder: action.rowId };
+  if (ordered.chronology < 0 && equalValues(value, action.after)) return { command, supersededSameValue: action.rowId };
+  if (!ordered.chronology && equalValues(value, action.after)) {
+    return { command, sameValueWithoutOrder: action.rowId, timedSameValue: action };
+  }
   if (!ordered.chronology && (atomicChoice || equalValues(action.before, action.after))) return { command, uncertain: rowDetailConflict(action, target, value) };
   if (!ordered.chronology && equalValues(value, action.before)) return { command, uncertain: uncertainRowChange(action, target) };
   return { command };
@@ -255,7 +277,10 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
     const stored = readProofs(raw?._dataEngine, policy.proofs, field);
     const plans = order?.fields.get(field) ?? [];
     const stamps = new Map(plans.flatMap(plan => plan.stamp ? [[plan.stamp.rowId, plan.stamp] as const] : []));
-    const unordered = new Set(plans.map(plan => plan.sameValueWithoutOrder));
+    const reaffirmations = new Set(plans.map(plan => plan.reaffirmedWithoutTime));
+    const timedChoices = new Map(plans.flatMap(({ timedSameValue }) =>
+      timedSameValue ? [[timedSameValue.rowId, timedSameValue] as const] : []));
+    const unordered = new Set(plans.map(plan => plan.sameValueWithoutOrder ?? plan.reaffirmedWithoutTime));
     const proofIds = policy.proofRowId && new Map([...current.keys()].map(rowId => [proofRowId(policy, rowId), rowId]));
     const updated = [...current].flatMap(([rowId, value]): Proof[] => {
       const born = births.get(rowId);
@@ -284,8 +309,15 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       if (!time && !changed && !scopeChanged && !unordered.has(rowId)) return [];
       const oldValue = previousBirths.get(rowId) === born ? previous.get(rowId) : undefined;
       const remembersOpenings = policy.requireObserved || policy.rememberOpenings;
-      const prior = remembersOpenings && oldValue !== undefined
+      const retainChoiceTime = !time && !changed && !scopeChanged && reaffirmations.has(rowId);
+      const prior = (remembersOpenings || retainChoiceTime) && oldValue !== undefined
         ? matchingProof(stored.values, proofId, born, oldValue, oldScope, metadata.revision - 1) : undefined;
+      const earlierChoiceTime = retainChoiceTime ? prior?.time ?? prior?.retainedChoiceTime : undefined;
+      const acceptedChoice = retainChoiceTime ? timedChoices.get(rowId) : undefined;
+      const acceptedChoiceTime = acceptedChoice?.rowCreatedAt === born && equalValues(acceptedChoice.after, value)
+        ? acceptedChoice.time : undefined;
+      const retainedChoiceTime = acceptedChoiceTime && acceptedChoiceTime.earliestMs > (earlierChoiceTime?.earliestMs ?? 0)
+        ? acceptedChoiceTime : earlierChoiceTime;
       // A type change can make a new scoped proof without advancing the outcome itself.
       const valueRevision = policy.requireObserved ? (changed ? metadata.revision : prior?.valueRevision ?? prior?.revision ?? metadata.revision) : undefined;
       const hasOpening = policy.rememberOpenings ? previousBirths.get(rowId) === born : oldValue !== undefined;
@@ -300,6 +332,7 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       const causalRefresh = policy.rememberOpenings && (reselected || (reaffirmed && !unordered.has(rowId)));
       return [{ rowId: proofId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
         ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),
+        ...(retainedChoiceTime && { retainedChoiceTime }),
         ...(policy.allowUnclocked && (changed || enteredScope || bound || causalRefresh) && { causal: true as const }) }];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));

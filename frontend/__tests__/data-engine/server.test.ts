@@ -1828,6 +1828,121 @@ describe('council topic text action chronology', () => {
   });
 });
 
+describe('reaffirming a legacy sermon text opening', () => {
+  const owner = 'owner-1';
+  const resource = { collection: 'sermons', id: 'legacy-text-reaffirmation' };
+  const common = { protocol: 1, owner, resource, dependsOn: [] };
+  const at = '2026-11-20T00:00:00.000Z';
+  const opening = 'Opening words intentionally kept';
+  const temporary = 'Temporary words on the second device';
+  const older = 'Older words delayed by the network';
+  const sibling = 'Independent text that must remain';
+  const value = (root: 'planText' | 'outline' | 'scratch' | 'preachDates', words: string, other = sibling) => {
+    if (root === 'planText') return { first: words, second: other };
+    if (root === 'outline') return { introduction: [], main: [{ id: 'first', text: 'First title', note: words },
+      { id: 'second', text: 'Second title', note: other }], conclusion: [] };
+    if (root === 'preachDates') return [
+      { id: 'first', date: '2026-11-20', church: { id: 'church-a', name: 'First Church' }, notes: words, createdAt: at },
+      { id: 'second', date: '2026-11-21', church: { id: 'church-b', name: 'Second Church' }, notes: other, createdAt: at },
+    ];
+    return [{ id: 'first', text: words, createdAt: at }, { id: 'second', text: other, createdAt: at }];
+  };
+  const cases = [
+    { root: 'planText', path: ['planText', 'first'] },
+    { root: 'outline', path: ['outline', 'main', 'id:first', 'note'] },
+    { root: 'scratch', path: ['scratch', 'id:first', 'text'] },
+    { root: 'preachDates', path: ['preachDates', 'id:first', 'notes'] },
+  ] as const;
+
+  it.each(cases)('asks about an old $root write after the opening was explicitly reaffirmed', async ({ root, path }) => {
+    const seed = await processCommand(owner, { ...common, kind: 'create', generation: null, operationId: 'opening',
+      value: { userId: owner, title: 'Sermon draft', verse: 'John 3:16', date: at, thoughts: [], [root]: value(root, opening) },
+    });
+    expect(seed.kind).toBe('acknowledged');
+    const field = (words: string, other?: string) => ({ exists: true, value: value(root, words, other) });
+    const save = (operationId: string, before: ReturnType<typeof field>, after: ReturnType<typeof field>, revision?: number) =>
+      processCommand(owner, { ...common, kind: 'update', generation: 'opening', operationId,
+        changes: [{ path: [root], before, after }], ...(revision && { sermonTextObservedRevision: revision }),
+      });
+    const returnToOpening = await save('reaffirmed-opening', field(temporary), field(opening));
+    expect(returnToOpening).toMatchObject({ kind: 'acknowledged', snapshot: { value: { [root]: value(root, opening) } } });
+    const delayed = await save('first-delivery-of-old-text', field(opening), field(older));
+    expect(delayed).toMatchObject({ kind: 'conflict', conflicts: [{ path, mine: { exists: true, value: older }, theirs: { exists: true, value: opening } }],
+      snapshot: { value: { [root]: value(root, opening) } } });
+    expect(await save('first-delivery-of-old-text', field(opening), field(older))).toEqual(delayed);
+
+    if (returnToOpening.kind !== 'acknowledged') throw new Error('Expected the return to be accepted');
+    const revisedSibling = 'An independent edit made without an observed revision';
+    expect(await save('independent-edit', field(opening), field(opening, revisedSibling))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { [root]: value(root, opening, revisedSibling) } },
+    });
+    const fresh = 'New words added after seeing the return';
+    expect(await save('fresh-edit', field(opening), field(fresh), returnToOpening.snapshot.metadata?.revision)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { [root]: value(root, fresh, revisedSibling) } },
+    });
+  });
+
+  it.each([
+    { variant: 'a reaffirmation proved older', repeatTime: 20, extraReturn: false, nextTime: null, sawReturn: true, keepsOpening: false, result: 'acknowledged' },
+    { variant: 'an untimed reaffirmation with a possibly later edit', repeatTime: null, extraReturn: false, nextTime: 80, sawReturn: true, keepsOpening: true, result: 'conflict' },
+    { variant: 'an untimed reaffirmation with a provably earlier edit', repeatTime: null, extraReturn: false, nextTime: 20, sawReturn: false, keepsOpening: true, result: 'acknowledged' },
+    { variant: 'a second timed reaffirmation newer than the edit', repeatTime: null, extraReturn: true, nextTime: 80, sawReturn: false, keepsOpening: true, result: 'acknowledged' },
+  ] as const)('handles a date note sent after $variant', async ({ repeatTime, extraReturn, nextTime, sawReturn, keepsOpening, result }) => {
+    const row = { id: 'first', date: '2026-11-20', church: { id: 'church-a', name: 'First Church' }, notes: temporary, createdAt: at };
+    const seed = await processCommand(owner, { ...common, kind: 'create', generation: null, operationId: 'opening',
+      value: { userId: owner, title: 'Date notes', verse: 'John 3:16', date: at, thoughts: [], preachDates: [row] },
+    });
+    if (seed.kind !== 'acknowledged') throw new Error('Expected sermon creation');
+    const prepare = (operationId: string, from: ResourceSnapshot, notes: string) => {
+      const { command } = prepareDomainCommand(owner, operationId, from, { ...from.value, preachDates: [{ ...row, notes }] });
+      if (command?.kind !== 'update') throw new Error('Expected date update');
+      return command;
+    };
+    const returnWords = (operationId: string, offset: number) => ({
+      ...prepare(operationId, seed.snapshot, opening),
+      preachDateFieldActions: { notes: { rowId: row.id, rowCreatedAt: row.createdAt, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } } },
+    });
+    const saved = await processCommand(owner, returnWords('later-action', 60));
+    if (saved.kind !== 'acknowledged') throw new Error('Expected the later action to be accepted');
+    const repeat = repeatTime === null ? prepare('untimed-return', seed.snapshot, opening) : returnWords('earlier-action-delayed', repeatTime);
+    expect(await processCommand(owner, repeat)).toMatchObject({ kind: 'acknowledged' });
+    if (extraReturn) expect(await processCommand(owner, returnWords('later-reaffirmation', 100))).toMatchObject({ kind: 'acknowledged' });
+    const fresh = 'Newly written next to the date';
+    const basis = sawReturn ? saved.snapshot : seed.snapshot;
+    const next = prepare('phone-action', basis, fresh);
+    const delivered = await processCommand(owner, nextTime === null ? next : { ...next, preachDateFieldActions: { notes: {
+      rowId: row.id, rowCreatedAt: row.createdAt, observedRevision: basis.metadata!.revision,
+      time: { earliestMs: 1_800_000_000_000 + nextTime, latestMs: 1_800_000_000_010 + nextTime },
+    } } });
+    expect(delivered).toMatchObject({ kind: result, snapshot: { value: { preachDates: [{ ...row, notes: keepsOpening ? opening : fresh }] } } });
+    if (result === 'conflict') expect(delivered).toMatchObject({ conflicts: [{ path: ['preachDates', 'id:first', 'notes'],
+      mine: { value: fresh }, theirs: { value: opening } }] });
+  });
+
+  it('does not reaffirm an earlier cell edit suppressed by the same request retiring the point', async () => {
+    const outline = { introduction: [], main: [{ id: 'first', text: 'Point', note: '', subPoints: [] }], conclusion: [] };
+    const planText = { first: opening, second: sibling };
+    const seed = await processCommand(owner, { ...common, kind: 'create', generation: null, operationId: 'opening',
+      value: { userId: owner, title: 'Manual plan', verse: 'John 3:16', date: at, thoughts: [], outline, planText },
+    });
+    if (seed.kind !== 'acknowledged') throw new Error('Expected sermon creation');
+    const generation = seed.snapshot.metadata!.generation;
+    expect(await processCommand(owner, { ...common, kind: 'update', generation, operationId: 'remove-point',
+      observedPlanTextRemoval: { first: temporary },
+      changes: [
+        { path: ['outline'], before: { exists: true, value: outline }, after: { exists: true, value: { ...outline, main: [] } } },
+        { path: ['planText'], before: { exists: true, value: { ...planText, first: temporary } }, after: { exists: true, value: planText } },
+      ],
+    })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: { main: [] }, planText } } });
+    expect(await processCommand(owner, { ...common, kind: 'update', generation, operationId: 'unseen-words',
+      sermonTextObservedRevision: seed.snapshot.metadata!.revision,
+      changes: [{ path: ['planText'], before: { exists: true, value: planText }, after: { exists: true, value: { ...planText, first: older } } }],
+    })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: { main: [] }, planText: { ...planText, first: older } } } });
+  });
+
+});
+
 describe('transactional DataEngine server', () => {
   it('commits one effect and returns the same durable receipt to concurrent duplicate senders', async () => {
     const [first, second] = await Promise.all([processCommand('owner-1', create()), processCommand('owner-1', create())]);

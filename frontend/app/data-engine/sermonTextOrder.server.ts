@@ -2,13 +2,20 @@ import { createHash } from 'node:crypto';
 
 import { documentProofHeadroom } from './documentProofBudget.server';
 import { commandFingerprint, equalValues, object, own } from './fieldValues';
-import { proofRevision } from './rowFieldAction';
+import { preachDateDetailConflict, preachDateFieldTarget } from './preachDateFieldAction';
+import { proofRevision, rowConflictPath } from './rowFieldAction';
+import { preserveUnorderedPlanText } from './sermonPlanText';
 import { changedSermonText, isPlanCellPath, isSermonTextRoot, SERMON_TEXT_ROOTS as roots, sermonTextChanges, sermonTextLeaves } from './sermonTextOpenings';
 
+import type { PreachDateField, PreachDateFieldValue } from './preachDateFieldAction';
+import type { RowDetailOrder } from './rowDetailOrder.server';
 import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 
 const PROOF = 'sermonTextReturn';
 const MAX_DEPARTURES = 96;
+
+type PreachingOrder = RowDetailOrder<PreachDateField, PreachDateFieldValue>;
+type TextEdits = ReturnType<typeof sermonTextChanges>;
 
 type Departure = { digest: string; revision: number };
 type History = { floor: number; departures: Departure[] };
@@ -61,22 +68,67 @@ export function compareReturnedSermonText(command: DataCommand, current: Resourc
   });
 }
 
-/** Record accepted departures for each field, including writes made by older clients. */
-export function metadataAfterSermonText(snapshot: ResourceSnapshot, previous: ResourceSnapshot, raw: unknown) {
+/** Find authored returns that the normal merge accepted without changing the stored words. */
+export function reaffirmedSermonText(command: DataCommand | undefined, previous: ResourceSnapshot, snapshot: ResourceSnapshot,
+  preaching?: PreachingOrder): TextEdits {
+  if (command?.kind !== 'update' || command.generation !== previous.metadata?.generation
+    || command.generation !== snapshot.metadata?.generation || !previous.value || !snapshot.value) return [];
+  const prior = previous.value, value = snapshot.value;
+  const superseded = new Set([...(preaching?.fields ?? [])].flatMap(([field, plans]) => plans.flatMap(({ supersededSameValue }) =>
+    supersededSameValue ? [JSON.stringify(rowConflictPath(supersededSameValue, preachDateFieldTarget(field)))] : [])));
+  const edits = sermonTextChanges(command.changes.map(change => change.path[0] === 'planText'
+    ? preserveUnorderedPlanText(change, prior, value, command.observedPlanTextRemoval) : change));
+  return roots.flatMap(root => {
+    const candidates = edits.filter(({ path }) => path[0] === root && !superseded.has(JSON.stringify(path)));
+    if (!candidates.length) return [];
+    const opening = sermonTextLeaves(root, prior[root]);
+    const saved = equalValues(prior[root], value[root]) ? opening : sermonTextLeaves(root, value[root]);
+    return candidates.filter(({ key, path, after }) => {
+      const previousLeaf = opening.get(key);
+      const savedLeaf = saved.get(key);
+      if ((!previousLeaf || !savedLeaf) && !isPlanCellPath(path)) return false;
+      return equalValues(previousLeaf?.value ?? { exists: false }, after)
+        && equalValues(savedLeaf?.value ?? { exists: false }, after);
+    });
+  });
+}
+
+/** A legacy return also advances the date-field proof, with no claim about its action time. */
+export function preachingWithReaffirmations(order: PreachingOrder | undefined, edits: TextEdits): PreachingOrder | undefined {
+  if (order?.command.kind !== 'update' || !edits.some(({ path }) => path[0] === 'preachDates')) return order;
+  const fields = new Map([...order.fields].map(([field, plans]) => [field, [...plans]]));
+  for (const { path } of edits) {
+    const detail = preachDateDetailConflict(path);
+    if (!detail) continue;
+    const { field, rowId } = detail;
+    if (order.fields.get(field)?.some(plan => plan.stamp?.rowId === rowId)) continue;
+    const plans = fields.get(field) ?? [];
+    plans.push({ command: order.command, reaffirmedWithoutTime: rowId });
+    fields.set(field, plans);
+  }
+  return { ...order, fields };
+}
+
+/** Carry accepted departures and reaffirmations forward with their per-field revisions. */
+export function metadataAfterSermonText(snapshot: ResourceSnapshot, previous: ResourceSnapshot, raw: unknown, reaffirmed: TextEdits) {
   const { value, metadata } = snapshot;
   if (snapshot.resource.collection !== 'sermons' || !value || !metadata || !previous.value
     || metadata.generation !== previous.metadata?.generation) return metadata;
   const prior = previous.value;
-  const updates = roots.flatMap(root => equalValues(prior[root], value[root]) ? [] : [{
-    root, changes: changedSermonText(root, sermonTextLeaves(root, prior[root]), sermonTextLeaves(root, value[root]), true),
-  }]);
-  if (!updates.some(update => update.changes.length) && (!object(raw) || raw[PROOF] === undefined)) return metadata;
+  const updates = roots.map(root => {
+    const departed = equalValues(prior[root], value[root]) ? []
+      : changedSermonText(root, sermonTextLeaves(root, prior[root]), sermonTextLeaves(root, value[root]), true);
+    return { root, digests: [
+      ...departed.map(({ key, before }) => digest(key, before)),
+      ...reaffirmed.filter(({ path }) => path[0] === root).map(({ key, after }) => digest(key, after)),
+    ] };
+  });
+  if (!updates.some(update => update.digests.length) && (!object(raw) || raw[PROOF] === undefined)) return metadata;
   const evidence = history(raw, metadata.generation, previous.metadata.revision);
-  for (const { root, changes } of updates) {
+  for (const { root, digests } of updates) {
     const history = evidence[root];
     const departures = new Map(history.departures.map(entry => [entry.digest, entry]));
-    for (const { key, before } of changes) {
-      const keyDigest = digest(key, before);
+    for (const keyDigest of digests) {
       departures.delete(keyDigest);
       departures.set(keyDigest, { digest: keyDigest, revision: metadata.revision });
     }
