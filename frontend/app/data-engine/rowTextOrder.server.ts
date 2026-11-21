@@ -1,5 +1,5 @@
 import { equalValues, object } from './fieldValues';
-import { matchesRowDetailBirth, rowDetailConflict } from './rowDetailAction';
+import { hasUnseenRowText, matchesRowDetailBirth, rowDetailConflict } from './rowDetailAction';
 import { needsLegacyRowDetailOpeningReview, orderRowDetails } from './rowDetailOrder.server';
 import { boundedRowId, existingRowFields, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { readRowObservation } from './rowFieldOrder.server';
@@ -39,8 +39,9 @@ export function orderRowText<Field extends string, Value extends string | null>(
     if (typeof candidate.rowCreatedAt !== 'string') continue;
     const compact = repeated && !Object.hasOwn(candidate, 'before') && !Object.hasOwn(candidate, 'after');
     const full = compact ? { ...candidate, before: opening.get(candidate.rowId), after: proposed.get(candidate.rowId) } : candidate;
+    const unseen = policy.compareUnseenText && hasUnseenRowText(full, metadata.revision);
     const action = readRowObservation(command, full, target, serverMs, { allowUnclocked: true, acceptsRowId,
-      allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)) });
+      allowUnchanged: after => Boolean(unseen || policy.allowUnchanged?.(field, after)) });
     if (action && action.observedRevision <= metadata.revision
       && matchesRowDetailBirth(command.changes, { rowId: action.rowId, rowCreatedAt: candidate.rowCreatedAt }, policy.birth)) submitted.set(action.rowId, full);
   }

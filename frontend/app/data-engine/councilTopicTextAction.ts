@@ -132,6 +132,7 @@ export const COUNCIL_TOPIC_TEXT_POLICY: RowDetailPolicy<'text', string | null> =
   collection: 'councils', fields: ['text'], repeatedFields: ['text'], target: () => COUNCIL_TOPIC_TEXT,
   birth: { field: 'topics', leaf: 'id', accepts: acceptsId, container: { rows: councilTopicTextRows, replace: rows => rows } },
   acceptsRowId: acceptsId, proofs: 'councilTopicTextProofs', actions: 'councilTopicTextActions', history: '_topicTextHistory',
+  compareUnseenText: true,
   allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
   allowUnchanged: () => true, seedOpeningFromStoredValue: true,
 };

@@ -1,18 +1,33 @@
 import { equalValues } from './fieldValues';
-import { existingRowField, isRowChange, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { existingRowField, isRowChange, proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { DisplacedRowField, RowFieldEvidence, RowFieldObservation, RowFieldTarget, RowValue } from './rowFieldAction';
 import type { ConflictDetail, FieldChange, ResourceSnapshot } from './types';
 
-export type RowDetailObservation<Value extends RowValue> = RowFieldObservation<Value> & { rowCreatedAt: string; predecessorOperationId?: string };
+export type RowDetailObservation<Value extends RowValue> = RowFieldObservation<Value> & {
+  rowCreatedAt: string;
+  predecessorOperationId?: string;
+  unseenRevision?: number;
+};
 export type RowDetailAction<Value extends RowValue> = RowFieldEvidence<Value> & RowDetailObservation<Value>;
 export type RowTextStamp = Omit<RowDetailObservation<string | null>, 'before' | 'after'>;
 
 export function compactRowTextStamps(actions: readonly RowDetailObservation<RowValue>[]): RowTextStamp[] {
-  return actions.map(({ rowId, rowCreatedAt, observedRevision, time, predecessorOperationId }) => ({
+  return actions.map(({ rowId, rowCreatedAt, observedRevision, time, predecessorOperationId, unseenRevision }) => ({
     rowId, rowCreatedAt, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }),
+    ...(unseenRevision && { unseenRevision }),
   }));
+}
+
+// The editor displays an absent optional string as an empty field.
+export const sameRowText = (left: RowValue | undefined, right: RowValue | undefined): boolean =>
+  equalValues(left, right) || ((left === null || left === '') && (right === null || right === ''));
+
+export function hasUnseenRowText(proof: Record<string, unknown>, revision: number): boolean {
+  const { observedRevision, unseenRevision } = proof;
+  return proofRevision(observedRevision) && proofRevision(unseenRevision)
+    && observedRevision < unseenRevision && unseenRevision <= revision;
 }
 
 export type RowDetailHistoryEntry<Field extends string, Value extends RowValue> = DisplacedRowField<Value> & { field: Field; rowCreatedAt: string; scope?: RowValue };
@@ -32,6 +47,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   allowUnclocked?: boolean;
   atomicChoice?: true;
   requireObserved?: true;
+  compareUnseenText?: true;
   rememberOpenings?: true;
   rememberReaffirmations?: true;
   rememberLegacyReaffirmations?: true;

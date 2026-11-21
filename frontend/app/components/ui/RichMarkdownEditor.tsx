@@ -316,9 +316,16 @@ function BufferedMarkdownEditor({
             if (valueIsUserAction && valueBeforeUserAction && valueBeforeUserAction !== appliedForeignValue.current) {
                 active.pendingForeign = valueBeforeUserAction;
             }
+        } else if (editor && !editor.isDestroyed && value !== current.current.value && !valueIsUserAction
+            && observedAppend?.after !== value && heldText.current === null && getPending() === null) {
+            // React can publish the value before the effect installs it in ProseMirror.
+            const shown = readMarkdown(editor);
+            deferredArrival.current = value !== lastEmittedText.current && value !== shown
+                && !canonicalForeignTarget(editor, value).eq(editor.state.doc)
+                ? { editor, shown, target: value } : null;
         }
         current.current = { draft, value, observedAppend, valueIsUserAction, valueBeforeUserAction };
-    }, [draft, editor, value, observedAppend, valueIsUserAction, valueBeforeUserAction]);
+    }, [draft, editor, getPending, value, observedAppend, valueIsUserAction, valueBeforeUserAction]);
 
     useEffect(() => {
         if (!editor || getPending() !== null || heldText.current !== null

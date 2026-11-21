@@ -18,6 +18,7 @@ export const GROUP_BLOCK_TITLE_POLICY: RowDetailPolicy<'title', string> = {
   birth: { field: 'templates', leaf: 'createdAt', accepts: isText },
   target: () => GROUP_BLOCK_TITLE,
   proofs: 'groupBlockTitleProofs', actions: 'groupBlockTitleActions', history: '_blockTitleHistory',
+  compareUnseenText: true,
   repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
   rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
@@ -27,6 +28,7 @@ export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = 
   birth: { field: 'flow', leaf: 'templateId', accepts: isIdentity },
   target: () => GROUP_STEP_TITLE,
   proofs: 'groupStepTitleProofs', actions: 'groupStepTitleActions', history: '_stepTitleHistory',
+  compareUnseenText: true,
   repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
   rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
@@ -35,6 +37,7 @@ export const GROUP_BLOCK_CONTENT_POLICY: RowDetailPolicy<'content', string> = {
   collection: 'groups', fields: ['content'], birth: GROUP_BLOCK_TITLE_POLICY.birth,
   target: () => ({ field: 'templates', leaf: 'content', accepts: isText }),
   proofs: 'groupBlockContentProofs', actions: 'groupBlockContentActions', history: '_blockContentHistory',
+  compareUnseenText: true,
   repeatedFields: ['content'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
 };
 
@@ -42,6 +45,7 @@ export const GROUP_STEP_NOTES_POLICY: RowDetailPolicy<'instanceNotes', string | 
   collection: 'groups', fields: ['instanceNotes'], birth: GROUP_STEP_TITLE_POLICY.birth,
   target: () => ({ field: 'flow', leaf: 'instanceNotes', missing: null, accepts: (value): value is string | null => value === null || isText(value) }),
   proofs: 'groupStepNotesProofs', actions: 'groupStepNotesActions', history: '_stepNotesHistory',
+  compareUnseenText: true,
   repeatedFields: ['instanceNotes'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
 };
 

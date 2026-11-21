@@ -52,7 +52,7 @@ const outlinePlacement = z.object({ generation: id.nullable(), before: outlineWi
 const fieldAction = z.object({ observedRevision, time: actionTime, predecessorOperationId: id.optional() });
 const textAction = fieldAction.extend({ before: z.string(), after: z.string() });
 const groupFieldDraft = z.object({ generation: id, action: textAction });
-const rowAction = fieldAction.extend({ rowId: z.string().min(1), rowCreatedAt: z.string() });
+const rowAction = fieldAction.extend({ rowId: z.string().min(1), rowCreatedAt: z.string(), unseenRevision: observedRevision.optional() });
 function rowValues<T extends z.ZodTypeAny>(value: T) {
   return rowAction.extend({ before: value, after: value });
 }

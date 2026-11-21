@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { commandFingerprint, equalValues, object } from './fieldValues';
-import { matchesRowDetailBirth, replacedRowDetail, rowDetailConflict } from './rowDetailAction';
+import { hasUnseenRowText, matchesRowDetailBirth, replacedRowDetail, rowDetailConflict, sameRowText } from './rowDetailAction';
 import { boundedRowId, existingRowField, existingRowFields, isRowChange, proofRevision, replaceExistingRowField } from './rowFieldAction';
 import { orderConcurrentRowField, readRowObservation, uncertainRowChange } from './rowFieldOrder.server';
 
@@ -120,12 +120,13 @@ function nextPriorFrames(prior: Proof | undefined, hasOpening: boolean, changed:
 function orderField<Field extends string, Value extends RowValue>(command: Update, current: ResourceSnapshot, raw: unknown, serverMs: number,
   field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown, queueDigest?: string, knownOpeningRow?: string): FieldPlan<Field, Value> {
   const target = policy.target(field);
+  const revision = current.metadata!.revision;
+  const unseen = policy.compareUnseenText && object(submitted) && hasUnseenRowText(submitted, revision);
   const evidence = readRowObservation(command, submitted, target, serverMs, {
     allowUnclocked: policy.allowUnclocked,
     acceptsRowId: policy.acceptsRowId,
-    allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)),
+    allowUnchanged: after => Boolean(unseen || policy.allowUnchanged?.(field, after)),
   });
-  const revision = current.metadata!.revision;
   if (!evidence || policy.validAfter?.(field, evidence.after) === false || evidence.observedRevision > revision || !object(submitted) || !policy.birth.accepts(submitted.rowCreatedAt)) return { command };
   const action = { ...evidence, rowCreatedAt: submitted.rowCreatedAt };
   if (!matchesRowDetailBirth(command.changes, action, policy.birth)) return { command };
@@ -146,6 +147,13 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
     }
   }
   if (policy.mergesIndependently?.(action.before, action.after, value)) return { command };
+  if (unseen && sameRowText(action.before, action.after)) {
+    // Undo to the displayed opening leaves the already received field alone.
+    const changes = command.changes.map(change => isRowChange(change, target) ? {
+      ...change, after: { ...change.after, value: replaceExistingRowField(change.after.value, action.rowId, action.before, target) },
+    } : change);
+    return { command: { ...command, changes } };
+  }
   if (policy.needsChoice?.(field, action.before, action.after, value)) {
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
@@ -154,6 +162,11 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const unobserved = previous && previous.revision > action.observedRevision;
   const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
   const matchesOpening = equalValues(value, action.before);
+  if (unseen && !sameRowText(value, action.before) && !sameRowText(value, action.after)) {
+    const previousTime = previous?.time ?? previous?.retainedChoiceTime;
+    const storedWins = unobserved && action.time && previousTime && compareActionTime(action.time, previousTime) < 0;
+    if (!storedWins) return { command, uncertain: rowDetailConflict(action, target, value) };
+  }
   const followsPredecessor = unobserved && (previous.time || (policy.allowUnclocked && previous.causal)) && matchesOpening
     && previous.operationId === submitted.predecessorOperationId;
   if (policy.requireObserved) {

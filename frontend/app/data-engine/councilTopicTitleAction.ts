@@ -20,6 +20,7 @@ export const COUNCIL_TOPIC_ID: RowFieldTarget<string> = { field: 'topics', leaf:
 export const COUNCIL_TOPIC_TITLE_POLICY: RowDetailPolicy<'title', string> = {
   collection: 'councils', fields: ['title'], birth: COUNCIL_TOPIC_ID, target: () => COUNCIL_TOPIC_TITLE,
   proofs: 'councilTopicTitleProofs', actions: 'councilTopicTitleActions', history: '_topicTitleHistory',
+  compareUnseenText: true,
   repeatedFields: ['title'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
   rememberLegacyReaffirmations: true, seedOpeningFromStoredValue: true,
 };
@@ -39,5 +40,6 @@ export const COUNCIL_TOPIC_SUMMARY_POLICY: RowDetailPolicy<'summary', string | n
   target: () => ({ field: 'topics', leaf: 'summary', missing: null,
     accepts: (value): value is string | null => value === null || typeof value === 'string' }),
   proofs: 'councilTopicSummaryProofs', actions: 'councilTopicSummaryActions', history: '_topicSummaryHistory',
+  compareUnseenText: true,
   repeatedFields: ['summary'], allowUnclocked: true, atomicChoice: true, rememberOpenings: true, seedOpeningFromStoredValue: true,
 };

@@ -10,7 +10,7 @@ import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { orderedPreachDateFieldConflict, PREACH_DATE_FIELD_POLICY, preachDateFieldScope } from './preachDateFieldAction';
-import { matchesRowDetailBirth } from './rowDetailAction';
+import { hasUnseenRowText, matchesRowDetailBirth, sameRowText } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
@@ -39,13 +39,13 @@ export type AutosaveRowFieldActions = Partial<Record<ActionKey, Action[]>>;
 
 type Target = {
   stamp: RowFieldActionKind; draft: DraftKey; action: ActionKey; field: string; keepReselection: boolean;
-  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'acceptsRowId' | 'scopes' | 'proofs' | 'actions' | 'history'>;
+  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'acceptsRowId' | 'scopes' | 'proofs' | 'actions' | 'history' | 'compareUnseenText'>;
 };
 
 function autosaveTarget<Field extends string, Item extends Value>(policy: RowDetailPolicy<Field, Item>, field: Field,
   stamp: RowFieldActionKind, draft: DraftKey, action: ActionKey): Target {
-  const { collection, birth, proofs, actions, history, acceptsRowId, scopes } = policy;
-  return { stamp, draft, action, field, keepReselection: Boolean(policy.allowUnchanged), policy: { collection, birth, proofs, actions, history, acceptsRowId,
+  const { collection, birth, proofs, actions, history, acceptsRowId, scopes, compareUnseenText } = policy;
+  return { stamp, draft, action, field, keepReselection: Boolean(policy.allowUnchanged), policy: { collection, birth, proofs, actions, history, acceptsRowId, compareUnseenText,
     fields: [field], target: () => policy.target(field), ...(stamp === 'preach-date-city' && scopes && { scopes: rows => scopes(rows, field) }) } };
 }
 
@@ -83,7 +83,8 @@ const birthAt = (value: DocumentData | null | undefined, id: string, target: Tar
   existingRowField(value?.[target.policy.birth.field], id, target.policy.birth);
 const sameCapture = (first: Action, second: Action) => first.rowId === second.rowId
   && first.rowCreatedAt === second.rowCreatedAt && equalValues(first.before, second.before) && equalValues(first.after, second.after)
-  && first.observedRevision === second.observedRevision && equalValues(first.time, second.time) && equalValues(first.scope, second.scope);
+  && first.observedRevision === second.observedRevision && first.unseenRevision === second.unseenRevision
+  && equalValues(first.time, second.time) && equalValues(first.scope, second.scope);
 const isCaptured = (checkpoint: SessionCheckpoint, action: Action, target: Target) => Object.values(checkpoint.pending)
   .some(request => request[target.action]?.some(captured => sameCapture(action, captured)));
 
@@ -110,6 +111,7 @@ export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'con
     const action = proof.action;
     if (action.rowId !== id || !(target.policy.acceptsRowId ?? boundedRowId)(id)
       || typeof action.observedRevision !== 'number' || action.observedRevision > metadata.revision
+      || (action.unseenRevision !== undefined && !(target.policy.compareUnseenText && hasUnseenRowText(action, metadata.revision)))
       || births.get(id) !== action.rowCreatedAt || !equalValues(values.get(id), action.after)
       || (target.stamp === 'preach-date-city' && (!object(action.scope)
         || !equalValues(action.scope, scopeAt(draft[field.field], id, target))))) return false;
@@ -183,19 +185,36 @@ function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, 
     && matchesScope(value?.[target.policy.birth.field], action, target));
 }
 
+/**
+ * An accepted field can be newer than the words the person is still editing.
+ * A later action time alone cannot give that edit ownership of the incoming words.
+ */
+function receivedRowTextRevision(checkpoint: SessionCheckpoint, visible: ShownCopy, target: Target, rowId: string,
+  birth: string, shownText: Value | undefined): number | undefined {
+  if (!target.policy.compareUnseenText || shownText === undefined) return;
+  const { value, metadata } = checkpoint.confirmed;
+  const shownRevision = visible.confirmed.metadata!.revision;
+  if (!metadata || metadata.revision <= shownRevision || birthAt(value, rowId, target) !== birth) return;
+  const saved = fieldAt(value, rowId, target);
+  if (!sameRowText(saved, shownText) && !sameRowText(saved, fieldAt(visible.confirmed.value, rowId, target))) return metadata.revision;
+}
+
 function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | null, visible: ShownCopy,
   target: Target, rowId: string, time: ActionTime | null, prior?: Action, opening?: OutlineTitleOpening): Action | undefined {
   if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId)) return;
   const old = fieldAt(checkpoint.draft, rowId, target), after = fieldAt(value, rowId, target);
   const rowCreatedAt = birthAt(checkpoint.draft, rowId, target);
-  if (old === undefined || after === undefined || (equalValues(old, after) && !target.keepReselection)
+  if (old === undefined || after === undefined
     || rowCreatedAt === undefined || birthAt(value, rowId, target) !== rowCreatedAt
     || (!opening && visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt)) return;
   const typing = prior && !isCaptured(checkpoint, prior, target);
   const shownValue = fieldAt(visible.draft, rowId, target);
   const before = typing ? prior.before : opening?.text ?? (shownValue === undefined ? old : shownValue);
   const observedRevision = prior?.observedRevision ?? opening?.version?.observedRevision ?? visible.confirmed.metadata!.revision;
-  if (!equalValues(before, after) || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
+  const unseenRevision = prior?.unseenRevision ?? receivedRowTextRevision(checkpoint, visible, target, rowId, rowCreatedAt, shownValue);
+  if (unseenRevision || target.keepReselection || (!equalValues(old, after) && !equalValues(before, after))) {
+    return { rowId, rowCreatedAt, before, after, time, observedRevision, ...(unseenRevision && { unseenRevision }) };
+  }
 }
 
 function carryReviewedCouncilDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, target: Target): Draft[] {
@@ -221,10 +240,13 @@ function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, s
   if (opening && (opening.version?.generation !== metadata.generation || opening.version.observedRevision > metadata.revision)) return staged;
   const rowIds = 'rowIds' in stamp ? stamp.rowIds : [stamp.rowId];
   const priorById = new Map(validDrafts(checkpoint, checkpoint.draft, target).map(item => [item.action.rowId, item.action]));
-  const visible = shown?.editGeneration === checkpoint.editGeneration
-    && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
+  const displayed = shown?.confirmed.metadata?.generation === metadata.generation ? shown : undefined;
   for (const rowId of rowIds) {
-    const action = observeRowEdit(checkpoint, value, visible, target, rowId, time, priorById.get(rowId), opening);
+    const prior = priorById.get(rowId);
+    const stillOnSavedField = target.policy.compareUnseenText && !prior
+      && equalValues(fieldAt(checkpoint.draft, rowId, target), fieldAt(checkpoint.confirmed.value, rowId, target));
+    const visible = displayed && (displayed.editGeneration === checkpoint.editGeneration || stillOnSavedField) ? displayed : checkpoint;
+    const action = observeRowEdit(checkpoint, value, visible, target, rowId, time, prior, opening);
     if (action) staged.push({ generation: metadata.generation, action });
   }
   return staged;

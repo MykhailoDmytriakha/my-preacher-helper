@@ -1,5 +1,6 @@
 import { TextSelection } from '@tiptap/pm/state';
 import { act, cleanup, render } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { markdown, mountedEditor } from '@test-utils/richMarkdownHistory';
@@ -108,6 +109,29 @@ it('holds the typist’s text for a choice when the arriving version replaced th
 
   expect(onChange).not.toHaveBeenCalled();
   expect(onHoldText).toHaveBeenCalledWith(original.replace(paragraphs[2], paragraphs[2].slice(0, 25) + 'OWN' + paragraphs[2].slice(25)));
+});
+
+it('holds typing into the drawn document while React installs a foreign value', () => {
+  const onChange = jest.fn();
+  const onHoldText = jest.fn();
+  const arrived = original.replace(paragraphs[2], 'Paragraph 3: Different words from the phone.');
+  function WithIncomingValue({ value }: { value: string }) {
+    useLayoutEffect(() => {
+      if (value === arrived) {
+        expect(markdown(editor)).toBe(original);
+        editor.commands.insertContent('OWN');
+      }
+    }, [value]);
+    return <RichMarkdownEditor value={value} onChange={onChange} onHoldText={onHoldText} />;
+  }
+  const view = render(<WithIncomingValue value={original} />);
+  const editor = mountedEditor(view.container);
+  selectText(editor, paragraphs[2], 25);
+  view.rerender(<WithIncomingValue value={arrived} />);
+
+  expect(onChange).not.toHaveBeenCalled();
+  expect(onHoldText).toHaveBeenCalledWith(original.replace(paragraphs[2],
+    paragraphs[2].slice(0, 25) + 'OWN' + paragraphs[2].slice(25)));
 });
 
 it('shows a disjoint arriving edit while protecting the changed active paragraph from autosave', () => {
