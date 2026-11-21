@@ -14,6 +14,8 @@ const captured = z.object({
   before: z.record(z.string()),
   labels: z.record(z.string()),
   language: z.enum(['en', 'ru', 'uk']).optional(),
+  /** Every target cell was empty when the request started: the answer goes straight in, unreviewed. */
+  autoApply: z.boolean().optional(),
 });
 
 const schema = z.discriminatedUnion('state', [

@@ -2,10 +2,11 @@ import { act, renderHook } from '@testing-library/react';
 
 import { useNotePlanGeneration } from '@/(pages)/(private)/sermons/[id]/plan/manual/useNotePlanGeneration';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
+import { beginProposal, resolveProposal } from '@/(pages)/(private)/sermons/[id]/plan/manual/notePlanDrafts.client';
 
 import type { ManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
 import type { Sermon } from '@/models/models';
-import type { NotePlanResult } from '@/utils/notePlan';
+import { notePlanContextKey, type NotePlanResult } from '@/utils/notePlan';
 
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/planApi', () => ({ generateNotePlanContent: jest.fn() }));
 
@@ -14,13 +15,16 @@ const sermon: Sermon = { id: 's', userId: 'u', title: 'Title', verse: '', date: 
   outline: { introduction: [], main: [point, { id: 'q', text: 'Next point' }], conclusion: [] } };
 const generated = { contentByNodeId: { p: '- New', sub: '- Detail' }, missingMaterial: {} };
 
-function setup(initial: Record<string, string> = {}, blocked = false) {
+function setup(initial: Record<string, string> = {}, blocked = false, base: Sermon = sermon) {
   const cells = { ...initial };
   const restoreCells = jest.fn((incoming: Record<string, string>) => Object.assign(cells, incoming));
-  const conspectus = { contentByNodeId: cells, pendingNodeIds: new Set(), isTransferringText: () => false, restoreCells } as unknown as ManualConspectus;
-  const options = { sermon, conspectus, blocked };
+  const saveCells = jest.fn(async () => undefined);
+  const authored: Record<string, number> = {};
+  const draft = { cellAuthoringVersion: (id: string) => authored[id] ?? 0 };
+  const conspectus = { contentByNodeId: cells, pendingNodeIds: new Set(), isTransferringText: () => false, restoreCells, saveCells, draft } as unknown as ManualConspectus;
+  const options = { sermon: base, conspectus, blocked };
   const hook = renderHook(() => useNotePlanGeneration(options));
-  return { ...hook, options, cells, restoreCells };
+  return { ...hook, options, cells, restoreCells, saveCells, authored };
 }
 
 beforeEach(() => { localStorage.clear(); jest.resetAllMocks(); jest.mocked(generateNotePlanContent).mockResolvedValue(generated); });
@@ -33,6 +37,116 @@ it('reviews a proposal without changing existing text, then accepts it into the 
   act(() => { view.result.current.accept('p'); });
   expect(view.cells).toEqual({ p: '- New', sub: '- Detail' });
   expect(view.result.current.proposals.p).toBeUndefined();
+  // Choosing the version is the decision to keep it: the accepted cells are written at once.
+  expect(view.saveCells).toHaveBeenCalledWith(['p', 'sub']);
+});
+
+it('puts the text into an empty point and saves it without asking for a review', async () => {
+  const view = setup();
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.cells).toEqual(generated.contentByNodeId);
+  expect(view.saveCells).toHaveBeenCalledWith(['p', 'sub']);
+  expect(view.result.current.proposals.p).toBeUndefined();
+  expect(view.result.current.ready).toHaveLength(0);
+});
+
+/** A ready answer stored as an earlier visit or another tab left it. */
+function storedAnswer(contentByNodeId: Record<string, string>, autoApply?: boolean, targetNodeId?: string) {
+  const scope = { owner: 'u', sermonId: 's' };
+  const before = Object.fromEntries(Object.keys(contentByNodeId).map(id => [id, '']));
+  const draft = beginProposal(scope, {
+    request: { outlinePointId: 'p', targetNodeId, style: 'memory', expectedContext: notePlanContextKey(sermon, 'p') },
+    before, labels: Object.fromEntries(Object.keys(before).map(id => [id, id])), ...(autoApply !== undefined && { autoApply }),
+  })!;
+  resolveProposal(scope, { ...draft, state: 'ready', result: { contentByNodeId, missingMaterial: {} } });
+  return draft.id;
+}
+
+it('leaves an answer that waited from an earlier visit as a choice when the plan opens — nothing lands unasked', async () => {
+  storedAnswer({ p: '- From before', sub: '- Detail' }, true);
+  storedAnswer({ q: '- Older version' });
+  const view = setup();
+  await act(async () => undefined);
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.result.current.ready).toHaveLength(2);
+});
+
+it('keeps a live answer as a choice when another answer for the same cell is already waiting', async () => {
+  const child = storedAnswer({ sub: '- Child only' }, true, 'sub');
+  const view = setup();
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.result.current.ready.map(proposal => proposal.id)).toContain(child);
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+});
+
+it('keeps a live answer as a choice when the stored sermon already holds words the editor has not shown yet', async () => {
+  const view = setup({}, false, { ...sermon, planText: { p: 'Saved on the phone a moment ago' } } as Sermon);
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.result.current.proposals.p.contentByNodeId.p).toBe('- New');
+});
+
+it('keeps a live answer as a choice when words were typed into the cell and deleted while it ran', async () => {
+  let resolve!: (value: NotePlanResult) => void;
+  jest.mocked(generateNotePlanContent).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const view = setup();
+  let request!: Promise<void>;
+  act(() => { request = view.result.current.generate(point); });
+  view.authored.p = 2; // typed, then deleted — the cell reads empty again, but the person wrote there
+  await act(async () => { resolve(generated); await request; });
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+});
+
+it('keeps a live answer as a choice while words are being composed (input method, dictation)', async () => {
+  let resolve!: (value: NotePlanResult) => void;
+  jest.mocked(generateNotePlanContent).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const view = setup();
+  let request!: Promise<void>;
+  act(() => { request = view.result.current.generate(point); });
+  document.dispatchEvent(new Event('compositionstart'));
+  await act(async () => { resolve(generated); await request; });
+  document.dispatchEvent(new Event('compositionend'));
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+});
+
+it('fills a cell once when two waiting answers for it come back before the screen shows the first', async () => {
+  const scope = { owner: 'u', sermonId: 's' };
+  const request = (targetNodeId?: string) => ({ outlinePointId: 'p', targetNodeId, style: 'memory' as const, expectedContext: notePlanContextKey(sermon, 'p') });
+  beginProposal(scope, { request: request(), before: { p: '', sub: '' }, labels: { p: 'p', sub: 'sub' }, autoApply: true });
+  beginProposal(scope, { request: request('sub'), before: { sub: '' }, labels: { sub: 'sub' }, autoApply: true });
+  jest.mocked(generateNotePlanContent).mockImplementation(async ({ targetNodeId }) => (targetNodeId
+    ? { contentByNodeId: { sub: '- Child answer' }, missingMaterial: {} } : generated));
+  const view = setup();
+  view.restoreCells.mockImplementation(() => ({})); // accepted, but the editor shows nothing until the next render
+  await act(async () => undefined);
+  expect(view.restoreCells).toHaveBeenCalledTimes(1);
+  expect(view.result.current.ready).toHaveLength(1);
+});
+
+it('keeps a target spinning until both of its checks have ended', async () => {
+  const scope = { owner: 'u', sermonId: 's' };
+  const draft = () => beginProposal(scope, { request: { outlinePointId: 'p', style: 'memory', expectedContext: 'x' }, before: { p: '' }, labels: { p: 'p' } })!;
+  const [first, second] = [draft(), draft()];
+  const finish: Record<string, (value: NotePlanResult) => void> = {};
+  jest.mocked(generateNotePlanContent).mockImplementation((_, __, operation) => new Promise(done => { finish[operation!.operationId] = done; }));
+  const view = setup({ p: 'Mine' });
+  await act(async () => undefined);
+  expect(view.result.current.generatingIds.p).toBe(true);
+  await act(async () => { finish[first.id]({ contentByNodeId: { p: '- One' }, missingMaterial: {} }); });
+  expect(view.result.current.generatingIds.p).toBe(true);
+  await act(async () => { finish[second.id]({ contentByNodeId: { p: '- Two' }, missingMaterial: {} }); });
+  expect(view.result.current.generatingIds.p).toBeUndefined();
+});
+
+it('keeps the review when an empty point is only partly empty — the written words stay until chosen', async () => {
+  const view = setup({ sub: 'My detail' });
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.cells).toEqual({ sub: 'My detail' });
+  expect(view.saveCells).not.toHaveBeenCalled();
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
 });
 
 it.each(['text', 'outline', 'sermon'])('protects a %s change while generation runs', async (change) => {
@@ -50,7 +164,10 @@ it.each(['text', 'outline', 'sermon'])('protects a %s change while generation ru
   if (change === 'sermon') {
     expect(view.result.current.proposals.p).toBeUndefined();
     expect(view.result.current.errors.p).toBeUndefined();
-    expect(setup().result.current.proposals.p?.contentByNodeId).toEqual(generated.contentByNodeId);
+    // Back on its own sermon, the answer that came in while away waits there as a choice.
+    const reopened = setup();
+    expect(reopened.result.current.proposals.p?.contentByNodeId).toEqual(generated.contentByNodeId);
+    expect(reopened.restoreCells).not.toHaveBeenCalled();
   } else {
     expect(view.result.current.errors.p).toBe('contextChanged');
     expect(view.result.current.proposalChanged(view.result.current.proposals.p)).toBe(true);
@@ -84,16 +201,33 @@ it('checks and resumes the same request after losing the connection', async () =
   const [body, , operation] = jest.mocked(generateNotePlanContent).mock.calls[0];
   original.unmount();
 
-  const reopened = setup({ p: 'Original' });
-  const pending = reopened.result.current.pending[0];
+  // Reopening asks the server for the stored answer by itself — nobody has to press "Check".
   const unavailable = Object.assign(new Error('Not registered'), { code: 'ai-result-not-started' });
   jest.mocked(generateNotePlanContent).mockRejectedValueOnce(unavailable);
-  await act(async () => { await reopened.result.current.recover(pending.id); });
+  const reopened = setup({ p: 'Original' });
+  await act(async () => undefined);
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(2);
   expect(generateNotePlanContent).toHaveBeenLastCalledWith(body, undefined, { ...operation, recoverOnly: true });
-  expect(reopened.result.current.canResume(reopened.result.current.pending[0])).toBe(true);
+  const pending = reopened.result.current.pending[0];
+  expect(reopened.result.current.canResume(pending)).toBe(true);
   await act(async () => { await reopened.result.current.recover(pending.id, true); });
   expect(generateNotePlanContent).toHaveBeenLastCalledWith(body, undefined, { ...operation, recoverOnly: false });
   expect(reopened.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+});
+
+it('never restarts a request the server did not take when the plan reopens — that would be a new paid request', async () => {
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new TypeError('Network offline'));
+  const original = setup({ p: 'Original' });
+  await act(async () => { await original.result.current.generate(point); });
+  const unavailable = Object.assign(new Error('Not registered'), { code: 'ai-result-not-started' });
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(unavailable);
+  await act(async () => { await original.result.current.recover(original.result.current.pending[0].id); });
+  original.unmount();
+  setup({ p: 'Original' });
+  await act(async () => undefined);
+  // Asked again — it may have been registered and finished since — but only for the stored answer.
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(3);
+  expect(jest.mocked(generateNotePlanContent).mock.calls[2][2]).toEqual(expect.objectContaining({ recoverOnly: true }));
 });
 
 it('lets newer words start a new request while an unregistered earlier request stays available to check', async () => {
@@ -135,7 +269,7 @@ it('keeps the full proposal if the editor cannot back up every accepted cell', a
 });
 
 it('rechecks edits made after the proposal arrived before applying it', async () => {
-  const view = setup();
+  const view = setup({ p: 'Mine' });
   await act(async () => { await view.result.current.generate(point); });
   view.cells.sub = 'New manual text';
   act(() => { view.result.current.accept('p'); });
@@ -169,7 +303,7 @@ it('prevents double clicks, respects offline/usage blocking, and skips queued wr
 });
 
 it('keeps a failure local while another point succeeds and permits retry', async () => {
-  const view = setup();
+  const view = setup({ p: 'Mine', q: 'Mine too' });
   jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new Error('network'))
     .mockResolvedValueOnce({ contentByNodeId: { q: '- Next' }, missingMaterial: {} });
   await act(async () => { await Promise.all([view.result.current.generate(point), view.result.current.generate(sermon.outline!.main[1])]); });
@@ -187,18 +321,22 @@ it('keeps both sent requests addressable when their editor unmounts', () => {
   const view = setup();
   act(() => { void view.result.current.generate(point); });
   act(() => { void view.result.current.generate(sermon.outline!.main[1]); });
-  const sends = jest.mocked(generateNotePlanContent).mock.calls;
+  const sends = [...jest.mocked(generateNotePlanContent).mock.calls];
   expect(sends).toHaveLength(2);
   view.unmount();
   const reopened = setup();
   expect(reopened.result.current.pending.map(draft => draft.id).sort()).toEqual(sends.map(([, , operation]) => operation!.operationId).sort());
-  expect(reopened.result.current.busy).toBe(false);
+  // Both are checked on reopening — without starting a new paid request — and show as running.
+  const checks = jest.mocked(generateNotePlanContent).mock.calls.slice(2);
+  expect(checks.map(([, , operation]) => operation!.operationId).sort()).toEqual(sends.map(([, , operation]) => operation!.operationId).sort());
+  expect(checks.every(([, , operation]) => operation!.recoverOnly)).toBe(true);
+  expect(reopened.result.current.busy).toBe(true);
 });
 
 it('runs different points together and keeps their results isolated when they finish out of order', async () => {
   const resolve: Record<string, (value: NotePlanResult) => void> = {};
   jest.mocked(generateNotePlanContent).mockImplementation(({ outlinePointId }) => new Promise((done) => { resolve[outlinePointId] = done; }));
-  const view = setup();
+  const view = setup({ p: 'Mine', q: 'Mine too' });
   const next = sermon.outline!.main[1];
   let first!: Promise<void>;
   let second!: Promise<void>;
@@ -322,7 +460,7 @@ it('blocks a child request while its whole point is generating', () => {
 });
 
 it('retains earlier paid proposals when a later generation overlaps their cells', async () => {
-  const view = setup();
+  const view = setup({ p: 'Mine', sub: 'My detail' });
   await act(async () => { await view.result.current.generate(point); });
   const older = view.result.current.proposals.p;
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Child only' }, missingMaterial: {} });

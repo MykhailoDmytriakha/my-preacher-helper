@@ -73,6 +73,8 @@ export interface ManualConspectus {
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
+  /** Writes exactly these cells now, through the same ordered path as the save button. */
+  saveCells: (nodeIds: string[]) => Promise<void>;
   addPoint: (section: SermonSectionKey, title: string) => void;
   addSubPoint: (pointId: string, title: string) => void;
   /** Rename a point or sub-point where its text is written — empty names are refused. */
@@ -346,28 +348,15 @@ export function useManualConspectus({
     return Object.keys(sent).filter((id) => !settled.includes(id));
   }, []);
 
-  const savePoint = useCallback(async (
-    pointId: string,
-    _section: SermonSectionKey,
-    nodeIds: string[]
-  ) => {
+  /**
+   * THE ONE WRITE PATH FOR CELL TEXT — the save button and an accepted proposal both end here,
+   * so ordering, the offline queue and the other-device refusal behave the same for both.
+   */
+  const writeCells = useCallback(async (toSend: string[]) => {
     // Declared out here so the offline branch below can settle exactly what was sent.
     let sent: Record<string, string> = {};
     try {
-      /**
-       * ONLY THE CELLS THIS SCREEN ACTUALLY CHANGED.
-       *
-       * Sending every cell of the point looked harmless — they are separate keys — but a key
-       * sent is a key overwritten. A sub-point edited on the phone was destroyed by pressing
-       * Save on the laptop for its parent, because the untouched, stale sub-point text rode
-       * along. Leaf paths protect neighbours only if neighbours are not in the payload.
-       *
-       * A cell that was never modified here has nothing to contribute; if nothing was
-       * modified at all, the point's own cell is sent so pressing Save still means something.
-       */
-      if (nodeIds.some(id => busyNodes.current.has(id))) return;
-      const changed = nodeIds.filter((id) => modifiedNodeIds[id]);
-      const toSend = changed.length > 0 ? changed : [pointId];
+      if (toSend.length === 0 || toSend.some(id => busyNodes.current.has(id))) return;
 
       // The payload is built when the turn comes, not when the button was pressed: a second
       // press while the first is in flight then writes the CURRENT text, not a stale copy.
@@ -405,10 +394,31 @@ export function useManualConspectus({
         announceRefusal();
         return;
       }
-      debugLog("Manual plan save failed", { pointId, error });
+      debugLog("Manual plan save failed", { nodeIds: toSend, error });
       toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
     }
-  }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
+  }, [announceRefusal, isConflict, settle, t, writeText]);
+
+  const savePoint = useCallback(async (
+    pointId: string,
+    _section: SermonSectionKey,
+    nodeIds: string[]
+  ) => {
+    /**
+     * ONLY THE CELLS THIS SCREEN ACTUALLY CHANGED.
+     *
+     * Sending every cell of the point looked harmless — they are separate keys — but a key
+     * sent is a key overwritten. A sub-point edited on the phone was destroyed by pressing
+     * Save on the laptop for its parent, because the untouched, stale sub-point text rode
+     * along. Leaf paths protect neighbours only if neighbours are not in the payload.
+     *
+     * A cell that was never modified here has nothing to contribute; if nothing was
+     * modified at all, the point's own cell is sent so pressing Save still means something.
+     */
+    if (nodeIds.some(id => busyNodes.current.has(id))) return;
+    const changed = nodeIds.filter((id) => modifiedNodeIds[id]);
+    await writeCells(changed.length > 0 ? changed : [pointId]);
+  }, [modifiedNodeIds, writeCells]);
 
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const forgetCells = useCallback((nodeIds: string[]) => {
@@ -827,6 +837,7 @@ export function useManualConspectus({
     applyGeneratedCells,
     discardCells,
     savePoint,
+    saveCells: writeCells,
     addPoint,
     addSubPoint,
     renamePoint,

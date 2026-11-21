@@ -37,7 +37,7 @@ import { useEnginePlanWriter } from "../useEnginePlanWriter";
 import usePlanViewMode from "../usePlanViewMode";
 
 import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
-import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
+import { NoteNodeText, NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
 import type { PlanTimerState, SermonSectionKey } from "../types";
@@ -237,26 +237,28 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
               text={notePlanReminder(node.id, node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note, filedNotes)}
               hasPlan={Boolean(text[node.id]?.trim())}
             />}
-            {isEditing && !readOnly ? (
-              <RichMarkdownEditor
-                editable={!conspectus.busyNodeIds.has(node.id)}
-                value={conspectus.contentByNodeId[node.id] ?? ""}
-                confirmedTextTransfer={conspectus.rescuedAppend?.nodeId === node.id ? conspectus.rescuedAppend.append : undefined}
-                valueBeforeUserAction={conspectus.foreignValuesBeforeAction[node.id]}
-                valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
-                placeholder={t(NO_PLAN_CONTENT_KEY)}
-                minHeight={node.kind === "subPoint" ? "90px" : "120px"}
-                onChange={(text) => {
-                  onAuthorCell(node.id, text);
-                  return conspectus.setNodeContent(node.id, text);
-                }}
-                onHoldText={typed => onHoldCellText(node.id, typed)}
-              />
-            ) : (
-              <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
-                <MarkdownDisplay content={text[node.id] || t(NO_PLAN_CONTENT_KEY)} />
-              </div>
-            )}
+            <NoteNodeText point={point} nodeId={node.id}>
+              {isEditing && !readOnly ? (
+                <RichMarkdownEditor
+                  editable={!conspectus.busyNodeIds.has(node.id)}
+                  value={conspectus.contentByNodeId[node.id] ?? ""}
+                  confirmedTextTransfer={conspectus.rescuedAppend?.nodeId === node.id ? conspectus.rescuedAppend.append : undefined}
+                  valueBeforeUserAction={conspectus.foreignValuesBeforeAction[node.id]}
+                  valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
+                  placeholder={t(NO_PLAN_CONTENT_KEY)}
+                  minHeight={node.kind === "subPoint" ? "90px" : "120px"}
+                  onChange={(text) => {
+                    onAuthorCell(node.id, text);
+                    return conspectus.setNodeContent(node.id, text);
+                  }}
+                  onHoldText={typed => onHoldCellText(node.id, typed)}
+                />
+              ) : (
+                <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
+                  <MarkdownDisplay content={text[node.id] || t(NO_PLAN_CONTENT_KEY)} />
+                </div>
+              )}
+            </NoteNodeText>
           </div>
         ))}
 

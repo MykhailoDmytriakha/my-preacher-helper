@@ -275,6 +275,21 @@ describe('useManualConspectus saveModified', () => {
 describe('saving sends only what changed here', () => {
   const withSubPoint = () => sermonWithText();
 
+  it('writes a chosen version of named cells at once, with the text just put in, and settles them', async () => {
+    const { view } = renderConspectus(withSubPoint());
+
+    // Choosing a proposal puts the cells in and saves them in the same moment — before any
+    // render — so the write has to read the text as it is now, not as the last render saw it.
+    await act(async () => {
+      view.result.current.restoreCells({ 'point-1': 'Chosen point', 'sub-1': 'Chosen child' });
+      await view.result.current.saveCells(['point-1', 'sub-1']);
+    });
+
+    const [, changedText] = mockSavePlanText.mock.calls.at(-1)!;
+    expect(changedText).toEqual({ 'point-1': 'Chosen point', 'sub-1': 'Chosen child' });
+    expect(view.result.current.modifiedNodeIds).toEqual({ 'point-1': false, 'sub-1': false });
+  });
+
   it('leaves an untouched sub-point out of the payload', async () => {
     const { view } = renderConspectus(withSubPoint());
 
