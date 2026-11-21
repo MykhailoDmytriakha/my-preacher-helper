@@ -173,7 +173,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             onRename={(next) => conspectus.renamePoint(point.id, next)}
           />}
         </span>
-        {!readOnly && <div className="flex shrink-0 gap-2">
+        {!readOnly && <div className="flex shrink-0 items-center gap-2">
           {noteMode && <NotePointGenerateButton point={point} section={section} />}
           <button
             type="button"
@@ -212,24 +212,27 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             className={node.kind === "subPoint" ? `ml-3 border-l-2 pl-4 ${tone.border}` : ""}
           >
             {node.kind === "subPoint" && (
-              <h4 className={`mb-1 flex items-baseline gap-2 text-base font-semibold ${tone.text}`}>
-                <span className="shrink-0 opacity-60">{node.label}</span>
-                {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
-                  value={node.heading}
-                  ariaLabel={t("plan.renameSubPoint")}
-                  onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
-                />}
-                {noteMode && <span className="ml-auto inline-flex shrink-0 self-center">
-                  <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />
-                </span>}
-                {!readOnly && <DeleteNodeButton
-                  disabled={conspectus.busyNodeIds.size > 0}
-                  compact
-                  title={t("plan.deleteSubPoint")}
-                  armedTitle={t("plan.deleteSubPointConfirm")}
-                  armedLabel={t("plan.deleteConfirm")}
-                  onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}
-                />}
+              // The sub-point's heading row has the point's own frame: title left, the same
+              // actions right at the same size — whichever mode leaves out the generate button.
+              <h4 className={`mb-2 flex items-center justify-between gap-2 text-base font-semibold ${tone.text}`}>
+                <span className="flex min-w-0 flex-1 items-baseline gap-1">
+                  <span className="shrink-0 opacity-60">{node.label}</span>
+                  {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
+                    value={node.heading}
+                    ariaLabel={t("plan.renameSubPoint")}
+                    onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
+                  />}
+                </span>
+                {!readOnly && <div className="flex shrink-0 items-center gap-2">
+                  {noteMode && <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />}
+                  <DeleteNodeButton
+                    disabled={conspectus.busyNodeIds.size > 0}
+                    title={t("plan.deleteSubPoint")}
+                    armedTitle={t("plan.deleteSubPointConfirm")}
+                    armedLabel={t("plan.deleteConfirm")}
+                    onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}
+                  />
+                </div>}
               </h4>
             )}
             {noteMode && node.kind === 'subPoint' && <NotePointActions point={point} targetNodeId={node.id} />}
@@ -266,7 +269,6 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
         ))}
 
         {!readOnly && <AddNodeButton
-          className="ml-3"
           label={t("plan.addSubPoint")}
           placeholder={t("plan.addSubPointPlaceholder")}
           confirmLabel={t("plan.addConfirm")}
