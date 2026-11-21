@@ -27,21 +27,26 @@ import type { Church, Group, Sermon } from '@/models/models';
 
 export const SERMON_METADATA_SETTLED = 'sermon-metadata-settled';
 export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
+export const SERMON_VERSE_REVIEW_CHANGED = 'sermon-verse-review-changed';
 export function isOrderedSermonMetadata(conflict: ConflictDetail): boolean {
   const [field, id, leaf] = conflict.path;
-  const metadata = (conflict.path.length === 1 && (field === 'verse' || field === 'church'))
+  const metadata = (conflict.path.length === 1 && (field === 'title' || field === 'verse' || field === 'church'))
     || (conflict.path.length === 3 && field === 'preachDates' && id.startsWith('id:') && leaf === 'date');
   return metadata && (conflict.code === SERMON_METADATA_SETTLED || conflict.code === SERMON_METADATA_QUEUED);
 }
 
 type SermonReviewProof = Pick<DocumentFieldStamp, 'time' | 'observedRevision'>;
-export type SermonTitleReviewProofs = {
+export type SermonHeaderReviewProofs = {
+  field: 'title' | 'verse';
+  title?: SermonReviewProof;
   verse?: SermonReviewProof;
   church?: SermonReviewProof;
   date?: Pick<DatedRowActionEvidence, 'rowId' | 'after' | 'observedRevision' | 'time'>;
 };
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
+export type SermonVerseStamp = DocumentFieldStamp & { reviewed?: true };
+export type SermonVerseObservation = DocumentFieldObservation & { reviewed?: true };
 export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
 export type SermonPlanMode = NonNullable<Sermon['planMode']>;
 export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: FieldValue };
@@ -704,7 +709,7 @@ export function capturePreparationConfirmation(baseline: ResourceSnapshot, prede
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
 export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[],
-  preferenceFields?: readonly AccountPreferenceField[], sermonTitleReview?: SermonTitleReviewProofs, seriesFieldReview?: SeriesFieldReview) {
+  preferenceFields?: readonly AccountPreferenceField[], sermonHeaderReview?: SermonHeaderReviewProofs, seriesFieldReview?: SeriesFieldReview) {
   if (captured === undefined || !baseline.metadata || baseline.metadata.deleted) return {};
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return {};
@@ -731,9 +736,11 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
     return actions.length ? { seriesFieldActions: Object.fromEntries(actions) } : {};
   }
   if (baseline.resource.collection !== 'sermons') return {};
-  const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, time, records);
-  const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, sermonTitleReview ? sermonTitleReview.verse?.time ?? null : time, records);
-  const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, sermonTitleReview ? sermonTitleReview.church?.time ?? null : time, records);
+  const timeFor = (field: 'title' | 'verse' | 'church') => sermonHeaderReview && sermonHeaderReview.field !== field
+    ? sermonHeaderReview[field]?.time ?? null : time;
+  const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, timeFor('title'), records);
+  const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, timeFor('verse'), records);
+  const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, timeFor('church'), records);
   const goalType = captureStoredMetadataField(baseline, predecessor, draft, SERMON_GOAL_TYPE, time, records);
   const repeatedWords = captureStoredMetadataField(baseline, predecessor, draft, SERMON_REPEATED_WORDS, time, records);
   const thesis = SERMON_THESIS_TARGETS.flatMap(target => {
@@ -746,9 +753,10 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   });
   const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
-  return { ...(title && { sermonTitleAction: title }),
-    ...(verse && { sermonVerseAction: { ...verse, ...sermonTitleReview?.verse } }),
-    ...(church && { sermonChurchAction: { ...church, ...sermonTitleReview?.church } }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
+  return { ...(title && { sermonTitleAction: { ...title, ...sermonHeaderReview?.title } }),
+    ...(verse && { sermonVerseAction: { ...verse, ...sermonHeaderReview?.verse,
+      ...(sermonHeaderReview?.field === 'verse' && { reviewed: true as const }) } }),
+    ...(church && { sermonChurchAction: { ...church, ...sermonHeaderReview?.church } }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }),
     ...(repeatedWords?.after.exists && { sermonRepeatedWordsAction: repeatedWords }),
     ...(thesis.length && { sermonThesisFieldActions: Object.fromEntries(thesis) }),
     ...(preparationText.length && { sermonPreparationTextActions: Object.fromEntries(preparationText) }),
@@ -970,8 +978,11 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (target.action === 'commentPlaceAction') {
     return action.paragraph ? { ...command, commentPlaceAction: { ...stamp, paragraph: action.paragraph, ...(action.compound && { compound: true }), ...(action.reviewed && { reviewed: true }) } } : command;
   }
+  if (target.action === 'sermonVerseAction') {
+    return { ...command, sermonVerseAction: { ...stamp, ...(action.reviewed && { reviewed: true }) } };
+  }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
-  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if (target.action === 'groupDescriptionAction' || 'path' in target || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
   if (target.action === 'studyNoteTitleAction' || target.action === 'studyNoteContentAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };

@@ -3,7 +3,7 @@ import { outlineTitleConflictTarget, sermonNoteConflictTarget, sermonNoteConflic
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import { existingRowDate, PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE } from './documentFieldAction';
+import { acceptsDocumentField, isOrderedSermonMetadata, SERMON_METADATA_SETTLED, SERMON_PLAN_MODE, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { UNREADABLE_EXEGETICAL_PROOF } from './exegeticalPointCapture';
 import { equalValues, object, readField, writeField } from './fieldValues';
@@ -39,6 +39,11 @@ export function isReturnedSermonTitle(conflict: ConflictDetail): boolean {
     && equalValues(conflict.base, conflict.theirs);
 }
 
+export function isSermonVerseReview(conflict: ConflictDetail): boolean {
+  return equalValues(conflict.path, ['verse']) && (conflict.code === SERMON_VERSE_REVIEW_CHANGED
+    || (!conflict.code && equalValues(conflict.base, conflict.theirs)));
+}
+
 export function earlierSermonMetadataProof<Value>(action: DocumentFieldObservation<Value> | undefined, after: unknown) {
   if (action && equalValues(action.after, after)) return { observedRevision: action.observedRevision, time: action.time };
 }
@@ -53,7 +58,7 @@ export function earlierSermonDateProof(request: CommitRequest, draft: DocumentDa
   return { rowId, after, observedRevision, time };
 }
 
-export function sermonTitleReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot,
+export function sermonHeaderReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot,
   conflicts: readonly ConflictDetail[], churchFill?: SermonChurchFill) {
   if (basis.resource.collection !== 'sermons' || !basis.value || !reviewed || !stored.value
     || basis.metadata?.generation !== stored.metadata?.generation) return { basis, reviewed };

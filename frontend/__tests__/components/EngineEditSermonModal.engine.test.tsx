@@ -272,6 +272,86 @@ it.each([
   }
 });
 
+it.each([
+  { choice: 'local', titleOrder: 'settled', changedDuring: null },
+  { choice: 'stored', titleOrder: 'queued', changedDuring: null },
+  { choice: 'local', titleOrder: 'settled', changedDuring: 'comparison' },
+  { choice: 'local', titleOrder: 'settled', changedDuring: 'delivery' },
+])('compares a restored passage and keeps the ordered title ($choice, $titleOrder, changed during $changedDuring)', async ({ choice, titleOrder, changedDuring }) => {
+  const mine = 'Romans 8:1 — A note from the phone';
+  const previousTime = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
+  const chosenTime = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_090 };
+  const phoneTitle = 'Phone title';
+  const desktopTitle = 'Desktop title';
+  const laterDate = { ...originalDates[0], date: '2099-10-08' };
+  const stored = { ...original, metadata: { ...original.metadata!, revision: 3 },
+    value: { ...original.value!, title: desktopTitle, preachDates: [laterDate, originalDates[1]] } };
+  const harness = membershipEngineHarness([original]);
+  const browser = harness.createBrowser();
+  browser.engine.setOwner('owner');
+  browser.engine.setOnline(false);
+  const field = (value: string) => ({ exists: true, value });
+  try {
+    const source = await browser.engine.openEditor(resource, browser.editorId(resource, 'sermon'));
+    const form = source.form('sermon-metadata', SERMON_METADATA_SELECTION);
+    await form.begin();
+    await form.save(value => ({ ...value, verse: mine, title: phoneTitle }), { documentMetadata: { time: previousTime } });
+    harness.replace(stored);
+    jest.mocked(harness.transport.send).mockImplementationOnce(async ({ operationId }) => ({
+      kind: 'conflict', operationId, snapshot: stored,
+      conflicts: [
+        { path: ['verse'], base: field('Romans 1'), mine: field(mine), theirs: field('Romans 1') },
+        { path: ['title'], code: 'sermon-metadata-' + titleOrder, base: field('Opening'), mine: field(phoneTitle), theirs: field(desktopTitle) },
+      ],
+    }));
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await waitFor(() => expect(source.getState().result?.kind).toBe('conflict'));
+  } finally { browser.dispose(); }
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <EngineEditSermonModal sermonId="sermon" onClose={jest.fn()} />
+  </DataDocumentProvider></DataEngineProvider>);
+  expect(await screen.findByDisplayValue(mine)).toBeInTheDocument();
+  const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(within(panel).getByText(mine)).toBeVisible();
+  expect(within(panel).getByText('Romans 1')).toBeVisible();
+  const clock = jest.spyOn(actionClock, 'capture').mockReturnValue(chosenTime);
+  try {
+    const newerPassage = 'Mark 1:2';
+    const newer = { ...stored, value: { ...stored.value!, verse: newerPassage },
+      metadata: { ...stored.metadata!, revision: 4 } };
+    if (changedDuring === 'comparison') harness.replace(newer);
+    if (changedDuring === 'delivery') {
+      jest.mocked(harness.transport.send).mockImplementationOnce(async ({ operationId }) => {
+        harness.replace(newer);
+        return { kind: 'conflict', operationId, snapshot: newer, conflicts: [
+          { path: ['verse'], code: 'sermon-verse-review-changed', base: field('Romans 1'), mine: field(mine), theirs: field(newerPassage) },
+        ] };
+      });
+    }
+    fireEvent.click(within(panel).getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'dataSync.useStoredVersion' }));
+    if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+    if (changedDuring) {
+      const updated = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+      expect(await within(updated).findByText(newerPassage)).toBeVisible();
+      expect(harness.transport.send).toHaveBeenCalledTimes(changedDuring === 'comparison' ? 1 : 2);
+      expect(harness.read(resource).value?.verse).toBe(newerPassage);
+      fireEvent.click(within(updated).getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    }
+    await waitFor(() => expect(harness.read(resource).value).toMatchObject({
+      verse: choice === 'local' ? mine : 'Romans 1', title: titleOrder === 'queued' ? phoneTitle : desktopTitle,
+      preachDates: [laterDate, originalDates[1]],
+    }));
+    const replacement = jest.mocked(harness.transport.send).mock.calls.at(-1)?.[0];
+    if (replacement?.kind !== 'update') throw new Error('No replacement');
+    expect(replacement.sermonVerseAction).toEqual(choice === 'local'
+      ? { time: chosenTime, observedRevision: changedDuring ? 4 : 3, reviewed: true } : undefined);
+    expect(replacement.sermonTitleAction).toEqual(titleOrder === 'queued'
+      ? { before: desktopTitle, after: phoneTitle, time: previousTime, observedRevision: 1 } : undefined);
+  } finally { clock.mockRestore(); }
+});
+
 it.each(['local', 'stored'])('offers direct review after a fresh opening and keeps the %s scripture version', async choice => {
   const harness = membershipEngineHarness([original]);
   const browser = harness.createBrowser();

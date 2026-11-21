@@ -10185,3 +10185,12 @@ Series → open a series → Edit. The field opening history now detects a delay
 Seven initial red checks covered the field overwrites and the two manual choices. Three more covered preservation of the already ordered title and its exact mirror. The related gate passed 4,541 tests in 199 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Six hidden Chrome scenarios on Auth and Firestore emulators verified both choice buttons, the page and form, both proved time orders, and reopening. The server and form tests check the mirror and absent color. Evidence is in `artifacts/action-chronology-356/series-fields-20261120/verification.md` in the local case.
 
 After authorized deployment, change one field of a disposable series offline. On another device, change and return that field, then separately edit the description. Reconnect, check the later verified action or choose from the displayed field comparison, then reload to check the field together with title and description. Close both short sessions.
+
+
+## BUG-20261112-late-old-text-overwrites-later-undo · Protect a restored sermon passage
+
+Sermons → open a sermon → Edit from the menu or the pencil by the scripture passage. The field history now catches an old save with unknown order that arrives after a passage was changed and restored. In a scoped comparison, choosing the passage keeps ordered title and date decisions at their original action times. A fresh read and a revision check at write time protect an unseen saved passage. Choosing a passage that has already been saved is acknowledged.
+
+11 regressions reproduced on the preceding commit. The related gate passed 5,815 tests in 324 suites with 15 skipped. TypeScript, scoped ESLint and independent review passed. Six hidden Chrome scenarios on local Auth and Firestore exercised both entry points, both choices, a passage with explanatory text, reopening and both proven time orders. Next.js peaked at 4.61 GiB in the samples. All five stand ports were released. Evidence is in `artifacts/action-chronology-356/sermon-verse-return-20261120/verification.md` in the local case.
+
+After authorized deployment, use one disposable sermon with a planned date and two short sessions. Save a passage offline on one device. On the other device, change and restore the passage and edit the title independently. Reconnect the first device and verify chronology or the comparison when shown. Reload and verify the passage, title, and planned date. Close both sessions.

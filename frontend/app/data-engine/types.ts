@@ -90,7 +90,7 @@ export type EditorCommitAction =
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
-  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonTitleReview?: import('./documentFieldAction').SermonTitleReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview }
+  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonHeaderReview?: import('./documentFieldAction').SermonHeaderReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
@@ -279,7 +279,7 @@ export type DataCommand = CommandBase & (
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;
       sermonTitleAction?: DocumentFieldObservation;
-      sermonVerseAction?: DocumentFieldStamp;
+      sermonVerseAction?: import('./documentFieldAction').SermonVerseStamp;
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonThesisFieldActions?: Partial<Record<SermonThesisField, DocumentFieldStamp>>;

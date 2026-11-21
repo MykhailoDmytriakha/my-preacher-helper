@@ -22,7 +22,7 @@ import { preachDateNoteConflictId } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { carryOutlineTitleActions, carryOrderedPreachDateFields, PREACH_DATE_REVIEW_FIELDS, restoreSavedRowFieldDrafts, stageReviewedOutlineTitleIds, stageReviewedRowFields } from './rowFieldAutosave';
 import { isReturnedSeriesField, seriesReviewFrames } from './seriesFieldAction';
-import { isReturnedSermonTitle, keepUncontestedSermonFields, sermonTitleReviewFrames } from './sermonFieldChoice';
+import { isReturnedSermonTitle, isSermonVerseReview, keepUncontestedSermonFields, sermonHeaderReviewFrames } from './sermonFieldChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { matchesSourceNoteOpening, projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -36,7 +36,7 @@ import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, ResourceSnapshot } from './types';
+import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
 type ManualStage = ReturnType<ManualScope['getState']>;
 const unanswered = (request: CommitRequest) => !['acknowledged', 'cancelled'].includes(request.state);
@@ -82,12 +82,13 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       });
       const dateNotes = request.result?.kind === 'conflict'
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
-      const returnedField = record.resource.collection === 'sermons' ? isReturnedSermonTitle
+      const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) => isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict)
         : record.resource.collection === 'series' ? isReturnedSeriesField : undefined;
       const savedFieldReview = returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
           && record.selection.some(path => equalValues(path, conflict.path)));
-      const savedFieldForm = savedFieldReview && readManualScopeIdentity(request.editorId);
+      const fieldScope = request.sermonVerseAction?.reviewed ? request.retentionScope ?? request.editorId : request.editorId;
+      const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
       const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);
       const sameTabFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
         && editorSlot(savedFieldForm.parentEditorId) === editorSlot(openFieldForm.parentEditorId)
@@ -126,7 +127,7 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, value, request.intended) : value;
   const conflicts = request.result?.kind === 'conflict' ? request.result.conflicts : [];
   const ordered = conflicts.filter(isOrderedSermonMetadata);
-  if (ordered.length) return { ...sermonTitleReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
+  if (ordered.length) return { ...sermonHeaderReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
     conflicts: conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)) };
   return seriesReviewFrames(basis, reviewed, stored, conflicts);
 }

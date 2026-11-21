@@ -11,7 +11,7 @@ import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.
 import { councilStatusOf, matchesCouncilLifecycle, sameCouncilDate } from './councilFieldAction';
 import { COUNCIL_TOPIC_TEXT_QUEUED, COUNCIL_TOPIC_TEXT_SETTLED } from './councilTopicTextAction';
 import { PREACH_DATE_TARGET } from './datedRowAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
@@ -72,7 +72,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 }
 
 const tracksScalarReturns = (target: DocumentFieldTarget) =>
-  target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
+  target.action === 'sermonTitleAction' || target.action === 'sermonVerseAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'groupStatusAction'
     || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
@@ -231,6 +231,15 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     change = { ...change, before, after: stored };
   }
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
+  if (target.action === 'sermonVerseAction' && command.sermonVerseAction?.reviewed) {
+    if (equalValues(stored, change.after)) return { command, previous };
+    // A choice is about the saved version shown in the comparison, even when its click is newer.
+    if (!action || action.observedRevision < (previous?.revision ?? current.metadata.revision)
+      || !sameFieldOpening(stored, change.before, target)) {
+      return { command, uncertain: [{ path: change.path, code: SERMON_VERSE_REVIEW_CHANGED,
+        base: change.before, mine: change.after, theirs: stored }] };
+    }
+  }
   if (target.action === 'commentPlaceAction') {
     const uncertain = commentPlaceReview(command, current, raw, stored, previous, Boolean(action));
     if (uncertain) return { command, uncertain: [uncertain] };
@@ -411,15 +420,12 @@ export function orderedCouncilMetadata(command: DataCommand, current: ResourceSn
 export function orderedSermonMetadata(command: DataCommand, current: ResourceSnapshot,
   orders: ReturnType<typeof orderDocumentFields>, dateOrder: ReturnType<typeof orderDatedRow>): ConflictDetail[] {
   if (command.kind !== 'update' || command.resource.collection !== 'sermons'
-    || !orders.uncertain.some(({ path, base, theirs }) => path[0] === 'title' && equalValues(base, theirs))) return [];
-  const fields = orders.fields.flatMap(({ target, order }) => {
-    if (!order.displaced || (target.action !== 'sermonVerseAction' && target.action !== 'sermonChurchAction')) return [];
-    const change = documentFieldChange(command.changes, target);
-    const stored = documentFieldValue(current.value, target);
-    if (!change || !stored) return [];
-    const code = equalValues(order.displaced.winnerValue, stored) ? SERMON_METADATA_SETTLED : SERMON_METADATA_QUEUED;
-    return [{ path: change.path, code, base: change.before, mine: change.after, theirs: stored }];
-  });
+    || !orders.uncertain.some(({ path, base, theirs, code }) => path.length === 1
+      && (path[0] === 'title' || path[0] === 'verse')
+      && (code === SERMON_VERSE_REVIEW_CHANGED || equalValues(base, theirs)))) return [];
+  const fields = orderedMetadataComparisons(command, current, orders,
+    target => target.action === 'sermonTitleAction' || target.action === 'sermonVerseAction' || target.action === 'sermonChurchAction',
+    { settled: SERMON_METADATA_SETTLED, queued: SERMON_METADATA_QUEUED });
   const date = command.preachDateAction, displaced = dateOrder.displaced;
   if (date && dateOrder.target === PREACH_DATE_TARGET && displaced?.rowId === date.rowId) {
     const settled = displaced.date === date.after;

@@ -89,7 +89,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       session={{ owner, generation, sermonId, field: 'church', restore: church => form.update(current =>
         sermonMetadataPatch(current, { church: church ?? undefined }, plannedId, newDate.createdAt, unspecifiedChurch, openingRow)) }} />}
     formStatus={<DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-        onKeepLocal={comparison && comparisonField === 'title'
+        onKeepLocal={comparison && (comparisonField === 'title' || versions?.kind === 'returned-sermon-verse')
           ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : form.keepLocal}
         onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}

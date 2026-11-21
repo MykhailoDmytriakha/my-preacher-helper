@@ -12,7 +12,7 @@ import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { isReturnedSeriesField } from './seriesFieldAction';
-import { isReturnedSermonTitle } from './sermonFieldChoice';
+import { isReturnedSermonTitle, isSermonVerseReview } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
 
@@ -21,12 +21,13 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title'; returnedSeriesFields?: readonly string[]; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title' | 'returned-sermon-verse'; returnedSeriesFields?: readonly string[]; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
   return request.baseline.resource.collection === 'sermons' && conflicts.length === 1
     && conflicts[0].path.length === 1 && conflicts[0].path[0] === 'verse'
+    && request.baseline.metadata?.generation === stored.metadata?.generation
     && selection.some(path => path.length === 1 && path[0] === 'verse') && !sameManualSelection(mine, stored.value, ['verse']);
 }
 
@@ -70,6 +71,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
       }
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
+      const returnedVerse = exactVerse && isSermonVerseReview(conflicts[0]);
       const returnedTitle = exact && stored.resource.collection === 'sermons' && conflicts.length === 1
         && isReturnedSermonTitle(conflicts[0]) && request.baseline.metadata?.generation === stored.metadata?.generation
         && form.record.selection.some(path => equalValues(path, ['title'])) && !sameManualSelection(mine, stored.value, ['title']);
@@ -102,12 +104,14 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
       if (changed || seriesText || exactPreparationText || exactVerse || returnedTitle || dateField || exactThoughtText || exactList || outlineParent) {
         const comparedField = returnedTitle ? 'title' : exactVerse ? 'verse' : undefined;
-        const observedConflicts = comparedField && (returnedTitle || stored !== request.result.snapshot)
-          ? mergeDocumentFields(returnedTitle ? basis.value : request.baseline.value, returnedTitle ? reviewed : mine, stored.value)
+        const returnedHeader = returnedTitle || returnedVerse;
+        const observedConflicts = comparedField && (returnedHeader || stored !== request.result.snapshot)
+          ? mergeDocumentFields(returnedHeader ? basis.value : request.baseline.value, returnedHeader ? reviewed : mine, stored.value)
             .conflicts.filter(conflict => conflict.path[0] !== comparedField) : [];
         return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
           conflictPaths: [...seriesConflicts, ...observedConflicts].map(conflict => conflict.path), mine,
           ...(returnedTitle && { kind: 'returned-sermon-title' as const }),
+          ...(returnedVerse && { kind: 'returned-sermon-verse' as const }),
           ...(seriesText && seriesFields[0] !== 'description' && { returnedSeriesFields: seriesFields }),
           ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }

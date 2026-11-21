@@ -5105,6 +5105,82 @@ describe('transactional DataEngine server', () => {
       }
     });
 
+  it.each([
+    { opening: 'John 3:16', proposal: 'Romans 8:1' },
+    { opening: 'John 3:16 — Kept explanation', proposal: 'Romans 8:1 — Earlier note' },
+    { opening: 'John 3:16', proposal: 'Romans 8:1', reaffirm: true },
+  ])('holds a legacy sermon passage after returning to $opening (reaffirm=$reaffirm)', async ({ opening, proposal, reaffirm }) => {
+    const seed = create('sermon-verse-return') as Extract<DataCommand, { kind: 'create' }>;
+    const value = { ...seed.value, title: 'Keep the title', verse: opening };
+    expect((await processCommand('owner-1', { ...seed, value })).kind).toBe('acknowledged');
+    const field = (value: string) => ({ exists: true, value });
+    const edit = (id: string, from: string, to: string) => ({
+      ...update(id, seed.operationId),
+      changes: [{ path: ['verse'], before: field(from), after: field(to) }],
+    });
+    const temporary = 'Ephesians 2:8';
+    if (!reaffirm) expect((await processCommand('owner-1', edit('intermediate', opening, temporary))).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', edit('returned', temporary, opening))).kind).toBe('acknowledged');
+
+    const delayed = edit('late-phone', opening, proposal);
+    const result = await processCommand('owner-1', delayed);
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['verse'], base: field(opening), mine: field(proposal), theirs: field(opening) }],
+      snapshot: { value: { title: value.title, verse: opening } } });
+    expect(documents.get('sermons/sermon-1')?.verse).toBe(opening);
+    expect(await processCommand('owner-1', delayed)).toEqual(result);
+  });
+
+  it.each([20, 80])('keeps ordered titles separate from a returned passage choice (%s)', async at => {
+    const seed = create('sermon-verse-return') as Extract<DataCommand, { kind: 'create' }>;
+    const opening = { ...seed.value, title: 'Original title', verse: 'John 3:16' };
+    expect((await processCommand('owner-1', { ...seed, value: opening })).kind).toBe('acknowledged');
+    const field = (value: string) => ({ exists: true, value });
+    const title = (value: string) => ({ path: ['title'], before: field(opening.title), after: field(value) });
+    const passage = (from: string, to: string) => ({ path: ['verse'], before: field(from), after: field(to) });
+    const time = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at });
+    const titleAction = (after: string, at: number) => ({ before: opening.title, after, observedRevision: 1, time: time(at) });
+    expect((await processCommand('owner-1', { ...update('desk', seed.operationId), changes: [
+      title('Desktop title'), passage(opening.verse, 'Mark 1:2'),
+    ], sermonTitleAction: titleAction('Desktop title', 40) })).kind).toBe('acknowledged');
+    expect((await processCommand('owner-1', { ...update('return', seed.operationId),
+      changes: [passage('Mark 1:2', opening.verse)] })).kind).toBe('acknowledged');
+    const delayed = { ...update('phone', seed.operationId), changes: [title('Phone title'), passage(opening.verse, 'Romans 8:1')],
+      sermonTitleAction: titleAction('Phone title', at) };
+    const answer = await processCommand('owner-1', delayed);
+    expect(answer).toMatchObject({
+      kind: 'conflict', conflicts: expect.arrayContaining([
+        { path: ['verse'], base: field(opening.verse), mine: field('Romans 8:1'), theirs: field(opening.verse) },
+        { path: ['title'], code: at < 40 ? 'sermon-metadata-settled' : 'sermon-metadata-queued',
+          base: field(opening.title), mine: field('Phone title'), theirs: field('Desktop title') },
+      ]), snapshot: { value: { title: 'Desktop title', verse: opening.verse } },
+    });
+  });
+
+  it.each([false, true])('keeps a newer sermon passage safe after comparison (returns again: %s)', async returns => {
+    const seed = create('sermon-verse-review') as Extract<DataCommand, { kind: 'create' }>;
+    const opening = 'John 3:16', mine = 'Romans 8:1', newer = 'Mark 1:2';
+    expect((await processCommand('owner-1', { ...seed, value: { ...seed.value, verse: opening } })).kind).toBe('acknowledged');
+    const field = (value: string) => ({ exists: true, value });
+    const edit = (id: string, before: string, after: string, revision: number, at: number, reviewed?: true) => ({
+      ...update(id, seed.operationId), changes: [{ path: ['verse'], before: field(before), after: field(after) }],
+      sermonVerseAction: { observedRevision: revision, time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at },
+        ...(reviewed && { reviewed }) },
+    });
+    expect((await processCommand('owner-1', edit('newer', opening, newer, 1, 20))).kind).toBe('acknowledged');
+    if (returns) expect((await processCommand('owner-1', edit('returned', newer, opening, 2, 40))).kind).toBe('acknowledged');
+    const saved = returns ? opening : newer;
+    expect(await processCommand('owner-1', edit('outdated-review', opening, mine, 1, 80, true))).toMatchObject({
+      kind: 'conflict', conflicts: [{ path: ['verse'], code: 'sermon-verse-review-changed', base: field(opening), mine: field(mine), theirs: field(saved) }],
+      snapshot: { value: { verse: saved } },
+    });
+    expect(await processCommand('owner-1', edit('review-current', saved, mine, returns ? 3 : 2, 90, true))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { verse: mine } },
+    });
+    expect(await processCommand('owner-1', edit('already-saved', opening, mine, 1, 95, true))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { verse: mine } },
+    });
+  });
+
   describe('council metadata chronology', () => {
     const resource = { collection: 'councils', id: 'timed-council' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };

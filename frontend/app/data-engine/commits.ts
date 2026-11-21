@@ -158,7 +158,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   planTemplateNameAction?: DocumentFieldObservation;
   tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
-  sermonVerseAction?: DocumentFieldObservation;
+  sermonVerseAction?: import('./documentFieldAction').SermonVerseObservation;
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonThesisFieldActions?: SermonThesisObservations;
@@ -833,8 +833,8 @@ export class CommitQueue {
     }
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const reviewedMeeting = groupMeetingReviewForSave(intent.groupMeetingReview, baseline, intent.draft);
-    const titleReview = editorAction?.kind === 'document-metadata' ? editorAction.sermonTitleReview : undefined;
-    const reviewedDate = dateTarget?.evidence === 'preachDateAction' ? titleReview?.date : undefined;
+    const headerReview = editorAction?.kind === 'document-metadata' ? editorAction.sermonHeaderReview : undefined;
+    const reviewedDate = dateTarget?.evidence === 'preachDateAction' ? headerReview?.date : undefined;
     const datedAction = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft,
       frozenOptions?.[dateTarget.evidence] ?? reviewedDate, records);
     const action = datedAction ? { ...datedAction, ...(reviewedDate && { observedRevision: reviewedDate.observedRevision }) } : reviewedMeeting?.date;
@@ -899,7 +899,7 @@ export class CommitQueue {
       ? editorAction.time : frozenOptions?.documentMetadataTime;
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
-      titleReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined);
+      headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
     const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);

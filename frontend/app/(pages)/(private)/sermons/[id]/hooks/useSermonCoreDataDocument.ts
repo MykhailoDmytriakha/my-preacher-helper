@@ -137,8 +137,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   const recoveredDecision = (slot: 'title' | 'verse') => {
     const form = headerForms[slot];
     const comparison = form.active || form.exactChoice ? form.comparison : undefined;
-    return manualFormDecision(form, comparison ? { identity: comparison.identity,
-      mine: String(comparison.mine[slot] ?? ''), stored: String(comparison.stored.value?.[slot] ?? '') } : undefined);
+    const decision = manualFormDecision(form, comparison ? { identity: comparison.identity,
+      mine: String(comparison.mine[slot] ?? ''), stored: String(comparison.stored.value?.[slot] ?? ''),
+      ...(comparison.kind === 'returned-sermon-verse' && form.exactChoice && { scopedChoice: true }) } : undefined);
+    if (decision && comparison?.kind === 'returned-sermon-verse') {
+      decision.keepLocal = () => form.keepLocal(undefined, form.captureDocumentMetadataAction());
+    }
+    return decision;
   };
   const fieldDecision = recoveredDecision('title') ?? recoveredDecision('verse') ?? preparationFields.decision;
   const checkpoint = !fieldDecision && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
