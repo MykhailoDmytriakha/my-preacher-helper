@@ -39,7 +39,7 @@ import { RecordReadSummary } from '@/components/common/recordReadSummary';
 import { showCouncilCarryPrepared, useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
-import { councilTopicComparison } from '@/components/council/councilTopicComparison';
+import { councilLifecycleWords, councilTopicComparison } from '@/components/council/councilTopicComparison';
 import { CouncilTopicHistory } from '@/components/council/CouncilTopicHistory';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
@@ -59,7 +59,7 @@ import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, topicState } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
-import { formatDate, formatDateForLocale, formatDateOnly, formatDateTimeForLocale } from '@/utils/dateFormatter';
+import { formatDate, formatDateForLocale, formatDateOnly } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -117,7 +117,7 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
 }
 
 function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { owner } = useDataEngine();
   const document = useCouncilDataDocument(councilId);
   const list = useCouncilsRead();
@@ -151,7 +151,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     }
   };
   const generation = document.confirmed?.metadata?.generation;
-  const comparison = councilTopicComparison(document.checkpoint, t, document.council?.topics);
+  const comparison = councilTopicComparison(document.checkpoint, t, language, document.council?.topics);
   const shownChoice = comparison ? document.checkpoint : undefined;
   const loading = document.loading || list.loading;
   const readFailed = !document.council && !loading && list.councils.length === 0 && Boolean(document.error ?? list.error);
@@ -461,9 +461,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             prefix="council.history" nullable={['date', 'heldAt']}
             labels={{ title: 'council.detail.titleLabel', date: 'council.detail.dateLabel', heldAt: 'council.history.lifecycle' }}
             describeValue={(field, value) => {
-              if (field === 'heldAt') return value
-                ? t('council.history.heldOn', { when: formatDateTimeForLocale(value, language) })
-                : t('council.status.preparing');
+              if (field === 'heldAt') return councilLifecycleWords(value, t, language);
               if (field === 'date') return value ? formatDateForLocale(shownDayOf(value), language) : t('council.history.notSet');
               return value ?? '';
             }}

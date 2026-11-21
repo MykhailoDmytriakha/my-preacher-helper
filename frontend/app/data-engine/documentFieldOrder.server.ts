@@ -74,7 +74,7 @@ function nextFieldOpenings(raw: unknown, target: DocumentFieldTarget, opening: F
 const tracksScalarReturns = (target: DocumentFieldTarget) =>
   target.action === 'sermonTitleAction' || target.action === 'serviceOrderTitleAction'
     || target.action === 'groupTitleAction' || target.action === 'prayerTitleAction' || target.action === 'planTemplateNameAction'
-    || target.action === 'councilTitleAction' || target.action === 'councilDateAction'
+    || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
     || (target.action === 'seriesFieldActions' && target.field === 'title');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
@@ -124,7 +124,6 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
   if (!object(action) || ('path' in target && !after.exists
     && target.action !== 'accountPreferenceActions' && target.action !== 'sermonPreparationTextActions') || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
     || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
-    || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
   const time = target.causal && action.time === null ? null : boundedActionTime(action.time);
@@ -213,7 +212,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     ? placeOfCommentChange(command.changes, true) : documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
   const stored = documentFieldValue(current.value, target);
-  if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
+  if (!stored || !acceptsDocumentField(stored, target)
+    || (target.action === 'councilLifecycleAction' && !matchesCouncilLifecycle(command.changes, change))) return { command, stamp: null };
   if (target.action === 'commentPlaceAction' && command.commentPlaceAction
     && !matchesCommentPlaceScope(current.value, change.before, command.commentPlaceAction.paragraph)) return { command };
   if (target.action === 'commentPlaceAction' && !command.commentPlaceAction && equalValues(change.before, change.after)) return { command };

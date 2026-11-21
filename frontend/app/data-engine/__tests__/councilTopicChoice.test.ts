@@ -669,6 +669,38 @@ describe('council nested text choices through the durable editor', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each(['mine', 'stored'])('compares a legacy Finish as a single council state (%s)', async side => {
+    const { h, engine, editor } = await open({ date: '2026-11-22' });
+    try {
+      const heldAt = '2026-11-22T12:00:00.000Z';
+      const first = editor.getState().checkpoint;
+      await editor.edit({ ...first.draft!, status: 'held', heldAt }, first, { field: 'heldAt', time: at(20) });
+      await editor.save();
+      h.silentRemote({ date: '2026-11-23', topics: [{ ...opening, summary: 'New section text' }] });
+      delay(h, [{ path: ['heldAt'], base: rowConflictValue(null), mine: rowConflictValue(heldAt), theirs: rowConflictValue(null) }]);
+      engine.setOnline(true); await engine.retry();
+      await waitFor(() => expect(readCouncilTopicTextComparison(editor.getState().checkpoint)).toMatchObject({
+        field: 'council-lifecycle', mine: heldAt, stored: null,
+      }));
+      const shown = editor.getState().checkpoint;
+      if (side === 'mine') {
+        await editor.keepLocal(undefined, shown, at(80));
+        await waitFor(() => expect(h.server.value?.heldAt).toBe(heldAt));
+        expect(h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          councilLifecycleAction: { observedRevision: 2, time: at(80) },
+          changes: expect.arrayContaining([
+            { path: ['heldAt'], before: rowConflictValue(null), after: rowConflictValue(heldAt) },
+            { path: ['status'], before: rowConflictValue('preparing'), after: rowConflictValue('held') },
+          ]),
+        }));
+      } else await editor.acceptRemote(undefined, shown);
+      const result = editor.getState().checkpoint.confirmed.value;
+      expect(result?.heldAt).toBe(side === 'mine' ? heldAt : undefined);
+      expect(result).toMatchObject({ date: '2026-11-23', status: side === 'mine' ? 'held' : 'preparing',
+        topics: [{ summary: 'New section text' }] });
+    } finally { engine.dispose(); }
+  });
+
   it('does not show a second council date when a newer stored representation is the same day', async () => {
     const initialDate = '2026-11-20', selected = '2026-11-22';
     const { h, engine, editor } = await open({ date: initialDate });

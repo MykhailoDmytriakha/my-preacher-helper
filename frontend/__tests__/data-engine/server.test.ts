@@ -5242,8 +5242,8 @@ describe('transactional DataEngine server', () => {
     const base = { protocol: 1, owner, resource, dependsOn: [] };
     const title = 'Council with sections', date = '2099-04-13';
     const topics = [{ id: 'section', title: 'Keep the section', kind: 'info', questions: [], options: [], discussed: true }];
-    const seed = () => processCommand(owner, { ...base, operationId: 'council-create', kind: 'create', generation: null,
-      value: { userId: owner, title, date, status: 'preparing', topics,
+    const seed = (heldAt: string | null = null) => processCommand(owner, { ...base, operationId: 'council-create', kind: 'create', generation: null,
+      value: { userId: owner, title, date, status: heldAt ? 'held' : 'preparing', ...(heldAt && { heldAt }), topics,
         createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
     const value = (text: string | null) => text === null ? { exists: false } : { exists: true, value: text };
     const change = (operationId: string, before: string | null, after: string | null, observedRevision: number, offset: number) => ({
@@ -5277,6 +5277,29 @@ describe('transactional DataEngine server', () => {
       });
       const restored = await processCommand(owner, change('restore-old-finish', null, phoneHeld, 3, 120));
       expect(restored).toMatchObject({ kind: 'acknowledged', snapshot: { value: { status: 'held', heldAt: phoneHeld, title, date, topics } } });
+    });
+
+    it.each([
+      { opening: null, incoming: phoneHeld, reaffirm: false },
+      { opening: null, incoming: phoneHeld, reaffirm: true },
+      { opening: phoneHeld, incoming: null, reaffirm: false },
+    ])('holds a legacy lifecycle change after a return ($opening; reaffirm=$reaffirm)', async ({ opening, incoming, reaffirm }) => {
+      expect((await seed(opening)).kind).toBe('acknowledged');
+      const temporary = opening ? null : desktopHeld;
+      const old = (id: string, before: string | null, after: string | null) => {
+        const { councilLifecycleAction: _action, ...legacy } = change(id, before, after, 1, 20);
+        return legacy;
+      };
+      if (!reaffirm) expect((await processCommand(owner, old('desktop-changes-status', opening, temporary))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, old('desktop-returns-status', temporary, opening))).kind).toBe('acknowledged');
+      const delayed = old('phone-first-delivery', opening, incoming);
+      const result = await processCommand(owner, delayed);
+      expect(result).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['heldAt'], base: value(opening), mine: value(incoming), theirs: value(opening) }],
+        snapshot: { value: { status: opening ? 'held' : 'preparing', title, date, topics } },
+      });
+      expect(documents.get('councils/lifecycle-council')?.heldAt).toBe(opening ?? undefined);
+      expect(await processCommand(owner, delayed)).toEqual(result);
     });
 
     it('preserves a manual choice when a delayed Finish has no reliable clock', async () => {

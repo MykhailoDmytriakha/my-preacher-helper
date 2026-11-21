@@ -57,12 +57,12 @@ export default function CouncilConductPage() {
 
 /** Conducting only ever edits this one council, so the document editor is the whole source. */
 function EngineCouncilConductPage({ councilId }: { councilId: string }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const document = useCouncilDataDocument(councilId);
   // Conducting is the worst place to lose a decision quietly: a refusal is said out loud here too.
   const report = (error: unknown) => { toast.error(actionFailureMessage(error, t, 'council.save.refused')); };
   const { recovery } = document;
-  const comparison = councilTopicComparison(document.checkpoint, t, document.council?.topics);
+  const comparison = councilTopicComparison(document.checkpoint, t, language, document.council?.topics);
   const shownChoice = comparison ? document.checkpoint : undefined;
 
   return <>

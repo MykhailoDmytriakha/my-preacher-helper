@@ -29,7 +29,8 @@ export const COUNCIL_LIFECYCLE = { field: 'heldAt', action: 'councilLifecycleAct
 export type CouncilFieldTarget = typeof COUNCIL_TIMED_FIELDS[number] | typeof COUNCIL_LIFECYCLE;
 
 export function isCouncilHeaderComparison({ path, base, theirs, code }: ConflictDetail): boolean {
-  return path.length === 1 && (path[0] === 'title' && equalValues(base, theirs) || path[0] === 'date' && !code);
+  return path.length === 1 && (path[0] === 'title' && equalValues(base, theirs)
+    || (path[0] === 'date' || path[0] === 'heldAt') && !code);
 }
 
 function councilDateDay(field: FieldValue): string | null | undefined {

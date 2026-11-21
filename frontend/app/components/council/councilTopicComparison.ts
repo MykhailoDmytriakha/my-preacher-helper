@@ -1,5 +1,6 @@
 import { anchoredStepComparison } from '@/components/care/serviceOrderPlacementWords';
 import { readCouncilSummaryChoice, readCouncilTopicConflict, readCouncilTopicTextComparison, readPrivateCouncilComparison, readUnreadableScalarComparison } from '@/data-engine/react.client';
+import { formatDateTimeForLocale } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
@@ -7,8 +8,14 @@ import { councilOutcomeWords } from './councilOutcomeWords';
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { CouncilTopic } from '@/models/models';
+import type { TFunction } from 'i18next';
 
-export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined, t: (key: string) => string, topics?: readonly CouncilTopic[]): TextComparison | undefined {
+export function councilLifecycleWords(value: string | null, t: TFunction, language: string): string {
+  return value ? t('council.history.heldOn', { when: formatDateTimeForLocale(value, language) }) : t('council.status.preparing');
+}
+
+export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined, t: TFunction, language: string,
+  topics?: readonly CouncilTopic[]): TextComparison | undefined {
   const placement = checkpoint?.confirmed.resource.collection === 'councils' && anchoredStepComparison(checkpoint, 'council.detail.sectionPosition', t);
   if (placement) return placement;
   const nested = checkpoint && readCouncilTopicTextComparison(checkpoint);
@@ -32,9 +39,11 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
       mine: councilOutcomeWords(nested.mine, topic, t), stored: councilOutcomeWords(nested.stored, topic, t) };
   }
   if (nested) {
-    const version = (value: string | null) => nested.field === 'council-date'
-      ? value ? shownDayOf(value) : t('council.noDate')
-      : value || t('dataSync.emptyField');
+    const version = (value: string | null) => {
+      if (nested.field === 'council-lifecycle') return councilLifecycleWords(value, t, language);
+      if (nested.field === 'council-date') return value ? shownDayOf(value) : t('council.noDate');
+      return value || t('dataSync.emptyField');
+    };
     const labels = { question: 'council.topic.questionPlaceholder', answer: 'council.topic.answerPlaceholder',
       option: 'council.topic.optionPlaceholder', summary: 'council.topic.summary', 'topic-title': 'council.detail.newTopicPlaceholder',
       'council-title': 'council.detail.titleLabel', 'council-date': 'council.detail.dateLabel', 'council-lifecycle': 'council.history.lifecycle' };
@@ -62,7 +71,8 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
     const label = unreadable.field === 'title' ? 'council.detail.titleLabel'
       : unreadable.field === 'date' ? 'council.detail.dateLabel' : 'council.history.lifecycle';
     return { identity: unreadable.identity, title: t(label), valueKind: 'field', scopedChoice: true,
-      mine: unreadable.mine || t('dataSync.emptyField'), stored: unreadable.stored || t('dataSync.emptyField') };
+      mine: unreadable.field === 'heldAt' ? councilLifecycleWords(unreadable.mine, t, language) : unreadable.mine || t('dataSync.emptyField'),
+      stored: unreadable.field === 'heldAt' ? councilLifecycleWords(unreadable.stored, t, language) : unreadable.stored || t('dataSync.emptyField') };
   }
   const comparison = checkpoint && readCouncilTopicConflict(checkpoint);
   if (!comparison) return undefined;
