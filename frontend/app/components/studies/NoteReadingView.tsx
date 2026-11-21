@@ -280,8 +280,10 @@ export function NoteReadingView({
                         })}
                     </nav>
 
-                    {/* The text: the page's own renderer, one column a comfortable line long. */}
-                    <article className="w-full min-w-0 max-w-[720px] pb-40 pt-6 md:pt-10">
+                    {/* The text, the page's own renderer: a comfortable 720 px line between the computer's margins; with no margins (a tablet, a
+                        phone) it takes the whole width up to the rail — the owner on his iPad, 2026-11-20: no empty bands
+                        at the sides. */}
+                    <article className="w-full min-w-0 pb-40 pt-6 md:pt-10 [@media(min-width:1024px)_and_(pointer:fine)]:max-w-[720px]">
                         <h1 className="text-[25px] font-bold leading-tight tracking-tight text-gray-900 md:text-[34px] dark:text-gray-50">{title || t('studiesWorkspace.untitled')}</h1>
                         <p className="mb-2 mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                             {[typeLabel, sections.length ? t('notePanel.sectionsCount', { count: sections.length }) : null, t('notePanel.readingMinutes', { count: minutes })].filter(Boolean).join(' · ')}
