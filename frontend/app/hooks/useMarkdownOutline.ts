@@ -42,11 +42,13 @@ export interface MarkdownOutlineControl {
  * sermon screen jumps to a section too — from a scratch atom back to the paragraph it was
  * cut from — and a second copy of "reveal, then scroll" would drift from this one.
  */
-export function jumpToSection(outline: MarkdownOutlineControl, id: string) {
+export function jumpToSection(outline: MarkdownOutlineControl, id: string, root: ParentNode | null = null) {
     outline.revealSection(id);
     // After the reveal has rendered, or the target may still be unmounted.
+    // `root`: where the text being read is drawn. The reading mode draws the note over its own page,
+    // so the same section exists twice and only the one in sight may scroll.
     requestAnimationFrame(() => {
-        document
+        (root ?? document)
             .querySelector(`[data-section-id="${id}"]`)
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });

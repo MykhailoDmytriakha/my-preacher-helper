@@ -11,6 +11,21 @@ import { useEffect, useState } from 'react';
  * are intersecting at once and "the innermost one above the fold" is the honest answer,
  * which observers make awkward to compute.
  */
+/**
+ * The section whose heading has last passed a line `offset` px under the top of `scrollRoot` (the window when none):
+ * the rule the hook below follows on every scroll, and a screen asks once — the note page when the reading mode opens.
+ */
+export function sectionAtLine(offset: number, scrollRoot?: HTMLElement | null): string | null {
+    const threshold = (scrollRoot?.getBoundingClientRect().top ?? 0) + offset + 1;
+    let current: string | null = null;
+    (scrollRoot ?? document).querySelectorAll<HTMLElement>('[data-section-id]').forEach((element) => {
+        if (element.getBoundingClientRect().top <= threshold) {
+            current = element.getAttribute('data-section-id');
+        }
+    });
+    return current;
+}
+
 export function useActiveSection(offset: number, enabled: boolean, resetKey?: string, scrollRoot?: HTMLElement | null): string | null {
     const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -23,14 +38,7 @@ export function useActiveSection(offset: number, enabled: boolean, resetKey?: st
         let frame = 0;
         const measure = () => {
             frame = 0;
-            const threshold = (scrollRoot?.getBoundingClientRect().top ?? 0) + offset + 1;
-            let current: string | null = null;
-            (scrollRoot ?? document).querySelectorAll<HTMLElement>('[data-section-id]').forEach((element) => {
-                if (element.getBoundingClientRect().top <= threshold) {
-                    current = element.getAttribute('data-section-id');
-                }
-            });
-            setActiveId(current);
+            setActiveId(sectionAtLine(offset, scrollRoot));
         };
 
         const onScroll = () => {

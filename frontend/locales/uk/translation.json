@@ -2613,7 +2613,22 @@
     "show": "Показати панель",
     "sermons": "Проповіді на нотатці",
     "created": "Створена {{date}}",
-    "updated": "Змінена {{date}}"
+    "updated": "Змінена {{date}}",
+    "readingMode": "Режим читання",
+    "exitReadingMode": "Вийти з режиму читання",
+    "versesOnScreen": "Місця Писання на екрані",
+    "noVersesOnScreen": "На екрані немає посилань на Писання.",
+    "versesHint": "Посилання, натиснуте в тексті, підсвічується тут.",
+    "verseLoading": "Завантажую текст…",
+    "positionOf": "{{current}} з {{total}}",
+    "sectionsCount_one": "{{count}} розділ",
+    "sectionsCount_few": "{{count}} розділи",
+    "sectionsCount_many": "{{count}} розділів",
+    "sectionsCount_other": "{{count}} розділу",
+    "readingMinutes_one": "близько {{count}} хвилини читання",
+    "readingMinutes_few": "близько {{count}} хвилин читання",
+    "readingMinutes_many": "близько {{count}} хвилин читання",
+    "readingMinutes_other": "близько {{count}} хвилини читання"
   },
   "feedback": {
     "button": "Зворотний зв'язок",

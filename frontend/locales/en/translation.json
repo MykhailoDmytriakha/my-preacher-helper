@@ -2579,7 +2579,18 @@
     "show": "Show panel",
     "sermons": "Sermons on this note",
     "created": "Created {{date}}",
-    "updated": "Edited {{date}}"
+    "updated": "Edited {{date}}",
+    "readingMode": "Reading mode",
+    "exitReadingMode": "Exit reading mode",
+    "versesOnScreen": "Scripture on screen",
+    "noVersesOnScreen": "No Scripture references on screen.",
+    "versesHint": "A reference you tap in the text lights up here.",
+    "verseLoading": "Loading the text…",
+    "positionOf": "{{current}} of {{total}}",
+    "sectionsCount_one": "{{count}} section",
+    "sectionsCount_other": "{{count}} sections",
+    "readingMinutes_one": "about {{count}} minute of reading",
+    "readingMinutes_other": "about {{count}} minutes of reading"
   },
   "feedback": {
     "button": "Feedback",
