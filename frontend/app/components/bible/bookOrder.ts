@@ -11,8 +11,10 @@ import { BIBLES, type BibleId } from '@/utils/bibles';
 /**
  * A part of a group: books remembered together (the Historical: into the land · the kings · exile and return).
  * Parts are for the eye — the list shows a part's books side by side, in the part's colour — never for reading.
+ * A part starts a new line of the list unless `joinsLine`: then it stands on the line of the part before it
+ * (owner, 2026-11-21: Solomon after Psalms, Peter after James, Jude after 3 John, Hebrews after Titus).
  */
-export type BookPart = { key: string; ids: string[] };
+export type BookPart = { key: string; ids: string[]; joinsLine?: true };
 /** `ids` is the reading order, as the Bible prints the group; `parts`, when there are some, hold the same books. */
 export type BookGroup = { key: string; ids: string[]; parts?: BookPart[] };
 export type Testament = { key: 'old' | 'new'; groups: BookGroup[] };
@@ -33,7 +35,7 @@ const OLD_TESTAMENT: BookGroup[] = [
     ids: ['Job', 'Psalms', 'Proverbs', 'Ecclesiastes', 'Song of Solomon'],
     parts: [
       { key: 'jobAndPsalms', ids: ['Job', 'Psalms'] },
-      { key: 'solomon', ids: ['Proverbs', 'Ecclesiastes', 'Song of Solomon'] },
+      { key: 'solomon', ids: ['Proverbs', 'Ecclesiastes', 'Song of Solomon'], joinsLine: true },
     ],
   },
   {
@@ -60,9 +62,9 @@ export const SYNODAL_BOOKS: Testament[] = [
         // By author.
         parts: [
           { key: 'james', ids: ['James'] },
-          { key: 'peter', ids: ['1 Peter', '2 Peter'] },
+          { key: 'peter', ids: ['1 Peter', '2 Peter'], joinsLine: true },
           { key: 'john', ids: ['1 John', '2 John', '3 John'] },
-          { key: 'jude', ids: ['Jude'] },
+          { key: 'jude', ids: ['Jude'], joinsLine: true },
         ],
       },
       {
@@ -75,7 +77,7 @@ export const SYNODAL_BOOKS: Testament[] = [
           { key: 'prisonEpistles', ids: ['Ephesians', 'Philippians', 'Colossians', 'Philemon'] },
           { key: 'thessalonians', ids: ['1 Thessalonians', '2 Thessalonians'] },
           { key: 'pastoralEpistles', ids: ['1 Timothy', '2 Timothy', 'Titus'] },
-          { key: 'hebrews', ids: ['Hebrews'] },
+          { key: 'hebrews', ids: ['Hebrews'], joinsLine: true },
         ],
       },
       { key: 'revelation', ids: ['Revelation'] },
@@ -107,3 +109,11 @@ export const bookSequence = (testaments: Testament[]): string[] =>
 
 /** The parts a group is shown in — `null` when it is not split: one part is the group itself. */
 export const partsOf = (group: BookGroup): BookPart[] | null => (group.parts && group.parts.length > 1 ? group.parts : null);
+
+/** The lines a split group is shown in: each a run of parts, a new line where a part does not join the one before. */
+export const linesOf = (parts: BookPart[]): BookPart[][] =>
+  parts.reduce<BookPart[][]>((lines, part) => {
+    if (part.joinsLine && lines.length) lines[lines.length - 1].push(part);
+    else lines.push([part]);
+    return lines;
+  }, []);

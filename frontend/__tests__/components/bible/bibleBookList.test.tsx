@@ -147,6 +147,16 @@ describe('BibleBookList', () => {
     // Colour is for the eye; a screen reader hears each part as a list under its name.
     const prison = within(paul).getByRole('list', { name: 'bible.bookParts.prisonEpistles.name' });
     expect(within(prison).getAllByRole('button').map((button) => button.textContent)).toEqual(['Ephesians', 'Philippians', 'Colossians', 'Philemon']);
+    // A part is kept whole — a wrapping box of its own, not books poured into one flow — and parts stand further
+    // apart than books, as on the canvas board (owner, 2026-11-21: «сделай как на Canvas»).
+    expect(prison).toHaveClass('flex', 'flex-wrap', 'gap-1.5');
+    expect(prison).not.toHaveClass('contents');
+    expect(prison.parentElement).toHaveClass('flex', 'flex-wrap', 'gap-x-3', 'gap-y-1.5');
+    // Lines are the owner's: 1 John begins a line, Jude goes on after 3 John.
+    const list = (name: string) => screen.getByRole('list', { name: `bible.bookParts.${name}.name` });
+    expect(list('john').parentElement).toBe(list('jude').parentElement);
+    expect(list('james').parentElement).toBe(list('peter').parentElement);
+    expect(list('john').parentElement).not.toBe(list('james').parentElement);
 
   });
 

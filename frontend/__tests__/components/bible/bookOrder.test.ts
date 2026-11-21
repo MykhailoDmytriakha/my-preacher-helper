@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
-import { PROTESTANT_BOOKS, SYNODAL_BOOKS, bookSequence, booksOf, partsOf } from '@/components/bible/bookOrder';
+import { PROTESTANT_BOOKS, SYNODAL_BOOKS, bookSequence, booksOf, linesOf, partsOf } from '@/components/bible/bookOrder';
 import { BOOK_PART_TONES } from '@/utils/themeColors';
 import { bookSlug } from '@/utils/bibleText';
 
@@ -82,6 +82,26 @@ describe('the parts of a group', () => {
         ['pastoralEpistles', ['1 Timothy', '2 Timothy', 'Titus']],
         ['hebrews', ['Hebrews']],
       ],
+      revelation: null,
+    });
+  });
+
+  // The owner, 2026-11-21: «с новой строки — Первое Царство, Ездра, Осия, Иоанна, Ефесянам, Фессалоникийцам, Тимофею»;
+  // Jude continues after 3 John.
+  it('stand in the owner\'s lines', () => {
+    const lines = Object.fromEntries([...SYNODAL_BOOKS[0].groups, ...SYNODAL_BOOKS[1].groups].map((group) => {
+      const parts = partsOf(group);
+      return [group.key, parts ? linesOf(parts).map((line) => line.map((part) => part.key)) : null];
+    }));
+    expect(lines).toEqual({
+      law: null,
+      history: [['enteredLand'], ['kings'], ['exile']],
+      wisdom: [['jobAndPsalms', 'solomon']],
+      prophets: [['majorProphets'], ['minorProphets']],
+      gospels: null,
+      acts: null,
+      generalEpistles: [['james', 'peter'], ['john', 'jude']],
+      paulineEpistles: [['greatEpistles'], ['prisonEpistles'], ['thessalonians'], ['pastoralEpistles', 'hebrews']],
       revelation: null,
     });
   });
