@@ -2,6 +2,7 @@
 
 
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { Glasses } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useState, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
 import { NoteMobileSheet } from '@/components/studies/NoteMobileSheet';
+import { NoteReadingView } from '@/components/studies/NoteReadingView';
 import { NoteSidePanel } from '@/components/studies/NoteSidePanel';
 import { noteTitleSizeClass } from '@/components/studies/noteTitleSize';
 import ScriptureRefBadge from '@/components/studies/ScriptureRefBadge';
@@ -28,7 +30,7 @@ import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { TagHistory } from '@/components/ui/TagHistory';
 import { useEditorOwnedText } from '@/components/ui/useEditorOwnedText';
-import { useActiveSection } from '@/hooks/useActiveSection';
+import { sectionAtLine, useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -439,6 +441,8 @@ type EditorHeaderProps = {
     /** The text on screen differs from what the server last confirmed. */
     hasUnsavedEdits: boolean;
     setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
+    /** Opens the reading mode — offered while the note is read, beside Copy. */
+    onRead: () => void;
     /** The note's title lives here now, not as a display-size heading above the text. */
     title: string; setTitle: (v: string) => void; searchQuery: string;
     /** Reading mode has nothing to save, so the status only shows while editing — plus a
@@ -483,7 +487,7 @@ function useSettledOpenRow(folded: boolean): boolean {
 
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
+    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied, onRead,
     title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop,
     roomy, collapsed, sectionLabel, onOpenSheet, editHeld = false
 }: EditorHeaderProps) {
@@ -532,7 +536,7 @@ function EditorHeader({
        outline and says which section is being read — see NoteMobileSheet. */
     const titleField = <EditorTitleField isEditing={isEditing} title={title} setTitle={setTitle} t={t} searchQuery={searchQuery} />;
 
-    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} editHeld={editHeld} handleDelete={handleDelete} aiMenu={aiMenu} folded={collapsed} />;
+    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} onRead={onRead} setIsEditing={setIsEditing} editHeld={editHeld} handleDelete={handleDelete} aiMenu={aiMenu} folded={collapsed} />;
 
     const shell = 'sticky z-30 border-b border-gray-200 bg-white/90 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/90';
 
@@ -690,6 +694,31 @@ function EditorHeaderTypeControl({
 }
 
 const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
+/** The one-time hand-over of the reading mode to the next note's page (tab storage: nothing in the address or history). */
+const READING_HANDOFF_KEY = 'studyNote.readingHandoff';
+/** A hand-over is for the page the press opens, seconds later; an older one was left by a turn that never arrived. */
+const READING_HANDOFF_TTL_MS = 15_000;
+function handReadingTo(noteId: string) {
+    try {
+        window.sessionStorage.setItem(READING_HANDOFF_KEY, JSON.stringify({ noteId, at: Date.now() }));
+    } catch { /* storage closed: the next note opens as a page */ }
+}
+/**
+ * The first note page built after a hand-over takes it, whichever note it is: the one it was meant for opens in the
+ * mode, any other page (a turn interrupted by a reload, a neighbour that sends elsewhere) only clears it, so a
+ * hand-over left behind never opens the mode later on its own.
+ */
+function takeReadingHandoff(noteId: string): boolean {
+    try {
+        const raw = window.sessionStorage.getItem(READING_HANDOFF_KEY);
+        if (raw === null) return false;
+        window.sessionStorage.removeItem(READING_HANDOFF_KEY);
+        const handed = JSON.parse(raw) as { noteId?: unknown; at?: unknown };
+        return handed.noteId === noteId && typeof handed.at === 'number' && Date.now() - handed.at < READING_HANDOFF_TTL_MS;
+    } catch {
+        return false;
+    }
+}
 
 /** Creation and last-edit dates. Metadata, so it sits with the rest of the metadata. */
 function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
@@ -866,10 +895,36 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
     const searchParams = useSearchParams();
+    // The reading mode, «the map in the margins»: the note alone, its outline and its verses in the margins (`NoteReadingView`).
+    // `readingStart` is the section being read on the page at the moment the mode opened: reading goes on from there.
+    const [reading, setReading] = useState(false);
+    const [readingStart, setReadingStart] = useState<string | null>(null);
+    // The page is built again for every note: turning to the next note from inside the mode hands the mode on
+    // (`handReadingTo`), and the next page opens in it once. History and the address keep nothing of it, so Back
+    // to a note read earlier opens that note as a page, and the header's own paging stays plain.
+    useEffect(() => {
+        if (takeReadingHandoff(noteId)) {
+            setReadingStart(null);
+            setReading(true);
+        }
+    }, [noteId]);
+    const closeReading = useCallback(() => setReading(false), []);
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
+    // The reading mode turns only to notes: an analysis in the same list opens elsewhere (the analyses tab) and would
+    // end the mode with its hand-over left unread. Its count is of the same notes.
+    const readingPager = useMemo(() => {
+        const readable = filteredNotes.filter((note) => note.type !== 'analysis');
+        const index = readable.findIndex((note) => note.id === noteId);
+        return {
+            index,
+            total: readable.length,
+            previous: index > 0 ? readable[index - 1].id : null,
+            next: index >= 0 && index < readable.length - 1 ? readable[index + 1].id : null,
+        };
+    }, [filteredNotes, noteId]);
 
     // A window over the page — the verse's, the comment's — keeps the arrows: leaving would close it unasked (Codex review, 2026-10-28).
-    useNoteKeyboardNavigation({ isEditing: editingWanted || Boolean(previewReference) || commentWindow.open, prevNoteId, nextNoteId, router, searchParams });
+    useNoteKeyboardNavigation({ isEditing: editingWanted || Boolean(previewReference) || commentWindow.open || reading, prevNoteId, nextNoteId, router, searchParams });
 
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
@@ -1004,6 +1059,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         offeredWords !== null && !unsentCopy({ value: offeredWords, base: recoveredBase }));
     const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
     const isEditing = writesNow(editingWanted, draftHeld ? unsavedRecovery : null);
+    // Editing begins only from the page; should it begin anyway (a field restored from history), the reading mode gives way.
+    useEffect(() => { if (isEditing) setReading(false); }, [isEditing]);
 
     const liveValues = useCallback((): NoteDraftPayload => ({
         title: liveTitle.current, content: liveContent(), tags: liveTags.current,
@@ -1201,7 +1258,9 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     // did not ask for, on the layer they were not looking at.
     const headerCollapsed = useCollapseOnScroll(!roomyHeader && !isEditing, noteId);
 
-    const activeSectionId = useActiveSection(scrollLayout.activeOffset, !isEditing && (showPanel || !isWideViewport), noteId, scrollLayout.activeRoot);
+    // Off while the reading mode is open: it draws the same sections over the page, and a search of the whole document
+    // would find its copies; the mode counts its own sections.
+    const activeSectionId = useActiveSection(scrollLayout.activeOffset, !isEditing && !reading && (showPanel || !isWideViewport), noteId, scrollLayout.activeRoot);
     // Once reading has started the sticky line says which section you are in — the note's
     // title is the one thing the reader already knows.
     const activeSection = findSectionById(outlineControl.outline.sections, activeSectionId);
@@ -1578,7 +1637,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={changeType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={commentWindow.setIsEditing} handleDelete={handleDelete}
-                handleCopy={handleCopy} isCopied={isCopied}
+                handleCopy={handleCopy} isCopied={isCopied} onRead={() => { setReadingStart(sectionAtLine(scrollLayout.activeOffset, scrollLayout.activeRoot) ?? activeSectionId); setReading(true); }}
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
@@ -1782,14 +1841,34 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 sheet is up it would sit ON the outline rows. Nothing to size while the
                 text is covered anyway. */}
             {previewReference && <ScripturePreviewSheet key={previewReference.id} reference={previewReference} currentNoteId={noteId} onClose={() => setPreviewReference(null)} />}
-            {!isEditing && !sheetOpen && !previewReference && <FloatingTextScaleControls />}
+            {!isEditing && !sheetOpen && !previewReference && !reading && <FloatingTextScaleControls />}
+            {reading && !isEditing && (
+                <NoteReadingView
+                    noteId={noteId}
+                    title={commentView.title}
+                    typeLabel={t(`studiesWorkspace.type.${type}`)}
+                    content={content}
+                    searchQuery={searchQuery}
+                    outline={outlineControl}
+                    writtenIn={readingLanguage}
+                    startAt={readingStart}
+                    pager={readingPager.index < 0 ? null : {
+                        index: readingPager.index,
+                        total: readingPager.total,
+                        onPrevious: readingPager.previous ? () => { const id = readingPager.previous!; handReadingTo(id); router.push(`/studies/${id}?${searchParams.toString()}`); } : null,
+                        onNext: readingPager.next ? () => { const id = readingPager.next!; handReadingTo(id); router.push(`/studies/${id}?${searchParams.toString()}`); } : null,
+                    }}
+                    onOpenReference={openTextReference}
+                    onClose={closeReading}
+                />
+            )}
             {confirmDialog}
             {discardDialog}
         </div>
     );
 }
 
-function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, editHeld = false, handleDelete, aiMenu, folded = false }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'editHeld' | 'handleDelete' | 'aiMenu'> & {
+function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, onRead, setIsEditing, editHeld = false, handleDelete, aiMenu, folded = false }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'onRead' | 'setIsEditing' | 'editHeld' | 'handleDelete' | 'aiMenu'> & {
     /** The phone row these actions sit in folded away while reading: its menu closes with it. */
     folded?: boolean;
 }) {
@@ -1828,6 +1907,18 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
                     <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved')}</span></>
                 ) : null}
             </div>
+
+            {!isEditing && (
+                <button
+                    type="button"
+                    onClick={onRead}
+                    className="inline-flex items-center justify-center rounded-lg bg-gray-100 p-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100"
+                    title={t('notePanel.readingMode')}
+                    aria-label={t('notePanel.readingMode')}
+                >
+                    <Glasses className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                </button>
+            )}
 
             {!isEditing && (
                 <button

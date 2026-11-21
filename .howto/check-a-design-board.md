@@ -1,4 +1,4 @@
-when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · setState stale · state comes back · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design · выбор не снимается · board does not look like the app · canvas не похож на приложение · real screenshots · снимки живого приложения · inject into the live page
+when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · setState stale · state comes back · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design · выбор не снимается · board does not look like the app · canvas не похож на приложение · real screenshots · снимки живого приложения · inject into the live page · many screens from one component · shared choice across boards · BroadcastChannel · dc-import variants · одна доска на много экранов · общий выбор между досками
 
 # Check a Design canvas board
 
@@ -27,6 +27,14 @@ A change to a screen the app already has is shown on that screen, not redrawn: a
 4a. Write every label on the new element from `frontend/locales/ru/translation.json`, not from memory. On 2026-11-19 the board's date card said «Изменить» and fitted; the app's `common.edit` is «Редактировать», and in code the bin no longer fitted on the row.
 5. Save nothing: a dialog with typed fields answers «Отмена» with «Отбросить изменения?» — press «Отбросить», count the list before and after. Shoot a page in a fresh browser: a draft left in the same browser shows as a recovery banner on the next page.
 6. Log in waiting for the address only: `waitForURL(/dashboard/, { waitUntil: 'commit' })` — the dashboard's «load» did not come within two minutes.
+
+## Many screens from one component, one choice across boards
+
+When the same screen is shown in several variants and widths (2026-11-20, reading mode: 5 variants × 3 widths), write ONE component board, `Screen.dc.html`, that takes `platform` and `variant` props, and make each screen a thin board that only holds `<dc-import name="Screen" platform="ipad" variant="3" hint-size="820px,1180px">`. A fix then lands on all fifteen at once. The imported board's `<helmet>` styles reach the importer (checked in the runtime), so the thin boards need only the font link and `body{margin:0}`. The component board also shows on the canvas by itself: title it as a service board.
+
+Each board keeps its own state, but the canvas mounts every board as a `srcdoc` frame with `sandbox="allow-scripts allow-same-origin"` (the type's `app.js`), so all boards share one origin. A choice made on one board (the icon) reaches the others through a `BroadcastChannel` plus `localStorage`, read again on mount and on a short poll for a board opened later. `.cases/2026-11-20-rezhim-chteniya-zametki/board/sync-test.cjs` proves it in separate tabs and in `srcdoc` frames; `walk-all.cjs` walks every screen through its presses and back.
+
+Large text for the boards (the note, its pages) goes up as one `.json` asset and is read with `fetch('/_blob/<id>')`; a changed file is a new upload with a new id.
 
 ## Traps
 

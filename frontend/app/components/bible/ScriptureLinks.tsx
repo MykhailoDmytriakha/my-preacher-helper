@@ -70,6 +70,18 @@ export function WithoutScriptureLinks({ children }: { children: ReactNode }) {
 
 /** The mark every reference link carries: a copy of the page turns it back into its words. */
 export const SCRIPTURE_LINK_MARK = 'data-scripture-link';
+/** The reference a link opens, as JSON on the link itself: a screen can ask which places the visible text names. */
+export const SCRIPTURE_REFERENCE_MARK = 'data-scripture-reference';
+
+/** The reference a drawn link opens; nothing for another element or a broken mark. */
+export function referenceOfLink(element: Pick<HTMLElement, 'getAttribute'>): SheetReference | null {
+  try {
+    const value = JSON.parse(element.getAttribute(SCRIPTURE_REFERENCE_MARK) ?? '') as SheetReference | null;
+    return value && typeof value.book === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The screen's way of opening a reference, or null where references stay text. */
 export function useScriptureLinks(): ScriptureLinksValue | null {
@@ -106,7 +118,7 @@ function ScriptureLink({ found, children, tone = 'default' }: { found: Pick<Refe
   };
   return (
     <>
-      <button type="button" onClick={open} onDoubleClick={(event) => event.stopPropagation()} className={tone === 'inherit' ? SCRIPTURE_LINK_INHERITED_CLASSES : SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '' }}>
+      <button type="button" onClick={open} onDoubleClick={(event) => event.stopPropagation()} className={tone === 'inherit' ? SCRIPTURE_LINK_INHERITED_CLASSES : SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '', [SCRIPTURE_REFERENCE_MARK]: JSON.stringify(found.reference) }}>
         {children}
       </button>
       {found.writtenIn ? <WrittenInMark bible={found.writtenIn} /> : null}

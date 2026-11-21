@@ -22,6 +22,7 @@ export function NoteOutlineTree({
     activeSectionId,
     onNavigate,
     compact = false,
+    root = null,
 }: {
     outline: MarkdownOutlineControl;
     /**
@@ -31,9 +32,12 @@ export function NoteOutlineTree({
     foldable: boolean;
     activeSectionId?: string | null;
     /** Called after a jump — the sheet uses it to close itself. */
-    onNavigate?: () => void;
+    /** After a jump, with the section jumped to. */
+    onNavigate?: (sectionId: string) => void;
     /** Touch sizing: taller rows and larger text, for the sheet on a phone. */
     compact?: boolean;
+    /** Where the text this outline maps is drawn (the reading mode's own column); the whole page when not given. */
+    root?: ParentNode | null;
 }) {
     return (
         <div className={`flex flex-col ${compact ? 'gap-px' : 'gap-px'}`}>
@@ -47,6 +51,7 @@ export function NoteOutlineTree({
                     activeSectionId={activeSectionId}
                     onNavigate={onNavigate}
                     touch={compact}
+                    root={root}
                 />
             ))}
         </div>
@@ -118,14 +123,17 @@ function OutlineRow({
     activeSectionId,
     onNavigate,
     touch,
+    root,
 }: {
     section: MarkdownSection;
     outline: MarkdownOutlineControl;
     depth: number;
     foldable: boolean;
     activeSectionId?: string | null;
-    onNavigate?: () => void;
+    /** After a jump, with the section jumped to. */
+    onNavigate?: (sectionId: string) => void;
     touch: boolean;
+    root: ParentNode | null;
 }) {
     const { t } = useTranslation();
     const collapsed = foldable && outline.isCollapsed(section.id);
@@ -156,8 +164,8 @@ function OutlineRow({
                 <button
                     type="button"
                     onClick={() => {
-                        jumpToSection(outline, section.id);
-                        onNavigate?.();
+                        jumpToSection(outline, section.id, root);
+                        onNavigate?.(section.id);
                     }}
                     title={label}
                     className={`min-w-0 flex-1 break-words text-left transition-colors hover:text-emerald-700 dark:hover:text-emerald-300 ${touch ? 'py-0.5 text-[15px] leading-[22px]' : 'text-[13px] leading-5'} ${isActive ? 'text-emerald-800 dark:text-emerald-200' : depth === 0 ? 'text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'} ${depth === 0 ? 'font-bold' : ''}`}
@@ -181,6 +189,7 @@ function OutlineRow({
                         activeSectionId={activeSectionId}
                         onNavigate={onNavigate}
                         touch={touch}
+                        root={root}
                     />
                 ))}
         </>

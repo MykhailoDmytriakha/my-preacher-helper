@@ -2613,7 +2613,22 @@
     "show": "Показать панель",
     "sermons": "Проповеди на заметке",
     "created": "Создана {{date}}",
-    "updated": "Изменена {{date}}"
+    "updated": "Изменена {{date}}",
+    "readingMode": "Режим чтения",
+    "exitReadingMode": "Выйти из режима чтения",
+    "versesOnScreen": "Места Писания на экране",
+    "noVersesOnScreen": "На экране нет ссылок на Писание.",
+    "versesHint": "Ссылка, нажатая в тексте, подсвечивается здесь.",
+    "verseLoading": "Загружаю текст…",
+    "positionOf": "{{current}} из {{total}}",
+    "sectionsCount_one": "{{count}} раздел",
+    "sectionsCount_few": "{{count}} раздела",
+    "sectionsCount_many": "{{count}} разделов",
+    "sectionsCount_other": "{{count}} раздела",
+    "readingMinutes_one": "около {{count}} минуты чтения",
+    "readingMinutes_few": "около {{count}} минут чтения",
+    "readingMinutes_many": "около {{count}} минут чтения",
+    "readingMinutes_other": "около {{count}} минуты чтения"
   },
   "feedback": {
     "button": "Обратная связь",
@@ -3338,7 +3353,9 @@
       "removeSubPoint": "Удалить подпункт",
       "removeSubPointTitle": "Удалить подпункт «{{title}}»?",
       "removeSubPointDescription": "Наброски и мысли из него останутся в пункте.",
-      "howTo": "Как раскладывать наброски"
+      "howTo": "Как раскладывать наброски",
+      "hidePool": "Скрыть копилку",
+      "showPool": "Показать копилку"
     },
     "node": {
       "label": "Набросок",

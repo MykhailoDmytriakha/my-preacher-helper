@@ -73,3 +73,27 @@ it('keeps an empty heading reachable with a display-only caption', () => {
     expect(outline.sections[0].children[0].headingText).toBe('');
     expect(outline.sections[0].children[0].body).toBe('Retained body.');
 });
+
+// The reading mode draws the note over its own page, so a section's id stands twice in the document;
+// a jump from the mode's outline must scroll the mode's text, not the page hidden under it.
+it('jumps inside the root it is given, not to the first match in the document', () => {
+        const page = document.createElement('div');
+        const mode = document.createElement('div');
+        [page, mode].forEach((root) => {
+            const section = document.createElement('section');
+            section.dataset.sectionId = '1';
+            section.scrollIntoView = jest.fn();
+            root.append(section);
+            document.body.append(root);
+        });
+        const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { callback(0); return 0; });
+
+        render(<NoteOutlineTree outline={makeControl()} foldable root={mode} />);
+        screen.getByRole('button', { name: 'Second' }).click();
+
+        expect((mode.firstElementChild as HTMLElement).scrollIntoView).toHaveBeenCalled();
+        expect((page.firstElementChild as HTMLElement).scrollIntoView).not.toHaveBeenCalled();
+        raf.mockRestore();
+        page.remove();
+        mode.remove();
+    });
