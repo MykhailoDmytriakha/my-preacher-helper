@@ -20,35 +20,37 @@ describe('Button Component', () => {
             run: () => {
               render(<Button {...defaultProps} />);
               const button = screen.getByRole('button', { name: 'Test Button' });
-              expect(button).toHaveClass('bg-gray-200', 'hover:bg-gray-300', 'text-gray-700');
+              expect(button).toHaveClass('bg-gray-200', 'hover:bg-gray-300', 'text-gray-800');
+              // White text in the base classes beat the grey and left "Refine request" unreadable.
+              expect(button).not.toHaveClass('text-white');
             }
           },
           {
             name: 'primary variant classes',
             run: () => {
               render(<Button {...defaultProps} variant="primary" />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-blue-500', 'hover:bg-blue-600');
+              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-blue-600', 'hover:bg-blue-700', 'text-white');
             }
           },
           {
             name: 'secondary variant classes',
             run: () => {
               render(<Button {...defaultProps} variant="secondary" />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-gray-500');
+              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-gray-600', 'text-white');
             }
           },
           {
             name: 'section variant uses custom colors',
             run: () => {
               render(<Button {...defaultProps} variant="section" sectionColor={sectionColor} />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveStyle({ backgroundColor: '#3B82F6' });
+              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveStyle({ backgroundColor: '#93C5FD' });
             }
           },
           {
             name: 'section variant falls back when color missing',
             run: () => {
               render(<Button {...defaultProps} variant="section" />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-blue-500');
+              expect(screen.getByRole('button', { name: 'Test Button' })).toHaveClass('bg-gray-200');
             }
           }
         ],

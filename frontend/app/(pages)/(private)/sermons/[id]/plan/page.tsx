@@ -9,6 +9,7 @@ import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { Button } from "@/components/ui/Button";
 import { useEditorValues } from '@/components/ui/useEditorValue';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -70,60 +71,6 @@ import type {
 
 type ExportContentOptions = { includeTags?: boolean; type?: "thoughts" | "plan" };
 
-const Button = ({
-  onClick,
-  variant = "default",
-  sectionColor,
-  className,
-  disabled,
-  children,
-  title
-}: {
-  onClick?: () => void | Promise<void>,
-  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure",
-  sectionColor?: { base: string, light: string, dark: string },
-  className?: string,
-  disabled?: boolean,
-  children: React.ReactNode,
-  title?: string
-}) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md transition-colors";
-
-  let variantClass = "";
-
-  if (variant === "section" && sectionColor) {
-    // Для секционных стилей используем базовый класс без цветов,
-    // цвета будут применены через inline-стили
-    variantClass = "text-white section-button";
-  } else {
-    const variantClasses: Record<string, string> = {
-      default: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600",
-      primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      secondary: "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400",
-      plan: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      structure: "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
-    };
-    variantClass = variantClasses[variant] || variantClasses.default;
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClasses} ${variantClass} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className || ''}`}
-      style={variant === "section" && sectionColor ? {
-        backgroundColor: sectionColor.light,
-        "--hover-bg": sectionColor.dark,
-        "--active-bg": sectionColor.base,
-        // Создаем более темный цвет для border
-        borderColor: sectionColor.dark,
-      } as React.CSSProperties : undefined}
-      title={title}
-    >
-      {children}
-    </button>
-  );
-};
 
 const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | "medium" | "large", className?: string }) => {
   const sizeClasses = {

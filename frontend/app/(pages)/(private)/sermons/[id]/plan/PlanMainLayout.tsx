@@ -8,6 +8,7 @@ import PlanGenerationButton from "@/components/plan/PlanGenerationButton";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { legacySectionText, readPlanText } from "@/utils/planText";
@@ -46,58 +47,6 @@ const Card = React.forwardRef<HTMLDivElement, { className?: string; children: Re
 );
 Card.displayName = "Card";
 
-const Button = ({
-  onClick,
-  variant = "default",
-  sectionColor,
-  className,
-  disabled,
-  children,
-  title,
-}: {
-  onClick?: () => void | Promise<void>;
-  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure";
-  sectionColor?: { base: string; light: string; dark: string };
-  className?: string;
-  disabled?: boolean;
-  children: React.ReactNode;
-  title?: string;
-}) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md transition-colors";
-  let variantClass = "";
-
-  if (variant === "section" && sectionColor) {
-    variantClass = "text-white section-button";
-  } else {
-    const variantClasses: Record<string, string> = {
-      default: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600",
-      primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      secondary: "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400",
-      plan: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      structure: "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400",
-    };
-    variantClass = variantClasses[variant] || variantClasses.default;
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClasses} ${variantClass} ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className || ""}`}
-      style={variant === "section" && sectionColor
-        ? ({
-          backgroundColor: sectionColor.light,
-          "--hover-bg": sectionColor.dark,
-          "--active-bg": sectionColor.base,
-          borderColor: sectionColor.dark,
-        } as React.CSSProperties)
-        : undefined}
-      title={title}
-    >
-      {children}
-    </button>
-  );
-};
 
 const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; onSwitchPage?: () => void }) => {
   const { t } = useTranslation();
