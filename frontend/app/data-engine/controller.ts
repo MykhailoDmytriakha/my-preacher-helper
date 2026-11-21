@@ -448,7 +448,9 @@ export class EditorController {
 
   observe(snapshot: ResourceSnapshot, source: 'server' | 'cache'): Promise<void> {
     return this.enqueue(async () => {
-      this.session.observe(snapshot, { source });
+      const preserveDraft = this.preparations > 0 || this.choices > 0 || this.atomicPending.size > 0
+        || this.result?.kind === 'conflict' || this.result?.kind === 'refused';
+      this.session.observe(snapshot, { source, preserveDraft });
       await this.persist();
     });
   }

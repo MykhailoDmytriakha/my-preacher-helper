@@ -825,7 +825,10 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
   const visible = shown?.editGeneration === checkpoint.editGeneration
     && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
   const staged = checkpoint[target.draft];
-  const prior = staged?.generation === metadata.generation && equalValues(staged.action.after, oldValue) ? staged.action : undefined;
+  // A matched stored value is the opening of the next gesture. Its earlier proof
+  // remains eligible for delivery until the person actually changes this field again.
+  const prior = staged?.generation === metadata.generation && equalValues(staged.action.after, oldValue)
+    && !equalValues(oldValue, autosaveFieldValue(checkpoint.confirmed.value, target)) ? staged.action : undefined;
   const tip = Object.values(checkpoint.pending).reduce<SessionCheckpoint['pending'][string] | undefined>((latest, item) =>
     !latest || item.generation > latest.generation ? item : latest, undefined);
   const pending = tip && equalValues(autosaveFieldValue(tip.value, target), oldValue) ? tip : undefined;
@@ -925,6 +928,23 @@ export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline
       ? knownMetadataFieldPredecessor(baseline, predecessor, target, action.before, records) : undefined;
     return [[target.action, { ...action, ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));
+}
+
+export function observedAutosaveFieldsMatch(checkpoint: SessionCheckpoint, merged: DocumentData, awaitingOrder: boolean): boolean {
+  return autosaveFieldTargets(checkpoint.confirmed.resource.collection).every(target => {
+    const action = autosaveDraftAction(checkpoint, target);
+    return !action || equalValues(action.after, autosaveFieldValue(merged, target))
+      || (awaitingOrder && action.time !== null && equalValues(action.after, autosaveFieldValue(checkpoint.confirmed.value, target)));
+  });
+}
+
+/** Matching words can retire an untimed edit. A timed action still records its place in the order. */
+export function retireObservedAutosaveFields(checkpoint: SessionCheckpoint): void {
+  for (const target of autosaveFieldTargets(checkpoint.confirmed.resource.collection)) {
+    const action = autosaveDraftAction(checkpoint, target);
+    if (action?.time === null && !equalValues(action.before, action.after)
+      && equalValues(action.after, autosaveFieldValue(checkpoint.confirmed.value, target))) delete checkpoint[target.draft];
+  }
 }
 
 export function hasUncapturedAutosaveField(checkpoint: SessionCheckpoint): boolean {

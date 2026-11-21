@@ -10,11 +10,12 @@ import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
-import { autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
+import { mergeUnsentObservation } from './editorObservation';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint, UNREADABLE_EXEGETICAL_PROOF, unreadableExegeticalChoice, type UnreadableExegeticalProof } from './exegeticalPointCapture';
 import { object, readField, writeField } from './fieldValues';
@@ -32,7 +33,7 @@ import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
 import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
 import { compactRowTextStamps } from './rowDetailAction';
-import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
+import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
@@ -534,15 +535,29 @@ export class DataSession {
     this.refreshUnreadableComparisons();
   }
 
-  observe(snapshot: ResourceSnapshot, { source }: { source: 'server' | 'cache' }): void {
+  observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
     if (source === 'cache' && snapshot.value === null && !snapshot.metadata?.deleted) return;
     if (equalValues(snapshot, this.state.confirmed)) return;
-    if (this.state.dirty || Object.keys(this.state.pending).length) {
+    const awaiting = Object.keys(this.state.pending).length > 0;
+    if (this.state.dirty || awaiting) {
       const candidate = this.state.remoteCandidate;
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
+      if (!awaiting && !preserveDraft) {
+        const merged = mergeUnsentObservation(this.state, snapshot);
+        if (merged) {
+          this.state.confirmed = copy(snapshot);
+          this.replaceDraft(merged);
+          retireObservedAutosaveFields(this.state);
+          retireObservedAutosaveRowFields(this.state);
+          this.state.remoteCandidate = null;
+          this.state.dirty = !equalValues(this.state.draft, snapshot.value)
+            || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+          return;
+        }
+      }
       this.state.remoteCandidate = copy(snapshot);
       this.refreshUnreadableComparisons();
       return;

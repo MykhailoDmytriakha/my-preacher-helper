@@ -1,5 +1,6 @@
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { canRemovePendingCreation, hasForeignPendingSnapshot, pendingRemovalOpening } from './deletionOrdering';
+import { compatibleObservation } from './editorObservation';
 import { sameManualSelection } from './manualScope';
 import { hasUnreadableDraftProof } from './session';
 import { shownDeliveryState } from './unanswered';
@@ -119,7 +120,10 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     || Object.values(checkpoint.pending).every(pending => pending.generation < checkpoint.editGeneration);
   const refused = state.result?.kind === 'conflict' || state.result?.kind === 'refused'
     || delivery.some(entry => ['blocked', 'refused', 'conflict'].includes(entry.state));
-  const foreign = hasForeignPendingSnapshot(checkpoint);
+  // A matching timed edit can still need delivery to establish its order. While that
+  // work settles, only a genuinely competing edit (or a terminal answer) needs a choice.
+  const foreign = Boolean(candidate && hasForeignPendingSnapshot(checkpoint)
+    && (refused || state.actionResolutionRequired || !compatibleObservation(checkpoint, candidate, true)));
   const terminal = delivery.length > 0 && delivery.every(entry => entry.state === 'conflict' || entry.state === 'refused');
   const settled = pendingIds.length === 0 || (state.savedIntentReplaceable ?? terminal);
   const deletedCandidate = foreign && candidate?.value === null;

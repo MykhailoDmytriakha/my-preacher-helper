@@ -115,6 +115,8 @@ describe('Shared synchronization status', () => {
     const s = state(); s.checkpoint.dirty = true; s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };
     s.checkpoint.remoteCandidate = { ...snapshot, metadata: { ...snapshot.metadata!, revision: 2, operationId: 'mine' } };
     expect(describeSync(s, observation, [pending('sending')])).toMatchObject({ phase: 'sending', hasForeignChange: false, canAcceptRemote: false });
+    s.checkpoint.pending.mine.value = s.checkpoint.draft = { ...snapshot.value, content: 'mine' };
+    s.checkpoint.remoteCandidate.value = { ...snapshot.value, content: 'other' };
     s.checkpoint.remoteCandidate.metadata!.operationId = 'other';
     expect(describeSync(s, observation, [pending('unknown')])).toMatchObject({ phase: 'remoteChanged', hasForeignChange: true, canAcceptRemote: false, canKeepLocal: false });
   });

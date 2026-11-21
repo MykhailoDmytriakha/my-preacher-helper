@@ -239,10 +239,12 @@ function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, s
   const opening = target.stamp === 'outline-title' && 'titleOpening' in stamp ? stamp.titleOpening : undefined;
   if (opening && (opening.version?.generation !== metadata.generation || opening.version.observedRevision > metadata.revision)) return staged;
   const rowIds = 'rowIds' in stamp ? stamp.rowIds : [stamp.rowId];
-  const priorById = new Map(validDrafts(checkpoint, checkpoint.draft, target).map(item => [item.action.rowId, item.action]));
+  const priorById = new Map(validDrafts(checkpoint, checkpoint.draft, target).map(item => [item.action.rowId, item]));
   const displayed = shown?.confirmed.metadata?.generation === metadata.generation ? shown : undefined;
   for (const rowId of rowIds) {
-    const prior = priorById.get(rowId);
+    const stagedBefore = priorById.get(rowId);
+    const prior = stagedBefore && (!ordinaryTimedRowEdit(stagedBefore) || !rowEditMatches(stagedBefore.action, checkpoint.confirmed.value, target))
+      ? stagedBefore.action : undefined;
     const stillOnSavedField = target.policy.compareUnseenText && !prior
       && equalValues(fieldAt(checkpoint.draft, rowId, target), fieldAt(checkpoint.confirmed.value, rowId, target));
     const visible = displayed && (displayed.editGeneration === checkpoint.editGeneration || stillOnSavedField) ? displayed : checkpoint;
@@ -397,6 +399,39 @@ export function carryOrderedPreachDateFields(checkpoint: SessionCheckpoint, requ
     const retry = { ...action, ...(object(scope) && { scope }) };
     if (!matchesScope(draft?.preachDates, retry, target) || !matchesScope(confirmed.value?.preachDates, retry, target)) continue;
     checkpoint[target.draft] = { ...checkpoint[target.draft], [rowId]: { generation: metadata.generation, action: retry } };
+  }
+}
+
+function ordinaryTimedRowEdit({ action, reviewed }: Draft): boolean {
+  return action.time !== null && !reviewed && action.unseenRevision === undefined && !equalValues(action.before, action.after);
+}
+
+function rowEditMatches(action: Action, value: DocumentData | null, target: Target): boolean {
+  return birthAt(value, action.rowId, target) === action.rowCreatedAt && matchesScope(value?.[target.policy.birth.field], action, target)
+    && equalValues(fieldAt(value, action.rowId, target), action.after);
+}
+
+export function observedRowFieldsMatch(checkpoint: SessionCheckpoint, incoming: DocumentData,
+  merged: DocumentData, awaitingOrder: boolean): boolean {
+  return targetsFor(checkpoint.confirmed.resource.collection).every(target =>
+    validDrafts(checkpoint, checkpoint.draft, target).every(draft => {
+      const { action } = draft;
+      const sameRow = [incoming, merged].every(value => birthAt(value, action.rowId, target) === action.rowCreatedAt
+        && matchesScope(value[target.policy.birth.field], action, target));
+      return sameRow && (equalValues(fieldAt(merged, action.rowId, target), action.after)
+        || (awaitingOrder && ordinaryTimedRowEdit(draft) && rowEditMatches(action, checkpoint.confirmed.value, target)));
+    }));
+}
+
+export function retireObservedAutosaveRowFields(checkpoint: SessionCheckpoint): void {
+  for (const target of targetsFor(checkpoint.confirmed.resource.collection)) {
+    const drafts = checkpoint[target.draft];
+    if (!drafts) continue;
+    for (const { action, reviewed } of validDrafts(checkpoint, checkpoint.draft, target)) {
+      if (action.time === null && !reviewed && action.unseenRevision === undefined && !equalValues(action.before, action.after)
+        && equalValues(action.after, fieldAt(checkpoint.confirmed.value, action.rowId, target))) delete drafts[action.rowId];
+    }
+    if (!Object.keys(drafts).length) delete checkpoint[target.draft];
   }
 }
 
