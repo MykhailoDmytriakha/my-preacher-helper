@@ -2,13 +2,15 @@
 
 import { defaultDropAnimationSideEffects, DndContext, DragOverlay, MouseSensor, pointerWithin, rectIntersection, TouchSensor, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragMoveEvent, type DragOverEvent, type DragStartEvent, type DropAnimation } from '@dnd-kit/core';
 import { Dialog, DialogPanel, DialogTitle, Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
-import { PencilSquareIcon, PlusIcon, QuestionMarkCircleIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, MicrophoneIcon, PencilIcon, PencilSquareIcon, PlusIcon, QuestionMarkCircleIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveNoteSlot, type Point } from '@/utils/boardDnd';
+import { deviceChoice } from '@/utils/deviceChoice';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { materializedNoteId, outlineNoteSketches, outlineNoteTargetOf, placeScratchNotes, POOL_PLACE, sameScratchPlace, scratchPlaceOf, sortScratch, type ScratchPlace } from '@/utils/scratchPlacement';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
@@ -76,7 +78,34 @@ interface ScratchSortingBoardProps {
   onRemovePoint: (pointId: string) => void;
   onRenameTitle: (target: OutlineNoteTarget, title: string) => void;
   onRemoveSubPoint: (subPointId: string) => void;
+  /**
+   * After opening the pool from the right rail, start recording or open the manual note field in `capture`.
+   */
+  onRailCapture?: (kind: 'voice' | 'write') => void;
+  /** Keep the pool open during recording, transcription, or while recovery controls are shown. */
+  captureBusy?: boolean;
+  /** Why the rail's microphone cannot record now (voice notes unavailable); nothing — it can. */
+  railVoiceUnavailable?: string | null;
 }
+
+/**
+ * Whether the pool beside the plan is folded into a rail, kept on this device (`utils/deviceChoice.ts`): folded once,
+ * it stays folded for every sermon here until shown again. A phone does not use it — there the pool is a tab.
+ */
+const poolPanelChoice = deviceChoice<{ folded: boolean }>({
+  key: 'scratch:poolPanel',
+  parse: (raw) => {
+    try {
+      return { folded: Boolean(raw && (JSON.parse(raw) as { folded?: unknown }).folded === true) };
+    } catch {
+      return { folded: false };
+    }
+  },
+  fallback: { folded: false },
+});
+
+/** Tests start from a pool that is shown: clearing storage alone leaves the choice the page already holds. */
+export const resetPoolPanelForTests = () => poolPanelChoice.resetForTests();
 
 type Sheet = { kind: 'move' | 'group'; ids: string[] } | null;
 interface LastMove { words: string; back: { ids: string[]; place: ScratchPlace }[] }
@@ -115,20 +144,56 @@ function DropZone({ id, className, activeClass, readyClass = '', children, ariaL
 /**
  * FROM RAW NOTES TO A PLAN (owner's choice «Сначала группы», 2026-11-19).
  *
- * The pool is a rail on the left, the plan reads top to bottom on the right, the way the sermon
- * sounds. The main gesture: tick a few notes about one thing and collect them into a new point.
+ * The plan reads top to bottom, the way the sermon sounds; the pool stands on its right and folds into a
+ * narrow rail when the plan needs the room (owner's choice «Справа», 2026-11-20). The main gesture: tick a few
+ * notes about one thing and collect them into a new point.
  * A note can also be dragged, or moved with «Переместить в…». Every move is saved at once and the
  * note stays a piece of its own (`utils/scratchPlacement.ts`). Inside each part, notes without a
  * point come first. A phone gets two tabs, a bar at the bottom and choices from below.
  */
 export default function ScratchSortingBoard({
   notes, outline, capture, isReadOnly, isNoteLocked = false, pointThoughtCount, renderText, onDelete,
-  onPlace, onCreatePoint, onAddPoint, onAddSubPoint, onRemovePoint, onRenameTitle, onRemoveSubPoint,
+  onPlace, onCreatePoint, onAddPoint, onAddSubPoint, onRemovePoint, onRenameTitle, onRemoveSubPoint, onRailCapture,
+  captureBusy = false, railVoiceUnavailable = null,
 }: ScratchSortingBoardProps) {
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
   const [tab, setTab] = useState<'pool' | 'plan'>('pool');
   const [selected, setSelected] = useState<string[]>([]);
+  const [drag, setDrag] = useState<{ id: string; folded: boolean } | null>(null);
+  const dragging = drag?.id ?? null;
+  const { folded: poolFolded } = poolPanelChoice.useChoice();
+  // Active capture and selected notes normally keep the pool open.
+  // During a drag, keep its starting width so the drop targets stay in place.
+  const poolBusy = selected.length > 0 || captureBusy;
+  const folded = drag?.folded ?? (poolFolded && !poolBusy);
+  const foldPool = useCallback((next: boolean) => {
+    const saved = poolPanelChoice.save({ folded: next });
+    // Storage that refused it or read back something else says so (`.howto/keep-a-device-choice.md`).
+    if (saved !== 'kept') recordDiagnostic('setting', { source: 'board', code: 'scratchPool-folded', result: `${next ? 'on' : 'off'}-${saved}` });
+  }, []);
+  // The button pressed goes away with the form it belonged to; the keyboard lands on its pair, not on the page.
+  const showPoolRef = useRef<HTMLButtonElement>(null);
+  const hidePoolRef = useRef<HTMLButtonElement>(null);
+  const poolHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusAfterFold = useRef<'show' | 'hide' | 'heading' | null>(null);
+  useEffect(() => {
+    const target = focusAfterFold.current;
+    if (target === 'heading' && (folded || tab !== 'pool')) return;
+    focusAfterFold.current = null;
+    if (target === 'show') showPoolRef.current?.focus();
+    if (target === 'hide') hidePoolRef.current?.focus();
+    if (target === 'heading') poolHeadingRef.current?.focus();
+  }, [folded, tab]);
+  const openFromRail = () => {
+    setTab('pool');
+    foldPool(false);
+  };
+  const startFromRail = (kind: 'voice' | 'write') => {
+    if (kind === 'voice') focusAfterFold.current = 'heading';
+    openFromRail();
+    onRailCapture?.(kind);
+  };
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [sheet, setSheet] = useState<Sheet>(null);
   const [grouping, setGrouping] = useState(false);
@@ -140,7 +205,6 @@ export default function ScratchSortingBoard({
   const [addingSub, setAddingSub] = useState<string | null>(null);
   const [subDraft, setSubDraft] = useState('');
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
   const [justPlaced, setJustPlaced] = useState<string[]>([]);
   const [editRequest, setEditRequest] = useState<{ id: string; n: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -341,6 +405,7 @@ export default function ScratchSortingBoard({
     return () => { window.removeEventListener('pointermove', onPointer); window.removeEventListener('touchmove', onTouch); };
   }, [dragging]);
   const [aim, setAim] = useState<Aim | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
   /**
    * Where a drop over `key` lands, by the board's one rule (`resolveNoteSlot` in `utils/boardDnd`): the spot under
    * the hand gives the place, and inside it the nearest card's half says before or after — the gaps belong to the
@@ -349,13 +414,19 @@ export default function ScratchSortingBoard({
   const aimAt = (key: string | null): Aim | null => {
     const base = key ? dropPlaces.get(key) : undefined;
     if (!base) return null;
+    if (!pointer.current) return { ...base, anchorId: null, side: 'after' };
     const list = (orderByPlace.get(placeKey(base.place)) ?? []).filter((id) => !carriedIds.includes(id));
-    const cards = list
-      .map((id) => document.querySelector(`[data-testid="scratch-sketch-${CSS.escape(id)}"]`)?.getBoundingClientRect())
-      .filter((card): card is DOMRect => Boolean(card));
-    if (!pointer.current || cards.length !== list.length) return { ...base, anchorId: null, side: 'after' };
-    const slot = resolveNoteSlot(pointer.current, cards, false);
-    return { ...base, beforeId: list[slot.index], anchorId: slot.anchorIndex === null ? null : list[slot.anchorIndex], side: slot.side };
+    const cards = list.flatMap((id) => {
+      const rect = boardRef.current?.querySelector(`[data-testid="scratch-sketch-${CSS.escape(id)}"]`)?.getBoundingClientRect();
+      return rect && rect.width > 0 && rect.height > 0 ? [{ id, rect }] : [];
+    });
+    const slot = resolveNoteSlot(pointer.current, cards.map(({ rect }) => rect), false);
+    return {
+      ...base,
+      beforeId: cards[slot.index]?.id,
+      anchorId: slot.anchorIndex === null ? null : cards[slot.anchorIndex]?.id ?? null,
+      side: slot.side,
+    };
   };
   /** Re-render only when the landing spot changes, not on every pointer move. */
   const aimFor = (key: string | null) => setAim((current) => {
@@ -368,7 +439,7 @@ export default function ScratchSortingBoard({
     const start = event.activatorEvent as MouseEvent | TouchEvent;
     const touch = 'touches' in start ? start.touches[0] : undefined;
     pointer.current = touch ? { x: touch.clientX, y: touch.clientY } : 'clientX' in start ? { x: start.clientX, y: start.clientY } : null;
-    setDragging(id);
+    setDrag({ id, folded });
     journal('take', { id, carried: selected.includes(id) ? selected.length : 1, from: placeKey(placeById.get(id) ?? POOL_PLACE) });
   };
   const onDragOver = (event: DragOverEvent) => {
@@ -377,7 +448,7 @@ export default function ScratchSortingBoard({
     journal('over', key);
   };
   const onDragMove = (event: DragMoveEvent) => aimFor(event.over ? String(event.over.id) : null);
-  const finishDrag = () => { setDragging(null); setAim(null); droppedAt.current = Date.now(); };
+  const finishDrag = () => { setDrag(null); setAim(null); droppedAt.current = Date.now(); };
   const onDragEnd = (event: DragEndEvent) => {
     const id = String(event.active.id);
     const over = event.over ? String(event.over.id) : null;
@@ -441,7 +512,7 @@ export default function ScratchSortingBoard({
 
   return (
     <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={innermostZone} onDragStart={onDragStart} onDragOver={onDragOver} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-      <div data-testid="scratch-sorting-board">
+      <div ref={boardRef} data-testid="scratch-sorting-board">
         {/* A phone: the pool and the plan are two tabs. */}
         <div role="tablist" aria-label={t('scratch.title')} className="mb-3 flex gap-1.5 md:hidden">
           {(['pool', 'plan'] as const).map((name) => (
@@ -460,13 +531,36 @@ export default function ScratchSortingBoard({
         )}
 
         <div className="md:flex md:items-start md:gap-4 lg:gap-6">
-          {/* The pool: a rail beside the plan on wide screens. */}
+          {/* The pool: a column on the right of the plan on wide screens, folded into a narrow rail at will, so the
+              plan's left edge stays in place.
+              One drop zone in both forms: a note dropped on the rail goes into the pool. Folded, its column stays
+              mounted, only hidden — a recording under way goes on. */}
           <DropZone id="pool" ariaLabel={t('scratch.sort.pool')}
-            className={`${tab === 'pool' ? 'block' : 'hidden'} rounded-2xl border border-gray-200 bg-white shadow-sm md:sticky md:top-20 md:flex md:max-h-[calc(100dvh-9rem)] md:w-[300px] md:shrink-0 md:flex-col lg:w-[400px] dark:border-gray-700 dark:bg-gray-900`}
+            className={`${tab === 'pool' ? 'block' : 'hidden'} rounded-2xl border border-gray-200 bg-white shadow-sm md:sticky md:top-20 md:order-2 md:flex md:max-h-[calc(100dvh-9rem)] md:shrink-0 md:flex-col ${folded ? 'md:w-14' : 'md:w-[300px] lg:w-[400px]'} dark:border-gray-700 dark:bg-gray-900`}
             activeClass="ring-2 ring-violet-400 bg-violet-50/40 dark:bg-violet-950/20" readyClass="ring-1 ring-dashed ring-violet-200 dark:ring-violet-800" dragActive={Boolean(dragging)}>
+            {folded && <div className="hidden md:flex md:flex-col md:items-center md:gap-2 md:py-3">
+              <button ref={showPoolRef} type="button" onClick={() => { focusAfterFold.current = 'hide'; openFromRail(); }} aria-expanded={false}
+                aria-label={t('scratch.sort.showPool')} title={t('scratch.sort.showPool')}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+                <ChevronDoubleLeftIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <span className="my-1 h-px w-6 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-semibold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200"
+                title={t('scratch.sort.tabPool', { count: sorted.pool.length })}>{sorted.pool.length}</span>
+              <button type="button" onClick={() => startFromRail('voice')} disabled={isReadOnly || Boolean(railVoiceUnavailable)}
+                aria-label={t('audio.newRecording')} title={railVoiceUnavailable || t('audio.newRecording')}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-green-600 text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <MicrophoneIcon className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => startFromRail('write')} disabled={isReadOnly} aria-label={t('scratch.capture.manualAdd')} title={t('scratch.capture.manualAdd')}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                <PencilIcon className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>}
+            <div className={folded ? 'contents md:hidden' : 'contents'}>
             <div className="shrink-0 border-b border-gray-100 p-3 md:p-3.5 dark:border-gray-800">
               <div className="mb-3 flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('scratch.sort.pool')}</h2>
+                <h2 ref={poolHeadingRef} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('scratch.sort.pool')}</h2>
                 <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-semibold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">{sorted.pool.length}</span>
                 <span className="flex-1" />
                 {/* How the board works: asked for, not printed over the notes every time. */}
@@ -481,6 +575,11 @@ export default function ScratchSortingBoard({
                     <span className="hidden md:inline">{t('scratch.sort.poolHint')}</span>
                   </PopoverPanel>
                 </Popover>
+                {!poolBusy && <button ref={hidePoolRef} type="button" onClick={() => { focusAfterFold.current = 'show'; foldPool(true); }} aria-expanded
+                  aria-label={t('scratch.sort.hidePool')} title={t('scratch.sort.hidePool')}
+                  className="hidden h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-100 md:inline-flex dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                  <ChevronDoubleRightIcon className="h-4 w-4" aria-hidden="true" />
+                </button>}
               </div>
               {capture}
               {selected.length > 0 && (
@@ -503,10 +602,11 @@ export default function ScratchSortingBoard({
                 <p className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">{t('scratch.sort.poolEmpty')}</p>
               )}
             </div>
+            </div>
           </DropZone>
 
           {/* The plan, top to bottom. */}
-          <section aria-label={t('scratch.sort.plan')} className={`${tab === 'plan' ? 'block' : 'hidden'} min-w-0 md:block md:flex-1`}>
+          <section aria-label={t('scratch.sort.plan')} className={`${tab === 'plan' ? 'block' : 'hidden'} min-w-0 md:order-1 md:block md:flex-1`}>
             <div className="mb-3 flex items-center gap-3">
               <h2 className="hidden text-lg font-semibold text-gray-900 md:block dark:text-gray-100">{t('scratch.sort.plan')}</h2>
               <span className="whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{t('scratch.sort.progress', { placed, total })}</span>

@@ -602,4 +602,24 @@ describe("useResponsiveRecorderVariant", () => {
     addEventListener.mockRestore();
     removeEventListener.mockRestore();
   });
+
+  // The scratch pool keeps one recorder for the whole sermon; its folded rail's microphone asks for one start at a
+  // time by turning `autoStart` on and off. Each new turn on must start a new recording.
+  it("starts again each time autoStart is turned on after being turned off", async () => {
+    const args = createArgs();
+    const { result, rerender } = renderHook((props) => useAudioRecorderLifecycle(props), { initialProps: args });
+
+    rerender({ ...args, autoStart: true });
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+    await act(async () => { result.current.cancelRecording(); });
+    await waitFor(() => expect(result.current.isRecording).toBe(false));
+    rerender({ ...args, autoStart: false });
+    rerender({ ...args, autoStart: true });
+
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+  });
 });
+

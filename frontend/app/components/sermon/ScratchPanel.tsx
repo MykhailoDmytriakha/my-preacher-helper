@@ -94,6 +94,10 @@ export default function ScratchPanel({
   const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
+  const [manualFocusRequest, setManualFocusRequest] = useState(0);
+  const [voiceStartRequest, setVoiceStartRequest] = useState<{ key: string; portal: HTMLDivElement } | null>(null);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [hasRecordingDraftBanner, setHasRecordingDraftBanner] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
   const [voiceRecoveryUrl, setVoiceRecoveryUrl] = useState<string | null>(null);
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
@@ -114,7 +118,7 @@ export default function ScratchPanel({
   }, []);
 
   useEffect(() => () => revokeVoiceRecoveryUrl(voiceRecoveryUrlRef.current), []);
-  useEffect(() => { if (isManualCaptureOpen) manualInputRef.current?.focus(); }, [isManualCaptureOpen]);
+  useEffect(() => { if (isManualCaptureOpen) manualInputRef.current?.focus(); }, [isManualCaptureOpen, manualFocusRequest]);
 
   /** Closing keeps what was typed — a stray click on the head must not eat a draft. */
   const collapseManualCapture = useCallback(() => setIsManualCaptureOpen(false), []);
@@ -146,8 +150,25 @@ export default function ScratchPanel({
     onError: words => toast.error(sayFailure(words, t)),
   });
   const isVoiceProcessing = voice.isProcessing;
-  const voiceError = voice.error;
+  const voiceErrorMessage = voice.error ? sayFailure(voice.error, t) : null;
+  const showVoiceRecovery = Boolean(voiceErrorMessage && storedVoiceBlobRef.current && voiceRecoveryUrl);
   const voiceRetryCount = voice.retryCount;
+  // Check the destination and portal in render so a replacement recorder never sees an old request.
+  const voiceStartAsked = voiceStartRequest?.key === voice.recordingKey && voiceStartRequest.portal === capturePortal;
+  useEffect(() => {
+    if (!voiceStartRequest) return;
+    if (!voiceStartAsked) {
+      setVoiceStartRequest(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setVoiceStartRequest(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [voiceStartAsked, voiceStartRequest]);
+
+  const handleRecordingStateChange = (active: boolean) => {
+    setIsVoiceRecording(active);
+    if (active) setVoiceStartRequest(null);
+  };
   const handleVoiceComplete = (audioBlob: Blob) => {
     replaceStoredVoiceBlob(audioBlob);
     voice.complete(audioBlob);
@@ -335,12 +356,14 @@ export default function ScratchPanel({
         manualButtonPlacement="right"
         manualButtonSeparate
         recorderVariant="mini"
+        autoStart={voiceStartAsked}
+        onRecordingStateChange={handleRecordingStateChange}
       />
       {renderManualCaptureForm()}
       <AudioRecoveryPanel
-        show={Boolean(voiceError && storedVoiceBlobRef.current && voiceRecoveryUrl)}
+        show={showVoiceRecovery}
         audioUrl={voiceRecoveryUrl}
-        errorMessage={voiceError ? sayFailure(voiceError, t) : null}
+        errorMessage={voiceErrorMessage}
         appliedVariant="standard"
         retryCount={voiceRetryCount}
         maxRetries={3}
@@ -354,6 +377,7 @@ export default function ScratchPanel({
       />
       <RecordingDraftBanner context="scratch" contextId={sermonId} isProcessing={isVoiceProcessing}
         resendDisabled={transcriptionBlocked || isCaptureLocked} excludeDraftIds={voice.appliedDraftIds}
+        onPresenceChange={setHasRecordingDraftBanner}
         onResend={(_blob, source) => voice.recover(source)} />
     </>
   );
@@ -364,6 +388,17 @@ export default function ScratchPanel({
         notes={notes}
         outline={outline}
         capture={capture}
+        onRailCapture={(kind) => {
+          if (isCaptureLocked) return;
+          if (kind === 'write') {
+            setIsManualCaptureOpen(true);
+            setManualFocusRequest((request) => request + 1);
+          } else if (!transcriptionBlocked && capturePortal) {
+            setVoiceStartRequest({ key: voice.recordingKey, portal: capturePortal });
+          }
+        }}
+        captureBusy={isVoiceRecording || isVoiceProcessing || showVoiceRecovery || hasRecordingDraftBanner}
+        railVoiceUnavailable={transcriptionBlocked ? transcriptionUnavailableLabel ?? null : null}
         isReadOnly={isReadOnly}
         isNoteLocked={isNoteEditingLocked}
         pointThoughtCount={pointThoughtCount}

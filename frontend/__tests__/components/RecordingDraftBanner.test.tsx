@@ -13,11 +13,13 @@ jest.mock("react-i18next", () => ({
 const mockRemoveDraft = jest.fn().mockResolvedValue(undefined);
 let mockDrafts: RecordingDraft[] = [];
 let mockLoading = false;
+let mockLoadError: Error | null = null;
 
 jest.mock("@/hooks/useRecordingDrafts", () => ({
   useRecordingDrafts: () => ({
     drafts: mockDrafts,
     loading: mockLoading,
+    error: mockLoadError,
     saveDraft: jest.fn(),
     removeDraft: mockRemoveDraft,
     refresh: jest.fn(),
@@ -48,6 +50,7 @@ beforeAll(() => {
 beforeEach(() => {
   mockDrafts = [draft];
   mockLoading = false;
+  mockLoadError = null;
   mockRemoveDraft.mockClear();
 });
 
@@ -75,6 +78,27 @@ describe("RecordingDraftBanner", () => {
       <RecordingDraftBanner context="thought" onResend={jest.fn()} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("reports banner presence for rendered cards and load errors", () => {
+    const props = { context: "thought" as const, onResend: jest.fn(), onPresenceChange: jest.fn() };
+    mockLoading = true;
+    const { rerender } = render(<RecordingDraftBanner {...props} />);
+    expect(props.onPresenceChange).toHaveBeenLastCalledWith(false);
+
+    mockLoading = false;
+    rerender(<RecordingDraftBanner {...props} />);
+    expect(screen.getByText("audio.draft.title")).toBeInTheDocument();
+    expect(props.onPresenceChange).toHaveBeenLastCalledWith(true);
+
+    rerender(<RecordingDraftBanner {...props} excludeDraftIds={[draft.id]} />);
+    expect(screen.queryByText("audio.draft.title")).not.toBeInTheDocument();
+    expect(props.onPresenceChange).toHaveBeenLastCalledWith(false);
+
+    mockLoadError = new Error("Recording storage is unavailable");
+    rerender(<RecordingDraftBanner {...props} excludeDraftIds={[draft.id]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("audio.draft.loadFailed");
+    expect(props.onPresenceChange).toHaveBeenLastCalledWith(true);
   });
 
   it("calls onResend and removeDraft when resend succeeds", async () => {

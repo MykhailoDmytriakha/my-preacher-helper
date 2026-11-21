@@ -12,6 +12,8 @@ export interface RecordingDraftBannerProps {
   contextId?: string;
   /** Resend the saved blob for transcription. Resolve `true` to have the draft removed. */
   onResend: (blob: Blob, draft: RecordingDraft) => Promise<boolean>;
+  /** Reports whether the banner renders draft cards or a notice. */
+  onPresenceChange?: (shown: boolean) => void;
   /** Owner from the actual loaded source document, used only for pre-upgrade recordings. */
   sourceOwnerId?: string;
   linkedSourceIds?: readonly string[];
@@ -44,6 +46,7 @@ export default function RecordingDraftBanner({
   sourceOwnerId,
   linkedSourceIds = EMPTY_DRAFT_IDS,
   onResend,
+  onPresenceChange,
   isProcessing = false,
   resendDisabled = false,
   excludeDraftIds = EMPTY_DRAFT_IDS,
@@ -156,10 +159,14 @@ export default function RecordingDraftBanner({
   }, [busyIds, confirm, currentScope, isCurrentDraft, isProcessing, removeDraft]);
 
   const notice = actionError?.scope === currentScope ? actionError.key : error ? 'audio.draft.loadFailed' : null;
+  const hasCards = !loading && drafts.length > 0;
+  const hasContent = hasCards || notice !== null;
+  useEffect(() => { onPresenceChange?.(hasContent); }, [hasContent, onPresenceChange]);
+
   const failure = notice ? <div role="alert" className="mb-2 text-sm text-red-600 dark:text-red-400">
     <p>{t(notice)}</p>{error ? <button type="button" onClick={() => { void refresh(); }}>{t('buttons.retry')}</button> : null}
   </div> : null;
-  if (loading || drafts.length === 0) return <>{failure}{confirmDialog}</>;
+  if (!hasCards) return <>{failure}{confirmDialog}</>;
 
   const buttonBase =
     "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";

@@ -27,6 +27,8 @@ interface RecorderLikeProps {
   hideRecordButton?: boolean;
   enableAudioLevelMonitoring?: boolean;
   variant?: "standard" | "mini";
+  autoStart?: boolean;
+  onRecordingStateChange?: (isActive: boolean) => void;
 }
 
 interface AudioRecorderPortalBridgeProps {
@@ -58,6 +60,10 @@ interface AudioRecorderPortalBridgeProps {
    * scratch pool's rail) asks for the compact one, or the recording controls spill out of it.
    */
   recorderVariant?: "standard" | "mini";
+  /** Turned on, the recorder starts recording once (the folded pool's microphone asked for it). */
+  autoStart?: boolean;
+  /** Recording started or ended — the screen around the recorder can show it (the folded pool stays open). */
+  onRecordingStateChange?: (isActive: boolean) => void;
 }
 
 function AutoHeight({
@@ -145,6 +151,8 @@ export default function AudioRecorderPortalBridge({
   manualButtonSeparate,
   hideRecordButton,
   recorderVariant,
+  autoStart = false,
+  onRecordingStateChange,
 }: AudioRecorderPortalBridgeProps) {
   /**
    * A REASON TO REFUSE ADDS TO THE OTHERS, IT DOES NOT REPLACE THEM.
@@ -188,6 +196,8 @@ export default function AudioRecorderPortalBridge({
       hideRecordButton={hideRecordButton}
       enableAudioLevelMonitoring={false}
       variant={recorderVariant}
+      autoStart={autoStart}
+      onRecordingStateChange={onRecordingStateChange}
     />
   );
 

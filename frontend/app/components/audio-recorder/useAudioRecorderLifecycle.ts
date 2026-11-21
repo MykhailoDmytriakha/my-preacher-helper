@@ -586,7 +586,13 @@ export function useAudioRecorderLifecycle({
   }, [cancelRecording, hideKeyboardShortcuts, isRecording, startRecording, stopRecording]);
 
   useEffect(() => {
-    if (!autoStart || hasAutoStartedRef.current) {
+    if (!autoStart) {
+      // Turned off again: the next turn on starts a new recording. A host that keeps one recorder for a whole screen
+      // asks for one start at a time (the folded scratch pool's microphone); a constant `autoStart` still starts once.
+      hasAutoStartedRef.current = false;
+      return;
+    }
+    if (hasAutoStartedRef.current) {
       return;
     }
 

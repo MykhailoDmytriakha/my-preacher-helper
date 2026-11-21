@@ -3306,7 +3306,9 @@
       "removeSubPoint": "Remove sub-point",
       "removeSubPointTitle": "Remove the sub-point “{{title}}”?",
       "removeSubPointDescription": "Its scratch notes and thoughts stay in the point.",
-      "howTo": "How to sort scratch notes"
+      "howTo": "How to sort scratch notes",
+      "hidePool": "Hide the pool",
+      "showPool": "Show the pool"
     },
     "node": {
       "label": "Scratch note",
