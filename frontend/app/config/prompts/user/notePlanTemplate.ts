@@ -1,4 +1,4 @@
-import { notePlanReminder, notePlanTargetNodes, type NotePlanRevision } from '@/utils/notePlan';
+import { notePlanReminder, notePlanSketchSteps, notePlanTargetNodes, type NotePlanRevision } from '@/utils/notePlan';
 
 import type { PlanStyle } from '@/api/clients/planTypes';
 import type { SermonPoint } from '@/models/models';
@@ -25,7 +25,11 @@ export function createNotePlanUserMessage(input: NotePlanInput): string {
     sermon: { title: input.title, verse: input.verse },
     section: input.section,
     outlineContext: input.outline,
-    targetNodes: notePlanTargetNodes(input.point, input.targetNodeId, input.filed),
+    // A sketch that is the steps travels as its own field: a sure sign the model keeps to, where a rule in prose was not.
+    targetNodes: notePlanTargetNodes(input.point, input.targetNodeId, input.filed).map((node) => {
+      const sketchSteps = notePlanSketchSteps(node.reminder);
+      return sketchSteps.length ? { ...node, sketchSteps } : node;
+    }),
     ...(input.targetNodeId && { parentContext: { title: input.point.text, reminder: notePlanReminder(input.point.id, input.point.note, input.filed) } }),
     sourceNotes: input.notes,
     supplementalThoughts: input.thoughts,
@@ -45,9 +49,11 @@ THE PARTS OF A POINT (the app gives them their form; you fill them)
 - entry: the way into the point, said first — a question the point answers, or one or two sentences that turn the listener to the theme and sum up where it goes. It prepares for what follows; it does not repeat the title.
 - refs (point level): the point's own main verse, read after the entry — ONLY when the whole point stands on one place. Usually empty: verses belong to steps.
 - steps: each has a short title (the person, pair, event or word of the text), a gist (the problem, turn or core in a few words, or null), refs (the place(s) the step stands on — read FIRST), thoughts (what is said about that place: explanation first, an example or illustration last).
+- SKETCH STEPS: a target node with sketchSteps has EXACTLY those steps, in that order, none added or left out, and table null: title = the line's title; refs = every place in its places, each a Scripture line with its words, a place after «=» included; a remark in brackets = a thought.
+- REMINDER LINES ARE STEPS: when the reminders list items one per line — usually «name: places» («Одежда правды: Ис.61:10») — each line is ONE step, in that order and none left out. Its name is the step's title; each place it names is a Scripture line of that step (with the words of the place), including a place after «=» (a parallel: «Исх.28:2,40 = Пс.8:6» gives the step the lines for Исх. 28:2, Исх. 28:40 and Пс. 8:6); a remark in brackets («(Скиния — образ Эдемского сада)») is a thought of that step.
 - A thought is a short recall line — at most about 12 words, a phrase or one short sentence — never a paragraph. Retelling the story is the Scripture line's job; a thought says what the preacher draws from it.
 - Take the author's words as they stand; never generalise them into abstractions: «велосипед не работал» stays, it does not become «неисправный механизм».
-- table: when a point applies the same aspects to two or more GROUPS OF LISTENERS — husbands / wives, brothers / sisters, parents / children — its body is a table: rows = aspects, columns = the groups, cells = a Scripture line in the same form «Ref: «words»» and/or a few words. A sure sign: the reminders or the material pair things by audience («Husbands: …; wives: …», «Братья: …; Сёстры: …»). Then you MUST fill table and leave steps EMPTY; a list of steps that alternates the audiences is wrong. A series of examples (people, couples, events) is steps, never a table. Otherwise null.
+- table: when a point applies the same aspects to two or more GROUPS OF LISTENERS — husbands / wives, brothers / sisters, parents / children — its body is a table: rows = aspects, columns = the groups, cells = a Scripture line in the same form «Ref: «words»» and/or a few words. A sure sign: the reminders or the material pair things by audience («Husbands: …; wives: …», «Братья: …; Сёстры: …»). Then you MUST fill table and leave steps EMPTY; a list of steps that alternates the audiences is wrong. A series of examples (people, couples, events, kinds of a thing) is steps, never a table — and reminder lines that list names with places are steps, even when the steps compare people. Otherwise null.
 - conclusion: one sentence that closes the point's thought, so the next point can begin — often the author's own summary line. It closes the WHOLE point: the app draws it after the point's last cell.
 
 SCRIPTURE LINES

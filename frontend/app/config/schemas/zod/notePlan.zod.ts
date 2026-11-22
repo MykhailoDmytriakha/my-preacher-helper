@@ -33,7 +33,8 @@ export const NotePlanResponseSchema = z.object({
       })),
     }).nullable().describe(
       'REQUIRED when the point applies the same aspects to two or more groups of listeners (husbands / wives, brothers / '
-      + 'sisters, parents / children) — then steps stay EMPTY. Otherwise null: a series of examples is steps, not a table.',
+      + 'sisters, parents / children) — then steps stay EMPTY. Otherwise null: a series of examples is steps, not a table; '
+      + 'null whenever the target node has sketchSteps.',
     ),
     steps: z.array(z.object({
       title: z.string().describe('The step\'s name in a few words (a person, a pair, an event, a word of the text) — no number.'),
@@ -43,7 +44,8 @@ export const NotePlanResponseSchema = z.object({
         'What the preacher says about this place, in the author\'s own living words: explanation first, an example or '
         + 'illustration last. HOW MANY is set by the PLAN LENGTH block — the steps and their verses never change with it.',
       ),
-    })).describe('Numbered steps of the point in the order they are preached. Empty when the point has no steps.'),
+    })).describe('Numbered steps of the point in the order they are preached — exactly the target\'s sketchSteps, in order, '
+      + 'when it has them. Empty when the point has no steps.'),
     conclusion: z.string().nullable().describe('One sentence that closes the point\'s thought, so the next point can begin; from the material.'),
     missingMaterial: z.string().nullable(),
   })),
