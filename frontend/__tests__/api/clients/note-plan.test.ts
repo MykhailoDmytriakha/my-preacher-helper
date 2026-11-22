@@ -35,9 +35,10 @@ it('assembles each cell in the plan shape — entry, steps on their verses, conc
     node('a', { steps: [step('The shepherd', ['John 10:28: no one will snatch them'], ['His words'], 'he holds them')] }),
   ] } } as never);
   const result = await generateNotePlanPoint(input, 'narrative', 'owner');
-  expect(result.contentByNodeId.p).toBe('Who will snatch them?\n\n**Conclusion:** No one.');
+  expect(result.contentByNodeId.p).toBe('Who will snatch them?');
   expect(result.contentByNodeId.a).toBe('1. **The shepherd** — he holds them\n\n   *John 10:28: no one will snatch them*\n\n   - His words');
-  expect(result.contentByNodeId.b).toBe('');
+  // The point's conclusion closes it after its last sub-point (owner, 2026-11-22).
+  expect(result.contentByNodeId.b).toBe('**Conclusion:** No one.');
   expect(result.missingMaterial.b).toContain('No example');
   expect(callWithStructuredOutput).toHaveBeenCalledWith(expect.stringContaining('Preserve uncertainty'), expect.any(String), expect.anything(), expect.objectContaining({ userId: 'owner' }));
 });
@@ -135,4 +136,71 @@ it('says why a references-only answer changed nothing, when its verses found no 
   } }, 'memory', 'owner');
   expect(result.contentByNodeId.a).toBe(current);
   expect(result.missingMaterial.a).toMatch(/could not be placed/);
+});
+
+// Owner on production, 2026-11-22: «вывод пошёл почему-то вверху, а должен быть в конце, после двух подпунктов».
+describe('the conclusion closes the whole point, so it stands at the end of its last cell', () => {
+  const answer = (nodes: ReturnType<typeof node>[]) => jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes } } as never);
+
+  it('moves the point\'s conclusion after its last sub-point, and drops the sub-points\' own', async () => {
+    answer([
+      node('p', { entry: 'Why?', conclusion: 'Whole point.' }),
+      node('a', { steps: [step('First', [], ['x'])], conclusion: 'Only a.' }),
+      node('b', { steps: [step('Second', [], ['y'])], conclusion: 'Only b.' }),
+    ]);
+    const result = await generateNotePlanPoint(input, 'exegetical', 'owner');
+    expect(result.contentByNodeId.p).toBe('Why?');
+    expect(result.contentByNodeId.a).not.toContain('Conclusion');
+    expect(result.contentByNodeId.b).toBe('1. **Second**\n\n   - y\n\n**Conclusion:** Whole point.');
+  });
+
+  it('writes no conclusion into a point cell generated alone when its sub-points close it', async () => {
+    answer([node('p', { entry: 'Why?', conclusion: 'Whole point.' })]);
+    expect((await generateNotePlanPoint({ ...input, targetNodeId: 'p' }, 'memory', 'owner')).contentByNodeId.p).toBe('Why?');
+  });
+
+  it('keeps it in the last sub-point generated alone, and in a point with no sub-points', async () => {
+    answer([node('b', { steps: [step('Second')], conclusion: 'Closing.' })]);
+    expect((await generateNotePlanPoint({ ...input, targetNodeId: 'b' }, 'memory', 'owner')).contentByNodeId.b).toContain('**Conclusion:** Closing.');
+    answer([node('a', { steps: [step('First')], conclusion: 'Middle.' })]);
+    expect((await generateNotePlanPoint({ ...input, targetNodeId: 'a' }, 'memory', 'owner')).contentByNodeId.a).not.toContain('Conclusion');
+    answer([node('p', { entry: 'Why?', conclusion: 'Alone.' })]);
+    const single = { ...input, point: { ...input.point, subPoints: [] } };
+    expect((await generateNotePlanPoint(single, 'memory', 'owner')).contentByNodeId.p).toBe('Why?\n\n**Conclusion:** Alone.');
+  });
+});
+
+// Owner on production, 2026-11-22: «выбрал коротко, но сгенерировалось некоротко» — the model ignored SHORT.
+describe('the plan length holds whatever the model returns', () => {
+  const many = (count: number) => Array.from({ length: count }, (_, index) => `thought ${index + 1}`);
+  const single = { ...input, point: { ...input.point, subPoints: [] } };
+  const thoughtsIn = (markdown: string) => (markdown.match(/^\s+- /gm) ?? []).length;
+
+  it.each([['memory', 1], ['narrative', 3], ['exegetical', 5]] as const)('%s keeps at most %i thoughts a step, the first ones', async (style, most) => {
+    jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [node('p', { steps: [step('One', [], many(7))] })] } } as never);
+    const markdown = (await generateNotePlanPoint(single, style, 'owner')).contentByNodeId.p;
+    expect(thoughtsIn(markdown)).toBe(most);
+    expect(markdown).toContain('thought 1');
+  });
+
+  it('lets a written request for more thoughts outweigh the length', async () => {
+    jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [node('p', { steps: [step('One', [], many(4))] })] } } as never);
+    const result = await generateNotePlanPoint({ ...single, revision: { mode: 'edit', instruction: 'More thoughts', currentContentByNodeId: { p: 'old' } } }, 'memory', 'owner');
+    expect(thoughtsIn(result.contentByNodeId.p)).toBe(4);
+  });
+});
+
+describe('the conclusion rule leaves what it must not touch (Codex check, 2026-11-22)', () => {
+  it('keeps a conclusion an edit of a middle sub-point preserves', async () => {
+    jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [node('a', { entry: 'The shepherd is near.', conclusion: 'A shepherd stays.' })] } } as never);
+    const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: { mode: 'edit', instruction: 'Change the opening', currentContentByNodeId: { a: 'The shepherd is here.\n\n**Conclusion:** A shepherd stays.' } } }, 'memory', 'owner');
+    expect(result.contentByNodeId.a).toContain('**Conclusion:** A shepherd stays.');
+  });
+
+  it('never lets a sub-point\'s line close the whole point when the point has none', async () => {
+    jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+      node('p', { entry: 'Two women.' }), node('a', { steps: [step('Ruth')] }), node('b', { steps: [step('Orpah')], conclusion: 'Orpah went home.' }),
+    ] } } as never);
+    expect((await generateNotePlanPoint(input, 'memory', 'owner')).contentByNodeId.b).not.toContain('Orpah went home');
+  });
 });
