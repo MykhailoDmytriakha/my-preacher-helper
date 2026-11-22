@@ -268,6 +268,18 @@ it('keeps the full proposal if the editor cannot back up every accepted cell', a
   expect(view.restoreCells).not.toHaveBeenCalled();
 });
 
+it('keeps the proposal when the editing session already accepted a different opening', async () => {
+  const view = setup({ p: 'Existing point', sub: 'Existing child' });
+  const applyProposal = jest.fn().mockReturnValue(null);
+  Object.assign(view.options.conspectus, { applyProposal });
+  await act(async () => { await view.result.current.generate(point); });
+  act(() => { expect(view.result.current.accept('p')).toBe(false); });
+  expect(applyProposal).toHaveBeenCalledWith(generated.contentByNodeId, { p: 'Existing point', sub: 'Existing child' });
+  expect(view.result.current.proposals.p.contentByNodeId).toEqual(generated.contentByNodeId);
+  expect(view.restoreCells).not.toHaveBeenCalled();
+  expect(view.saveCells).not.toHaveBeenCalled();
+});
+
 it('rechecks edits made after the proposal arrived before applying it', async () => {
   const view = setup({ p: 'Mine' });
   await act(async () => { await view.result.current.generate(point); });

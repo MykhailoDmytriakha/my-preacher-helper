@@ -72,6 +72,7 @@ import type { AutosaveFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
+import type { PlanCellOpening } from './sermonPlanCellSession';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot, StudyNoteContentCapture } from './types';
@@ -384,6 +385,20 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
+  editPlanCell(opening: PlanCellOpening, text: string): Promise<void> {
+    this.assertCurrent();
+    this.session.editPlanCell(opening, text);
+    this.durable = false;
+    this.emit();
+    return this.enqueue(() => this.persist());
+  }
+
+  capturePlanCellSave(): SessionCheckpoint {
+    this.assertCurrent();
+    if (!this.options.commits) throw new Error('Saving plan cells requires the commit queue');
+    return this.session.pinPlanCellSave();
+  }
+
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<void> {
     this.assertCurrent();
     // Close captures the current session while an earlier disk write can still be pending.
@@ -393,7 +408,7 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
-  save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
+  save(capturedIntent?: SessionCheckpoint & { planCellSaveIds?: readonly string[] }, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
     action?: EditorCommitAction, pendingRemoval?: PendingRemovalOpening, noteContent?: StudyNoteContentCapture | null): Promise<void> {
     this.assertCurrent();
     const capturedAction = action && JSON.parse(JSON.stringify(action)) as EditorCommitAction;
@@ -401,7 +416,8 @@ export class EditorController {
     // Never freeze a Save against a choice whose durable baseline is still unsettled.
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
-    const captured = capturedIntent ?? this.session.checkpoint();
+    const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
+    const { planCellSaveIds, ...captured } = intent;
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
     const capture = async (captureComplete: () => void) => {
@@ -418,7 +434,8 @@ export class EditorController {
           if (session.applyCommit(request) && !completed.includes(request.id)) completed.push(request.id);
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
-        const options = { ...captureSaveOptions(captured, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint, ...(capturedAction && { action: capturedAction }), noteContent: capturedContent };
+        const options = { ...captureSaveOptions(captured, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint,
+          ...(capturedAction && { action: capturedAction }), noteContent: capturedContent, planCellSaveIds };
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
         captureComplete();

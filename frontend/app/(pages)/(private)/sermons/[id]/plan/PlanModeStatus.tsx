@@ -17,9 +17,15 @@ export function PlanModeStatus({ document }: { document: SermonDocument }) {
   const checkpoint = document.state?.checkpoint;
   const comparison = checkpoint && (sermonConflictComparison(checkpoint, t, language, (side, titles) =>
     side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)) ?? planModeComparison(checkpoint, t));
+  const keepLocal = async () => {
+    const cells = checkpoint?.conflicts.flatMap(({ path }) =>
+      path[0] === 'planText' && path.length === 2 && checkpoint.planCellDrafts?.[path[1]] ? [path[1]] : []);
+    await document.keepLocal(comparison ? checkpoint : undefined);
+    if (cells?.length) await document.savePlanCells(cells);
+  };
   return <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity}
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
-    comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}
+    comparison={comparison} onKeepLocal={keepLocal}
     onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)} /></div>;
 }
 

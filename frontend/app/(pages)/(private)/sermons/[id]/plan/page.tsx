@@ -43,6 +43,8 @@ import {
 } from "./constants";
 import { copyFormattedFromElement } from "./copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "./OrphanedPlanText";
+import { PlanCellDocument } from "./PlanCellEditor";
+import { showPlanCellDrafts } from './planDraftCheckpoint';
 import { PlanDraftRecoveryBar, recoveredCells } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
@@ -63,6 +65,7 @@ import usePlanActions from "./usePlanActions";
 import { usePlanStylePreference } from "./usePlanStylePreference";
 import usePlanTextDraft from "./usePlanTextDraft";
 import usePlanViewMode from "./usePlanViewMode";
+import { useSettledPlanCells } from './useSettledPlanCells';
 
 import type {
   PlanTimerState,
@@ -110,7 +113,9 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const wayIn = useWayInOnce();
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
     <PlanModeStatus document={document} />
-    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
+    <PlanCellDocument.Provider value={document}>
+      <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
+    </PlanCellDocument.Provider>
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 
@@ -158,7 +163,9 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const [error, setError] = useState<FailureWords | null>(null);
 
   // Generated content by outline point ID
-  const { value: generatedContent, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues, foreignValuesBeforeAction } = useEditorValues();
+  const { value: bufferedCells, act: setGeneratedContent, observe: observeGeneratedContent, userActionValues, foreignValuesBeforeAction } = useEditorValues();
+  const ownedCells = source.document.state?.checkpoint.planCellDrafts;
+  const generatedContent = useMemo(() => showPlanCellDrafts(bufferedCells, ownedCells), [bufferedCells, ownedCells]);
 
   /**
    * The text as it is RIGHT NOW.
@@ -206,6 +213,11 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
 
   // Track which content has been modified since last save
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
+  const showSettled = useCallback((cells: Record<string, string>) => {
+    observeGeneratedContent(previous => ({ ...previous, ...cells }));
+    setModifiedContent(previous => ({ ...previous, ...Object.fromEntries(Object.keys(cells).map(id => [id, false])) }));
+  }, [observeGeneratedContent]);
+  useSettledPlanCells(source.document.state, showSettled);
 
   /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
   const pendingPlanCells = usePendingPlanCells(sermon);
@@ -235,7 +247,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
     setGeneratedContent(keep);
     setModifiedContent(keep);
-  }, [setGeneratedContent]);
+    void planWriter.discardPlanText?.(nodeIds).catch(() => toast.error(t('errors.failedToSavePoint')));
+  }, [planWriter, setGeneratedContent, t]);
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const planOrphans = mergeOrphans(orphanedCells(generatedContent, modifiedContent, livePlanNodes), planDraft.orphaned);
   const restorePlanCells = useCallback((cells: Record<string, string>) => {
@@ -246,7 +259,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       ...prev,
       ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
     }));
-  }, [setGeneratedContent]);
+    void planWriter.restorePlanText?.(cells).catch(() => toast.error(t('errors.failedToSavePoint')));
+  }, [planWriter, setGeneratedContent, t]);
 
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});

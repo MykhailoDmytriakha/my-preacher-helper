@@ -56,7 +56,7 @@ function makeEditor() {
   const emit = () => listeners.forEach(listener => listener());
   let sequence = 0;
   const editor: ManagedEditor = {
-    importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
+    importLegacyStudyNote: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(), holdDraftAlternative: jest.fn(),
     editTemplateTitle: jest.fn(), commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
     getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     form: jest.fn(),
@@ -1048,7 +1048,8 @@ describe('React collection and explicit recovery APIs', () => {
     await act(async () => recovering);
     expect(old.editor.close).toHaveBeenCalledWith({ flush: autoSave }); expect(old.editor.edit).not.toHaveBeenCalled();
     expect(result.current.data).toEqual({ content: 'recovered' });
-    expect(b.engine.recoverEditor).toHaveBeenCalledWith(resource, expect.stringContaining(':recovery:'), recoveryRecord.id, { signal: expect.any(AbortSignal) });
+    expect(b.engine.recoverEditor).toHaveBeenCalledWith(resource, expect.stringContaining(':recovery:'), recoveryRecord.id,
+      { signal: expect.any(AbortSignal), autoSaveOnResume: autoSave });
     await act(async () => jest.advanceTimersByTime(750)); expect(restored.editor.save).toHaveBeenCalledTimes(autoSave ? 1 : 0);
   });
 

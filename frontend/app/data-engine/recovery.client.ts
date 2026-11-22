@@ -152,6 +152,10 @@ const recordSchema = z.object({
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
+    planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string() }).and(z.union([
+      z.object({ generation: id, observedRevision: observedRevision.positive() }),
+      z.object({ generation: z.null(), observedRevision: z.null(), legacyBirth: z.string().optional() }),
+    ]))).optional(),
     unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),

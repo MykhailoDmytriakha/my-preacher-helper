@@ -73,6 +73,7 @@ import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
+import type { PlanCellOpening } from './sermonPlanCellSession';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import type { EditorCommitAction, StudyNoteContentCapture } from './types';
@@ -129,7 +130,7 @@ export interface ManagedManualForm {
   discardRecovery(source: StoredManualScope): Promise<void>;
 }
 
-type ClosingSaveIntent = { checkpoint: SessionCheckpoint; action?: EditorCommitAction };
+type ClosingSaveIntent = { checkpoint: SessionCheckpoint; action?: EditorCommitAction; planCellSaveIds?: readonly string[] };
 
 interface HeldDraftAlternative extends RecoveryCheckpoint {
   isStaged: () => Promise<boolean>;
@@ -151,6 +152,8 @@ export interface ManagedEditor {
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
   importLegacyStudyNote(edits: LegacyStudyNoteImport): Promise<void>;
+  editPlanCell(opening: PlanCellOpening, text: string): Promise<void>;
+  savePlanCells(nodeIds: readonly string[]): Promise<void>;
   /** Keep a distinct, unsent alternative based on the confirmed copy, without replacing the open draft. */
   holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
@@ -2624,6 +2627,7 @@ export class DataEngine {
           });
         },
         importLegacyStudyNote: edits => { active(); return controller.importLegacyStudyNote(edits); },
+        editPlanCell: (opening, text) => { active(); return controller.editPlanCell(opening, text); },
         holdDraftAlternative: async updater => {
           active();
           const confirmed = controller.getState().checkpoint.confirmed;
@@ -2673,6 +2677,18 @@ export class DataEngine {
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action, options?.noteContent)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
+        savePlanCells: async nodeIds => {
+          active();
+          const checkpoint = controller.capturePlanCellSave();
+          const planCellSaveIds = [...nodeIds];
+          const saving = controller.save({ ...checkpoint, planCellSaveIds });
+          pendingActionSaves.set(checkpoint.editGeneration, [{ checkpoint, planCellSaveIds }]);
+          await saving;
+          pendingActionSaves.delete(checkpoint.editGeneration);
+          active();
+          this.backgroundDrain();
+          this.prepareCommitsInBackground();
+        },
         remove: () => remove(),
         acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
         keepLocal: (expected, compared, choiceTime, titles) => choose('local', expected, compared, choiceTime, titles),
@@ -2755,7 +2771,7 @@ export class DataEngine {
         if (request) {
           closingRequests.push(request);
           if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));
-        }
+        } else if (record && checkpoint.planCellDrafts) await this.options.checkpoints.put(record);
       } }, generation);
     void pending.then(() => { if (this.current(owner, generation)) this.backgroundDrain(); }, () => undefined);
     return pending;
@@ -2770,23 +2786,26 @@ export class DataEngine {
     }
     if (trailing && !intents.has(trailing.editGeneration)) intents.set(trailing.editGeneration, { checkpoint: trailing });
     const ordered = [...intents.values()].sort((a, b) => a.checkpoint.editGeneration - b.checkpoint.editGeneration);
-    const captures = ordered.map(({ checkpoint, action }) => {
+    const captures = ordered.map(({ checkpoint, action, planCellSaveIds }) => {
       const predecessor = Object.entries(checkpoint.pending).sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
-      return { capture: this.commits.admitSave(editorId, checkpoint), checkpoint, action, predecessor };
+      return { capture: this.commits.admitSave(editorId, checkpoint), checkpoint, action, planCellSaveIds, predecessor };
     });
     const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: ordered[0].checkpoint.confirmed.resource },
       persist: async () => {
         await settled.catch(() => undefined);
         let previous: string | undefined;
-        for (const { capture, checkpoint, action, predecessor } of captures) {
+        for (const { capture, checkpoint, action, planCellSaveIds, predecessor } of captures) {
           const project = record && ((request: CommitRequest) => reconcileRecoveryRecord({ ...record, checkpoint }, [...closingRequests, request]));
           const retentionScope = action?.kind === 'sermon-plan-text' ? action.draftCaptureScope : undefined;
           const request = await capture({ predecessorId: previous ?? predecessor ?? null, ...(action && { action }),
+            ...(planCellSaveIds && { planCellSaveIds }),
             ...(retentionScope && { retentionScope }),
             ...(project && { checkpoint: project }), deferRetention: true });
           if (request) {
             previous = request.id; closingRequests.push(request);
             if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));
+          } else if (record && checkpoint.planCellDrafts) {
+            await this.options.checkpoints.put(reconcileRecoveryRecord({ ...record, checkpoint }, closingRequests));
           }
         }
       } }, generation);
@@ -2798,7 +2817,8 @@ export class DataEngine {
   private keepRetiringEditor(owner: string, generation: number, editorId: string, entry: EditorEntry): Promise<unknown> | undefined {
     const { controller } = entry;
     if (!controller || entry.closed) return undefined;
-    const actions = [...entry.pendingActionSaves.values()].flat().filter(intent => intent.action?.kind === 'sermon-plan-text');
+    const actions = [...entry.pendingActionSaves.values()].flat().filter(intent =>
+      intent.action?.kind === 'sermon-plan-text' || intent.planCellSaveIds);
     const unwritten = this.unwrittenRecord(controller);
     if (!actions.length && !unwritten) return undefined;
     const settled = controller.settled(), requests: CommitRequest[] = [];

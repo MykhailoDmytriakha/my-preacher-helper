@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useDataDocument } from '@/data-engine/react.client';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_PLAN_AGGREGATE } from '@/services/sermons.client';
+import { failureCode } from '@/utils/failureCode';
 import { liveNodeIds, readPlanText } from '@/utils/planText';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { findOutlinePointLocation } from '@/utils/subPoints';
@@ -11,12 +12,22 @@ import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter
 
 import type { PlanMode, PlanTextContext, PlanWriter, SubpointTextTransfer } from './planWriter';
 import type { StructureWriter } from '@/components/sermon/structureWriter';
+import type { PlanCellDraft } from '@/data-engine/sermonPlanCellSession';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { Sermon } from '@/models/models';
 
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 type StagedCell = { before: string | null; text: string };
+type CellSave = {
+  owns: (changes: Record<string, string>) => boolean;
+  drafts: () => Record<string, PlanCellDraft> | undefined;
+  confirmed: () => ResourceSnapshot | null;
+  discard: (nodeIds: readonly string[]) => Promise<void>;
+  restore: NonNullable<PlanWriter['restorePlanText']>;
+  applyProposal: NonNullable<PlanWriter['applyPlanProposal']>;
+  save: SermonDocument['savePlanCells'];
+};
 
 function continueTransfer(transfer: SubpointTextTransfer, pointId: string, subPointId: string, staged: ReadonlyMap<string, StagedCell>): SubpointTextTransfer {
   const earlier = (id: string) => {
@@ -59,7 +70,8 @@ function guardPlanText(current: Sermon, changed: Record<string, string>, context
  * another device is reported with its current text, never overwritten. The refusal leaves the
  * draft untouched and surfaces as the StaleWriteError the plan screens already handle.
  */
-export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' | 'commit' | 'captureSermonPlanMode' | 'save'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
+export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' | 'commit' | 'captureSermonPlanMode' | 'save'>,
+  owner: string | null, outlineWriter?: StructureWriter, cellSave?: CellSave): PlanWriter {
   const structure = outlineWriter ?? createEngineStructureWriter(document, owner);
   // The engine's draft shows a Save before its local capture callback returns.
   // Only writes staged here can advance the displayed opening of the next action.
@@ -83,12 +95,16 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
     updateThought: structure.updateThought,
     updateSermonOutline: structure.updateSermonOutline,
     captureOutlineUpdate: () => document.save(),
+    discardPlanText: cellSave?.discard,
+    restorePlanText: cellSave?.restore,
+    applyPlanProposal: cellSave?.applyProposal,
     removeSubPoint: (sermonId, pointId, subPointId, requestedTransfer) => {
       const transfer = requestedTransfer && continueTransfer(requestedTransfer, pointId, subPointId, stagedCells);
+      const submitted = new Map(stagedCells);
       return editEngineSermon<Awaited<ReturnType<PlanWriter['removeSubPoint']>>>({
         update: updater => document.commit(updater, transfer && { kind: 'sermon-plan-text', openings: transfer.revisionsByNodeId, draftCaptureScope: transfer.draftCaptureScope,
           transfer: { pointId, subPointId, openingText: transfer.openingText, parentOpeningText: transfer.parentOpeningText } }),
-      }, owner, current => {
+      }, owner, (current) => {
         if (current.id !== undefined && current.id !== sermonId) throw new Error('Sermon editor is unavailable');
         const outline = current.outline;
         const location = findOutlinePointLocation(outline, pointId);
@@ -108,15 +124,25 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
         const updatedSermon = replaceSermonOutline(current, changedOutline);
         if (transfer) {
           const changed = { [pointId]: transfer.parentText, [subPointId]: '' };
-          const stored = guardPlanText(current, changed, transfer);
-          const displayed = readPlanText(current);
+          const privateCells = cellSave?.drafts();
+          const confirmed = cellSave?.confirmed()?.value as unknown as Sermon | undefined;
+          const comparison = { ...current, planText: { ...current.planText } };
+          for (const id of [pointId, subPointId]) {
+            const draft = privateCells?.[id];
+            if (!draft || draft.text !== comparison.planText[id]) continue;
+            const before = submitted.get(id)?.text ?? confirmed?.planText?.[id];
+            if (typeof before === 'string') comparison.planText[id] = before;
+            else delete comparison.planText[id];
+          }
+          guardPlanText(comparison, changed, transfer);
+          const displayed = readPlanText(comparison);
           const changedOpenings = [[pointId, transfer.parentOpeningText], [subPointId, transfer.openingText]]
             .filter(([id, opening]) => (displayed[id] ?? '') !== opening);
           if (changedOpenings.length) {
             const fields = Object.fromEntries(changedOpenings.map(([id]) => [`planText.${id}`, displayed[id] ?? null]));
             throw new StaleWriteError(SERMON_PLAN_AGGREGATE, 0, 0, fields, []);
           }
-          updatedSermon.planText = { ...stored, ...changed };
+          updatedSermon.planText = { ...current.planText, ...changed };
         }
         return { next: updatedSermon, result: { kind: 'removed', outline: changedOutline } };
       });
@@ -127,6 +153,12 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
     savePlanText: async (_sermonId, changedText, removedNodeIds = [], context = {}) => {
       const openings = context.revisionsByNodeId;
       const staged = new Map<string, StagedCell>();
+      const stage = (id: string, before: string | null, text: string) => {
+        if (before === text) return;
+        const cell = { before, text };
+        staged.set(id, cell);
+        stagedCells.set(id, cell);
+      };
       const update = (value: DocumentData | null, confirmed?: ResourceSnapshot) => {
         if (!value || !owner || value.userId !== owner) throw new Error('Sermon editor is unavailable');
         const current = value as unknown as Sermon;
@@ -134,16 +166,15 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
         const planText = { ...stored, ...changedText };
         removedNodeIds.forEach(nodeId => { delete planText[nodeId]; });
         if (openings) for (const [id, text] of Object.entries(changedText)) {
-          const before = stored[id] ?? null;
-          if (before === text || planText[id] !== text) continue;
-          const cell = { before, text };
-          staged.set(id, cell);
-          stagedCells.set(id, cell);
+          if (planText[id] === text) stage(id, stored[id] ?? null, text);
         }
         return { ...value, planText };
       };
       try {
-        if (openings) await document.commit(update, { kind: 'sermon-plan-text', openings });
+        if (!context.orphaned && !removedNodeIds.length && cellSave?.owns(changedText)) {
+          for (const [id, text] of Object.entries(changedText)) stage(id, context.baselineByNodeId?.[id] ?? null, text);
+          await cellSave.save(Object.keys(changedText));
+        } else if (openings) await document.commit(update, { kind: 'sermon-plan-text', openings });
         else await document.update(update);
       } finally {
         for (const [id, cell] of staged) if (stagedCells.get(id) === cell) stagedCells.delete(id);
@@ -155,8 +186,58 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
 /** The engine plan writer for one open sermon; render inside that sermon's DataDocumentProvider. */
 export function useEnginePlanWriter(sermonId: string, owner: string | null) {
   const outlineRecovery = useEngineStructureWriter(sermonId, owner);
-  const { writeTarget, writer: structure } = outlineRecovery;
-  const writer = useMemo(() => createEnginePlanWriter(writeTarget, owner, structure),
-    [writeTarget, owner, structure]);
+  const { document, writeTarget, writer: structure } = outlineRecovery;
+  const opening = useMemo(() => ({ document }), [document.recoveryIdentity]);
+  opening.document = document;
+  const writer = useMemo(() => createEnginePlanWriter(writeTarget, owner, structure, {
+    drafts: () => opening.document.state?.checkpoint.planCellDrafts,
+    confirmed: () => opening.document.confirmed,
+    restore: async cells => {
+      const current = opening.document;
+      const drafts = current.state?.checkpoint.planCellDrafts;
+      await Promise.all(Object.entries(cells).flatMap(([id, text]) => {
+        const draft = drafts?.[id];
+        const shown = draft && current.capturePlanCellOpening(id, draft.text);
+        return shown ? current.editPlanCell(shown, text) : [];
+      }));
+    },
+    discard: async ids => {
+      const current = opening.document;
+      const checkpoint = current.state?.checkpoint;
+      if (!checkpoint) return;
+      const saved = readPlanText(checkpoint.confirmed.value as unknown as Sermon | null);
+      await Promise.all(ids.flatMap(id => {
+        const draft = checkpoint.planCellDrafts?.[id];
+        const shown = draft && current.capturePlanCellOpening(id, draft.text);
+        return shown ? current.editPlanCell(shown, saved[id] ?? '') : [];
+      }));
+    },
+    applyProposal: (cells, before) => {
+      const current = opening.document;
+      const edits = Object.entries(cells).map(([id, text]) => ({
+        id, text, seen: current.capturePlanCellOpening(id, before[id] ?? ''),
+      }));
+      if (edits.some(edit => !edit.seen)) return null;
+      if (!edits.length) return Promise.resolve(true);
+      const staging = Promise.all(edits.map(({ seen, text }) => current.editPlanCell(seen!, text)));
+      const saving = current.savePlanCells(edits.map(({ id }) => id)).then(() => true, error => {
+        if (failureCode(error) === 'resolve-version-first') return false;
+        throw error;
+      });
+      return Promise.all([staging, saving]).then(([, saved]) => saved);
+    },
+    owns: changes => {
+      const drafts = opening.document.state?.checkpoint.planCellDrafts;
+      const cells = Object.entries(changes);
+      return Boolean(drafts && cells.length && cells.every(([id, text]) => drafts[id]?.text === text));
+    },
+    save: ids => {
+      const checkpoint = opening.document.state?.checkpoint;
+      if (checkpoint?.conflicts.some(({ path }) => path[0] === 'planText' && path.length === 2 && ids.includes(path[1]))) {
+        return Promise.reject(Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
+      }
+      return opening.document.savePlanCells(ids);
+    },
+  }), [writeTarget, owner, structure, opening]);
   return { writer, outlineRecovery };
 }

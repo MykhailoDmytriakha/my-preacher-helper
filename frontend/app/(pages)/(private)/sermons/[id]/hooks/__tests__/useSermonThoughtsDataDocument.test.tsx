@@ -25,6 +25,7 @@ function setup(value: ResourceSnapshot = snapshot()) {
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
     importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
+    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(),
     captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
     captureSermonPlanMode: jest.fn(),
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {

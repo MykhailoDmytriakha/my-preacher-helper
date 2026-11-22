@@ -8,16 +8,19 @@ import { isOfflineQueuedError, isStaleWriteError } from "@/services/conflictSafe
 import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
+import { failureCode } from "@/utils/failureCode";
 import { liveNodeIds, mergeStoredPlanText, mergeStoredSavedFlags, readPlanText } from "@/utils/planText";
 import { findOutlinePointLocation } from "@/utils/subPoints";
 import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { orphanedCells } from "../OrphanedPlanText";
+import { showPlanCellDrafts } from "../planDraftCheckpoint";
 import { usePlanTextBaseline } from "../planTextBaseline";
 import { usePlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
 import usePlanTextDraft, { type PlanTextDraft } from "../usePlanTextDraft";
+import { useSettledPlanCells } from '../useSettledPlanCells';
 
 import type { DurablePlanState } from "../planDraftCheckpoint";
 import type { SermonSectionKey } from "../types";
@@ -70,6 +73,7 @@ export interface ManualConspectus {
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
   restoreCells: (cells: Record<string, string>) => boolean;
   applyGeneratedCells: (cells: Record<string, string>) => boolean;
+  applyProposal?: (cells: Record<string, string>, before: Record<string, string>) => Promise<void> | null | undefined;
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
@@ -103,7 +107,9 @@ export function useManualConspectus({
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
-  const { value: contentByNodeId, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
+  const { value: bufferedCells, observe: setContentByNodeId, act: changeContentByNodeId, userActionValues, foreignValuesBeforeAction } = useEditorValues();
+  const ownedCells = draftScope?.state?.checkpoint.planCellDrafts;
+  const contentByNodeId = useMemo(() => showPlanCellDrafts(bufferedCells, ownedCells), [bufferedCells, ownedCells]);
   // Hold only the cells being written by a rescue until its outcome is known. No predicted text marker.
   const [busyNodeIds, setBusyNodeIds] = useState<ReadonlySet<string>>(new Set());
   const busyNodes = useRef<ReadonlySet<string>>(new Set());
@@ -116,6 +122,11 @@ export function useManualConspectus({
   const [rescuedAppend, setRescuedAppend] = useState<ManualConspectus["rescuedAppend"]>();
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
+  const showSettled = useCallback((cells: Record<string, string>) => {
+    setContentByNodeId(previous => ({ ...previous, ...cells }));
+    setModifiedNodeIds(previous => ({ ...previous, ...Object.fromEntries(Object.keys(cells).map(id => [id, false])) }));
+  }, [setContentByNodeId]);
+  useSettledPlanCells(draftScope?.state, showSettled);
 
   /** What the server held for each cell when this screen took it — see `planTextBaseline.ts`. */
   const baseline = usePlanTextBaseline(sermon?.id);
@@ -373,6 +384,7 @@ export function useManualConspectus({
       if (mounted.current) toast.success(t("plan.pointSaved"));
     } catch (error) {
       if (!mounted.current) return;
+      if (failureCode(error) === 'resolve-version-first') return;
       /**
        * QUEUED IS NOT REFUSED. Offline the guard cannot compare anything, so it stores the
        * intent in the durable outbox and says so by throwing. The text is owned by something
@@ -431,8 +443,10 @@ export function useManualConspectus({
   }, [setContentByNodeId]);
 
   const discardCells = useCallback((nodeIds: string[]) => {
-    if (!nodeIds.some(nodeId => busyNodes.current.has(nodeId))) forgetCells(nodeIds);
-  }, [forgetCells]);
+    if (nodeIds.some(nodeId => busyNodes.current.has(nodeId))) return;
+    forgetCells(nodeIds);
+    void planWriter.discardPlanText?.(nodeIds).catch(() => toast.error(t(SAVE_POINT_ERROR_KEY)));
+  }, [forgetCells, planWriter, t]);
 
   const saveModified = useCallback(async (): Promise<boolean> => {
     const unsaved = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
@@ -809,7 +823,11 @@ export function useManualConspectus({
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
    * confirmed, so the screen must keep saying so until a save actually succeeds.
    */
-  const restoreCells = changeOwnCells;
+  const restoreCells = (cells: Record<string, string>) => {
+    if (!changeOwnCells(cells)) return false;
+    void planWriter.restorePlanText?.(cells).catch(() => toast.error(t(SAVE_POINT_ERROR_KEY)));
+    return true;
+  };
 
   const applyGeneratedCells = (cells: Record<string, string>) => {
     const entries = Object.entries(cells);
@@ -817,6 +835,20 @@ export function useManualConspectus({
     // The proposal stays in storage unless every accepted cell has its own durable copy.
     if (!entries.every(([id, text]) => draft.keepGeneratedCell(id, text))) return false;
     return changeOwnCells(cells);
+  };
+
+  const applyProposal: NonNullable<ManualConspectus['applyProposal']> = (cells, before) => {
+    if (Object.keys(cells).some(id => busyNodes.current.has(id))) return null;
+    const applying = planWriter.applyPlanProposal?.(cells, before);
+    if (!applying) return applying;
+    changeOwnCells(cells);
+    return applying.then(saved => {
+      if (!saved || !mounted.current) return;
+      settle(cells);
+      const current = sermonRef.current;
+      if (current && !current.planMode) void planWriter.initializePlanMode(current.id, mode).catch(error =>
+        debugLog("Recording the plan editor failed", { error }));
+    });
   };
 
   return {
@@ -835,6 +867,7 @@ export function useManualConspectus({
     setNodeContent,
     restoreCells,
     applyGeneratedCells,
+    applyProposal,
     discardCells,
     savePoint,
     saveCells: writeCells,

@@ -24,6 +24,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
     state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
     importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
+    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(),
     captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
     captureSermonPlanMode: jest.fn(),
     update: jest.fn(async (updater: (current: DocumentData | null) => DocumentData | null) => {

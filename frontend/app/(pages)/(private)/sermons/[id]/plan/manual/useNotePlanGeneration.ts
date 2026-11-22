@@ -118,8 +118,10 @@ export function useNotePlanGeneration(options: Options) {
     || Boolean(proposal.sourceKey && (latest.current.sourceMissing
       || latest.current.sourceKey && latest.current.sourceKey !== proposal.sourceKey));
 
+  const accepting = useRef(new Set<string>());
   const accept = (id: string, proposal = proposals[id]) => {
     if (!proposal || !isHere() || readProposal(scope, proposal.id)?.state !== 'ready' || proposalBlocked(proposal)) return false;
+    if (accepting.current.has(proposal.id)) return false;
     if (proposalChanged(proposal)) {
       setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
       return false;
@@ -127,16 +129,31 @@ export function useNotePlanGeneration(options: Options) {
     // An empty generated cell must not replace the preacher's existing words.
     const cells = Object.fromEntries(Object.entries(proposal.contentByNodeId).filter(([, text]) => text.trim()));
     const { conspectus } = latest.current;
+    const finish = () => {
+      setMissing(previous => {
+        const next = { ...previous };
+        Object.keys(proposal.before).forEach(nodeId => { delete next[nodeId]; });
+        return { ...next, ...proposal.missingMaterial };
+      });
+      discardProposal(scope, proposal);
+    };
+    const applying = conspectus.applyProposal?.(cells, proposal.before);
+    if (applying === null) {
+      setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
+      return false;
+    }
+    if (applying) {
+      accepting.current.add(proposal.id);
+      void applying.then(() => { if (isHere()) finish(); }, () => {
+        if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
+      }).finally(() => accepting.current.delete(proposal.id));
+      return true;
+    }
     const apply = conspectus.applyGeneratedCells ?? conspectus.restoreCells;
     if (!apply(cells)) return false;
     // Choosing a proposal is the decision to keep it: it is written now, not left for the save button.
     void conspectus.saveCells?.(Object.keys(cells));
-    setMissing(previous => {
-      const next = { ...previous };
-      Object.keys(proposal.before).forEach(nodeId => { delete next[nodeId]; });
-      return { ...next, ...proposal.missingMaterial };
-    });
-    discardProposal(scope, proposal);
+    finish();
     return true;
   };
 

@@ -15,7 +15,6 @@ import { legacySectionText, readPlanText } from "@/utils/planText";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { NEUTRAL_CAPTION, SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
-import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
 
 import {
@@ -24,6 +23,7 @@ import {
   SECTION_TONE_CLASSES,
   TRANSLATION_KEYS,
 } from "./constants";
+import { PlanCellEditor } from "./PlanCellEditor";
 import { PlanCellEditToggle } from "./PlanCellEditToggle";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { planNodesForPoint } from "./planNodes";
@@ -362,7 +362,8 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
   const isSaved = nodes.some((node) => Boolean(savedSermonPoints[node.id]));
   /** Everything this card holds — one save writes the point and its sub-points together. */
   const cellsOfThisPoint = Object.fromEntries(
-    nodes.map((node) => [node.id, generatedContent[node.id] ?? ""])
+    nodes.filter(node => isModified ? modifiedContent[node.id] : node.id === outlinePoint.id)
+      .map((node) => [node.id, generatedContent[node.id] ?? ""])
   );
 
   useEffect(() => {
@@ -413,7 +414,8 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                 </h4>
               )}
               {cellEditing(node.id) ? (
-                <RichMarkdownEditor
+                <PlanCellEditor
+                  nodeId={node.id}
                   toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                   value={nodeContent}
                   onHoldText={typed => onHoldCellText?.(node.id, typed)}

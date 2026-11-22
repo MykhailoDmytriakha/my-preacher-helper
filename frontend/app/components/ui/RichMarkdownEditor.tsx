@@ -53,6 +53,8 @@ type ValueProps = {
     confirmedTextTransfer?: ObservedTextAppend;
     /** Witness the applied document once, before its first subsequent edit. */
     onEditAfterForeignValue?: (value: string) => void;
+    /** A programmatic edit was installed in the native editor, including its serialized form. */
+    onOwnValueApplied?: (value: string, markdown: string) => void;
     ownedBy?: never;
 };
 /** The study note: the editor document is the text's one owner (`useEditorOwnedText`). */
@@ -217,6 +219,7 @@ function BufferedMarkdownEditor({
     onHistoryText,
     confirmedTextTransfer,
     onEditAfterForeignValue,
+    onOwnValueApplied,
     valueIsUserAction = false,
     valueBeforeUserAction,
     placeholder = '',
@@ -230,6 +233,8 @@ function BufferedMarkdownEditor({
     const { draft, change, getPending, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
     const foreignEditMark = useRef<string | null>(valueIsUserAction ? null : value);
     const lastEmittedText = useRef<string | null>(null);
+    const ownInstallation = useRef(onOwnValueApplied);
+    ownInstallation.current = onOwnValueApplied;
     const adoptForeign = useCallback((editor: Editor, text: string, protectPlace = false) => {
         if (editor.isDestroyed) return true;
         const replaced = text !== readMarkdown(editor);
@@ -342,6 +347,7 @@ function BufferedMarkdownEditor({
             deferredArrival.current = null;
             if (draft === readMarkdown(editor)) retireHistory(editor);
             else showDraft(editor, draft, false);
+            ownInstallation.current?.(draft, readMarkdown(editor));
             return;
         }
         const deferred = deferredArrival.current;
@@ -352,6 +358,7 @@ function BufferedMarkdownEditor({
             foreignEditMark.current = null;
             deferredArrival.current = null;
             showOwnTextWithBoundary(editor, draft, boundary);
+            ownInstallation.current?.(draft, readMarkdown(editor));
             return;
         }
         const ownValue = valueIsUserAction && valueBeforeUserAction?.value !== null;
@@ -362,6 +369,7 @@ function BufferedMarkdownEditor({
             deferredArrival.current = null;
             if (ownValue) foreignEditMark.current = null;
             showDraft(editor, draft, draft === value ? ownValue : undefined);
+            if (ownValue && draft === value) ownInstallation.current?.(draft, readMarkdown(editor));
             return;
         }
         deferredArrival.current = adoptForeign(editor, draft, true)

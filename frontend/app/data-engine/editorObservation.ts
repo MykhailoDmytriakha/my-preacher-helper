@@ -42,14 +42,21 @@ function mergeObservedDraft(base: DocumentData, draft: DocumentData,
   return collection !== 'sermons' || preservesSermonLinks(incoming.value, value) ? value : null;
 }
 
-function needsOriginalOpening(incoming: ResourceSnapshot, draft: DocumentData): boolean {
+function needsOriginalOpening(checkpoint: SessionCheckpoint, incoming: ResourceSnapshot, draft: DocumentData): boolean {
   const { resource, value } = incoming;
   // These commands use the document revision as their opening. An independent read cannot
   // advance that revision on behalf of words or a frame authored against an earlier copy.
   if (resource.collection === 'sermons') {
     const changes = diffFields(value ?? {}, draft);
-    return changes.some(({ path }) => path[0] !== 'preachDates' && isSermonTextRoot(path[0]))
-      || sermonTextChanges(changes.filter(({ path }) => path[0] === 'preachDates')).length > 0;
+    return changes.some(change => {
+      const root = change.path[0];
+      if (!isSermonTextRoot(root)) return false;
+      if (root === 'planText') return !checkpoint.planCellDrafts || sermonTextChanges([change]).some(({ path, after }) => {
+        const proof = checkpoint.planCellDrafts?.[path[1]];
+        return !after.exists || !proof || proof.text !== after.value || proof.generation !== incoming.metadata?.generation;
+      });
+      return root !== 'preachDates' || sermonTextChanges([change]).length > 0;
+    });
   }
   return resource.collection === 'studyNotes' && value?.type === 'analysis' && draft.type === 'analysis'
     && !sameAnalysisFrame(value, draft);
@@ -61,7 +68,7 @@ export function mergeUnsentObservation(checkpoint: SessionCheckpoint, incoming: 
   if (confirmed.resource.collection === 'groups' && confirmed.value && local
     && (groupFlowCopySources(confirmed.value, local).length || groupFlowRetirementSources(confirmed.value, local).length)) return null;
   const merged = compatibleObservation(checkpoint, incoming);
-  return merged && !needsOriginalOpening(incoming, merged) ? merged : null;
+  return merged && !needsOriginalOpening(checkpoint, incoming, merged) ? merged : null;
 }
 
 /** A read can be compatible with an edit while its write still needs the exact receipt. */

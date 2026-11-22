@@ -17,13 +17,13 @@ import { useRouteId } from "@/hooks/useRouteId";
 import { sermonLanguage } from "@/utils/documentLanguage";
 import { notePlanFiledNotes, notePlanReminder } from "@/utils/notePlan";
 import { legacySectionText, readPlanText, renderPlanWithFallback } from "@/utils/planText";
-import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
 
 import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
 import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "../OrphanedPlanText";
+import { PlanCellDocument, PlanCellEditor } from "../PlanCellEditor";
 import { PlanCellEditToggle } from "../PlanCellEditToggle";
 import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
@@ -242,7 +242,9 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             />}
             <NoteNodeText point={point} nodeId={node.id}>
               {editingIds[node.id] && !readOnly ? (
-                <RichMarkdownEditor
+                <PlanCellEditor
+                  nodeId={node.id}
+                  acceptsInput={() => !conspectus.isTransferringText(node.id)}
                   toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => setCellEditing(node.id, false)} />}
                   editable={!conspectus.busyNodeIds.has(node.id)}
                   value={conspectus.contentByNodeId[node.id] ?? ""}
@@ -301,7 +303,9 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
     <PlanModeStatus document={document} />
-    <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
+    <PlanCellDocument.Provider value={document}>
+      <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
+    </PlanCellDocument.Provider>
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 

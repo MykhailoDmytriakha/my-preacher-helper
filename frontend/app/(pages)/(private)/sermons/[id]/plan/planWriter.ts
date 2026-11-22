@@ -20,6 +20,9 @@ export interface SubpointTextTransfer {
  */
 export interface PlanWriter {
   savePlanText(sermonId: string, changedText: Record<string, string>, removedNodeIds?: string[], context?: PlanTextContext): Promise<void>;
+  discardPlanText?(nodeIds: readonly string[]): Promise<void>;
+  restorePlanText?(cells: Record<string, string>): Promise<void>;
+  applyPlanProposal?(cells: Record<string, string>, before: Record<string, string>): Promise<boolean> | null;
   savePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
   preparePlanMode(sermonId: string, mode: PlanMode): () => Promise<void>;
   initializePlanMode(sermonId: string, mode: PlanMode): Promise<void>;

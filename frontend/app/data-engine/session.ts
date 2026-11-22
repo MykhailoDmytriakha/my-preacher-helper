@@ -37,6 +37,7 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
+import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -56,6 +57,7 @@ import type { GroupMeetingReview } from './groupMeetingReview';
 import type { GroupTextDecision } from './groupTextReview';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
+import type { PlanCellDraft, PlanCellOpening } from './sermonPlanCellSession';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CommandResult, ConflictDetail, CouncilTopicPlacementCapture, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
@@ -67,6 +69,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
+  planCellDrafts?: Record<string, PlanCellDraft>;
   conflicts: ConflictDetail[];
   /** Private scalar edits whose saved observation no longer establishes an opening. */
   unreadableScalarProof?: string[];
@@ -267,6 +270,19 @@ export class DataSession {
       this.observe(waiting, { source: 'cache' });
     }
     this.refreshUnreadableComparisons();
+  }
+
+  editPlanCell(opening: PlanCellOpening, text: string): void {
+    const staged = stagePlanCell(this.state, opening, text);
+    this.state.planCellDrafts = staged.proofs;
+    this.state.remoteCandidate = copy(staged.remoteCandidate);
+    this.state.conflicts = copy(staged.conflicts);
+    this.edit(staged.draft);
+  }
+
+  pinPlanCellSave(): SessionCheckpoint {
+    this.state.editGeneration = this.reserveEditGeneration();
+    return this.checkpoint();
   }
 
   importLegacyStudyNote(edits: LegacyStudyNoteImport): void {
@@ -577,11 +593,12 @@ export class DataSession {
         : rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
           mergeDocumentAfterAcknowledgement(templateAncestor, this.state.draft, { ...accepted, value: incoming }));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
+    adoptFirstPlanCellVersion(this.state, accepted, result.committed ?? result.snapshot.metadata, result.operationId, submitted.value);
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
-    this.state.conflicts = copy(rebased.conflicts);
-    this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
+    this.state.conflicts = copy(preservePlanCellComparisons(this.state, rebased.conflicts));
+    this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     this.refreshUnreadableComparisons();
   }
@@ -610,6 +627,7 @@ export class DataSession {
         }
       }
       this.state.remoteCandidate = copy(snapshot);
+      this.state.conflicts = reviewObservedPlanCells(this.state, snapshot);
       this.refreshUnreadableComparisons();
       return;
     }
@@ -773,6 +791,17 @@ export class DataSession {
       this.finishReferenceChoice(referenceChoice);
       return;
     }
+    const planChoice = projectStoredPlanCellChoice(this.state, atChoice);
+    if (planChoice) {
+      this.state.confirmed = copy(planChoice.confirmed);
+      this.replaceDraft(planChoice.draft);
+      this.state.conflicts = copy(planChoice.conflicts);
+      this.state.remoteCandidate = planChoice.conflicts.length ? copy(this.state.confirmed) : null;
+      this.state.editGeneration = this.reserveEditGeneration();
+      this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
+      this.refreshUnreadableComparisons();
+      return;
+    }
     this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.remoteCandidate = null;
     if (atChoice !== undefined) {
@@ -915,6 +944,7 @@ export class DataSession {
     }
     if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
     if (candidate) {
+      acceptPlanCellComparison(this.state);
       this.retainOutlineTitleActions(titleSource);
       stageReviewedCouncilTopics(this.state, this.state.conflicts);
       const selectedPaths = this.state.conflicts.filter(conflict => !isOrderedPreachDateField(conflict)).map(({ path }) => path);
@@ -1045,6 +1075,7 @@ export class DataSession {
       if (!field || !hasOutlinePointOrder(value?.[field], outlineMove.after)) delete this.state.outlinePointPlacementRetry;
     }
     this.state.draft = copy(value);
+    retainPlanCellDrafts(this.state, value);
   }
 
   private clearAutosaveFieldDrafts(): void {

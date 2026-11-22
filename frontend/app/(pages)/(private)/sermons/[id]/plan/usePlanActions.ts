@@ -9,6 +9,7 @@ import { isUsageCapReachedError } from "@/services/usageLimits";
 import { AI_RESULT_CONFLICT, AI_RESULT_NOT_STARTED, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { debugLog } from "@/utils/debugMode";
+import { failureCode } from "@/utils/failureCode";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
@@ -351,6 +352,7 @@ export default function usePlanActions({
         });
         return;
       }
+      if (failureCode(error) === 'resolve-version-first') return;
       debugLog("Plan save failed", { sermonId: sermon.id, outlinePointId, section, error });
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
     }

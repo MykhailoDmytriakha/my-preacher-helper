@@ -59,6 +59,7 @@ import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type
 import { validateResourceDocument } from './resourceSchemas';
 import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
+import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
@@ -1461,6 +1462,16 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       const importing = editor.importLegacyStudyNote(edits);
       cancelScheduledSave();
       return importing;
+    }),
+    capturePlanCellOpening: (nodeId: string, text: string) => planCellOpening(current?.state.checkpoint, nodeId, text),
+    editPlanCell: (opening: PlanCellOpening, text: string) => run(editor => {
+      const editing = editor.editPlanCell(opening, text);
+      cancelScheduledSave();
+      return editing;
+    }),
+    savePlanCells: (nodeIds: readonly string[]) => run(editor => {
+      cancelScheduledSave();
+      return editor.savePlanCells(nodeIds);
     }),
     captureTemplateTitle: (opening: OutlineTitleOpening) => {
       const shown = current?.state.checkpoint;

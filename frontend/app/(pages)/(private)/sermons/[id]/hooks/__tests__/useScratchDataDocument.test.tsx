@@ -53,6 +53,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
     remote: null, state, status: { phase } as SyncStatus,
     loading: false, error, edit: jest.fn(), update, save, commit, ...actions,
     importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
+    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(),
     captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
     captureSermonPlanMode: jest.fn(),
   }));

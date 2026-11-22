@@ -349,6 +349,27 @@ it('regression pin: keeps a second requested manual draft replacement undoable i
   expect(markdown(editor)).toBe(before);
 });
 
+it('saves the selected old copy when a newer draft is already staged in the plan session', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Current saved words.' });
+  const current = draftKey('user-1', 'sermon-1', 'plan:p1', 'same-copy');
+  const older = draftKey('user-1', 'sermon-1', 'plan:p1', 'older-copy');
+  saveDraft(current, 'Current saved words.', undefined, false, 2);
+  saveDraft(older, 'Selected words from the old copy.', undefined, false, 1);
+  const view = await render();
+  fireEvent.change(await screen.findByLabelText('unsavedDraft.chooseCopy'), { target: { value: current } });
+  fireEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  openPointCells();
+  const editor = mountedEditor(view.container);
+  typeAtEnd(editor, ' More recent draft.');
+  expect(markdown(editor)).toContain('More recent draft.');
+
+  fireEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  await waitFor(() => expect(markdown(editor)).toBe('Selected words from the old copy.'));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.save' }));
+  await waitFor(() => expect(harness.server.value?.planText).toEqual({ p1: 'Selected words from the old copy.' }));
+});
+
 it('regression pin: keeps an explicitly applied note-plan AI replacement undoable in the mounted manual cell', async () => {
   localStorage.clear();
   mockNoteMode = true;
@@ -366,6 +387,36 @@ it('regression pin: keeps an explicitly applied note-plan AI replacement undoabl
     expect(mountedEditor(view.container)).toBe(editor);
     expect(undo(editor)).toBe(true);
     expect(markdown(editor)).toBe('Original manual paragraph.');
+    view.unmount();
+  } finally { mockNoteMode = false; }
+});
+
+it('keeps words typed after applying a note proposal while its Save is still offline', async () => {
+  localStorage.clear();
+  mockNoteMode = true;
+  try {
+    mockSermon = { ...sermon({ p1: 'Original words.' }), sourceNoteIds: ['source-note'] };
+    const proposed = 'Requested words.\n\n';
+    jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p1: proposed }, missingMaterial: {} });
+    const view = await render();
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+    const apply = await screen.findByRole('button', { name: 'plan.fromNote.apply' });
+
+    act(() => harness.engine.setOnline(false));
+    fireEvent.click(apply);
+    await waitFor(() => expect(markdown(editor)).toBe('Requested words.'));
+    typeAtEnd(editor, ' My addition.');
+    expect(harness.server.value?.planText).toEqual({ p1: 'Original words.' });
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+    await waitFor(() => expect(harness.server.value?.planText).toEqual({ p1: proposed }));
+    expect(markdown(editor)).toBe('Requested words. My addition.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'plan.save' }));
+    await waitFor(() => expect(harness.server.value?.planText).toEqual({ p1: 'Requested words. My addition.' }));
     view.unmount();
   } finally { mockNoteMode = false; }
 });
@@ -1122,7 +1173,7 @@ describe('manual deletion locks', () => {
       await waitFor(() => expect(apply).toBeEnabled());
       fireEvent.click(apply);
       expect(mockConspectus.contentByNodeId[nodeId]).toBe('Requested AI words.');
-      expect(mockGeneration.proposals[nodeId]).toBeUndefined();
+      await waitFor(() => expect(mockGeneration.proposals[nodeId]).toBeUndefined());
       expect(parent.isEditable).toBe(true);
     } finally { mockNoteMode = false; }
   });

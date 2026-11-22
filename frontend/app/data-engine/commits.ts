@@ -47,6 +47,7 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
+import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_BODY_POLICY, SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepBodyActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
@@ -439,6 +440,7 @@ type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; comment
   thoughtTagId?: string;
   thoughtTextId?: string;
   action?: EditorCommitAction;
+  planCellSaveIds?: readonly string[];
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
   deferRetention?: true;
@@ -485,6 +487,7 @@ function hasTimedAncestor(record: CommitRequest): boolean {
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, ...(options.seriesMembership && { seriesMembership: clone(options.seriesMembership) }), predecessorIds: options.predecessorIds && [...options.predecessorIds],
+    planCellSaveIds: options.planCellSaveIds && [...options.planCellSaveIds],
     pendingRemoval: options.pendingRemoval && clone(options.pendingRemoval),
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
     meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
@@ -555,13 +558,17 @@ function outlineMovePredecessor(records: readonly CommitRequest[], predecessor: 
   }
 }
 
-function captureSermonPlan(baseline: ResourceSnapshot, draft: DocumentData | null, predecessor?: CommitRequest): PlanTextEvidence {
+function sermonPlanBasis(baseline: ResourceSnapshot, predecessor?: CommitRequest): DocumentData | null {
   const ack = predecessor?.result?.kind === 'acknowledged' ? predecessor.result : undefined;
   const effect = ack?.committed ?? ack?.snapshot.metadata;
   // If this action already observed the ACK, use its captured baseline. Otherwise the earlier
   // local action's value is known, and a later ACK could contain unseen words.
   const alreadyObserved = effect && coversCommittedEffect(baseline, baseline.resource, effect);
-  return capturePlanTextEvidence({ before: alreadyObserved ? baseline.value : predecessor?.value ?? baseline.value, after: draft });
+  return alreadyObserved ? baseline.value : predecessor?.value ?? baseline.value;
+}
+
+function captureSermonPlan(baseline: ResourceSnapshot, draft: DocumentData | null, predecessor?: CommitRequest): PlanTextEvidence {
+  return capturePlanTextEvidence({ before: sermonPlanBasis(baseline, predecessor), after: draft });
 }
 
 /** Saved intent lives independently of editors. Only this queue prepares its commands. */
@@ -702,7 +709,7 @@ export class CommitQueue {
 
   private async captureSaved(owner: string, editorId: string, captured: SessionCheckpoint, options: CommitSaveOptions | undefined,
     check: () => void, publish: (request: CommitRequest) => void): Promise<CommitRequest | null> {
-    const intent = clone(captured);
+    let intent = clone(captured);
     const frozenOptions = freezeSaveOptions(options);
     if (frozenOptions?.transfer && (!this.options.store.createWithTransfer || !frozenOptions.checkpoint)) {
       throw new Error('Atomic capture transfer storage is required');
@@ -731,6 +738,20 @@ export class CommitQueue {
       if (opening && (action.kind === 'comment-kind'
         ? matchesCommentKindRequest(opening, owner, intent.confirmed.resource, action.commentKind.seen)
         : matchesCommentPlaceRequest(opening, owner, intent.confirmed.resource, action.commentPlace.seen))) predecessor = opening;
+    }
+    const planCellSaveIds = frozenOptions?.planCellSaveIds;
+    if (planCellSaveIds || intent.planCellDrafts) {
+      const prior = existing ? records.find(record => record.id === existing.predecessor) : predecessor;
+      const basis = sermonPlanBasis(intent.confirmed, prior);
+      if (planCellSaveIds) {
+        intent = selectPlanCellSave(intent, planCellSaveIds, basis);
+        if (!existing && !intent.dirty && !intent.conflicts.length) return null;
+      } else {
+        const fields = action?.kind === 'sermon-plan-text' ? Object.keys(action.openings) : [];
+        if (action?.kind === 'sermon-plan-text' && action.transfer) fields.push(action.transfer.pointId, action.transfer.subPointId);
+        intent = reservePrivatePlanCells(intent, basis, fields);
+        if (!action && !intent.dirty && !intent.conflicts.length) return null;
+      }
     }
     if (existing) {
       const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
@@ -935,6 +956,7 @@ export class CommitQueue {
       : councilMove ? projectCouncilTopicOnDocument(basis, councilMove)
         : templateMove ? projectResourceOutlinePoint('planTemplates', basis, outlineMove) : intent.draft;
     if (templateMove && !value) throw Object.assign(new Error('The template point position is unavailable'), { code: 'decision-changed' });
+    const planCellOpenings = capturePlanCellOpenings(intent);
     return {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(councilTopicQueue && { councilTopicQueue }),
@@ -982,9 +1004,10 @@ export class CommitQueue {
       ...(studyNoteReferenceEvidence?.shownChange && { studyNoteReferenceChange: clone(studyNoteReferenceEvidence.shownChange) }),
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
-      ...(editorAction?.kind === 'sermon-plan-text' && { sermonTextOpenings: Object.fromEntries(
-        Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision])),
-      }),
+      ...(planCellOpenings || editorAction?.kind === 'sermon-plan-text' ? {
+        sermonTextOpenings: { ...(editorAction?.kind === 'sermon-plan-text' && Object.fromEntries(
+          Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision]))), ...planCellOpenings },
+      } : {}),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(firstMeeting && { groupFirstMeetingChange: firstMeeting }),
       ...(preachDateFieldActions && { preachDateFieldActions }),

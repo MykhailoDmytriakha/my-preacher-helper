@@ -57,6 +57,7 @@ const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   studyNoteContentDraft: { generation: 'g', action: noteContentAction },
+  planCellDrafts: { point: { generation: 'g', observedRevision: 1, opening: 'Original', text: 'Later' } },
   commentKindDraft: { generation: 'g', action: commentKindAction }, commentPlaceDraft: { generation: 'g', action: commentPlaceAction },
   studyNoteTitleDraft: { generation: 'g', action: noteContentAction }, studyNoteTypeDraft: { generation: 'g', action: noteTypeAction },
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, councilTopicTextDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,

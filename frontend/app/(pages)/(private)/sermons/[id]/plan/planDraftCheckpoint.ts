@@ -4,7 +4,12 @@ export interface DurablePlanState {
   checkpoint: {
     confirmed: { resource: { collection: string; id: string } };
     draft: Record<string, unknown> | null;
+    planCellDrafts?: Record<string, { text: string }>;
   };
+}
+
+export function showPlanCellDrafts(buffered: Record<string, string>, drafts: DurablePlanState['checkpoint']['planCellDrafts']): Record<string, string> {
+  return drafts ? { ...buffered, ...Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, draft.text])) } : buffered;
 }
 
 export function durablePlanCells(state: DurablePlanState | null | undefined, owner: string | null | undefined, documentId: string | null | undefined): Record<string, string> | null {
