@@ -40,6 +40,12 @@ const JUMP_SCROLL_QUIET_MS = 150;
  * `[@media(min-width:1024px)_and_(pointer:fine)]:`; keep the two in step.
  */
 const MARGINS_QUERY = '(min-width: 1024px) and (pointer: fine)';
+/*
+ * On a computer the margins stand at the screen's edges and grow with it (owner, 2026-11-21: «по краям есть место, его можно
+ * использовать»): the outline 224–416 px, the places 272–576 px, the text between them up to 900 px — about 85 letters
+ * a line, still easy to read — and what is left is shared between the two gaps. Before, the three stood together as
+ * one 1356 px block in the middle and a wide screen left empty bands at its sides.
+ */
 /** A verse beside the text shows its first verses, not a whole chapter. */
 const VERSES_SHOWN = 3;
 /** Reading speed for «about N minutes of reading»: an unhurried reader of a Bible study. */
@@ -257,9 +263,9 @@ export function NoteReadingView({
             </div>
 
             <div ref={setScrollRoot} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-                <div className="flex justify-center gap-12 px-5 md:pl-10 md:pr-[4.5rem] [@media(min-width:1024px)_and_(pointer:fine)]:px-8">
+                <div className="flex justify-center gap-12 px-5 md:pl-10 md:pr-[4.5rem] [@media(min-width:1024px)_and_(pointer:fine)]:justify-between [@media(min-width:1024px)_and_(pointer:fine)]:px-8">
                     {/* Computer: the outline in the left margin, with how much of each section has been read. */}
-                    <nav aria-label={t(OUTLINE_KEY)} className="sticky top-6 hidden max-h-[calc(100dvh-7rem)] w-60 shrink-0 self-start overflow-y-auto pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:block">
+                    <nav aria-label={t(OUTLINE_KEY)} className="sticky top-6 hidden max-h-[calc(100dvh-7rem)] w-[clamp(14rem,16vw,26rem)] shrink-0 self-start overflow-y-auto pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:block">
                         <div className="px-2.5 pb-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 dark:text-gray-400">{t(OUTLINE_KEY)}</div>
                         {sections.map((section, index) => {
                             const isCurrent = index === currentIndex;
@@ -280,10 +286,10 @@ export function NoteReadingView({
                         })}
                     </nav>
 
-                    {/* The text, the page's own renderer: a comfortable 720 px line between the computer's margins; with no margins (a tablet, a
+                    {/* The text, the page's own renderer: up to a 900 px line between the computer's margins; with no margins (a tablet, a
                         phone) it takes the whole width up to the rail — the owner on his iPad, 2026-11-20: no empty bands
                         at the sides. */}
-                    <article className="w-full min-w-0 pb-40 pt-6 md:pt-10 [@media(min-width:1024px)_and_(pointer:fine)]:max-w-[720px]">
+                    <article className="w-full min-w-0 pb-40 pt-6 md:pt-10 [@media(min-width:1024px)_and_(pointer:fine)]:max-w-[900px]">
                         <h1 className="text-[25px] font-bold leading-tight tracking-tight text-gray-900 md:text-[34px] dark:text-gray-50">{title || t('studiesWorkspace.untitled')}</h1>
                         <p className="mb-2 mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                             {[typeLabel, sections.length ? t('notePanel.sectionsCount', { count: sections.length }) : null, t('notePanel.readingMinutes', { count: minutes })].filter(Boolean).join(' · ')}
@@ -307,7 +313,7 @@ export function NoteReadingView({
                     </article>
 
                     {/* Computer: the Scripture places on screen now, with their words. */}
-                    <aside ref={versesRef} aria-label={t('notePanel.versesOnScreen')} className="sticky top-6 hidden max-h-[calc(100dvh-10rem)] w-[300px] shrink-0 flex-col gap-2.5 self-start overflow-y-auto pb-2 pr-1 pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:flex">
+                    <aside ref={versesRef} aria-label={t('notePanel.versesOnScreen')} className="sticky top-6 hidden max-h-[calc(100dvh-10rem)] w-[clamp(17rem,20vw,36rem)] shrink-0 flex-col gap-2.5 self-start overflow-y-auto pb-2 pr-1 pt-2 [@media(min-width:1024px)_and_(pointer:fine)]:flex">
                         <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 dark:text-gray-400">{t('notePanel.versesOnScreen')}</div>
                         {verses.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">{t('notePanel.noVersesOnScreen')}</p>}
                         {verses.map((verse) => (
