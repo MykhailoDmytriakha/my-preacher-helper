@@ -129,6 +129,7 @@ export const decodeBasicHtmlEntities = (content: string): string => {
     .replace(/&#0*39;/g, "'")
     .replace(/&#0*62;/g, '>')
     .replace(/&#0*60;/g, '<')
+    .replace(/&nbsp;|&#0*160;/g, '\u00a0')
     .replace(/&amp;/g, '&');
 };
 

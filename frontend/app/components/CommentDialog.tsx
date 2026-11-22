@@ -10,6 +10,7 @@ import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/component
 import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { DeleteIconButton } from '@/components/ui/DeleteIconButton';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
@@ -533,7 +534,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     onClose();
   };
 
-  // «Стереть» — a rare action, quiet and drawn on the left of the foot, away from Save; asked before it erases.
+  // «Стереть» — a rare action: a trash can in the window's top corner, away from Save; asked before it erases.
   const erase = async () => {
     if (target.kind !== 'edit') return;
     if (!(await confirm({ title: { key: 'comment.eraseTitle' }, confirmText: { key: 'comment.erase' } }))) return;
@@ -587,28 +588,24 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
         </div>
       ) : null}
       description={t(asWritten.descriptionKey)}
+      cornerAction={target.kind === 'edit'
+        ? <DeleteIconButton label={t('comment.erase')} onClick={() => { void erase(); }} disabled={saving || deciding} />
+        : null}
       onClose={closeDiscarding}
       returnFocusTo={returnFocusTo}
       unsaved={unsaved}
       closeDisabled={saving}
       onSubmit={save}
       footer={(
-        <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:justify-between">
-          <FormActions
-            onCancel={closeDiscarding}
-            cancelLabel={t('common.cancel')}
-            submitLabel={isNote ? t('comment.toNote') : t('common.done')}
-            saving={saving}
-            submitDisabled={empty || !placed || deciding || !named}
-            tone={isNote ? 'emerald' : 'blue'}
-            unsaved={unsaved}
-          />
-          {target.kind === 'edit' ? (
-            <button type="button" onClick={() => { void erase(); }} disabled={saving || deciding} className="rounded-xl px-3 py-3 text-sm font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200">
-              {t('comment.erase')}
-            </button>
-          ) : null}
-        </div>
+        <FormActions
+          onCancel={closeDiscarding}
+          cancelLabel={t('common.cancel')}
+          submitLabel={isNote ? t('comment.toNote') : t('common.done')}
+          saving={saving}
+          submitDisabled={empty || !placed || deciding || !named}
+          tone={isNote ? 'emerald' : 'blue'}
+          unsaved={unsaved}
+        />
       )}
     >
       <div className="space-y-4">

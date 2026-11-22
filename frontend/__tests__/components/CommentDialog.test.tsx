@@ -339,6 +339,25 @@ describe('CommentDialog', () => {
     await waitFor(() => expect(mockEngine.deleteNote).toHaveBeenCalledWith('c1'));
   });
 
+  // Owner, 2026-11-21: «Стереть» moves to the window's top right corner as a trash can — grey, red under a hovering
+  // pointer, red at once where nothing hovers (a phone, an iPad without a trackpad); a press still asks first.
+  it('draws «erase» as a trash can in the top corner, beside the title and away from the foot\'s buttons', () => {
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    const erase = screen.getByRole('button', { name: 'comment.erase' });
+    expect(erase).toHaveTextContent('');
+    expect(erase).toHaveAttribute('title', 'comment.erase');
+    const heading = screen.getByRole('heading');
+    expect(heading.compareDocumentPosition(erase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(erase.compareDocumentPosition(screen.getByLabelText('editor')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(erase.className).toMatch(/hover:text-red-600/);
+    expect(erase.className).toMatch(/\[@media\(hover:none\)\]:text-red-600/);
+  });
+
+  it('offers no trash can for a comment not yet written', () => {
+    render(<CommentDialog target={{ kind: 'new', reference: null }} place="Ис 40:31" onClose={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'comment.erase' })).toBeNull();
+  });
+
   it('waits for a place before a new comment chosen away from the Bible can be saved', async () => {
     render(<CommentDialog target={{ kind: 'new', reference: null }} place="" placePicker={() => <p>picker</p>} onClose={jest.fn()} />);
     expect(screen.getByText('picker')).toBeInTheDocument();
