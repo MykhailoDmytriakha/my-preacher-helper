@@ -1,4 +1,4 @@
-when: live check · живая проверка · проверить живьём · playwright script against the dev server · a live script changes data · EPIPE killed the script · | head cut the run · browser closed before the save · data left behind after a check · связь осталась в базе · test user · тестовый пользователь · the dev server writes to production · Войти как тестовый пользователь · lang=ru cookie · the reader stays in the wrong Bible · tr ignored · goto interrupted by another navigation to /dashboard · WebKit touch hold · NotFoundError The object can not be found here · Safari engine live check · page.route not intercepted · stub ignored · service worker answers the GET · serviceWorkers block · подмена ответа не срабатывает
+when: live check · живая проверка · проверить живьём · playwright script against the dev server · a live script changes data · EPIPE killed the script · | head cut the run · browser closed before the save · data left behind after a check · связь осталась в базе · test user · тестовый пользователь · the dev server writes to production · Войти как тестовый пользователь · lang=ru cookie · the reader stays in the wrong Bible · tr ignored · goto interrupted by another navigation to /dashboard · WebKit touch hold · NotFoundError The object can not be found here · Safari engine live check · page.route not intercepted · stub ignored · service worker answers the GET · serviceWorkers block · подмена ответа не срабатывает · fill a rich editor from a script · paste into Tiptap · вставка в редактор скриптом · старый текст остался под новым
 
 # Run a live check that changes data
 
@@ -34,3 +34,9 @@ An agent's live data check drives the real app on a dedicated local server conne
 Historical scripts below describe the user journey; review and adapt their database/identity isolation before running them.
 
 `.cases/2026-10-12-block-diagram/demo-analysis/live-batch.cjs` — the analysis's address, reload, five quick colour picks, ⌘Z and the badge window on the test user's Eph 1:1–2, every change undone; `live-untangle.cjs` — four links drawn, «Все связи» shot, the links removed.
+
+## Filling a rich editor (Tiptap / ProseMirror) from a script
+
+- `document.execCommand('selectAll')` moves only the DOM selection; ProseMirror reads it late, so a synthetic paste right after lands at the cursor and the old text stays under the new (2026-11-21: all eight plan cells of a real sermon kept their old text below the pasted one). Select through the editor's own keymap instead: `pm.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true }))` (Mod-a → AllSelection).
+- Paste Markdown with `new ClipboardEvent('paste', { clipboardData })` where `clipboardData.setData('text/plain', md)`: `Markdown.configure({ transformPastedText: true })` turns it into rich content, tables included.
+- Before pressing Save, check the editor text: it starts with the new text and no marker of the old one is left. After saving, reload and check again from the server.
