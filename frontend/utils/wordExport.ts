@@ -329,15 +329,28 @@ export const parseTable = (tableLines: string[], indent = 0): Table | null => {
   return createWordTable(rows.map(row => row.map(parseInlineMarkdown)), indent);
 };
 
+/** A cell's runs: an HTML cell's paragraphs each start a new line, as on screen. */
+const cellRuns = (cell: MarkdownTableCell): TextRun[] => cell.paragraphs
+  ? cell.paragraphs.flatMap((paragraph, index) => [
+    ...(index ? [new TextRun({ break: 1 })] : []),
+    ...parseInlineInherited(paragraph, {}),
+  ])
+  : parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 });
+
 const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => createWordTable(
-  table.rows.map(row => row.map(cell => parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 }))),
+  table.rows.map(row => row.map(cell => ({ runs: cellRuns(cell), columnSpan: cell.colSpan, rowSpan: cell.rowSpan }))),
   indent,
 );
 
-const createWordTable = (rows: ReadonlyArray<ReadonlyArray<TextRun[]>>, indent: number): Table => {
+type WordTableCell = { runs: TextRun[]; columnSpan?: number; rowSpan?: number };
+
+const createWordTable = (rows: ReadonlyArray<ReadonlyArray<TextRun[] | WordTableCell>>, indent: number): Table => {
   const tableRows = rows.map((row, rowIndex) => {
-    const cells = row.map(runs => {
+    const cells = row.map(item => {
+      const { runs, columnSpan, rowSpan } = Array.isArray(item) ? { runs: item } as WordTableCell : item;
       return new TableCell({
+        ...(columnSpan ? { columnSpan } : {}),
+        ...(rowSpan ? { rowSpan } : {}),
         children: [
           new Paragraph({
             children: runs,

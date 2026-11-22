@@ -137,3 +137,22 @@ describe('Word table source and formatting boundaries', () => {
     expect(await actualTables(markdown)).toEqual([]);
   });
 });
+
+// BUG-20261121-word-html-table-flattened: the owner's plan table, as the editor saved it (an empty first column, a
+// `&nbsp;` heading cell, a cell of two paragraphs), comes out of real DOCX as the same table, cell for cell.
+it('writes a table the editor saved as HTML as the same Word table', async () => {
+  const html = '<table><tbody>'
+    + '<tr><th><p></p></th><td><p>&nbsp;</p></td><td><p>Братьям</p></td><td><p>Сёстрам</p></td></tr>'
+    + '<tr><td><p></p></td><td><p>Дети</p></td><td><p>Евр. 11:7</p></td><td><p>2 Тим. 1:5</p><p>вера матери</p></td></tr>'
+    + '<tr><td colspan="2"><p>Вместе</p></td><td><p>Еф. 5:21</p></td><td><p>Еф. 5:21</p></td></tr>'
+    + '</tbody></table>';
+  const tables = await actualTables(`Отдельно братьям и сёстрам.\n\n${html}`);
+  expect(tables).toEqual([[
+    ['', ' ', 'Братьям', 'Сёстрам'],
+    ['', 'Дети', 'Евр. 11:7', '2 Тим. 1:5вера матери'],
+    ['Вместе', 'Еф. 5:21', 'Еф. 5:21'],
+  ]]);
+  const xml = await wordXml(html);
+  expect(xml).not.toContain('&amp;nbsp;');
+  expect(xml).toMatch(/<w:gridSpan w:val="2"\/>/);
+});
