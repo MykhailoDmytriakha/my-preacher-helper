@@ -173,3 +173,26 @@ describe('ordinary words together with an unfinished quoted phrase', () => {
     expect(result.head?.formsLabel).toBe('bible.search.wordsAndPhraseBeginning');
   });
 });
+
+// BUG-20261121-search-passage-shows-first-verse: «пс 103 1-2» showed only 103:1 under «Псалтирь 103:1–2».
+describe('the text a place shows before it is opened or inserted', () => {
+  const words = (bookId: string, chapter: number, verse: number) => `${bookId} ${chapter}:${verse} words`;
+  const placeOf = (line: string) => {
+    const reading = readLine(line, { bible: 'rst', books: SYNODAL_BOOKS });
+    const input: ModelInput = {
+      reading, books: SYNODAL_BOOKS, answer: null, index: { index: johnOnly, indexed: 1, total: 66, loading: false, missing: 65, version: 1, wordFormsReady: true, wordFormsError: null } as SearchIndexState,
+      bible: 'rst', locale: 'ru', t, wide: true, asWords: false, bookReadAs: null, allBooks: false, fixChapters: false, opened: new Set(),
+      offline: false, layoutFixed: null, limit: 40, booksBegun: null,
+    };
+    return buildSearchModel(input, words).rows.find((row) => row.type === 'place') as Extract<ModelRow, { type: 'place' }>;
+  };
+
+  it('shows every verse of a passage, in order', () => {
+    expect(placeOf('пс 103 1-2').text).toBe('Psalms 103:1 words Psalms 103:2 words');
+  });
+
+  it('shows the one verse of a verse, and a chapter by its first verse', () => {
+    expect(placeOf('ин 3 16').text).toBe('John 3:16 words');
+    expect(placeOf('ин 3').text).toBe('John 3:1 words');
+  });
+});

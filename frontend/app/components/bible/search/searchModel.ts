@@ -185,7 +185,10 @@ function vocabulary(input: ModelInput) {
 const fix = (title: string, text: string, actions: ModelAction[] = [], chapters: Extract<ModelRow, { type: 'fix' }>['chapters'] = null): ModelRow =>
   ({ type: 'fix', key: 'fix', title, text, actions, chapters });
 
-/** «Ин 3:16», «Пс 22», «Рим 8:28-39»: the place, its first verse, what opens — a verse, a chapter, a passage. */
+/**
+ * «Ин 3:16», «Пс 22», «Рим 8:28-39»: the place, its text, what opens — a verse, a chapter, a passage. A verse or a passage
+ * shows all of its words, so the person sees what will be opened or inserted; a chapter shows its first verse.
+ */
 function placeRow(input: ModelInput, reading: Extract<LineReading, { kind: 'place' }>, verseTextOf: VerseTextOf): ModelRow {
   const { bible, t } = input;
   const words = vocabulary(input);
@@ -195,8 +198,11 @@ function placeRow(input: ModelInput, reading: Extract<LineReading, { kind: 'plac
   let meta: string | null = null;
   if (verse === null) meta = t('bible.search.wholeChapterMeta', { verses: words.verses(verseCount(bible, bookId, chapter)) });
   else if (passage) meta = t('bible.search.passageMeta', { verses: words.verses((toVerse as number) - verse + 1) });
+  const last = passage ? toVerse as number : verse ?? 1;
+  const text = Array.from({ length: last - (verse ?? 1) + 1 }, (_, offset) => verseTextOf(bookId, chapter, (verse ?? 1) + offset))
+    .filter(Boolean).join(' ') || null;
   return {
-    type: 'place', key: 'place', title, text: verseTextOf(bookId, chapter, verse ?? 1), meta,
+    type: 'place', key: 'place', title, text, meta,
     note: reading.relative ? t('bible.search.inCurrentBook') : null,
     run: words.open(bookId, chapter, verse ?? 1, verse !== null ? (toVerse ?? verse) : undefined),
     primary: true,
