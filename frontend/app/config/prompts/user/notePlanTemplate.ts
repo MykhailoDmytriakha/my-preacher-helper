@@ -48,7 +48,7 @@ THE PARTS OF A POINT (the app gives them their form; you fill them)
 - A thought is a short recall line — at most about 12 words, a phrase or one short sentence — never a paragraph. Retelling the story is the Scripture line's job; a thought says what the preacher draws from it.
 - Take the author's words as they stand; never generalise them into abstractions: «велосипед не работал» stays, it does not become «неисправный механизм».
 - table: when a point applies the same aspects to two or more GROUPS OF LISTENERS — husbands / wives, brothers / sisters, parents / children — its body is a table: rows = aspects, columns = the groups, cells = a Scripture line in the same form «Ref: «words»» and/or a few words. A sure sign: the reminders or the material pair things by audience («Husbands: …; wives: …», «Братья: …; Сёстры: …»). Then you MUST fill table and leave steps EMPTY; a list of steps that alternates the audiences is wrong. A series of examples (people, couples, events) is steps, never a table. Otherwise null.
-- conclusion: one sentence that closes the point's thought, so the next point can begin — often the author's own summary line.
+- conclusion: one sentence that closes the point's thought, so the next point can begin — often the author's own summary line. It closes the WHOLE point: the app draws it after the point's last cell.
 
 SCRIPTURE LINES
 - Every line is a reference PLUS the words of the place itself: «Быт. 16:6: «вот, служанка твоя в твоих руках; делай с нею, что тебе угодно»». A bare reference («Быт. 16:2–6») is WRONG: the preacher needs the words in front of him to read them.
@@ -79,7 +79,7 @@ Write in the language of the preacher's target titles and reminders, using the s
 OUTPUT
 Exactly one entry in nodes for EACH target nodeId, copied unchanged. Never map by heading text: titles may repeat.
 Do not repeat the target title or write markdown headings, numbers or emphasis in the fields: the app renders the structure.
-Keep each sub-point's material in its own node. For a parent with sub-points, its cell holds only the entry and the conclusion over them, plus direct parent material; the steps of a sub-point go in that sub-point's node.
+Keep each sub-point's material in its own node. For a parent with sub-points, its node holds the entry, direct parent material and the conclusion over them all (the app draws that conclusion after the last sub-point); the steps of a sub-point go in that sub-point's node, and a sub-point has no conclusion of its own.
 Without a reminder, use the target title to select relevant study material; if insufficient, report missingMaterial rather than inventing it.
 `;
 
@@ -87,15 +87,29 @@ Without a reminder, use the target title to select relevant study material; if i
  * How full each step is. The LENGTH changes only the leaves: the entry, the steps, their verses and the conclusion
  * are the same at every length (owner, 2026-11-21: «на дереве больше листьев или меньше, но основа остаётся»).
  */
+/**
+ * How many thoughts a step carries at each length — the one owner of these numbers: the prompt asks for them and the
+ * answer is held to them (`assembleNotePlanProposal`), because a light model does not keep to a length on its own
+ * (owner on production, 2026-11-22: «выбрал коротко, но сгенерировалось некоротко»).
+ */
+export const NOTE_PLAN_THOUGHTS: Record<PlanStyle, { least: number; most: number }> = {
+  memory: { least: 0, most: 1 },
+  narrative: { least: 1, most: 3 },
+  exegetical: { least: 2, most: 5 },
+};
+
 export function notePlanLengthInstructions(style: PlanStyle): string {
   const same = 'The entry, the steps (their titles and gists), every Scripture line, the table and the conclusion are THE SAME at every length; only the number of thoughts per step changes.';
+  const { least, most } = NOTE_PLAN_THOUGHTS[style] ?? NOTE_PLAN_THOUGHTS.memory;
+  const count = `${least}-${most} ${most === 1 ? 'thought' : 'thoughts'} per step`;
+  const order = 'Put the most important thought first: a step keeps only its first thoughts up to this number.';
   switch (style) {
     case 'narrative':
-      return `PLAN LENGTH: MEDIUM\n- ${same}\n- 1-3 thoughts per step: the main explanation and what supports it.`;
+      return `PLAN LENGTH: MEDIUM\n- ${same}\n- ${count}: the main explanation and what supports it. ${order}`;
     case 'exegetical':
-      return `PLAN LENGTH: DETAILED\n- ${same}\n- 2-5 thoughts per step: explanation, its supporting details, and — last — an example or illustration when the material has one.\n- Detail comes from thoughts, never from extra Scripture lines: do not add verses a shorter plan would not have.`;
+      return `PLAN LENGTH: DETAILED\n- ${same}\n- ${count}: explanation, its supporting details, and — last — an example or illustration when the material has one. ${order}\n- Detail comes from thoughts, never from extra Scripture lines: do not add verses a shorter plan would not have.`;
     case 'memory':
     default:
-      return `PLAN LENGTH: SHORT\n- ${same}\n- 0-1 thought per step: only the single anchor the preacher must not forget; the verse often says enough.\n- Keep every Scripture line a step stands on: shortness comes from thoughts only.`;
+      return `PLAN LENGTH: SHORT\n- ${same}\n- ${count}: only the single anchor the preacher must not forget; the verse often says enough. ${order}\n- Keep every Scripture line a step stands on: shortness comes from thoughts only.`;
   }
 }

@@ -10,7 +10,7 @@ import {
   planSystemPrompt, createPlanUserMessage,
   planPointContentSystemPrompt, createPlanPointContentUserMessage
 } from "@/config/prompts";
-import { createNotePlanUserMessage, notePlanLengthInstructions, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
+import { createNotePlanUserMessage, NOTE_PLAN_THOUGHTS, notePlanLengthInstructions, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import {
   DirectionsResponseSchema,
   PlanPointContentResponseSchema,
@@ -1300,7 +1300,7 @@ export async function generateNotePlanPoint(
   const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
     formatName: 'note_plan_point', userId, promptBlueprint,
     ...(capture && {
-      settleParsedResult: (parsed: unknown) => capture.publish(assembleNotePlanProposal(NotePlanResponseSchema.parse(parsed), allowed, input.revision, input.language)),
+      settleParsedResult: (parsed: unknown) => capture.publish(assembleNotePlanProposal(NotePlanResponseSchema.parse(parsed), allowed, input, style)),
       requestOptions: { timeout: Math.max(1, Math.floor(capture.deadline - performance.now())), maxRetries: 0 },
     }),
   });
@@ -1308,7 +1308,7 @@ export async function generateNotePlanPoint(
     if (result.error && isAiResultRecoveryError(result.error)) throw result.error;
     throw new Error('Note plan generation failed');
   }
-  return assembleNotePlanProposal(result.data, allowed, input.revision, input.language);
+  return assembleNotePlanProposal(result.data, allowed, input, style);
 }
 
 /** The conclusion's label of a plan cell, from the locales, in the language the cell is written in. */
@@ -1324,17 +1324,45 @@ const NOTE_PLAN_REFS_PARTLY_PLACED: Record<NotePlanLanguage, string> = {
   en: en.plan.fromNote.referencesPartlyPlaced, ru: ru.plan.fromNote.referencesPartlyPlaced, uk: uk.plan.fromNote.referencesPartlyPlaced,
 };
 
+type NotePlanNode = ReturnType<typeof NotePlanResponseSchema.parse>['nodes'][number];
+
+/**
+ * A point's conclusion closes the whole point, so it stands at the end of its last cell — the last sub-point when the
+ * point has them (owner on production, 2026-11-22: «вывод … должен быть в конце, после двух подпунктов»). A sub-point
+ * has none of its own; a parent generated alone leaves the conclusion where it lives, at the end of its last sub-point.
+ */
+function placeConclusion(nodes: NotePlanNode[], point: NotePlanInput['point']): NotePlanNode[] {
+  const subPoints = [...(point.subPoints ?? [])].sort((a, b) => a.position - b.position);
+  const lastId = subPoints.length ? subPoints[subPoints.length - 1].id : point.id;
+  // With the point in the answer, only its own conclusion closes it — a sub-point's line never stands for the whole.
+  const parent = nodes.find((node) => node.nodeId === point.id);
+  const closing = (parent ? parent.conclusion : nodes.find((node) => node.nodeId === lastId)?.conclusion) ?? null;
+  return nodes.map((node) => ({ ...node, conclusion: node.nodeId === lastId ? closing : null }));
+}
+
+/** A fresh plan holds its length: each step keeps its first thoughts up to the length's number; a written request may ask for more. */
+function holdLength(nodes: NotePlanNode[], style: PlanStyle): NotePlanNode[] {
+  const { most } = NOTE_PLAN_THOUGHTS[style] ?? NOTE_PLAN_THOUGHTS.memory;
+  return nodes.map((node) => ({
+    ...node,
+    steps: node.steps.map((step) => ({ ...step, thoughts: step.thoughts.filter((thought) => thought.trim()).slice(0, most) })),
+  }));
+}
+
 function assembleNotePlanProposal(
-  result: ReturnType<typeof NotePlanResponseSchema.parse>, allowed: Set<string>, revision: NotePlanInput['revision'],
-  language: NotePlanInput['language'],
+  result: ReturnType<typeof NotePlanResponseSchema.parse>, allowed: Set<string>, input: NotePlanInput, style: PlanStyle,
 ): NotePlanResult {
+  const { revision, language } = input;
   const seen = new Set(result.nodes.map((node) => node.nodeId));
   if (seen.size !== allowed.size || result.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
     throw new Error('Generated plan does not match the requested nodes');
   }
+  // A fresh plan is laid out and held to its length; a revision changes only what was asked — a conclusion the preacher
+  // kept in a sub-point stays where it is.
+  const nodes = revision ? result.nodes : holdLength(placeConclusion(result.nodes, input.point), style);
   const contentByNodeId: Record<string, string> = {};
   const missingMaterial: Record<string, string> = {};
-  for (const node of result.nodes) {
+  for (const node of nodes) {
     const current = revision?.currentContentByNodeId[node.nodeId] ?? '';
     const offersRefs = node.refs.length > 0 || node.steps.some((step) => step.refs.length > 0) || !!node.table?.rows.length;
     // A note plan has its own shape (`utils/notePlanMarkdown.ts`): entry, steps on their verses, conclusion.
