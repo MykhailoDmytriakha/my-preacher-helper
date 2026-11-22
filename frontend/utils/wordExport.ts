@@ -5,7 +5,7 @@ import { PlanData } from '@/models/models';
 import { markdownCodeRanges, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
 import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
-import { markdownTableRanges, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
+import { markdownTableRanges, type CellSpan, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
 import { decodeBasicHtmlEntities } from '@/utils/markdownUtils';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
@@ -246,10 +246,12 @@ const parseMarkdownProse = (content: string, bodyIndent?: number, items: ListIte
   for (const table of tables) {
     const prose = content.slice(cursor, table.blockStart);
     if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent, items));
-    const prefix = blockListPrefix(content, table);
+    const prefix = table.html ? '' : blockListPrefix(content, table);
     if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));
     const indent = (bodyIndent ?? 0) + table.listDepth * 360 + table.quoteDepth * 720;
-    elements.push(parsedWordTable(table, indent));
+    if (table.caption) elements.push(new Paragraph({ children: [new TextRun({ text: table.caption, bold: true })], indent: { left: indent } }));
+    // A table with no cells is nothing to draw — and Word refuses a table without rows.
+    if (table.rows.some(row => row.length)) elements.push(parsedWordTable({ ...table, rows: table.rows.filter(row => row.length) }, indent));
     // Whatever follows stands in no deeper list than the table did: a table outside the list ends its items.
     items.length = Math.min(items.length, table.listDepth);
     cursor = table.end;
@@ -329,12 +331,18 @@ export const parseTable = (tableLines: string[], indent = 0): Table | null => {
   return createWordTable(rows.map(row => row.map(parseInlineMarkdown)), indent);
 };
 
-/** A cell's runs: an HTML cell's paragraphs each start a new line, as on screen. */
-const cellRuns = (cell: MarkdownTableCell): TextRun[] => cell.paragraphs
-  ? cell.paragraphs.flatMap((paragraph, index) => [
-    ...(index ? [new TextRun({ break: 1 })] : []),
-    ...parseInlineInherited(paragraph, {}),
-  ])
+/** A run of an HTML cell, with the marks its tags gave it; its text is final — decoded once, not read as Markdown. */
+const spanRun = ({ text, code, superScript, subScript, highlight, underline, ...marks }: CellSpan): TextRun => new TextRun({
+  text, ...marks,
+  ...(underline ? { underline: {} } : {}),
+  ...(code ? { font: WORD_CODE_FONT } : {}),
+  ...(superScript || subScript ? { superScript, subScript, size: 16 } : {}),
+  ...(highlight ? { highlight: 'yellow' } : {}),
+});
+
+/** A cell's runs: an HTML cell's lines each start a new line, as on screen. */
+const cellRuns = (cell: MarkdownTableCell): TextRun[] => cell.lines
+  ? cell.lines.flatMap((line, index) => [...(index ? [new TextRun({ break: 1 })] : []), ...line.map(spanRun)])
   : parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 });
 
 const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => createWordTable(

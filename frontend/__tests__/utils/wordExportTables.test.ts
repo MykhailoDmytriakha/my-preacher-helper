@@ -148,11 +148,51 @@ it('writes a table the editor saved as HTML as the same Word table', async () =>
     + '</tbody></table>';
   const tables = await actualTables(`Отдельно братьям и сёстрам.\n\n${html}`);
   expect(tables).toEqual([[
-    ['', ' ', 'Братьям', 'Сёстрам'],
+    ['', '', 'Братьям', 'Сёстрам'],
     ['', 'Дети', 'Евр. 11:7', '2 Тим. 1:5вера матери'],
     ['Вместе', 'Еф. 5:21', 'Еф. 5:21'],
   ]]);
   const xml = await wordXml(html);
   expect(xml).not.toContain('&amp;nbsp;');
   expect(xml).toMatch(/<w:gridSpan w:val="2"\/>/);
+});
+
+// Codex ship check, 2026-11-21: what an HTML table must keep in Word besides its cells.
+describe('a table written as HTML keeps everything around and inside it', () => {
+  it('skips an empty table instead of failing the whole export', async () => {
+    const xml = await wordXml('Before\n\n<table></table>\n\nAfter');
+    expect(xml).toContain('Before');
+    expect(xml).toContain('After');
+  });
+
+  it('keeps the words written before the table on its line, and its caption', async () => {
+    const xml = await wordXml('Keep me <table><caption>Topic</caption><tr><td>Inside</td></tr></table> after');
+    expect(xml).toContain('Keep me');
+    expect(xml).toContain('Topic');
+    expect(wordTables(xml)).toEqual([[['Inside']]]);
+  });
+
+  it('keeps literal marks and decodes the editor\'s entities once', async () => {
+    const tables = await actualTables('<table><tr><td><p>Keep *these* and `these`</p></td><td><code>&lt;tag&gt;&amp;</code></td></tr></table>');
+    expect(tables).toEqual([[['Keep *these* and `these`', '<tag>&']]]);
+  });
+
+  it('puts rows where the browser draws them: head, body, foot, with a span to the end of its group', async () => {
+    const tables = await actualTables('<table><tfoot><tr><td>Foot</td><td>F</td></tr></tfoot><tbody><tr><td rowspan="0">A</td><td>B</td></tr><tr><td>C</td></tr></tbody></table>');
+    expect(tables[0][0]).toEqual(['A', 'B']);
+    expect(tables[0][1][1]).toBe('C');
+    expect(tables[0][2]).toEqual(['Foot', 'F']);
+  });
+});
+
+describe('an HTML table, the second look (Codex re-check)', () => {
+  it('keeps a caption with its marked words', async () => {
+    const xml = await wordXml('<table><caption>Read <strong>this</strong> now.</caption><tr><td>Cell</td></tr></table>');
+    expect(xml).toContain('Read this now.');
+  });
+
+  it('keeps a merge inside its own group of rows', async () => {
+    const tables = await actualTables('<table><tbody><tr><td rowspan="2">A</td><td>B</td></tr></tbody><tbody><tr><td>C</td><td>D</td></tr></tbody></table>');
+    expect(tables[0][1]).toEqual(['C', 'D']);
+  });
 });

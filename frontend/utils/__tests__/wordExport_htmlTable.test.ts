@@ -39,3 +39,23 @@ it('keeps the emphasis inside a cell and puts a cell\'s second paragraph on its 
   const second = runs.findIndex((run) => run.text === 'вера матери')
   expect(runs[second - 1]).toEqual(expect.objectContaining({ break: 1 }))
 })
+
+it('puts each block of a cell on its own line — paragraphs and list items, with their marks', () => {
+  parseMarkdownToParagraphs('<table><tr><td><p>Applications</p><ul><li><p>First</p></li><li><p><strong>Second</strong></p></li></ul><p>After</p></td></tr></table>')
+  const runs = jest.mocked(TextRun).mock.calls.map(([options]) => options as { text?: string; bold?: boolean; break?: number })
+  const lines: string[] = ['']
+  for (const run of runs) {
+    if (run.break) lines.push('')
+    if (run.text) lines[lines.length - 1] += run.text
+  }
+  expect(lines).toEqual(['Applications', '• First', '• Second', 'After'])
+  expect(runs).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Second', bold: true })]))
+})
+
+it('keeps the blank line two breaks make, and a nested table\'s rows in drawing order', () => {
+  parseMarkdownToParagraphs('<table><tr><td>A<br><br>B</td><td><table><tfoot><tr><td>Foot</td></tr></tfoot><tbody><tr><td>Body</td></tr></tbody></table></td></tr></table>')
+  const runs = jest.mocked(TextRun).mock.calls.map(([options]) => options as { text?: string; break?: number })
+  const flat = runs.map((run) => run.break ? '\n' : run.text ?? '').join('')
+  expect(flat).toContain('A\n\nB')
+  expect(flat.indexOf('Body')).toBeLessThan(flat.indexOf('Foot'))
+})
