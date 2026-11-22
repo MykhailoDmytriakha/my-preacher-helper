@@ -83,7 +83,7 @@
       "thoughtsBySection": "Structure (older field)",
       "plan": "Plan",
       "draft": "Plan (older field)",
-      "outline": "Outline",
+      "outline": "Structure",
       "topics": "Topics",
       "status": "Status",
       "meetingDates": "Meetings",
@@ -495,7 +495,7 @@
     "oldTestament": "Old Testament",
     "newTestament": "New Testament",
     "groups": {
-      "law": "Law",
+      "law": "Books of Moses",
       "history": "History",
       "wisdom": "Wisdom",
       "prophets": "Prophets",
@@ -504,6 +504,89 @@
       "generalEpistles": "General Epistles",
       "paulineEpistles": "Epistles of Paul",
       "revelation": "Prophecy"
+    },
+    "bookGroupsHelp": {
+      "title": {
+        "old": "How to remember the order of the Old Testament books",
+        "new": "How to remember the order of the New Testament books"
+      },
+      "groups": {
+        "law": "first the five books of Moses: from the creation of the world to the threshold of the Promised Land.",
+        "history": "the story of the people in the Promised Land — three periods in a row:",
+        "wisdom": "books of wisdom and prayer:",
+        "prophets": "the major first, then the minor:",
+        "gospels": "the life, death and resurrection of Christ — four testimonies.",
+        "acts": "Acts — how the Church was born and grew.",
+        "generalEpistles": "to the whole Church, by author:",
+        "paulineEpistles": "by theme and time:",
+        "revelation": "Revelation — about the end and the victory of Christ."
+      }
+    },
+    "bookParts": {
+      "enteredLand": {
+        "name": "Into the land",
+        "memo": "Joshua leads the people into the Promised Land, then the time of the judges; Ruth lived in those same days."
+      },
+      "kings": {
+        "name": "The kings",
+        "memo": "Samuel, Kings and Chronicles — the story of the kings of Israel and Judah."
+      },
+      "exile": {
+        "name": "Exile and return",
+        "memo": "Ezra, Nehemiah, Esther — the times of exile and of coming home."
+      },
+      "jobAndPsalms": {
+        "name": "Job and Psalms",
+        "memo": "Job is the oldest story; the Psalms are songs, more of them David’s than anyone else’s."
+      },
+      "solomon": {
+        "name": "Books of Solomon",
+        "memo": "Proverbs, Ecclesiastes and the Song of Solomon were written by Solomon."
+      },
+      "majorProphets": {
+        "name": "Major prophets",
+        "memo": "the longer books — Isaiah, Jeremiah with Lamentations, Ezekiel, Daniel."
+      },
+      "minorProphets": {
+        "name": "Minor prophets",
+        "memo": "twelve short books, from Hosea to Malachi."
+      },
+      "james": {
+        "name": "James",
+        "memo": "one letter."
+      },
+      "peter": {
+        "name": "Peter",
+        "memo": "two letters."
+      },
+      "john": {
+        "name": "John",
+        "memo": "three letters."
+      },
+      "jude": {
+        "name": "Jude",
+        "memo": "one letter."
+      },
+      "greatEpistles": {
+        "name": "The great letters",
+        "memo": "the main letters: Romans, Corinthians, Galatians."
+      },
+      "prisonEpistles": {
+        "name": "From prison",
+        "memo": "written in chains: Ephesians, Philippians, Colossians and Philemon."
+      },
+      "thessalonians": {
+        "name": "To the Thessalonians",
+        "memo": "letters about the Lord’s coming."
+      },
+      "pastoralEpistles": {
+        "name": "Pastoral",
+        "memo": "to ministers: Timothy and Titus."
+      },
+      "hebrews": {
+        "name": "Hebrews",
+        "memo": "solid food; it stands apart, at the end."
+      }
     },
     "continueReading": "Continue: {{place}}",
     "allBooks": "All books",
@@ -2743,10 +2826,9 @@
       "generateSubPoint": "Generate only this subpoint",
       "generatePointWithSubPoints": "Generate point and all subpoints",
       "generating": "Generating…",
-      "proposal": "Review the proposed content",
-      "detachedProposal": "Proposal for a removed plan point",
-      "current": "Current text",
-      "suggested": "From the note",
+      "detachedProposal": "Proposal for a removed structure point",
+      "current": "In the point now",
+      "suggested": "Proposed",
       "empty": "No text yet",
       "apply": "Use this version",
       "noReminder": "No scratch material here. The point title will guide selection from the study.",
@@ -2754,17 +2836,20 @@
       "sourceUnavailable": "A linked note is empty or unavailable. Check the sources on the sermon page. You can still write by hand.",
       "sourceTooLarge": "The linked material is too large to read in full in one request. Use a smaller study or fewer source notes; nothing has been truncated.",
       "generationFailed": "This point could not be generated. Your text is unchanged. Try again.",
-      "usageBlocked": "The AI allowance is used up. You can still edit and save the plan."
+      "usageBlocked": "The AI allowance is used up. You can still edit and save the plan.",
+      "conclusionLabel": "Conclusion",
+      "referencesNotPlaced": "The new verses could not be placed: the point's text does not show for sure where they belong. Your text is unchanged.",
+      "referencesPartlyPlaced": "Some of the new verses could not be placed: the point's text does not show for sure where they belong. The rest was replaced."
     },
     "pageTitle": "Sermon plan",
     "style": {
       "label": "Plan Length",
       "memory": "Short",
-      "memoryDesc": "Minimal cue sheet: main anchors only",
+      "memoryDesc": "Only the essentials",
       "narrative": "Medium",
-      "narrativeDesc": "Balanced cue sheet: anchors and key details",
+      "narrativeDesc": "Essentials and explanation",
       "exegetical": "Detailed",
-      "exegeticalDesc": "Fuller cue sheet: details, transitions, and references"
+      "exegeticalDesc": "More thoughts and examples"
     },
     "preachButton": "Preach",
     "customTime": "Custom Time",
@@ -2832,7 +2917,7 @@
     "generateAll": "Generate All",
     "generationTextChanged": "The point changed while content was generating. Review the result before using it.",
     "pointResultTitle": "Generated plan text",
-    "pointResultRemovedPoint": "Removed plan point",
+    "pointResultRemovedPoint": "Removed structure point",
     "pointResultCheck": "Check for the result",
     "pointResultNotStarted": "The server has yet to receive this generation request.",
     "pointResultResume": "Continue generation",
@@ -2944,8 +3029,8 @@
     "draftRecoveryOnServer": "In the plan now",
     "draftRecoverySameOnServer": "The plan already holds the same text",
     "draftRecoveryEmpty": "(empty)",
-    "orphanedTitle": "Text of points no longer in the plan",
-    "orphanedBody": "These words no longer have a point in the plan. Copy any text you want to keep.",
+    "orphanedTitle": "Text of points no longer in the structure",
+    "orphanedBody": "These words no longer have a point in the structure. Copy any text you want to keep.",
     "orphanedCopy": "Copy",
     "orphanedDiscard": "Let it go",
     "orphanedBlocksLeaving": "First decide about the text of removed points shown above: copy it or let it go."
@@ -3264,13 +3349,13 @@
     },
     "sort": {
       "pool": "Pool",
-      "plan": "Plan",
-      "poolHint": "Tick a few scratch notes about one thing and press “Collect into a point”. Or drag a note straight into the plan.",
+      "plan": "Structure",
+      "poolHint": "Tick a few scratch notes about one thing and press “Collect into a point”. Or drag a note straight into the structure.",
       "poolHintPhone": "Tick scratch notes about one thing and press “Into a point” below. The arrow on a note moves just that note.",
-      "poolEmpty": "The pool is empty — the plan’s skeleton is ready.",
+      "poolEmpty": "The pool is empty — the structure is ready.",
       "progress": "Sorted {{placed}} of {{total}}",
       "tabPool": "Pool · {{count}}",
-      "tabPlan": "Plan · {{placed}} of {{total}}",
+      "tabPlan": "Structure · {{placed}} of {{total}}",
       "selected": "{{count}} selected",
       "select": "Select scratch note",
       "clearSelection": "Clear selection",
@@ -4184,7 +4269,7 @@
     "createSermon": {
       "eyebrow": "Sermon",
       "title": "New sermon from this note",
-      "description": "The note stays the source. Its key thoughts go into the scratch pool, and you build the plan yourself.",
+      "description": "The note stays the source. Its key thoughts go into the scratch pool, and you build the structure yourself.",
       "titleLabel": "Sermon title",
       "titlePlaceholder": "What shall we call the sermon",
       "verseLabel": "Scripture",
@@ -4198,7 +4283,7 @@
       "measureWords_one": "{{formatted}} word",
       "measureWords_other": "{{formatted}} words",
       "explainToggle": "Where this number comes from",
-      "explainWhat": "A scratch note is one key thought of the note: the claim, the Scripture it rests on, and your own words. They go into the sermon's scratch pool, and you build the plan from them yourself.",
+      "explainWhat": "A scratch note is one key thought of the note: the claim, the Scripture it rests on, and your own words. They go into the sermon's scratch pool, and you build the structure from them yourself.",
       "explainHow": "How many there will be is decided by the note itself: as many as it has key thoughts. The number shown beforehand is what the length justifies — roughly one key thought per {{from}}–{{to}} words.",
       "explainHere": "This note has {{paragraphs}} and about {{words}} — hence the {{min}}–{{max}}.",
       "explainHereWithRate": "This note has {{paragraphs}} and about {{words}} — about one scratch note per {{rate}}. Hence the {{min}}–{{max}}.",

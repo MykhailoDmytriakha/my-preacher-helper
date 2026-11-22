@@ -161,7 +161,14 @@ const wordProseLines = (content: string): string[] => {
   return lines.filter(line => line.trim() !== '');
 };
 
-const parseMarkdownText = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+/**
+ * The list items the current line may belong to, innermost last: where each is drawn, and the column its own content
+ * starts at ("1. " → 3, "10. " → 4) — a line belongs to an item when it is indented at least that far. One body shares
+ * it across its code and table splits, so a step's quote after a table still sits under the step.
+ */
+type ListItemStack = { indent: number; content: number }[];
+
+const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItemStack = []): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
     const placeholderText = t('export.planEmptyContent', 'Content will be added later...');
     return [
@@ -185,7 +192,19 @@ const parseMarkdownText = (content: string, bodyIndent?: number): (Paragraph | T
   while (i < lines.length) {
     const trimmedLine = lines[i].trim();
 
-    const listIndent = (bodyIndent ?? 360) + 360 + Math.floor((lines[i].length - lines[i].trimStart().length) / 2) * 360;
+    const leading = lines[i].length - lines[i].trimStart().length;
+    while (items.length && leading < items[items.length - 1].content) items.pop();
+    const parent = items[items.length - 1];
+    // «- - -» and «* * *» are rules, not list items.
+    const marker = /^([-*_])(\s*\1){2,}\s*$/.test(trimmedLine) ? null : /^([-*]|\d+\.)\s+/.exec(trimmedLine);
+    // One level under the item it belongs to, the same for step 9 and step 10; at the top, as before.
+    const listIndent = parent
+      ? parent.indent + 360 + Math.floor((leading - parent.content) / 2) * 360
+      : (bodyIndent ?? 360) + 360 + Math.floor(leading / 2) * 360;
+    if (marker) items.push({ indent: listIndent, content: leading + marker[0].length });
+    // A paragraph or quote inside a list item — a plan step's verse, its quote — sits where the item's own bullets
+    // sit, under its number (owner, 2026-11-21: the structure must show); outside any item it keeps the body indent.
+    const nested = !marker && !!parent;
 
     // Handle different markdown elements using helper functions
     try {
@@ -194,11 +213,11 @@ const parseMarkdownText = (content: string, bodyIndent?: number): (Paragraph | T
       } else if (trimmedLine.match(/^\d+\. /)) {
         elements.push(parseNumberedList(trimmedLine, listIndent));
       } else if (trimmedLine.startsWith('> ')) {
-        elements.push(parseBlockquote(trimmedLine, bodyIndent ?? 720));
+        elements.push(parseBlockquote(trimmedLine, nested ? listIndent : bodyIndent ?? 720));
       } else if (trimmedLine === '---' || trimmedLine === '***') {
         elements.push(parseHorizontalRule());
       } else {
-        elements.push(parseRegularParagraph(trimmedLine, bodyIndent));
+        elements.push(parseRegularParagraph(trimmedLine, nested ? listIndent : bodyIndent));
       }
     } catch {
       // Fallback to regular paragraph if parsing fails
@@ -219,22 +238,24 @@ const blockListPrefix = (
   return marker ? (/^\d/.test(marker) ? marker + ' ' : '• ') : '';
 };
 
-const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+const parseMarkdownProse = (content: string, bodyIndent?: number, items: ListItemStack = []): (Paragraph | Table)[] => {
   const tables = markdownTableRanges(content);
-  if (!tables.length) return parseMarkdownText(content, bodyIndent);
+  if (!tables.length) return parseMarkdownText(content, bodyIndent, items);
   const elements: (Paragraph | Table)[] = [];
   let cursor = 0;
   for (const table of tables) {
     const prose = content.slice(cursor, table.blockStart);
-    if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent));
+    if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent, items));
     const prefix = blockListPrefix(content, table);
     if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));
     const indent = (bodyIndent ?? 0) + table.listDepth * 360 + table.quoteDepth * 720;
     elements.push(parsedWordTable(table, indent));
+    // Whatever follows stands in no deeper list than the table did: a table outside the list ends its items.
+    items.length = Math.min(items.length, table.listDepth);
     cursor = table.end;
   }
   const tail = content.slice(cursor);
-  if (tail.trim()) elements.push(...parseMarkdownText(tail, bodyIndent));
+  if (tail.trim()) elements.push(...parseMarkdownText(tail, bodyIndent, items));
   return elements;
 };
 
@@ -256,17 +277,19 @@ const literalCodeParagraphs = (code: MarkdownCodeRange, source: string, bodyInde
 
 const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
   const code = markdownCodeRanges(content).filter(range => range.kind === 'block');
-  if (!code.length) return parseMarkdownProse(content, bodyIndent);
+  const items: ListItemStack = [];
+  if (!code.length) return parseMarkdownProse(content, bodyIndent, items);
   const elements: (Paragraph | Table)[] = [];
   let cursor = 0;
   for (const block of code) {
     const prose = content.slice(cursor, block.blockStart);
-    if (prose.trim()) elements.push(...parseMarkdownProse(prose, bodyIndent));
+    if (prose.trim()) elements.push(...parseMarkdownProse(prose, bodyIndent, items));
     elements.push(...literalCodeParagraphs(block, content, bodyIndent));
+    items.length = Math.min(items.length, block.listDepth);
     cursor = block.end;
   }
   const tail = content.slice(cursor);
-  if (tail.trim()) elements.push(...parseMarkdownProse(tail, bodyIndent));
+  if (tail.trim()) elements.push(...parseMarkdownProse(tail, bodyIndent, items));
   return elements;
 };
 

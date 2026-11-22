@@ -11,10 +11,12 @@ import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { panelVerticalRooms } from '@/utils/panelPlacement';
+import { BOOK_PART_TONES } from '@/utils/themeColors';
 import { chapterCount, verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
 import { booksOf } from './bookOrder';
+import { GroupBooks } from './GroupBooks';
 import { BibleSearch } from './search/BibleSearch';
 import { useBookTexts } from './useBookTexts';
 
@@ -69,6 +71,8 @@ type PickerWindowProps = {
    * button low in a form, a window under it ran off the bottom edge (the owner, 2026-10-28: «должно было быть по центру»).
    */
   centered?: boolean;
+  /** Where the focus goes back when it closes: its button, even where a click gives a button no focus (Safari). */
+  returnFocusTo?: RefObject<HTMLElement | null>;
   label: string;
   children: ReactNode;
 };
@@ -79,7 +83,7 @@ type PickerWindowProps = {
  * reader's buttons behind it are out of the keyboard's reach (Codex review, 2026-10-23 — Shift+Tab
  * from the search window opened the translation's window over it).
  */
-function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, layerClassName = 'z-[100]', centered = false, label, children }: PickerWindowProps) {
+export function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, layerClassName = 'z-[100]', centered = false, returnFocusTo, label, children }: PickerWindowProps) {
   const { t } = useTranslation();
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
@@ -103,7 +107,7 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
     window.addEventListener('resize', resized);
     return () => window.removeEventListener('resize', resized);
   }, [open, wide, centered]);
-  const layer = useModalLayer({ onClose, active: open });
+  const layer = useModalLayer({ onClose, active: open, returnFocusTo });
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -163,9 +167,9 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
 /** A button that a hold fills from the bottom: half a second, then lifting does the long action (`useLongPress`). */
 const HOLDABLE = 'relative overflow-hidden select-none touch-manipulation [-webkit-touch-callout:none]';
 
-/** The fill of a held button and its text above it, white once the fill has risen past it. */
-function HoldFill({ state }: { state: LongPressState }) {
-  return <span aria-hidden="true" className={`absolute inset-x-0 bottom-0 bg-indigo-600 ${state === 'idle' ? 'h-0' : 'h-full transition-[height] duration-500 ease-linear'}`} />;
+/** The fill of a held button and its text above it, white once the fill has risen past it; a book of a part fills in its part's colour. */
+function HoldFill({ state, fill = 'bg-indigo-600' }: { state: LongPressState; fill?: string }) {
+  return <span aria-hidden="true" className={`absolute inset-x-0 bottom-0 ${fill} ${state === 'idle' ? 'h-0' : 'h-full transition-[height] duration-500 ease-linear'}`} />;
 }
 const heldText = (state: LongPressState) => (state === 'idle' ? 'relative' : 'relative text-white transition-colors delay-200');
 
@@ -402,7 +406,7 @@ const usePickerWords = () => {
 /** A window's name for its step: the chapters, or the verses of one chapter. */
 const stepLabel = (chapter: number | null) => (chapter === null ? 'bible.chooseChapter' : 'bible.chooseVerse');
 
-const TRIGGER_OPEN = 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/60';
+export const TRIGGER_OPEN = 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/60';
 /** A trigger of a window shows a border only while its window is open. */
 const triggerBorder = (open: boolean) => (open ? TRIGGER_OPEN : 'border-transparent');
 
@@ -468,6 +472,8 @@ export function ChapterPicker({ bookId, bible, current, verse, text, locale, wid
 type BookChipProps = {
   id: string;
   name: string;
+  /** Its part's colour (`BOOK_PART_TONES`), as on the list of books; `null` — a group that is not split. */
+  tone: number | null;
   current: boolean;
   autoFocus: boolean;
   wide: boolean;
@@ -476,7 +482,7 @@ type BookChipProps = {
 };
 
 /** A book: a press shows its chapters, a hold opens it at its start. */
-function BookChip({ id, name, current, autoFocus, wide, onPick, onHold }: BookChipProps) {
+function BookChip({ id, name, tone, current, autoFocus, wide, onPick, onHold }: BookChipProps) {
   const { state, handlers } = useLongPress({ onPress: () => onPick(id), onLongPress: onHold ? () => onHold(id) : undefined });
   return (
     <button
@@ -485,10 +491,12 @@ function BookChip({ id, name, current, autoFocus, wide, onPick, onHold }: BookCh
       aria-current={current ? 'true' : undefined}
       {...handlers}
       className={`${HOLDABLE} inline-flex ${wide ? 'min-h-9' : 'min-h-11'} items-center rounded-[10px] border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${current
-        ? 'border-indigo-400 bg-indigo-600 text-white'
-        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
+        ? (tone !== null ? BOOK_PART_TONES[tone].selected : 'border-indigo-400 bg-indigo-600 text-white')
+        : tone !== null
+          ? BOOK_PART_TONES[tone].chip
+          : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
     >
-      <HoldFill state={state} />
+      <HoldFill state={state} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
       <span className={heldText(state)}>{name}</span>
     </button>
   );
@@ -523,21 +531,21 @@ function BookChoices({ bookId, bible, locale, wide, focusCurrent, onPick, onHold
             {testament.groups.map((group) => (
               <div key={group.key} className="flex flex-col gap-1.5">
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{t(`bible.groups.${group.key}`)}</h3>
-                <ul className="flex flex-wrap gap-1.5">
-                  {group.ids.map((id) => (
-                    <li key={id}>
-                      <BookChip
-                        id={id}
-                        name={getLocalizedBookName(id, locale)}
-                        current={id === bookId}
-                        autoFocus={focusCurrent && id === bookId}
-                        wide={wide}
-                        onPick={onPick}
-                        onHold={onHold}
-                      />
-                    </li>
-                  ))}
-                </ul>
+                <GroupBooks
+                  group={group}
+                  renderBook={(id, part) => (
+                    <BookChip
+                      id={id}
+                      name={getLocalizedBookName(id, locale)}
+                      tone={part}
+                      current={id === bookId}
+                      autoFocus={focusCurrent && id === bookId}
+                      wide={wide}
+                      onPick={onPick}
+                      onHold={onHold}
+                    />
+                  )}
+                />
               </div>
             ))}
           </section>
@@ -652,11 +660,13 @@ export function BookNavigator({ start, bookId, bible, currentChapter, currentVer
  * «там тоже это должно работать, так же само»): a press opens its chapters — then a chapter's verses — in a
  * window under it, a hold opens the book at its start. Where the person stopped in this book is filled.
  */
-export function BookOnList({ bookId, bible, locale, wide, here, onOpen }: {
+export function BookOnList({ bookId, bible, locale, wide, tone = null, here, onOpen }: {
   bookId: string;
   bible: BibleId;
   locale: AppLocale;
   wide: boolean;
+  /** Its part's colour (`BOOK_PART_TONES`): the parts of a group stand apart by colour; `null` — the plain chip. */
+  tone?: number | null;
   here?: { chapter: number; verse: number };
   onOpen: (bookId: string, place: Place) => void;
 }) {
@@ -687,10 +697,12 @@ export function BookOnList({ bookId, bible, locale, wide, here, onOpen }: {
         aria-expanded={open}
         {...handlers}
         className={`${HOLDABLE} inline-flex min-h-10 items-center rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${open
-          ? TRIGGER_OPEN + ' text-indigo-700 dark:text-indigo-300'
-          : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
+          ? (tone !== null ? BOOK_PART_TONES[tone].selected : TRIGGER_OPEN + ' text-indigo-700 dark:text-indigo-300')
+          : tone !== null
+            ? BOOK_PART_TONES[tone].chip
+            : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
       >
-        <HoldFill state={state} />
+        <HoldFill state={state} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
         <span className={heldText(state)}>{getLocalizedBookName(bookId, locale)}</span>
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="start" width={open && wide ? gridWindowWidth(columns) : undefined} wide={wide} label={t(stepLabel(chapter))}>

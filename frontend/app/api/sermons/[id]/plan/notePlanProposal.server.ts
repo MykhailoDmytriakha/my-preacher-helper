@@ -69,7 +69,7 @@ async function createProposal(scope: SourceScope, request: NotePlanRequest, capt
   const materialKey = sourceKey(notes);
   if (request.expectedSourceKey && request.expectedSourceKey !== materialKey) throw new NotePlanRefusal('contextChanged', 409);
   const input: NotePlanInput = {
-    title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision, filed: notePlanFiledNotes(sermon),
+    title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision, filed: notePlanFiledNotes(sermon), language: scope.language,
     outline: sections.flatMap(key => (sermon.outline?.[key] ?? []).map(item => ({
       section: key, title: item.text,
       subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map(sub => sub.text),

@@ -10,7 +10,9 @@ import { placeIn } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
 import { BookOnList, TranslationPicker } from './BiblePicker';
+import { BookGroupsHelp } from './BookGroupsHelp';
 import { booksOf } from './bookOrder';
+import { GroupBooks } from './GroupBooks';
 import { useTrailOnList } from './PlaceTrail';
 import { usePlaceTrail } from './placeTrailStore';
 import { BibleSearch } from './search/BibleSearch';
@@ -96,27 +98,31 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
                   aria-label={testament.title}
                   className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-700 dark:bg-gray-900"
                 >
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{testament.title}</h2>
+                  {/* «?» — how to remember the order of its books; the parts of a group stand apart by colour. */}
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{testament.title}</h2>
+                    <BookGroupsHelp testament={testament} wide={wide} />
+                  </div>
                   {testament.groups.map((group) => (
                     <div key={group.key} className="flex flex-col gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         {t(`bible.groups.${group.key}`)}
                       </h3>
-                      <ul className="flex flex-wrap gap-1.5">
-                        {group.ids.map((bookId) => (
-                          <li key={bookId}>
-                            {/* A press: its chapters, then a chapter's verses; a hold: the book at its start — as in the reader. */}
-                            <BookOnList
-                              bookId={bookId}
-                              bible={bible}
-                              locale={locale}
-                              wide={wide}
-                              here={bookId === lastBookId && continueAt ? { chapter: continueAt.chapter, verse: continueAt.verse } : undefined}
-                              onOpen={(book, place) => onOpen(bookSlug(book), place)}
-                            />
-                          </li>
-                        ))}
-                      </ul>
+                      {/* A press: its chapters, then a chapter's verses; a hold: the book at its start — as in the reader. */}
+                      <GroupBooks
+                        group={group}
+                        renderBook={(bookId, part) => (
+                          <BookOnList
+                            bookId={bookId}
+                            bible={bible}
+                            locale={locale}
+                            wide={wide}
+                            tone={part}
+                            here={bookId === lastBookId && continueAt ? { chapter: continueAt.chapter, verse: continueAt.verse } : undefined}
+                            onOpen={(book, place) => onOpen(bookSlug(book), place)}
+                          />
+                        )}
+                      />
                     </div>
                   ))}
                 </section>

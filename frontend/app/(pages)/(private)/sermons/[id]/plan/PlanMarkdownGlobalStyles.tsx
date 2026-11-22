@@ -196,6 +196,11 @@ const MARKDOWN_COMMON_STYLES = `
     margin-top: 0;
     display: inline-block;
   }
+  /* A cell being read carries its edit switch floated top-right: its lines wrap beside it, so the
+     first paragraph is a block — an inline-block too wide to fit beside the switch drops below it. */
+  .plan-cell-reading .markdown-content > p:first-child {
+    display: block;
+  }
   /* Ensure first element doesn't create unwanted space */
   .markdown-content > *:first-child {
     margin-top: 0;

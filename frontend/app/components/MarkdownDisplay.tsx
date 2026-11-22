@@ -8,6 +8,7 @@ import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, Script
 import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { textLanguage } from '@/utils/appLocale';
 import { prepareStructuredBlocks, STRUCTURED_BLOCK_TYPES } from '@/utils/markdownStructuredBlocks';
+import { rehypeTableRecords } from '@/utils/rehypeTableRecords';
 import HighlightedText from '@components/HighlightedText';
 
 import type { PluggableList } from 'unified';
@@ -50,7 +51,8 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
     // The language its references were written in: the document's, else this text's.
     const written = useMemo(() => (scriptureLinks ? scriptureLinks.written ?? textLanguage(content) : null), [content, scriptureLinks]);
     const rehypePlugins = useMemo(
-        () => [...htmlPlugins, ...(presentation?.plugins ?? []), ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+        // Tables are named for their narrow reading after the safe HTML pass, which would strip the attributes.
+        () => [...htmlPlugins, rehypeTableRecords, ...(presentation?.plugins ?? []), ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
         [htmlPlugins, linkLocale, written, presentation?.plugins]
     );
 
@@ -78,9 +80,10 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
                         <a {...props} target={props.href?.startsWith('#') ? undefined : '_blank'} rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
                     ),
                     // A table sizes its columns by their longest word, so a pasted link in a cell would widen the
-                    // whole page; the table scrolls inside its own box instead.
+                    // whole page; the table scrolls inside its own box instead — and a box too narrow for it reads
+                    // the rows as records (`rehypeTableRecords`, `.md-table-box` in globals.css).
                     table: ({ ...props }) => (
-                        <div className="max-w-full overflow-x-auto"><table {...props} /></div>
+                        <div className="md-table-box max-w-full overflow-x-auto"><table {...props} /></div>
                     ),
                     // Ensure lists are properly spaced
                     ul: ({ ...props }) => <ul {...props} className={`${pencil ? 'my-0.5' : 'my-2'} list-disc pl-4`} />,

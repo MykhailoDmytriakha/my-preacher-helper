@@ -52,7 +52,7 @@ export const AddNodeButton = ({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className={`inline-flex items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200 ${className}`}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200 ${className}`}
       >
         <Plus className="h-4 w-4" />
         {label}
@@ -76,14 +76,14 @@ export const AddNodeButton = ({
             cancel();
           }
         }}
-        className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+        className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 outline-none focus:border-blue-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
       />
       <button
         type="button"
         onMouseDown={(event) => event.preventDefault()}
         onClick={commit}
         disabled={text.trim() === ""}
-        className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Check className="h-4 w-4" />
         {confirmLabel}
@@ -92,7 +92,7 @@ export const AddNodeButton = ({
         type="button"
         onMouseDown={(event) => event.preventDefault()}
         onClick={cancel}
-        className="inline-flex items-center rounded-md border border-gray-300 p-1.5 text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 p-0 text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
         title={cancelLabel}
         aria-label={cancelLabel}
       >

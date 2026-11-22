@@ -1,5 +1,5 @@
-import { FileText, Key, Lightbulb, List, Pencil, Save } from "lucide-react";
-import React, { createContext, useContext, useEffect } from "react";
+import { Key, Lightbulb, List, Save } from "lucide-react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { SwitchViewIcon } from "@/components/Icons";
@@ -8,6 +8,7 @@ import PlanGenerationButton from "@/components/plan/PlanGenerationButton";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { legacySectionText, readPlanText } from "@/utils/planText";
@@ -23,6 +24,7 @@ import {
   SECTION_TONE_CLASSES,
   TRANSLATION_KEYS,
 } from "./constants";
+import { PlanCellEditToggle } from "./PlanCellEditToggle";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { planNodesForPoint } from "./planNodes";
 
@@ -37,7 +39,7 @@ const Card = React.forwardRef<HTMLDivElement, { className?: string; children: Re
   ({ className, children }, ref) => (
     <div
       ref={ref}
-      className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow ${className || ""}`}
+      className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm ${className || ""}`}
     >
       {children}
     </div>
@@ -45,58 +47,6 @@ const Card = React.forwardRef<HTMLDivElement, { className?: string; children: Re
 );
 Card.displayName = "Card";
 
-const Button = ({
-  onClick,
-  variant = "default",
-  sectionColor,
-  className,
-  disabled,
-  children,
-  title,
-}: {
-  onClick?: () => void | Promise<void>;
-  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure";
-  sectionColor?: { base: string; light: string; dark: string };
-  className?: string;
-  disabled?: boolean;
-  children: React.ReactNode;
-  title?: string;
-}) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md transition-colors";
-  let variantClass = "";
-
-  if (variant === "section" && sectionColor) {
-    variantClass = "text-white section-button";
-  } else {
-    const variantClasses: Record<string, string> = {
-      default: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600",
-      primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      secondary: "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400",
-      plan: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      structure: "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400",
-    };
-    variantClass = variantClasses[variant] || variantClasses.default;
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClasses} ${variantClass} ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className || ""}`}
-      style={variant === "section" && sectionColor
-        ? ({
-          backgroundColor: sectionColor.light,
-          "--hover-bg": sectionColor.dark,
-          "--active-bg": sectionColor.base,
-          borderColor: sectionColor.dark,
-        } as React.CSSProperties)
-        : undefined}
-      title={title}
-    >
-      {children}
-    </button>
-  );
-};
 
 const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; onSwitchPage?: () => void }) => {
   const { t } = useTranslation();
@@ -107,7 +57,7 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
   return (
     <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}>
       <div
-        className={`p-3 border-b border-l-4 ${sectionToneClasses.border} flex justify-between items-start`}
+        className={`py-3 pl-2 pr-3 border-b border-l-4 ${sectionToneClasses.border} flex justify-between items-start`}
         style={{ borderLeftColor: colors.light }}
       >
         <div>
@@ -126,14 +76,14 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
           </button>
         )}
       </div>
-      <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3 px-3 pb-3">
+      <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-4 px-3 pb-3">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
             <Lightbulb className="h-4 w-4" />
             {t("plan.columns.thoughts")}
           </span>
         </div>
-        <div className="flex items-center justify-start lg:justify-end gap-2">
+        <div className="flex items-center justify-start gap-2">
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
             <List className="h-4 w-4" />
             {t("plan.columns.plan")}
@@ -192,7 +142,8 @@ interface PlanMainLayoutContextValue {
    * text would silently drop the rest.
    */
   onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
-  onToggleEditMode: (outlinePointId: string) => void;
+  /** One cell (the point's own text or a sub-point's) between reading and writing. */
+  onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   onAuthorCell?: (nodeId: string, text: string) => void;
@@ -257,7 +208,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
             onClick={() => onOpenFragmentsModal(outlinePoint.id)}
             variant="section"
             sectionColor={sectionColors}
-            className="text-sm px-2 py-1 h-8 relative"
+            className="relative inline-flex h-8 w-8 items-center justify-center !p-0"
             title={t("plan.markKeyFragments")}
           >
             <Key className="h-4 w-4" />
@@ -317,8 +268,8 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
                     {renderThought(entry.item)}
                   </div>
                 ) : (
-                  <div key={entry.subPoint.id} className="mt-3 ml-2 border-l-2 border-gray-200 dark:border-gray-600 pl-3">
-                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{entry.subPoint.text}</h4>
+                  <div key={entry.subPoint.id} className="mt-3 ml-3 border-l-2 border-gray-200 dark:border-gray-600 pl-4">
+                    <h4 className="text-base font-semibold text-gray-600 dark:text-gray-300 mb-1">{entry.subPoint.text}</h4>
                     {entry.items.length > 0 ? (
                       <div className="ml-2 text-base">
                         {entry.items.map(renderThought)}
@@ -387,7 +338,16 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
   } = usePlanMainLayoutContext();
 
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
-  const isEditMode = !readOnly && Boolean(editModePoints[outlinePoint.id]);
+  const nodes = planNodesForPoint(outlinePoint, pointIndex);
+  // Each cell opens for writing on its own, by the switch standing with its text.
+  const cellEditing = (nodeId: string) => !readOnly && Boolean(editModePoints[nodeId]);
+  // The keyboard follows the switch: it moves to the toolbar's end on opening, back to the corner on closing.
+  const [switchedId, setSwitchedId] = useState<string | null>(null);
+  const toggleCell = (nodeId: string) => {
+    setSwitchedId(nodeId);
+    onToggleEditMode(nodeId, outlinePoint.id);
+  };
+  const isEditMode = nodes.some(node => cellEditing(node.id));
 
   /**
    * THE CELLS OF THIS POINT — its own, then one per sub-point.
@@ -397,7 +357,6 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
    * appeared when preaching and NOWHERE on the screen where the plan is edited: the preacher
    * met his own plan looking half empty, with no way to reach the missing half.
    */
-  const nodes = planNodesForPoint(outlinePoint, pointIndex);
   const currentContent = generatedContent[outlinePoint.id] || "";
   const isModified = nodes.some((node) => Boolean(modifiedContent[node.id]));
   const isSaved = nodes.some((node) => Boolean(savedSermonPoints[node.id]));
@@ -421,9 +380,9 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
           <span className="mr-2 opacity-60">{pointIndex + 1}.</span>
           {outlinePoint.text}
         </span>
-        {!readOnly && <div className="flex shrink-0 space-x-2">
+        {!readOnly && <div className="flex shrink-0 items-center gap-2">
           <Button
-            className="text-sm px-2 py-1 h-8"
+            className="inline-flex h-8 w-8 items-center justify-center !p-0"
             onClick={() => onSaveSermonPoint(outlinePoint.id, cellsOfThisPoint, sectionKey)}
             variant={isModified ? "section" : "default"}
             sectionColor={isModified ? sectionColors : undefined}
@@ -433,14 +392,6 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
             title={t("plan.save")}
           >
             <Save className="h-4 w-4" />
-          </Button>
-          <Button
-            className="text-sm px-2 py-1 h-8"
-            onClick={() => onToggleEditMode(outlinePoint.id)}
-            variant="default"
-            title={isEditMode ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-          >
-            {isEditMode ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </Button>
         </div>}
       </h3>
@@ -461,15 +412,16 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                   <span className="min-w-0 flex-1">{node.heading}</span>
                 </h4>
               )}
-              {isEditMode ? (
+              {cellEditing(node.id) ? (
                 <RichMarkdownEditor
+                  toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                   value={nodeContent}
                   onHoldText={typed => onHoldCellText?.(node.id, typed)}
                   editable={!generatingIds[node.id]}
                   valueBeforeUserAction={foreignValuesBeforeAction[node.id]}
                   valueIsUserAction={userActionValues[node.id] !== undefined && userActionValues[node.id] === nodeContent}
                   placeholder={noContentText}
-                  minHeight={node.kind === "subPoint" ? "90px" : "150px"}
+                  minHeight={node.kind === "subPoint" ? "90px" : "120px"}
                   onChange={(newContent) => {
                     onAuthorCell?.(node.id, newContent);
                     setGeneratedContent((prev) => ({ ...prev, [node.id]: newContent }));
@@ -481,9 +433,11 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
               ) : (
                 <div
                   data-testid="plan-point-preview-surface"
-                  className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
+                  className="relative overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
                 >
-                  <div className="p-4 md:p-5">
+                  <div className="plan-cell-reading flow-root p-4">
+                    {!readOnly && <PlanCellEditToggle editing={false} className="float-right -mr-2 -mt-2 ml-2"
+                      takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                     <MarkdownRenderer markdown={nodeContent || noContentText} section={sectionKey} />
                   </div>
                 </div>
@@ -535,7 +489,7 @@ const PlanSectionColumns = ({
   return (
     <div
       data-testid={`${sectionKey}-interleaved-section`}
-      className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface} p-3 mt-4`}
+      className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface} p-3`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {points.map((outlinePoint, pointIndex) => (
@@ -602,8 +556,9 @@ const PlanSectionBlock = ({
   // where the person reads (the assembled plan shows it by the same rule).
   const legacyText = onCopy ? legacySectionText(sermon, sectionKey, readPlanText(sermon)) : "";
 
+  // A section's header and its cards read as one group: 12px inside, 24px to the next section.
   return (
-    <>
+    <div className="space-y-3 lg:col-span-2">
       <div ref={sectionRef} data-section={sectionKey} className="lg:col-span-2">
         {showPlanStyleSelector && !readOnly && (
           <PlanStyleSelector
@@ -630,7 +585,7 @@ const PlanSectionBlock = ({
         leftTestId={leftTestId}
         rightTestId={rightTestId}
       />
-    </>
+    </div>
   );
 };
 
@@ -668,7 +623,8 @@ export interface PlanMainLayoutProps {
    * text would silently drop the rest.
    */
   onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
-  onToggleEditMode: (outlinePointId: string) => void;
+  /** One cell (the point's own text or a sub-point's) between reading and writing. */
+  onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   onAuthorCell?: (nodeId: string, text: string) => void;

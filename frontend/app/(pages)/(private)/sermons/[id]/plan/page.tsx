@@ -9,6 +9,7 @@ import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { Button } from "@/components/ui/Button";
 import { useEditorValues } from '@/components/ui/useEditorValue';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -70,60 +71,6 @@ import type {
 
 type ExportContentOptions = { includeTags?: boolean; type?: "thoughts" | "plan" };
 
-const Button = ({
-  onClick,
-  variant = "default",
-  sectionColor,
-  className,
-  disabled,
-  children,
-  title
-}: {
-  onClick?: () => void | Promise<void>,
-  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure",
-  sectionColor?: { base: string, light: string, dark: string },
-  className?: string,
-  disabled?: boolean,
-  children: React.ReactNode,
-  title?: string
-}) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md transition-colors";
-
-  let variantClass = "";
-
-  if (variant === "section" && sectionColor) {
-    // Для секционных стилей используем базовый класс без цветов,
-    // цвета будут применены через inline-стили
-    variantClass = "text-white section-button";
-  } else {
-    const variantClasses: Record<string, string> = {
-      default: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600",
-      primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      secondary: "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400",
-      plan: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
-      structure: "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
-    };
-    variantClass = variantClasses[variant] || variantClasses.default;
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseClasses} ${variantClass} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className || ''}`}
-      style={variant === "section" && sectionColor ? {
-        backgroundColor: sectionColor.light,
-        "--hover-bg": sectionColor.dark,
-        "--active-bg": sectionColor.base,
-        // Создаем более темный цвет для border
-        borderColor: sectionColor.dark,
-      } as React.CSSProperties : undefined}
-      title={title}
-    >
-      {children}
-    </button>
-  );
-};
 
 const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | "medium" | "large", className?: string }) => {
   const sizeClasses = {
@@ -306,7 +253,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
 
   // A reference in the plan, or its verse, opens over the plan. The window offers the Bible page only
   // while no point is open for editing: its words are not saved anywhere yet, and leaving would lose them.
-  const editingPoint = Object.values(editModePoints).some(Boolean);
+  // Only cells the outline still has: a sub-point removed while open has no words left to lose.
+  const editingPoint = Object.entries(editModePoints).some(([nodeId, open]) => open && livePlanNodes.has(nodeId));
 
   const [modalSermonPointId, setModalSermonPointId] = useState<string | null>(null);
 
@@ -688,11 +636,11 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     return saveSermonPoint(...args);
   }, [saveSermonPoint]);
 
-  // Toggle edit mode for an outline point
-  const toggleEditMode = (outlinePointId: string) => {
+  // One cell (a point's own text or a sub-point's) between reading and writing
+  const toggleEditMode = (nodeId: string, outlinePointId: string) => {
     setEditModePoints(prev => ({
       ...prev,
-      [outlinePointId]: !prev[outlinePointId]
+      [nodeId]: !prev[nodeId]
     }));
 
     // After toggling, equalize only this pair to avoid page-wide jumps

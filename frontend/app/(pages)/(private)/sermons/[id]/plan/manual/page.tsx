@@ -1,7 +1,7 @@
 "use client";
 
 
-import { FileText, Pencil, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useRef, useState } from "react";
 
@@ -24,6 +24,7 @@ import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
 import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "../OrphanedPlanText";
+import { PlanCellEditToggle } from "../PlanCellEditToggle";
 import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
 import { PlanModeHistory, PlanModeStatus } from '../PlanModeStatus';
@@ -36,8 +37,9 @@ import useCopyFormattedContent from "../useCopyFormattedContent";
 import { useEnginePlanWriter } from "../useEnginePlanWriter";
 import usePlanViewMode from "../usePlanViewMode";
 
+
 import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
-import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
+import { NoteNodeText, NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
 import type { PlanTimerState, SermonSectionKey } from "../types";
@@ -142,7 +144,14 @@ const EditableTitle = ({
 
 const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, onAuthorCell, text, noteMode, readOnly = false, filedNotes }: ManualPointCardProps) => {
   const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
+  // Each cell opens for writing on its own, by the switch standing with its text.
+  const [editingIds, setEditingIds] = useState<Record<string, boolean>>({});
+  // The keyboard follows the switch: it moves to the toolbar's end on opening, back to the corner on closing.
+  const [switchedId, setSwitchedId] = useState<string | null>(null);
+  const setCellEditing = (nodeId: string, editing: boolean) => {
+    setSwitchedId(nodeId);
+    setEditingIds(previous => ({ ...previous, [nodeId]: editing }));
+  };
   const tone = SECTION_TONE_CLASSES[section];
 
   const nodes = planNodesForPoint(point, index);
@@ -164,7 +173,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             onRename={(next) => conspectus.renamePoint(point.id, next)}
           />}
         </span>
-        {!readOnly && <div className="flex shrink-0 gap-2">
+        {!readOnly && <div className="flex shrink-0 items-center gap-2">
           {noteMode && <NotePointGenerateButton point={point} section={section} />}
           <button
             type="button"
@@ -185,15 +194,6 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
           >
             <Save className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => setIsEditing((previous) => !previous)}
-            className="inline-flex h-8 items-center rounded-md bg-gray-200 px-2 py-1 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-            title={isEditing ? t("plan.viewMode") : t("plan.editMode")}
-            aria-label={isEditing ? t("plan.viewMode") : t("plan.editMode")}
-          >
-            {isEditing ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-          </button>
           <DeleteNodeButton
             disabled={conspectus.busyNodeIds.size > 0}
             title={t("plan.deletePoint")}
@@ -212,24 +212,27 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
             className={node.kind === "subPoint" ? `ml-3 border-l-2 pl-4 ${tone.border}` : ""}
           >
             {node.kind === "subPoint" && (
-              <h4 className={`mb-1 flex items-baseline gap-2 text-base font-semibold ${tone.text}`}>
-                <span className="shrink-0 opacity-60">{node.label}</span>
-                {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
-                  value={node.heading}
-                  ariaLabel={t("plan.renameSubPoint")}
-                  onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
-                />}
-                {noteMode && <span className="ml-auto inline-flex shrink-0 self-center">
-                  <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />
-                </span>}
-                {!readOnly && <DeleteNodeButton
-                  disabled={conspectus.busyNodeIds.size > 0}
-                  compact
-                  title={t("plan.deleteSubPoint")}
-                  armedTitle={t("plan.deleteSubPointConfirm")}
-                  armedLabel={t("plan.deleteConfirm")}
-                  onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}
-                />}
+              // The sub-point's heading row has the point's own frame: title left, the same
+              // actions right at the same size — whichever mode leaves out the generate button.
+              <h4 className={`mb-2 flex items-center justify-between gap-2 text-base font-semibold ${tone.text}`}>
+                <span className="flex min-w-0 flex-1 items-baseline gap-1">
+                  <span className="shrink-0 opacity-60">{node.label}</span>
+                  {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
+                    value={node.heading}
+                    ariaLabel={t("plan.renameSubPoint")}
+                    onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
+                  />}
+                </span>
+                {!readOnly && <div className="flex shrink-0 items-center gap-2">
+                  {noteMode && <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />}
+                  <DeleteNodeButton
+                    disabled={conspectus.busyNodeIds.size > 0}
+                    title={t("plan.deleteSubPoint")}
+                    armedTitle={t("plan.deleteSubPointConfirm")}
+                    armedLabel={t("plan.deleteConfirm")}
+                    onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}
+                  />
+                </div>}
               </h4>
             )}
             {noteMode && node.kind === 'subPoint' && <NotePointActions point={point} targetNodeId={node.id} />}
@@ -237,31 +240,35 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
               text={notePlanReminder(node.id, node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note, filedNotes)}
               hasPlan={Boolean(text[node.id]?.trim())}
             />}
-            {isEditing && !readOnly ? (
-              <RichMarkdownEditor
-                editable={!conspectus.busyNodeIds.has(node.id)}
-                value={conspectus.contentByNodeId[node.id] ?? ""}
-                confirmedTextTransfer={conspectus.rescuedAppend?.nodeId === node.id ? conspectus.rescuedAppend.append : undefined}
-                valueBeforeUserAction={conspectus.foreignValuesBeforeAction[node.id]}
-                valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
-                placeholder={t(NO_PLAN_CONTENT_KEY)}
-                minHeight={node.kind === "subPoint" ? "90px" : "120px"}
-                onChange={(text) => {
-                  onAuthorCell(node.id, text);
-                  return conspectus.setNodeContent(node.id, text);
-                }}
-                onHoldText={typed => onHoldCellText(node.id, typed)}
-              />
-            ) : (
-              <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
-                <MarkdownDisplay content={text[node.id] || t(NO_PLAN_CONTENT_KEY)} />
-              </div>
-            )}
+            <NoteNodeText point={point} nodeId={node.id}>
+              {editingIds[node.id] && !readOnly ? (
+                <RichMarkdownEditor
+                  toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => setCellEditing(node.id, false)} />}
+                  editable={!conspectus.busyNodeIds.has(node.id)}
+                  value={conspectus.contentByNodeId[node.id] ?? ""}
+                  confirmedTextTransfer={conspectus.rescuedAppend?.nodeId === node.id ? conspectus.rescuedAppend.append : undefined}
+                  valueBeforeUserAction={conspectus.foreignValuesBeforeAction[node.id]}
+                  valueIsUserAction={conspectus.userActionValues[node.id] !== undefined && conspectus.userActionValues[node.id] === conspectus.contentByNodeId[node.id]}
+                  placeholder={t(NO_PLAN_CONTENT_KEY)}
+                  minHeight={node.kind === "subPoint" ? "90px" : "120px"}
+                  onChange={(text) => {
+                    onAuthorCell(node.id, text);
+                    return conspectus.setNodeContent(node.id, text);
+                  }}
+                  onHoldText={typed => onHoldCellText(node.id, typed)}
+                />
+              ) : (
+                <div className="flow-root rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
+                  {!readOnly && <PlanCellEditToggle editing={false} className="float-right -mr-2 -mt-2 ml-2"
+                    takeFocus={switchedId === node.id} onToggle={() => setCellEditing(node.id, true)} />}
+                  <MarkdownDisplay content={text[node.id] || t(NO_PLAN_CONTENT_KEY)} />
+                </div>
+              )}
+            </NoteNodeText>
           </div>
         ))}
 
         {!readOnly && <AddNodeButton
-          className="ml-3"
           label={t("plan.addSubPoint")}
           placeholder={t("plan.addSubPointPlaceholder")}
           confirmLabel={t("plan.addConfirm")}

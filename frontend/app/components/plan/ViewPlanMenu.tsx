@@ -51,7 +51,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
         <button
           ref={viewButtonRef}
           onClick={() => setShowSectionMenu(!showSectionMenu)}
-          className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto"
+          className="flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto"
         >
           <BookOpen className="h-6 w-6" />
           {t("plan.viewPlan") || "View Plan"}
@@ -108,7 +108,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
             onRequestPreachingMode();
           }
         }}
-        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"
+        className="flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"
       >
         <ScrollText className="h-6 w-6" />
         {t("plan.preachButton") || "Preach"}

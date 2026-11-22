@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from '@/(pages)/(private)/sermons/[id]/plan/manual/NotePlanWorkspace';
+import { NoteNodeText, NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from '@/(pages)/(private)/sermons/[id]/plan/manual/NotePlanWorkspace';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
+import { beginProposal } from '@/(pages)/(private)/sermons/[id]/plan/manual/notePlanDrafts.client';
 
 import type { ManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
 import type { Sermon } from '@/models/models';
@@ -23,7 +24,7 @@ const point = { id: 'p', text: 'Who stood out?', note: 'List the people', subPoi
 const sermon = { id: 's', title: 'Title', verse: '', date: '', thoughts: [], userId: 'u', sourceNoteIds: ['n'],
   outline: { introduction: [], main: [point], conclusion: [] } } as Sermon;
 const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(), busyNodeIds: new Set(), isTransferringText: () => false,
-  restoreCells: jest.fn(() => true), saveModified: jest.fn() } as unknown as ManualConspectus;
+  restoreCells: jest.fn(() => true), saveModified: jest.fn(), saveCells: jest.fn(async () => undefined) } as unknown as ManualConspectus;
 
 const requestRefinement = () => {
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
@@ -31,8 +32,11 @@ const requestRefinement = () => {
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
 };
 
+// Each cell's own text sits inside `NoteNodeText`, exactly as the plan page renders it.
 const view = (enabled = true) => render(<NotePlanWorkspace enabled={enabled} sermon={sermon} conspectus={conspectus}>
   <h3><NotePointGenerateButton point={point} section="main" /></h3><NotePointActions point={point} /><NoteNodeReminder text={point.note} /><NoteNodeReminder />
+  <div data-testid="cell-p"><NoteNodeText point={point} nodeId="p"><p>Original words</p></NoteNodeText></div>
+  <div data-testid="cell-sub"><NoteNodeText point={point} nodeId="sub"><p>No text yet</p></NoteNodeText></div>
 </NotePlanWorkspace>);
 
 beforeEach(() => {
@@ -50,13 +54,38 @@ it('shows the placed reminder and the review before accepting a replacement', as
   expect(screen.getByText('List the people')).toBeInTheDocument();
   expect(screen.getByText('plan.fromNote.noReminder')).toBeInTheDocument();
   requestRefinement();
-  await screen.findByText('- Extracted people');
-  expect(screen.getByText('Original words')).toBeInTheDocument();
-  expect(screen.getByText('No detail in source')).toBeInTheDocument();
+  // The new version stands beside the cell's own text, which is shown ONCE — no "Now" copy above it.
+  expect(await within(screen.getByTestId('cell-p')).findByText('- Extracted people')).toBeInTheDocument();
+  expect(screen.getAllByText('Original words')).toHaveLength(1);
+  expect(within(screen.getByTestId('cell-p')).getByText('plan.fromNote.current')).toBeInTheDocument();
+  expect(screen.queryByText('plan.fromNote.proposal')).not.toBeInTheDocument();
+  expect(within(screen.getByTestId('cell-sub')).getByText('No detail in source')).toBeInTheDocument();
+  // The choice buttons stand once, under the last cell the version covers.
+  expect(within(screen.getByTestId('cell-p')).queryByRole('button', { name: 'plan.fromNote.apply' })).not.toBeInTheDocument();
   expect(conspectus.restoreCells).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.apply' }));
+  fireEvent.click(within(screen.getByTestId('cell-sub')).getByRole('button', { name: 'plan.fromNote.apply' }));
   expect(conspectus.restoreCells).toHaveBeenCalledWith({ p: '- Extracted people' });
-  expect(conspectus.saveModified).not.toHaveBeenCalled();
+  // Choosing it saves it — the floppy is not needed for a chosen version.
+  expect(conspectus.saveCells).toHaveBeenCalledWith(['p']);
+});
+
+it('writes an empty point straight in — no review, no "Generating…" box beside the spinning button', async () => {
+  let resolve!: (value: { contentByNodeId: Record<string, string>; missingMaterial: Record<string, string> }) => void;
+  jest.mocked(generateNotePlanContent).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const empty = { ...conspectus, contentByNodeId: {}, modifiedNodeIds: {} } as unknown as ManualConspectus;
+  render(<NotePlanWorkspace enabled sermon={sermon} conspectus={empty}>
+    <h3><NotePointGenerateButton point={point} section="main" /></h3><NotePointActions point={point} />
+    <NoteNodeText point={point} nodeId="p"><p>No text yet</p></NoteNodeText>
+  </NotePlanWorkspace>);
+  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
+  expect(screen.getByRole('button', { name: 'plan.fromNote.generating' })).toHaveAttribute('aria-busy', 'true');
+  expect(screen.queryByRole('button', { name: 'plan.pointResultCheck' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  resolve({ contentByNodeId: { p: '- Written', sub: '- Child' }, missingMaterial: {} });
+  await waitFor(() => expect(empty.restoreCells).toHaveBeenCalledWith({ p: '- Written', sub: '- Child' }));
+  expect(empty.saveCells).toHaveBeenCalledWith(['p', 'sub']);
+  expect(screen.queryByRole('button', { name: 'plan.fromNote.apply' })).not.toBeInTheDocument();
+  expect(screen.queryByText('plan.fromNote.current')).not.toBeInTheDocument();
 });
 
 it('keeps the existing editor free of source controls when the mode is manual', () => {
@@ -191,16 +220,76 @@ describe('scratch reminder disclosure', () => {
 
 it('reviews a targeted proposal inside its child and applies only that child', async () => {
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Selected child' }, missingMaterial: {} });
-  render(<NotePlanWorkspace enabled sermon={sermon} conspectus={conspectus}>
-    <div data-testid="parent-actions"><NotePointGenerateButton point={point} section="main" /><NotePointActions point={point} /></div>
-    <div data-testid="child-actions"><NotePointGenerateButton point={point} section="main" targetNodeId="sub" /><NotePointActions point={point} targetNodeId="sub" /></div>
+  // The child already has words, so its new version is reviewed beside them.
+  const written = { ...conspectus, contentByNodeId: { p: 'Original words', sub: 'Child words' } } as unknown as ManualConspectus;
+  render(<NotePlanWorkspace enabled sermon={sermon} conspectus={written}>
+    <div data-testid="parent-actions"><NotePointGenerateButton point={point} section="main" /><NotePointActions point={point} />
+      <NoteNodeText point={point} nodeId="p"><p>Original words</p></NoteNodeText></div>
+    <div data-testid="child-actions"><NotePointGenerateButton point={point} section="main" targetNodeId="sub" /><NotePointActions point={point} targetNodeId="sub" />
+      <NoteNodeText point={point} nodeId="sub"><p>Child words</p></NoteNodeText></div>
   </NotePlanWorkspace>);
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generateSubPoint' }));
+  fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.refine.open' }));
+  fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.refine.submit' }));
   expect(await within(screen.getByTestId('child-actions')).findByText('- Selected child')).toBeVisible();
-  expect(within(screen.getByTestId('parent-actions')).queryByText('plan.fromNote.proposal')).not.toBeInTheDocument();
+  expect(within(screen.getByTestId('parent-actions')).queryByText('plan.fromNote.suggested')).not.toBeInTheDocument();
   expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub' }), undefined, expect.objectContaining({ operationId: expect.any(String) }));
   fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.fromNote.apply' }));
   expect(conspectus.restoreCells).toHaveBeenCalledWith({ sub: '- Selected child' });
+});
+
+it('moves a version whose every written cell was removed to its own card, where it can still be read and dismissed', async () => {
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p: '', sub: '- Only the child' }, missingMaterial: {} });
+  const written = { ...conspectus, contentByNodeId: { p: 'Original words', sub: 'Child words' } } as unknown as ManualConspectus;
+  const cells = (current: Sermon, shown: typeof point) => <NotePlanWorkspace enabled sermon={current} conspectus={written}>
+    <h3><NotePointGenerateButton point={shown} section="main" /></h3><NotePointActions point={shown} />
+    <div data-testid="cell-p"><NoteNodeText point={shown} nodeId="p"><p>Original words</p></NoteNodeText></div>
+  </NotePlanWorkspace>;
+  const screenView = render(cells(sermon, point));
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.refine.open' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+  await waitFor(() => expect(generateNotePlanContent).toHaveBeenCalled());
+  // The sub-point is deleted; the point stays. Nothing of the version can stand beside a cell any more.
+  const withoutChild = { ...point, subPoints: [] };
+  screenView.rerender(cells({ ...sermon, outline: { introduction: [], main: [withoutChild], conclusion: [] } } as Sermon, withoutChild));
+  expect(await screen.findByText('- Only the child')).toBeInTheDocument();
+  expect(screen.getByText('plan.fromNote.detachedProposal')).toBeInTheDocument();
+  expect(within(screen.getByTestId('cell-p')).queryByText('plan.fromNote.suggested')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+  await waitFor(() => expect(screen.queryByText('- Only the child')).not.toBeInTheDocument());
+});
+
+it('keeps the part written for a removed sub-point readable under the surviving cell', async () => {
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p: '- For the point', sub: '- For the child' }, missingMaterial: {} });
+  const written = { ...conspectus, contentByNodeId: { p: 'Original words', sub: 'Child words' } } as unknown as ManualConspectus;
+  const cells = (current: Sermon, shown: typeof point) => <NotePlanWorkspace enabled sermon={current} conspectus={written}>
+    <h3><NotePointGenerateButton point={shown} section="main" /></h3><NotePointActions point={shown} />
+    <div data-testid="cell-p"><NoteNodeText point={shown} nodeId="p"><p>Original words</p></NoteNodeText></div>
+  </NotePlanWorkspace>;
+  const screenView = render(cells(sermon, point));
+  fireEvent.click(screen.getAllByRole('button', { name: 'plan.refine.open' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+  await screen.findByText('- For the point');
+  const withoutChild = { ...point, subPoints: [] };
+  screenView.rerender(cells({ ...sermon, outline: { introduction: [], main: [withoutChild], conclusion: [] } } as Sermon, withoutChild));
+  const cell = screen.getByTestId('cell-p');
+  expect(within(cell).getByText('- For the point')).toBeInTheDocument();
+  expect(within(cell).getByText('- For the child')).toBeInTheDocument();
+  expect(within(cell).getByText('Their work')).toBeInTheDocument();
+  expect(within(cell).getByRole('button', { name: 'common.cancel' })).toBeInTheDocument();
+});
+
+it('keeps saying "Generating…" on a removed point\'s own card while its waiting request is checked', async () => {
+  jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
+  beginProposal({ owner: 'u', sermonId: 's' }, {
+    request: { outlinePointId: 'gone', style: 'memory', expectedContext: 'x' }, before: { gone: '' }, labels: { gone: 'Removed point' },
+  });
+  render(<NotePlanWorkspace enabled sermon={sermon} conspectus={conspectus}><span /></NotePlanWorkspace>);
+  expect(await screen.findByText('plan.fromNote.generating')).toBeInTheDocument();
+  expect(screen.getByText('plan.fromNote.detachedProposal')).toBeInTheDocument();
+  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.anything(), undefined, expect.objectContaining({ recoverOnly: true }));
 });
 
 it('disables the parent while allowing another sibling button during child generation', () => {

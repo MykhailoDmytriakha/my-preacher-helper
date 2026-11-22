@@ -556,6 +556,47 @@ export const CHIP_TONES = {
 export type ChipTone = keyof typeof CHIP_TONES;
 
 /**
+ * The Bible's lists of books: the parts of a group (the Historical: into the land · the kings · exile and return), each in
+ * its colour and framed by a border of it, in this order — the app's own colours, blue first; green's border is a step darker, as light as -400 is it barely shows (owner, 2026-11-21, canvas
+ * «Библия — группы книг», board «Итог»). `chip` is a book's button at rest, its hover included; `selected` the open
+ * book and a book whose window is open — lit in its own part's colour, not the app's indigo (owner, same day); `fill`
+ * the colour a hold rises in; `swatch` the square beside the part in «?». -700 under white text: 5:1 and more for every
+ * hue, where green-600 and amber-600 fall under 4.5:1. A group of one part keeps the plain chip and the indigo.
+ */
+export const BOOK_PART_TONES = [
+  {
+    chip: 'border-blue-400 bg-blue-100 text-gray-800 hover:bg-blue-200 dark:border-blue-400/60 dark:bg-blue-500/15 dark:text-gray-100 dark:hover:bg-blue-500/25',
+    swatch: 'border-blue-400 bg-blue-100 dark:border-blue-400/60 dark:bg-blue-500/15',
+    selected: 'border-blue-500 bg-blue-700 text-white',
+    fill: 'bg-blue-700',
+  },
+  {
+    chip: 'border-green-500 bg-green-100 text-gray-800 hover:bg-green-200 dark:border-green-400/60 dark:bg-green-500/15 dark:text-gray-100 dark:hover:bg-green-500/25',
+    swatch: 'border-green-500 bg-green-100 dark:border-green-400/60 dark:bg-green-500/15',
+    selected: 'border-green-500 bg-green-700 text-white',
+    fill: 'bg-green-700',
+  },
+  {
+    chip: 'border-amber-400 bg-amber-100 text-gray-800 hover:bg-amber-200 dark:border-amber-400/60 dark:bg-amber-500/15 dark:text-gray-100 dark:hover:bg-amber-500/25',
+    swatch: 'border-amber-400 bg-amber-100 dark:border-amber-400/60 dark:bg-amber-500/15',
+    selected: 'border-amber-500 bg-amber-700 text-white',
+    fill: 'bg-amber-700',
+  },
+  {
+    chip: 'border-rose-400 bg-rose-100 text-gray-800 hover:bg-rose-200 dark:border-rose-400/60 dark:bg-rose-500/15 dark:text-gray-100 dark:hover:bg-rose-500/25',
+    swatch: 'border-rose-400 bg-rose-100 dark:border-rose-400/60 dark:bg-rose-500/15',
+    selected: 'border-rose-500 bg-rose-700 text-white',
+    fill: 'bg-rose-700',
+  },
+  {
+    chip: 'border-purple-400 bg-purple-100 text-gray-800 hover:bg-purple-200 dark:border-purple-400/60 dark:bg-purple-500/15 dark:text-gray-100 dark:hover:bg-purple-500/25',
+    swatch: 'border-purple-400 bg-purple-100 dark:border-purple-400/60 dark:bg-purple-500/15',
+    selected: 'border-purple-500 bg-purple-700 text-white',
+    fill: 'bg-purple-700',
+  },
+] as const;
+
+/**
  * Studies' main action — its emerald, dark enough for white words: 5.5:1, where emerald-600 gave 3.77:1 under the 4.5:1 of
  * WCAG AA (Codex UX review, 04.11). Every Studies button that adds or confirms takes it from here.
  */

@@ -33,6 +33,27 @@ function targetExists(sermon: Sermon, draft: PendingProposal | WorkspaceProposal
     point.id === outlinePointId && (!targetNodeId || planNodesForPoint(point).some(node => node.id === targetNodeId)));
 }
 
+/**
+ * The cells of the card a proposal stands beside, in the card's order — or null when none of them
+ * is left. A proposal whose every written cell was removed is read on its own card; otherwise its
+ * Cancel would stand under no cell at all and the paid text could not even be dismissed. Partly
+ * removed, it stays beside what is left, where the changed context already blocks "Use".
+ */
+const writtenCells = (proposal: WorkspaceProposal) =>
+  Object.keys(proposal.labels).filter(id => proposal.contentByNodeId[id] || proposal.missingMaterial[id]);
+
+function proposalCells(proposal: WorkspaceProposal, point: SermonPoint) {
+  const written = writtenCells(proposal);
+  const ids = written.length ? written : [proposal.request.targetNodeId ?? proposal.request.outlinePointId];
+  const cells = planNodesForPoint(point).map(node => node.id).filter(id => ids.includes(id));
+  return cells.length ? cells : null;
+}
+
+function isAttached(sermon: Sermon, proposal: WorkspaceProposal) {
+  const point = Object.values(sermon.outline ?? {}).flat().find(candidate => candidate.id === proposal.request.outlinePointId);
+  return Boolean(point && targetExists(sermon, proposal) && proposalCells(proposal, point));
+}
+
 function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; conspectus: ManualConspectus; children: ReactNode }) {
   const { t } = useTranslation();
   const { aiBlocked, refresh } = useAiUsage();
@@ -50,7 +71,7 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
     return ordered.length > 0 && ordered.length === ids.length ? notePlanSourceText(ordered) : undefined;
   }, [sermon.sourceNoteIds, sources.notes]);
   const generation = useNotePlanGeneration({ sermon, conspectus, blocked, sourceText, sourceMissing: sourceUnavailable, onSuccess: refresh });
-  const detached = generation.ready.filter(draft => !targetExists(sermon, draft));
+  const detached = generation.ready.filter(draft => !isAttached(sermon, draft));
   const detachedPending = generation.pending.filter(draft => !targetExists(sermon, draft));
   return (
     <NotePlanContext.Provider value={{ ...generation, blocked: blocked || generation.sourceChecking, conspectus }}>
@@ -67,7 +88,7 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
           </div>
         )}
         {detachedPending.map(draft => <PendingProposalCard key={draft.id} draft={draft} detached />)}
-        {detached.map(proposal => <NoteProposalCard key={proposal.id} proposal={proposal} detached />)}
+        {detached.map(proposal => <DetachedProposalCard key={proposal.id} proposal={proposal} />)}
         <PlanStyleSelector value={generation.style} onChange={generation.setStyle} disabled={generation.busy} />
       </div>
       {children}
@@ -129,7 +150,7 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
     ? t('plan.refine.scopeSubPoint', { title: nodes[0]?.heading })
     : t(point.subPoints?.length ? 'plan.refine.scopeWholePoint' : 'plan.refine.scopePoint', { title: point.text });
   return (
-    <div className="mb-4 space-y-3">
+    <div className="mb-4 space-y-3 empty:hidden">
       <NotePlanRefinement id={requestId} open={Boolean(state.refiningIds[requestId])} scope={scope}
         busy={busy} disabled={disabled} onClose={() => {
           state.setRefining(requestId, false);
@@ -140,7 +161,6 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
         {t(state.errors[requestId] === 'draftStorage' ? 'draftStorage.title' : `plan.fromNote.${state.errors[requestId]}`)}
       </p>}
       {pending.map(draft => <PendingProposalCard key={draft.id} draft={draft} />)}
-      {proposals.map(proposal => <NoteProposalCard key={proposal.id} proposal={proposal} deleting={deleting} />)}
       {state.missing[requestId] && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{state.missing[requestId]}</p>}
     </div>
   );
@@ -151,54 +171,122 @@ function PendingProposalCard({ draft, detached = false }: { draft: PendingPropos
   const { t } = useTranslation();
   const id = draft.request.targetNodeId ?? draft.request.outlinePointId;
   const busy = Boolean(state.generatingIds[id]);
+  // While the request runs, the point's spinning button already says so; a second "Generating…"
+  // box under it said the same thing again with a button that had nothing to check yet. A removed
+  // point has no button left, so its own card keeps saying it.
+  if (busy && !detached) return null;
   return <div className="space-y-2 rounded-lg border border-blue-200 p-3 dark:border-blue-900">
     {detached && <p className="font-medium">{t('plan.fromNote.detachedProposal')}</p>}
-    <p role="status" className="text-sm">{t(busy ? 'plan.fromNote.generating'
-      : state.obsoletePending(draft) ? 'plan.fromNote.contextChanged' : draft.unregistered ? 'plan.pointResultNotStarted' : 'errors.aiResultPending')}</p>
+    <p role="status" className="text-sm">{t(busy ? 'plan.fromNote.generating' : state.obsoletePending(draft) ? 'plan.fromNote.contextChanged'
+      : draft.unregistered ? 'plan.pointResultNotStarted' : 'errors.aiResultPending')}</p>
     <div className="flex flex-wrap gap-2">
       <Button variant="secondary" disabled={busy} onClick={() => void state.recover(draft.id)}>{t('plan.pointResultCheck')}</Button>
-      {!detached && state.canResume(draft) && <Button disabled={busy}
+      {!detached && state.canResume(draft) && <Button
         onClick={() => void state.recover(draft.id, true)}>{t('plan.pointResultResume')}</Button>}
     </div>
   </div>;
 }
 
-function NoteProposalCard({ proposal, deleting = false, detached = false }: {
-  proposal: WorkspaceProposal; deleting?: boolean; detached?: boolean;
-}) {
+/**
+ * THE NEW VERSION STANDS NEXT TO THE TEXT IT WOULD REPLACE.
+ *
+ * The cell's own text stays where it always is, shown once, and the proposal stands to its
+ * right. A separate review card repeated the same words under "Now" above the cell, so the
+ * preacher read his text twice and could not tell which copy was the real one (owner,
+ * 2026-11-21). Earlier paid proposals that overlap this cell are kept, so they stack here.
+ */
+export function NoteNodeText({ point, nodeId, children }: { point: SermonPoint; nodeId: string; children: ReactNode }) {
+  const state = useContext(NotePlanContext);
+  const { t } = useTranslation();
+  if (!state) return <>{children}</>;
+  const order = planNodesForPoint(point).map(node => node.id);
+  const shown = state.ready.flatMap(proposal => {
+    const cells = proposal.request.outlinePointId === point.id ? proposalCells(proposal, point) : null;
+    return cells?.includes(nodeId) ? [{ proposal, last: cells.at(-1) === nodeId }] : [];
+  });
+  // The part written for a cell removed since stays readable under the buttons, not silently gone.
+  const removedCells = (proposal: WorkspaceProposal) => writtenCells(proposal).filter(id => !order.includes(id));
+  const [first, ...more] = shown;
+  // ONE GRID FOR THE PAIR, AND ONE SHAPE WHETHER OR NOT A VERSION IS OPEN. Labels share a row,
+  // the two texts share a row and so a height, the buttons stand under the new version. On a
+  // phone the same elements stack in reading order. The cell's own text keeps its place in the
+  // tree either way, so an editor inside it is not rebuilt when a proposal arrives or is chosen.
+  return (
+    <div className={first ? 'grid gap-x-4 gap-y-2 lg:grid-cols-2' : undefined}>
+      {first && <p className={`${PAIR_LABEL} text-gray-500 dark:text-gray-400 lg:col-start-1 lg:row-start-1`}>{t('plan.fromNote.current')}</p>}
+      <div className={first ? 'min-w-0 lg:col-start-1 lg:row-start-2 [&>*]:h-full' : undefined}>
+        {children}
+      </div>
+      {first && <>
+        <p className={`${PAIR_LABEL} text-blue-700 dark:text-blue-300 lg:col-start-2 lg:row-start-1`}>{t('plan.fromNote.suggested')}</p>
+        <ProposalText proposal={first.proposal} nodeId={nodeId} className="lg:col-start-2 lg:row-start-2" />
+        {first.last && <ProposalActions proposal={first.proposal} removed={removedCells(first.proposal)}
+          className="lg:col-start-2 lg:row-start-3" />}
+        {more.length > 0 && <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-start-4">
+          {more.map(({ proposal, last }) => <div key={proposal.id} className="space-y-2">
+            <p className={`${PAIR_LABEL} text-blue-700 dark:text-blue-300`}>{t('plan.fromNote.suggested')}</p>
+            <ProposalText proposal={proposal} nodeId={nodeId} />
+            {last && <ProposalActions proposal={proposal} removed={removedCells(proposal)} />}
+          </div>)}
+        </div>}
+      </>}
+    </div>
+  );
+}
+
+const PAIR_LABEL = 'text-xs font-medium';
+
+function ProposalText({ proposal, nodeId, className = '' }: { proposal: WorkspaceProposal; nodeId: string; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={`min-w-0 rounded-md border border-blue-300 bg-blue-50/60 p-4 dark:border-blue-800 dark:bg-blue-950/30 ${className}`}>
+      <MarkdownDisplay content={proposal.contentByNodeId[nodeId] || t('plan.fromNote.empty')} />
+      {proposal.missingMaterial[nodeId] && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">{proposal.missingMaterial[nodeId]}</p>}
+    </div>
+  );
+}
+
+function ProposalActions({ proposal, removed = [], className = '' }: { proposal: WorkspaceProposal; removed?: string[]; className?: string }) {
   const state = useContext(NotePlanContext)!;
   const { t } = useTranslation();
   const requestId = proposal.request.targetNodeId ?? proposal.request.outlinePointId;
   const waiting = state.proposalBlocked(proposal);
   const changed = state.proposalChanged(proposal);
   return (
-    <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
-      <p className="font-medium">{t(detached ? 'plan.fromNote.detachedProposal' : 'plan.fromNote.proposal')}</p>
-      {!detached && changed && !waiting && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
+    <div className={`min-w-0 space-y-2 ${className}`}>
+      {removed.map(id => <div key={id} className="space-y-1 rounded-md border border-dashed border-blue-300 p-4 dark:border-blue-800">
+        <p className="text-sm font-semibold">{proposal.labels[id]}</p>
+        <MarkdownDisplay content={proposal.contentByNodeId[id] || t('plan.fromNote.empty')} />
+        {proposal.missingMaterial[id] && <p className="text-sm text-amber-700 dark:text-amber-300">{proposal.missingMaterial[id]}</p>}
+      </div>)}
+      {changed && !waiting && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
         {t('plan.fromNote.contextChanged')}
       </p>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" disabled={waiting || changed} onClick={() => state.accept(requestId, proposal)}>{t('plan.fromNote.apply')}</Button>
+        <Button variant="secondary" onClick={() => state.discard(requestId, proposal)}>{t('common.cancel')}</Button>
+        <Button onClick={() => state.setRefining(requestId, true)}>{t('plan.refine.adjustRequest')}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** A proposal whose point or sub-point is gone: nothing to stand beside, only its text to read or drop. */
+function DetachedProposalCard({ proposal }: { proposal: WorkspaceProposal }) {
+  const state = useContext(NotePlanContext)!;
+  const { t } = useTranslation();
+  const requestId = proposal.request.targetNodeId ?? proposal.request.outlinePointId;
+  return (
+    <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
+      <p className="font-medium">{t('plan.fromNote.detachedProposal')}</p>
       {Object.keys(proposal.labels).filter(id => proposal.contentByNodeId[id] || proposal.missingMaterial[id]).map(id => (
-        <div key={id} className="space-y-2">
+        <div key={id} className="min-w-0 space-y-2 rounded-md border border-blue-200 p-4 dark:border-blue-900">
           <p className="text-sm font-semibold">{proposal.labels[id]}</p>
-          <div className="grid gap-3 md:grid-cols-2">
-            {!detached && <div className="min-w-0 rounded border border-gray-200 p-3 dark:border-gray-700">
-              <p className="mb-2 text-xs text-gray-500">{t('plan.fromNote.current')}</p>
-              <MarkdownDisplay content={state.conspectus.contentByNodeId[id] || t('plan.fromNote.empty')} />
-            </div>}
-            <div className="min-w-0 rounded border border-blue-200 p-3 dark:border-blue-900">
-              <p className="mb-2 text-xs text-gray-500">{t('plan.fromNote.suggested')}</p>
-              <MarkdownDisplay content={proposal.contentByNodeId[id] || t('plan.fromNote.empty')} />
-              {proposal.missingMaterial[id] && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">{proposal.missingMaterial[id]}</p>}
-            </div>
-          </div>
+          <MarkdownDisplay content={proposal.contentByNodeId[id] || t('plan.fromNote.empty')} />
+          {proposal.missingMaterial[id] && <p className="text-sm text-amber-700 dark:text-amber-300">{proposal.missingMaterial[id]}</p>}
         </div>
       ))}
-      <div className="flex flex-wrap gap-2">
-        {!detached && <Button variant="primary" className="disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={deleting || waiting || changed} onClick={() => state.accept(requestId, proposal)}>{t('plan.fromNote.apply')}</Button>}
-        <Button variant="secondary" onClick={() => state.discard(requestId, proposal)}>{t('common.cancel')}</Button>
-        {!detached && <Button onClick={() => state.setRefining(requestId, true)}>{t('plan.refine.adjustRequest')}</Button>}
-      </div>
+      <Button variant="secondary" onClick={() => state.discard(requestId, proposal)}>{t('common.cancel')}</Button>
     </div>
   );
 }
@@ -213,7 +301,8 @@ export function NoteNodeReminder({ text, hasPlan = false }: { text?: string; has
   }, [hasPlan]);
 
   if (!text?.trim()) {
-    return <p className={`mb-3 text-sm ${SCRATCH_REMINDER_COLORS.text}`}>{t('plan.fromNote.noReminder')}</p>;
+    // As tall as the reminder's own toggle row, so cards with and without one start their text level.
+    return <p className={`mb-3 flex min-h-11 items-center text-sm ${SCRATCH_REMINDER_COLORS.text}`}>{t('plan.fromNote.noReminder')}</p>;
   }
 
   return (
@@ -226,7 +315,7 @@ export function NoteNodeReminder({ text, hasPlan = false }: { text?: string; has
         <span>{t('scratch.card.label')}</span>
       </button>
       <div id={contentId} hidden={!expanded}
-        className={`whitespace-pre-wrap break-words pb-2 pl-6 text-sm italic ${SCRATCH_REMINDER_COLORS.text}`}>{text}</div>
+        className={`whitespace-pre-wrap break-words pb-2 pl-12 text-sm italic ${SCRATCH_REMINDER_COLORS.text}`}>{text}</div>
     </div>
   );
 }

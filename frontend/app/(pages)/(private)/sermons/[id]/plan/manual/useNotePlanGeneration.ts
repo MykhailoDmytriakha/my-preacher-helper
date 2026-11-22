@@ -7,6 +7,7 @@ import { AI_RESULT_CONFLICT, AI_RESULT_NOT_STARTED, AI_RESULT_PENDING, AI_RESULT
 import { browserInterfaceLanguage } from '@/utils/appLocale';
 import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { notePlanContextKey, notePlanTargetNodes, type NotePlanResult, type NotePlanRevisionIntent } from '@/utils/notePlan';
+import { readPlanText } from '@/utils/planTextStorage';
 
 import { generateNotePlanContent } from '../planApi';
 import { usePlanStylePreference } from '../usePlanStylePreference';
@@ -85,6 +86,7 @@ export function useNotePlanGeneration(options: Options) {
   const latest = useRef({ ...options, scope, sourceKey });
   latest.current = { ...options, scope, sourceKey };
   const requests = useRef(new Map<string, string>());
+  const sendRef = useRef<(draft: PendingProposal, recoverOnly: boolean) => Promise<void>>(async () => undefined);
   const mounted = useRef(true);
   const isHere = () => mounted.current && latest.current.scope === scope;
   useEffect(() => {
@@ -127,6 +129,8 @@ export function useNotePlanGeneration(options: Options) {
     const { conspectus } = latest.current;
     const apply = conspectus.applyGeneratedCells ?? conspectus.restoreCells;
     if (!apply(cells)) return false;
+    // Choosing a proposal is the decision to keep it: it is written now, not left for the save button.
+    void conspectus.saveCells?.(Object.keys(cells));
     setMissing(previous => {
       const next = { ...previous };
       Object.keys(proposal.before).forEach(nodeId => { delete next[nodeId]; });
@@ -134,6 +138,37 @@ export function useNotePlanGeneration(options: Options) {
     });
     discardProposal(scope, proposal);
     return true;
+  };
+
+  const authoringVersions = (cells: string[]) => Object.fromEntries(cells.map(cell =>
+    [cell, latest.current.conspectus.draft?.cellAuthoringVersion(cell) ?? 0]));
+
+  /**
+   * AN EMPTY POINT TAKES ITS TEXT WITHOUT A REVIEW. Comparing "nothing" with the new text asks a
+   * question nobody has: the person pressed Generate on an empty point to get text there.
+   *
+   * It happens only HERE, when the answer to this tab's own request arrives — never from an effect
+   * that runs on every render. An effect could accept in the middle of a render that also brought
+   * a neighbour's save, and the screen's next refresh from storage then wiped the accepted words; an
+   * answer that waited from an earlier visit, or a second answer left after "Cancel" on the first,
+   * would also land without anyone asking for it now. Those stay a choice beside the point.
+   *
+   * And only while nothing happened to the cells since the request: no words typed into them (even
+   * typed and deleted again — that was the person writing there), no words stored for them by
+   * another device, no other answer waiting for the same cell.
+   */
+  const applyIntoEmpty = (proposal: Proposal, authoredAtStart: Record<string, number>) => {
+    const cells = Object.keys(proposal.before);
+    const now = authoringVersions(cells);
+    const stored = readPlanText(latest.current.sermon);
+    const competing = listProposals(scope).some(other => other.id !== proposal.id && other.state === 'ready'
+      && cells.some(cell => Object.hasOwn(other.before, cell)));
+    // Words being composed (an input method, dictation) reach the editor only when confirmed, so the
+    // cell still reads empty; and a cell filled a moment ago reads empty until the screen shows it.
+    if (competing || composing.current || cells.some(cell => filledUnshown.current.has(cell))) return;
+    if (cells.some(cell => now[cell] !== authoredAtStart[cell] || stored[cell]?.trim())) return;
+    if (!accept(requestId(proposal), proposal)) return;
+    for (const [cell, text] of Object.entries(proposal.contentByNodeId)) if (text.trim()) filledUnshown.current.add(cell);
   };
 
   const refreshUsage = () => { if (isHere()) void latest.current.onSuccess?.().catch(() => undefined); };
@@ -144,15 +179,26 @@ export function useNotePlanGeneration(options: Options) {
     if (tasks.has(draft.id)) return;
     tasks.set(draft.id, id);
     if (isHere()) setGeneratingIds(previous => ({ ...previous, [id]: true }));
+    const authoredAtStart = authoringVersions(Object.keys(draft.before));
     try {
       const result = await generateNotePlanContent({ sermonId, ...draft.request }, undefined, {
         ownerId: owner, operationId: draft.id, recoverOnly, language: draft.language,
       });
       if (!matchesNodes(result, draft.before)) throw new Error('Invalid generated node map');
-      resolveProposal(scope, { ...draft, state: 'ready', result });
+      // "Refine" asks for a better version of the one on screen: the answer takes its place rather
+      // than standing under it. Only once it has arrived — a failed refinement keeps the old one.
+      // A blank answer, or one written from a note that changed since, is no better version to swap in.
+      const replacement = !result.sourceChanged && Object.values(result.contentByNodeId).some(text => text.trim());
+      if (resolveProposal(scope, { ...draft, state: 'ready', result }) && replacement) {
+        for (const replaced of draft.replaces ?? []) {
+          const old = readProposal(scope, replaced);
+          if (old?.state === 'ready') discardProposal(scope, old);
+        }
+      }
       if (isHere()) {
         setRefining(id, false);
         if (!unchanged(draft)) setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
+        else if (draft.autoApply) applyIntoEmpty({ ...draft, state: 'ready', result, ...result }, authoredAtStart);
       }
       refreshUsage();
     } catch (error) {
@@ -165,13 +211,16 @@ export function useNotePlanGeneration(options: Options) {
       }
     } finally {
       tasks.delete(draft.id);
-      if (isHere()) setGeneratingIds(previous => {
+      // Two checks of the same target (an older request and a newer one) keep it spinning until both end.
+      if (isHere() && ![...tasks.values()].includes(id)) setGeneratingIds(previous => {
         const next = { ...previous };
         delete next[id];
         return next;
       });
     }
   };
+
+  sendRef.current = send;
 
   const obsoletePending = (draft: PendingProposal) => Boolean(draft.unregistered && (!unchanged(draft)
     || draft.request.expectedSourceKey && latest.current.sourceKey && draft.request.expectedSourceKey !== latest.current.sourceKey));
@@ -198,6 +247,10 @@ export function useNotePlanGeneration(options: Options) {
     };
     const draft = beginProposal(scope, {
       request, before, language: browserInterfaceLanguage(),
+      autoApply: !intent && Object.values(before).every(text => !text.trim()),
+      // Only "Refine" asks to replace; a plain Generate next to a waiting version leaves it a choice.
+      replaces: intent ? listProposals(scope).filter(item => item.state === 'ready'
+        && item.request.outlinePointId === point.id && item.request.targetNodeId === targetNodeId).map(item => item.id) : undefined,
       labels: Object.fromEntries(nodes.map(node => [node.nodeId, node.title])),
     });
     setErrors(previous => {
@@ -212,6 +265,37 @@ export function useNotePlanGeneration(options: Options) {
     }
     await send(draft, false);
   };
+
+  const composing = useRef(false);
+  useEffect(() => {
+    const start = () => { composing.current = true; };
+    const end = () => { composing.current = false; };
+    document.addEventListener('compositionstart', start, true);
+    document.addEventListener('compositionend', end, true);
+    return () => {
+      document.removeEventListener('compositionstart', start, true);
+      document.removeEventListener('compositionend', end, true);
+    };
+  }, []);
+  const filledUnshown = useRef(new Set<string>());
+  useEffect(() => {
+    for (const cell of filledUnshown.current) {
+      if (latest.current.conspectus.contentByNodeId[cell]?.trim()) filledUnshown.current.delete(cell);
+    }
+  });
+
+  /**
+   * A REQUEST LEFT WAITING BY AN EARLIER VISIT IS CHECKED WHEN THE PLAN OPENS. The check only
+   * asks the server for the stored answer (`recoverOnly`) — it never starts a new paid request —
+   * so the person does not have to find and press "Check result" for work already done. A request
+   * once reported "not started" is asked again too: a reload can ask before the server has
+   * registered it, and it may have finished since. Starting it anew stays the person's button.
+   */
+  useEffect(() => {
+    for (const draft of listProposals(scope)) {
+      if (draft.state === 'pending') void sendRef.current(draft, true);
+    }
+  }, [scope]);
 
   const canResume = (draft: PendingProposal) => Boolean(draft.unregistered && !latest.current.blocked
     && !sourceChecking && unchanged(draft) && !Object.keys(draft.before).some(isCellUnavailable)

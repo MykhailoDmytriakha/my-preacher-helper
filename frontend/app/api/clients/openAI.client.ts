@@ -10,7 +10,7 @@ import {
   planSystemPrompt, createPlanUserMessage,
   planPointContentSystemPrompt, createPlanPointContentUserMessage
 } from "@/config/prompts";
-import { createNotePlanUserMessage, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
+import { createNotePlanUserMessage, notePlanLengthInstructions, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import {
   DirectionsResponseSchema,
   PlanPointContentResponseSchema,
@@ -24,8 +24,11 @@ import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
-import { replacePlanReferenceParagraphs } from '@/utils/planReferenceRevision';
+import { assembleNotePlanMarkdown, noteLanguage, placeNotePlanReferences, type NotePlanLanguage } from '@/utils/notePlanMarkdown';
 import { normalizeSubPointId } from "@/utils/subPoints";
+import en from '@locales/en/translation.json';
+import ru from '@locales/ru/translation.json';
+import uk from '@locales/uk/translation.json';
 
 import { providerStartedAnswer, readProviderAnswer } from "./ai/providerAnswerError";
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
@@ -1286,10 +1289,10 @@ export async function generateNotePlanPoint(
   const allowed = new Set(notePlanTargetNodes(input.point, input.targetNodeId).map((node) => node.nodeId));
   if (!allowed.size) throw new Error('No requested nodes');
   const userMessage = createNotePlanUserMessage(input);
-  const systemPrompt = `${notePlanSystemPrompt}\n${getStyleInstructions(style)}`;
+  const systemPrompt = `${notePlanSystemPrompt}\n${notePlanLengthInstructions(style)}`;
   const promptBlueprint = buildSimplePromptBlueprint({
     promptName: 'sermon.conspect.note_point',
-    promptVersion: 'v4',
+    promptVersion: 'v5',
     systemPrompt,
     userMessage,
     context: { outlinePointId: input.point.id, targetNodeId: input.targetNodeId, sourceCount: input.notes.length, style },
@@ -1297,7 +1300,7 @@ export async function generateNotePlanPoint(
   const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
     formatName: 'note_plan_point', userId, promptBlueprint,
     ...(capture && {
-      settleParsedResult: (parsed: unknown) => capture.publish(assembleNotePlanProposal(NotePlanResponseSchema.parse(parsed), allowed, input.revision)),
+      settleParsedResult: (parsed: unknown) => capture.publish(assembleNotePlanProposal(NotePlanResponseSchema.parse(parsed), allowed, input.revision, input.language)),
       requestOptions: { timeout: Math.max(1, Math.floor(capture.deadline - performance.now())), maxRetries: 0 },
     }),
   });
@@ -1305,11 +1308,25 @@ export async function generateNotePlanPoint(
     if (result.error && isAiResultRecoveryError(result.error)) throw result.error;
     throw new Error('Note plan generation failed');
   }
-  return assembleNotePlanProposal(result.data, allowed, input.revision);
+  return assembleNotePlanProposal(result.data, allowed, input.revision, input.language);
 }
+
+/** The conclusion's label of a plan cell, from the locales, in the language the cell is written in. */
+const NOTE_PLAN_CONCLUSION: Record<NotePlanLanguage, string> = {
+  en: en.plan.fromNote.conclusionLabel, ru: ru.plan.fromNote.conclusionLabel, uk: uk.plan.fromNote.conclusionLabel,
+};
+/** Why a references-only answer left the text as it was: the cell does not show for sure where its verses go. */
+const NOTE_PLAN_REFS_NOT_PLACED: Record<NotePlanLanguage, string> = {
+  en: en.plan.fromNote.referencesNotPlaced, ru: ru.plan.fromNote.referencesNotPlaced, uk: uk.plan.fromNote.referencesNotPlaced,
+};
+/** …and when some verses were placed but not all. */
+const NOTE_PLAN_REFS_PARTLY_PLACED: Record<NotePlanLanguage, string> = {
+  en: en.plan.fromNote.referencesPartlyPlaced, ru: ru.plan.fromNote.referencesPartlyPlaced, uk: uk.plan.fromNote.referencesPartlyPlaced,
+};
 
 function assembleNotePlanProposal(
   result: ReturnType<typeof NotePlanResponseSchema.parse>, allowed: Set<string>, revision: NotePlanInput['revision'],
+  language: NotePlanInput['language'],
 ): NotePlanResult {
   const seen = new Set(result.nodes.map((node) => node.nodeId));
   if (seen.size !== allowed.size || result.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
@@ -1319,13 +1336,17 @@ function assembleNotePlanProposal(
   const missingMaterial: Record<string, string> = {};
   for (const node of result.nodes) {
     const current = revision?.currentContentByNodeId[node.nodeId] ?? '';
+    const offersRefs = node.refs.length > 0 || node.steps.some((step) => step.refs.length > 0) || !!node.table?.rows.length;
+    // A note plan has its own shape (`utils/notePlanMarkdown.ts`): entry, steps on their verses, conclusion.
+    const placed = revision?.mode === 'references' && offersRefs ? placeNotePlanReferences(current, node) : null;
     contentByNodeId[node.nodeId] = revision?.mode === 'references'
-      ? node.missingMaterial && !node.refs.length ? current : replacePlanReferenceParagraphs(current, node.refs)
-      : assemblePlanPointMarkdown({
-        // Note plans do not produce sets; both routes share the same cue renderer.
-        turn: node.turn, groups: [{ heading: null, cues: node.cues, sets: [], refs: node.refs }],
-      });
+      ? placed?.text ?? current
+      : assembleNotePlanMarkdown(node, (written) => NOTE_PLAN_CONCLUSION[written], language);
     if (node.missingMaterial) missingMaterial[node.nodeId] = node.missingMaterial;
+    else if (placed?.unplaced) {
+      const said = noteLanguage(current, language);
+      missingMaterial[node.nodeId] = placed.text === current ? NOTE_PLAN_REFS_NOT_PLACED[said] : NOTE_PLAN_REFS_PARTLY_PLACED[said];
+    }
   }
   return { contentByNodeId, missingMaterial };
 }

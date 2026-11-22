@@ -5,6 +5,7 @@ import { BibleBookList } from '@/components/bible/BibleBookList';
 import { arriveOnTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { BOOK_PART_TONES } from '@/utils/themeColors';
 import { placeIn, verseCount } from '@/utils/versification';
 
 /*
@@ -132,6 +133,99 @@ describe('BibleBookList', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('bible.search.sections.where')).toBeInTheDocument();
+  });
+
+  // The owner, 2026-11-21 (canvas «Библия — группы книг», board «Итог»): the parts of a group stand apart by colour.
+  it('colours the books of a split group by part, Philemon among the letters from prison, and leaves a whole group plain', () => {
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    const paul = screen.getByRole('heading', { name: 'bible.groups.paulineEpistles' }).parentElement as HTMLElement;
+    const books = within(paul).getAllByRole('button').map((button) => button.textContent);
+    expect(books.indexOf('Philemon')).toBe(books.indexOf('Colossians') + 1);
+    expect(within(paul).getByRole('button', { name: 'Romans' })).toHaveClass(...BOOK_PART_TONES[0].chip.split(' '));
+    expect(within(paul).getByRole('button', { name: 'Philemon' })).toHaveClass(...BOOK_PART_TONES[1].chip.split(' '));
+    expect(within(paul).getByRole('button', { name: 'Hebrews' })).toHaveClass(...BOOK_PART_TONES[4].chip.split(' '));
+    // Colour is for the eye; a screen reader hears each part as a list under its name.
+    const prison = within(paul).getByRole('list', { name: 'bible.bookParts.prisonEpistles.name' });
+    expect(within(prison).getAllByRole('button').map((button) => button.textContent)).toEqual(['Ephesians', 'Philippians', 'Colossians', 'Philemon']);
+    // A part is kept whole — a wrapping box of its own, not books poured into one flow — and parts stand further
+    // apart than books, as on the canvas board (owner, 2026-11-21: «сделай как на Canvas»).
+    expect(prison).toHaveClass('flex', 'flex-wrap', 'gap-1.5');
+    expect(prison).not.toHaveClass('contents');
+    expect(prison.parentElement).toHaveClass('flex', 'flex-wrap', 'gap-x-3', 'gap-y-1.5');
+    // Lines are the owner's: 1 John begins a line, Jude goes on after 3 John.
+    const list = (name: string) => screen.getByRole('list', { name: `bible.bookParts.${name}.name` });
+    expect(list('john').parentElement).toBe(list('jude').parentElement);
+    expect(list('james').parentElement).toBe(list('peter').parentElement);
+    expect(list('john').parentElement).not.toBe(list('james').parentElement);
+
+  });
+
+  it('lights a book whose window is open in its part\'s colour, and a book of a whole group in the indigo', async () => {
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    const philemon = screen.getByRole('button', { name: 'Philemon' });
+    // A hold rises in the part's colour too.
+    fireEvent(philemon, Object.defineProperties(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 10, clientY: 10, button: 0 }), { pointerType: { value: 'touch' }, pointerId: { value: 1 } }));
+    expect(philemon.querySelector('span[aria-hidden="true"]')).toHaveClass(BOOK_PART_TONES[1].fill, 'h-full');
+    fireEvent(philemon, Object.defineProperties(new MouseEvent('pointercancel', { bubbles: true, cancelable: true }), { pointerType: { value: 'touch' }, pointerId: { value: 1 } }));
+    await userEvent.click(philemon);
+    expect(philemon).toHaveClass(...BOOK_PART_TONES[1].selected.split(' '));
+    await userEvent.keyboard('{Escape}');
+    expect(philemon).toHaveClass(...BOOK_PART_TONES[1].chip.split(' '));
+
+    const genesis = screen.getByRole('button', { name: 'Genesis' });
+    await userEvent.click(genesis);
+    expect(genesis).toHaveClass('bg-indigo-50');
+    await userEvent.keyboard('{Escape}');
+  });
+
+  it('leaves a whole group plain', () => {
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    const law = screen.getByRole('heading', { name: 'bible.groups.law' }).parentElement as HTMLElement;
+    expect(within(law).getByRole('button', { name: 'Genesis' })).toHaveClass('bg-white');
+    expect(within(law).getByRole('button', { name: 'Genesis' })).not.toHaveClass('bg-blue-100');
+  });
+
+  it('tells how to remember a Testament\'s order of books in a window from «?», closed by its ✕ and by Escape', async () => {
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'bible.bookGroupsHelp.title.new' }));
+    const memo = screen.getByRole('dialog', { name: 'bible.bookGroupsHelp.title.new' });
+    // The groups in the order this Bible prints them; a split group with its parts, each beside its colour.
+    expect(within(memo).getAllByText(/^\d+\. bible\.groups\./).map((step) => step.textContent)).toEqual([
+      '1. bible.groups.gospels', '2. bible.groups.acts', '3. bible.groups.generalEpistles', '4. bible.groups.paulineEpistles', '5. bible.groups.revelation',
+    ]);
+    const prison = within(memo).getByText('bible.bookParts.prisonEpistles.name').closest('li') as HTMLElement;
+    expect(prison).toHaveTextContent('bible.bookParts.prisonEpistles.memo');
+    expect(prison.querySelector('[aria-hidden="true"]')).toHaveClass(...BOOK_PART_TONES[1].swatch.split(' '));
+
+    await userEvent.click(within(memo).getByRole('button', { name: 'common.close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'bible.bookGroupsHelp.title.new' })).toHaveFocus();
+
+    const old = screen.getByRole('button', { name: 'bible.bookGroupsHelp.title.old' });
+    await userEvent.click(old);
+    expect(old).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('dialog', { name: 'bible.bookGroupsHelp.title.old' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(old).toHaveFocus();
+
+    // A press beside the window closes it too, and the focus comes back to «?» even when the press gave «?» no
+    // focus (Safari): it is opened here from a focus elsewhere.
+    screen.getByRole('button', { name: 'Genesis' }).focus();
+    fireEvent.click(old);
+    expect(screen.getByRole('dialog', { name: 'bible.bookGroupsHelp.title.old' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'bible.closePicker' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(old).toHaveFocus();
+  });
+
+  it('numbers the memo in the order of the Bible read: King James puts Paul\'s letters before the general ones', async () => {
+    render(<BibleBookList bible="kjv" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'bible.bookGroupsHelp.title.new' }));
+    const memo = screen.getByRole('dialog', { name: 'bible.bookGroupsHelp.title.new' });
+    expect(within(memo).getAllByText(/^\d+\. bible\.groups\./).map((step) => step.textContent)).toEqual([
+      '1. bible.groups.gospels', '2. bible.groups.acts', '3. bible.groups.paulineEpistles', '4. bible.groups.generalEpistles', '5. bible.groups.revelation',
+    ]);
   });
 
   it('keeps "Continue" on a device with no trail yet', async () => {

@@ -133,6 +133,25 @@ describe('NoteReadingView', () => {
         expect(props.onOpenReference).toHaveBeenCalledWith(expect.objectContaining({ book: '1 Chronicles', chapter: 4, fromVerse: 10 }));
     });
 
+    // Which columns show is CSS (`[@media(min-width:1024px)_and_(pointer:fine)]:`), checked in a browser by
+    // .cases/2026-11-20-rezhim-chteniya-zametki/board/live-ipad-wide.cjs; here, the press follows the same rule.
+    it('opens the verse window on a touch screen as wide as a computer, which has no margins', () => {
+        // The owner's iPad: 1200 px wide standing up, a finger as the pointer (feedback 2026-11-20).
+        window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+            matches: query.includes('1024') && !query.includes('pointer: fine'), media: query,
+            addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(),
+            onchange: null, dispatchEvent: jest.fn(),
+        }));
+        placeLinks({ '1 Пар 4:10': 120, 'Езд 7:6': 300 });
+        const props = renderView();
+
+        fireEvent.click(within(screen.getByRole('article')).getByRole('button', { name: /1 Пар 4:10/ }));
+
+        // No margin to light a card in: the verse window opens, as on the page.
+        expect(props.onOpenReference).toHaveBeenCalledWith(expect.objectContaining({ book: '1 Chronicles' }));
+        expect(within(screen.getByRole('complementary', { name: 'notePanel.versesOnScreen' })).queryAllByRole('button')).toHaveLength(0);
+    });
+
     it('lights the verse in the margin instead of covering the text on a computer', async () => {
         setWide(true);
         placeLinks({ '1 Пар 4:10': 120, 'Езд 7:6': 300 });
