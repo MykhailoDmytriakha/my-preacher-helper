@@ -6,6 +6,8 @@ import {
     Heading1,
     Heading2,
     Heading3,
+    IndentDecrease,
+    IndentIncrease,
     List,
     ListOrdered,
     Quote
@@ -13,6 +15,8 @@ import {
 import React from 'react';
 
 import { useTranslation } from '@locales/useTranslation';
+
+import { indentBlock, outdentBlock } from './blockIndent';
 
 interface RichMarkdownToolbarProps {
     editor: Editor | null;
@@ -47,6 +51,9 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = 
             bulletList: currentEditor?.isActive('bulletList') ?? false,
             orderedList: currentEditor?.isActive('orderedList') ?? false,
             blockquote: currentEditor?.isActive('blockquote') ?? false,
+            // Asked without a dispatch: only whether there is something to move where the caret is.
+            canIndent: currentEditor?.state ? indentBlock(currentEditor.state) : false,
+            canOutdent: currentEditor?.state ? outdentBlock(currentEditor.state) : false,
         }),
     }) ?? DEFAULT_TOOLBAR_STATE;
 
@@ -147,6 +154,26 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = 
             >
                 <Quote className="w-4 h-4" />
             </ToolbarButton>
+
+            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
+
+            {/* Move a step's verse back into the step, or a thought under the one above (`blockIndent.ts`). */}
+            <ToolbarButton
+                onClick={(e) => handleToggle(() => editor.chain().focus().command(({ state, dispatch }) => outdentBlock(state, dispatch)).run(), e)}
+                disabled={locked || !toolbarState.canOutdent}
+                isActive={false}
+                ariaLabel={t('richText.outdent')}
+            >
+                <IndentDecrease className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton
+                onClick={(e) => handleToggle(() => editor.chain().focus().command(({ state, dispatch }) => indentBlock(state, dispatch)).run(), e)}
+                disabled={locked || !toolbarState.canIndent}
+                isActive={false}
+                ariaLabel={t('richText.indent')}
+            >
+                <IndentIncrease className="w-4 h-4" />
+            </ToolbarButton>
             {end && <div className="ml-auto flex items-center">{end}</div>}
         </div>
     );
@@ -162,6 +189,8 @@ const DEFAULT_TOOLBAR_STATE = {
     bulletList: false,
     orderedList: false,
     blockquote: false,
+    canIndent: false,
+    canOutdent: false,
 };
 
 interface ToolbarButtonProps {

@@ -5583,7 +5583,9 @@
     "heading3": "Heading 3",
     "bulletList": "Bullet list",
     "orderedList": "Numbered list",
-    "quote": "Quote"
+    "quote": "Quote",
+    "outdent": "Move left",
+    "indent": "Move right"
   },
   "analysis": {
     "verseMenu": "Analyse the passage",
