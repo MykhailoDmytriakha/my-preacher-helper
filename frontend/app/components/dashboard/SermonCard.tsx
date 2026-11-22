@@ -264,7 +264,8 @@ function SermonCardFooter({ sermon, effectiveIsPreached, t }: SermonCardFooterPr
         <ExportButtons
           sermonId={sermon.id}
           orientation="horizontal"
-          getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
+          // The window's whole choice goes on — «Thoughts / Plan» too (BUG-20261122-export-txt-plan-choice-lost).
+          getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags, type: options?.type })}
           className=""
           isPreached={effectiveIsPreached}
           variant="icon"
