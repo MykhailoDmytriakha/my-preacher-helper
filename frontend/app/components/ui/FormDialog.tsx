@@ -19,6 +19,8 @@ interface FormDialogProps {
    * (a comment's place and the button that moves it).
    */
   titleAction?: ReactNode;
+  /** One action of the whole window in its top right corner, such as deleting what it edits (`DeleteIconButton`). */
+  cornerAction?: ReactNode;
   /** Omitted by sheet-shaped dialogs, whose head is the title and nothing else. */
   eyebrow?: string;
   description?: string;
@@ -75,7 +77,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, returnFocusTo, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName, away = false, unsaved = false }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, cornerAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, returnFocusTo, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName, away = false, unsaved = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -104,11 +106,16 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
         )}
         {description && <p id={descriptionId} className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>}
       </div>
-      {(!banded || showCloseButton) && (
-        <button type="button" onClick={close} aria-label={t('common.close')} disabled={closeDisabled}
-          className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
-          <XMarkIcon className="h-6 w-6" />
-        </button>
+      {(cornerAction || !banded || showCloseButton) && (
+        <div className="-my-1 -mr-2 flex shrink-0 items-center gap-1">
+          {cornerAction}
+          {(!banded || showCloseButton) && (
+            <button type="button" onClick={close} aria-label={t('common.close')} disabled={closeDisabled}
+              className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
