@@ -2836,17 +2836,20 @@
       "sourceUnavailable": "A linked note is empty or unavailable. Check the sources on the sermon page. You can still write by hand.",
       "sourceTooLarge": "The linked material is too large to read in full in one request. Use a smaller study or fewer source notes; nothing has been truncated.",
       "generationFailed": "This point could not be generated. Your text is unchanged. Try again.",
-      "usageBlocked": "The AI allowance is used up. You can still edit and save the plan."
+      "usageBlocked": "The AI allowance is used up. You can still edit and save the plan.",
+      "conclusionLabel": "Conclusion",
+      "referencesNotPlaced": "The new verses could not be placed: the point's text does not show for sure where they belong. Your text is unchanged.",
+      "referencesPartlyPlaced": "Some of the new verses could not be placed: the point's text does not show for sure where they belong. The rest was replaced."
     },
     "pageTitle": "Sermon plan",
     "style": {
       "label": "Plan Length",
       "memory": "Short",
-      "memoryDesc": "Minimal cue sheet: main anchors only",
+      "memoryDesc": "Only the essentials",
       "narrative": "Medium",
-      "narrativeDesc": "Balanced cue sheet: anchors and key details",
+      "narrativeDesc": "Essentials and explanation",
       "exegetical": "Detailed",
-      "exegeticalDesc": "Fuller cue sheet: details, transitions, and references"
+      "exegeticalDesc": "More thoughts and examples"
     },
     "preachButton": "Preach",
     "customTime": "Custom Time",

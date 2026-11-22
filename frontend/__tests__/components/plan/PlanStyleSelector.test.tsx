@@ -20,7 +20,7 @@ describe("PlanStyleSelector", () => {
     expect(screen.getByRole("button", { name: /Short/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Medium/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Detailed/i })).toBeInTheDocument();
-    expect(screen.getByText("Minimal cue sheet: main anchors only")).toBeInTheDocument();
+    expect(screen.getByText("Only the essentials")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Medium/i }));
 

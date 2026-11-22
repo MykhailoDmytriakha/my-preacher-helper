@@ -21,19 +21,19 @@ export default function PlanStyleSelector({ value, onChange, disabled }: PlanSty
             id: 'memory',
             icon: <AlignLeft className="w-4 h-4" />,
             label: t('plan.style.memory', { defaultValue: 'Short' }),
-            description: t('plan.style.memoryDesc', { defaultValue: 'Minimal cue sheet: main anchors only' })
+            description: t('plan.style.memoryDesc', { defaultValue: 'Only the essentials' })
         },
         {
             id: 'narrative',
             icon: <List className="w-4 h-4" />,
             label: t('plan.style.narrative', { defaultValue: 'Medium' }),
-            description: t('plan.style.narrativeDesc', { defaultValue: 'Balanced cue sheet: anchors and key details' })
+            description: t('plan.style.narrativeDesc', { defaultValue: 'Essentials and explanation' })
         },
         {
             id: 'exegetical',
             icon: <ListTree className="w-4 h-4" />,
             label: t('plan.style.exegetical', { defaultValue: 'Detailed' }),
-            description: t('plan.style.exegeticalDesc', { defaultValue: 'Fuller cue sheet: details, transitions, and references' })
+            description: t('plan.style.exegeticalDesc', { defaultValue: 'More thoughts and examples' })
         }
     ];
 

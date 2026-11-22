@@ -1,4 +1,5 @@
 import { generateNotePlanPoint, generatePlanPointContent } from '@/api/clients/openAI.client';
+import { NotePlanResponseSchema } from '@/config/schemas/zod/notePlan.zod';
 import { PlanCueGroupSchema } from '@/config/schemas/zod/planPointContent.zod';
 
 import type { NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
@@ -36,6 +37,16 @@ const STYLE_TARGET: Record<PlanStyle, string> = {
   exegetical: '10-18',
 };
 
+/**
+ * A plan from a note changes only its leaves with the length: thoughts per step (`notePlanLengthInstructions`);
+ * the steps and their verses stay (owner, 2026-11-21).
+ */
+const NOTE_TARGET: Record<PlanStyle, string> = {
+  memory: '0-1 thought per step',
+  narrative: '1-3 thoughts per step',
+  exegetical: '2-5 thoughts per step',
+};
+
 const noteInput = (): NotePlanInput => ({
   title: 'A sermon in progress',
   verse: '1 Chronicles 4:9-10',
@@ -59,7 +70,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   structuredOutput().callWithStructuredOutput.mockResolvedValue({
     success: true,
-    data: { nodes: [{ nodeId: 'p1', turn: null, cues: [], refs: [], missingMaterial: null }] },
+    data: { nodes: [{ nodeId: 'p1', entry: null, refs: [], table: null, steps: [], conclusion: null, missingMaterial: null }] },
     refusal: null,
   });
 });
@@ -74,17 +85,20 @@ describe('the plan length setting is the only thing that states cue volume', () 
   });
 
   it.each(['memory', 'narrative', 'exegetical'] as const)(
-    'sends the %s target, and no competing count on the cue line, to the note editor',
+    'sends the %s target, and no competing count of thoughts outside the length block, to the note editor',
     async (style) => {
       await generateNotePlanPoint(noteInput(), style, 'user-1');
       const systemPrompt = capturedSystemPrompt();
+      const [beforeLength, lengthBlock] = systemPrompt.split('PLAN LENGTH');
 
-      expect(systemPrompt).toContain(STYLE_TARGET[style]);
-
-      const cueLine = systemPrompt
+      expect(lengthBlock).toContain(NOTE_TARGET[style]);
+      // The same steps and verses at every length — said in the block itself.
+      expect(lengthBlock).toMatch(/only the number of thoughts per step changes/);
+      beforeLength
         .split('\n')
-        .filter((line) => /\bcues\b/.test(line) && !/PLAN LENGTH/i.test(line));
-      cueLine.forEach((line) => expect(ranges(line)).toEqual([]));
+        .filter((line) => /\bthoughts?\b/i.test(line))
+        .forEach((line) => expect(ranges(line)).toEqual([]));
+      expect(ranges(NotePlanResponseSchema.shape.nodes.element.shape.steps.element.shape.thoughts.description ?? '')).toEqual([]);
     }
   );
 

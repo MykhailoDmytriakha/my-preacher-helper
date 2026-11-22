@@ -14,6 +14,12 @@ const input: NotePlanInput = {
 
 beforeEach(() => jest.resetAllMocks());
 
+/** A node of the v5 answer: the parts of a point (`utils/notePlanMarkdown.ts`), empty unless given. */
+const node = (nodeId: string, parts: Record<string, unknown> = {}) => ({
+  nodeId, entry: null, refs: [], table: null, steps: [], conclusion: null, missingMaterial: null, ...parts,
+});
+const step = (title: string, refs: string[] = [], thoughts: string[] = [], gist: string | null = null) => ({ title, gist, refs, thoughts });
+
 it('keeps full source and orders nodes by position with stable IDs despite duplicate titles', () => {
   const message = JSON.parse(createNotePlanUserMessage(input));
   expect(message.targetNodes.map((node: { nodeId: string }) => node.nodeId)).toEqual(['p', 'a', 'b']);
@@ -22,22 +28,22 @@ it('keeps full source and orders nodes by position with stable IDs despite dupli
   expect(message.supplementalThoughts).toEqual([]);
 });
 
-it('assembles the existing cue format into separate cells and exposes missing evidence', async () => {
+it('assembles each cell in the plan shape — entry, steps on their verses, conclusion — and exposes missing evidence', async () => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
-    { nodeId: 'b', turn: null, cues: [], refs: [], missingMaterial: 'No example in the study' },
-    { nodeId: 'p', turn: 'ask -> receive', cues: [], refs: [], missingMaterial: null },
-    { nodeId: 'a', turn: null, cues: ['His words'], refs: ['John 10: no one will snatch them'], missingMaterial: null },
+    node('b', { missingMaterial: 'No example in the study' }),
+    node('p', { entry: 'Who will snatch them?', conclusion: 'No one.' }),
+    node('a', { steps: [step('The shepherd', ['John 10:28: no one will snatch them'], ['His words'], 'he holds them')] }),
   ] } } as never);
   const result = await generateNotePlanPoint(input, 'narrative', 'owner');
-  expect(result.contentByNodeId.p).toBe('**→ ask → receive**');
-  expect(result.contentByNodeId.a).toBe('- His words\n\n*John 10: no one will snatch them*');
+  expect(result.contentByNodeId.p).toBe('Who will snatch them?\n\n**Conclusion:** No one.');
+  expect(result.contentByNodeId.a).toBe('1. **The shepherd** — he holds them\n\n   *John 10:28: no one will snatch them*\n\n   - His words');
   expect(result.contentByNodeId.b).toBe('');
   expect(result.missingMaterial.b).toContain('No example');
   expect(callWithStructuredOutput).toHaveBeenCalledWith(expect.stringContaining('Preserve uncertainty'), expect.any(String), expect.anything(), expect.objectContaining({ userId: 'owner' }));
 });
 
 it.each([['p', 'a', 'a'], ['p', 'a', 'foreign'], ['p']])('rejects incomplete, duplicate or foreign node IDs: %j', async (...ids) => {
-  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: ids.map((nodeId) => ({ nodeId, turn: null, cues: [], refs: [], missingMaterial: null })) } } as never);
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: ids.map((nodeId) => node(nodeId)) } } as never);
   await expect(generateNotePlanPoint(input, 'memory', 'owner')).rejects.toThrow('requested nodes');
 });
 
@@ -53,14 +59,14 @@ it('requests and returns only the selected child while retaining the full study 
   expect(message.parentContext).toEqual({ title: input.point.text, reminder: input.point.note });
   expect(message.sourceNotes).toEqual(input.notes);
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
-    { nodeId: 'a', turn: null, cues: ['Only this child'], refs: [], missingMaterial: null },
+    node('a', { steps: [step('Only this child')] }),
   ] } } as never);
-  expect(await generateNotePlanPoint(selected, 'memory', 'owner')).toEqual({ contentByNodeId: { a: '- Only this child' }, missingMaterial: {} });
+  expect(await generateNotePlanPoint(selected, 'memory', 'owner')).toEqual({ contentByNodeId: { a: '1. **Only this child**' }, missingMaterial: {} });
 });
 
 it('rejects extra parent content from a single-child generation', async () => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: ['a', 'p'].map((nodeId) => ({
-    nodeId, turn: null, cues: ['Unexpected expansion'], refs: [], missingMaterial: null,
+    ...node(nodeId), steps: [step('Unexpected expansion')],
   })) } } as never);
   await expect(generateNotePlanPoint({ ...input, targetNodeId: 'a' }, 'memory', 'owner')).rejects.toThrow('requested nodes');
 });
@@ -79,7 +85,7 @@ it('includes current unsaved text and the requested edit in the prompt', () => {
 
 it('mechanically preserves the main text for references-only requests even if the model rewrites it', async () => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
-    { nodeId: 'a', turn: 'Unwanted rewrite', cues: ['Unwanted new cue'], refs: ['John 10:2: supplied verse'], missingMaterial: null },
+    node('a', { entry: 'Unwanted rewrite', steps: [step('Unwanted', ['John 10:2: supplied verse'], ['Unwanted new cue'])] }),
   ] } } as never);
   const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: {
     mode: 'references', instruction: 'Improve references', currentContentByNodeId: { a: '**→ Original turn**\n\n- Exact original cue\n\n*John 10:1: old*' },
@@ -89,11 +95,44 @@ it('mechanically preserves the main text for references-only requests even if th
 
 it('keeps existing references when the study cannot supply a replacement', async () => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
-    { nodeId: 'a', turn: null, cues: [], refs: [], missingMaterial: 'No evidence' },
+    node('a', { missingMaterial: 'No evidence' }),
   ] } } as never);
   const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: {
     mode: 'references', instruction: 'Improve references', currentContentByNodeId: { a: 'Existing text and references' },
   } }, 'memory', 'owner');
   expect(result.contentByNodeId.a).toBe('Existing text and references');
   expect(result.missingMaterial.a).toBe('No evidence');
+});
+
+it('replaces each step\'s verses inside that step and keeps every word the preacher wrote', async () => {
+  const current = [
+    'Why did they go together?',
+    '1. **Ruth** — she stays',
+    '   *Ruth 1:15: old*',
+    '   - Her own words',
+    '2. **Orpah** — she goes back',
+    '   *Ruth 1:14: old too*',
+    '**Conclusion:** Choose.',
+  ].join('\n\n');
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+    node('a', { entry: 'Rewritten entry', steps: [step('Ruth', ['Ruth 1:16: thy people shall be my people'], ['Rewritten']), step('Orpah', ['Ruth 1:14: Orpah kissed her mother in law'])] }),
+  ] } } as never);
+  const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: {
+    mode: 'references', instruction: 'Better verses', currentContentByNodeId: { a: current },
+  } }, 'memory', 'owner');
+  expect(result.contentByNodeId.a).toBe(current
+    .replace('Ruth 1:15: old', 'Ruth 1:16: thy people shall be my people')
+    .replace('Ruth 1:14: old too', 'Ruth 1:14: Orpah kissed her mother in law'));
+});
+
+it('says why a references-only answer changed nothing, when its verses found no step to stand under', async () => {
+  const current = '1. **Ruth** — she stays\n\n   *Ruth 1:15: old*';
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+    node('a', { steps: [step('Naomi', ['Ruth 1:20: call me Mara'])] }),
+  ] } } as never);
+  const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', language: 'en', revision: {
+    mode: 'references', instruction: 'Better verses', currentContentByNodeId: { a: current },
+  } }, 'memory', 'owner');
+  expect(result.contentByNodeId.a).toBe(current);
+  expect(result.missingMaterial.a).toMatch(/could not be placed/);
 });
