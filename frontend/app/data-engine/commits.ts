@@ -1510,9 +1510,10 @@ export class CommitQueue {
       return { ...record, command, submitted, state: 'prepared' };
     }
     const markRebase = pendingBibleMarkRebase(record);
-    const fields = record.sequence === 0 ? documentFieldTargets(record.working.resource.collection) : [];
-    const commentKind = record.sequence === 0 ? record.commentKindAction : undefined;
     const commentPlace = record.sequence === 0 ? record.commentPlaceAction : undefined;
+    const commentKind = record.sequence === 0 && !commentPlace?.compound ? record.commentKindAction : undefined;
+    const fields = record.sequence === 0
+      ? documentFieldTargets(record.working.resource.collection).filter(target => !commentPlace?.compound || target.action !== 'commentKindAction') : [];
     if (commentPlace && (record.working.metadata?.generation !== record.baseline.metadata?.generation
       || !matchesCommentPlaceScope(record.working.value, commentPlace.before, commentPlace.paragraph)
       || !matchesCommentPlaceDestination(record.intended, commentPlace.after, commentPlace.paragraph, commentPlace.compound))) {

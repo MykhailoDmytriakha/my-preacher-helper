@@ -10,6 +10,7 @@ import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { originalAutosaveStillApplies, pendingAutosaveReceipts, recoverableAutosaves } from './automaticDraftResume';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
+import { isCommentCreationCopy, isNewCommentEditor } from './commentEditorScope';
 import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
 import { captureCommentPlace, matchesCommentPlaceRequest } from './commentPlaceAction';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
@@ -20,7 +21,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -73,7 +74,7 @@ import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SessionCheckpoint, ShownCopy } from './session';
-import type { LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
+import type { LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import type { EditorCommitAction, StudyNoteContentCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -149,7 +150,7 @@ export interface ManagedEditor {
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
-  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): Promise<void>;
+  importLegacyStudyNote(edits: LegacyStudyNoteImport): Promise<void>;
   /** Keep a distinct, unsent alternative based on the confirmed copy, without replacing the open draft. */
   holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
@@ -1215,16 +1216,18 @@ export class DataEngine {
     return rows;
   }
 
-  private async discoverRecoverable(resource: ResourceRef | undefined, forRecoveryChoices = false): Promise<RecoveryCheckpoint[]> {
+  private async discoverRecoverable(resource: ResourceRef | undefined, forRecoveryChoices = false,
+    matches?: (record: EditorRecord) => boolean): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner();
     if (resource) this.validateResource(resource, owner);
     const generation = this.generation;
     const repairing = this.localWriteback.retry(owner, address => address.kind === 'checkpoint' && (!resource || Boolean(address.resource && sameResource(address.resource, resource))));
     if (repairing) await repairing;
     this.assertCurrent(owner, generation);
-    const records = await this.recoveryStore().listRecoverable(owner, resource && copy(resource));
+    const stored = await this.recoveryStore().listRecoverable(owner, resource && copy(resource));
     this.assertCurrent(owner, generation);
-    if (!records.some(({ record }) => !this.editors.has(record.editorId))) return [];
+    const records = stored.filter(({ record }) => !this.editors.has(record.editorId) && (!matches || matches(record)));
+    if (!records.length) return [];
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     const fieldAnswers = singleFieldAnswerScopes(requests);
@@ -1255,6 +1258,60 @@ export class DataEngine {
       ? await store.listManualChoiceCopies(owner, resource) : await this.discoverRecoverable(resource, true);
     const choices = manualChoicesOnly ? records.filter(({ record }) => isManualChoiceRecoveryIdentity(record.editorId)) : records;
     return this.recoveryChoices(owner, generation, 'checkpoint', choices, record => record.id);
+  }
+
+  /** Restore only new comments left at this passage or in the Studies place picker. */
+  async listNewCommentCopies(slot: string): Promise<RecoveryCheckpoint[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const matches = (record: EditorRecord) => isCommentCreationCopy(record, slot);
+    const records = (await this.discoverRecoverable(undefined, true, matches)).filter(({ record }) => matches(record));
+    const submittedOrigins = new Set(records.flatMap(({ record }) => {
+      const queued = Object.keys(record.checkpoint.pending).some(id => {
+        const request = this.commitRecords.get(id);
+        return request?.state === 'queued' || request?.state === 'prepared';
+      });
+      return queued ? (record.recoverySources ?? []).map(source => source.id) : [];
+    }));
+    // A closed editor's queued creation owns the exact source that it recovered.
+    // The original stays on disk until delivery, but cannot be offered as another new comment.
+    const choices = records.filter(source => !submittedOrigins.has(source.id));
+    return this.recoveryChoices(owner, generation, 'checkpoint', choices, source => source.id);
+  }
+
+  /** Atomically reserve the destination of an exact legacy creation on this device. */
+  async parkLegacyCommentCreation(resource: ResourceRef, slot: string, value: DocumentData): Promise<RecoveryCheckpoint | null> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    const editorId = editorIdentity('legacy-comment-creation', resource, slot, 'source');
+    if (resource.collection !== 'studyNotes' || value.userId !== owner || value.type !== 'comment' || !isNewCommentEditor(editorId)) {
+      throw new Error('Invalid legacy comment creation');
+    }
+    // A matching old copy can survive a crash just after the new comment was accepted.
+    const saved = await this.knownSnapshot(owner, generation, resource);
+    this.assertCurrent(owner, generation);
+    if (saved?.metadata || [...this.commitRecords.values()].some(request => request.owner === owner
+      && sameResource(request.baseline.resource, resource) && request.baseline.value === null
+      && request.baseline.metadata === null && request.intended !== null
+      && (request.state === 'queued' || request.state === 'prepared'))) return null;
+    const store = this.recoveryStore();
+    let record = await store.read(owner, editorId);
+    this.assertCurrent(owner, generation);
+    if (!record) {
+      const session = new DataSession({ resource, value: null, metadata: null });
+      session.edit(value);
+      const draft: EditorRecord = { owner, editorId, checkpoint: session.checkpoint(), autoSaveOnResume: false, prepared: null, unfinalized: [] };
+      try { await store.create(draft); }
+      catch (failure) {
+        this.assertCurrent(owner, generation);
+        // Another tab may have parked the same exact source while this one read it.
+        record = await store.read(owner, editorId);
+        if (!record) throw failure;
+      }
+      record ??= draft;
+    }
+    this.assertCurrent(owner, generation);
+    if (!isCommentCreationCopy(record, slot)) throw new Error('The parked comment creation changed');
+    return { id: recoveryCheckpointId(owner, editorId), record };
   }
 
   /** Explicit removal owns only the shown persisted version, with no queue cancellation. */
@@ -2073,7 +2130,7 @@ export class DataEngine {
       };
       options.signal!.addEventListener('abort', onAbort, { once: true });
     });
-    const opening = this.initializeEditor(owner, generation, frozen, editorId, creating, entry);
+    const opening = this.initializeEditor(owner, generation, frozen, editorId, creating, entry, recoverySourceIds.length > 0);
     entry.initializing = opening;
     try {
       const managed = await (cancelled ? Promise.race([opening, cancelled]) : opening);
@@ -2091,7 +2148,7 @@ export class DataEngine {
     }
   }
 
-  private async initializeEditor(owner: string, generation: number, frozen: ResourceRef, editorId: string, creating: boolean, entry: EditorEntry): Promise<ManagedEditor> {
+  private async initializeEditor(owner: string, generation: number, frozen: ResourceRef, editorId: string, creating: boolean, entry: EditorEntry, recovering: boolean): Promise<ManagedEditor> {
     const assertOpening = () => {
       this.assertCurrent(owner, generation);
       if (entry.closed) throw this.abortError();
@@ -2103,7 +2160,8 @@ export class DataEngine {
         || (address.kind === 'closing-save' && address.resource !== undefined && sameResource(address.resource, frozen)));
       if (repairing) await repairing;
       assertOpening();
-      const reservedNote = creating && frozen.collection === 'studyNotes' && editorSlot(editorId) === 'study-note';
+      const reservedNote = creating && frozen.collection === 'studyNotes'
+        && (editorSlot(editorId) === 'study-note' || (recovering && isNewCommentEditor(editorId)));
       const requests = creating && !reservedNote ? [] : await this.commits.list();
       assertOpening();
       requests.forEach(request => this.rememberCommit(request));

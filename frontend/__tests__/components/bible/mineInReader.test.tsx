@@ -14,6 +14,13 @@ import { verseWords, type BookText } from '@/utils/bibleText';
 import type { BookUsageEntry } from '@/utils/scriptureUsage';
 
 // Render only the real comment heading interpolation; keep the shared test translation behavior for every other key.
+// The reader integration suite supplies a mocked legacy writer. The real comment
+// session and its command boundary are exercised in commentDraftSession.test.tsx.
+jest.mock('@/components/CommentDialog', () => {
+  const original = jest.requireActual('@/components/CommentDialog');
+  return { ...original, CommentDialog: original.LegacyCommentDialog };
+});
+
 jest.mock('@locales/useTranslation', () => {
   const actual = jest.requireActual('@locales/useTranslation');
   const english = require('../../../locales/en/translation.json');

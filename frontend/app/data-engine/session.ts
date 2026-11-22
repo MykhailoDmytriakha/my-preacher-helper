@@ -41,7 +41,7 @@ import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlac
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { unseenStudyNoteField } from './studyNoteContentCapture';
-import { projectLegacyStudyNote, type LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
+import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegacyStudyNote, reviseLegacyCommentConflicts, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
@@ -233,6 +233,11 @@ export class DataSession {
       this.state.confirmed = copy(shown.confirmed);
     }
     const field = autosaveStamp?.field;
+    const previousConflicts = this.state.conflicts;
+    if (this.state.confirmed.resource.collection === 'studyNotes' && previousConflicts.length) {
+      this.state.conflicts = reviseLegacyCommentConflicts(this.state, value);
+      if (!this.state.conflicts.length && equalValues(this.state.remoteCandidate, this.state.confirmed)) this.state.remoteCandidate = null;
+    }
     const unseen = field === 'content' || field === 'title' || field === 'type'
       ? unseenStudyNoteField(this.state, value, shown, field) : undefined;
     if (unseen) {
@@ -264,13 +269,17 @@ export class DataSession {
     this.refreshUnreadableComparisons();
   }
 
-  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): void {
+  importLegacyStudyNote(edits: LegacyStudyNoteImport): void {
     if (this.state.dirty || Object.keys(this.state.pending).length || this.state.remoteCandidate || this.state.conflicts.length) {
       throw Object.assign(new Error('Finish the current note changes before restoring a copy'), { code: 'decision-required' });
     }
     const { confirmed } = this.state;
-    const { value, conflicts } = projectLegacyStudyNote(confirmed, edits);
-    const proofs = autosaveFieldTargets(confirmed.resource.collection).flatMap(target => {
+    const comment = 'kind' in edits;
+    const { value, conflicts } = comment
+      ? projectLegacyStudyComment(confirmed, edits.edits)
+      : projectLegacyStudyNote(confirmed, edits);
+    // A historical comment copy never observed an engine revision.
+    const proofs = comment ? [] : autosaveFieldTargets(confirmed.resource.collection).flatMap(target => {
       const { field } = target;
       if (field !== 'title' && field !== 'content' && field !== 'type') return [];
       if (conflicts.some(({ path }) => path[0] === field)) return [];
@@ -803,6 +812,7 @@ export class DataSession {
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
+    assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {
       this.finishReferenceChoice(referenceChoice);

@@ -17,6 +17,12 @@ import type { StudyNote } from '@/models/models';
 import type { BibleId } from '@/utils/bibles';
 import type { MinePlace } from '@/components/bible/useBookUsage';
 
+// This suite tests the reader's placement rules with a stubbed collection and writer.
+jest.mock('@/components/CommentDialog', () => {
+  const original = jest.requireActual('@/components/CommentDialog');
+  return { ...original, CommentDialog: original.LegacyCommentDialog };
+});
+
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
   RichMarkdownEditor: ({ value, onChange, placeholder, editable = true }: { value: string; onChange: (value: string) => void; placeholder?: string; editable?: boolean }) => (
     <textarea aria-label="comment-editor" placeholder={placeholder} value={value} readOnly={!editable} onChange={(event) => onChange(event.target.value)} />

@@ -67,6 +67,7 @@ const preachDateCityAction = nullableTitleAction.extend({ scope: z.object({ id: 
 const preachDateChurchAction = rowValues(z.object({ id: z.string(), name: z.string(), city: z.string().optional() }));
 const fieldValueAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
 const fieldValueDraft = z.object({ generation: id, action: fieldValueAction });
+const commentKindObservation = fieldValueAction.extend({ reference: fieldSchema });
 const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
   title: z.string().nullable(), ancestors: z.array(z.string().min(1)), removedPointId: z.string().min(1).max(128).optional(),
@@ -82,6 +83,7 @@ const checkpointConflict = z.object({
 });
 const pendingShape = {
   commentPlaceAction: commentPlaceObservation.optional(), outlinePointPlacement: outlinePlacement.optional(),
+  commentKindAction: commentKindObservation.optional(),
   groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(),
   generation: observedRevision, value: z.unknown(), operations: z.array(id).optional(),
   borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional(),
@@ -167,6 +169,8 @@ const recordSchema = z.object({
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: fieldValueDraft.optional(),
     studyNoteContentDraft: fieldValueDraft.optional(), studyNoteTitleDraft: fieldValueDraft.optional(), studyNoteTypeDraft: fieldValueDraft.optional(),
+    commentKindDraft: z.object({ generation: id, action: commentKindObservation }).optional(),
+    commentPlaceDraft: z.object({ generation: id, action: commentPlaceObservation }).optional(),
     councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: fieldValueDraft.optional(),
     councilLifecycleDraft: fieldValueDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
     councilTopicSummaryDrafts: rowDrafts(nullableTitleAction).optional(),
@@ -272,6 +276,7 @@ const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
   groupStatusDraft: draftWithoutUnreadableClock,
   groupDescriptionDraft: draftWithoutUnreadableClock,
   studyNoteContentDraft: draftWithoutUnreadableClock, studyNoteTitleDraft: draftWithoutUnreadableClock, studyNoteTypeDraft: draftWithoutUnreadableClock,
+  commentKindDraft: draftWithoutUnreadableClock, commentPlaceDraft: draftWithoutUnreadableClock,
   councilTitleDraft: draftWithoutUnreadableClock,
   councilDateDraft: draftWithoutUnreadableClock,
   councilLifecycleDraft: draftWithoutUnreadableClock,
@@ -442,9 +447,10 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   }));
   const createIntent = record.checkpoint.confirmed.value === null && record.checkpoint.confirmed.metadata === null;
   const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => {
-    const { commentPlaceAction: place, ...held } = intent;
-    if (place && ref.collection !== 'studyNotes') throw new Error('Comment place checkpoint identity mismatch');
+    const { commentPlaceAction: place, commentKindAction: kind, ...held } = intent;
+    if ((place || kind) && ref.collection !== 'studyNotes') throw new Error('Comment checkpoint identity mismatch');
     return [operationId, { ...held, value: ownedDocument(intent.value, createIntent),
+      ...(kind && { commentKindAction: { ...kind, before: field(kind.before), after: field(kind.after), reference: field(kind.reference) } }),
       ...(place && { commentPlaceAction: { ...place, before: field(place.before), after: field(place.after), paragraph: field(place.paragraph) } }) }];
   }));
   const retainedManualChoice = record.retainedManualChoice && {

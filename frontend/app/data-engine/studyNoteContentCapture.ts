@@ -1,4 +1,4 @@
-import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
+import { isOrdinaryStudyNote, isStudyNoteBodyDocument } from '@/utils/studyNoteType';
 
 import { boundedActionTime } from './actionClock';
 import { equalValues, readField } from './fieldValues';
@@ -58,10 +58,11 @@ export function captureStudyNoteContent(baseline: ResourceSnapshot, draft: Docum
 export function unseenStudyNoteField(checkpoint: SessionCheckpoint, value: DocumentData | null,
   shown: ShownCopy | undefined, field: StudyNoteTimedField): { snapshot: ResourceSnapshot; conflict: ConflictDetail | null } | undefined {
   const { confirmed } = checkpoint, fieldPath = [field];
-  if (confirmed.resource.collection !== 'studyNotes' || !value || !isOrdinaryStudyNote(value)) return;
+  const acceptsDocument = field === 'content' ? isStudyNoteBodyDocument : isOrdinaryStudyNote;
+  if (confirmed.resource.collection !== 'studyNotes' || !value || !acceptsDocument(value)) return;
   const prior = checkpoint.conflicts.find(({ path }) => path.length === 1 && path[0] === field);
   const snapshot = prior ? checkpoint.remoteCandidate : confirmed;
-  if (!snapshot?.value || !isOrdinaryStudyNote(snapshot.value)) return;
+  if (!snapshot?.value || !acceptsDocument(snapshot.value)) return;
   const stored = readField(snapshot.value, fieldPath);
   const mine = readField(value, fieldPath);
   if (prior) {

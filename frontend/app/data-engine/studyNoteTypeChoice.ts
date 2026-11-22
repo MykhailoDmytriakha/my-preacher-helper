@@ -1,4 +1,4 @@
-import { isOrdinaryStudyNote, isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
+import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, isStudyNoteBodyDocument } from '@/utils/studyNoteType';
 
 import { readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
@@ -76,7 +76,7 @@ export function keepUncontestedStudyNoteFields(basis: ResourceSnapshot, draft: D
 export function studyNoteBodyAfterStoredChoice(submitted: DocumentData | null, latest: DocumentData | null,
   stored: ResourceSnapshot, conflicts: readonly ConflictDetail[]) {
   if (stored.resource.collection !== 'studyNotes' || !submitted || !latest || !stored.value
-    || !isOrdinaryStudyNote(submitted) || !isOrdinaryStudyNote(latest) || !isOrdinaryStudyNote(stored.value)
+    || !isStudyNoteBodyDocument(submitted) || !isStudyNoteBodyDocument(latest) || !isStudyNoteBodyDocument(stored.value)
     || conflicts.length !== 1 || conflicts[0].path.length !== 1
     || conflicts[0].path[0] !== 'content') return;
   const path = ['content'];

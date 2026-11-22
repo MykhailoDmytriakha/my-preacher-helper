@@ -1088,12 +1088,15 @@ export interface DocumentUpdateOptions {
   blankBeforeCreation?: (draft: DocumentData) => boolean;
   action?: 'group-title' | 'group-status' | 'group-description' | 'council-title' | 'council-date'
     | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] }
-    | { kind: 'outline-title'; opening: OutlineTitleOpening } | { kind: 'study-note-field'; field: import('./documentFieldAction').StudyNoteTimedField; opening: string; saveImmediately?: true };
+    | { kind: 'outline-title'; opening: OutlineTitleOpening } | { kind: 'study-note-field'; field: import('./documentFieldAction').StudyNoteTimedField; opening: string; saveImmediately?: true }
+    | { kind: 'comment-kind' } | { kind: 'comment-place' };
 }
 
 interface DocumentOptions {
   slot?: string;
   create?: boolean;
+  /** A caller can explicitly open a parked document at its original resource address. */
+  recoverySourceId?: string;
   autoSave?: boolean;
   /**
    * The screen can show this document for reading only: while device storage is silent it gets a
@@ -1159,14 +1162,14 @@ interface RecoveryRequest {
 const aborted = () => Object.assign(new Error('Editor recovery was cancelled'), { name: 'AbortError' });
 
 /** One UI contract: durable draft, observed value, delivery and conflict choices. */
-function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750, readOnlyCopy = false }: DocumentOptions = {}) {
+function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750, readOnlyCopy = false, recoverySourceId }: DocumentOptions = {}) {
   // The app-wide banner answers drafts under this slot; a screen editor there would be settled behind its back.
   if (slot === ACTION_SLOT) throw new Error(`The "${ACTION_SLOT}" slot is reserved for one-shot actions`);
   const { browser, owner } = useDataEngine();
   const readOnlyReason = useReadOnlyReason();
   const say = useSayFailure();
   const collection = resource?.collection ?? null, id = resource?.id ?? null;
-  const key = JSON.stringify([collection, id, slot, create]);
+  const key = JSON.stringify([collection, id, slot, create, recoverySourceId]);
   const [opened, setOpened] = useState<OpenEditor | null>(null);
   const [attempt, setAttempt] = useState(0);
   const base = useMemo(() => ({ owner, key, browser }), [owner, key, browser]);
@@ -1199,7 +1202,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     const cancellation = new AbortController();
     setError(null);
     const editorOptions = { signal: cancellation.signal, autoSaveOnResume: autoSaveRef.current };
-    const opening = recovery ? browser.engine.recoverEditor(ref, editorId, recovery.sourceId, { signal: cancellation.signal }) : create
+    const sourceId = recovery?.sourceId ?? recoverySourceId;
+    const opening = sourceId ? browser.engine.recoverEditor(ref, editorId, sourceId, editorOptions) : create
       ? browser.engine.createEditor(ref, editorId, editorOptions)
       : browser.engine.openEditor(ref, editorId, editorOptions);
     void opening.then(value => {
@@ -1221,16 +1225,16 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       if (!active) return;
       // An ordinary opening remains pending while the tab cannot read. Once it can, try again.
       // Recovering a draft is the person's action and still reports its own refusal.
-      if (!recovery && needsConnection(failure)) {
+      if (!sourceId && needsConnection(failure)) {
         stopWaiting = browser.engine.onceReachable(() => { if (active) setAttempt(value => value + 1); });
         return;
       }
-      setError(failure, recovery ? 'refused' : 'read');
+      setError(failure, sourceId ? 'refused' : 'read');
     });
     // Leaving the screen is a moment to save, not to forget (BUG-20260919-engine-leaving-strands-last-edit):
     // with autosave, whatever the debounce had not sent yet becomes a durable request as the editor closes.
     return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); stopWaiting?.(); editor?.close({ flush: autoSaveRef.current }); };
-  }, [browser, owner, collection, id, slot, create, key, attempt, setError, identity, recovery]);
+  }, [browser, owner, collection, id, slot, create, key, attempt, setError, identity, recovery, recoverySourceId]);
 
   // Owner and resource identity gate rendering before effect cleanup can run.
   const current = opened?.identity === identity ? opened : null;
@@ -1421,6 +1425,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
           if (action.kind === 'exegetical-point') {
             return editor.edit(next, shown, { field: action.kind, nodeId: action.nodeId, intent: action.intent, time: time ?? null });
           }
+          if (action.kind === 'comment-kind' || action.kind === 'comment-place') {
+            return editor.edit(next, shown, { field: action.kind === 'comment-kind' ? 'paragraph' : 'scriptureRefs', time: time ?? null });
+          }
           if (action.kind === 'study-note-field') {
             const { field, opening } = action;
             const displayed = shown?.draft;
@@ -1450,7 +1457,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         throw refused ? refused.error : error;
       });
     },
-    importLegacyStudyNote: (edits: readonly import('./studyNoteLegacyDraft').LegacyStudyNoteEdit[]) => run(editor => {
+    importLegacyStudyNote: (edits: import('./studyNoteLegacyDraft').LegacyStudyNoteImport) => run(editor => {
       const importing = editor.importLegacyStudyNote(edits);
       cancelScheduledSave();
       return importing;

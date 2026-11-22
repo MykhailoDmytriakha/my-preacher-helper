@@ -59,6 +59,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
 import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
+import { keepUncontestedLegacyComment, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -72,7 +73,6 @@ import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
-import type { LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot, StudyNoteContentCapture } from './types';
 import type { OutlineTitleOpening, SermonNoteOpening } from '@/utils/sermonNoteText';
@@ -376,7 +376,7 @@ export class EditorController {
     }).then(() => replaced);
   }
 
-  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): Promise<void> {
+  importLegacyStudyNote(edits: LegacyStudyNoteImport): Promise<void> {
     this.assertCurrent();
     this.session.importLegacyStudyNote(edits);
     this.durable = false;
@@ -543,6 +543,7 @@ export class EditorController {
       }
       const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote', titles)
         ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+          ?? keepUncontestedLegacyComment(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
           ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
           ?? keepUncontestedStudyNoteFields(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
       if (this.prepared) {

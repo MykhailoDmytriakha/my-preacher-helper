@@ -1,12 +1,12 @@
 import { isGroupStatus } from '@/utils/groupDocument';
 import { isSermonGoalType, preparationConfirmationPaths, preparationTextPaths, preparationThesisPaths, repeatedWordsPath, type PreparationConfirmation, type PreparationTextField, type SermonGoalType, type SermonThesisField } from '@/utils/preparationFieldValues';
-import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, type OrdinaryStudyNoteType } from '@/utils/studyNoteType';
+import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, isStudyNoteBodyDocument, type OrdinaryStudyNoteType } from '@/utils/studyNoteType';
 
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField, type AccountPreferenceTarget } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { isAuthoredStringList } from './authoredStringList';
 import { isSermonChurch } from './churchFieldValue';
-import { commentPlaceValue, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
+import { commentPlaceValue, leadingReferenceValue, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
 import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
@@ -16,6 +16,8 @@ import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
+import type { CommentKindObservation } from './commentKindAction';
+import type { CommentPlaceObservation } from './commentPlaceAction';
 import type { CommitRequest } from './commits';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { PrayerStatusCapture, PrayerStatusObservations, PrayerStatusOpening, PrayerStatusTarget } from './prayerStatusAction';
@@ -524,7 +526,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | CommentKindDraftField | CommentPlaceDraftField | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -534,8 +536,9 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
   for (let request: CommitRequest | undefined = predecessor; request && !visited.has(request.id);
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
-      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
-        : target.field === 'church' || target.field === 'date' || target.field === 'description' || isStudyNoteDraftField(target) || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'prayerTextActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
+      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'scriptureRefs' ? leadingReferenceValue(request.value)
+        : target.field === 'heldAt' ? councilLifecycleValue(request.value)
+        : target.field === 'church' || target.field === 'date' || target.field === 'description' || isStudyNoteDraftField(target) || target.field === 'paragraph' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'prayerTextActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -786,10 +789,10 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
 }
 
 export type StudyNoteTimedField = 'content' | 'title' | 'type';
-export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field'] | StudyNoteTimedField; time: ActionTime | null }
+export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field'] | StudyNoteTimedField | 'paragraph' | 'scriptureRefs'; time: ActionTime | null }
   | import('./rowFieldAutosave').RowFieldStamp | import('./exegeticalPointCapture').ExegeticalPointEditStamp;
 type AutosaveFieldValue = string | FieldValue;
-type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
+type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue> & { reference?: FieldValue; paragraph?: FieldValue };
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
 type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation; groupDescriptionAction?: DocumentFieldObservation<FieldValue> };
 type StudyNoteFieldActions = {
@@ -797,15 +800,19 @@ type StudyNoteFieldActions = {
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
   studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
 };
-export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions & StudyNoteFieldActions;
+export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions & StudyNoteFieldActions & { commentKindAction?: CommentKindObservation; commentPlaceAction?: CommentPlaceObservation };
 type GroupFieldTarget = TextDocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
 const STUDY_NOTE_DRAFT_FIELDS = [
   { ...STUDY_NOTE_CONTENT, draft: 'studyNoteContentDraft' },
   { ...STUDY_NOTE_TITLE, draft: 'studyNoteTitleDraft' },
   { ...STUDY_NOTE_TYPE, draft: 'studyNoteTypeDraft' },
 ] as const;
+const COMMENT_KIND_DRAFT = { ...COMMENT_KIND, draft: 'commentKindDraft' } as const;
+const COMMENT_PLACE_DRAFT = { ...COMMENT_PLACE, draft: 'commentPlaceDraft' } as const;
+type CommentKindDraftField = typeof COMMENT_KIND_DRAFT;
+type CommentPlaceDraftField = typeof COMMENT_PLACE_DRAFT;
 type StudyNoteDraftField = typeof STUDY_NOTE_DRAFT_FIELDS[number];
-type AutosaveFieldTarget = GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | CouncilFieldTarget;
+type AutosaveFieldTarget = GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | CommentKindDraftField | CommentPlaceDraftField | CouncilFieldTarget;
 export type AutosaveFieldDrafts = Partial<Record<AutosaveFieldTarget['draft'], AutosaveFieldDraft>>;
 
 function isStudyNoteDraftField(target: AutosaveFieldTarget | CapturedMetadataTarget): target is StudyNoteDraftField {
@@ -815,12 +822,17 @@ function isStudyNoteDraftField(target: AutosaveFieldTarget | CapturedMetadataTar
 export function autosaveFieldTargets(collection: string): readonly AutosaveFieldTarget[] {
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'councils') return COUNCIL_FIELDS;
-  if (collection === 'studyNotes') return STUDY_NOTE_DRAFT_FIELDS;
+  if (collection === 'studyNotes') return [...STUDY_NOTE_DRAFT_FIELDS, COMMENT_KIND_DRAFT, COMMENT_PLACE_DRAFT];
   return [];
 }
 
 function autosaveFieldValue(document: DocumentData | null | undefined, target: AutosaveFieldTarget): AutosaveFieldValue | undefined {
-  if (isStudyNoteDraftField(target)) return document && isOrdinaryStudyNote(document) ? readField(document, [target.field]) : undefined;
+  if (isStudyNoteDraftField(target)) {
+    const acceptsDocument = target.field === 'content' ? isStudyNoteBodyDocument : isOrdinaryStudyNote;
+    return document && acceptsDocument(document) ? readField(document, [target.field]) : undefined;
+  }
+  if (target.field === 'paragraph') return document?.type === 'comment' ? readField(document, ['paragraph']) : undefined;
+  if (target.field === 'scriptureRefs') return leadingReferenceValue(document ?? null);
   if (target.field === 'date' || target.field === 'description') return readField(document ?? {}, [target.field]);
   if (target.field === 'heldAt') return councilLifecycleValue(document);
   const value = document?.[target.field];
@@ -841,7 +853,7 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
     ? ('causal' in target && target.causal && stamp.time === null ? null : boundedActionTime(stamp.time)) : undefined;
   if (!metadata || metadata.deleted || time === undefined || !acceptsAutosaveField(nextValue, target)) return undefined;
   const visible = shown?.confirmed.metadata?.generation === metadata.generation
-    && (isStudyNoteDraftField(target) || shown.editGeneration === checkpoint.editGeneration) ? shown : checkpoint;
+    && (isStudyNoteDraftField(target) || target.field === 'paragraph' || target.field === 'scriptureRefs' || shown.editGeneration === checkpoint.editGeneration) ? shown : checkpoint;
   const staged = checkpoint[target.draft];
   // A matched stored value is the opening of the next gesture. Its earlier proof
   // remains eligible for delivery until the person actually changes this field again.
@@ -853,7 +865,15 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
   const before = prior && !pending ? prior.before : pending ? oldValue : autosaveFieldValue(visible.draft ?? checkpoint.draft, target) ?? oldValue;
   if (!acceptsAutosaveField(before, target) || equalValues(before, nextValue)) return undefined;
   const observedRevision = prior?.observedRevision ?? pending?.[target.action]?.observedRevision ?? visible.confirmed.metadata!.revision;
-  return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time } };
+  const reference = target.field === 'paragraph'
+    ? prior?.reference ?? readField(visible.draft ?? {}, ['scriptureRefs']) : undefined;
+  if (target.field !== 'scriptureRefs') {
+    return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time, ...(reference && { reference }) } };
+  }
+  const opening = observedValue(before).value, destination = observedValue(nextValue).value;
+  if (visible.confirmed.value?.type !== 'comment' || !object(opening) || !object(destination) || opening.id !== destination.id) return undefined;
+  const paragraph = prior?.paragraph ?? readField(visible.confirmed.value, ['paragraph']);
+  return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time, paragraph } };
 }
 
 export function withQueuedGroupScalarProofs(source: SessionCheckpoint,
@@ -929,7 +949,7 @@ function autosaveDraftAction(checkpoint: SessionCheckpoint, target: AutosaveFiel
 
 export function sameAutosaveCapture(left: AutosaveFieldAction | undefined, right: AutosaveFieldAction | undefined): boolean {
   return Boolean(left && right && equalValues(left.before, right.before) && equalValues(left.after, right.after)
-    && equalValues(left.time, right.time) && left.observedRevision === right.observedRevision);
+    && equalValues(left.time, right.time) && equalValues(left.reference, right.reference) && equalValues(left.paragraph, right.paragraph) && left.observedRevision === right.observedRevision);
 }
 
 function uncapturedAutosaveField(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
@@ -939,7 +959,7 @@ function uncapturedAutosaveField(checkpoint: SessionCheckpoint, target: Autosave
 
 export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
   predecessor: CommitRequest | undefined, records: readonly CommitRequest[], editorId?: string): AutosaveFieldActions {
-  return Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
+  const actions: AutosaveFieldActions = Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
     const action = uncapturedAutosaveField(checkpoint, target);
     if (!action) return [];
     const opening = isStudyNoteDraftField(target)
@@ -949,6 +969,15 @@ export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline
     return [[target.action, { ...action, before: predecessorOperationId ? opening : action.before,
       ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));
+  if (actions.commentPlaceAction && checkpoint.draft) {
+    const represented = predecessor?.value ?? baseline.value;
+    const changesKind = represented?.type !== checkpoint.draft.type || represented?.paragraph !== checkpoint.draft.paragraph;
+    if (changesKind) {
+      // Keep both captured edits for local acknowledgement. The command uses the compound place guard.
+      return { ...actions, commentPlaceAction: { ...actions.commentPlaceAction, compound: true } };
+    }
+  }
+  return actions;
 }
 
 /** Both captures can belong to the same typing sequence while the first local Save is still being written. */
@@ -1022,7 +1051,8 @@ export function autosaveAcknowledgementAncestor(ancestor: DocumentData | null, a
     const value = autosaveFieldValue(accepted.value, target);
     if (!action || !equalValues(action.before, autosaveFieldValue(before, target))
       || accepted.metadata?.generation !== checkpoint[target.draft]?.generation || !acceptsAutosaveField(value, target)) return before;
-    return withDocumentFieldValue(before, target.field, observedValue(value));
+    const stored = observedValue(value);
+    return target.action === 'commentPlaceAction' ? withCommentPlace(before, stored) : withDocumentFieldValue(before, target.field, stored);
   }, ancestor);
 }
 

@@ -2688,6 +2688,31 @@ describe('Durable commit requests', () => {
     }
   });
 
+  it('keeps both local captures and sends only the compound guard for a staged comment move and kind', async () => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', content: 'Original words', paragraph: false, scriptureRefs: [place] },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const session = new DataSession(opening);
+    session.edit({ ...opening.value, paragraph: true }, session.checkpoint(), { field: 'paragraph', time: null });
+    session.edit({ ...session.checkpoint().draft, scriptureRefs: [moved] }, session.checkpoint(), { field: 'scriptureRefs', time: null });
+
+    const saved = await queue.save('editor', session.checkpoint());
+    expect(saved).toMatchObject({ commentKindAction: { before: { exists: true, value: false } },
+      commentPlaceAction: { before: { exists: true, value: place }, compound: true } });
+    await queue.drain(true);
+
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const [[command]] = jest.mocked(s.transport.send).mock.calls;
+    expect(command).toMatchObject({ kind: 'update', commentPlaceAction: { compound: true } });
+    expect(command).not.toHaveProperty('commentKindAction');
+    expect(s.server().value).toMatchObject({ paragraph: true, scriptureRefs: [moved], content: 'Original words' });
+  });
+
   it('retains an acknowledged opening if it leaves the pending list during a frozen Save', async () => {
     const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
     const moved = { ...place, fromVerse: 17 };
@@ -2753,6 +2778,50 @@ describe('Durable commit requests', () => {
     } finally {
       engine.dispose();
     }
+  });
+
+  it('stores an imported comment locally and keeps its separate move after taking the saved words', async () => {
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const moved = { ...place, fromVerse: 17 };
+    const secondary = { ...place, id: 'secondary', fromVerse: 6 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'comment' }, metadata: initial().metadata,
+      value: { userId: 'owner', type: 'comment', title: '', content: 'Saved words', paragraph: false,
+        scriptureRefs: [place, secondary], tags: [] },
+    };
+    const s = setup({ nativeChoice: true, opening });
+    const engine = s.makeEngine();
+    const editorId = editorIdentity('first', opening.resource, 'study-comment', 'opening');
+    const field = <Value extends string | boolean | typeof place>(value: Value) => ({ exists: true, value });
+    try {
+      const editor = await engine.openEditor(opening.resource, editorId);
+      await editor.importLegacyStudyNote({ kind: 'comment', edits: [
+        { field: 'content', opening: field('Opening words'), value: field('Offline words') },
+        { field: 'place', opening: field(place), paragraphOpening: field(false), value: field(moved) },
+      ] });
+      const record = await s.checkpoints.read('owner', editorId);
+      expect(record?.checkpoint).toMatchObject({ draft: { content: 'Offline words', scriptureRefs: [moved, secondary] },
+        conflicts: [{ path: ['content'], theirs: field('Saved words') }] });
+      expect(await s.requests.list('owner')).toEqual([]);
+      expect(s.transport.send).not.toHaveBeenCalled();
+      editor.close({ flush: false });
+    } finally { engine.dispose(); }
+
+    const restarted = s.makeEngine();
+    try {
+      const editor = await restarted.openEditor(opening.resource, editorId);
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint).toMatchObject({
+        draft: { content: 'Saved words', scriptureRefs: [moved, secondary] }, conflicts: [], dirty: true,
+      });
+      expect(await s.requests.list('owner')).toEqual([]);
+      await editor.save();
+      restarted.setOnline(true);
+      await restarted.retry();
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      expect(s.server().value).toMatchObject({ content: 'Saved words', scriptureRefs: [moved, secondary] });
+    } finally { restarted.dispose(); }
   });
 
   it.each([

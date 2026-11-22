@@ -1,9 +1,12 @@
+import { leadingReferenceValue } from '@/data-engine/commentPlaceAction';
 import { engineNote, storedReferences } from '@/hooks/useStudyNotesEngine';
 import { serializeContent } from '@/utils/contentFingerprint';
 
-import type { DocumentData } from '@/data-engine/types';
+import type { LegacyStudyCommentEdit } from '@/data-engine/studyNoteLegacyDraft';
+import type { DocumentData, FieldValue, Json } from '@/data-engine/types';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
+import type { CommentDraft } from '@/utils/commentDrafts';
 
 /*
  * A WRITTEN COMMENT'S DRAFT IS A FROZEN WINDOW SESSION: the words and what they were built from. The comment's window
@@ -65,6 +68,66 @@ export function resumedCommentSession(kept: unknown, shown: StudyNote, locale: A
     scriptureRefs: engineNote({ type: version.type ?? undefined, scriptureRefs: version.scriptureRefs } as unknown as DocumentData, shown.id, locale).scriptureRefs,
   });
   return { opened: resumed(opened), mine: resumed(mine) };
+}
+
+/**
+ * Keep the opening of every edited field. Unedited words come from the comment currently shown,
+ * so any typing after recovery starts from those words too.
+ */
+export function projectRestoredComment(kept: unknown, copy: CommentDraft, shown: StudyNote, locale: AppLocale) {
+  const session = resumedCommentSession(kept, shown, locale);
+  if (!session) return { session, text: copy.text, title: copy.title ?? '', contentFromStored: false };
+  const contentFromStored = copy.text.trim() === (session.mine.content ?? '').trim();
+  const titleFromStored = copy.title === undefined || copy.title.trim() === (session.mine.title ?? '').trim();
+  const untouched = {
+    ...(contentFromStored && { content: shown.content }),
+    ...(titleFromStored && { title: shown.title }),
+    ...(copy.paragraph === undefined && { paragraph: shown.paragraph }),
+    ...(copy.paragraph === undefined && copy.reference === null && { scriptureRefs: shown.scriptureRefs }),
+  };
+  return {
+    session: { opened: { ...session.opened, ...untouched }, mine: { ...session.mine, ...untouched } },
+    text: contentFromStored ? shown.content ?? '' : copy.text,
+    title: titleFromStored ? shown.title ?? '' : copy.title ?? '',
+    contentFromStored,
+  };
+}
+
+const retainedField = (value: Json | undefined): FieldValue =>
+  value === undefined ? { exists: false } : { exists: true, value };
+
+const retainedPlace = (note: StudyNote): FieldValue =>
+  leadingReferenceValue({ scriptureRefs: storedReferences(note.scriptureRefs) as Json });
+
+/** An old copy supplies edited fields and their original openings, independently of the displayed Bible. */
+export function legacyCommentEdits(kept: unknown, copy: CommentDraft, shown: StudyNote, locale: AppLocale): LegacyStudyCommentEdit[] {
+  const session = resumedCommentSession(kept, shown, locale);
+  const authored = session?.mine;
+  const opening = session?.opened;
+  const edits: LegacyStudyCommentEdit[] = [];
+  if (!authored || copy.text.trim() !== (authored.content ?? '').trim()) {
+    edits.push({ field: 'content', value: retainedField(copy.text),
+      ...(opening && { opening: retainedField(opening.content) }) });
+  }
+  if (copy.title !== undefined && (!authored || copy.title.trim() !== (authored.title ?? '').trim())) {
+    edits.push({ field: 'title', value: retainedField(copy.title),
+      ...(opening && { opening: retainedField(opening.title) }) });
+  }
+  if (copy.paragraph !== undefined && copy.paragraph !== authored?.paragraph) {
+    edits.push({ field: 'paragraph', value: retainedField(copy.paragraph),
+      ...(opening && { opening: retainedField(opening.paragraph), referenceOpening: retainedPlace(opening) }) });
+  }
+  if (copy.reference) {
+    edits.push({ field: 'place', value: leadingReferenceValue({ scriptureRefs: [{ ...copy.reference }] }),
+      ...(opening && { opening: retainedPlace(opening), paragraphOpening: retainedField(opening.paragraph) }) });
+  }
+  return edits;
+}
+
+/** Compare the authored reference as stored, before its projection into another Bible. */
+export function sameStoredCommentPlace(left: StudyNote | undefined, right: StudyNote): boolean {
+  const first = (note: StudyNote | undefined) => (storedReferences(note?.scriptureRefs) as ScriptureReference[] | undefined)?.[0];
+  return serializeContent(first(left)) === serializeContent(first(right));
 }
 
 /** What a save guards with when the words' base is unknown: every field it sends, an unknown value (null). */

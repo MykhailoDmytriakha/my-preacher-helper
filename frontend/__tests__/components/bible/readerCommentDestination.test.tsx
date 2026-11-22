@@ -14,6 +14,12 @@ import type { BookText } from '@/utils/bibleText';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 import type { BibleId } from '@/utils/bibles';
 
+// This suite tests the reader's placement rules with a stubbed collection and writer.
+jest.mock('@/components/CommentDialog', () => {
+  const original = jest.requireActual('@/components/CommentDialog');
+  return { ...original, CommentDialog: original.LegacyCommentDialog };
+});
+
 jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ language: 'en',
   t: (key: string, options?: { title?: string }) => options?.title ? key + ': ' + options.title : key,
 }) }));

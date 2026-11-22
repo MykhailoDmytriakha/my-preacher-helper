@@ -5552,6 +5552,7 @@
     "placeHere": "here now",
     "placeTaken": "has a comment",
     "movedFrom": "Was at {{place}} — moves when you press Done.",
+    "placeChanged": "The comment’s original reference changed. Open the verse picker again to choose its place.",
     "moveBack": "Put back",
     "moveHere": "Move here",
     "pick": {

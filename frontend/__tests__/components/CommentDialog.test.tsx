@@ -2,7 +2,8 @@ import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdo
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { CommentDialog, CommentWayBar } from '@/components/CommentDialog';
+import { LegacyCommentDialog as CommentDialog, CommentWayBar } from '@/components/CommentDialog';
+import { commentDraftBase, legacyCommentEdits } from '@/components/commentDraftBase';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { draftKey, saveDraft } from '@/utils/durableDraft';
 import { readDraftAddress } from '@/utils/draftAddress';
@@ -103,6 +104,25 @@ const keptDrafts = () => Object.keys(window.localStorage).filter((key) => key.st
   .map((key) => (JSON.parse(window.localStorage.getItem(key) ?? '{}') as { value?: unknown }).value);
 
 describe('CommentDialog', () => {
+  it('transfers only fields authored in a historical comment window and keeps their saved openings', () => {
+    const authored = { ...stored, content: 'My earlier words', title: 'My earlier title', paragraph: false };
+    const { bible: _bible, ...storedPlace } = reference;
+    const opened = { ...stored, content: 'Words after a version choice', title: 'A title from the phone',
+      paragraph: false, scriptureRefs: [storedPlace] };
+    const shown = { ...stored, content: 'Latest words', title: 'Latest title' };
+    expect(legacyCommentEdits(commentDraftBase(opened, authored), {
+      text: authored.content, title: authored.title, reference: null, paragraph: true,
+    }, shown, 'en')).toEqual([{
+      field: 'paragraph', value: { exists: true, value: true }, opening: { exists: true, value: false },
+      referenceOpening: { exists: true, value: storedPlace },
+    }]);
+  });
+
+  it('does not synthesize an opening for a historical comment copy that kept only words', () => {
+    expect(legacyCommentEdits(undefined, { text: 'Offline words', reference: null }, stored, 'en'))
+      .toEqual([{ field: 'content', value: { exists: true, value: 'Offline words' } }]);
+  });
+
   it('keeps the opening place while adopting the recovered reference identity', () => {
     const opening = { ...reference, id: 'current-opening' };
     const recovered = { ...reference, id: 'retained-reference', fromVerse: 30 };
@@ -528,6 +548,71 @@ describe('CommentDialog', () => {
       expect(mockEngine.updateNote).toHaveBeenCalledWith({
         id: 'c1', updates: { content: typed }, expectedRevision: 4, expectedBaseline: { content: stored.content },
       });
+    });
+
+    it('restores a draft that only changed the kind while showing the currently saved words', async () => {
+      const moved = { ...reference, fromVerse: 30 };
+      const latestWords = 'Текст, который позже сохранили с другого устройства.';
+      mockEngine.notes = [{ ...stored, content: latestWords, paragraph: false, scriptureRefs: [moved], rev: { note: 5 } }];
+      const opening = { content: stored.content, type: 'comment', paragraph: false, scriptureRefs: [reference], rev: { note: 4 } };
+      saveDraft(draftKey('owner', 'c1', 'comment', 'reader-writer'),
+        { text: stored.content, reference: null, paragraph: true }, undefined, false, 1, { opened: opening });
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:30" onClose={jest.fn()}
+        paragraphChoice={{ initial: false }} />);
+
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+
+      expect(screen.getByLabelText('editor')).toHaveValue(latestWords);
+      expect(screen.getByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
+      expect(mockEngine.updateNote).not.toHaveBeenCalled();
+    });
+
+    it('saves a new kind choice after a body-only recovery shows the current kind', async () => {
+      const wordsFromDraft = 'Words I added before leaving.';
+      mockEngine.notes = [{ ...stored, paragraph: true, rev: { note: 5 } }];
+      saveDraft(draftKey('owner', 'c1', 'comment', 'reader-writer'), { text: wordsFromDraft, reference: null }, undefined, false, 1, {
+        opened: { content: stored.content, type: 'comment', paragraph: false, scriptureRefs: [reference], rev: { note: 4 } },
+      });
+      render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()}
+        paragraphChoice={{ initial: true }} />);
+      const paragraph = screen.getByRole('button', { name: 'comment.kind.paragraph' });
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+      expect(paragraph).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.click(screen.getByRole('button', { name: 'comment.kind.comment' }));
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+
+      expect(mockEngine.updateNote).toHaveBeenCalledWith(expect.objectContaining({
+        updates: { content: wordsFromDraft, paragraph: false },
+        expectedBaseline: expect.objectContaining({ paragraph: true }),
+      }));
+    });
+
+    it('keeps the saved home when a restored move is put back after the stored place changed', async () => {
+      mockInterpolateCommentTitle = true;
+      const source = draftKey('owner', 'c1', 'comment', 'reader-writer');
+      const chosen = { ...reference, fromVerse: 28 };
+      const saved = { ...reference, fromVerse: 30 };
+      const latestWords = 'Words saved at the new passage.';
+      saveDraft(source, { text: stored.content, reference: chosen }, undefined, false, 1, {
+        opened: { content: stored.content, type: 'comment', scriptureRefs: [reference], rev: { note: 4 } },
+      });
+      const tree = () => <CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Isa 40:31"
+        openingPlace="Isa 40:31" context="Words of the original verse." bible="rst"
+        placeOf={ref => 'Isa ' + ref.chapter + ':' + ref.fromVerse} onClose={jest.fn()} />;
+      const window = render(tree());
+      mockEngine.notes = [{ ...stored, content: latestWords, scriptureRefs: [saved], rev: { note: 5 } }];
+      window.rerender(tree());
+
+      await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+      expect(screen.getByRole('heading', { name: 'Comment · Isa 40:28' })).toBeInTheDocument();
+      expect(screen.getByLabelText('editor')).toHaveValue(latestWords);
+
+      await userEvent.click(screen.getByRole('button', { name: 'comment.moveBack' }));
+      expect(screen.getByRole('heading', { name: 'Comment · Isa 40:30' })).toBeInTheDocument();
+      expect(screen.getByText('Isaiah 40:30')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+      expect(mockEngine.updateNote).not.toHaveBeenCalled();
+      expect(localStorage.getItem(source)).toBeNull();
     });
 
     it('keeps both versions after «keep mine»: restored, it sends only what this window changed, guarded by the version answered about', async () => {

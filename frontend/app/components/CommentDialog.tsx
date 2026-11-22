@@ -1,13 +1,13 @@
 'use client';
 
-import { RectangleStackIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 import { paragraphPlaceRefusal, storedCommentLayout } from '@/components/bible/commentParagraphPlacement';
-import { commentDraftBase, guardedByUnknownBase, resumedCommentSession } from '@/components/commentDraftBase';
+import { CommentKindSwitch, CommentWayBar } from '@/components/CommentDialogFields';
+import { commentDraftBase, guardedByUnknownBase, projectRestoredComment, sameStoredCommentPlace } from '@/components/commentDraftBase';
 import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
-import { CommentIcon, ParagraphIcon } from '@/components/Icons';
+import { EngineCommentWindow } from '@/components/EngineCommentWindow';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { DeleteIconButton } from '@/components/ui/DeleteIconButton';
@@ -25,7 +25,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
 import { COMMENT_DRAFT_AGGREGATE, commentDraftDocument, commentDraftReference, commentDraftValue, findCommentDraftCopies, isCommentDraftSaved, type CommentDraft, type CommentDraftTarget, type RestoredCommentPlace } from '@/utils/commentDrafts';
-import { COMMENT_SENTENCES, measureComment } from '@/utils/commentLength';
+import { measureComment } from '@/utils/commentLength';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -111,31 +111,6 @@ function asItStands(version: StoredVersion, live: StudyNote | undefined): Stored
 }
 
 /**
- * THE WAY FROM A COMMENT TO A NOTE (the owner, 2026-10-28: «эта полоска должна показывать от чего-то до заметки…
- * от серого постепенно зеленеть»): the comment's grey mark at one end, the note's green one at the other, the
- * line filling from grey to green as the person writes. Its unit is the way itself, so it needs no number; a
- * screen reader hears the count (`utils/commentLength.ts`). Written as a paragraph, its start is the paragraph's:
- * the window's title says «Абзац», and one thing has one name in the window (case 2026-11-06-comment-paragraph).
- */
-export function CommentWayBar({ text, paragraph = false }: { text: string; paragraph?: boolean }) {
-  const { t } = useTranslation();
-  const { sentences, share, isNote } = measureComment(text);
-  const label = isNote ? t('comment.wayNote') : t('comment.wayLabel', { count: Math.min(COMMENT_SENTENCES, Math.round(sentences)), total: COMMENT_SENTENCES });
-  const StartIcon = paragraph ? ParagraphIcon : CommentIcon;
-  return (
-    <div className="flex items-center gap-2" data-testid="comment-way">
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-500"><StartIcon className="h-2.5 w-2.5 text-white" /></span>
-      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{paragraph ? t('comment.kind.paragraph') : t('studiesWorkspace.type.comment')}</span>
-      <div role="img" aria-label={label} className="relative h-1 flex-1 overflow-hidden rounded-full bg-gradient-to-r from-[#8b8f98] to-emerald-600 dark:from-gray-400 dark:to-emerald-400">
-        <div className="absolute inset-y-0 right-0 bg-gray-200 transition-[width] duration-200 dark:bg-gray-700" style={{ width: `${Math.round((1 - share) * 100)}%` }} data-testid="comment-way-rest" />
-      </div>
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-600"><RectangleStackIcon className="h-2.5 w-2.5 text-white" aria-hidden="true" /></span>
-      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{t('studiesWorkspace.type.note')}</span>
-    </div>
-  );
-}
-
-/**
  * THE COMMENT'S WINDOW (case 2026-10-12-block-diagram, 3.2): a comment is written and edited only here (the owner,
  * 2026-10-28), with the notes' own editor and toolbar — bold, italic, lists, quote — over a few sentences or a
  * short list. Past five sentences it is a note: the bar turns green, a line offers it, and the main button says
@@ -214,30 +189,9 @@ function useCommentKind(target: CommentTarget, found: StudyNote | undefined, cho
   return { asParagraph, choose, restore, take, changed: changed || restoredKind !== undefined, pending, asWritten };
 }
 
-/** «Комментарий | Абзац» at the top of the window: what the comment is in the reader. */
-function CommentKindSwitch({ paragraph, onChange, disabled }: { paragraph: boolean; onChange: (paragraph: boolean) => void; disabled: boolean }) {
-  const { t } = useTranslation();
-  return (
-    <div role="group" aria-label={t('comment.kind.label')} className="flex gap-0.5 rounded-xl bg-gray-100 p-[3px] dark:bg-gray-950" data-testid="comment-kind">
-      {([false, true] as const).map((one) => (
-        <button
-          key={String(one)}
-          type="button"
-          aria-pressed={paragraph === one}
-          disabled={disabled}
-          onClick={() => onChange(one)}
-          className={`h-8 flex-1 whitespace-nowrap rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${paragraph === one
-            ? 'bg-white text-gray-900 shadow-sm dark:bg-indigo-600 dark:text-white'
-            : 'text-gray-600 dark:text-gray-300'}`}
-        >
-          {t(one ? 'comment.kind.paragraph' : 'comment.kind.comment')}
-        </button>
-      ))}
-    </div>
-  );
-}
+export { CommentWayBar } from '@/components/CommentDialogFields';
 
-export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, onSaved, returnFocusTo, openingPlace, away, onChooseVerses, versesRefusal, placeRefusal, paragraphChoice }: {
+export type CommentDialogProps = {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
@@ -287,7 +241,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    * own reference. Studies supplies no switch.
    */
   paragraphChoice?: ParagraphChoice;
-}) {
+};
+
+export function CommentDialog(props: CommentDialogProps) {
+  return <EngineCommentWindow key={props.target.kind === 'edit' ? props.target.id : 'new'} {...props} />;
+}
+
+export function LegacyCommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, onSaved, returnFocusTo, openingPlace, away, onChooseVerses, versesRefusal, placeRefusal, paragraphChoice }: CommentDialogProps) {
   const { t, language } = useTranslation();
   const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, observeCommentPlace, observeContent, captureActionTime } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
@@ -298,6 +258,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   live.current = found;
   // The comment as the window opened it: the revision guard compares a save with this, not with the list now.
   const opened = useRef<StudyNote | undefined>(found);
+  const displayed = useRef<StudyNote | undefined>(found);
   const [openingKind] = useState(() => found && observeCommentKind?.(found));
   const kindBasis = useRef(openingKind);
   const contentBasis = useRef(found ? observeContent?.(found.id, found.content) : undefined);
@@ -316,6 +277,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   useEffect(() => {
     if (text !== null || !found) return;
     opened.current = found;
+    displayed.current = found;
     kindBasis.current = observeCommentKind?.(found);
     placeBasis.current = observeCommentPlace?.(found);
     contentBasis.current = observeContent?.(found.id, found.content);
@@ -336,13 +298,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   // Where it stands and where it moves on «Готово»: a written comment's first reference, a new one's own.
   const where = useCommentPlace({
     ...(target.kind === 'edit'
-      ? { standing: (opened.current ?? found)?.scriptureRefs?.[0], newPlace: undefined, ownId: target.id }
+      ? { standing: (displayed.current ?? found)?.scriptureRefs?.[0], newPlace: undefined, ownId: target.id }
       : { standing: reference ?? undefined, newPlace: reference, ownId: undefined }),
     choosesOwn: Boolean(placePicker), restoreOwn: restorePlace, bible, placeOf, context, openingPlace, notes,
   });
   const { keptPlace } = where;
   const written = text ?? '';
-  const standing = opened.current ?? found;
+  const standing = displayed.current ?? found;
   const initial = opened.current?.content ?? '';
   const initialTitle = opened.current?.title ?? '';
   const [slot] = useState(() => commentDraftDocument(target, Boolean(placePicker)));
@@ -350,6 +312,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   // Words the device accepted, or the person threw away: from then on they are the baseline, not the opening words —
   // else a render after the save would make them «unsaved» again and the write on closing would keep them.
   const settled = useRef<CommentDraft | null>(null);
+  const transferredLegacyCopy = useRef<(() => void) | null>(null);
   const kept = useMemo(() => commentDraftValue(written, keptPlace, title, restoredWithoutTitle, kind.pending),
     [written, keptPlace, title, restoredWithoutTitle, kind.pending]);
   // The place alone is no unsaved work: the baseline carries the place now chosen.
@@ -365,6 +328,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const settle = () => {
     settled.current = kept;
     draft.markSaved(kept);
+    transferredLegacyCopy.current?.();
+    transferredLegacyCopy.current = null;
   };
   // Offered only once the comment is in the editor: restored before, its loading would no longer take the opening version.
   const recovered = draft.recovered;
@@ -384,25 +349,32 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const { held: deciding, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, writerId]), waiting !== null);
   const restore = () => {
     if (!waiting) return;
-    // A written comment's words resume the session they were typed in: what this window's save measures and guards with
-    // goes back to what the words were built from, so another device's change since is judged by the existing check.
-    if (target.kind === 'edit' && opened.current) {
-      const session = resumedCommentSession(draft.recoveredBase, opened.current, resolveAppLocale(language));
+    const latest = target.kind === 'edit' ? live.current ?? displayed.current : undefined;
+    const projection = latest ? projectRestoredComment(draft.recoveredBase, waiting, latest, resolveAppLocale(language)) : null;
+    const session = projection?.session;
+    transferredLegacyCopy.current = null;
+    if (latest && projection) {
       unknownBase.current = session === null;
       if (session) {
+        if (!sameStoredCommentPlace(displayed.current, latest)) where.tookTheirs();
+        displayed.current = latest;
         opened.current = session.opened;
         mine.current = session.mine;
-        kindBasis.current = observeCommentKind?.(session.opened);
+        kindBasis.current = observeCommentKind?.(waiting.paragraph === undefined ? latest : session.opened);
+        placeBasis.current = observeCommentPlace?.(waiting.reference ? session.opened : latest);
+        if (projection.contentFromStored) contentBasis.current = observeContent?.(latest.id, latest.content);
+        kind.take(latest, latest.scriptureRefs[0]);
+        transferredLegacyCopy.current = draft.captureRecoveredDiscard();
       }
     }
-    changeText(waiting.text);
-    setTitle(waiting.title ?? '');
+    changeText(projection?.text ?? waiting.text);
+    setTitle(projection?.title ?? waiting.title ?? '');
     kind.restore(waiting.paragraph);
     setRestoredWithoutTitle(waiting.title === undefined);
     if (!placePicker && target.kind === 'new' && target.reference && waiting.reference) {
       setRestoredPlace({ openingId: target.reference.id, reference: waiting.reference });
     }
-    if (waiting.reference) where.bringBack(waiting.reference);
+    if (waiting.reference) where.bringBack(waiting.reference, session ? latest?.scriptureRefs[0] ?? null : undefined);
     draft.acceptRecovered();
     answerDraftQuestion();
   };
@@ -569,6 +541,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     // Taken, their version is where this window's edits begin now — their kind too: the switch shows what they chose
     // (visual pass, Codex review 2026-11-07: «take theirs» took their words and left this window's switch).
     mine.current = opened.current;
+    displayed.current = opened.current;
     if (opened.current) kind.take(opened.current, theirs.scriptureRefs?.[0]);
     setText(theirs.content);
     setTitle(theirs.title);

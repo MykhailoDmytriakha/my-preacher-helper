@@ -44,7 +44,11 @@ const links = { opening: { sermonId: 'sermon', generation: 'g', revision: 1, sel
 const groupTextReview = { requestId: 'request', revision: 1, decisions: [
   { path: ['title'], birth: null, mine: 'Later', stored: 'Original', side: 'local' },
 ] };
-const commentPlaceAction = { before: { exists: true, value: [] }, after: { exists: true, value: [] },
+const commentReference = { id: 'passage', book: 'Isaiah', chapter: 40, fromVerse: 31 };
+const commentKindAction = { before: { exists: true, value: false }, after: { exists: true, value: true },
+  reference: { exists: true, value: [commentReference] }, observedRevision: 1, time };
+const commentPlaceAction = { before: { exists: true, value: commentReference },
+  after: { exists: true, value: { ...commentReference, fromVerse: 28 } },
   paragraph: { exists: false }, observedRevision: 1, time };
 type PlacementRetryKey = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry' | 'outlinePointPlacementRetry';
 type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs' | 'unreadableExegeticalProofs'
@@ -53,6 +57,7 @@ const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   studyNoteContentDraft: { generation: 'g', action: noteContentAction },
+  commentKindDraft: { generation: 'g', action: commentKindAction }, commentPlaceDraft: { generation: 'g', action: commentPlaceAction },
   studyNoteTitleDraft: { generation: 'g', action: noteContentAction }, studyNoteTypeDraft: { generation: 'g', action: noteTypeAction },
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, councilTopicTextDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
   groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: { row: { generation: 'g', action: { ...row, before: 'empty', after: 'filled' } } },
@@ -83,7 +88,7 @@ const pendingEvidence = {
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
   preachDateAudienceActions: [row], preachDateCityActions: [cityObservation], preachDateChurchActions: [churchObservation],
-  councilTopicPlacement: councilPlacement, commentPlaceAction,
+  councilTopicPlacement: councilPlacement, commentPlaceAction, commentKindAction,
 } satisfies Record<PendingEvidenceKey, unknown>;
 // Group title and status are causal: an unclocked autosave carries `time: null` (documentFieldAction.ts:637).
 const unclockedGroupActions: Array<[PendingEvidenceKey, unknown]> = [
@@ -121,6 +126,13 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
     source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     source.checkpoint.confirmed.value = { userId: 'owner', type: 'note', content: 'Original', title: 'Original' };
     source.checkpoint.draft = { userId: 'owner', type: 'question', content: 'Later', title: 'Later' };
+  }
+  if (key === 'commentKindDraft' || key === 'commentPlaceDraft') {
+    source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
+    const opening = { userId: 'owner', type: 'comment', content: 'Original', paragraph: false, scriptureRefs: [commentReference] };
+    source.checkpoint.confirmed.value = opening;
+    source.checkpoint.draft = key === 'commentKindDraft' ? { ...opening, paragraph: true }
+      : { ...opening, scriptureRefs: [commentPlaceAction.after.value] };
   }
   if (key === 'sourceNoteLinkRetry') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
   if (key.startsWith('preachDate')) {
@@ -162,7 +174,7 @@ it.each([...Object.entries(pendingEvidence), ...unclockedGroupActions.map(([key,
     const source = titleRecord();
     if (key === 'outlinePointPlacement' || key === 'preachDateNotesActions') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     if (key === 'councilTopicPlacement') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
-    if (key === 'commentPlaceAction' || key.startsWith('studyNote')) source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
+    if (key.startsWith('comment') || key.startsWith('studyNote')) source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     const record = { ...source, checkpoint: { ...source.checkpoint,
       pending: { request: { generation: 1, value: source.checkpoint.draft, [key]: value } } } } as EditorRecord;
     const kept = await throughDeviceStorage(record, true);

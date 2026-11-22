@@ -42,7 +42,7 @@ const firstPieceIn = (ref: ScriptureReference, bible: BibleId): ScriptureReferen
  * of the screen under the window, the place chosen to move it to until «Готово», the list of places around it, and the
  * words under the title, which follow the place. The window asks it and writes `moved` on save; nothing here is stored.
  */
-export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bible, placeOf, context, openingPlace, notes, ownId }: {
+export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bible, placeOf, context, openingPlace, notes, ownId, draftPlace }: {
   /** The reference the comment stands on: a written one's first, a new one's own. */
   standing: ScriptureReference | undefined;
   /** A new comment's own place (null while not chosen); undefined for a written one. */
@@ -63,6 +63,8 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   notes: readonly StudyNote[];
   /** The comment itself, not counted as another one at its place. */
   ownId?: string;
+  /** The document session owns both the moved reference and the command that saves it. */
+  draftPlace?: { moved: ScriptureReference | null; homeChanged?: boolean; change: (reference: ScriptureReference | null) => void };
 }) {
   const { t, language } = useTranslation();
   const locale = resolveAppLocale(language);
@@ -79,19 +81,22 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   const onChapter = home !== null && home.fromVerse === undefined;
   const spotIn = (ref: ScriptureReference): CommentSpot => (onChapter ? { book: ref.book, chapter: ref.chapter ?? 1 } : spotOf(ref));
   // Where it moves on «Готово», exactly as chosen or brought back — what is saved; null — it stays.
-  const [moved, setMoved] = useState<ScriptureReference | null>(null);
+  const [localMoved, setLocalMoved] = useState<ScriptureReference | null>(null);
+  const moved = draftPlace ? draftPlace.moved : localMoved;
+  const setMoved = draftPlace?.change ?? setLocalMoved;
   // Another device's place was taken in a conflict: the window names its place itself, the screen's name being of the old one.
   const [ownName, setOwnName] = useState(false);
+  const namesStoredPlace = ownName || draftPlace?.homeChanged;
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLDivElement | null>(null);
   const here = moved ?? home;
   // Counted in the Bible of the place it stands at now: verses chosen again in the reader are the reader's (Codex review r3:
   // Synodal Psalm 9:38–10:2 chosen, then moved by the list in the King James numbering, went to one verse).
   const placeBible: BibleId = here && isBibleId(here.bible) ? here.bible : screenBible;
-  const texts = useBookTexts(here && (open || moved || ownName) ? [here.book] : [], placeBible);
+  const texts = useBookTexts(here && (open || moved || namesStoredPlace) ? [here.book] : [], placeBible);
   const text = here ? texts.get(here.book) ?? null : null;
   // The place under the title and its words, in the Bible the screen shows: its text too, where the comment counts in another.
-  const named = moved ?? (ownName ? home : null);
+  const named = moved ?? (namesStoredPlace ? home : null);
   const screenTexts = useBookTexts(named && screenBible !== placeBible ? [named.book] : [], screenBible);
   const screenText = named ? (screenBible === placeBible ? texts : screenTexts).get(named.book) : undefined;
   const shownOf = (ref: ScriptureReference) => placeShown(ref, screenBible, { text: screenText, locale, name: placeOf });
@@ -130,7 +135,7 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   };
   // A screen that says how it names places has the window name its own — every piece of it, where its Bible parts it
   // (Codex review r4, 2026-10-28) — and so does the window that took another device's place.
-  const homeLabel = (place: string) => ((ownName || placeOf) && home ? labelOf(home) : place);
+  const homeLabel = (place: string) => ((namesStoredPlace || placeOf) && home ? labelOf(home) : place);
 
   // A new comment keeps the place it is written to; a written one, only a place it is moving to.
   const keptPlace = newPlace !== undefined ? moved ?? newPlace : moved;
@@ -152,7 +157,7 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
     /** The place the title names: the one moved to, else where it stands. */
     shown: (place: string) => {
       if (moved) return labelOf(moved);
-      if (!ownName && openingPlace !== undefined) return openingPlace;
+      if (!namesStoredPlace && openingPlace !== undefined) return openingPlace;
       return homeLabel(place);
     },
     /** A place kept on the device that differs from the one held now: it waits to be brought back with the words. */
@@ -172,11 +177,15 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
     putBack: () => setMoved(null),
     /** The other device's version taken whole: its place stands, the one chosen here is let go, and the window names it. */
     tookTheirs: () => {
-      setMoved(null);
+      if (!draftPlace) setMoved(null);
       setOwnName(true);
     },
     /** A place a draft kept, brought back with the words as it was chosen; the window choosing its own place takes it its own way. */
-    bringBack: (ref: ScriptureReference) => (choosesOwn ? restoreOwn?.(ref) : moveTo(ref)),
+    bringBack: (ref: ScriptureReference, restoredHome?: ScriptureReference | null) => {
+      if (choosesOwn) { restoreOwn?.(ref); return; }
+      const origin = restoredHome === undefined ? home : restoredHome && withStoredBible(restoredHome, locale);
+      setMoved(origin && sameScriptureReference(ref, origin) ? null : ref);
+    },
     /** Where it stands now: the place moved to, else its own. */
     here,
     /** Moves it to a place chosen whole — its verses chosen again in the reader (phase 9); its own place is no move. */
