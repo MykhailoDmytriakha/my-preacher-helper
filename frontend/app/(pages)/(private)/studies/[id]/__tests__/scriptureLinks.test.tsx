@@ -7,17 +7,24 @@ jest.unmock('rehype-sanitize');
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
+import { documentEngineHarness } from '@test-utils/documentEngineHarness';
 
 import StudyNoteEditorPage from '../page';
 
+import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), useParams: jest.fn(), useSearchParams: jest.fn() }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'ru' } }) }));
 jest.mock('@/hooks/useWideViewport', () => ({ useWideViewport: () => true, useRoomyHeader: () => true }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' }, loading: false }) }));
 jest.mock('@/hooks/useStudyNotes');
 const mockSubscribeNoteVersionTaken = () => () => undefined;
 jest.mock('@/hooks/useTags');
@@ -44,7 +51,13 @@ const open = (notes: StudyNote[]) => {
   (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', subscribeNoteVersionTaken: mockSubscribeNoteVersionTaken, notes, loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
   (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
   (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], loading: false, deleteShareLink: jest.fn() });
-  render(<StudyNoteEditorPage />);
+  const { id, ...data } = notes[0];
+  const harness = documentEngineHarness({
+    resource: { collection: 'studyNotes', id }, value: data as unknown as DocumentData,
+    metadata: { protocol: 1, generation: 'note-opening', revision: 1, deleted: false },
+  });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><StudyNoteEditorPage /></DataEngineProvider>);
 };
 
 /*
@@ -52,15 +65,15 @@ const open = (notes: StudyNote[]) => {
  * text opens the window the note's reference chips open — the passage, and the notes on it.
  */
 describe('a note\'s page — references in its text', () => {
-  it('opens a reference pressed in the text in the note\'s verse window', () => {
+  it('opens a reference pressed in the text in the note\'s verse window', async () => {
     open([note('Войди в покой', 'Христос говорит: «не выходите…» (Мф 24:26). И там другой призыв (Лк 17:30).')]);
-    fireEvent.click(screen.getByRole('button', { name: 'Мф 24:26' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Мф 24:26' }));
     expect(screen.getByRole('dialog')).toHaveTextContent('rst Matthew 24:26');
   });
 
-  it('reads "1Цар 3:5" of a note titled in Ukrainian as 1 Kings in Ohienko', () => {
+  it('reads "1Цар 3:5" of a note titled in Ukrainian as 1 Kings in Ohienko', async () => {
     open([note('Мій Господь з’явився уві сні', '1Цар 3:5')]);
-    fireEvent.click(screen.getByRole('button', { name: '1Цар 3:5' }));
+    fireEvent.click(await screen.findByRole('button', { name: '1Цар 3:5' }));
     expect(screen.getByRole('dialog')).toHaveTextContent('ubio 1 Kings 3:5');
   });
 });

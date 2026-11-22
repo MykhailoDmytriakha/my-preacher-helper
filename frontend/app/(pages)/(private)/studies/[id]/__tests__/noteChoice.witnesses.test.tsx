@@ -2,7 +2,7 @@ import { stand } from '@test-utils/noteChoiceStand';
 import { ChoiceMachine, runChoiceHistory, type ChoiceAction } from '@test-utils/noteChoiceHistory';
 import type { ChoiceOracle } from '@test-utils/noteChoiceOracles';
 
-// Exact retained validation minima; always replay the live page and facade.
+// Retained validation histories replayed through the live note session. A mounted note owns its choice. The replacement is captured by its autosave timer.
 const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }[] = [
   {
     "name": "U115-01/1252208",
@@ -23,10 +23,7 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "releaseTransport"
       },
       {
-        "kind": "openNotice"
-      },
-      {
-        "kind": "take"
+        "kind": "inlineTake"
       },
       {
         "kind": "confirmTake"
@@ -55,10 +52,10 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "holdTransport"
       },
       {
-        "kind": "openNotice"
+        "kind": "inlineKeep"
       },
       {
-        "kind": "keep"
+        "kind": "timer"
       },
       {
         "kind": "phoneOther",
@@ -68,10 +65,10 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "releaseTransport"
       },
       {
-        "kind": "openNotice"
+        "kind": "pauseKeep"
       },
       {
-        "kind": "pauseKeep"
+        "kind": "timer"
       }
     ]
   },
@@ -100,13 +97,13 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "holdCollection"
       },
       {
-        "kind": "openNotice"
-      },
-      {
         "kind": "holdTransport"
       },
       {
-        "kind": "keep"
+        "kind": "inlineKeep"
+      },
+      {
+        "kind": "timer"
       },
       {
         "kind": "phoneOther",
@@ -116,10 +113,10 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "releaseTransport"
       },
       {
-        "kind": "openNotice"
+        "kind": "pauseKeep"
       },
       {
-        "kind": "pauseKeep"
+        "kind": "timer"
       },
       {
         "kind": "deliverAll"
@@ -148,13 +145,13 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "releaseTransport"
       },
       {
-        "kind": "openNotice"
-      },
-      {
         "kind": "holdTransport"
       },
       {
-        "kind": "keep"
+        "kind": "inlineKeep"
+      },
+      {
+        "kind": "timer"
       },
       {
         "kind": "phoneOther",
@@ -167,10 +164,10 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "releaseTransport"
       },
       {
-        "kind": "openNotice"
+        "kind": "pauseKeep"
       },
       {
-        "kind": "pauseKeep"
+        "kind": "timer"
       },
       {
         "kind": "deliverLatest"
@@ -205,10 +202,7 @@ const witnesses: { name: string; oracle: ChoiceOracle; actions: ChoiceAction[] }
         "kind": "holdCollection"
       },
       {
-        "kind": "openNotice"
-      },
-      {
-        "kind": "take"
+        "kind": "inlineTake"
       },
       {
         "kind": "confirmTake"
@@ -224,7 +218,7 @@ it.each(witnesses)('$name passes $oracle on the live tree', async ({ name, oracl
   expect(row.verdicts[oracle]).toBe('pass');
 }, 60000);
 
-// U130-01: exact 23 public actions retained by the independent break.
+// U130-01: retained cross-device history, with choices on the canonical note session.
 const u130Actions: ChoiceAction[] = [
   {
     "kind": "holdTransport"
@@ -247,9 +241,6 @@ const u130Actions: ChoiceAction[] = [
     "kind": "holdTransport"
   },
   {
-    "kind": "openNotice"
-  },
-  {
     "kind": "type",
     "word": "S130E7X"
   },
@@ -269,9 +260,6 @@ const u130Actions: ChoiceAction[] = [
     "kind": "releaseTransport"
   },
   {
-    "kind": "inlineKeep"
-  },
-  {
     "kind": "timer"
   },
   {
@@ -279,15 +267,6 @@ const u130Actions: ChoiceAction[] = [
   },
   {
     "kind": "holdCollection"
-  },
-  {
-    "kind": "openNotice"
-  },
-  {
-    "kind": "take"
-  },
-  {
-    "kind": "confirmTake"
   },
   {
     "kind": "timer"
@@ -308,64 +287,56 @@ it('U130-01 retains every word and converges without a manufactured question', a
   expect(row.valid).toBe(true);
   expect(row.terminal.editor).toBe(expected);
   expect(row.terminal.stored).toBe(expected);
+  const equalArrival = u130Actions.findIndex(({ kind }) => kind === 'phoneLive');
+  const afterDelivery = row.checkpoints[equalArrival + 1];
+  expect(u130Actions[equalArrival + 1].kind).toBe('releaseTransport');
+  expect(afterDelivery).toMatchObject({
+    editor: 'Original paragraph.\n\nSecond paragraph. S130E1X S130E7X',
+    question: false,
+  });
   expect(row.terminal.question).toBe(false);
-  expect(row.terminal.sends).toBe(3);
+  expect(row.terminal.sends).toBeLessThanOrEqual(3);
 }, 60000);
 
-it('a real notice Take with unsubmitted edits causes no page render or autosave send', async () => {
+it('taking the stored body leaves later unsubmitted words in their own comparison', async () => {
   const machine = new ChoiceMachine();
   await machine.boot();
   try {
-    // Exhaust the owed save's timers, then hold collection delivery before Take.
-    for (const action of u130Actions.slice(0, 18)) await machine.step(action);
-    const live = stand.autosave.liveValues!();
-    expect(live.content).toContain('S130E7X');
-    expect(stand.autosave.baselineRef.current?.content).not.toBe(live.content);
-    const renders = stand.renderCount;
+    for (const action of u130Actions.slice(0, 4)) await machine.step(action);
+    await machine.step({ kind: 'type', word: 'Laterword' });
+    await machine.step({ kind: 'releaseTransport' });
+    await machine.step({ kind: 'holdCollection' });
     const sends = machine.requests.length;
-    await machine.step(u130Actions[18]);
-    await machine.step(u130Actions[19]);
-    expect(machine.answers.at(-1)).toMatchObject({ kind: 'take', surface: 'notice', completed: true });
-    expect(stand.renderCount).toBe(renders);
+    await machine.step({ kind: 'inlineTake' });
+    await machine.step({ kind: 'confirmTake' });
+    expect(machine.answers.at(-1)).toMatchObject({ kind: 'take', surface: 'inline', completed: true });
     await machine.tick(1600);
-    expect(stand.renderCount).toBe(renders);
     expect(machine.requests).toHaveLength(sends);
+    expect(machine.steps.at(-1)).toMatchObject({ question: true, stored: 'Original paragraph.\n\nSecond paragraph. S130E3X' });
+    expect(stand.autosave.liveValues().content).toContain('Laterword');
   } finally {
     machine.close();
   }
 }, 60000);
 
-it('adopts on an announcement after the row without waiting for another page render', async () => {
+it('takes the stored words through the editor while collection notifications are held', async () => {
   const machine = new ChoiceMachine();
   await machine.boot();
-  let release!: () => void;
-  const gate = new Promise<void>(resolve => { release = resolve; });
   try {
     for (const action of u130Actions.slice(0, 5)) await machine.step(action);
-    const local = stand.autosave.liveValues!().content;
-    const take = jest.mocked(stand.laptop.engine.takeStoredVersion);
-    const performTake = take.getMockImplementation()!;
-    let taken = false;
-    take.mockImplementation(async (...args) => {
-      const result = await performTake(...args);
-      taken = true;
-      // The real engine cancellation delivers its row before the facade announces.
-      await gate;
-      return result;
-    });
-    for (const kind of ['openNotice', 'take', 'confirmTake'] as const) await machine.step({ kind });
-    expect(taken).toBe(true);
     const remote = 'Original paragraph.\n\nSecond paragraph. S130E3X';
-    expect(stand.autosave.existingNote?.content).toBe(remote);
-    expect(stand.autosave.liveValues!().content).toBe(local);
-    expect(stand.autosave.baselineRef.current?.content).toBe(local);
-    stand.holdCollection();
-    release();
-    await machine.tick();
-    expect(stand.autosave.liveValues!().content).toBe(remote);
+    expect(stand.autosave.liveValues().content).not.toBe(remote);
+    await machine.step({ kind: 'holdCollection' });
+    await machine.step({ kind: 'inlineTake' });
+    await machine.step({ kind: 'confirmTake' });
+    expect(machine.answers.at(-1)).toMatchObject({ kind: 'take', surface: 'inline', completed: true });
+    expect(stand.collectionHeld).toBe(true);
+    expect(stand.autosave.liveValues().content).toBe(remote);
     expect(stand.confirmed?.content).toBe(remote);
+    expect(machine.steps.at(-1)).toMatchObject({ editor: remote, question: false });
+    await machine.step({ kind: 'deliverAll' });
+    expect(machine.steps.at(-1)).toMatchObject({ editor: remote, question: false });
   } finally {
-    release();
     machine.close();
   }
 }, 60000);

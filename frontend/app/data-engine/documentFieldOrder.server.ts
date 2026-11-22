@@ -282,8 +282,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     && !sameFieldOpening(stored, change.before, target) && equalValues(change.after, stored)) {
     return { command, stamp: null, reaffirmedOpening: true };
   }
-  // The ordinary note page keeps its existing agreement until it moves to an engine editing session.
-  if (!action && tracksOpeningReturns(target) && (target.action !== 'studyNoteContentAction' || commentText)
+  if (!action && tracksOpeningReturns(target)
     && sameFieldOpening(stored, change.before, target) && !equalValues(change.after, stored)) {
     const past = pastFieldOpenings(raw, target);
     // An old queued packet cannot distinguish a restored value from an untouched opening.

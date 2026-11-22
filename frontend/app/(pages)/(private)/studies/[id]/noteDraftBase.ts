@@ -1,8 +1,10 @@
 import { engineNote, storedReferences } from '@/hooks/useStudyNotesEngine';
 import { changedFields } from '@/utils/changedFields';
+import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 
 import type { NoteDraftPayload } from './noteDraft';
-import type { DocumentData } from '@/data-engine/types';
+import type { LegacyStudyNoteEdit } from '@/data-engine/studyNoteLegacyDraft';
+import type { DocumentData, FieldValue } from '@/data-engine/types';
 import type { ScriptureReference } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -54,4 +56,25 @@ export function resumedNoteBaseline(kept: unknown, restored: NoteDraftPayload, s
     }
     const unknown = Object.keys(changedFields(stored, restored));
     return { ...stored, ...Object.fromEntries(unknown.map(field => [field, null])) } as unknown as NoteDraftPayload;
+}
+
+/** Move only fields authored in this copy, carrying the distinction between absent and unknown. */
+export function legacyStudyNoteEdits(basis: NoteDraftPayload, words: NoteDraftPayload, matchingGeneration = true): LegacyStudyNoteEdit[] {
+    const fields = ['title', 'content', 'type', 'tags', 'scriptureRefs', 'dictationSourceIds', 'recordingSourceIds'] as const;
+    const changed = changedFields(basis, words);
+    const valueAt = (payload: NoteDraftPayload, field: typeof fields[number]): FieldValue =>
+        payload[field] === undefined ? { exists: false } : {
+            exists: true,
+            value: (field === 'scriptureRefs' ? storedReferences(payload[field]) : payload[field]) as FieldValue['value'],
+        };
+    return fields.flatMap(field => Object.hasOwn(changed, field) ? [{
+        field, value: valueAt(words, field), ...(matchingGeneration && basis[field] !== null && { opening: valueAt(basis, field) }),
+    }] : []);
+}
+
+/** Only authored fields from a backup belong in a newly created document. */
+export function legacyStudyNoteCreationFields({ title, content, type, tags, scriptureRefs, dictationSourceIds, recordingSourceIds }: NoteDraftPayload): DocumentData {
+    return { title, content, type, tags,
+        scriptureRefs: storedReferences(scriptureRefs) as DocumentData['scriptureRefs'],
+        ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
 }

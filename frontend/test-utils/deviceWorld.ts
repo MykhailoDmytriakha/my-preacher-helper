@@ -27,6 +27,8 @@ import { clone, DeviceStorage } from './deviceWorld/storage';
 
 import type { CommitRequest } from '@/data-engine/commits';
 import type { EditorRecord } from '@/data-engine/controller';
+import type { ObservationSource } from '@/data-engine/observer';
+import type { RecoveryPresencePort } from '@/data-engine/recoveryPresence';
 import type { SessionCheckpoint } from '@/data-engine/session';
 import type { DocumentData, EngineTransport, CollectionTransport, ResourceRef } from '@/data-engine/types';
 
@@ -50,6 +52,11 @@ export const noteValue = (): DocumentData => ({ userId: 'owner', title: 'Origina
 function checkpointFields(cp: SessionCheckpoint): string[] {
   return (cp.conflicts.length ? cp.conflicts : diffFields(cp.confirmed.value ?? {}, cp.draft ?? {}))
     .map(item => item.path.join('.') || '$document');
+}
+
+interface WorldDevicePorts {
+  source?: ObservationSource;
+  recoveryPresence?: RecoveryPresencePort;
 }
 
 export class DeviceWorld {
@@ -90,8 +97,8 @@ export class DeviceWorld {
     const result = await processCommand('owner', { protocol: 1, kind: 'create', owner: 'owner', operationId: this.id('seed'), resource, generation: null, dependsOn: [], value });
     if (result.kind !== 'acknowledged') throw new Error(`Invalid seed: ${JSON.stringify(result)}`);
   }
-  async device(name: string, skew = 0) {
-    const device = new WorldDevice(this, name, skew); this.devices.push(device);
+  async device(name: string, skew = 0, ports: WorldDevicePorts = {}) {
+    const device = new WorldDevice(this, name, skew, ports); this.devices.push(device);
     await device.boot(); await this.settle(); return device;
   }
   /** Advance fake server time, per-page monotonic clocks and due timers together. */
@@ -169,7 +176,9 @@ export class WorldDevice {
   transport!: EngineTransport & CollectionTransport;
   clock!: ReturnType<typeof createActionClock>;
   private autoSave = new Map<string, { at: number; editor: ManagedEditor }>();
-  constructor(readonly world: DeviceWorld, readonly name: string, public skew: number) { this.loadAt = world.now; }
+  constructor(readonly world: DeviceWorld, readonly name: string, public skew: number, private readonly ports: WorldDevicePorts = {}) {
+    this.loadAt = world.now;
+  }
   run<T>(action: () => T): T { return context.run(this, action); }
   async boot() {
     await this.run(async () => {
@@ -184,11 +193,11 @@ export class WorldDevice {
       const window = createCommitCollectionWindow();
       const commits = createIndexedDbCommitStore(window.collect), checkpoints = createIndexedDbCheckpoints(window.collect);
       this.runtime = new DataEngineRuntime({ transport, journal });
-      const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
+      const observer = new ResourceObserver({ transport, source: this.ports.source ?? { listen: () => () => undefined } });
       const collections = new CollectionReader({ observer, transport, snapshots, cursors, onError: error => this.errors.push(error) });
       this.engine = new DataEngine({ runtime: this.runtime, observer, transport, snapshots, collections, commits, checkpoints,
         manualScopes: createIndexedDbManualScopes(window.collect), membershipScopes: createIndexedDbMembershipScopes(), deferCommitCollection: window.begin,
-        operationId: () => this.world.id(this.name), onError: error => this.errors.push(error) });
+        recoveryPresence: this.ports.recoveryPresence, operationId: () => this.world.id(this.name), onError: error => this.errors.push(error) });
       this.engine.setOnline(this.online); this.engine.setOwner('owner');
       // Bind lazy database handles to this device before any timer can use them.
       await snapshots.list('owner', 'sermons'); await journal.list('owner'); await cursors.read('owner', 'sermons');

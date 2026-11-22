@@ -87,7 +87,12 @@ export function chooseStudyNoteReferences(checkpoint: SessionCheckpoint, choice:
   if (checkpoint.confirmed.resource.collection !== 'studyNotes' || !hasStudyNoteReferenceReview(checkpoint.conflicts)) return undefined;
   const reviewed = referenceChoice(checkpoint);
   if (!reviewed) throw Object.assign(new Error('The compared note references changed'), { code: 'decision-changed' });
-  const merged = choice === 'local' ? reviewed.merged
+  let merged = choice === 'local' ? reviewed.merged
     : reviewed.fields.reduce((value, conflict) => writeField(value, conflict.path, conflict.theirs), reviewed.merged);
+  const saved = checkpoint.remoteCandidate?.value;
+  if (choice === 'stored' && saved && reviewed.fields.some(({ path }) => path[0] === 'content')) {
+    // Discarding the transcript must not confirm its source ID. Keep the raw recording link.
+    merged = writeField(merged, ['dictationSourceIds'], readField(saved, ['dictationSourceIds']));
+  }
   return writeField(merged, studyNoteReferencesPath, reviewed[choice === 'local' ? 'mine' : 'stored']);
 }

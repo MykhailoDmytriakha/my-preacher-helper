@@ -137,7 +137,8 @@ describe('Study note reference reconciliation', () => {
     const fromPhone = { ...opening, scriptureRefs: [phone] };
     const stored = save('desktop', initial, opening, { ...opening, scriptureRefs: [desktop, romans], content: 'Saved later words' });
     const reconciled = save('phone', stored, opening, fromPhone);
-    const local = { ...fromPhone, scriptureRefs: [localNeighbor], content: 'My later words' };
+    const local = { ...fromPhone, scriptureRefs: [localNeighbor], content: 'My later words',
+      dictationSourceIds: ['laptop-take'], recordingSourceIds: ['laptop-take'] };
     const response = submit('follow-up', reconciled, fromPhone, local);
     expect(response.kind).toBe('conflict');
     const session = new DataSession({ ...initial, value: fromPhone });
@@ -156,6 +157,8 @@ describe('Study note reference reconciliation', () => {
     const refs = session.checkpoint().draft?.scriptureRefs as typeof desktop[];
     expect(refs.filter(ref => ref.id === desktop.id)).toEqual(choice === 'stored' ? [desktop] : []);
     expect(refs).toHaveLength(choice === 'stored' ? 3 : 2);
+    expect(session.checkpoint().draft?.recordingSourceIds).toEqual(['laptop-take']);
+    expect(session.checkpoint().draft?.dictationSourceIds ?? []).toEqual(choice === 'stored' ? [] : ['laptop-take']);
   });
 
   it.each([false, true])('keeps one reference when the reviewed replacement already exists (different quote: %s)', withQuote => {

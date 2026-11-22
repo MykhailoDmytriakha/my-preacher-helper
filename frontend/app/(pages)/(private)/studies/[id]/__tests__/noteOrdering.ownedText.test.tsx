@@ -2,7 +2,10 @@ import React from 'react';
 import { act, fireEvent, screen } from '@testing-library/react';
 import { writeFileSync } from 'node:fs';
 
-import { stand, start, original, md, stored, phoneSave, insert, finish, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { stand, start, original, md, stored, phoneSave, insert, finish, settle, chooseNotice, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { noteRef } from '@test-utils/deviceWorld';
+
+import { draftKey, saveDraft } from '@/utils/durableDraft';
 
 import type { RichMarkdownEditorProps } from '@/components/ui/RichMarkdownEditor';
 
@@ -41,7 +44,14 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
     if (id === 'R-c' || id === 'K-8') stand.laptop.goOffline();
     type('Typedword'); await snap('typed');
     if (id === 'K-4') await finish();
-    if (id === 'R-f') { hold = true; await act(async () => { jest.advanceTimersByTime(1600); for (let i = 0; i < 5000; i++) await Promise.resolve(); }); expect(waiting).toHaveLength(1); }
+    if (id === 'R-f') {
+      // The timer starts only after the draft is durable and the session has rendered that state.
+      await settle();
+      hold = true;
+      await act(async () => { jest.advanceTimersByTime(1600); });
+      await pulse();
+      expect(waiting).toHaveLength(1);
+    }
     if (id === 'C-1') await phoneSave(md());
     await done();
     if (id === 'K-5') await phoneSave(original + '\n\nArrivedword');
@@ -67,15 +77,15 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
     await done(); await act(async () => { await stand.voice.onText('Dictatedword', 'source-1'); });
     await edit(); type('Laterword');
   } else if (id === 'D-2' || id === 'D-3' || id === 'W1') {
-    const target = original + '\n\nArrivedword'; let fired = false;
-    stand.afterMarkSaved = content => {
-      if (fired || content !== target) return;
-      fired = true;
-      if (id !== 'W1') void stand.voice.onText('Dictatedword', 'source-1');
+    const target = original + '\n\nArrivedword';
+    await phoneSave(target);
+    expect(md()).toBe(target);
+    await act(async () => {
+      const transcript = id === 'W1' ? undefined : stand.voice.onText('Dictatedword', 'source-1');
       if (id === 'D-3') window.dispatchEvent(new Event('pagehide'));
       else insert(' Typedword');
-    };
-    await phoneSave(target); expect(fired).toBe(true);
+      await transcript;
+    });
   } else if (id === 'W2') {
     // The next task may run either side of passive adoption. Both outcomes are safe.
     const arrival = phoneSave(original + '\n\nArrivedword');
@@ -86,20 +96,16 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
   const final = { id, stored: String(await stored()), page: stand.autosave.content, editor: md(), question: hasNoteQuestion(), sends: sends.mock.calls.length, steps };
   records.push(final);
   if (id === 'C-1') {
-    // Production saves this coincidence by accident; v2.2 deliberately asks before replacing it.
-    expect(final.question).toBe(true);
-    expect(final.stored).toBe(original + ' Typedword');
-    expect(final.page).toBe(original + ' Typedword Laterword');
-    expect(final.editor).toBe(final.page);
-    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
-    await finish();
-    expect(hasNoteQuestion()).toBe(false);
-    expect(await stored()).toBe(final.page);
+    expect(final.question).toBe(false);
+    expect(final.stored).toBe(original + ' Typedword Laterword');
+    expect(final.page).toBe(final.stored);
+    expect(final.editor).toBe(final.stored);
   } else if (id === 'K-5' || id === 'K-7') {
     expect(final.question).toBe(true); expect(final.stored).toContain('Arrivedword'); expect(final.page).toContain('Typedword');
   } else if (id === 'W2') {
     expect(final.stored).toContain('Arrivedword');
     expect(final.question || final.stored.includes('Typedword')).toBe(true);
+    if (final.question) expect(final.page).toContain('Typedword');
   } else {
     expect(final.question).toBe(false);
     expect(final.editor).toBe(final.stored);
@@ -109,18 +115,40 @@ it.each(histories)('%s meets the owned-text history contract', async id => {
   }
 }, 60000);
 
-it('C-1 leaves the complete baseline unchanged while an equal-content row waits behind dirty text', async () => {
+it('accepts the same words and the independently changed fields without a choice', async () => {
   await start();
   act(() => insert(' Typedword'));
-  const before = stand.autosave.baselineRef.current!;
-  await phoneSave(md(), { title: 'Remote title', type: 'question', tags: ['remote'], dictationSourceIds: ['remote-source'] });
-  expect(stand.autosave.baselineRef.current).toEqual(before);
-  expect(stand.confirmed?.content).toBe(original);
+  const words = original + ' Typedword';
+  await phoneSave(words, { title: 'Remote title', type: 'question', tags: ['remote'], dictationSourceIds: ['remote-source'] });
+  expect(stand.confirmed?.content).toBe(words);
   await finish();
+  expect(md()).toBe(words);
+  expect(await stored()).toBe(words);
   expect(stand.autosave.title).toBe('Remote title');
   expect(stand.autosave.type).toBe('question');
   expect(stand.autosave.tags).toEqual(['remote']);
+  expect(stand.autosave.dictationSourceIds).toEqual(['remote-source']);
   expect(hasNoteQuestion()).toBe(false);
+});
+
+it('preserves both versions when typing reaches the note before the new words are displayed', async () => {
+  await start();
+  const received = original + '\n\nArrivedword';
+  let fired = false;
+  stand.afterMarkSaved = content => {
+    if (fired || content !== received) return;
+    expect(md()).toBe(original);
+    fired = true;
+    insert(' Typedword');
+  };
+
+  await phoneSave(received);
+  await finish();
+
+  expect(fired).toBe(true);
+  expect(await stored()).toBe(received);
+  expect(md()).toContain('Typedword');
+  expect(hasNoteQuestion()).toBe(true);
 });
 
 it.each(['comment', 'image'])('keeps raw %s source through dictation-only saving', async kind => {
@@ -167,10 +195,11 @@ it('asks about dictation and typing when a dirty page cannot adopt the arrival',
 
 it('restores a draft through replacement and keeps later typing without a false question', async () => {
   await start();
-  stand.recovery = { title: 'Original', content: original + '\n\nRecoveredword', tags: [], scriptureRefs: [], type: 'note' };
-  // Typed on the note as it is stored now. A copy without its base asks first (noteRecovery.draftSession).
-  stand.recoveryBase = { title: 'Original', content: original, tags: [], scriptureRefs: [], type: 'note' };
-  act(() => insert(' Abandonedword'));
+  const base = { title: 'Original', content: original, tags: [], scriptureRefs: [], type: 'note' };
+  stand.leave();
+  const key = draftKey('owner', noteRef.id, 'note', 'old-opening');
+  expect(saveDraft(key, { ...base, content: original + '\n\nRecoveredword' }, undefined, false, Date.now(), base)).toBe(true);
+  await stand.reopen();
   expect(screen.getByText('unsavedDraft.restore')).toBeInTheDocument();
   fireEvent.click(screen.getByText('unsavedDraft.restore'));
   await pulse();
@@ -186,8 +215,7 @@ it('takes the remote row through adoption before subsequent dictation and typing
   const target = original + '\n\nArrivedword';
   await phoneSave(target); await finish();
   expect(hasNoteQuestion()).toBe(true);
-  fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' })); });
+  await chooseNotice('take');
   expect(md()).toBe(target);
   await act(async () => { await stand.voice.onText('Dictatedword', 'source-1'); insert(' Typedword'); });
   await finish();

@@ -1,4 +1,4 @@
-import { stand, start, original, md, stored, phoneSave, insert, finish, settle } from '@test-utils/noteOrdering';
+import { stand, start, original, md, stored, phoneSave, insert, finish, settle, hasInlineQuestion, chooseNotice } from '@test-utils/noteOrdering';
 import { act } from '@testing-library/react';
 import { undoDepth } from '@tiptap/pm/history';
 import type { RichMarkdownEditorProps } from '@/components/ui/RichMarkdownEditor';
@@ -20,7 +20,7 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => {
 
 afterEach(() => { mockW3Target = null; mockW3Fired = false; });
 
-it('injected W1 types over the synchronously adopted document', async () => {
+it('keeps keystrokes made before an incoming version is painted and asks about that field', async () => {
   await start();
   const target = original + '\n\nArrivedword';
   const sends = jest.spyOn(stand.laptop.transport, 'send');
@@ -30,10 +30,16 @@ it('injected W1 types over the synchronously adopted document', async () => {
   };
   await phoneSave(target); await finish();
   expect(fired).toBe(true);
-  expect(md()).toBe(target + ' Typedword');
-  expect(await stored()).toBe(target + ' Typedword');
-  expect(stand.autosave.saveBlocked).toBe(false);
-  expect(stand.notices).toEqual([]);
+  const typed = original + ' Typedword';
+  expect(md()).toBe(typed);
+  expect(await stored()).toBe(target);
+  expect(hasInlineQuestion()).toBe(true);
+  expect(sends).not.toHaveBeenCalled();
+
+  await chooseNotice('keep');
+  expect(await stored()).toBe(typed);
+  expect(md()).toBe(typed);
+  expect(hasInlineQuestion()).toBe(false);
   expect(sends).toHaveBeenCalledTimes(1);
 });
 

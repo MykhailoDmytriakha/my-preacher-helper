@@ -6,14 +6,14 @@ import { choiceOracleNames, choiceVerdicts, type ChoiceOracle } from '@test-util
 const actions = (kinds: string): ChoiceAction[] => kinds.split(' ').map((kind, index) => ({ kind: kind as ChoiceAction['kind'], word: `Fixed${index}X` }));
 // These assert fixture execution only. Expected product failures belong to the opt-in hunt.
 it.each([
-  'holdTransport type timer phoneOther releaseTransport openNotice keep type timer',
-  'holdTransport type timer phoneOther releaseTransport openNotice take confirmTake',
-  'holdTransport type timer phoneOther releaseTransport openNotice pauseKeep type resume',
+  'holdTransport type timer phoneOther releaseTransport inlineKeep type timer',
+  'holdTransport type timer phoneOther releaseTransport inlineTake confirmTake',
+  'holdTransport type timer phoneOther releaseTransport pauseKeep type timer resume',
   'holdCollection dictate done edit offline phoneLive online deliverAll timer',
   'type phoneOther timer inlineKeep type timer',
   'type phoneOther timer inlineTake confirmTake type timer',
   'holdCollection phoneBase deliverLatest',
-  'holdTransport type timer phoneOther releaseTransport done openNotice take confirmTake phoneLive edit',
+  'holdTransport type timer phoneOther releaseTransport done inlineTake confirmTake phoneLive edit',
 ])('choice stand executes public events: %s', async history => {
   const row = await runChoiceHistory(actions(history), 'smoke');
   expect(row.invalid).toBeUndefined();
@@ -23,8 +23,8 @@ it.each([
 
 function isRepeatedGap(row: ChoiceRun, index: number, unrendered: boolean) {
   const answer = row.answers[index], previous = row.answers[index - 1], observed = answer.rejectionWitness;
-  return !!(answer.kind === 'keep' && answer.surface === 'notice' && previous?.kind === 'keep'
-    && previous.surface === 'notice' && previous.replacement === 'refused' && answer.rejectedShown
+  return !!(answer.kind === 'keep' && previous?.kind === 'keep'
+    && previous.surface === answer.surface && previous.replacement === 'refused' && answer.rejectedShown
     && answer.noRenderRefusal === unrendered && observed?.pauseArmed && !observed.replacementCaptured
     && answer.replacementEditorId && row.actions[answer.event].kind === 'pauseKeep');
 }

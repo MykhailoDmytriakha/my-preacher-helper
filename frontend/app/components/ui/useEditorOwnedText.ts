@@ -19,7 +19,11 @@ export interface EditorTextOwner {
   register(document: OwnedTextDocument): () => void;
 }
 
-export function useEditorOwnedText(initial: string) {
+type OwnedTextEdit = (value: string, opening: string) => void;
+
+export function useEditorOwnedText(initial: string, onEdit?: OwnedTextEdit) {
+  const authored = useRef(onEdit);
+  authored.current = onEdit;
   const [text, setText] = useState(initial);
   const current = useRef(initial);
   const document = useRef<OwnedTextDocument | null>(null);
@@ -35,26 +39,32 @@ export function useEditorOwnedText(initial: string) {
     current.current = value;
     setText(value);
   }, []);
+  const edit = useCallback((value: string, notify = authored.current) => {
+    const opening = current.current;
+    if (value === opening) return;
+    publish(value);
+    notify?.(value, opening);
+  }, [publish]);
   const ownedBy = useMemo<EditorTextOwner>(() => ({
     live,
-    emit: publish,
+    emit: edit,
     nativeInput,
     register: instance => {
       document.current = instance;
       return () => { if (document.current === instance) document.current = null; };
     },
-  }), [live, publish, nativeInput]);
+  }), [live, edit, nativeInput]);
   const follow = useCallback((value: string) => {
     if (value === current.current) return;
     document.current?.install(value);
     publish(value);
   }, [publish]);
-  const append = useCallback((block: string): void | Promise<void> => {
+  const append = useCallback((block: string, onAppend?: OwnedTextEdit): void | Promise<void> => {
     const apply = () => {
       // Recompute after native input has emitted; retain unsupported raw source otherwise.
       const value = current.current ? `${current.current}\n\n${block}` : block;
       if (document.current?.append(value) === false) return false;
-      publish(value);
+      edit(value, onAppend);
       return true;
     };
     const previous = pendingAppend.current;
@@ -78,7 +88,7 @@ export function useEditorOwnedText(initial: string) {
     const release = () => { if (pendingAppend.current === operation) pendingAppend.current = null; };
     void operation.then(release, release);
     return operation;
-  }, [publish]);
+  }, [edit]);
   const replace = useCallback((value: string) => {
     if (value === current.current) return;
     document.current?.replace(value);

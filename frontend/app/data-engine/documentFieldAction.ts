@@ -524,7 +524,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | typeof SERMON_REPEATED_WORDS | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SermonThesisTarget | PreparationTextTarget | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | PrayerStatusTarget | PrayerTextTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -535,7 +535,7 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
       || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
-        : target.field === 'church' || target.field === 'date' || target.field === 'description' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'prayerTextActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
+        : target.field === 'church' || target.field === 'date' || target.field === 'description' || isStudyNoteDraftField(target) || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'prayerTextActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -785,24 +785,42 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
     ...(fill && { sermonChurchFill: fill }) };
 }
 
-export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field']; time: ActionTime | null }
+export type StudyNoteTimedField = 'content' | 'title' | 'type';
+export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field'] | StudyNoteTimedField; time: ActionTime | null }
   | import('./rowFieldAutosave').RowFieldStamp | import('./exegeticalPointCapture').ExegeticalPointEditStamp;
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
 type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation; groupDescriptionAction?: DocumentFieldObservation<FieldValue> };
-export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions;
+type StudyNoteFieldActions = {
+  studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
+  studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
+  studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
+};
+export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions & StudyNoteFieldActions;
 type GroupFieldTarget = TextDocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
-type AutosaveFieldTarget = GroupFieldTarget | typeof GROUP_DESCRIPTION | CouncilFieldTarget;
+const STUDY_NOTE_DRAFT_FIELDS = [
+  { ...STUDY_NOTE_CONTENT, draft: 'studyNoteContentDraft' },
+  { ...STUDY_NOTE_TITLE, draft: 'studyNoteTitleDraft' },
+  { ...STUDY_NOTE_TYPE, draft: 'studyNoteTypeDraft' },
+] as const;
+type StudyNoteDraftField = typeof STUDY_NOTE_DRAFT_FIELDS[number];
+type AutosaveFieldTarget = GroupFieldTarget | typeof GROUP_DESCRIPTION | StudyNoteDraftField | CouncilFieldTarget;
 export type AutosaveFieldDrafts = Partial<Record<AutosaveFieldTarget['draft'], AutosaveFieldDraft>>;
+
+function isStudyNoteDraftField(target: AutosaveFieldTarget | CapturedMetadataTarget): target is StudyNoteDraftField {
+  return target.action === 'studyNoteContentAction' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction';
+}
 
 export function autosaveFieldTargets(collection: string): readonly AutosaveFieldTarget[] {
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'councils') return COUNCIL_FIELDS;
+  if (collection === 'studyNotes') return STUDY_NOTE_DRAFT_FIELDS;
   return [];
 }
 
 function autosaveFieldValue(document: DocumentData | null | undefined, target: AutosaveFieldTarget): AutosaveFieldValue | undefined {
+  if (isStudyNoteDraftField(target)) return document && isOrdinaryStudyNote(document) ? readField(document, [target.field]) : undefined;
   if (target.field === 'date' || target.field === 'description') return readField(document ?? {}, [target.field]);
   if (target.field === 'heldAt') return councilLifecycleValue(document);
   const value = document?.[target.field];
@@ -822,8 +840,8 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
   const time = stamp?.field === target.field
     ? ('causal' in target && target.causal && stamp.time === null ? null : boundedActionTime(stamp.time)) : undefined;
   if (!metadata || metadata.deleted || time === undefined || !acceptsAutosaveField(nextValue, target)) return undefined;
-  const visible = shown?.editGeneration === checkpoint.editGeneration
-    && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
+  const visible = shown?.confirmed.metadata?.generation === metadata.generation
+    && (isStudyNoteDraftField(target) || shown.editGeneration === checkpoint.editGeneration) ? shown : checkpoint;
   const staged = checkpoint[target.draft];
   // A matched stored value is the opening of the next gesture. Its earlier proof
   // remains eligible for delivery until the person actually changes this field again.
@@ -920,14 +938,30 @@ function uncapturedAutosaveField(checkpoint: SessionCheckpoint, target: Autosave
 }
 
 export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
-  predecessor: CommitRequest | undefined, records: readonly CommitRequest[]): AutosaveFieldActions {
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], editorId?: string): AutosaveFieldActions {
   return Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
     const action = uncapturedAutosaveField(checkpoint, target);
     if (!action) return [];
+    const opening = isStudyNoteDraftField(target)
+      ? unregisteredNotePredecessor(checkpoint, predecessor, target, action, editorId) ?? action.before : action.before;
     const predecessorOperationId = target.causal
-      ? knownMetadataFieldPredecessor(baseline, predecessor, target, action.before, records) : undefined;
-    return [[target.action, { ...action, ...(predecessorOperationId && { predecessorOperationId }) }]];
+      ? knownMetadataFieldPredecessor(baseline, predecessor, target, opening, records) : undefined;
+    return [[target.action, { ...action, before: predecessorOperationId ? opening : action.before,
+      ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));
+}
+
+/** Both captures can belong to the same typing sequence while the first local Save is still being written. */
+function unregisteredNotePredecessor(checkpoint: SessionCheckpoint, predecessor: CommitRequest | undefined,
+  target: StudyNoteDraftField, action: AutosaveFieldAction, editorId: string | undefined): FieldValue | undefined {
+  if (!predecessor || predecessor.editorId !== editorId || predecessor.editGeneration >= checkpoint.editGeneration
+    || Object.hasOwn(checkpoint.pending, predecessor.id) || checkpoint.conflicts.length
+    || !equalValues(predecessor.baseline.resource, checkpoint.confirmed.resource)
+    || predecessor.baseline.metadata?.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
+  const earlier = predecessor[target.action];
+  if (!earlier || earlier.observedRevision !== action.observedRevision || !equalValues(earlier.before, action.before)
+    || !equalValues(earlier.after, autosaveFieldValue(predecessor.value, target))) return undefined;
+  return earlier.after;
 }
 
 export function observedAutosaveFieldsMatch(checkpoint: SessionCheckpoint, merged: DocumentData, awaitingOrder: boolean): boolean {
@@ -951,10 +985,39 @@ export function hasUncapturedAutosaveField(checkpoint: SessionCheckpoint): boole
   return autosaveFieldTargets(checkpoint.confirmed.resource.collection).some(target => Boolean(uncapturedAutosaveField(checkpoint, target)));
 }
 
+/** A later local edit may be staged while its own predecessor is still being captured. */
+export function adoptAcknowledgedStudyNoteFields(checkpoint: SessionCheckpoint, submitted: StudyNoteFieldActions,
+  accepted: ResourceSnapshot, operationId: string): void {
+  const metadata = accepted.metadata;
+  if (accepted.resource.collection !== 'studyNotes' || metadata?.operationId !== operationId || metadata.deleted) return;
+  for (const target of STUDY_NOTE_DRAFT_FIELDS) {
+    const captured = submitted[target.action];
+    if (captured) adoptAcknowledgedStudyNoteField(checkpoint, target, captured, accepted, metadata);
+  }
+}
+
+function adoptAcknowledgedStudyNoteField(checkpoint: SessionCheckpoint, target: StudyNoteDraftField,
+  submitted: DocumentFieldObservation<FieldValue>, accepted: ResourceSnapshot, metadata: NonNullable<ResourceSnapshot['metadata']>): void {
+  const action = uncapturedAutosaveField(checkpoint, target);
+  const opening = autosaveFieldValue(accepted.value, target);
+  if (!action || !acceptsAutosaveField(opening, target) || !equalValues(opening, submitted.after)
+    || metadata.generation !== checkpoint[target.draft]?.generation
+    || !(equalValues(action.before, submitted.before) || equalValues(action.before, opening))) return;
+  if (equalValues(opening, action.after)) {
+    delete checkpoint[target.draft];
+    return;
+  }
+  checkpoint[target.draft] = { generation: metadata.generation, action: {
+    before: opening, after: action.after, observedRevision: metadata.revision, time: action.time,
+  } };
+}
+
 export function autosaveAcknowledgementAncestor(ancestor: DocumentData | null, accepted: ResourceSnapshot,
   checkpoint: SessionCheckpoint): DocumentData | null {
   if (!ancestor) return ancestor;
   return autosaveFieldTargets(checkpoint.confirmed.resource.collection).reduce((before, target) => {
+    // A returned note field can differ from the predecessor the person kept editing.
+    if (isStudyNoteDraftField(target)) return before;
     const action = autosaveDraftAction(checkpoint, target);
     const value = autosaveFieldValue(accepted.value, target);
     if (!action || !equalValues(action.before, autosaveFieldValue(before, target))

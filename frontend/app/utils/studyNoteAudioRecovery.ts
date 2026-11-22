@@ -1,7 +1,8 @@
 import { newClientId } from '@/utils/clientId';
 import { draftKey, saveDraft } from '@/utils/durableDraft';
 import { newNoteDraftHref, newNoteDraftId, type NewNoteDraft } from '@/utils/newNoteDrafts';
-import { getRecordingDraft, saveRecordingDraft, saveRecordingDraftText, type RecordingDraft } from '@/utils/recordingDraftStore';
+import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
+import { deleteRecordingDraft, getRecordingDraft, listRecordingDrafts, saveRecordingDraft, saveRecordingDraftText, type RecordingDraft } from '@/utils/recordingDraftStore';
 
 import type { StudyNote } from '@/models/models';
 import type { NoteDraftPayload } from '@/models/studyNoteDraft';
@@ -22,6 +23,20 @@ export function unassignedStudyRecordingFilter(notes: readonly AudioNote[], draf
 export function isRecordingOnlyNoteDraft(value: NoteDraftPayload): boolean {
   return value.type === 'note' && !value.title.trim() && !value.content.trim() && value.tags.length === 0 && value.scriptureRefs.length === 0
     && !value.origin && !value.referenceRecovery && !value.dictationSourceIds?.length && Boolean(value.recordingSourceIds?.length);
+}
+
+/** Retire raw audio only after an accepted study note proves that it contains its transcript. */
+export async function retireAcceptedStudyRecordings(uid: string, sourcesByNote: ReadonlyMap<string, readonly string[]>, isCurrent: () => boolean) {
+  const noteBySource = new Map<string, string>();
+  for (const [note, sourceIds] of sourcesByNote) for (const id of sourceIds) noteBySource.set(id, note);
+  if (!noteBySource.size) return;
+  for (const draft of await listRecordingDrafts({ ownerId: uid, context: 'study' })) {
+    if (!isCurrent()) return;
+    const note = noteBySource.get(draft.id);
+    if (note && recordingMatchesDestination(draft, 'study', note, [draft.id])) {
+      await deleteRecordingDraft(draft.id, uid);
+    }
+  }
 }
 
 /** Explicit recovery copies a take; an old source acknowledgement cannot retire its new copy. */

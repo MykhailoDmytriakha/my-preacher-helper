@@ -1,5 +1,5 @@
 import React, { useLayoutEffect } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { undoDepth } from '@tiptap/pm/history';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useEditorValue } from '@/components/ui/useEditorValue';
@@ -26,9 +26,17 @@ it.each([false, true])('directed W3 preserves the document and Undo, own=%s', ow
     if (transaction.getMeta('preventUpdate')) replacements.push(transaction.doc.textContent);
   });
   armed = true; act(() => supply('Original.\n\nPHONE.'));
-  expect(changes).toEqual(['Original. Typedword']);
   expect(markdown(editor)).toBe('Original. Typedword');
   expect(replacements).toEqual([]);
+  if (!own) {
+    expect(changes).toEqual([]);
+    const choice = within(screen.getByRole('dialog'));
+    expect(choice.getByText('Original. Typedword')).toBeVisible();
+    expect(choice.getByText(/Original\.\s+PHONE\./)).toBeVisible();
+    fireEvent.click(choice.getByRole('button', { name: 'richEditor.compositionChoice.keepTyped' }));
+  }
+  expect(changes).toEqual(['Original. Typedword']);
+  expect(markdown(editor)).toBe('Original. Typedword');
   expect(undoDepth(editor.state)).toBe(1);
   view.unmount();
 });

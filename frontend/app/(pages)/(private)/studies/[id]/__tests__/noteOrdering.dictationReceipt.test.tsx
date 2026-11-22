@@ -1,5 +1,5 @@
-import { stand, start, original, insert, settle, finish, hasNoteQuestion } from '@test-utils/noteOrdering';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { stand, start, original, insert, settle, finish, hasNoteQuestion, chooseNotice } from '@test-utils/noteOrdering';
+import { act } from '@testing-library/react';
 import { processCommand } from '@/data-engine/server';
 import { diffFields } from '@/data-engine/protocol';
 import { noteRef } from '@test-utils/deviceWorld';
@@ -34,8 +34,8 @@ it.each([0, 1])('keeps the receipt and asks about remaining unsaved typing after
   expect(stand.autosave.content).toContain('Unsubmittedword');
   expect(stand.autosave.content).not.toContain('Dictatedword');
   expect(hasNoteQuestion()).toBe(true);
-  fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
-  await finish();
+  await chooseNotice('keep');
+  expect(hasNoteQuestion()).toBe(false);
   expect((await stand.world.snapshot(noteRef)).value!.dictationSourceIds).toEqual(['source-1']);
   expect((await stand.world.snapshot(noteRef)).value!.content).toContain('Unsubmittedword');
 });

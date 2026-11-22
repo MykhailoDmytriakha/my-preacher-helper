@@ -64,7 +64,7 @@ import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpeni
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { readStudyNoteReferenceComparison as studyNoteReferenceComparison } from './studyNoteReferenceChoice';
-import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
+import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { readStudyNoteFieldsComparison as studyNoteFieldsComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
@@ -109,6 +109,7 @@ export function firstCommentReference(...args: Parameters<typeof readCommentRefe
 export function matchesCommentPlaceScope(...args: Parameters<typeof matchesPlaceScope>) { return matchesPlaceScope(...args); }
 export function replaceCommentReference(...args: Parameters<typeof replacePlaceReference>) { return replacePlaceReference(...args); }
 export function readStudyNoteReferenceComparison(checkpoint: SessionCheckpoint) { return studyNoteReferenceComparison(checkpoint); }
+export function captureStudyNoteReferenceEdit(...args: Parameters<typeof captureStudyNoteReferenceChange>) { return captureStudyNoteReferenceChange(...args); }
 export function waitsForStudyNoteReferenceReview(checkpoint: SessionCheckpoint) { return hasStudyNoteReferenceReview(checkpoint.conflicts); }
 export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) { return studyNoteFieldsComparison(checkpoint); }
 export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof rebaseStudyReferences>) { return rebaseStudyReferences(...args); }
@@ -611,10 +612,8 @@ export function useDocumentActions() {
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
     if (!creating) {
       const applying = applyingDocumentChoices.get(browser)?.get(documentChoiceKey(owner, resource));
-      // Allow a Save to follow a choice already made. An unanswered conflict still blocks it. The study-note
-      // page answers its own later words after a choice (its inline question) until it moves to the engine's
-      // editing session, so its Save does not wait here (BUG-20261118-note-page-codex-fixes-wait-for-engine-session).
-      if (applying && resource.collection !== 'studyNotes') await applying.catch(() => undefined);
+      // Allow a Save to follow a choice already made. An unanswered conflict still blocks it.
+      if (applying) await applying.catch(() => undefined);
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
       const waiting = await waitingFor(resource);
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
@@ -628,8 +627,32 @@ export function useDocumentActions() {
     try { return await action(editor); } finally { editor.close({ flush: false }); }
   }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
+    owner,
     ready: Boolean(browser && owner),
     captureActionTime: () => owner && actionOwner.current === owner ? actionClock.capture(owner) : undefined,
+    knownStudyNoteCreation: async (id: string) => {
+      if (!browser || !owner || actionOwner.current !== owner) return false;
+      const resource = { collection: 'studyNotes', id };
+      const [saved, copies] = await untilStorageSilent(Promise.all([
+        browser.engine.peekCached(resource), browser.engine.listRecoverable(resource),
+      ]), () => undefined, readOnlyReason(true));
+      return actionOwner.current === owner && (Boolean(saved?.value && saved.metadata && !saved.metadata.deleted)
+        || copies.some(({ record }) => editorSlot(record.editorId) === 'study-note' && record.checkpoint.draft !== null));
+    },
+    listStudyNoteCreations: async () => {
+      if (!browser || !owner || actionOwner.current !== owner) return [];
+      const records = await untilStorageSilent(browser.engine.listRecoverable(), () => undefined, readOnlyReason(true));
+      if (actionOwner.current !== owner) return [];
+      return records.flatMap(({ record }) => {
+        const { confirmed, draft } = record.checkpoint;
+        if (record.owner !== owner || editorSlot(record.editorId) !== 'study-note'
+          || confirmed.resource.collection !== 'studyNotes' || confirmed.value || confirmed.metadata || !draft) return [];
+        return [{ id: confirmed.resource.id, title: typeof draft.title === 'string' ? draft.title : '',
+          content: typeof draft.content === 'string' ? draft.content : '',
+          recordingSourceIds: Array.isArray(draft.recordingSourceIds) ? draft.recordingSourceIds.filter((id): id is string => typeof id === 'string') : [],
+          dictationSourceIds: Array.isArray(draft.dictationSourceIds) ? draft.dictationSourceIds.filter((id): id is string => typeof id === 'string') : [] }];
+      });
+    },
     /** One user action, durably captured for every note or refused before changing any. */
     reshapeStudyAnalysis: async (edits: readonly StudyAnalysisWrite[]): Promise<void> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
@@ -793,7 +816,7 @@ export function useDocumentActions() {
         return settled;
       } finally { if (applying.get(key) === settling) applying.delete(key); }
     },
-  }), [browser, owner, withEditor, waitingFor, openFor]);
+  }), [browser, owner, withEditor, waitingFor, openFor, readOnlyReason]);
 }
 
 /** Capability actions capture through the engine; callers never construct tokens or wire commands. */
@@ -1061,9 +1084,11 @@ export function projectCapturedGroupStep(...args: Parameters<typeof projectGroup
 
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
+  /** A blank creation may be dropped while it still has no captured request. */
+  blankBeforeCreation?: (draft: DocumentData) => boolean;
   action?: 'group-title' | 'group-status' | 'group-description' | 'council-title' | 'council-date'
     | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] }
-    | { kind: 'outline-title'; opening: OutlineTitleOpening };
+    | { kind: 'outline-title'; opening: OutlineTitleOpening } | { kind: 'study-note-field'; field: import('./documentFieldAction').StudyNoteTimedField; opening: string; saveImmediately?: true };
 }
 
 interface DocumentOptions {
@@ -1370,15 +1395,21 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     update: (updater: (current: DocumentData | null) => DocumentData | null, options?: DocumentUpdateOptions) => {
       const action = options?.action;
       const time = action && owner ? actionClock.capture(owner) : undefined;
-      const field = action === 'council-date' ? 'date' : action === 'group-status' ? 'status' : action === 'group-description' ? 'description' : 'title';
+      const field = action === 'council-date' ? 'date'
+        : action === 'group-status' ? 'status' : action === 'group-description' ? 'description' : 'title';
       const observeWithoutClock = owner && (action === 'council-title' || action === 'council-date'
         || action === 'group-title' || action === 'group-description');
       let refused: { error: unknown } | null = null;
       return run(editor => {
-        const live = editor.getState().checkpoint, shown = current?.state.checkpoint;
+        const state = editor.getState(), live = state.checkpoint, shown = current?.state.checkpoint;
         const base = shown && deletedUnder(live, shown) ? shown.draft : live.draft;
         let next: DocumentData | null;
-        try { next = updater(base); }
+        try {
+          next = updater(base);
+          const { confirmed, pending } = live;
+          if (next && !confirmed.value && !confirmed.metadata && !state.preparing && !Object.keys(pending).length
+            && options?.blankBeforeCreation?.(next)) next = null;
+        }
         catch (error) {
           if (!options?.handlesRefusal?.(error)) throw error;
           refused = { error };
@@ -1389,6 +1420,23 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         if (owner && typeof action === 'object') {
           if (action.kind === 'exegetical-point') {
             return editor.edit(next, shown, { field: action.kind, nodeId: action.nodeId, intent: action.intent, time: time ?? null });
+          }
+          if (action.kind === 'study-note-field') {
+            const { field, opening } = action;
+            const displayed = shown?.draft;
+            const defaultValue = field === 'type' ? 'note' : '';
+            const visible = displayed && (displayed[field] ?? defaultValue) !== opening
+              ? { ...shown!, draft: { ...displayed, [field]: opening } } : shown;
+            const staged = editor.edit(next, visible, { field, time: time ?? null });
+            if (!action.saveImmediately) return staged;
+            const generation = editor.getState().checkpoint.editGeneration;
+            return staged.then(() => {
+              if (!isCurrent()) return;
+              const state = editor.getState();
+              // A transcript that follows a Save uses the normal successor path, including its receipt.
+              if (state.checkpoint.editGeneration === generation && !Object.keys(state.checkpoint.pending).length
+                && describeSync(state, editor.getObservation(), editor.getDelivery()).canSave) return editor.save();
+            });
           }
           if ('opening' in action) {
             return editor.edit(next, shown, { field: action.kind, rowId: action.opening.target.id, titleOpening: action.opening, time: time ?? null });
@@ -1402,6 +1450,11 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         throw refused ? refused.error : error;
       });
     },
+    importLegacyStudyNote: (edits: readonly import('./studyNoteLegacyDraft').LegacyStudyNoteEdit[]) => run(editor => {
+      const importing = editor.importLegacyStudyNote(edits);
+      cancelScheduledSave();
+      return importing;
+    }),
     captureTemplateTitle: (opening: OutlineTitleOpening) => {
       const shown = current?.state.checkpoint;
       return (title: string) => {
@@ -1444,7 +1497,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'sermon-plan-text' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' | 'analysis-frame' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'sermon-plan-text' | 'outline-point-placement' | 'outline-subpoint-placement' | 'group-flow-step-placement' | 'council-topic-placement' | 'analysis-frame' | 'study-note-references' | 'document-tags' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement' || action?.kind === 'council-topic-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;

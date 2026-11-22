@@ -53,6 +53,8 @@ export interface UseDurableDraftOptions<T> {
   creationTargetId?: string;
   /** Optional feature mapping for precreate copies of the same actual resource. */
   findCopies?: (uid: string, docId: string, aggregate: string) => DurableDraftCopy<T>[];
+  /** Optional proof from the owning editor that a discovered copy has no unsent changes. */
+  isSettledCopy?: (copy: DurableDraftCopy<T>) => boolean;
   /** Optional proof that a successful save covers the value of an already-owned recovery source. */
   isRecoveredDraftSaved?: (source: T, saved: T) => boolean;
   preferredRecoveryKey?: string | null;
@@ -86,6 +88,8 @@ export interface UseDurableDraftResult<T> {
   acceptRecovered: (options?: { transferToWriter: true }) => void;
   /** The user chose to keep the server version — forget the draft (every copy of its session). */
   discardRecovered: () => void;
+  /** Pin the exact selected copy for retirement after an async durable handoff. */
+  captureRecoveredDiscard: () => () => void;
   /**
    * What the words are built from moved while the words did not (this device has just stored a save of earlier words):
    * write this writer's last copy again, with the base read now.
@@ -178,6 +182,7 @@ export function useDurableDraft<T>({
   confirmedValue,
   creationTargetId,
   findCopies = findDraftCopies,
+  isSettledCopy,
   isRecoveredDraftSaved,
   preferredRecoveryKey,
   recoveryIdentity = docId,
@@ -350,13 +355,19 @@ export function useDurableDraft<T>({
   useEffect(() => {
     if (!uid || !docId || !key || !recoveryKey) return;
     if (inspectedKeyRef.current === recoveryKey) return;
-    const stored = findCopies(uid, docId, aggregate);
+    const stored = findCopies(uid, docId, aggregate).filter(copy => {
+      if (!isSettledCopy?.(copy)) return true;
+      const { key: sourceKey, sourceRecord, ...listed } = copy;
+      const physical = sourceRecord ?? listed;
+      clearDraftIfMatches(sourceKey, physical.value, physical);
+      return false;
+    });
     inspectedKeyRef.current = recoveryKey;
     setSelectedKey(null);
     setRecovery({ identity: recoveryKey, copies: stored });
     // A previous opening's copies remain in storage. Switching owner or document
     // is never permission to remove unconfirmed text.
-  }, [uid, docId, aggregate, key, recoveryKey, findCopies]);
+  }, [uid, docId, aggregate, key, recoveryKey, findCopies, isSettledCopy]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
   // every keystroke.
@@ -441,14 +452,20 @@ export function useDurableDraft<T>({
    * first, delete only on an exact match. The rejected version is the session the person answered about: every
    * copy of it goes, each on the same exact match.
    */
-  const discardRecovered = useCallback(() => {
+  const captureRecoveredDiscard = useCallback(() => {
     const rejected = selectedRef.current;
-    if (!rejected) return;
+    if (!rejected) return () => undefined;
     const session = sessionOf(listedCopies(), rejected);
-    for (const member of session) clearDraftIfMatches(member.key, member.value);
     const identity = recoveryKeyRef.current;
-    setRecovery(current => current.identity !== identity ? current : { ...current, copies: withoutSession(current.copies, session) });
+    return () => {
+      for (const member of session) {
+        const physical = member.sourceRecord ?? member;
+        clearDraftIfMatches(member.key, physical.value, physical);
+      }
+      setRecovery(current => current.identity !== identity ? current : { ...current, copies: withoutSession(current.copies, session) });
+    };
   }, [listedCopies]);
+  const discardRecovered = useCallback(() => captureRecoveredDiscard()(), [captureRecoveredDiscard]);
 
   /**
    * Write this writer's last copy again, with the base `readBase` gives now. For a base that moved while the words did
@@ -533,5 +550,5 @@ export function useDurableDraft<T>({
     // A replacement at that address can never satisfy this old snapshot.
   }, [key, recoveryKey, retireKnownCopies, isRecoveredDraftSaved]);
 
-  return { editedAt: editRef.current.editedAt, recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, rewriteCopy, markCaptured, markSaved };
+  return { editedAt: editRef.current.editedAt, recovered, recoveredBase, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, captureRecoveredDiscard, holdAlternative, rewriteCopy, markCaptured, markSaved };
 }

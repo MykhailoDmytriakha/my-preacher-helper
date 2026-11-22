@@ -3878,11 +3878,15 @@ describe('transactional DataEngine server', () => {
       expect(await save('one-edit', original, earlier)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { type, content: earlier } } });
     });
 
-    it('leaves an ordinary note with the current page protocol until the engine session migration', async () => {
+    it('protects the restored words of an ordinary note from an unproved earlier delivery', async () => {
       await seed('note');
       expect((await save('computer-note-edit', original, intermediate, 1)).kind).toBe('acknowledged');
       expect((await save('computer-note-return', intermediate, original, 2)).kind).toBe('acknowledged');
-      expect(await save('current-note-page', original, earlier)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { type: 'note', content: earlier } } });
+      const late = await save('delayed-legacy-note', original, earlier);
+      expect(late).toMatchObject({
+        kind: 'conflict', conflicts: [expect.objectContaining({ path: ['content'], mine: field(earlier), theirs: field(original) })],
+      });
+      expect((await readDocument(base.owner, resource)).value).toMatchObject({ type: 'note', content: original });
     });
   });
 

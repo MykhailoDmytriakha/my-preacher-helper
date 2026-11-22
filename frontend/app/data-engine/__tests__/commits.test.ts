@@ -156,6 +156,7 @@ describe('Durable commit requests', () => {
     await settle();
 
     const shown = await s.checkpoints.read('owner', editorId);
+    expect(action.getState().checkpoint).toEqual(shown?.checkpoint);
     expect(action.getState().checkpoint.conflicts).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: ['scriptureRefs', 'id:desktop-ref'] }),
     ]));

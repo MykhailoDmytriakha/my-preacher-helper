@@ -442,6 +442,8 @@ type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; comment
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
   deferRetention?: true;
+  /** A Save from this opening can become durable while the closing editor waits. */
+  followClosingCapture?: true;
   resumeVersion?: string;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
@@ -648,7 +650,7 @@ export class CommitQueue {
     });
   }
 
-  async replaceOversizedNote(source: CommitRequest, editorId: string, captureScope: string, corrected: SessionCheckpoint,
+  async replaceOversizedNote(source: CommitRequest, editorId: string, captureScope: string | undefined, corrected: SessionCheckpoint,
     project: (saved: CommitRequest) => EditorRecord, content?: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
     if (!oversizedNoteOpening(source) || !corrected.draft || !equalValues(corrected.confirmed, source.working)
       || !shortenedNoteContent(source.value, corrected.draft)) return null;
@@ -656,7 +658,7 @@ export class CommitQueue {
   }
 
   /** Replace a pinned terminal request and capture its continuation in one local transaction. */
-  async replaceNoteRequest(source: CommitRequest, editorId: string, captureScope: string, corrected: SessionCheckpoint,
+  async replaceNoteRequest(source: CommitRequest, editorId: string, captureScope: string | undefined, corrected: SessionCheckpoint,
     project: (saved: CommitRequest) => EditorRecord, noteContent: StudyNoteContentCapture | null): Promise<DocumentWriteReceipt | null> {
     const owner = this.owner, generation = this.generation;
     const store = this.options.store;
@@ -712,6 +714,13 @@ export class CommitQueue {
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
     let predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
+    if (frozenOptions?.followClosingCapture && predecessor) {
+      const beforeClose = selectSavePredecessor(records.filter(record => record.editGeneration < intent.editGeneration),
+        owner, editorId, intent.confirmed.resource);
+      if (beforeClose && beforeClose.id !== predecessor.id && !Object.hasOwn(intent.pending, beforeClose.id)) {
+        predecessor = selectCandidatePredecessor(records, [predecessor.id, beforeClose.id], owner, intent.confirmed.resource);
+      }
+    }
     const action = frozenOptions?.action;
     // An ACK can remove the opening from the live controller after it froze this Save.
     // Recover only a request in that frozen checkpoint that still proves what was displayed.
@@ -911,7 +920,7 @@ export class CommitQueue {
     const outlineSubpointMoves = editorAction?.kind === 'outline-subpoint-placement' ? [editorAction.move] : frozenOptions?.outlineSubpointMoves;
     const homileticPositionReviews = editorAction?.kind === 'document-metadata' && editorAction.homileticPositionReview && baseline.metadata
       ? { [editorAction.homileticPositionReview]: baseline.metadata.revision } : undefined;
-    const autosaveFields = groupMove || councilMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records);
+    const autosaveFields = groupMove || councilMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records, editorId);
     const rowFields = groupMove || councilMove ? {}
       : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds, frozenOptions?.thoughtTextId);
     const thoughtTagActions = captureThoughtTagActions(baseline, predecessor, intent.draft, frozenOptions?.thoughtTagId, frozenOptions?.documentMetadataTime, records);
@@ -970,6 +979,7 @@ export class CommitQueue {
       ...(thoughtTagActions && { thoughtTagActions }),
       ...(tagMembershipActions && { tagMembershipActions }),
       ...(studyNoteReferenceEvidence && { studyNoteReferenceEvidence: clone(studyNoteReferenceEvidence) }),
+      ...(studyNoteReferenceEvidence?.shownChange && { studyNoteReferenceChange: clone(studyNoteReferenceEvidence.shownChange) }),
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(editorAction?.kind === 'sermon-plan-text' && { sermonTextOpenings: Object.fromEntries(

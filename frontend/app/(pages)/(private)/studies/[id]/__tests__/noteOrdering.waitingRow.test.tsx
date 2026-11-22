@@ -8,7 +8,7 @@ const metadata = {
   receipt: { dictationSourceIds: ['phone-source'], recordingSourceIds: ['phone-source'] },
 };
 
-it.each(Object.entries(metadata))('U112-01 adopts equal content plus %s after one confirming save, as production does', async (_field, fields) => {
+it.each(Object.entries(metadata))('U112-01 adopts equal content plus %s without a redundant save of identical words', async (_field, fields) => {
   await start();
   const sends = jest.spyOn(stand.laptop.transport, 'send');
   act(() => insert(' Kword'));
@@ -20,12 +20,13 @@ it.each(Object.entries(metadata))('U112-01 adopts equal content plus %s after on
   expect(stand.confirmed).toMatchObject({ content: k, ...fields });
   expect(stand.autosave.baselineRef.current).toMatchObject({ content: k, ...fields });
   expect(screen.queryByText('common.saved')).toBeTruthy();
-  expect(sends).toHaveBeenCalledTimes(1);
+  expect(sends).not.toHaveBeenCalled();
   fireEvent.click(screen.getByTitle('common.done')); await settle();
   fireEvent.click(screen.getByTitle('common.edit')); await settle();
   expect(stand.autosave).toMatchObject(fields);
   act(() => insert(' Laterword')); await finish();
   expect(hasNoteQuestion()).toBe(false);
+  expect(sends).toHaveBeenCalledTimes(1);
   expect((await stand.world.snapshot(noteRef)).value).toMatchObject({ content: k + ' Laterword', ...fields });
 });
 

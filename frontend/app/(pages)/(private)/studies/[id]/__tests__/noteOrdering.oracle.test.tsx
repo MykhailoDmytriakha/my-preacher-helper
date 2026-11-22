@@ -80,7 +80,7 @@ it('I3 records the five-event offline question against the last known row', asyn
     { kind: 'offline' }, { kind: 'arriveLive' }, { kind: 'timer' }], 'I3:offline-last-known');
   expect(row.falseQuestion).toBe(false);
   expect(row.offlineQuestion).toBe(true);
-  expect(row.final.question).toBe(true);
+  expect(row.final).toMatchObject({ question: false, saved: true, engineWrites: 1 });
   expect(row.final.editor).toContain('Localword');
   expect(row.final.stored).toBe(row.final.page);
 });

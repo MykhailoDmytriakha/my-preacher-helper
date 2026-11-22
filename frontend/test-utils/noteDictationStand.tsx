@@ -9,6 +9,7 @@ import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { processCommand } from '@/data-engine/server';
 import { diffFields } from '@/data-engine/protocol';
+import { engineNote } from '@/hooks/useStudyNotesEngine';
 import { watchedStore } from '@/utils/deviceStorage';
 
 import { undoDepth } from '@tiptap/pm/history';
@@ -16,8 +17,7 @@ import type { ResourceRef } from '@/data-engine/types';
 import type { Editor } from '@tiptap/core';
 import type { StudyNote } from '@/models/models';
 import type { useTextDictation } from '@/hooks/useTextDictation';
-import type { useNoteAutoSave } from '@/(pages)/(private)/studies/[id]/useNoteAutoSave';
-import type { NoteDraftPayload } from '@/(pages)/(private)/studies/[id]/noteDraft';
+import type { useStudyNoteEditingSession } from '@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession';
 
 jest.mock('@/services/storeAvailability.server', () => ({ storeRetryHeaders: () => ({}) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: () => mockBrowser }));
@@ -85,11 +85,13 @@ jest.mock('@tiptap/react', () => {
 let mockStaleCreation = false;
 let mockEarlyInput = false;
 
-jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
-  const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
-  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0], handOff?: Parameters<typeof useNoteAutoSave>[1]) => {
-    mockRenderCount++; mockAutosave = args;
-    return actual.useNoteAutoSave(args, handOff);
+jest.mock('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession', () => {
+  const actual = jest.requireActual<typeof import('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession')>('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession');
+  return { ...actual, useStudyNoteEditingSession: (options: Parameters<typeof useStudyNoteEditingSession>[0]) => {
+    const session = actual.useStudyNoteEditingSession(options);
+    mockRenderCount++;
+    mockSession = session;
+    return session;
   } };
 });
 
@@ -102,7 +104,7 @@ const mockSearch = new URLSearchParams();
 let mockVoice: Parameters<typeof useTextDictation>[0];
 let mockBrowser: { engine: WorldDevice['engine']; dispose: () => void; editorId: (resource: ResourceRef, slot?: string) => string };
 let mockEditor: Editor;
-let mockAutosave: Parameters<typeof useNoteAutoSave>[0];
+let mockSession: ReturnType<typeof useStudyNoteEditingSession> | undefined;
 let world: DeviceWorld;
 let laptop: WorldDevice;
 let view: ReturnType<typeof render>;
@@ -229,7 +231,7 @@ async function phoneSave(content: string, fields: Partial<Pick<StudyNote, 'title
 afterEach(() => {
   disposeHistory();
   mockHoldCollection = false; mockDelayedCollection = []; mockRenderCount = 0;
-  mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null;
+  mockRouteId = 'note-x'; mockStaleCreation = false; mockEarlyInput = false;
 });
 
 
@@ -239,12 +241,17 @@ export const stand = {
   holdCollection() { mockHoldCollection = true; },
   releaseCollection() { mockHoldCollection = false; mockDelayedCollection.at(-1)?.(); mockDelayedCollection = []; },
   get staleCreation() { return mockStaleCreation; },
-  set recovery(value: NoteDraftPayload | null) { mockRecovery = value; },
   forceStaleCreation() { mockStaleCreation = true; mockEarlyInput = true; },
-  set afterMarkSaved(callback: ((content: string) => void) | undefined) { mockAfterMarkSaved = callback; },
   get editor() { return mockEditor; },
-  get autosave() { return mockAutosave; },
-  get confirmed() { return mockConfirmed; },
+  get autosave() {
+    const note = mockSession?.projected;
+    return { ...note, dictationSourceIds: note?.dictationSourceIds ?? [], recordingSourceIds: note?.recordingSourceIds ?? [] };
+  },
+  get session() { return mockSession?.document; },
+  get confirmed() {
+    const confirmed = mockSession?.document.confirmed;
+    return confirmed?.value ? engineNote(confirmed.value, confirmed.resource.id, 'en') : null;
+  },
   get voice() { return mockVoice; },
   get voiceController() { return mockVoiceController; },
   get recordings() { return Array.from(mockRows.values()).filter((r:any)=>r && r.blob); },
@@ -267,23 +274,6 @@ export function insert(text: string) {
 }
 export async function finish() { for (const ms of [0, 1600, 2000, 5000, 30000]) await settle(ms); }
 export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'arriveLive' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate' | 'doneEdit' | 'typeDictate' | 'dictateType'; word?: string };
-let mockAfterMarkSaved: ((content: string) => void) | undefined;
-let mockConfirmed: NoteDraftPayload | null;
-let mockRecovery: NoteDraftPayload | null = null;
-jest.mock('@/hooks/useDurableDraft', () => {
-  const actual = jest.requireActual('@/hooks/useDurableDraft');
-  return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as NoteDraftPayload | null; const result = actual.useDurableDraft(args);
-    const mark = result.markSaved;
-    const markSaved = React.useCallback((value: unknown) => {
-      mark(value);
-      mockAfterMarkSaved?.((value as { content: string }).content);
-    }, [mark]);
-    return { ...result, markSaved, ...(mockRecovery ? { recovered: mockRecovery,
-      acceptRecovered: () => { mockRecovery = null; result.acceptRecovered(); },
-    } : {}) }; } };
-});
-
-
 export function rng(seed: number) {
   let state = seed >>> 0;
   return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
@@ -296,6 +286,7 @@ function disposeHistory() {
   jest.advanceTimersByTime(1);
   world?.dispose(); localStorage.clear(); jest.restoreAllMocks(); jest.clearAllMocks();
   activeHistory = false;
+  mockSession = undefined;
   observeQuestion = undefined;
 }
 export async function pulse(ms = 0) {

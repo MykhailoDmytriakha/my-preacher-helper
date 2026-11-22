@@ -33,7 +33,7 @@ function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
   const checkpoints = createIndexedDbCheckpoints();
   const commits = createIndexedDbCommitStore();
   let server = copy(serverCopy);
-  let saved = copy(opening);
+  let saved = serverCopy.resource.collection === 'groups' ? copy(opening) : undefined;
   let sequence = 0;
   const journal = new Map<string, JournalEntry>();
   const transport = {
@@ -52,7 +52,7 @@ function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
   const engine = new DataEngine({
     transport, runtime, checkpoints, commits,
     observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
-    snapshots: { read: async () => copy(saved), put: async (_owner, snapshot) => { saved = copy(snapshot); } },
+    snapshots: { read: async (_owner, ref) => saved?.resource.id === ref.id && saved.resource.collection === ref.collection ? copy(saved) : undefined, put: async (_owner, snapshot) => { saved = copy(snapshot); } },
     recoveryPresence: { held: async () => held, hold: () => () => undefined },
     operationId: () => 'recovered-' + ++sequence,
   });
@@ -324,5 +324,50 @@ describe('starting again after a group description was saved on the device but n
     await device.start();
     expect(device.transport.send).not.toHaveBeenCalled();
     expect((await device.checkpoints.read(owner, editorId))?.checkpoint.draft?.description).toBe(local);
+  });
+});
+
+describe('a new study note after the page was killed before it could submit a creation', () => {
+  const noteResource = { collection: 'studyNotes', id: 'reserved-note' };
+  const absent: ResourceSnapshot = { resource: noteResource, value: null, metadata: null };
+  const draft = {
+    userId: owner, title: 'New note', type: 'note', content: 'Words from before the crash', tags: [], scriptureRefs: [],
+    isDraft: true, createdAt: '2026-11-20', updatedAt: '2026-11-20',
+  };
+  const editorId = retirableEditorIdentity('closed-note-tab', noteResource, 'study-note', 'opening');
+  let device: ReturnType<typeof boot> | undefined;
+  afterEach(() => device?.engine.dispose());
+
+  async function keepCreation(current: ReturnType<typeof boot>) {
+    const session = new DataSession(absent);
+    session.edit(draft);
+    await current.checkpoints.put({ owner, editorId, checkpoint: session.checkpoint(),
+      prepared: null, unfinalized: [], autoSaveOnResume: true });
+  }
+
+  it('creates the note once at the original reserved address when the person returns', async () => {
+    device = boot(absent);
+    await keepCreation(device);
+
+    await device.start();
+
+    expect(device.stored().value?.content).toBe(draft.content);
+    expect(device.transport.send).toHaveBeenCalledWith(expect.objectContaining({ kind: 'create', resource: noteResource }));
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(await device.checkpoints.read(owner, editorId)).toBeUndefined();
+  });
+
+  it.each([false, true])('keeps the copy without writing if the reserved address has already existed (deleted: %s)', async deleted => {
+    const present: ResourceSnapshot = { ...absent, value: deleted ? null : { ...draft, content: 'Other words' },
+      metadata: { protocol: 1, generation: 'other-creation', revision: 1, deleted } };
+    device = boot(present);
+    await keepCreation(device);
+
+    await device.start();
+
+    expect(device.transport.send).not.toHaveBeenCalled();
+    expect(device.stored()).toEqual(present);
+    expect((await device.checkpoints.read(owner, editorId))?.checkpoint.draft?.content).toBe(draft.content);
   });
 });

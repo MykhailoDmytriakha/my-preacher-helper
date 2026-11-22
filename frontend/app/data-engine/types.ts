@@ -73,6 +73,7 @@ export interface CommandBase {
 }
 
 export interface StudyNoteReferenceEvidence {
+  shownChange?: FieldChange;
   times?: Record<string, ActionTime>;
   observedRevisions?: Record<string, number>;
 }

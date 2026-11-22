@@ -65,8 +65,8 @@ const titleAction = rowValues(z.string());
 const nullableTitleAction = rowValues(z.string().nullable());
 const preachDateCityAction = nullableTitleAction.extend({ scope: z.object({ id: z.string(), name: z.string() }) });
 const preachDateChurchAction = rowValues(z.object({ id: z.string(), name: z.string(), city: z.string().optional() }));
-const councilDateAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
-const councilDateDraft = z.object({ generation: id, action: councilDateAction });
+const fieldValueAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
+const fieldValueDraft = z.object({ generation: id, action: fieldValueAction });
 const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
   title: z.string().nullable(), ancestors: z.array(z.string().min(1)), removedPointId: z.string().min(1).max(128).optional(),
@@ -85,8 +85,9 @@ const pendingShape = {
   groupFlowStepPlacement: groupPlacementCapture.optional(), councilTopicPlacement: councilPlacementCapture.optional(),
   generation: observedRevision, value: z.unknown(), operations: z.array(id).optional(),
   borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional(),
-  groupTitleAction: textAction.optional(), groupStatusAction: textAction.optional(), groupDescriptionAction: councilDateAction.optional(),
-  councilTitleAction: textAction.optional(), councilDateAction: councilDateAction.optional(), councilLifecycleAction: councilDateAction.optional(),
+  groupTitleAction: textAction.optional(), groupStatusAction: textAction.optional(), groupDescriptionAction: fieldValueAction.optional(),
+  studyNoteContentAction: fieldValueAction.optional(), studyNoteTitleAction: fieldValueAction.optional(), studyNoteTypeAction: fieldValueAction.optional(),
+  councilTitleAction: textAction.optional(), councilDateAction: fieldValueAction.optional(), councilLifecycleAction: fieldValueAction.optional(),
   councilOutcomeActions: z.array(storedRowAction).optional(), councilTopicTitleActions: z.array(titleAction).optional(),
   groupBlockTitleActions: z.array(titleAction).optional(), groupStepTitleActions: z.array(nullableTitleAction).optional(),
   councilTopicSummaryActions: z.array(nullableTitleAction).optional(), councilTopicTextActions: z.array(nullableTitleAction).optional(), thoughtTextActions: z.array(titleAction).optional(),
@@ -164,9 +165,10 @@ const recordSchema = z.object({
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
-    groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: councilDateDraft.optional(),
-    councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: councilDateDraft.optional(),
-    councilLifecycleDraft: councilDateDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
+    groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: fieldValueDraft.optional(),
+    studyNoteContentDraft: fieldValueDraft.optional(), studyNoteTitleDraft: fieldValueDraft.optional(), studyNoteTypeDraft: fieldValueDraft.optional(),
+    councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: fieldValueDraft.optional(),
+    councilLifecycleDraft: fieldValueDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
     councilTopicSummaryDrafts: rowDrafts(nullableTitleAction).optional(),
     councilTopicTextDrafts: rowDrafts(nullableTitleAction).optional(),
     councilOutcomeDrafts: rowDrafts(storedRowAction).optional(),
@@ -269,6 +271,7 @@ const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
   groupTitleDraft: draftWithoutUnreadableClock,
   groupStatusDraft: draftWithoutUnreadableClock,
   groupDescriptionDraft: draftWithoutUnreadableClock,
+  studyNoteContentDraft: draftWithoutUnreadableClock, studyNoteTitleDraft: draftWithoutUnreadableClock, studyNoteTypeDraft: draftWithoutUnreadableClock,
   councilTitleDraft: draftWithoutUnreadableClock,
   councilDateDraft: draftWithoutUnreadableClock,
   councilLifecycleDraft: draftWithoutUnreadableClock,

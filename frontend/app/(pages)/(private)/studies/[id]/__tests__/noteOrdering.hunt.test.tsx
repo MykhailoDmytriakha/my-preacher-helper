@@ -42,10 +42,10 @@ it('I3 rejects a question about fully adopted values after a clean arrival', asy
   expect(row.falseQuestion).toBe(false);
 });
 
-it('I4 converges after the other device stores the live text and silence', async () => {
+it('I4 converges without resending text the other device has stored', async () => {
   const row = await runHistory([{ kind: 'type', word: 'Equalword' }, { kind: 'arriveLive' }], 'I4:equal-arrival');
   expect(row.unconverged).toBe(false);
-  expect(row.final.engineWrites).toBe(1);
+  expect(row.final.engineWrites).toBe(0);
 });
 
 it.each(shortestWitnesses)('preserves the shortest $invariant witness and every proper subsequence', async witness => {

@@ -1,18 +1,13 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 
 import { noteRef } from '@test-utils/deviceWorld';
-import { draftKey } from '@/utils/durableDraft';
-import { stand, start, original, stored, settle, phoneSave, insert, finish, hasNoteQuestion, hasInlineQuestion } from '@test-utils/noteOrdering';
+import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { stand, start, original, stored, settle, phoneSave, insert, finish, hasNoteQuestion, hasInlineQuestion, chooseNotice } from '@test-utils/noteOrdering';
 
 import type { CommandResult, DataCommand } from '@/data-engine/types';
 
-/*
- * Text typed and left inside the save pause lives only as this device's draft. «Restore» resumes the editing
- * session it was typed in — the words and what they were built from — so the note's ordinary save and its
- * existing baseline check decide: send, merge by field, or ask. Every history here is driven by the person's
- * actions on the real page with the real engine; the stand counts this device's server commands.
- */
-
+// Historical localStorage copies come from the previous app. The current page imports their
+// actual base into the engine. Ordinary navigation now captures the save itself.
 let sends: jest.SpyInstance<Promise<CommandResult>, [DataCommand]>;
 let hold = false;
 const waiting: Array<() => void> = [];
@@ -28,15 +23,17 @@ function countCommands() {
 const storedNote = async () => (await stand.world.snapshot(noteRef)).value as unknown as { title?: string; content: string; scriptureRefs: Array<Record<string, unknown>> };
 const conflictShown = () => (document.body.textContent ?? '').includes('freshness.conflictTitle');
 
-/** Types and leaves the note before the 1.5 s save pause ends: the words stay only in the device's draft. */
-async function typeAndLeaveInsidePause(word: string) {
-  act(() => insert(word));
-  await settle(150);
+async function leaveLegacyCopy(edit: (opening: {
+  title: string; content: string; tags: string[]; scriptureRefs: Array<Record<string, unknown>>; type: 'note';
+}) => object) {
+  const note = await storedNote();
+  const base = { title: note.title ?? '', content: note.content, tags: [], scriptureRefs: note.scriptureRefs, type: 'note' as const };
   stand.leave();
-  for (const ms of [0, 1600, 5000, 30000]) await settle(ms);
+  expect(saveDraft(draftKey('owner', 'note-x', 'note', 'previous-build'), edit(base), undefined, false, 1, base)).toBe(true);
 }
 
-/** Opens the note again, sees «Text from last time» and presses «Restore» (the note stays in reading). */
+async function keepMine() { await chooseNotice('keep'); }
+
 async function reopenAndRestore() {
   await stand.reopen();
   await settle(5000);
@@ -45,10 +42,10 @@ async function reopenAndRestore() {
   await settle();
 }
 
-describe('restoring text left inside the save pause resumes the session it was typed in', () => {
+describe('importing an old local note copy keeps the opening it was typed on', () => {
   it('does not silently replace text another device saved since: the save is refused before any command and the version question is shown', async () => {
     await start(); countCommands();
-    await typeAndLeaveInsidePause(' Leaveword');
+    await leaveLegacyCopy(base => ({ ...base, content: base.content + ' Leaveword' }));
     expect(sends).not.toHaveBeenCalled();
     await phoneSave('Phone version of the note.');
 
@@ -65,7 +62,7 @@ describe('restoring text left inside the save pause resumes the session it was t
 
   it('keeps the title another device changed and adds the restored word, with one command and no question', async () => {
     await start(); countCommands();
-    await typeAndLeaveInsidePause(' Leaveword');
+    await leaveLegacyCopy(base => ({ ...base, content: base.content + ' Leaveword' }));
     await phoneSave(original, { title: 'Phone title' });
 
     await reopenAndRestore();
@@ -83,6 +80,7 @@ describe('restoring text left inside the save pause resumes the session it was t
     await start(); countCommands();
     hold = true;
     act(() => insert(' Firstword'));
+    await settle();
     await act(async () => { jest.advanceTimersByTime(1600); for (let i = 0; i < 5000; i++) await Promise.resolve(); });
     // The first save left the device and waits for the server's answer.
     expect(waiting).toHaveLength(1);
@@ -91,9 +89,7 @@ describe('restoring text left inside the save pause resumes the session it was t
     stand.leave();
     hold = false; waiting.splice(0).forEach(release => release());
     for (const ms of [0, 1600, 5000, 30000]) await settle(ms);
-    expect(await stored()).toBe(original + ' Firstword');
-
-    await reopenAndRestore();
+    await stand.reopen();
     await finish();
 
     expect(hasNoteQuestion()).toBe(false);
@@ -115,12 +111,9 @@ describe('a reference stored before references kept their Bible', () => {
 
   it('a restored draft that added a reference is not refused as if the old one had changed elsewhere', async () => {
     await startWithOldReference();
-    const input = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
-    fireEvent.change(input, { target: { value: 'John 3:16' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await settle(150);
-    stand.leave();
-    for (const ms of [0, 1600, 5000, 30000]) await settle(ms);
+    await leaveLegacyCopy(base => ({ ...base, scriptureRefs: [...base.scriptureRefs,
+      { id: 'john-verse', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 },
+    ] }));
     expect(sends).not.toHaveBeenCalled();
 
     await reopenAndRestore();
@@ -133,7 +126,7 @@ describe('a reference stored before references kept their Bible', () => {
 
   it('a restored draft that did not touch the references leaves them stored as they were', async () => {
     await startWithOldReference();
-    await typeAndLeaveInsidePause(' Leaveword');
+    await leaveLegacyCopy(base => ({ ...base, content: base.content + ' Leaveword' }));
 
     await reopenAndRestore();
     await finish();
@@ -161,7 +154,7 @@ describe('a draft written by a build that did not keep what it was built from', 
     expect(sends).not.toHaveBeenCalled();
     expect(await stored()).toBe(original);
 
-    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await keepMine();
     await finish();
 
     expect(await stored()).toBe(original + ' Olderword');
@@ -182,16 +175,16 @@ describe('a device with no room for the base beside the words', () => {
       return setItem.call(this, name, value);
     });
     await start(long, true); countCommands();
-    await typeAndLeaveInsidePause(' Leaveword');
+    await leaveLegacyCopy(base => ({ ...base, content: base.content + ' Leaveword' }));
     expect(sends).not.toHaveBeenCalled();
 
     await reopenAndRestore();
     await finish();
 
-    // Kept without its base, the copy is asked about, as a copy written before copies kept their base.
+    // The previous app could store the words only. It never established a base for the new editor.
     expect(conflictShown()).toBe(true);
     expect(sends).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await keepMine();
     await finish();
 
     expect(await stored()).toContain('Leaveword');

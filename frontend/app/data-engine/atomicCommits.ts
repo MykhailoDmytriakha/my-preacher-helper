@@ -292,7 +292,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     // The preceding ACK can carry another device's references or date. The server
     // needs the actual opening for the exact field the person touched.
     const studyNoteReferenceChange = sameGeneration && snapshot.resource.collection === 'studyNotes'
-      ? captureStudyNoteReferenceChange(ancestor, authored) : undefined;
+      ? record.studyNoteReferenceChange ?? captureStudyNoteReferenceChange(ancestor, authored) : undefined;
     const committed = predecessor.result.committed;
     const responseOperation = snapshot.metadata?.operationId;
     const exactOperation = predecessor.command?.operationId ?? predecessor.result.operationId;

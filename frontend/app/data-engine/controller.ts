@@ -42,6 +42,7 @@ import { assertOrdinaryAnswerScope, anchoredPlacementChoiceTail, ordinaryChoiceC
 import { projectOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
+import { oversizedNoteOpening } from './oversizedNoteCorrection';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames, unresolvedPreachDateField } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
@@ -71,6 +72,7 @@ import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
+import type { LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot, StudyNoteContentCapture } from './types';
 import type { OutlineTitleOpening, SermonNoteOpening } from '@/utils/sermonNoteText';
@@ -329,6 +331,59 @@ export class EditorController {
     return this.enqueue(() => this.persistGroupTextEdit());
   }
 
+  /** A shortened note replaces its sole size refusal in the same durable transaction. */
+  shortenOversizedStudyNote(): Promise<boolean> {
+    const commits = this.options.commits;
+    if (!commits || this.result?.kind !== 'refused' || this.result.code !== 'resource-exhausted') return Promise.resolve(false);
+    let replaced = false;
+    return this.enqueueChoice(async () => {
+      const record = this.record(), shown = record.checkpoint;
+      const [requestId, ...others] = Object.keys(shown.pending);
+      if (!requestId || others.length || shown.remoteCandidate || shown.conflicts.length || !shown.draft) return;
+      const captures = this.pendingCaptures.boundary();
+      const source = (await commits.list()).find(request => request.id === requestId);
+      this.assertCurrent();
+      const held = shown.pending[requestId];
+      if (!source || source.owner !== record.owner || editorSlot(source.editorId) !== 'study-note'
+        || source.retentionScope || !oversizedNoteOpening(source)
+        || held.generation !== source.editGeneration || !equalValues(held.value, source.value)
+        || !equalValues(shown.confirmed, source.working) || !equalValues(shown, this.session.checkpoint())) return;
+      // The failed text was displayed, but was never stored. A replacement compares against
+      // the refused command's confirmed opening and carries the new action's time.
+      const { studyNoteContentDraft, ...checkpoint } = shown;
+      const corrected = DataSession.restore(checkpoint);
+      corrected.release(requestId);
+      const latest = studyNoteContentDraft?.action;
+      const opening = source.studyNoteContentAction;
+      const metadata = source.working.metadata;
+      const shortenedContent = latest && metadata && opening?.before.exists && typeof opening.before.value === 'string'
+        ? { generation: metadata.generation, observedRevision: opening.observedRevision, opening: opening.before.value, time: latest.time } : undefined;
+      let projected: EditorRecord | undefined;
+      const receipt = await commits.replaceOversizedNote(source, record.editorId, undefined, corrected.checkpoint(), saved => {
+        this.assertCurrent();
+        if (!equalValues(shown, this.session.checkpoint())) {
+          throw Object.assign(new Error('The corrected text changed'), { code: 'decision-changed' });
+        }
+        corrected.applyCommit(saved);
+        projected = { ...record, checkpoint: corrected.checkpoint(),
+          completedCommits: [...new Set([...(record.completedCommits ?? []), requestId])] };
+        return projected;
+      }, shortenedContent);
+      if (!receipt || !projected) return;
+      await this.applyChoiceProjection(shown, projected, captures);
+      await commits.finishCancellation(record.editorId, [requestId]);
+      replaced = true;
+    }).then(() => replaced);
+  }
+
+  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): Promise<void> {
+    this.assertCurrent();
+    this.session.importLegacyStudyNote(edits);
+    this.durable = false;
+    this.emit();
+    return this.enqueue(() => this.persist());
+  }
+
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<void> {
     this.assertCurrent();
     // Close captures the current session while an earlier disk write can still be pending.
@@ -488,7 +543,8 @@ export class EditorController {
       }
       const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote', titles)
         ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
-          ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
+          ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+          ?? keepUncontestedStudyNoteFields(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
@@ -1325,6 +1381,10 @@ export class EditorController {
           }
           if (remoteChoice?.refused && !decided.remoteCandidate) {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
+          }
+          if (ordinary?.scope.length === 1 && ordinary.answer.kind === 'conflict'
+            && ordinary.first.baseline.metadata?.generation === session.checkpoint().confirmed.metadata?.generation) {
+            session.retainStudyNoteBodyAfterChoice(ordinary.first.value, source.draft, ordinary.answer.conflicts);
           }
         }
         if (separateGroupStatus) {

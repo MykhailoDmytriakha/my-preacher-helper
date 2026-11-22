@@ -1,7 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 
-import { draftKey } from '@/utils/durableDraft';
-import { stand, start, original, stored, settle, phoneSave, insert, finish, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { stand, start, original, stored, settle, phoneSave, finish, hasNoteQuestion, chooseNotice } from '@test-utils/noteOrdering';
 
 import type { CommandResult, DataCommand } from '@/data-engine/types';
 
@@ -9,7 +9,7 @@ import type { CommandResult, DataCommand } from '@/data-engine/types';
  * The copies «Text from last time» offers. Each is a frozen editing session: the words and the base they were built
  * from. Two physical copies of one session are one choice, and one answer settles both; a copy is restored against
  * the note as stored, whatever was restored before it; a copy that holds nothing beyond its own base is not unsent
- * text and is not offered. Every history here is driven by the person's actions on the real page with the real engine.
+ * text and is not offered. The copies were written by an older build; recovery uses the real page and engine.
  */
 
 let sends: jest.SpyInstance<Promise<CommandResult>, [DataCommand]>;
@@ -21,6 +21,12 @@ const conflictShown = () => (document.body.textContent ?? '').includes('freshnes
 const offerShown = () => (document.body.textContent ?? '').includes('unsavedDraft.title');
 const chooser = () => screen.queryByRole('combobox', { name: 'unsavedDraft.chooseCopy' });
 const phoneVersion = 'Phone version of the note.';
+const words = (content: string) => ({ title: 'Original', content, tags: [], scriptureRefs: [], type: 'note' as const });
+const physicalCopies = ['old-opening', 'old-reopen'].map(writer => draftKey('owner', 'note-x', 'note', writer));
+
+function expectTwoCopiesRemoved() {
+  expect(physicalCopies.map(key => localStorage.getItem(key))).toEqual([null, null]);
+}
 
 async function leaveAndWait() {
   stand.leave();
@@ -39,37 +45,34 @@ async function confirmDiscardIfAsked() {
   if (confirm) await act(async () => { fireEvent.click(confirm); });
 }
 
-/** A word left inside the save pause; the phone then replaces the text; «Restore» asks; he leaves without answering. */
-async function askedAndLeftUnanswered() {
+async function openTwoCopiesOfOneSession() {
   await start(); countCommands();
-  act(() => insert(' Leaveword'));
-  await settle(150);
   await leaveAndWait();
+  const base = words(original);
+  const edit = words(original + ' Leaveword');
+  physicalCopies.forEach((key, index) => {
+    expect(saveDraft(key, edit, undefined, false, index + 1, base)).toBe(true);
+    expect(localStorage.getItem(key)).not.toBeNull();
+  });
   await phoneSave(phoneVersion);
   await reopen();
-  await restore();
-  await finish();
-  expect(conflictShown()).toBe(true);
-  expect(sends).not.toHaveBeenCalled();
-  await act(async () => { jest.advanceTimersByTime(150); });
-  await leaveAndWait();
-  await reopen();
-  // The same words built from the same base, now kept by two openings: one choice.
+
+  // Matching words built from the same base are one choice on the page.
   expect(offerShown()).toBe(true);
   expect(chooser()).toBeNull();
+  expect(sends).not.toHaveBeenCalled();
 }
 
 describe('two physical copies of one editing session', () => {
   it('are one choice, and «take theirs» after restoring settles both: the words are not offered again', async () => {
-    await askedAndLeftUnanswered();
+    await openTwoCopiesOfOneSession();
     await restore();
     await finish();
     expect(conflictShown()).toBe(true);
-    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
-    await confirmDiscardIfAsked();
-    await finish();
+    await chooseNotice('take');
     expect(await stored()).toBe(phoneVersion);
     expect(hasNoteQuestion()).toBe(false);
+    expectTwoCopiesRemoved();
 
     await leaveAndWait();
     await reopen();
@@ -78,11 +81,12 @@ describe('two physical copies of one editing session', () => {
   });
 
   it('are one choice, and «discard» removes both', async () => {
-    await askedAndLeftUnanswered();
+    await openTwoCopiesOfOneSession();
     fireEvent.click(screen.getByText('unsavedDraft.discard'));
     await confirmDiscardIfAsked();
     await settle();
     expect(offerShown()).toBe(false);
+    expectTwoCopiesRemoved();
 
     await leaveAndWait();
     await reopen();
@@ -92,32 +96,79 @@ describe('two physical copies of one editing session', () => {
   });
 });
 
-describe('a copy written before copies kept their base, restored after another copy in the same opening', () => {
-  it('is restored against the note as stored, not against the base of the copy restored before it: what it changes is asked about', async () => {
-    await start(); countCommands();
-    await phoneSave(phoneVersion);
-    await leaveAndWait();
-    // Two copies from earlier openings: a newer one with its base, and an older one without (an older build wrote it).
-    const words = (content: string) => ({ title: 'Original', content, tags: [], scriptureRefs: [], type: 'note' });
-    localStorage.setItem(draftKey('owner', 'note-x', 'note', 'opening-with-base'),
-      JSON.stringify({ value: words(original + ' Baseword'), savedAt: 2, editedAt: 2, base: words(original) }));
-    localStorage.setItem(draftKey('owner', 'note-x', 'note', 'older-build-opening'),
-      JSON.stringify({ value: words(original), savedAt: 1, editedAt: 1 }));
+it('reviews two different legacy copies against the saved note one at a time', async () => {
+  await start(); countCommands();
+  await phoneSave(phoneVersion);
+  await leaveAndWait();
+  const first = draftKey('owner', 'note-x', 'note', 'opening-with-base');
+  const second = draftKey('owner', 'note-x', 'note', 'older-build-opening');
+  expect(saveDraft(first, words(original + ' Baseword'), undefined, false, 2, words(original))).toBe(true);
+  expect(saveDraft(second, words(original), undefined, false, 1)).toBe(true);
 
-    await reopen();
-    await restore();
-    // Inside the typing pause he restores the other copy too: the older text, which the phone has since replaced.
-    await settle(300);
-    expect(offerShown()).toBe(true);
-    await restore();
-    await finish();
+  await reopen();
+  expect(chooser()).toHaveValue(first);
+  await restore();
+  expect(conflictShown()).toBe(true);
+  expect(stand.autosave.content).toBe(original + ' Baseword');
+  expect(offerShown()).toBe(true);
 
-    // It changes the text the phone stored, from an unknown base: that is asked, nothing is sent.
-    expect(conflictShown()).toBe(true);
-    expect(await stored()).toBe(phoneVersion);
-    expect(sends).not.toHaveBeenCalled();
-    expect(stand.autosave.content).toBe(original);
-  });
+  // The older copy cannot replace an unanswered newer comparison. Its stored bytes survive.
+  const oldest = localStorage.getItem(second);
+  expect(oldest).not.toBeNull();
+  await restore();
+  expect(screen.getByText('dataSync.failure.decisionRequired')).toBeInTheDocument();
+  expect(stand.autosave.content).toBe(original + ' Baseword');
+  expect(await stored()).toBe(phoneVersion);
+  expect(localStorage.getItem(second)).toBe(oldest);
+  expect(sends).not.toHaveBeenCalled();
+
+  await chooseNotice('take');
+  expect(await stored()).toBe(phoneVersion);
+  expect(stand.autosave.content).toBe(phoneVersion);
+  expect(offerShown()).toBe(true);
+  await restore();
+  await finish();
+
+  // This copy predates stored bases. The engine compares it with the saved phone version.
+  expect(conflictShown()).toBe(true);
+  expect(await stored()).toBe(phoneVersion);
+  expect(sends).not.toHaveBeenCalled();
+  expect(stand.autosave.content).toBe(original);
+
+  await chooseNotice('keep');
+  expect(await stored()).toBe(original);
+  expect({
+    question: hasNoteQuestion(), first: localStorage.getItem(first), second: localStorage.getItem(second),
+  }).toEqual({ question: false, first: null, second: null });
+  expect(sends).toHaveBeenCalledTimes(1);
+});
+
+it('a second Restore during the save pause leaves the first import scheduled and the second copy safe', async () => {
+  await start(); countCommands();
+  await leaveAndWait();
+  const opening = words(original);
+  const first = draftKey('owner', 'note-x', 'note', 'first-to-save');
+  const second = draftKey('owner', 'note-x', 'note', 'older-to-keep');
+  const firstWords = words(original + ' Firstcopy');
+  const secondWords = { ...opening, title: 'Older copy title' };
+  expect(saveDraft(first, firstWords, undefined, false, 2, opening)).toBe(true);
+  expect(saveDraft(second, secondWords, undefined, false, 1, opening)).toBe(true);
+
+  await reopen();
+  await restore();
+  expect(stand.autosave.content).toBe(firstWords.content);
+  expect(stand.session?.status?.canSave).toBe(true);
+  expect(sends).not.toHaveBeenCalled();
+  const oldest = localStorage.getItem(second);
+  expect(oldest).not.toBeNull();
+  await restore();
+  expect(localStorage.getItem(second)).toBe(oldest);
+  await finish();
+
+  expect(await stored()).toBe(firstWords.content);
+  expect(sends).toHaveBeenCalledTimes(1);
+  expect(localStorage.getItem(first)).toBeNull();
+  expect(localStorage.getItem(second)).toBe(oldest);
 });
 
 describe('a copy whose words are its own base', () => {
@@ -139,4 +190,29 @@ describe('a copy whose words are its own base', () => {
     expect(await stored()).toBe(phoneVersion);
     expect(sends).not.toHaveBeenCalled();
   });
+});
+
+it('cleans settled copies while a different unsent copy is offered', async () => {
+  await start();
+  countCommands();
+  await phoneSave(phoneVersion);
+  await leaveAndWait();
+  const unsent = draftKey('owner', 'note-x', 'note', 'unsent-copy');
+  const unknown = draftKey('owner', 'note-x', 'note', 'copy-without-base');
+  const saved = words(original + ' Confirmedword');
+  expect(saveDraft(unsent, words(original + ' Unsentword'), undefined, false, 4, words(original))).toBe(true);
+  expect(saveDraft(unknown, words(original + ' Unknownword'), undefined, false, 3)).toBe(true);
+  expect(saveDraft(physicalCopies[0], saved, undefined, false, 2, saved)).toBe(true);
+  expect(saveDraft(physicalCopies[1], words(original), undefined, false, 1, words(original))).toBe(true);
+  const retained = [unsent, unknown].map(key => localStorage.getItem(key));
+
+  await reopen();
+  await finish();
+
+  expect(offerShown()).toBe(true);
+  expect(chooser()).toHaveValue(unsent);
+  expectTwoCopiesRemoved();
+  expect([unsent, unknown].map(key => localStorage.getItem(key))).toEqual(retained);
+  expect(await stored()).toBe(phoneVersion);
+  expect(sends).not.toHaveBeenCalled();
 });

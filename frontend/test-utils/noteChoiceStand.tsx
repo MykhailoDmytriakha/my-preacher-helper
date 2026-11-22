@@ -1,6 +1,6 @@
-// Isolated choice-hunt fixture cloned from noteOrdering; the original stand stays unchanged.
+// Choice histories use a real note session and explicit delivery gates.
 import { DeviceWorld, noteRef, noteValue, type WorldDevice } from '@test-utils/deviceWorld';
-import { editorIdentity } from '@/data-engine/editorIdentity';
+import { ACTION_SLOT, editorIdentity, editorSlot, retirableEditorIdentity } from '@/data-engine/editorIdentity';
 import { SyncNoticeDock } from '@/components/common/SyncNoticeDock';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -9,12 +9,17 @@ import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.clie
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import StudyNotePage from '@/(pages)/(private)/studies/[id]/page';
 import { watchedStore } from '@/utils/deviceStorage';
+import { engineNote } from '@/hooks/useStudyNotesEngine';
+import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 
 import { undoDepth } from '@tiptap/pm/history';
-import type { ResourceRef } from '@/data-engine/types';
+import type { DocumentData, ResourceRef, ResourceSnapshot } from '@/data-engine/types';
 import type { Editor } from '@tiptap/core';
 import type { useTextDictation } from '@/hooks/useTextDictation';
-import type { useNoteAutoSave } from '@/(pages)/(private)/studies/[id]/useNoteAutoSave';
+import type { ManagedEditor } from '@/data-engine/engine';
+import type { ObservationSource, SnapshotEvent } from '@/data-engine/observer';
+import type { StudyNote } from '@/models/models';
+import type { useStudyNoteEditingSession } from '@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession';
 import type { NoteDraftPayload } from '@/(pages)/(private)/studies/[id]/noteDraft';
 
 jest.mock('@/services/storeAvailability.server', () => ({ storeRetryHeaders: () => ({}) }));
@@ -66,13 +71,106 @@ jest.mock('@tiptap/react', () => {
 let mockStaleCreation = false;
 let mockEarlyInput = false;
 
-jest.mock('@/(pages)/(private)/studies/[id]/useNoteAutoSave', () => {
-  const actual = jest.requireActual('@/(pages)/(private)/studies/[id]/useNoteAutoSave');
-  return { ...actual, useNoteAutoSave: (args: Parameters<typeof useNoteAutoSave>[0], handOff?: Parameters<typeof useNoteAutoSave>[1]) => {
-    mockRenderCount++; mockAutosave = args;
-    return actual.useNoteAutoSave(args, handOff);
+type NoteSession = ReturnType<typeof useStudyNoteEditingSession>;
+type NoteSessionOptions = Parameters<typeof useStudyNoteEditingSession>[0];
+
+jest.mock('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession', () => {
+  const actual = jest.requireActual<typeof import('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession')>('@/(pages)/(private)/studies/[id]/useStudyNoteEditingSession');
+  return { ...actual, useStudyNoteEditingSession: (options: NoteSessionOptions) => {
+    const session = actual.useStudyNoteEditingSession(options);
+    mockRenderCount++;
+    mockSession = session;
+    mockSessionOptions = options;
+    return session;
   } };
 });
+
+function noteFields(note: StudyNote | null): NoteDraftPayload {
+  return { title: note?.title ?? '', content: note?.content ?? '', tags: note?.tags ?? [],
+    scriptureRefs: note?.scriptureRefs ?? [], type: note?.type ?? 'note',
+    ...noteRecordingMetadata(note?.dictationSourceIds, note?.recordingSourceIds) };
+}
+
+function projectNoteFields(value: DocumentData | null | undefined) {
+  return value && mockSession && mockSessionOptions
+    ? noteFields(engineNote(value, mockSession.id, mockSessionOptions.locale)) : null;
+}
+
+function confirmedFields() {
+  return projectNoteFields(mockSession?.document.confirmed?.value);
+}
+
+/** Temporary compatibility view for tests written against the old autosave hook. */
+function observedNote() {
+  const checkpoint = mockSession?.document.state?.checkpoint;
+  const pending = Object.values(checkpoint?.pending ?? {}).sort((a, b) => b.generation - a.generation)[0];
+  const phase = mockSession?.document.status?.phase;
+  const rendered = mockSession?.projected ?? null;
+  return {
+    ...noteFields(rendered),
+    dictationSourceIds: rendered?.dictationSourceIds ?? [],
+    recordingSourceIds: rendered?.recordingSourceIds ?? [],
+    noteId: mockSession?.id ?? mockRouteId,
+    existingNote: mockSessionOptions?.existingNote,
+    baselineRef: { current: pending ? projectNoteFields(pending.value) : confirmedFields() },
+    saveBlocked: phase === 'blocked' || phase === 'refused' || phase === 'conflict' || phase === 'remoteChanged' || phase === 'deleted',
+    liveValues: () => mockLiveEditor ? projectNoteFields(mockLiveDraft) ?? noteFields(null) : noteFields(rendered),
+  };
+}
+
+type SnapshotReceiver = (event: SnapshotEvent) => void;
+const noteListeners = new Map<string, Set<SnapshotReceiver>>();
+const noteSource: ObservationSource = {
+  listen: (_owner, resource, receive) => {
+    if (resource.collection !== 'studyNotes') return () => undefined;
+    const watching = noteListeners.get(resource.id) ?? new Set<SnapshotReceiver>();
+    watching.add(receive);
+    noteListeners.set(resource.id, watching);
+    return () => {
+      watching.delete(receive);
+      if (!watching.size) noteListeners.delete(resource.id);
+    };
+  },
+};
+
+function observeSessionOpenings(device: WorldDevice) {
+  const { engine, transport } = device;
+  let currentResource: ResourceRef | undefined;
+  const observe = (resource: ResourceRef, editorId: string, opening: Promise<ManagedEditor>) => {
+    if (resource.collection !== 'studyNotes' || editorSlot(editorId) !== 'study-note') return opening;
+    return opening.then(editor => {
+      currentResource = resource;
+      mockLiveEditor = editor;
+      mockLiveEditorId = editorId;
+      const checkpoint = editor.getState().checkpoint;
+      mockLiveDraft = checkpoint.draft;
+      editor.subscribe(() => {
+        if (mockLiveEditor !== editor) return;
+        mockLiveDraft = editor.getState().checkpoint.draft;
+      });
+      return editor;
+    });
+  };
+  const open = engine.openEditor.bind(engine);
+  const create = engine.createEditor.bind(engine);
+  const recover = engine.recoverEditor.bind(engine);
+  const refreshCollection = engine.refreshCollection.bind(engine);
+  jest.spyOn(engine, 'refreshCollection').mockImplementation(async collection => {
+    const resource = collection === 'studyNotes' && currentResource;
+    const active = resource && device.online && noteListeners.get(resource.id);
+    // This explicit test delivery substitutes for the silent Firestore adapter in DeviceWorld.
+    // Its document is read from the same server and then goes through the real ResourceObserver.
+    const observation = resource && active
+      ? transport.read('owner', resource).then((snapshot: ResourceSnapshot) => {
+        for (const publish of active) publish({ snapshot, source: 'server' });
+      }) : undefined;
+    const [state] = await Promise.all([refreshCollection(collection), observation]);
+    return state;
+  });
+  jest.spyOn(engine, 'openEditor').mockImplementation((resource, id, options) => observe(resource, id, open(resource, id, options)));
+  jest.spyOn(engine, 'createEditor').mockImplementation((resource, id, options) => observe(resource, id, create(resource, id, options)));
+  jest.spyOn(engine, 'recoverEditor').mockImplementation((resource, id, sourceId, options) => observe(resource, id, recover(resource, id, sourceId, options)));
+}
 
 let mockRenderCount = 0;
 let mockHeldCollection = false;
@@ -85,7 +183,11 @@ const mockSearch = new URLSearchParams();
 let mockVoice: Parameters<typeof useTextDictation>[0];
 let mockBrowser: { engine: WorldDevice['engine']; dispose: () => void; editorId: (resource: ResourceRef, slot?: string) => string };
 let mockEditor: Editor;
-let mockAutosave: Parameters<typeof useNoteAutoSave>[0];
+let mockSession: NoteSession | undefined;
+let mockSessionOptions: NoteSessionOptions | undefined;
+let mockLiveEditor: ManagedEditor | undefined;
+let mockLiveEditorId: string | undefined;
+let mockLiveDraft: DocumentData | null = null;
 let world: DeviceWorld;
 let laptop: WorldDevice;
 let view: ReturnType<typeof render>;
@@ -116,15 +218,16 @@ function captureNotices() {
   mockObserve?.();
 }
 // This stand mounts one note; both existing places that offer its choices count.
+const keepVersionLabels = ['dataSync.useLocalVersion', 'dataSync.keepLocal', 'freshness.conflictKeepMine'];
+const takeVersionLabels = ['dataSync.useStoredVersion', 'dataSync.acceptRemote', 'freshness.conflictTakeTheirs'];
+const alternativeLabels = (labels: string[]) => new RegExp(`^(?:${labels.map(label => label.replaceAll('.', '\\.')).join('|')})$`);
+
 export function hasInlineQuestion() {
-  return Array.from(document.querySelectorAll('[data-note-workspace] [role="alert"], [data-note-workspace] [role="status"]')).some(element => {
-    const text = element.textContent ?? '';
-    const buttons = Array.from(element.querySelectorAll('button')).map(button => button.textContent);
-    return (text.includes('freshness.conflictTitle')
-      && buttons.includes('freshness.conflictKeepMine') && buttons.includes('freshness.conflictTakeTheirs'))
-      || (text.includes('unsavedDraft.title')
-        && buttons.includes('unsavedDraft.restore') && buttons.includes('unsavedDraft.discard'));
-  });
+  const workspace = document.querySelector('[data-note-workspace]');
+  const labels = Array.from(workspace?.querySelectorAll('button') ?? []).map(button => button.textContent);
+  return (keepVersionLabels.some(label => labels.includes(label)) && takeVersionLabels.some(label => labels.includes(label)))
+    || (labels.includes('unsavedDraft.restore') && labels.includes('unsavedDraft.discard'))
+    || (labels.includes('dataSync.recover') && labels.includes('dataSync.discardRecovery'));
 }
 export function hasGlobalNotice() {
   return Array.from(document.querySelectorAll('button[aria-controls]')).some(button =>
@@ -138,11 +241,14 @@ export async function openNotice() {
   return within(document.querySelector('[data-sync-notice-open] section') as HTMLElement);
 }
 export async function chooseNotice(choice: 'keep' | 'take') {
-  await openNotice();
-  await act(async () => { fireEvent.click(within(document.querySelector('[data-sync-notice-open] section') as HTMLElement).getByRole('button', {
-    name: choice === 'keep' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs',
-  })); });
-  const confirm = screen.queryByRole('button', { name: 'common.discardText.confirm' });
+  const name = alternativeLabels(choice === 'keep' ? keepVersionLabels : takeVersionLabels);
+  const workspace = document.querySelector<HTMLElement>('[data-note-workspace]');
+  const inline = workspace && within(workspace).queryByRole('button', { name });
+  const button = inline ?? (await openNotice()).getByRole('button', { name });
+  await act(async () => { fireEvent.click(button); });
+  const confirm = screen.queryByRole('button', {
+    name: alternativeLabels(['common.discardText.confirm', 'dataSync.confirmStoredField.confirm', 'dataSync.confirmStoredFields.confirm']),
+  });
   if (confirm) await act(async () => { fireEvent.click(confirm); });
   await finish();
 }
@@ -161,6 +267,7 @@ export async function reloadPage() {
   jest.advanceTimersByTime(1);
   await act(async () => { await laptop.reload(); });
   mockBrowser.engine = laptop.engine;
+  observeSessionOpenings(laptop);
   await mountPage();
 }
 async function settle(ms = 0) {
@@ -178,9 +285,14 @@ async function start(initialContent = original, allowEquivalentSerialization = f
   world = new DeviceWorld();
   jest.useFakeTimers({ now: world.now, doNotFake: ['queueMicrotask'] });
   await world.seed(noteRef, { ...noteValue(), type: 'note', content: initialContent });
-  laptop = await world.device('laptop');
+  laptop = await world.device('laptop', 0, {
+    source: noteSource,
+    recoveryPresence: { held: async () => false, hold: () => () => undefined },
+  });
+  observeSessionOpenings(laptop);
   jest.mocked(watchedStore).mockImplementation(database => laptop.storage.store(database));
-  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: (resource: ResourceRef, slot = 'default') => editorIdentity('laptop', resource, slot, world.id('opening')) };
+  mockBrowser = { engine: laptop.engine, dispose: () => undefined, editorId: (resource: ResourceRef, slot = 'default') =>
+    (slot === ACTION_SLOT ? editorIdentity : retirableEditorIdentity)('laptop', resource, slot, world.id('opening')) };
   jest.spyOn(window, 'confirm').mockImplementation(() => { notices.push('window.confirm'); return false; });
   jest.spyOn(window, 'alert').mockImplementation(() => { notices.push('window.alert'); });
   observer = new MutationObserver(captureNotices);
@@ -199,7 +311,7 @@ async function start(initialContent = original, allowEquivalentSerialization = f
 }
 afterEach(() => {
   disposeHistory();
-  mockRouteId = 'note-x'; mockAfterMarkSaved = undefined; mockStaleCreation = false; mockEarlyInput = false; mockRecovery = null;
+  mockRouteId = 'note-x'; mockStaleCreation = false; mockEarlyInput = false;
 });
 
 
@@ -224,12 +336,11 @@ export const stand = {
   },
   observe(callback: (() => void) | undefined) { mockObserve = callback; mockEditorObserve = callback; },
   get staleCreation() { return mockStaleCreation; },
-  set recovery(value: NoteDraftPayload | null) { mockRecovery = value; },
   forceStaleCreation() { mockStaleCreation = true; mockEarlyInput = true; },
-  set afterMarkSaved(callback: ((content: string) => void) | undefined) { mockAfterMarkSaved = callback; },
   get editor() { return mockEditor; },
-  get autosave() { return mockAutosave; },
-  get confirmed() { return mockConfirmed; },
+  get autosave() { return observedNote(); },
+  get confirmed() { return confirmedFields(); },
+  get activeEditor() { return mockLiveEditor && mockLiveEditorId ? { editor: mockLiveEditor, id: mockLiveEditorId } : undefined; },
   get voice() { return mockVoice; },
   get world() { return world; },
   get laptop() { return laptop; },
@@ -250,23 +361,6 @@ export function insert(text: string) {
 }
 export async function finish() { for (const ms of [0, 1600, 2000, 5000, 30000]) await settle(ms); }
 export type OrderingEvent = { kind: 'type' | 'arriveSame' | 'arriveOther' | 'arriveLive' | 'timer' | 'ack' | 'offline' | 'online' | 'dictate' | 'doneEdit' | 'typeDictate' | 'dictateType'; word?: string };
-let mockAfterMarkSaved: ((content: string) => void) | undefined;
-let mockConfirmed: NoteDraftPayload | null;
-let mockRecovery: NoteDraftPayload | null = null;
-jest.mock('@/hooks/useDurableDraft', () => {
-  const actual = jest.requireActual('@/hooks/useDurableDraft');
-  return { ...actual, useDurableDraft: (args: Parameters<typeof import('@/hooks/useDurableDraft').useDurableDraft>[0]) => { mockConfirmed = args.confirmedValue as NoteDraftPayload | null; const result = actual.useDurableDraft(args);
-    const mark = result.markSaved;
-    const markSaved = React.useCallback((value: unknown) => {
-      mark(value);
-      mockAfterMarkSaved?.((value as { content: string }).content);
-    }, [mark]);
-    return { ...result, markSaved, ...(mockRecovery ? { recovered: mockRecovery,
-      acceptRecovered: () => { mockRecovery = null; result.acceptRecovered(); },
-    } : {}) }; } };
-});
-
-
 export function rng(seed: number) {
   let state = seed >>> 0;
   return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
@@ -279,6 +373,9 @@ function disposeHistory() {
   jest.advanceTimersByTime(1);
   world?.dispose(); localStorage.clear(); jest.restoreAllMocks(); jest.clearAllMocks();
   activeHistory = false;
+  mockSession = undefined; mockSessionOptions = undefined;
+  mockLiveEditor = undefined; mockLiveEditorId = undefined; mockLiveDraft = null;
+  noteListeners.clear();
   observeQuestion = undefined;
   mockObserve = undefined; mockEditorObserve = undefined;
   mockHeldCollection = false; mockCollectionCallbacks = []; mockRenderCount = 0;

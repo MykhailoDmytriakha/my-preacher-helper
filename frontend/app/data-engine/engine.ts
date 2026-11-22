@@ -73,6 +73,7 @@ import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SessionCheckpoint, ShownCopy } from './session';
+import type { LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
 import type { EditorCommitAction, StudyNoteContentCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -148,6 +149,7 @@ export interface ManagedEditor {
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
+  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): Promise<void>;
   /** Keep a distinct, unsent alternative based on the confirmed copy, without replacing the open draft. */
   holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
@@ -2101,7 +2103,8 @@ export class DataEngine {
         || (address.kind === 'closing-save' && address.resource !== undefined && sameResource(address.resource, frozen)));
       if (repairing) await repairing;
       assertOpening();
-      const requests = creating ? [] : await this.commits.list();
+      const reservedNote = creating && frozen.collection === 'studyNotes' && editorSlot(editorId) === 'study-note';
+      const requests = creating && !reservedNote ? [] : await this.commits.list();
       assertOpening();
       requests.forEach(request => this.rememberCommit(request));
       let submittedCheckpoint = submittedEditorCheckpoint(owner, frozen, requests);
@@ -2122,9 +2125,13 @@ export class DataEngine {
         markBorrowedManualSources(submittedCheckpoint, sources);
       }
       const resumingCreation = Boolean(submittedCheckpoint && submittedCheckpoint.confirmed.value === null && !submittedCheckpoint.confirmed.metadata);
-      const snapshot: ResourceSnapshot = creating
-        ? { resource: frozen, value: null, metadata: null }
-        : submittedCheckpoint?.confirmed ?? await this.openingSnapshot(owner, generation, frozen, editorId);
+      // Returning to the reserved address can follow a creation this account already captured.
+      // A new address still starts absent, so creating offline cannot replace a different record.
+      const retainedCreation = reservedNote && !submittedCheckpoint
+        ? await this.cachedSnapshotWithAcknowledgements(owner, generation, frozen) : undefined;
+      const snapshot: ResourceSnapshot = submittedCheckpoint?.confirmed ?? (creating
+        ? retainedCreation ?? { resource: frozen, value: null, metadata: null }
+        : await this.openingSnapshot(owner, generation, frozen, editorId));
       assertOpening();
       const controller = await EditorController.open({
         owner, editorId, snapshot, store: this.options.checkpoints, runtime: this.options.runtime,
@@ -2547,7 +2554,18 @@ export class DataEngine {
           entry.listeners.add(subscription);
           return () => { entry.listeners.delete(subscription); };
         },
-        edit: (value, shown, autosaveStamp) => { active(); return controller.edit(value, shown, autosaveStamp); },
+        edit: (value, shown, autosaveStamp) => {
+          active();
+          const persistence = controller.edit(value, shown, autosaveStamp);
+          if (frozen.collection !== 'studyNotes' || autosaveStamp?.field !== 'content') return persistence;
+          return persistence.then(async () => {
+            if (await controller.shortenOversizedStudyNote() && this.current(owner, generation)) {
+              this.prepareCommitsInBackground();
+              this.backgroundDrain();
+            }
+          });
+        },
+        importLegacyStudyNote: edits => { active(); return controller.importLegacyStudyNote(edits); },
         holdDraftAlternative: async updater => {
           active();
           const confirmed = controller.getState().checkpoint.confirmed;
@@ -2615,7 +2633,7 @@ export class DataEngine {
           // another opening of this resource, even if no checkpoint discovery has to read the queue.
           const saving = actions.length
             ? this.keepClosingActionSaves(owner, generation, editorId, controller.settled(), actions, record, closingRequests, leaving?.checkpoint)
-            : leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, record, closingRequests, leaving.predecessorId) : undefined;
+            : leaving ? this.keepClosingSave(owner, generation, editorId, controller.settled(), leaving.checkpoint, record, closingRequests, leaving.predecessorId) : undefined;
           // With no request taking the last words along, retain the unwritten checkpoint.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
           const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
@@ -2666,13 +2684,16 @@ export class DataEngine {
   }
 
   /** A page being left writes its request and checkpoint and nothing more; the retention sweep waits for the next pass. */
-  private keepClosingSave(owner: string, generation: number, editorId: string, checkpoint: SessionCheckpoint, record: EditorRecord | null,
-    closingRequests: CommitRequest[], predecessorId?: string): Promise<void> {
+  private keepClosingSave(owner: string, generation: number, editorId: string, settled: Promise<void>,
+    checkpoint: SessionCheckpoint, record: EditorRecord | null, closingRequests: CommitRequest[], predecessorId?: string): Promise<void> {
     const capture = this.commits.admitSave(editorId, checkpoint);
     const project = record && ((request: CommitRequest) => reconcileRecoveryRecord(record, [request]));
     const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: checkpoint.confirmed.resource },
       persist: async () => {
-        const request = await capture({ ...(predecessorId && { predecessorId }), ...(project && { checkpoint: project }), deferRetention: true });
+        // The latest words were frozen on exit. An earlier Save can still be finishing its local transaction.
+        await settled.catch(() => undefined);
+        const request = await capture({ ...(predecessorId && { predecessorId }), ...(project && { checkpoint: project }),
+          followClosingCapture: true, deferRetention: true });
         if (request) {
           closingRequests.push(request);
           if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));

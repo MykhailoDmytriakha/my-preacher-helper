@@ -1,5 +1,6 @@
 import { hasOutlinePointOrder, SECTION_KEYS } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
+import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
@@ -10,7 +11,7 @@ import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
-import { autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { adoptAcknowledgedStudyNoteFields, autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
@@ -39,7 +40,10 @@ import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
+import { unseenStudyNoteField } from './studyNoteContentCapture';
+import { projectLegacyStudyNote, type LegacyStudyNoteEdit } from './studyNoteLegacyDraft';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
+import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
 
@@ -228,6 +232,15 @@ export class DataSession {
       this.state.remoteCandidate = copy(this.state.confirmed);
       this.state.confirmed = copy(shown.confirmed);
     }
+    const field = autosaveStamp?.field;
+    const unseen = field === 'content' || field === 'title' || field === 'type'
+      ? unseenStudyNoteField(this.state, value, shown, field) : undefined;
+    if (unseen) {
+      const other = this.state.conflicts.filter(({ path }) => path.length !== 1 || path[0] !== field);
+      this.state.conflicts = unseen.conflict ? [...other, unseen.conflict] : other;
+      this.state.remoteCandidate = this.state.conflicts.length || !equalValues(unseen.snapshot, this.state.confirmed)
+        ? copy(unseen.snapshot) : null;
+    }
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
       const draft = stageAutosaveField(this.state, value, shown, target, autosaveStamp);
       if (draft) this.state[target.draft] = draft;
@@ -241,7 +254,35 @@ export class DataSession {
     this.state.editGeneration = generation;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
       || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
+    const waiting = this.state.remoteCandidate;
+    if (field === 'content' && waiting?.value && waiting.resource.collection === 'studyNotes' && isOrdinaryStudyNote(value)
+      && waiting.metadata?.generation === this.state.confirmed.metadata?.generation
+      && !this.state.dirty && !this.state.conflicts.length && !Object.keys(this.state.pending).length) {
+      // Undo removed all unsent edits. The saved copy already waiting in this session can now be shown.
+      this.observe(waiting, { source: 'cache' });
+    }
     this.refreshUnreadableComparisons();
+  }
+
+  importLegacyStudyNote(edits: readonly LegacyStudyNoteEdit[]): void {
+    if (this.state.dirty || Object.keys(this.state.pending).length || this.state.remoteCandidate || this.state.conflicts.length) {
+      throw Object.assign(new Error('Finish the current note changes before restoring a copy'), { code: 'decision-required' });
+    }
+    const { confirmed } = this.state;
+    const { value, conflicts } = projectLegacyStudyNote(confirmed, edits);
+    const proofs = autosaveFieldTargets(confirmed.resource.collection).flatMap(target => {
+      const { field } = target;
+      if (field !== 'title' && field !== 'content' && field !== 'type') return [];
+      if (conflicts.some(({ path }) => path[0] === field)) return [];
+      const draft = stageAutosaveField(this.state, value, this.state, target, { field, time: null });
+      return draft ? [[target.draft, draft] as const] : [];
+    });
+    this.edit(value);
+    Object.assign(this.state, Object.fromEntries(proofs));
+    if (conflicts.length) {
+      this.state.conflicts = copy(conflicts);
+      this.state.remoteCandidate = copy(confirmed);
+    }
   }
 
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
@@ -490,6 +531,7 @@ export class DataSession {
     const newerSubmitted = acceptedOperation && Object.entries(this.state.pending).find(([id, pending]) =>
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
+    adoptAcknowledgedStudyNoteFields(this.state, submitted, accepted, result.operationId);
     const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
     const rowAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
     const acceptedAncestor = !newerSubmitted && this.state.editGeneration === submitted.generation
@@ -735,6 +777,17 @@ export class DataSession {
     this.state.editGeneration = this.reserveEditGeneration();
     this.state.dirty = false;
     this.state.conflicts = [];
+  }
+
+  /** Keep a later body on this screen, with its own comparison against the newly accepted copy. */
+  retainStudyNoteBodyAfterChoice(submitted: DocumentData | null, latest: DocumentData | null, conflicts: readonly ConflictDetail[]): void {
+    const { confirmed, draft } = this.state;
+    const later = studyNoteBodyAfterStoredChoice(submitted, latest, confirmed, conflicts);
+    if (!later || !draft || this.state.remoteCandidate) return;
+    const body = writeField(draft, later.conflict.path, later.conflict.mine);
+    this.edit(writeField(body, ['dictationSourceIds'], later.dictationIds));
+    this.state.remoteCandidate = copy(confirmed);
+    this.state.conflicts = [later.conflict];
   }
 
   private finishReferenceChoice(draft: DocumentData): void {

@@ -1,3 +1,5 @@
+import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
+
 import { editorSlot, isRetirableOrdinaryEditor } from './editorIdentity';
 import { mergeUnsentObservation } from './editorObservation';
 import { equalValues } from './fieldValues';
@@ -20,9 +22,17 @@ function wasAutosaved(record: EditorRecord): boolean {
     || (collection === 'sermons' && (slot === 'thoughts' || slot === 'scratch'));
 }
 
+function reservedNoteCreation(record: EditorRecord): boolean {
+  const { confirmed, draft } = record.checkpoint;
+  return record.autoSaveOnResume === true && editorSlot(record.editorId) === 'study-note'
+    && confirmed.resource.collection === 'studyNotes' && confirmed.value === null && confirmed.metadata === null
+    && draft?.userId === record.owner && isOrdinaryStudyNote(draft);
+}
+
 function autosavingSource(record: EditorRecord): boolean {
   const { confirmed, draft, conflicts } = record.checkpoint;
-  return Boolean(wasAutosaved(record) && draft && confirmed.value && confirmed.metadata && !confirmed.metadata.deleted
+  const hasOpening = confirmed.value && confirmed.metadata && !confirmed.metadata.deleted;
+  return Boolean(wasAutosaved(record) && draft && (hasOpening || reservedNoteCreation(record))
     && !record.prepared && !record.unfinalized.length && !record.retainedManualChoice && !record.recoveryOrigins?.length
     && !conflicts.length && !hasUnreadableDraftProof(record.checkpoint));
 }
@@ -61,6 +71,7 @@ export function pendingAutosaveReceipts(copies: readonly RecoveryCheckpoint[], r
 
 export function originalAutosaveStillApplies(record: EditorRecord, fresh: ResourceSnapshot): boolean {
   const { confirmed } = record.checkpoint;
+  if (reservedNoteCreation(record)) return fresh.value === null && fresh.metadata === null;
   if (!fresh.value || !fresh.metadata || fresh.metadata.deleted || confirmed.metadata?.generation !== fresh.metadata.generation) return false;
   if (confirmed.metadata.revision === fresh.metadata.revision) return equalValues(confirmed.value, fresh.value);
   return Boolean(mergeUnsentObservation(record.checkpoint, fresh));

@@ -76,7 +76,7 @@ const readFrom = new WeakMap<object, unknown>();
 export const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
   ? readFrom.get(references) ?? references : references;
 
-const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({
+export const studyNoteCreationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({
   userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
   tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, paragraph: note.paragraph, isDraft: isDraft(note), createdAt: at, updatedAt: at,
   ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
@@ -244,6 +244,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     commentCollectionReady: collection.state?.complete === true && !collection.error && !collection.readOnly,
     confirmedDictationSources,
     confirmedCreationIds,
+    listStudyNoteCreations: actions.ready ? actions.listStudyNoteCreations : undefined,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     /** The list is being asked of the server: a note made on another device may still be on its way into it — even into a
      *  list once read whole, whose newer changes are what is being asked (Codex, 30.10). */
@@ -262,7 +263,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       const id = options?.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
-      const value = creationValue(note, at);
+      const value = studyNoteCreationValue(note, at);
       const request = actions.submit(resource(id), { kind: 'create', value }, options?.captureScope ? { captureScope: options.captureScope } : undefined);
       void request.catch(() => undefined);
       return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
@@ -275,7 +276,7 @@ export function useStudyNotesEngine(enabled: boolean) {
         expected: edit.expected ? deepCleanUndefined({ ...edit.expected,
           scriptureRefs: storedReferences(edit.expected.scriptureRefs) }) as unknown as DocumentData : null,
         value: edit.expected ? deepCleanUndefined({ ...edit.expected, ...edit.fields }) as unknown as DocumentData
-          : creationValue({ userId: uid, ...edit.fields, type: 'analysis', tags: [] }, at),
+          : studyNoteCreationValue({ userId: uid, ...edit.fields, type: 'analysis', tags: [] }, at),
       })));
     },
     updating: updating > 0,

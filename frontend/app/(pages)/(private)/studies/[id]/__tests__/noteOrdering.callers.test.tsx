@@ -1,5 +1,5 @@
 import React, { useLayoutEffect } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import FlowEditor from '@/components/groups/FlowEditor';
 import SeriesFormFields, { seriesFormValues } from '@/components/series/SeriesFormFields';
 import { markdown, mountedEditor } from '@test-utils/richMarkdownHistory';
@@ -30,9 +30,18 @@ it.each(['flow', 'series'])('real %s mount survives input between prop commit an
   const view = render(<Host />); const editor = mountedEditor(view.container);
   editor.on('transaction', ({transaction}) => { if (transaction.getMeta('preventUpdate')) replacements.push(transaction.doc.textContent); });
   armed = true; act(() => set('Original.\n\nPHONE.'));
-  expect(calls).toEqual([{ [kind === 'series' ? 'description' : 'content']: 'Original. Typedword' }]);
+  expect(calls).toEqual([]);
   expect(markdown(editor)).toBe('Original. Typedword');
   expect(replacements).toEqual([]);
+  const choice = within(screen.getByRole('dialog'));
+  expect(choice.getByText('Original. Typedword')).toBeVisible();
+  expect(choice.getByText(/Original\.\s+PHONE\./)).toBeVisible();
+
+  fireEvent.click(choice.getByRole('button', { name: 'richEditor.compositionChoice.keepTyped' }));
+  expect(calls).toEqual([{ [kind === 'series' ? 'description' : 'content']: 'Original. Typedword' }]);
+  expect(markdown(editor)).toBe('Original. Typedword');
   expect(undoDepth(editor.state)).toBe(1);
+  act(() => { expect(editor.commands.undo()).toBe(true); });
+  expect(markdown(editor)).toBe('Original.\n\nPHONE.');
   view.unmount();
 });

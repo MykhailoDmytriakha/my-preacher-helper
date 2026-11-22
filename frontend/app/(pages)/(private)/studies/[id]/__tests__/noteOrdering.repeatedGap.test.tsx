@@ -1,13 +1,18 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, within } from '@testing-library/react';
 import { noteRef, noteValue } from '@test-utils/deviceWorld';
-import { stand, md, stored, insert, pulse, finish, runHistory, openNotice, chooseNotice,
-  hasGlobalNotice, hasInlineQuestion, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { stand, md, stored, insert, pulse, finish, runHistory, chooseNotice,
+  hasInlineQuestion, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { createIndexedDbCheckpoints } from '@/data-engine/checkpoint.client';
 import { processCommand } from '@/data-engine/server';
 import { diffFields } from '@/data-engine/protocol';
-import { captureRecoveryChoice } from '@/data-engine/recoveryChoice';
 import type { ResourceRef } from '@/data-engine/types';
 
-// Held delivery/capture is intentional; the world's quiescence check cannot run in these gaps.
+function clickKeep() {
+  const workspace = within(document.querySelector<HTMLElement>('[data-note-workspace]')!);
+  fireEvent.click(workspace.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+}
+
+// Held delivery is intentional; the world's quiescence check cannot run in these gaps.
 async function drain() {
   for (const ms of [0, 1600, 2000, 5000, 30000]) await act(async () => { await pulse(ms); });
 }
@@ -26,7 +31,7 @@ async function phone(content: string, resource = noteRef) {
 async function refused() {
   await runHistory([{ kind: 'type', word: 'Typed' }, { kind: 'timer' }, { kind: 'arriveSame', word: 'Phone' }],
     'repeated-gap', { keepMounted: true });
-  expect(hasGlobalNotice()).toBe(true);
+  expect(hasInlineQuestion()).toBe(true);
   return md();
 }
 async function refuseReplacement(remote: string) {
@@ -37,8 +42,7 @@ async function refuseReplacement(remote: string) {
   let entered = false;
   sends.mockImplementation(async command => { entered = true; await gate; return deliver(command); });
   try {
-    await openNotice();
-    fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    clickKeep();
     await drain();
     expect(entered).toBe(true);
     await phone(remote);
@@ -47,7 +51,7 @@ async function refuseReplacement(remote: string) {
     await drain();
     sends.mockImplementation(deliver);
   }
-  expect(hasGlobalNotice()).toBe(true);
+  expect(hasInlineQuestion()).toBe(true);
 }
 
 // Permanent U121-01: use the actual buttons for both choices, not an invented completion event.
@@ -60,56 +64,45 @@ it.each([false, true])('second keep after replacement refusal protects every gap
   stand.editor.on('transaction', observe);
   await refuseReplacement('Thirdword');
   const afterRefusal = md();
-  const engine = stand.laptop.engine;
-  const open = engine.openEditor.bind(engine);
+  const deliver = sends.getMockImplementation()!;
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  let entered = false;
-  const spy = jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => {
-    const editor = await open(...args), save = editor.save.bind(editor);
-    editor.save = async () => { entered = true; await gate; return save(); };
-    return editor;
-  });
-  let gap: string, typedGap: string, gapSends: number;
-  let gapStored: Awaited<ReturnType<typeof stored>>;
+  sends.mockImplementationOnce(async command => { await gate; return deliver(command); });
+  const expected = local + (typing ? ' Newergapword' : '');
   try {
-    await openNotice();
-    fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    clickKeep();
     await drain();
-    expect(entered).toBe(true);
-    gap = md();
-    if (typing) { act(() => insert(' Newergapword')); await drain(); }
-    typedGap = md();
-    gapStored = await stored();
-    gapSends = sends.mock.calls.length;
+    const gap = md();
+    expect({ afterRefusal, gap }).toEqual({ afterRefusal: local, gap: local });
+    expect(await stored()).toBe('Thirdword');
+    expect(sends).toHaveBeenCalledTimes(sendsBefore + 2);
+    if (typing) {
+      act(() => insert(' Newergapword'));
+      await drain();
+      expect(md()).toBe(expected);
+      expect(await stored()).toBe('Thirdword');
+    }
+    // The captured replacement contains only the reviewed words. Later typing
+    // cannot send against the refused version while its replacement is pending.
+    expect(sends).toHaveBeenCalledTimes(sendsBefore + 2);
+    expect(sends.mock.calls.some(([command]) => JSON.stringify(command).includes('Newergapword'))).toBe(false);
   } finally {
     release();
-    await drain();
-    spy.mockRestore();
+    await finish();
     stand.editor.off('transaction', observe);
   }
-  const expected = local + (typing ? ' Newergapword' : '');
-  expect({ afterRefusal, gap, typedGap, final: md() }).toEqual({ afterRefusal: local, gap: local, typedGap: expected, final: expected });
+  expect(md()).toBe(expected);
   expect(shown.every(value => value === local || (typing && value === expected))).toBe(true);
   expect(stand.autosave.content).toBe(expected);
-  expect(gapStored).toBe('Thirdword');
-  expect(gapSends).toBe(sendsBefore + 1);
-  expect(await stored()).toBe(local);
-  // Exactly the two explicit replacements: no save of a new word over the rejected version.
-  expect(sends).toHaveBeenCalledTimes(sendsBefore + 2);
-  expect(sends).toHaveBeenCalledTimes(3);
-  expect(sends.mock.calls.some(([command]) => JSON.stringify(command).includes('Newergapword'))).toBe(false);
-  if (typing) expect(hasInlineQuestion()).toBe(true);
-  else {
-    expect(await stored()).toBe(md());
-    expect(stand.versionTaken).not.toHaveBeenCalled();
-    expect(hasNoteQuestion()).toBe(false);
-    act(() => insert(' Nextword'));
-    await finish();
-    expect(md()).toBe(local + ' Nextword');
-    expect(await stored()).toBe(md());
-    expect(hasNoteQuestion()).toBe(false);
-  }
+  expect(sends).toHaveBeenCalledTimes(sendsBefore + 2 + Number(typing));
+  expect(await stored()).toBe(expected);
+  expect(stand.versionTaken).not.toHaveBeenCalled();
+  expect(hasNoteQuestion()).toBe(false);
+  act(() => insert(' Nextword'));
+  await finish();
+  expect(md()).toBe(expected + ' Nextword');
+  expect(await stored()).toBe(md());
+  expect(hasNoteQuestion()).toBe(false);
 }, 60000);
 
 it('three keep mine replacements are each refused before a final keep', async () => {
@@ -121,7 +114,10 @@ it('three keep mine replacements are each refused before a final keep', async ()
     await refuseReplacement(`Remote${round}word`);
     expect(md()).toBe(local);
     expect(await stored()).toBe(`Remote${round}word`);
-    expect((await stand.laptop.engine.listRecoverable(noteRef)).length).toBeGreaterThan(0);
+    const copies = await createIndexedDbCheckpoints().listRecoverable('owner', noteRef);
+    expect(copies.map(({ record: { checkpoint } }) => ({
+      draft: checkpoint.draft?.content, candidate: checkpoint.remoteCandidate?.value?.content,
+    }))).toContainEqual({ draft: local, candidate: `Remote${round}word` });
   }
   await chooseNotice('keep');
   stand.editor.off('transaction', observe);
@@ -176,17 +172,15 @@ it('two notes with waiting choices settle in the opposite order without cross-no
     release(); await drain(); sends.mockImplementation(deliver);
   }
   const waitingX = await stand.laptop.engine.listRecoverable(noteRef);
-  const waitingY = await stand.laptop.engine.listRecoverable(other);
+  const waitingY = await createIndexedDbCheckpoints().listRecoverable('owner', other);
   expect(waitingX.length).toBeGreaterThan(0);
-  expect(waitingY.length).toBeGreaterThan(0);
+  expect(waitingY.map(copy => copy.record.checkpoint.draft?.content)).toContain('Other original Yword');
   expect(md()).toBe('Other original Yword');
-  // The dock presents one entry at a time. Select Y explicitly through its same public resolver.
-  const scopeY = captureRecoveryChoice(waitingY.map(copy => copy.record));
-  await act(async () => { await stand.actions.resolve(other, 'theirs', scopeY); });
-  await finish();
+  // The mounted session offers Y's choice while X remains recoverable.
+  await chooseNotice('take');
   expect(md()).toBe('Other remote');
   expect(stand.confirmed?.content).toBe('Other remote');
-  expect(await stand.laptop.engine.listRecoverable(other)).toHaveLength(0);
+  expect(await createIndexedDbCheckpoints().listRecoverable('owner', other)).toHaveLength(0);
   expect((await stand.laptop.engine.listRecoverable(noteRef)).length).toBeGreaterThan(0);
   await stand.remount(noteRef.id);
   await finish();

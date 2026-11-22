@@ -1,3 +1,5 @@
+import { serializeContent } from '@/utils/contentFingerprint';
+
 import type { EditorRecord } from './controller';
 
 /** The saved copies shown for a choice; asynchronous discovery cannot add another root. */
@@ -9,7 +11,7 @@ export interface RecoveryChoiceScope {
 
 /** One comparison for the notice and the final legacy-editor choice. */
 export function recoveryChoiceFingerprint(records: readonly EditorRecord[]): string {
-  return JSON.stringify(records.map(({ owner, editorId, checkpoint, prepared, unfinalized, completedCommits }) => ({
+  return serializeContent(records.map(({ owner, editorId, checkpoint, prepared, unfinalized, completedCommits }) => ({
     owner,
     editorId,
     confirmed: { resource: checkpoint.confirmed.resource, value: checkpoint.confirmed.value, metadata: checkpoint.confirmed.metadata },

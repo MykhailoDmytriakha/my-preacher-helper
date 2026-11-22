@@ -73,10 +73,6 @@ const chronology = (time: ActionTime | undefined, stored: ActionTime | null | un
 export function planStudyNoteReferenceOrder(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   if (command.kind !== 'update' || command.resource.collection !== 'studyNotes' || command.generation !== current.metadata?.generation
     || !isOrdinaryReferenceDocument(current.value)) return undefined;
-  // A writer that sends no reference evidence (the study-note page until it moves to the engine's editing session,
-  // and older app versions) is not ordered against the removal journal: its own re-added passage is not a version
-  // question. It keeps the plain base check (BUG-20261118-note-page-codex-fixes-wait-for-engine-session).
-  if (!object(command.studyNoteReferenceObservedRevisions) && !object(command.studyNoteReferenceTimes)) return undefined;
   const change = command.changes.find(item => equalValues(item.path, studyNoteReferencesPath));
   const before = change && referenceRows(change.before), after = change && referenceRows(change.after);
   const saved = referenceRows(readField(current.value, studyNoteReferencesPath));

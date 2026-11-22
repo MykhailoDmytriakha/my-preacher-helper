@@ -19,6 +19,8 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const time = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_020 };
 const observation = { before: 'Original', after: 'Later', observedRevision: 1, time, predecessorOperationId: 'earlier-save' };
 const optionalObservation = { ...observation, before: { exists: false }, after: { exists: true, value: 'Later' } };
+const noteContentAction = { ...optionalObservation, before: { exists: true, value: 'Original' } };
+const noteTypeAction = { ...noteContentAction, before: { exists: true, value: 'note' }, after: { exists: true, value: 'question' } };
 const row = { ...observation, rowId: 'row', rowCreatedAt: '2026-11-12' };
 const fieldDraft = { generation: 'g', action: observation };
 const optionalDraft = { generation: 'g', action: optionalObservation };
@@ -50,6 +52,8 @@ type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dir
 const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
+  studyNoteContentDraft: { generation: 'g', action: noteContentAction },
+  studyNoteTitleDraft: { generation: 'g', action: noteContentAction }, studyNoteTypeDraft: { generation: 'g', action: noteTypeAction },
   councilOutcomeDrafts: rowDrafts, councilTopicTitleDrafts: rowDrafts, councilTopicSummaryDrafts: rowDrafts, councilTopicTextDrafts: rowDrafts, groupBlockTitleDrafts: rowDrafts,
   groupStepTitleDrafts: rowDrafts, groupBlockContentDrafts: rowDrafts, groupStepNotesDrafts: rowDrafts, groupBlockStatusDrafts: { row: { generation: 'g', action: { ...row, before: 'empty', after: 'filled' } } },
   groupStepDurationDrafts: { row: { generation: 'g', action: { ...row, before: 1, after: 2 } } },
@@ -73,7 +77,8 @@ type Pending = SessionCheckpoint['pending'][string];
 type PendingEvidenceKey = Exclude<keyof Pending, 'generation' | 'value' | 'operations' | 'borrowedManualScope'>;
 const pendingEvidence = {
   groupTitleAction: observation, groupDescriptionAction: optionalObservation, groupStatusAction: observation, councilTitleAction: observation,
-  councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation,
+  councilDateAction: optionalObservation, councilLifecycleAction: optionalObservation, studyNoteContentAction: noteContentAction,
+  studyNoteTitleAction: noteContentAction, studyNoteTypeAction: noteTypeAction,
   councilOutcomeActions: [row], councilTopicTitleActions: [row], councilTopicSummaryActions: [row], councilTopicTextActions: [row], groupBlockTitleActions: [row], groupStepTitleActions: [row],
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
@@ -112,6 +117,11 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
+  if (key.startsWith('studyNote')) {
+    source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
+    source.checkpoint.confirmed.value = { userId: 'owner', type: 'note', content: 'Original', title: 'Original' };
+    source.checkpoint.draft = { userId: 'owner', type: 'question', content: 'Later', title: 'Later' };
+  }
   if (key === 'sourceNoteLinkRetry') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
   if (key.startsWith('preachDate')) {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
@@ -152,7 +162,7 @@ it.each([...Object.entries(pendingEvidence), ...unclockedGroupActions.map(([key,
     const source = titleRecord();
     if (key === 'outlinePointPlacement' || key === 'preachDateNotesActions') source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     if (key === 'councilTopicPlacement') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
-    if (key === 'commentPlaceAction') source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
+    if (key === 'commentPlaceAction' || key.startsWith('studyNote')) source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     const record = { ...source, checkpoint: { ...source.checkpoint,
       pending: { request: { generation: 1, value: source.checkpoint.draft, [key]: value } } } } as EditorRecord;
     const kept = await throughDeviceStorage(record, true);

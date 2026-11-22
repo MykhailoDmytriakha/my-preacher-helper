@@ -39,7 +39,9 @@ it.each([false, true].flatMap(screenOwned => ['conflict', 'refused'].map(outcome
       else await actions!.commit(resource, current => ({ ...current!, content: words, ...metadata }));
       await settleEngine(); await settleEngine(); editor?.close({ flush: false });
     });
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Keep this dictated paragraph.'));
+    const authored = () => !screenOwned && outcome === 'conflict'
+      ? screen.getByLabelText('dataSync.yourVersion') : screen.getByRole('alert');
+    await waitFor(() => expect(authored()).toHaveTextContent('Keep this dictated paragraph.'));
     const retained = await harness.engine.listRecoverable(resource);
     expect(retained.some(({ record }) => record.checkpoint.draft?.content === words
       && JSON.stringify(record.checkpoint.draft.dictationSourceIds) === JSON.stringify(metadata.dictationSourceIds)
@@ -61,7 +63,7 @@ it.each([false, true].flatMap(screenOwned => ['conflict', 'refused'].map(outcome
         if (secure) Object.defineProperty(window, 'isSecureContext', secure); else Reflect.deleteProperty(window, 'isSecureContext');
       }
     }
-    expect(screen.getByRole('alert').textContent).not.toMatch(/dictationSourceIds|recordingSourceIds|private-dictation-source|private-recording-source/);
-    expect(screen.getByRole('alert')).toHaveTextContent('Another authored sentence.');
+    expect(authored().textContent).not.toMatch(/dictationSourceIds|recordingSourceIds|private-dictation-source|private-recording-source/);
+    expect(authored()).toHaveTextContent('Another authored sentence.');
   },
 );

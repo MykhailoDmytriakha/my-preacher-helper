@@ -19,6 +19,7 @@ it.each(['content', 'tags', 'title'] as const)('reconsiders the waiting newer ro
     fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.addTag'), { target: { value: 'Localtag' } });
     fireEvent.keyDown(screen.getByPlaceholderText('studiesWorkspace.addTag'), { key: 'Enter' });
   }
+  if (field !== 'tags') await settle();
   await act(async () => {
     jest.advanceTimersByTime(1600);
     for (let i = 0; i < 10000; i++) await Promise.resolve();

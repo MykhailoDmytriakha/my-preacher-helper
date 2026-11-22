@@ -566,10 +566,10 @@ describe('a late conflict on a document no screen has open', () => {
       await act(async () => { release(); await settleEngine(); await settleEngine(); });
       expect((await harness.commits.list('owner'))[0].state).toBe('conflict');
       if (choice === 'mine') {
-        await act(async () => { fireEvent.click(screen.getByText('freshness.conflictKeepMine')); await settleEngine(); await settleEngine(); });
+        await act(async () => { fireEvent.click(screen.getByText('dataSync.useLocalVersion')); await settleEngine(); await settleEngine(); });
         await waitFor(() => expect(harness.server.value?.content).toBe('Written on the laptop'));
       } else {
-        await confirmTextAction('freshness.conflictTakeTheirs');
+        await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
         expect(harness.server.value?.content).toBe('Written on the phone');
       }
       await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
@@ -583,7 +583,7 @@ describe('a late conflict on a document no screen has open', () => {
     await conflict(harness);
     await waitFor(() => expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument());
     expect(screen.getByText(/Written on the laptop/)).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('freshness.conflictKeepMine')); await settleEngine(); await settleEngine(); });
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.useLocalVersion')); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(harness.server.value?.content).toBe('Written on the laptop'));
     await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
   });
@@ -591,8 +591,8 @@ describe('a late conflict on a document no screen has open', () => {
   it('takes the other version when asked and leaves nothing waiting', async () => {
     const harness = setup();
     await conflict(harness);
-    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument());
-    await confirmTextAction('freshness.conflictTakeTheirs');
+    await waitFor(() => expect(screen.getByText('dataSync.useStoredVersion')).toBeInTheDocument());
+    await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
     await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
     expect(harness.server.value?.content).toBe('Written on the phone');
   });
@@ -600,8 +600,8 @@ describe('a late conflict on a document no screen has open', () => {
   it('withdraws acceptance when the same checkpoint has newer draft words at the final storage read', async () => {
     const harness = setup();
     await conflict(harness);
-    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    await waitFor(() => expect(screen.getByText('dataSync.useStoredVersion')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('dataSync.useStoredVersion'));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
     const [checkpoint] = await harness.engine.listRecoverable();
@@ -613,7 +613,7 @@ describe('a late conflict on a document no screen has open', () => {
     const readRecoverable = jest.spyOn(harness.engine, 'listRecoverable').mockResolvedValueOnce(latestRead);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
       for (let index = 0; index < 20; index += 1) await Promise.resolve();
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -1373,7 +1373,7 @@ describe('one-shot answers on their answering document screen', () => {
 
   it('shows one decision after the document adopts the answered one-shot request and restores global discovery on leaving', async () => {
     const { h, view, tree } = await waitingAction();
-    expect(screen.getAllByRole('button', { name: 'freshness.conflictKeepMine' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'dataSync.useLocalVersion' })).toHaveLength(1);
     mockPathname = '/studies/note-1';
     view.rerender(tree(true, 60_000));
     await screen.findByRole('heading', { name: 'Saved action words' });
@@ -1381,7 +1381,7 @@ describe('one-shot answers on their answering document screen', () => {
     expect(h.engine.getOpenAnswers()).toEqual([resource]);
     mockPathname = '/settings';
     view.rerender(tree(false, 60_000));
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'freshness.conflictKeepMine' })).toHaveLength(1), { timeout: 300 });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'dataSync.useLocalVersion' })).toHaveLength(1), { timeout: 300 });
     expect(screen.getByText(/Saved action words/)).toBeInTheDocument();
     expect(await h.commits.list('owner')).toHaveLength(1);
     expect(h.server.value?.content).toBe('Accepted phone words');

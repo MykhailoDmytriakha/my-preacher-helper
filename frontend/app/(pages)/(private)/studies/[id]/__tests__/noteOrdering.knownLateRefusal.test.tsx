@@ -1,7 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { stand, runHistory, original, md, insert, finish, stored, hasNoteQuestion, hasInlineQuestion } from '@test-utils/noteOrdering';
 
-it('a prompt dictation save refused late offers the global question and preserves later typing', async () => {
+it('a prompt dictation save refused late offers one question in the note and preserves later typing', async () => {
   const row = await runHistory([
     { kind: 'dictate', word: 'Dictatedword' }, { kind: 'arriveSame', word: 'Phoneword' },
   ], 'known:prompt-save-late-refusal', { keepMounted: true });
@@ -11,31 +11,28 @@ it('a prompt dictation save refused late offers the global question and preserve
   expect(row.requests[0].response?.kind).toBe('conflict');
   expect(row.requests[0].refused).toBeGreaterThan(row.requests[0].issued);
 
-  // The production-shaped identity exposes the existing global decision.
+  // The mounted session owns the decision for the submitted take.
   expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
   expect(stand.autosave.content).toBe(local);
   expect(md()).toBe(local);
   expect(stand.editor.view.dom).toHaveTextContent('Dictatedword');
   expect(hasNoteQuestion()).toBe(true);
-  expect(hasInlineQuestion()).toBe(false);
-  expect(stand.autosave.saveBlocked).toBeFalsy();
+  expect(hasInlineQuestion()).toBe(true);
+  expect(stand.autosave.saveBlocked).toBe(true);
   expect(await stored()).toBe(remote);
-  expect(stand.laptop.engine.getPending()).toEqual(expect.arrayContaining([
-    expect.objectContaining({ state: 'conflict', command: expect.objectContaining({ operationId: row.requests[0].operationId }) }),
-  ]));
+  expect(stand.session?.state?.result).toMatchObject({ kind: 'conflict', operationId: row.requests[0].operationId });
 
   act(() => insert(' Nextword'));
   await finish();
-  // Later typing is outside the pending global choice and stays visible.
+  // Later typing stays visible while the submitted words are still contested.
   expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
-  expect(screen.getByText('common.saveError')).toBeInTheDocument();
   expect(hasNoteQuestion()).toBe(true);
-  expect(hasInlineQuestion()).toBe(false);
-  expect(stand.autosave.saveBlocked).toBeFalsy();
+  expect(hasInlineQuestion()).toBe(true);
+  expect(stand.autosave.saveBlocked).toBe(true);
   expect(stand.autosave.content).toBe(local + ' Nextword');
   expect(md()).toBe(local + ' Nextword');
   expect(stand.editor.view.dom).toHaveTextContent('Dictatedword Nextword');
   expect(await stored()).toBe(remote);
-  expect(stand.laptop.engine.getPending().filter(entry => entry.state === 'conflict')).toHaveLength(1);
+  expect(Object.keys(stand.session?.state?.checkpoint.pending ?? {})).toHaveLength(1);
   expect(jest.mocked(stand.laptop.transport.send)).toHaveBeenCalledTimes(1);
 });

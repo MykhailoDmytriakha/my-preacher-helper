@@ -3,7 +3,7 @@ import { undoDepth, redoDepth } from '@tiptap/pm/history';
 import { writeFileSync } from 'node:fs';
 
 import { noteRef } from '@test-utils/deviceWorld';
-import { stand, start, original, md, stored, phoneSave, insert, finish, settle, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { stand, start, original, md, stored, phoneSave, insert, finish, settle, hasNoteQuestion, chooseNotice } from '@test-utils/noteOrdering';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 
 const records: unknown[] = [];
@@ -17,21 +17,21 @@ async function snapshot(event: string, sends: jest.SpyInstance) {
     saved: Boolean(screen.queryByText('common.saved')), question: hasNoteQuestion(), blocked: stand.autosave.saveBlocked,
     copies: findNoteDraftCopies('owner', 'note-x', 'note').map(copy => copy.value), sends: sends.mock.calls.length };
 }
-it.each([false, true])('equal K, silence (offline=%s), K2, then typing converges with one confirming save for K', async offline => {
+it.each([false, true])('equal K, silence (offline=%s), K2, then typing converges without resending K', async offline => {
   await start();
   const sends = jest.spyOn(stand.laptop.transport, 'send');
   act(() => insert(' Kword'));
   const k = md();
-  // As in production, silence saves K once; offline silence waits for reconnect.
+  // The laptop receives confirmation from the phone before the local timer fires.
   await settle(300);
   await phoneSave(k);
   if (offline) stand.laptop.goOffline();
   await finish();
   const silence = await snapshot('silence', sends);
   if (!observe) {
-    expect(silence).toMatchObject({ page: k, editor: k, stored: k, saved: !offline, question: false, blocked: false, copies: [], sends: offline ? 0 : 1 });
+    expect(silence).toMatchObject({ page: k, editor: k, stored: k, saved: true, question: false, blocked: false, copies: [], sends: 0 });
     expect(silence.base?.content).toBe(k);
-    expect(silence.confirmed?.content).toBe(offline ? original : k);
+    expect(silence.confirmed?.content).toBe(k);
   }
   if (offline) {
     stand.laptop.online = true;
@@ -40,13 +40,13 @@ it.each([false, true])('equal K, silence (offline=%s), K2, then typing converges
   }
   await phoneSave(k + ' K2word'); await finish();
   const k2 = await snapshot('K2', sends);
-  if (!observe) expect(k2).toMatchObject({ page: k + ' K2word', editor: k + ' K2word', saved: true, question: false, sends: 1 });
+  if (!observe) expect(k2).toMatchObject({ page: k + ' K2word', editor: k + ' K2word', saved: true, question: false, sends: 0 });
   act(() => insert(' Laterword')); await finish();
   const typed = await snapshot('later typing', sends);
   records.push({ history: offline ? 'b' : 'a', silence, k2, typed });
-  if (!observe) expect(typed).toMatchObject({ page: k + ' K2word Laterword', editor: k + ' K2word Laterword', stored: k + ' K2word Laterword', saved: true, question: false, copies: [], sends: 2 });
+  if (!observe) expect(typed).toMatchObject({ page: k + ' K2word Laterword', editor: k + ' K2word Laterword', stored: k + ' K2word Laterword', saved: true, question: false, copies: [], sends: 1 });
 });
-it('keeps the old content base beside a local title edit, then saves both as production does', async () => {
+it('confirms equal content beside a local title edit, then sends only the title', async () => {
   await start();
   const sends = jest.spyOn(stand.laptop.transport, 'send');
   act(() => insert(' Kword'));
@@ -58,8 +58,8 @@ it('keeps the old content base beside a local title edit, then saves both as pro
   const final = await snapshot('title settled', sends);
   records.push({ history: 'c', arrival, final, row: (await stand.world.snapshot(noteRef)).value });
   if (!observe) {
-    expect(arrival.confirmed).toMatchObject({ content: original, title: 'Original' });
-    expect(arrival.base).toMatchObject({ content: original, title: 'Original' });
+    expect(arrival.confirmed).toMatchObject({ content: k, title: 'Original' });
+    expect(arrival.base).toMatchObject({ content: k, title: 'Original' });
     expect(arrival.sends).toBe(0);
     expect(final).toMatchObject({ page: k, editor: k, stored: k, saved: true, question: false, copies: [], sends: 1 });
     expect((await stand.world.snapshot(noteRef)).value!.title).toBe('Local title');
@@ -68,7 +68,7 @@ it('keeps the old content base beside a local title edit, then saves both as pro
     if (command.kind === 'update') expect(command.changes.some(change => change.path[0] === 'content')).toBe(false);
   }
 });
-it('retains the old base and an existing question after equality, as production does', async () => {
+it('retains an existing refused write for review when the other device stores equal text', async () => {
   await start();
   const sends = jest.spyOn(stand.laptop.transport, 'send');
   act(() => insert(' Kword'));
@@ -81,11 +81,13 @@ it('retains the old base and an existing question after equality, as production 
   records.push({ history: 'd', equal });
   if (!observe) {
     expect(equal).toMatchObject({ page: k, editor: k, stored: k, question: true, blocked: true, sends: before });
-    expect(equal.base?.content).toBe(original);
+    expect(equal.base?.content).toBe(k);
     expect(equal.confirmed?.content).toBe(original);
   }
-  fireEvent.click(screen.getByText('freshness.conflictKeepMine')); await finish();
+  await chooseNotice('keep');
   expect(hasNoteQuestion()).toBe(false);
+  expect(md()).toBe(k);
+  expect(await stored()).toBe(k);
 });
 const metadata = {
   title: { title: 'Remote title' }, tags: { tags: ['remote'] }, type: { type: 'question' as const },

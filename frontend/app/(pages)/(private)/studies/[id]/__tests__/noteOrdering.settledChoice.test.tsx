@@ -1,7 +1,6 @@
-import { act, fireEvent, screen } from '@testing-library/react';
-import { noteRef } from '@test-utils/deviceWorld';
-import { runHistory, stand, insert, finish, md, stored, phoneSave, original, openNotice, chooseNotice,
-  hasInlineQuestion, hasNoteQuestion } from '@test-utils/noteOrdering';
+import { act, fireEvent, within } from '@testing-library/react';
+import { runHistory, stand, insert, finish, md, stored, phoneSave, original, chooseNotice,
+  hasInlineQuestion, hasNoteQuestion, settle, pulse } from '@test-utils/noteOrdering';
 
 async function refused() {
   await runHistory([{ kind: 'type', word: 'Typed' }, { kind: 'timer' }, { kind: 'arriveSame', word: 'Phone' }],
@@ -9,90 +8,87 @@ async function refused() {
   return md();
 }
 
-// Stretch the real keepLocal -> save boundary, without fabricating delivery or row state.
-it.each([false, true])('actual keep button preserves text before replacement capture (gap typing=%s)', async typing => {
+it.each([false, true])('the Keep button preserves text until the replacement is acknowledged (typing=%s)', async typing => {
   const local = await refused();
-  const sendsBefore = jest.mocked(stand.laptop.transport.send).mock.calls.length;
-  const shown: string[] = [];
-  const observe = () => { shown.push(md()); };
-  stand.editor.on('transaction', observe);
-  const engine = stand.laptop.engine;
-  const open = engine.openEditor.bind(engine);
+  const remote = await stored();
+  const transport = stand.laptop.transport;
+  const sends = jest.mocked(transport.send);
+  const sendsBefore = sends.mock.calls.length;
+  const deliver = transport.send.bind(transport);
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  let entered = false;
-  jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => {
-    const editor = await open(...args);
-    const save = editor.save.bind(editor);
-    editor.save = async () => { entered = true; await gate; return save(); };
-    return editor;
-  });
-  await openNotice();
-  fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
-  await finish();
-  expect(entered).toBe(true);
-  try {
-    expect(md()).toBe(local);
-    expect(stand.autosave.content).toBe(local);
-    if (typing) {
-      act(() => insert(' Newergapword'));
-      await finish();
-      expect(md()).toBe(local + ' Newergapword');
-      expect(await stored()).not.toContain('Newergapword');
-      expect(stand.laptop.transport.send).toHaveBeenCalledTimes(sendsBefore);
-    }
-  } finally {
-    await act(async () => { release(); });
-    await finish();
-  }
-  expect(md()).toBe(local + (typing ? ' Newergapword' : ''));
-  expect(stand.autosave.content).toBe(md());
-  expect(await stored()).toBe(local);
-  expect(stand.laptop.transport.send).toHaveBeenCalledTimes(sendsBefore + 1);
-  expect(shown.every(value => value === local || (typing && value === local + ' Newergapword'))).toBe(true);
-  stand.editor.off('transaction', observe);
-  if (typing) expect(hasInlineQuestion()).toBe(true);
-  else {
-    expect(await stored()).toBe(md());
-    expect(stand.versionTaken).not.toHaveBeenCalled();
-    expect(hasNoteQuestion()).toBe(false);
-    act(() => insert(' Nextword'));
-    await finish();
-    expect(md()).toBe(local + ' Nextword');
-    expect(await stored()).toBe(md());
-    expect(hasNoteQuestion()).toBe(false);
-  }
-}, 60000);
-
-it.each([false, true])('direct keepLocal then save preserves text in the two-step boundary (gap typing=%s)', async typing => {
-  const local = await refused();
-  const sendsBefore = jest.mocked(stand.laptop.transport.send).mock.calls.length;
   const shown: string[] = [];
   const observe = () => { shown.push(md()); };
   stand.editor.on('transaction', observe);
-  const [recovery] = await stand.laptop.engine.listRecoverable();
-  const editor = await stand.laptop.run(() => stand.laptop.engine.openEditor(noteRef, recovery.record.editorId));
+  sends.mockImplementationOnce(async command => {
+    await gate;
+    return deliver(command);
+  });
   try {
-    await act(async () => { await editor.keepLocal(); });
-    await finish();
+    const workspace = within(document.querySelector<HTMLElement>('[data-note-workspace]')!);
+    fireEvent.click(workspace.getByRole('button', { name: 'dataSync.useLocalVersion' }));
+    await settle();
+    await act(async () => { await pulse(1600); });
+    expect(sends).toHaveBeenCalledTimes(sendsBefore + 1);
     expect(md()).toBe(local);
     expect(stand.autosave.content).toBe(local);
+    expect(await stored()).toBe(remote);
     if (typing) {
       act(() => insert(' Newergapword'));
-      await finish();
+      await act(async () => { await pulse(1600); });
       expect(md()).toBe(local + ' Newergapword');
-      expect(await stored()).not.toContain('Newergapword');
-      expect(stand.laptop.transport.send).toHaveBeenCalledTimes(sendsBefore);
+      expect(await stored()).toBe(remote);
     }
-    await act(async () => { await editor.save(); });
+  } finally {
+    release();
     await finish();
-    expect(md()).toBe(local + (typing ? ' Newergapword' : ''));
-    expect(await stored()).toBe(local);
-    expect(stand.laptop.transport.send).toHaveBeenCalledTimes(sendsBefore + 1);
-    expect(shown.every(value => value === local || (typing && value === local + ' Newergapword'))).toBe(true);
     stand.editor.off('transaction', observe);
-    if (typing) expect(hasInlineQuestion()).toBe(true);
-  } finally { editor.close({ flush: false }); }
+  }
+  const expected = local + (typing ? ' Newergapword' : '');
+  expect(md()).toBe(expected);
+  expect(stand.autosave.content).toBe(expected);
+  expect(await stored()).toBe(expected);
+  expect(shown.every(value => value === local || value === expected)).toBe(true);
+  expect(hasNoteQuestion()).toBe(false);
+  act(() => insert(' Nextword'));
+  await finish();
+  expect(md()).toBe(expected + ' Nextword');
+  expect(await stored()).toBe(md());
+  expect(hasNoteQuestion()).toBe(false);
+}, 60000);
+
+it.each([false, true])('the live session keeps text before capturing the replacement (typing=%s)', async typing => {
+  const local = await refused();
+  const remote = await stored();
+  const sends = jest.mocked(stand.laptop.transport.send);
+  const sendsBefore = sends.mock.calls.length;
+  const session = stand.session!;
+  const compared = session.state!.checkpoint;
+  await act(async () => { await session.keepLocal(compared); });
+  await settle();
+  expect(md()).toBe(local);
+  expect(stand.autosave.content).toBe(local);
+  expect(await stored()).toBe(remote);
+  expect(sends).toHaveBeenCalledTimes(sendsBefore);
+
+  if (typing) {
+    act(() => insert(' Newergapword'));
+    await settle();
+    expect(md()).toBe(local + ' Newergapword');
+    expect(await stored()).toBe(remote);
+  }
+  await finish();
+  const expected = local + (typing ? ' Newergapword' : '');
+  expect(md()).toBe(expected);
+  expect(sends).toHaveBeenCalledTimes(sendsBefore + 1);
+  if (typing) {
+    expect(await stored()).toBe(remote);
+    expect(hasInlineQuestion()).toBe(true);
+    await chooseNotice('keep');
+  }
+  expect(md()).toBe(expected);
+  expect(await stored()).toBe(expected);
+  expect(hasNoteQuestion()).toBe(false);
 }, 60000);
 
 it('take other adopts a version equal to the old confirmation and saves the next edit', async () => {

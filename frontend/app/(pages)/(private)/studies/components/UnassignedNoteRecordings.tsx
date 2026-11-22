@@ -4,16 +4,17 @@ import { useEffect, useMemo, useRef } from 'react';
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasModalLayers } from '@/utils/modalLayerRegistry';
-import { copyRecordingIntoNewNote, unassignedStudyRecordingFilter } from '@/utils/studyNoteAudioRecovery';
+import { copyRecordingIntoNewNote, retireAcceptedStudyRecordings, unassignedStudyRecordingFilter } from '@/utils/studyNoteAudioRecovery';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { StudyNote } from '@/models/models';
 import type { NewNoteDraft } from '@/utils/newNoteDrafts';
 
-export default function UnassignedNoteRecordings({ uid, notes, drafts, beforeNavigate, onCopied }: {
+export default function UnassignedNoteRecordings({ uid, notes, drafts, confirmedDictationSources, beforeNavigate, onCopied }: {
   uid: string;
   notes: ReadonlyArray<Pick<StudyNote, 'id' | 'recordingSourceIds' | 'dictationSourceIds'>>;
   drafts: readonly NewNoteDraft[];
+  confirmedDictationSources?: ReadonlyMap<string, readonly string[]>;
   beforeNavigate?: (navigate: () => void) => void;
   onCopied: () => void;
 }) {
@@ -30,6 +31,12 @@ export default function UnassignedNoteRecordings({ uid, notes, drafts, beforeNav
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const filterDraft = useMemo(() => unassignedStudyRecordingFilter(notes, drafts), [notes, drafts]);
+  useEffect(() => {
+    if (owner !== uid || !confirmedDictationSources) return;
+    let active = true;
+    void retireAcceptedStudyRecordings(uid, confirmedDictationSources, () => active && currentOwner.current === uid).catch(() => undefined);
+    return () => { active = false; };
+  }, [owner, uid, confirmedDictationSources]);
   if (owner !== uid) return null;
   return <RecordingDraftBanner context="study" filterDraft={filterDraft}
     collapsedLabel={t('studiesWorkspace.unassignedAudio.title')}

@@ -149,7 +149,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   captureActionTime: jest.fn(),
   notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
   confirmedDictationSources: new Map(),
-  confirmedCreationIds: new Set(),
+  listStudyNoteCreations: undefined, confirmedCreationIds: new Set(),
   commentCollectionReady: true,
   complete: true,
   loading: false,

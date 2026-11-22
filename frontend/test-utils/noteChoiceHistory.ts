@@ -4,6 +4,7 @@ import { diffFields } from '@/data-engine/protocol';
 import { processCommand } from '@/data-engine/server';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
+import type { ManagedEditor } from '@/data-engine/engine';
 import type { CommitRequest } from '@/data-engine/commits';
 import { COMMIT_ROW_KINDS } from '@/data-engine/retention.client';
 import type { DataCommand, CommandResult } from '@/data-engine/types';
@@ -21,9 +22,13 @@ export type ChoiceAction = { kind: ChoiceActionKind; word?: string };
 type Send = { command: DataCommand; issued: number; event: number; renderAtSend: number; response?: CommandResult; refused?: number; renderAtRefusal?: number };
 export type ChoiceRun = ChoiceObservation & { id: string; actions: ChoiceAction[]; valid: boolean;
   invalid?: string; requests: Send[]; verdicts: ReturnType<typeof choiceVerdicts>; terminal: ChoiceSnapshot; checkpoints: { event: number; sends: number; quiescent: boolean; editor: string; stored: string; confirmed?: string; page: string; question: boolean; editorMounted: boolean; saved: boolean; renders: number; verdicts: Record<ChoiceOracle, Verdict> }[] };
-const button = (name: string) => screen.queryByRole('button', { name });
+const button = (name: string | RegExp) => screen.queryByRole('button', { name });
 const enabled = (element: HTMLElement | null) => !!element && !(element as HTMLButtonElement).disabled;
-const names = { keep: 'freshness.conflictKeepMine', take: 'freshness.conflictTakeTheirs', confirm: 'common.discardText.confirm' };
+const names = {
+  keep: /^(freshness\.conflictKeepMine|dataSync\.useLocalVersion|dataSync\.keepLocal)$/,
+  take: /^(freshness\.conflictTakeTheirs|dataSync\.useStoredVersion|dataSync\.acceptRemote)$/,
+  confirm: /^(common\.discardText|dataSync\.confirmStoredField|dataSync\.confirmStoredFields)\.confirm$/,
+};
 const values = (raw: Partial<NoteDraftPayload>): NoteDraftPayload => ({
   title: raw.title || '', content: raw.content || '', tags: raw.tags || [], scriptureRefs: raw.scriptureRefs || [],
   type: raw.type || 'note', ...noteRecordingMetadata(raw.dictationSourceIds, raw.recordingSourceIds),
@@ -71,42 +76,35 @@ export class ChoiceMachine {
       if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = true;
       return result;
     });
-    this.editorSpy = jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => {
-      const openingAnswer = this.answers.at(-1);
-      if (openingAnswer?.surface === 'notice' && openingAnswer.kind === 'take'
-        && [...this.canonical.values()].some(request => request.editorId === args[1]
-          && this.captureSequences.get(request.id) === openingAnswer.captureSequence)) openingAnswer.completed = false;
-      const editor = await open(...args), save = editor.save.bind(editor);
-      const commit = editor.commitWithReceipt.bind(editor);
-      editor.commitWithReceipt = (...commitArgs) => {
-        if (this.activeKeep?.surface === 'inline' && !this.activeKeep.replacementEditorId) this.activeKeep.replacementEditorId = args[1];
-        return commit(...commitArgs);
-      };
+    const instrument = (editor: ManagedEditor, editorId: string) => {
+      const save = editor.save.bind(editor);
+      const keep = editor.keepLocal.bind(editor);
+      const accept = editor.acceptRemote.bind(editor);
       let kept: Answer | undefined;
-      const keep = editor.keepLocal.bind(editor), accept = editor.acceptRemote.bind(editor);
-      editor.keepLocal = async (...keepArgs) => {
-        kept = this.answers.at(-1);
-        return keep(...keepArgs);
-      };
-      editor.acceptRemote = async (...acceptArgs) => {
+      editor.keepLocal = async (...args) => {
         const answer = this.answers.at(-1);
-        if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = false;
-        const result = await accept(...acceptArgs);
-        if (answer?.surface === 'notice' && answer.kind === 'take') answer.completed = true;
-        return result;
+        if (answer?.kind === 'keep') kept = answer;
+        await keep(...args);
+        if (kept) kept.completed = true;
+      };
+      editor.acceptRemote = async (...args) => {
+        const answer = this.answers.at(-1);
+        await accept(...args);
+        if (answer?.kind === 'take') answer.completed = true;
       };
       editor.save = async () => {
         const answer = this.answers.at(-1);
-        if (answer?.kind === 'keep') answer.replacementEditorId = args[1];
-        // This is the only capture-delay injection. keepLocal has already retired
-        // the exact refused request; its real save has not captured a replacement.
+        if (answer?.kind === 'keep') answer.replacementEditorId = editorId;
+        // Pause the actual save before it captures any replacement on this device.
         if (this.pauseArmed) await new Promise<void>(resolve => this.captureReleases.push(resolve));
-        const result = await save();
-        if (kept?.surface === 'notice' && kept.kind === 'keep') kept.completed = true;
-        return result;
+        return save();
       };
       return editor;
-    });
+    };
+    const current = stand.activeEditor;
+    if (!current) throw new Error('The note session did not open');
+    instrument(current.editor, current.id);
+    this.editorSpy = jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => instrument(await open(...args), args[1]));
     const deliver = stand.laptop.transport.send.bind(stand.laptop.transport);
     jest.spyOn(stand.laptop.transport, 'send').mockImplementation(async command => {
       this.readCaptures();
@@ -177,7 +175,10 @@ export class ChoiceMachine {
     }
     if (hasInlineQuestion() && !this.paused && !this.pauseArmed) {
       const workspace = document.querySelector('[data-note-workspace]') as HTMLElement;
-      if (enabled(within(workspace).queryByRole('button', { name: names.keep }))) result.push('inlineKeep');
+      if (enabled(within(workspace).queryByRole('button', { name: names.keep }))) {
+        result.push('inlineKeep');
+        if (!result.includes('pauseKeep')) result.push('pauseKeep');
+      }
       if (enabled(within(workspace).queryByRole('button', { name: names.take }))) result.push('inlineTake');
     }
     if (enabled(button(names.confirm))) return ['confirmTake'];
@@ -207,7 +208,11 @@ export class ChoiceMachine {
   }
   private answer(kind: 'keep' | 'take', surface: 'notice' | 'inline') {
     if (this.activeKeep) this.activeKeep = undefined;
-    const captureSequence = surface === 'notice' ? this.lastRefusal?.issued : undefined;
+    const refusedId = this.lastRefusal?.command.operationId;
+    const pending = stand.activeEditor?.editor.getState().checkpoint.pending ?? {};
+    const answersRefusal = refusedId && (surface === 'notice'
+      || Object.entries(pending).some(([id, intent]) => id === refusedId || intent.operations?.includes(refusedId)));
+    const captureSequence = answersRefusal ? this.lastRefusal?.issued : undefined;
     const answer: Answer = { kind, surface, event: this.actions.length - 1, sequence: ++this.sequence,
       local: md(), remote: String(this.raw().content), captureSequence,
       newer: captureSequence === undefined ? [] : this.typed.filter(token => token.sequence > captureSequence).map(token => token.word),
@@ -267,8 +272,10 @@ export class ChoiceMachine {
     else if (kind === 'openNotice') fireEvent.click(button('dataSync.readerNotices')!);
     else if (kind === 'keep' || kind === 'pauseKeep' || kind === 'inlineKeep') {
       if (kind === 'pauseKeep') this.armPause();
-      this.answer('keep', kind === 'inlineKeep' ? 'inline' : 'notice');
-      const root = kind === 'inlineKeep' ? document.querySelector('[data-note-workspace]') : document.querySelector('[data-sync-notice-open] section');
+      const section = document.querySelector<HTMLElement>('[data-sync-notice-open] section');
+      const useInline = kind === 'inlineKeep' || (kind === 'pauseKeep' && !section);
+      this.answer('keep', useInline ? 'inline' : 'notice');
+      const root = useInline ? document.querySelector('[data-note-workspace]') : section;
       fireEvent.click(within(root as HTMLElement).getByRole('button', { name: names.keep }));
     } else if (kind === 'take' || kind === 'inlineTake') {
       this.takeSurface = kind === 'inlineTake' ? 'inline' : 'notice';
@@ -279,8 +286,6 @@ export class ChoiceMachine {
       fireEvent.click(button(names.confirm)!);
     }
     await this.tick(kind === 'timer' ? 1600 : 0);
-    // Inline answers retain their existing disappearance rule.
-    for (const answer of this.answers) if (answer.surface === 'inline' && !hasInlineQuestion()) answer.completed = true;
     this.assessCheckpoint();
   }
   private assessCheckpoint() {

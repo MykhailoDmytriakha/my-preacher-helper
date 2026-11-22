@@ -71,3 +71,16 @@ export function keepUncontestedStudyNoteFields(basis: ResourceSnapshot, draft: D
   if (merged.conflicts.length || !merged.value.exists) throw Object.assign(new Error('The shown study note choice changed'), { code: 'decision-changed' });
   return merged.value.value as DocumentData;
 }
+
+/** A choice about an already submitted body does not answer for words typed after that submission. */
+export function studyNoteBodyAfterStoredChoice(submitted: DocumentData | null, latest: DocumentData | null,
+  stored: ResourceSnapshot, conflicts: readonly ConflictDetail[]) {
+  if (stored.resource.collection !== 'studyNotes' || !submitted || !latest || !stored.value
+    || !isOrdinaryStudyNote(submitted) || !isOrdinaryStudyNote(latest) || !isOrdinaryStudyNote(stored.value)
+    || conflicts.length !== 1 || conflicts[0].path.length !== 1
+    || conflicts[0].path[0] !== 'content') return;
+  const path = ['content'];
+  const base = readField(submitted, path), mine = readField(latest, path), theirs = readField(stored.value, path);
+  if (base.value === mine.value || mine.value === theirs.value) return;
+  return { conflict: { path, base, mine, theirs }, dictationIds: readField(latest, ['dictationSourceIds']) };
+}

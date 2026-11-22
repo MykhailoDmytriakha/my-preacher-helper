@@ -1,10 +1,13 @@
+import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
+
 import { boundedActionTime } from './actionClock';
-import { equalValues } from './fieldValues';
+import { equalValues, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 
 import type { CommitRequest } from './commits';
-import type { DocumentFieldObservation } from './documentFieldAction';
-import type { DocumentData, FieldValue, ResourceSnapshot, StudyNoteContentCapture } from './types';
+import type { DocumentFieldObservation, StudyNoteTimedField } from './documentFieldAction';
+import type { SessionCheckpoint, ShownCopy } from './session';
+import type { ConflictDetail, DocumentData, FieldValue, ResourceSnapshot, StudyNoteContentCapture } from './types';
 
 export const COMMENT_TEXT_REVIEW = 'comment-text-review';
 
@@ -49,4 +52,27 @@ export function captureStudyNoteContent(baseline: ResourceSnapshot, draft: Docum
   const time = capture?.time == null ? null : boundedActionTime(capture.time) ?? null;
   return { before: { exists: true, value: opening }, after: { exists: true, value: after }, observedRevision, time,
     ...(previous && { predecessorOperationId: previous.id }), ...(capture?.reviewed && { reviewed: true }) };
+}
+
+/** A confirmed copy may arrive before the editor displays it. Keep the actual opening of the edit. */
+export function unseenStudyNoteField(checkpoint: SessionCheckpoint, value: DocumentData | null,
+  shown: ShownCopy | undefined, field: StudyNoteTimedField): { snapshot: ResourceSnapshot; conflict: ConflictDetail | null } | undefined {
+  const { confirmed } = checkpoint, fieldPath = [field];
+  if (confirmed.resource.collection !== 'studyNotes' || !value || !isOrdinaryStudyNote(value)) return;
+  const prior = checkpoint.conflicts.find(({ path }) => path.length === 1 && path[0] === field);
+  const snapshot = prior ? checkpoint.remoteCandidate : confirmed;
+  if (!snapshot?.value || !isOrdinaryStudyNote(snapshot.value)) return;
+  const stored = readField(snapshot.value, fieldPath);
+  const mine = readField(value, fieldPath);
+  if (prior) {
+    return { snapshot, conflict: equalValues(mine, stored) ? null : { ...prior, mine, theirs: stored } };
+  }
+  if (!shown?.confirmed.metadata || !confirmed.metadata || !shown.draft
+    || !equalValues(confirmed.resource, shown.confirmed.resource)
+    || confirmed.metadata.generation !== shown.confirmed.metadata.generation
+    || confirmed.metadata.revision <= shown.confirmed.metadata.revision) return;
+  const base = readField(shown.draft, fieldPath);
+  if (equalValues(stored, base) || equalValues(stored, mine)
+    || equalValues(stored, readField(shown.confirmed.value ?? {}, fieldPath))) return;
+  return { snapshot, conflict: { path: fieldPath, base, mine, theirs: stored } };
 }
