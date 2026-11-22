@@ -453,3 +453,30 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
 :root.dark ::highlight(bible-mark-pencil-yellow) { text-decoration-color: #ffd60a; }
 :root.dark ::highlight(bible-mark-pencil-orange) { text-decoration-color: #ff8b3e; }
 :root.dark ::highlight(bible-mark-pencil-blue) { text-decoration-color: #7b9bff; }
+
+/*
+ * A Markdown table in a box too narrow for it reads as records (owner, 2026-11-21 — as a terminal prints a wide
+ * table): the row's name, then each filled cell under its column's heading, a rule between records. The parts are
+ * named by `rehypeTableRecords`; a wide box keeps the ordinary table.
+ */
+.md-table-box { container-type: inline-size; }
+@container (max-width: 560px) {
+  .md-table-box table[data-records],
+  .md-table-box table[data-records] > thead,
+  .md-table-box table[data-records] > tbody,
+  .md-table-box table[data-records] tr,
+  .md-table-box table[data-records] td,
+  .md-table-box table[data-records] th { display: block; width: auto; min-width: 0; }
+  .md-table-box table[data-records] colgroup,
+  .md-table-box table[data-records] tr[data-record-head],
+  .md-table-box table[data-records] [data-record-empty] { display: none; }
+  .md-table-box table[data-records] tr { padding: 0.5rem 0; border-bottom: 1px solid rgb(229 231 235); }
+  .dark .md-table-box table[data-records] tr { border-bottom-color: rgb(55 65 81); }
+  .md-table-box table[data-records] td,
+  .md-table-box table[data-records] th { padding: 0.125rem 0; border: 0; text-align: left; }
+  .md-table-box table[data-records] [data-record-title] { font-weight: 600; }
+  .md-table-box table[data-records] [data-record-label]::before { content: attr(data-record-label) ": "; font-weight: 600; color: rgb(107 114 128); }
+  .dark .md-table-box table[data-records] [data-record-label]::before { color: rgb(156 163 175); }
+  .md-table-box table[data-records] td > p,
+  .md-table-box table[data-records] th > p { display: inline; margin: 0; }
+}

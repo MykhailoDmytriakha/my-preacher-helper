@@ -6,6 +6,7 @@ import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, useScr
 import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { textLanguage } from '@/utils/appLocale';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
+import { rehypeTableRecords } from '@/utils/rehypeTableRecords';
 
 import styles from './PlanMarkdown.module.css';
 
@@ -43,8 +44,10 @@ function groupPlanSections() {
   };
 }
 
+/** A table scrolls in its own box, and a box too narrow for it reads the rows as records (`rehypeTableRecords`). */
+const TABLE_COMPONENTS = { table: (props: React.ComponentProps<'table'>) => <div className="md-table-box max-w-full overflow-x-auto"><table {...props} /></div> } as Components;
 /** A reference in a plan is drawn as a link by the shared piece, only where the screen opens it. */
-const LINK_COMPONENTS = { [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink } as Components;
+const LINK_COMPONENTS = { ...TABLE_COMPONENTS, [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink } as Components;
 
 /** A complete section body owns its indentation in reading, preaching and PDF output. */
 export default function PlanMarkdown({ markdown, className = '' }: { markdown: string; className?: string }) {
@@ -55,12 +58,12 @@ export default function PlanMarkdown({ markdown, className = '' }: { markdown: s
   // The language its references were written in: the sermon's, else this section's.
   const written = useMemo(() => (links ? links.written ?? textLanguage(markdown) : null), [markdown, links]);
   const rehypePlugins = useMemo(
-    () => [...htmlPlugins, groupPlanSections, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+    () => [...htmlPlugins, rehypeTableRecords, groupPlanSections, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
     [htmlPlugins, linkLocale, written]
   );
   return (
     <div className={`markdown-content ${styles.content} ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={linkLocale ? LINK_COMPONENTS : undefined}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={linkLocale ? LINK_COMPONENTS : TABLE_COMPONENTS}>
         {preparePlanMarkdown(markdown)}
       </ReactMarkdown>
     </div>
