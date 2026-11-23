@@ -1390,7 +1390,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             select={entries => entries.flatMap(entry => entry.tags.map(tag => ({ id: entry.id, ...tag })))}
                             onRestore={async (tag, present) => {
                                 setIsEditing(true);
-                                            setTagMembership(tag, present);
+                                setTagMembership(tag, present);
                             }} />}
                     </div>
         </>

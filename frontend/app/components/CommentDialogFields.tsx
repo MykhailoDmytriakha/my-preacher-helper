@@ -7,11 +7,9 @@ import { COMMENT_SENTENCES, measureComment } from '@/utils/commentLength';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
- * THE WAY FROM A COMMENT TO A NOTE (the owner, 2026-10-28: «эта полоска должна показывать от чего-то до заметки…
- * от серого постепенно зеленеть»): the comment's grey mark at one end, the note's green one at the other, the
- * line filling from grey to green as the person writes. Its unit is the way itself, so it needs no number; a
- * screen reader hears the count (`utils/commentLength.ts`). Written as a paragraph, its start is the paragraph's:
- * the window's title says «Абзац», and one thing has one name in the window (case 2026-11-06-comment-paragraph).
+ * The line fills from the grey comment marker toward the green note marker as the person writes.
+ * The position shows progress visually, and the accessible label gives the sentence count
+ * (`utils/commentLength.ts`). In paragraph mode, the starting marker matches the dialog title.
  */
 export function CommentWayBar({ text, paragraph = false }: { text: string; paragraph?: boolean }) {
   const { t } = useTranslation();
@@ -31,7 +29,7 @@ export function CommentWayBar({ text, paragraph = false }: { text: string; parag
   );
 }
 
-/** «Комментарий | Абзац» at the top of the window: what the comment is in the reader. */
+/** Choose whether the reader displays the text as a comment or a paragraph. */
 export function CommentKindSwitch({ paragraph, onChange, disabled }: { paragraph: boolean; onChange: (paragraph: boolean) => void; disabled: boolean }) {
   const { t } = useTranslation();
   return (
