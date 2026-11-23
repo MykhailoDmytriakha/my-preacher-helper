@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { SERMON_ACTION } from '@/utils/themeColors';
 
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
@@ -53,6 +55,51 @@ describe('AddSermonModal on the data engine', () => {
     const { view } = setup(<AddSermonModal />);
     expect(screen.getByRole('button', { name: 'addSermon.newSermon' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    view.unmount();
+  });
+
+  test('uses the blue sermon action palette with visible focus instead of green and opens the dialog on click', async () => {
+    const user = userEvent.setup();
+    const { view } = setup(<AddSermonModal />);
+    const trigger = screen.getByRole('button', { name: 'addSermon.newSermon' });
+
+    expect(trigger).toHaveClass('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+    expect(trigger).toHaveClass(...SERMON_ACTION.split(' '));
+    expect(trigger).toHaveClass(
+      'focus-visible:ring-2',
+      'focus-visible:ring-blue-600',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-white',
+      'dark:focus-visible:ring-blue-400',
+      'dark:focus-visible:ring-offset-gray-900'
+    );
+    expect(trigger).not.toHaveClass('bg-green-600');
+    expect(trigger).not.toHaveClass('hover:bg-green-700');
+
+    await user.click(trigger);
+    await screen.findByRole('dialog');
+    view.unmount();
+  });
+
+  test('sets explicit type="button" so clicking the trigger inside a form opens the modal without submitting', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn();
+    const { view } = setup(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <AddSermonModal />
+      </form>
+    );
+    const trigger = screen.getByRole('button', { name: 'addSermon.newSermon' });
+
+    await user.click(trigger);
+    await screen.findByRole('dialog');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(trigger).toHaveAttribute('type', 'button');
     view.unmount();
   });
 

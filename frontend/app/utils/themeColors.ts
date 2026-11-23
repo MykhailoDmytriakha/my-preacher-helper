@@ -12,9 +12,13 @@
 const TEXT_WHITE = "text-white";
 const EMERALD_BACKGROUND = 'bg-emerald-700';
 const EMERALD_HOVER = 'hover:bg-emerald-800';
+const BLUE_BACKGROUND = 'bg-blue-600';
+const BLUE_HOVER = 'hover:bg-blue-700';
 
 export const EMERALD_SURFACE = `${EMERALD_BACKGROUND} ${TEXT_WHITE}`;
 export const EMERALD_ACTION = `${EMERALD_SURFACE} ${EMERALD_HOVER}`;
+export const BLUE_SURFACE = `${BLUE_BACKGROUND} ${TEXT_WHITE}`;
+export const BLUE_ACTION = `${BLUE_SURFACE} ${BLUE_HOVER}`;
 const SUBTLE_CAPTION = 'text-gray-500 dark:text-gray-400';
 export const NEUTRAL_CAPTION = 'text-gray-600 dark:text-gray-300';
 
@@ -332,7 +336,7 @@ export const NOTE_TO_SERMON_COLORS = {
     'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-100 dark:ring-blue-800/60',
   inputFocus:
     'focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:focus:border-blue-500 dark:focus:ring-blue-900',
-  primaryButton: 'bg-blue-600 text-white hover:bg-blue-700',
+  primaryButton: BLUE_ACTION,
   /**
    * A SERMON ALREADY GROWN OUT OF THIS NOTE, listed in the note's own side panel.
    *
@@ -601,6 +605,13 @@ export const BOOK_PART_TONES = [
  * WCAG AA (Codex UX review, 04.11). Every Studies button that adds or confirms takes it from here.
  */
 export const STUDIES_ACTION = EMERALD_ACTION;
+
+/**
+ * Sermons' primary action — the blue of Sermons on the home dashboard and navigation
+ * (`bg-blue-600` with white text is 5.17:1, above WCAG AA 4.5:1). Shared styling for
+ * primary sermon creation actions (`AddSermonModal`, `NOTE_TO_SERMON_COLORS.primaryButton`).
+ */
+export const SERMON_ACTION = BLUE_ACTION;
 
 /** Shared presentation for entity forms; callers retain their own write contracts. */
 export const FORM_COLORS = {

@@ -310,6 +310,51 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261122-new-sermon-button-green · Проповеди: кнопка «+ Новая проповедь» зелёная вместо синей палитры раздела с домашней страницы
+
+**Severity.** P3 — создание работает, страдает визуальное согласование с синей палитрой раздела «Проповеди» и контраст белого текста в покое (`bg-green-600` даёт 3,30:1 при норме WCAG AA 4,5:1).
+**Найден.** 2026-11-22 · владелец, снимок экрана `/sermons`.
+**Якоря.** `frontend/app/components/AddSermonModal.tsx:34` (на `fd3b5db` захардкожено `bg-green-600 text-white rounded-lg hover:bg-green-700`, без `type="button"` и `focus-visible`) · `frontend/app/(pages)/(private)/sermons/page.tsx:156` (`<AddSermonModal allowPlannedDate />`) · `frontend/app/(pages)/(private)/dashboard/page.tsx:287,358` (синий цвет проповедей) · `frontend/app/utils/themeColors.ts:251-256` (навигация) · `frontend/app/components/bible/usageKinds.ts:31-34` (бейджи Библии).
+**Стенд.** Прод `fd3b5db`, страница `/sermons`, тёмная тема.
+
+**Ожидалось.** Кнопка «+ Новая проповедь» синяя, в палитре проповедей на домашней странице, с контрастом ≥ 4,5:1, явным `type="button"` и видимым фокусом.
+**Получилось.** Кнопка зелёная (`bg-green-600` / `hover:bg-green-700`), в покое контраст 3,30:1; нет `type="button"` и `focus-visible`.
+
+**Воспроизведение.** Открыть `/sermons` → правый верхний угол шапки → кнопка «+ Новая проповедь».
+**Эффект.** Расхождение цвета главного действия с разделом «Проповеди» и путаница с зелёными кнопками плана/изучения; низкий контраст подписи.
+
+**Как эта фича должна работать — с точки зрения пользователя.** Главная кнопка создания проповеди на `/sermons` всегда использует синий токен раздела (контраст ≥ 4,5:1 в светлой и тёмной теме), имеет `type="button"` и видимое кольцо фокуса при работе с клавиатуры; при `showTriggerButton={false}` (как на `/dashboard`) триггер не рисуется.
+
+**Класс (механизмом).** Захардкоженный или расходящийся цвет главного CTA раздела / двери создания вместо токена раздела из `themeColors.ts`.
+| место (`file:line`) | вердикт | почему |
+|---|---|---|
+| `frontend/app/components/AddSermonModal.tsx:34` (`sermons/page.tsx:156`) | поражено → чиню здесь | на `fd3b5db` захардкожен `bg-green-600 hover:bg-green-700` (3,30:1), нет `type="button"` и `focus-visible` |
+| `frontend/app/(pages)/(private)/dashboard/page.tsx:355-362, 403-412` | не поражено | своя синяя кнопка `quickActionToneClasses.blue`, модал вызывается с `showTriggerButton={false}` |
+| `frontend/app/components/sermon/SermonFormDialog.tsx:190-203` | не поражено | кнопка сохранения уже синяя (`bg-blue-600 hover:bg-blue-700`, `type="submit"`) |
+| `themeColors.ts:339` (`NOTE_TO_SERMON_COLORS.primaryButton`) + `CreateSermonFromNoteModal.tsx:761,774,783` + `SermonsBuiltOnNote.tsx:70-80` | не поражено (алиас на общий токен) | все три кнопки диалога (повтор, открыть, создать) и контур `openerButton` уже синие |
+| `frontend/app/components/bible/analysis/AnalysisSermons.tsx:87,122,161` + `usageKinds.ts:30-34` | не поражено | синие капсулы и синий `openerButton` |
+| `frontend/app/components/series/SeriesDetailView.tsx:84-90,198-204` + `SeriesMembershipDialog.tsx:93-94` | не поражено | «Добавить проповедь» уже `bg-blue-600 hover:bg-blue-700`; кнопка в диалоге нейтральная |
+| `frontend/app/components/dashboard/QuickPlanAccessButton.tsx:47-76` | не поражено (другой класс) | зелёные «К плану» и «Проповедовать» — workflow-действия над готовой проповедью; риск контраста вынесен в соседнюю запись |
+| `frontend/app/(pages)/(private)/studies/page.tsx:352,588` | не поражено | использует `STUDIES_ACTION` (`EMERALD_ACTION`, 5,5:1), совпадает с `/dashboard` |
+| `frontend/app/(pages)/(private)/prayers/page.tsx:450-455` | не поражено (по цвету) | розовая `bg-rose-500`, совпадает с `/dashboard` (контраст вынесен в соседнюю запись) |
+| `frontend/app/(pages)/(private)/series/page.tsx:124,145` и `groups/page.tsx:101,124,219` | поражено другим классом → отдельная запись | главные CTA и шапки расходятся с палитрой `/dashboard`; требуют синхронизации вида с владельцем (раздел «Интерфейс») |
+| Серверные маршруты (`app/api/**`) и офлайн-путь (PWA/SW) | не поражено | клиентский класс оформления; офлайн отдаёт тот же бандл компонента |
+
+**Корень.** См. класс: в `AddSermonModal.tsx:34` остался локальный класс `bg-green-600 text-white rounded-lg hover:bg-green-700`.
+**Фикс (направление).** Вынести общий синий токен `SERMON_ACTION` в `themeColors.ts` (и алиас `NOTE_TO_SERMON_COLORS.primaryButton`) и перевести триггер `AddSermonModal` на него с `type="button"` и видимым фокусом под фон `PrivateWorkspace`.
+**Стадия.** Проверить на проде (`main`): `/sermons` — кнопка «+ Новая проповедь» синяя в светлой и тёмной теме, видна с клавиатуры и открывает диалог создания.
+
+### BUG-20261122-series-and-groups-actions-off-dashboard-palette · Серии и Группы: главный CTA и метка раздела не совпадают с палитрой домашней страницы (и контраст других CTA)
+
+**Severity.** P3 — функционально разделы работают; часть того же класса расхождений (`BUG-20261122-new-sermon-button-green`), но затрагивает шапку/главные кнопки целых разделов и контраст существующих палитр, поэтому требует синхронизации вида с владельцем (раздел «Интерфейс»).
+**Найден.** 2026-11-22 · прочёс класса по `BUG-20261122-new-sermon-button-green`.
+**Якоря.** `frontend/app/(pages)/(private)/series/page.tsx:124,145` (синие бэдж и «Новая серия» против фиолетового на `dashboard/page.tsx:296`) · `frontend/app/(pages)/(private)/groups/page.tsx:101,124,219` + `SeriesDetailView.tsx:93` (`EMERALD_ACTION` против янтарного на `dashboard/page.tsx:314`) · дополнительно по контрасту белого текста (< 4,5:1): `prayers/page.tsx:452` (`bg-rose-500` — 3,67:1), `QuickPlanAccessButton.tsx:55,70` и `SermonHeader.tsx:226` (`bg-green-600` — 3,30:1).
+**Ожидалось.** Главные CTA и знаки разделов согласованы с цветами домашней страницы (серии — фиолетовый, группы — янтарный), а все кнопки с белым текстом держат ≥ 4,5:1.
+**Получилось.** На `/series` кнопка и бэдж синие, на `/groups` изумрудные (счётчики при этом многоцветны по статусам), а у указанных workflow/молитвенных кнопок контраст в покое ниже 4,5:1.
+**Воспроизведение.** Открыть `/series` или `/groups` и сравнить цвет шапки/главной кнопки с карточкой раздела на `/dashboard`; на `/prayers` или `/sermons` в карточке посмотреть контраст белого текста на `bg-rose-500` / `bg-green-600`.
+**Эффект.** Цветовые ориентиры разделов между домашней страницей и списками расходятся, а подписи на нескольких кнопках читаются хуже порога AA.
+**Как эта фича должна работать — с точки зрения пользователя.** Каждый раздел держит единый цвет своего главного действия (согласно домашней странице) и читаемый контраст подписи; изменение этих экранов выполняется после согласования вида с владельцем.
+
 ### BUG-20261121-word-malformed-html-table-edges · Word: сломанный или нестандартный HTML таблицы теряет или дублирует текст
 **Severity P3.** Редактор такого HTML не пишет (он сохраняет `<table><tbody><tr><th><p>…`); встречается только в тексте, набранном или вставленном руками в обход редактора. Нашёл Codex при проверке выката HTML-таблиц в Word 21.11.2026.
 **Якоря.** `frontend/app/utils/markdownTables.ts` (`markdownTableRanges`: границы HTML-таблицы по позициям разборщика) · `frontend/utils/wordExport.ts` (`parseMarkdownProse`).
