@@ -1,6 +1,7 @@
 import { generateNotePlanPoint } from '@/api/clients/openAI.client';
-import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
+import { createNotePlanUserMessage, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { callWithStructuredOutput } from '@/api/clients/structuredOutput';
+import { notePlanSketchSteps } from '@/utils/notePlan';
 
 jest.mock('@/api/clients/structuredOutput', () => ({ callWithStructuredOutput: jest.fn() }));
 
@@ -203,4 +204,42 @@ describe('the conclusion rule leaves what it must not touch (Codex check, 2026-1
     ] } } as never);
     expect((await generateNotePlanPoint(input, 'memory', 'owner')).contentByNodeId.b).not.toContain('Orpah went home');
   });
+});
+
+// Owner on production, 2026-11-22: a sketch of three «name: places» lines came back as a table of the people in them.
+it('tells the model that a sketch listing names with places is steps, in order, and never a table', () => {
+  expect(notePlanSystemPrompt).toContain('REMINDER LINES ARE STEPS');
+  expect(notePlanSystemPrompt).toMatch(/reminder lines that list names with places are steps/);
+});
+
+
+describe('a sketch that is the steps travels as its own field (owner on production, 2026-11-22)', () => {
+  const CLOTHING = ['Одежда первосвященика: Исх.28:2,40 = Пс.8:6 (Скиния - образ Эдемского сада)', 'Одежда торжественная: Зах.3:1-4', 'Одежда правды: Ис.61:10'];
+
+  it('reads every «name: places» line as a step, in order', () => {
+    expect(notePlanSketchSteps(CLOTHING.join('\n'))).toEqual([
+      { title: 'Одежда первосвященика', places: 'Исх.28:2,40 = Пс.8:6 (Скиния - образ Эдемского сада)' },
+      { title: 'Одежда торжественная', places: 'Зах.3:1-4' },
+      { title: 'Одежда правды', places: 'Ис.61:10' },
+    ]);
+  });
+
+  it('gives none for audiences paired in a line, a second name in a line, a mixed sketch or a single line', () => {
+    expect(notePlanSketchSteps('Братья: Еф. 5:25; Сестры: Еф. 5:22\nМужья: 1 Пет 3:7; Жены: 1 Пет 3:1')).toEqual([]);
+    expect(notePlanSketchSteps('Листья: Быт.3:7 vs Одежды кожаные: Быт.3:21\nСвятой обмен: 2Кор.5:21')).toEqual([]);
+    expect(notePlanSketchSteps('Святой обмен: 2Кор.5:21\nЛистья vs Одежда кожаная: наша праведность')).toEqual([]);
+    expect(notePlanSketchSteps('Одежда правды: Ис.61:10')).toEqual([]);
+  });
+
+  it('puts the steps on the target node of the request', () => {
+    const message = JSON.parse(createNotePlanUserMessage({ ...input, point: { ...input.point, note: undefined, subPoints: [] }, filed: { p: CLOTHING } }));
+    expect(message.targetNodes[0].sketchSteps.map((step: { title: string }) => step.title)).toEqual(['Одежда первосвященика', 'Одежда торжественная', 'Одежда правды']);
+    expect(JSON.parse(createNotePlanUserMessage(input)).targetNodes[0].sketchSteps).toBeUndefined();
+  });
+});
+
+it('reads a pair split by «/» as a table row and a time code as no place (Codex check)', () => {
+  expect(notePlanSketchSteps('Мужья: Еф. 5:25 (любовь) / Жёны: Тит. 2:4 (любовь)\nМужья: 1 Пет. 3:7 (уважение) / Жёны: Еф. 5:33 (уважение)')).toEqual([]);
+  expect(notePlanSketchSteps('Иллюстрация: фрагмент интервью с 02:15 до 02:40\nОбетование: Пс. 33:19')).toEqual([]);
+  expect(notePlanSketchSteps('Одежда правды: Ис.61:10: «Он облёк меня»\nОдежда торжественная: Зах.3:1-4')).toHaveLength(2);
 });

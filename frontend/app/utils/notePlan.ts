@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { scratchByOutlineNode } from '@/utils/scratchPlacement';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 
 import type { Sermon, SermonPoint, StudyNote } from '@/models/models';
@@ -61,6 +62,28 @@ export function notePlanFiledNotes(sermon: Pick<Sermon, 'outline' | 'scratch'>):
 /** A node's reminders as the plan reads them: the old one-line note first, then each filed note, one per line. */
 export function notePlanReminder(nodeId: string, note: string | undefined, filed: Record<string, string[]> = {}): string {
   return [note, ...(filed[nodeId] ?? [])].filter((text): text is string => Boolean(text?.trim())).join('\n');
+}
+
+/**
+ * A sketch that IS the steps: every reminder line reads «name: … a place of Scripture …» with one name at its start
+ * («Одежда правды: Ис.61:10»), and there are at least two. Then the plan's steps are exactly these, in order — the light
+ * model turned such a sketch into a table of the people in it (owner on production, 2026-11-22). A line pairing two
+ * audiences («Братья: …; Сестры: …») or holding a second «name:» is not a step line, and a mixed sketch — some lines
+ * thoughts, some places — gives none: there the model weighs the material as before.
+ */
+export function notePlanSketchSteps(reminder: string): { title: string; places: string }[] {
+  const lines = reminder.split('\n').map((line) => line.trim()).filter(Boolean);
+  const steps = lines.map((line) => {
+    const match = /^([^:\d][^:]{0,79}?)\s*:\s*(.+)$/.exec(line);
+    if (!match) return null;
+    const [, title, places] = match;
+    // A place the app's own reader takes for Scripture («Исх.28:2», «Зах.3:1-4» — not a time code «02:15»), and no
+    // second label after it («… / Жёны: …», «…; Сестры: …»): a line pairing two names is a table's row, not a step.
+    const placesFound = [...places.matchAll(/(?:[1-3]\s*)?\p{L}[\p{L}.]*\.?\s*\d+\s*:\s*\d+/gu)].some(([found]) => parseReferenceText(found) !== null);
+    if (!placesFound || /\p{L}[^:\d]{0,40}:\s*\D/u.test(places.replace(/\d+\s*:\s*\d+(?:\s*[–-]\s*\d+)?(?:\s*,\s*\d+)*\s*:?/g, ''))) return null;
+    return { title: title.trim(), places: places.trim() };
+  });
+  return steps.length >= 2 && steps.every(Boolean) ? steps as { title: string; places: string }[] : [];
 }
 
 /** One explicit cell, or the existing whole-point scope when no target is supplied. */

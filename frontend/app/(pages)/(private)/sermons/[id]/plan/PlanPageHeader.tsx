@@ -10,6 +10,7 @@ import SourceNoteChips from "@/components/sermon/SourceNoteChips";
 import { useOpenInBible } from "@/hooks/useOpenInBible";
 import { leadingReference } from "@/utils/bibleLink";
 import { sermonLanguage } from "@/utils/documentLanguage";
+import { getExportContent as exportSermonContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { hasPlan } from "@/utils/sermonPlanAccess";
@@ -124,7 +125,12 @@ export default function PlanPageHeader({
 
   const buildExportContent: PlanExportContentBuilder =
     getExportContent ??
-    (async (format) => {
+    (async (format, options) => {
+      // «Thoughts» exports the thoughts; the plan is what this page shows, unsaved edits included
+      // (BUG-20261122-export-txt-plan-choice-lost: the choice was ignored and «Thoughts» gave the plan).
+      if (options?.type === "thoughts") {
+        return exportSermonContent(sermon, undefined, { format, includeTags: options.includeTags, type: "thoughts" });
+      }
       const markdown = planAsMarkdown(sermon, combinedPlan, t, noContentText);
       if (format === "markdown") return markdown;
 
