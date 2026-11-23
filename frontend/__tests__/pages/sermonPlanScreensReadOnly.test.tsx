@@ -10,6 +10,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
+import { planCellOpening } from '@/data-engine/sermonPlanCellSession';
 import { DataSession } from '@/data-engine/session';
 import { draftKey, findDraftCopies } from '@/utils/durableDraft';
 import AiPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
@@ -60,6 +61,10 @@ jest.mock('@/data-engine/react.client', () => ({
     loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
     readOnlyReason: null, error: null,
     edit: refuse('edit'), update: refuse('update'), commit: refuse('commit'), save: refuse('save'),
+    capturePlanCellOpening: (nodeId: string, text: string) =>
+      planCellOpening(mockReadOnly ? undefined : mockDurableCheckpoint(), nodeId, text),
+    editPlanCell: mockReadOnly ? refuse('editPlanCell') : jest.fn().mockResolvedValue(undefined),
+    savePlanCells: mockReadOnly ? refuse('savePlanCells') : jest.fn().mockResolvedValue(undefined),
     remove: refuse('remove'), acceptRemote: jest.fn(), keepLocal: jest.fn(), retry: jest.fn().mockResolvedValue(undefined),
   }),
 }));
