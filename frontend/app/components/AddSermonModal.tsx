@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
+import { SERMON_ACTION } from '@/utils/themeColors';
 import { PlusIcon } from "@components/Icons";
 import { useTranslation } from '@locales/useTranslation';
 
@@ -30,8 +31,8 @@ export default function AddSermonModal({ isOpen, onClose, onCancel, showTriggerB
   const close = onClose ?? onCancel ?? (() => setInternalOpen(false));
   useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
   return <>
-    {showTriggerButton && <button onClick={() => setInternalOpen(true)}
-      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2" aria-label={t(NEW_SERMON_KEY)}>
+    {showTriggerButton && <button type="button" onClick={() => setInternalOpen(true)}
+      className={`px-4 py-2 ${SERMON_ACTION} rounded-lg flex items-center gap-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-blue-400 dark:focus-visible:ring-offset-gray-900`} aria-label={t(NEW_SERMON_KEY)}>
       <PlusIcon className="w-5 h-5" /><span className="hidden sm:inline">{t(NEW_SERMON_KEY)}</span>
     </button>}
     {open && <EngineCreateSermonModal preSelectedSeriesId={preSelectedSeriesId} allowPlannedDate={allowPlannedDate}

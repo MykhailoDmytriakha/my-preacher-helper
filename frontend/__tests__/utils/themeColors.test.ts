@@ -1,6 +1,8 @@
 import {
   APP_THEME_COLORS,
   FLAT_RECORDER_COLORS,
+  NOTE_TO_SERMON_COLORS,
+  SERMON_ACTION,
   SERMON_SECTION_COLORS,
   UI_COLORS,
   getSectionStyling,
@@ -138,6 +140,13 @@ describe('themeColors', () => {
       expect(FLAT_RECORDER_COLORS.active.cancel).toContain('bg-rose-50');
       expect(FLAT_RECORDER_COLORS.active.finish).toContain('bg-emerald-500');
       expect(FLAT_RECORDER_COLORS.active.resume).toContain('bg-sky-500');
+    });
+  });
+
+  describe('SERMON_ACTION', () => {
+    it('matches the shared blue primary action used across sermon creation flows', () => {
+      expect(SERMON_ACTION).toBe('bg-blue-600 text-white hover:bg-blue-700');
+      expect(NOTE_TO_SERMON_COLORS.primaryButton).toBe(SERMON_ACTION);
     });
   });
 });
