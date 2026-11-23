@@ -83,6 +83,18 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
         for (const id of current.completedCommits ?? []) store.delete(commitProjectionKey(current.owner, id));
       },
     }),
+    replaceClosedServiceInput: (expected, next) => {
+      const { owner, editorId, checkpoint } = expected;
+      const resource = checkpoint.confirmed.resource;
+      if (resource.collection !== 'serviceOrders') throw new Error('Expected a service checkpoint');
+      const frozen = validateRecoveryRecord(next, owner, editorId, resource);
+      return transaction<boolean>('readwrite', (store, read, done) => {
+        read(store.get(checkpointKey(owner, editorId)), raw => {
+          if (!raw || !equalValues(validateRecoveryRecord(raw, owner, editorId, resource), expected)) { done(false); return; }
+          writeCheckpointRecord(store, read, frozen, false, () => done(true), deferCollection);
+        });
+      });
+    },
     create: (record, origin) => write(record, true, origin),
     pinRecovery: record => pinRecoveryVersion(transaction, checkpointKey(record.owner, record.editorId), record,
       value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource)),

@@ -21,7 +21,7 @@ import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopi
 import { councilTopicPlacementPredecessor, councilTopicWitness, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, captureRemovalLineage, deleteOrderReady, replayDeleteOrder, type PendingRemovalOpening } from './deletionOrdering';
-import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerText, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerText, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, validatedTitleCapture, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
@@ -50,6 +50,7 @@ import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sa
 import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
+import { hasNewerServiceOrderInputOpening, selectServiceOrderInputSave, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_BODY_POLICY, SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepBodyActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -244,6 +245,7 @@ export interface CommitStore {
   createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
     options?: { deferRetention?: true; resumeVersion?: string }): Promise<CommitRequest>;
   /** Exact replacement capture and refused-source retirement share one native transaction. */
+  createWithMeetingResume?(request: CommitRequest, sourceVersion: string): Promise<CommitRequest>;
   createWithTransfer?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
     sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
   /** Atomically compares revision, then increments it. A loser must reload. */
@@ -441,12 +443,15 @@ type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; comment
   thoughtTextId?: string;
   action?: EditorCommitAction;
   planCellSaveIds?: readonly string[];
+  serviceOrderInput?: ServiceOrderInput;
+  serviceOrderComparison?: ServiceOrderInputComparison;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   /** A Save captured while its page is left: request and checkpoint only, no retention sweep in that transaction. */
   deferRetention?: true;
   /** A Save from this opening can become durable while the closing editor waits. */
   followClosingCapture?: true;
   resumeVersion?: string;
+  resumeMeetingVersion?: string;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
 function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke | undefined {
@@ -488,6 +493,8 @@ function hasTimedAncestor(record: CommitRequest): boolean {
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, ...(options.seriesMembership && { seriesMembership: clone(options.seriesMembership) }), predecessorIds: options.predecessorIds && [...options.predecessorIds],
     planCellSaveIds: options.planCellSaveIds && [...options.planCellSaveIds],
+    serviceOrderInput: options.serviceOrderInput && clone(options.serviceOrderInput),
+    serviceOrderComparison: options.serviceOrderComparison && clone(options.serviceOrderComparison),
     pendingRemoval: options.pendingRemoval && clone(options.pendingRemoval),
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
     meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
@@ -710,13 +717,13 @@ export class CommitQueue {
   private async captureSaved(owner: string, editorId: string, captured: SessionCheckpoint, options: CommitSaveOptions | undefined,
     check: () => void, publish: (request: CommitRequest) => void): Promise<CommitRequest | null> {
     let intent = clone(captured);
-    const frozenOptions = freezeSaveOptions(options);
+    let frozenOptions = freezeSaveOptions(options);
     if (frozenOptions?.transfer && (!this.options.store.createWithTransfer || !frozenOptions.checkpoint)) {
       throw new Error('Atomic capture transfer storage is required');
     }
     const capture = async (record: CommitRequest): Promise<CaptureTransferResult> => frozenOptions?.transfer
       ? this.options.store.createWithTransfer!(record, frozenOptions.checkpoint!, frozenOptions.transfer.sources)
-      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention, frozenOptions?.resumeVersion), retired: [] };
+      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention, frozenOptions?.resumeVersion, frozenOptions?.resumeMeetingVersion), retired: [] };
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
@@ -751,6 +758,24 @@ export class CommitQueue {
         if (action?.kind === 'sermon-plan-text' && action.transfer) fields.push(action.transfer.pointId, action.transfer.subPointId);
         intent = reservePrivatePlanCells(intent, basis, fields);
         if (!action && !intent.dirty && !intent.conflicts.length) return null;
+      }
+    }
+    if (frozenOptions?.serviceOrderInput) {
+      const input = frozenOptions.serviceOrderInput;
+      const compared = frozenOptions.serviceOrderComparison;
+      if (!existing && !compared && hasNewerServiceOrderInputOpening(intent, input, predecessor)) predecessor = undefined;
+      const prior = existing ? records.find(record => record.id === existing.predecessor) : predecessor;
+      const selected = selectServiceOrderInputSave(intent, input, prior ? prior.value : intent.confirmed.value, compared);
+      if (compared) predecessor = undefined;
+      if (!selected && !existing) return null;
+      if (selected) {
+        intent = selected.intent;
+        let action = selected.action;
+        if (action?.kind === 'service-order-title' && input.followsCaptured && prior?.value?.title === input.before
+          && !['conflict', 'refused', 'cancelled'].includes(prior.state)) {
+          action = { ...action, title: { ...action.title, seen: { ...action.title.seen, requestId: prior.id } } };
+        }
+        frozenOptions = { ...frozenOptions, action };
       }
     }
     if (existing) {
@@ -873,8 +898,24 @@ export class CommitQueue {
       frozenOptions?.[dateTarget.evidence] ?? reviewedDate, records);
     const action = datedAction ? { ...datedAction, ...(reviewedDate && { observedRevision: reviewedDate.observedRevision }) } : reviewedMeeting?.date;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined, records);
-    const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
+    let titleCapture = editorAction?.kind === 'service-order-title' ? editorAction.title : undefined;
+    if (frozenOptions?.serviceOrderInput && titleCapture) {
+      const { seen } = titleCapture;
+      const opening = seen.requestId ? records.find(record => record.id === seen.requestId) : undefined;
+      const known = Boolean(opening && opening.owner === owner && resourceMatches(opening.baseline.resource, baseline.resource)
+        && opening.baseline.metadata?.generation === seen.generation && opening.value?.title === seen.title
+        && !['conflict', 'refused', 'cancelled'].includes(opening.state));
+      try {
+        titleCapture = validatedTitleCapture(baseline, predecessor ? predecessor.value : baseline.value, intent.draft, titleCapture, known);
+      } catch {
+        throw new ServiceOrderInputDecisionError('The saved service title opening could not be verified');
+      }
+    }
+    const title = captureServiceOrderTitle(baseline, intent.draft, titleCapture);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
+    if (frozenOptions?.serviceOrderInput?.version && !frozenOptions.serviceOrderComparison && !title && !stepActions) {
+      throw new ServiceOrderInputDecisionError('The saved service input opening could not be verified');
+    }
     const councilAssemblyActions = captureCouncilAssembly(baseline, predecessor, intent.draft, assembly, records);
     const councilTopicKindActions = captureCouncilTopicKind(baseline, predecessor, intent.draft, topicKind, records);
     const prayerTextCapture = editorAction?.kind === 'prayer-text' ? editorAction : undefined;
@@ -1025,7 +1066,12 @@ export class CommitQueue {
   }
 
   private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord,
-    deferRetention?: true, resumeVersion?: string): Promise<CommitRequest> {
+    deferRetention?: true, resumeVersion?: string, resumeMeetingVersion?: string): Promise<CommitRequest> {
+    if (resumeMeetingVersion) {
+      const resume = this.options.store.createWithMeetingResume;
+      if (!resume || checkpoint || resumeVersion) throw new Error('Meeting recovery requires its exact stage capture');
+      return resume(record, resumeMeetingVersion);
+    }
     if (checkpoint && this.options.store.createWithCheckpoint) {
       return this.options.store.createWithCheckpoint(record, checkpoint,
         ...(deferRetention || resumeVersion ? [{ deferRetention, resumeVersion }] : []));

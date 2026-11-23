@@ -790,7 +790,8 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
 
 export type StudyNoteTimedField = 'content' | 'title' | 'type';
 export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field'] | StudyNoteTimedField | 'paragraph' | 'scriptureRefs'; time: ActionTime | null }
-  | import('./rowFieldAutosave').RowFieldStamp | import('./exegeticalPointCapture').ExegeticalPointEditStamp;
+  | import('./rowFieldAutosave').RowFieldStamp | import('./exegeticalPointCapture').ExegeticalPointEditStamp
+  | { field: 'service-order-input'; input: import('./serviceOrderInput').ServiceOrderInput };
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue> & { reference?: FieldValue; paragraph?: FieldValue };
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };

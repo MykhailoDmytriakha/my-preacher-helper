@@ -47,14 +47,19 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
   const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), discardRecovery: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
+    outlineReviewVersion: 0,
     recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: session.checkpoint().draft,
     confirmed: session.checkpoint().confirmed,
     remote: null, state, status: { phase } as SyncStatus,
     loading: false, error, edit: jest.fn(), update, save, commit, ...actions,
-    importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
-    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(),
+    importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(), holdPlanCellAlternative: jest.fn(),
+    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(),
+    editUnverifiedPlanCell: jest.fn(), assertPlanCellsStored: jest.fn(), retainPlanCellAlternative: jest.fn(), savePlanCells: jest.fn(), restored: false, flushServiceOrderInputs: jest.fn(),
+    saveServiceOrderInput: jest.fn(), useStoredServiceOrderInput: jest.fn(),
+    backsUpPlanCell: jest.fn(), bindPlanCellBackups: jest.fn(),
     captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
+    readLiveSermonOutline: jest.fn(), editSermonOutlineTitle: jest.fn(),
     captureSermonPlanMode: jest.fn(),
   }));
   let sequence = 0;

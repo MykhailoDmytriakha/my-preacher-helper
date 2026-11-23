@@ -10,7 +10,7 @@ import { findOutlinePointLocation } from '@/utils/subPoints';
 
 import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
-import type { PlanMode, PlanTextContext, PlanWriter, SubpointTextTransfer } from './planWriter';
+import type { IsPlanTextSourceStored, PlanMode, PlanTextContext, PlanWriter, SubpointTextTransfer } from './planWriter';
 import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { PlanCellDraft } from '@/data-engine/sermonPlanCellSession';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
@@ -24,10 +24,21 @@ type CellSave = {
   drafts: () => Record<string, PlanCellDraft> | undefined;
   confirmed: () => ResourceSnapshot | null;
   discard: (nodeIds: readonly string[]) => Promise<void>;
-  restore: NonNullable<PlanWriter['restorePlanText']>;
+  stage: NonNullable<PlanWriter['stagePlanText']>;
   applyProposal: NonNullable<PlanWriter['applyPlanProposal']>;
   save: SermonDocument['savePlanCells'];
 };
+
+function stagePlanCells(document: SermonDocument, cells: Record<string, string>, before: Record<string, string>,
+  isSourceStored?: IsPlanTextSourceStored): Promise<void> {
+  const edits = Object.entries(cells).map(([id, text]) => ({ id, text, seen: document.capturePlanCellOpening(id, before[id] ?? '') }));
+  if (edits.some(edit => !edit.seen)) {
+    throw Object.assign(new Error('The shown plan text changed'), { code: 'decision-changed' });
+  }
+  return Promise.all(edits.map(({ id, seen, text }) =>
+    document.editPlanCell(seen!, text, undefined, isSourceStored && (() => isSourceStored(id, text)))))
+    .then(() => document.assertPlanCellsStored(cells));
+}
 
 function continueTransfer(transfer: SubpointTextTransfer, pointId: string, subPointId: string, staged: ReadonlyMap<string, StagedCell>): SubpointTextTransfer {
   const earlier = (id: string) => {
@@ -96,7 +107,7 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' |
     updateSermonOutline: structure.updateSermonOutline,
     captureOutlineUpdate: () => document.save(),
     discardPlanText: cellSave?.discard,
-    restorePlanText: cellSave?.restore,
+    stagePlanText: cellSave?.stage,
     applyPlanProposal: cellSave?.applyProposal,
     removeSubPoint: (sermonId, pointId, subPointId, requestedTransfer) => {
       const transfer = requestedTransfer && continueTransfer(requestedTransfer, pointId, subPointId, stagedCells);
@@ -192,15 +203,7 @@ export function useEnginePlanWriter(sermonId: string, owner: string | null) {
   const writer = useMemo(() => createEnginePlanWriter(writeTarget, owner, structure, {
     drafts: () => opening.document.state?.checkpoint.planCellDrafts,
     confirmed: () => opening.document.confirmed,
-    restore: async cells => {
-      const current = opening.document;
-      const drafts = current.state?.checkpoint.planCellDrafts;
-      await Promise.all(Object.entries(cells).flatMap(([id, text]) => {
-        const draft = drafts?.[id];
-        const shown = draft && current.capturePlanCellOpening(id, draft.text);
-        return shown ? current.editPlanCell(shown, text) : [];
-      }));
-    },
+    stage: (cells, before, isSourceStored) => stagePlanCells(opening.document, cells, before, isSourceStored),
     discard: async ids => {
       const current = opening.document;
       const checkpoint = current.state?.checkpoint;
@@ -212,14 +215,15 @@ export function useEnginePlanWriter(sermonId: string, owner: string | null) {
         return shown ? current.editPlanCell(shown, saved[id] ?? '') : [];
       }));
     },
-    applyProposal: (cells, before) => {
+    applyProposal: (cells, before, isSourceStored) => {
       const current = opening.document;
       const edits = Object.entries(cells).map(([id, text]) => ({
         id, text, seen: current.capturePlanCellOpening(id, before[id] ?? ''),
       }));
       if (edits.some(edit => !edit.seen)) return null;
       if (!edits.length) return Promise.resolve(true);
-      const staging = Promise.all(edits.map(({ seen, text }) => current.editPlanCell(seen!, text)));
+      const staging = Promise.all(edits.map(({ id, seen, text }) =>
+        current.editPlanCell(seen!, text, undefined, isSourceStored && (() => isSourceStored(id, text)))));
       const saving = current.savePlanCells(edits.map(({ id }) => id)).then(() => true, error => {
         if (failureCode(error) === 'resolve-version-first') return false;
         throw error;

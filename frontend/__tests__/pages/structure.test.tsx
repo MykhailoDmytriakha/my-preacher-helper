@@ -166,9 +166,7 @@ describe('Structure Page', () => {
       handleEdit: jest.fn(),
       handleCloseEdit: jest.fn(),
       handleAddThoughtToSection: jest.fn(),
-      handleSaveEdit: jest.fn(),
       handleMoveToAmbiguous: jest.fn(),
-      handleRetryPendingThought: jest.fn(),
     });
   });
 
@@ -356,9 +354,7 @@ describe('Structure Page', () => {
         handleEdit: jest.fn(),
         handleCloseEdit: jest.fn(),
         handleAddThoughtToSection: jest.fn(),
-        handleSaveEdit: jest.fn(),
         handleMoveToAmbiguous: jest.fn(),
-        handleRetryPendingThought: jest.fn(),
       });
 
       render(

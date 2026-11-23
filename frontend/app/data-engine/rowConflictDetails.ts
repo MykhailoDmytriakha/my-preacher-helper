@@ -13,6 +13,7 @@ import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 import { readSermonConflictField, readSermonPreparationConfirmation } from './sermonFieldChoice';
+import { readPlanCellText } from './sermonPlanCellSession';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
 import { readServiceStepTextChoice } from './serviceOrderStepChoice';
@@ -136,6 +137,11 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
 }
 
 
+export function readOutlineNoteConflict(checkpoint: SessionCheckpoint) {
+  const comparison = readSermonConflict(checkpoint);
+  return comparison?.kind === 'note-text' && !comparison.scratch ? comparison : undefined;
+}
+
 export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const { draft, remoteCandidate } = checkpoint;
   const conflicts = preachDateReviewConflicts(checkpoint.confirmed.value, draft, remoteCandidate?.value ?? null, checkpoint.conflicts);
@@ -188,18 +194,19 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
     return { kind: 'note-text' as const, scratch: note.target.kind === 'scratch', mine: note.mine, stored: note.stored,
       identity: JSON.stringify([path, note, remoteCandidate.metadata, checkpoint.editGeneration]) };
   }
+  const [field, rowId, property] = path;
+  if (isPlanCellPath(path) && checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation) {
+    const mine = readPlanCellText(draft, rowId);
+    const stored = readPlanCellText(remoteCandidate.value, rowId);
+    if (mine === stored || mine !== (conflicts[0].mine.value ?? '') || stored !== (conflicts[0].theirs.value ?? '')) return undefined;
+    return { kind: 'plan-cell' as const, unverified: checkpoint.planCellDrafts?.[rowId]?.unverified === true,
+      identity: JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]),
+      mine: mine || undefined, stored: stored || undefined };
+  }
   const mine = readSermonConflictField(draft, path);
   const stored = readSermonConflictField(remoteCandidate.value, path);
   const identity = JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);
   if (JSON.stringify(mine) === JSON.stringify(stored)) return undefined;
-  const [field, rowId, property] = path;
-  if (isPlanCellPath(path) && checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation
-    && equalValues(mine, conflicts[0].mine) && equalValues(stored, conflicts[0].theirs)
-    && (!mine.exists || typeof mine.value === 'string') && (!stored.exists || typeof stored.value === 'string')) {
-    return { kind: 'plan-cell' as const, identity,
-      mine: typeof mine.value === 'string' ? mine.value : undefined,
-      stored: typeof stored.value === 'string' ? stored.value : undefined };
-  }
   if (path.length === 1 && field === 'verse' && typeof mine.value === 'string' && typeof stored.value === 'string') {
     return { kind: 'verse' as const, identity, mine: mine.value, stored: stored.value };
   }

@@ -21,12 +21,17 @@ function setup(value: ResourceSnapshot = snapshot()) {
   const session = new DataSession(value);
   const api = {
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
+    outlineReviewVersion: 0,
     recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
-    importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(),
-    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(),
+    importLegacyStudyNote: jest.fn(), holdDraftAlternative: jest.fn(), holdPlanCellAlternative: jest.fn(),
+    capturePlanCellOpening: jest.fn(), editPlanCell: jest.fn(),
+    editUnverifiedPlanCell: jest.fn(), assertPlanCellsStored: jest.fn(), retainPlanCellAlternative: jest.fn(), savePlanCells: jest.fn(), restored: false, flushServiceOrderInputs: jest.fn(),
+    saveServiceOrderInput: jest.fn(), useStoredServiceOrderInput: jest.fn(),
+    backsUpPlanCell: jest.fn(), bindPlanCellBackups: jest.fn(),
     captureTemplateTitle: jest.fn(), captureSermonNoteText: jest.fn(),
+    readLiveSermonOutline: jest.fn(), editSermonOutlineTitle: jest.fn(),
     captureSermonPlanMode: jest.fn(),
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {
       session.edit(mutate(session.checkpoint().draft));

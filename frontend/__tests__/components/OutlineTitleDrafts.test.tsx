@@ -1,12 +1,21 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 
-import { OutlineTitleDraftNotices, OutlineTitleDraftScope, useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
+import { OutlineTitleDraftNotices, OutlineTitleDraftScope, outlineTitleDraftResource, useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
+import { installStorageHarness } from '@/data-engine/__tests__/storageHarness';
+import { createOutlineTitleDraftStore } from '@/data-engine/outlineTitleDrafts.client';
+import { useOutlineTitleDraftSession } from '@/data-engine/react.client';
 import { OutlineCollisionError } from '@/services/sermons.client';
+
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useOutlineTitleDraftSession: jest.fn(),
+}));
 
 const target = { kind: 'point', id: 'point' } as const;
 const owner = 'outline-test-owner';
-const resource = 'outline-test-resource';
+const resource = outlineTitleDraftResource('sermons', 'outline-test-resource');
 const heading = 'structure.unsubmittedTitle.heading';
 
 function Editor({ write }: { write: () => Promise<unknown> }) {
@@ -32,9 +41,13 @@ const scope = (write?: () => Promise<unknown>) => <OutlineTitleDraftScope owner=
   {write && <Editor write={write} />}
 </OutlineTitleDraftScope>;
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  installStorageHarness();
+  jest.mocked(useOutlineTitleDraftSession).mockReturnValue(createOutlineTitleDraftStore().forDocument(owner, resource));
+});
 
-it('does not discard a newer copy with the same words from an older screen', () => {
+it('does not discard a newer copy with the same words from an older screen', async () => {
   const first = render(scope(async () => undefined));
   fireEvent.click(within(first.container).getByRole('button', { name: 'Open editor' }));
   const input = within(first.container).getByRole('textbox', { name: 'Title input' });
@@ -46,11 +59,26 @@ it('does not discard a newer copy with the same words from an older screen', () 
   fireEvent.change(input, { target: { value: 'Second title' } });
   fireEvent.change(input, { target: { value: 'First title' } });
   fireEvent.click(within(notice).getByRole('button', { name: 'unsavedDraft.discard' }));
-  expect(within(notice).getByDisplayValue('First title')).toBeVisible();
+  expect(await within(notice).findByDisplayValue('First title')).toBeVisible();
   first.unmount();
   second.unmount();
   render(scope());
-  expect(screen.getByDisplayValue('First title')).toBeVisible();
+  expect(await screen.findByDisplayValue('First title')).toBeVisible();
+});
+
+it('removes a discarded draft from another open view of the same sermon', async () => {
+  const first = render(scope(async () => undefined));
+  fireEvent.click(within(first.container).getByRole('button', { name: 'Open editor' }));
+  fireEvent.change(within(first.container).getByRole('textbox', { name: 'Title input' }), { target: { value: 'Draft to discard' } });
+  const second = render(scope());
+  const third = render(scope());
+  const from = within(second.container);
+  const other = within(third.container);
+  expect(await other.findByDisplayValue('Draft to discard')).toBeVisible();
+  fireEvent.click(await from.findByRole('button', { name: 'structure.unsubmittedTitle.discard' }));
+  fireEvent.click(from.getByRole('button', { name: 'unsavedDraft.discard' }));
+  await waitFor(() => expect(from.queryByDisplayValue('Draft to discard')).not.toBeInTheDocument());
+  expect(other.queryByDisplayValue('Draft to discard')).not.toBeInTheDocument();
 });
 
 it.each([true, false])('retires the copy only when the exact words were durably handed off (retained: %s)', async retained => {

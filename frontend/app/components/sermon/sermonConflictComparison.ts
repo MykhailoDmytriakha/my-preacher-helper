@@ -23,7 +23,9 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   if (kind === 'note-text' || kind === 'plan-cell') {
     const title = kind === 'plan-cell' ? fieldLabel(t, 'planText')
       : t(comparison.scratch ? 'scratch.card.label' : 'planEditor.note.label');
-    return { identity, valueKind: 'field', title,
+    const openingCopy = kind === 'plan-cell' && comparison.unverified
+      ? { heading: t('dataSync.unverifiedPlanCellTitle'), description: t('dataSync.unverifiedPlanCellDescription') } : {};
+    return { identity, valueKind: 'field', title, ...openingCopy,
       mine: comparison.mine ?? t('dataSync.emptyField'), stored: comparison.stored ?? t('dataSync.emptyField'), scopedChoice: true };
   }
   if (kind === 'verse') {

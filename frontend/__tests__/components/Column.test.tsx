@@ -1,3 +1,9 @@
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useOutlineTitleDraftSession: jest.fn(),
+}));
+
 jest.mock('@heroicons/react/24/outline', () => {
   const mockIcon = (name: string) => (props: any) => <svg {...props} data-testid={`icon-${name}`} />;
   return {
@@ -304,8 +310,11 @@ import { act, cleanup, render as rtlRender, screen, fireEvent, waitFor, within }
 import React from 'react';
 import { toast } from 'sonner';
 
-import { OutlineTitleDraftNotices, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
+import { OutlineTitleDraftNotices, OutlineTitleDraftScope, outlineTitleDraftResource } from '@/components/plan-editor/OutlineTitleDrafts';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { installStorageHarness } from '@/data-engine/__tests__/storageHarness';
+import { createOutlineTitleDraftStore } from '@/data-engine/outlineTitleDrafts.client';
+import { useOutlineTitleDraftSession } from '@/data-engine/react.client';
 import { Item, type SermonOutline } from '@/models/models';
 import { generateSermonPointsForSection } from '@/services/outline.service';
 
@@ -1111,13 +1120,25 @@ describe('Column Component', () => {
       );
     });
 
+    beforeEach(() => {
+      installStorageHarness();
+      const store = createOutlineTitleDraftStore();
+      const sessions = new Map<string, ReturnType<typeof store.forDocument>>();
+      jest.mocked(useOutlineTitleDraftSession).mockImplementation((owner, resource) => {
+        if (!owner) return null;
+        const key = JSON.stringify([owner, resource]);
+        if (!sessions.has(key)) sessions.set(key, store.forDocument(owner, resource));
+        return sessions.get(key) ?? null;
+      });
+    });
+
     it.each(['point', 'subpoint'])('keeps an unsubmitted %s title accessible after the saved row is removed', async target => {
       const onOutlineUpdate = jest.fn();
       const point = { id: 'point', text: 'Opening point', subPoints: [{ id: 'sub', text: 'Opening subpoint', position: 1 }] };
       const neighbor = { id: 'neighbor', text: 'Neighbor before removal' };
       const props = { id: 'main', title: 'Main', sermonId: 'sermon-1', items: [], onOutlineUpdate };
       const board = (outlinePoints: SermonOutline['main']) =>
-        <OutlineTitleDraftScope owner="owner" resource={`sermon-title-removal-${target}`}>
+        <OutlineTitleDraftScope owner="owner" resource={outlineTitleDraftResource('sermons', `sermon-title-removal-${target}`)}>
           <OutlineTitleDraftNotices />
           <Column {...props} outlinePoints={outlinePoints} />
         </OutlineTitleDraftScope>;
@@ -1150,7 +1171,7 @@ describe('Column Component', () => {
       const point = { id: 'point', text: 'Initial title' };
       const other = { id: 'other', text: 'Another point' };
       const board = (owner: string, resource: string, points: SermonOutline['main']) =>
-        <OutlineTitleDraftScope owner={owner} resource={resource}>
+        <OutlineTitleDraftScope owner={owner} resource={outlineTitleDraftResource('sermons', resource)}>
           <OutlineTitleDraftNotices />
           <Column id="main" title="Main" items={[]} outlinePoints={points} />
         </OutlineTitleDraftScope>;
@@ -1174,7 +1195,7 @@ describe('Column Component', () => {
       fireEvent.click(within(notice).getByRole('button', { name: 'structure.unsubmittedTitle.discard' }));
       expect(recovered).toBeVisible();
       fireEvent.click(within(notice).getByRole('button', { name: 'unsavedDraft.discard' }));
-      expect(recovered).not.toBeInTheDocument();
+      await waitFor(() => expect(recovered).not.toBeInTheDocument());
       view.unmount();
       render(board('outline-owner', 'first-sermon', [other]));
       expect(screen.queryByDisplayValue(draft)).not.toBeInTheDocument();

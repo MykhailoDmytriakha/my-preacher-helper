@@ -1,29 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
-import { useAutoSave } from '@/hooks/useAutoSave';
-import { fillRequiredFieldError } from '@/utils/actionFailureMessage';
+import { GROUP_MEETING_SLOT, groupMeetingRows as meetings, normalizeGroupMeetingDraft, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
-import { editFirstGroupMeeting, firstGroupMeetingIdentity, groupMeetingDay, isOrderedMeetingFieldValue, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
+import { editFirstGroupMeeting, firstGroupMeetingIdentity, groupMeetingDay, isOrderedMeetingFieldValue } from '@/utils/groupMeeting';
 
 import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupMeetingDate } from '@/models/models';
 import type { Dispatch, SetStateAction } from 'react';
 
-const meetings = (value: DocumentData | null | undefined) => (value?.meetingDates ?? []) as unknown as GroupMeetingDate[];
-const keepsInitialDate = (first: GroupMeetingDate, initial: DocumentData | null | undefined) =>
-  meetings(initial).some(previous => previous.id === first.id && previous.date === first.date);
-const canSave = (value: DocumentData, initial: DocumentData | null | undefined) => {
-  const first = meetings(value)[0];
-  return !first || isReadyGroupMeetingDate(first.date) || keepsInitialDate(first, initial);
-};
-
 /** The meeting's fields share one durable stage; only a finished date (or no date) may submit it. */
 export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[], pending: boolean, available = true) {
-  const form = useDataForm({ collection: 'groups', id: groupId }, 'group-meeting', [['meetingDates']]);
+  const form = useDataForm({ collection: 'groups', id: groupId }, GROUP_MEETING_SLOT, [['meetingDates']]);
   const [opened, setOpened] = useState(false);
-  const latest = useRef(form); latest.current = form;
   const { active, loading, begin, cancel } = form;
   // Save closes its stage before local cleanup settles. Reopening during that gap
   // retires the same form whose promise is still reporting the saved action.
@@ -34,24 +23,6 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   useEffect(() => {
     if (needsRefresh) void cancel().then(begin).catch(() => undefined);
   }, [needsRefresh, cancel, begin]);
-  const normalize = (current: DocumentData) => {
-    if (!canSave(current, latest.current.initialData)) throw fillRequiredFieldError('workspaces.groups.meetings.title');
-    return { ...current, meetingDates: meetings(current).map((meeting, index) => index || keepsInitialDate(meeting, latest.current.initialData) ? meeting : { ...meeting, date: meeting.date.trim() }) } as unknown as DocumentData;
-  };
-  const { debouncedSave } = useAutoSave(async () => {
-    const current = latest.current;
-    // A browser pagehide may precede React's next render. Save reads the engine-owned stage,
-    // never the render's possibly older active/dirty flags. Partial input cancels this schedule.
-    void current.save(normalize).catch(() => undefined);
-  }, { delay: 750 });
-  useLayoutEffect(() => () => { debouncedSave.flush(); }, [debouncedSave]);
-  useEffect(() => {
-    const flush = () => { debouncedSave.flush(); };
-    const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', hidden);
-    return () => { window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', hidden); };
-  }, [debouncedSave]);
   const first = meetings(form.data)[0];
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.recoveryReady,
     version: JSON.stringify([form.recoveryVersion, form.status?.phase]),
@@ -66,15 +37,11 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
     if (!form.active || needsRefresh) return;
     const identity = firstGroupMeetingIdentity(form.initialData) ?? { id: newClientId(), createdAt: new Date().toISOString() };
     const input = key === 'date' ? form.captureMeetingDateInput() : form.captureMeetingField(key, first?.id ?? identity.id);
-    let ready = false;
     void form.update(current => {
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
       const edited = editFirstGroupMeeting(previous, { [key]: typeof next === 'function' ? next(value) : next }, identity);
-      ready = canSave({ meetingDates: edited } as unknown as DocumentData, form.initialData);
       return { ...current, meetingDates: edited } as unknown as DocumentData;
-    }, input).catch(() => undefined);
-    if (ready) debouncedSave();
-    else debouncedSave.cancel();
+    }, input, true).catch(() => undefined);
   };
   const restoreDate = async (rowId: string, date: string) => {
     const chosen = date === '' ? date : groupMeetingDay(date);
@@ -91,7 +58,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
       || !isOrderedMeetingFieldValue(value)) throw new Error('The meeting field is not ready');
     const action = form.captureMeetingField(key, rowId);
     await form.save(current => {
-      const normalized = normalize(current);
+      const normalized = normalizeGroupMeetingDraft(current, form.initialData);
       const rows = meetings(normalized);
       if (rows[0]?.id !== rowId || rows[0].createdAt !== rowCreatedAt) throw new Error('The meeting changed');
       const restored = { ...rows[0] };

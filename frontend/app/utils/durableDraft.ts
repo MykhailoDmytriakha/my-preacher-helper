@@ -243,7 +243,7 @@ export function retireDraftCapture(key: string, proof: DraftCaptureProof, value:
       || serializeContent(current.value) !== serializeContent(value)) return false;
     store.removeItem(key);
     if (store.getItem(key) !== null) return false;
-    if (refusedDraftKeys.get(key)?.value === serializeContent(value)) recordDraftStorage(key, false);
+    clearDraftStorageRefusal(key, value);
     for (const listener of captureListeners) { try { listener({ key, value, ...(Number.isFinite(current.editedAt) ? { editedAt: current.editedAt } : {}) }); } catch { /* Typing stays independent. */ } }
     return true;
   } catch { return false; }
@@ -267,6 +267,11 @@ export function clearDraft(key: string): void {
   removeStoredDraft(key);
 }
 
+/** The same value is durable elsewhere, so this address no longer owes a copy of it. */
+export function clearDraftStorageRefusal(key: string, confirmed: unknown): void {
+  if (refusedDraftKeys.get(key)?.value === serializeContent(confirmed)) recordDraftStorage(key, false);
+}
+
 /**
  * Drop a draft ONLY if it still holds exactly what was just confirmed saved.
  *
@@ -280,7 +285,7 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T, expectedCopy?:
   // A superseded precreate value needs its exact stored envelope, including lineage.
   if (expectedCopy && serializeContent(readDraft<T>(key)) !== serializeContent(expectedCopy)) return;
   // The text whose copy was refused is on the server now: that copy is no longer owed.
-  if (refusedDraftKeys.get(key)?.value === serializeContent(confirmed)) recordDraftStorage(key, false);
+  clearDraftStorageRefusal(key, confirmed);
   const stored = readDraft<T>(key);
   if (!stored) return;
   if (serializeContent(stored.value) !== serializeContent(confirmed)) return;

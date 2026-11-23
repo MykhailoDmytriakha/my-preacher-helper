@@ -2,19 +2,59 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isSermonPlanMode, useDataEngine } from '@/data-engine/react.client';
+import { isSermonPlanMode, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { liveNodeIds } from '@/utils/planText';
 import { useTranslation } from '@locales/useTranslation';
 
 import { usePlanWriter } from './planWriter';
 
+import type { PlanOrphanCell } from './planDraftTypes';
 import type { useDataDocument } from '@/data-engine/react.client';
+import type { Sermon } from '@/models/models';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 
-export function PlanModeStatus({ document }: { document: SermonDocument }) {
+export function usePlanRecovery(document: SermonDocument, outline: Sermon['outline']) {
+  const { t } = useTranslation();
+  const live = liveNodeIds(outline);
+  const phase = document.status?.phase;
+  const canRecover = !document.readOnly && Boolean(document.state?.durable && phase === 'saved');
+  const recovery = useRecoveryDiscovery({
+    identity: document.recoveryIdentity,
+    enabled: Boolean(document.recoveryIdentity) && !document.loading,
+    version: JSON.stringify([document.confirmed?.metadata?.generation, document.confirmed?.metadata?.revision, canRecover]),
+    list: async () => (await document.listRecoverable()).filter(source => source.record.checkpoint.planCellDrafts),
+    recover: document.recover,
+  });
+  const orphaned: PlanOrphanCell[] = [];
+  const choices = recovery.choices.flatMap(source => {
+    const cells = Object.entries(source.record.checkpoint.planCellDrafts ?? {});
+    const [first] = cells;
+    if (!first) return [];
+    const [nodeId, cell] = first;
+    const discard = () => document.discardRecovery(source);
+    if (source.record.planCellAlternative && cells.length === 1 && !live.has(nodeId)) {
+      orphaned.push({ id: nodeId, text: cell.text, copyKey: JSON.stringify([source.id, source.record.recoveryVersion]),
+        discard: () => recovery.discard(discard) });
+      return [];
+    }
+    return [{ id: source.id, title: t('legacyRecovery.field.planText'),
+      preview: cells.map(([, copy]) => copy.text).join('\n\n'), discard }];
+  });
+  const retainOrphan = async (nodeId: string, text: string) => {
+    if (!await document.retainPlanCellAlternative(nodeId, text)) return false;
+    await recovery.refresh();
+    return true;
+  };
+  return { ...recovery, canRecover, choices, orphaned, retainOrphan };
+}
+
+export type PlanRecovery = ReturnType<typeof usePlanRecovery>;
+
+export function PlanModeStatus({ document, recovery }: { document: SermonDocument; recovery: PlanRecovery }) {
   const { t, language } = useTranslation();
-  if (document.readOnly) return null;
   const checkpoint = document.state?.checkpoint;
+  if (document.readOnly) return null;
   const comparison = checkpoint && (sermonConflictComparison(checkpoint, t, language, (side, titles) =>
     side === 'local' ? document.keepLocal(checkpoint, titles) : document.acceptRemote(checkpoint, titles)) ?? planModeComparison(checkpoint, t));
   const keepLocal = async () => {
@@ -26,7 +66,9 @@ export function PlanModeStatus({ document }: { document: SermonDocument }) {
   return <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity}
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     comparison={comparison} onKeepLocal={keepLocal}
-    onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)} /></div>;
+    onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
+    recoveryChoices={recovery.canRecover ? recovery.choices : []} recoveryLoading={recovery.loading}
+    recoveryError={recovery.canRecover ? recovery.error : null} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} /></div>;
 }
 
 export function PlanModeHistory({ document, sermonId }: { document: SermonDocument; sermonId: string }) {

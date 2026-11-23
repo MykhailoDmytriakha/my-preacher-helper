@@ -284,5 +284,5 @@ it('renames, removes and adds sub-points in the lanes, where the list above them
   fireEvent.click(screen.getByRole('button', { name: 'Add sub-point' }));
   fireEvent.change(screen.getByPlaceholderText('Sub-point name...'), { target: { value: 'new sub' } });
   fireEvent.keyDown(screen.getByPlaceholderText('Sub-point name...'), { key: 'Enter' });
-  expect(onAddSubPoint).toHaveBeenCalledWith('point', 'New sub');
+  expect(onAddSubPoint).toHaveBeenCalledWith('point', 'New sub', expect.any(String));
 });

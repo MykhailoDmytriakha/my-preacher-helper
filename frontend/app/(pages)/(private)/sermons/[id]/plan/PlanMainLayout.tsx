@@ -146,8 +146,7 @@ interface PlanMainLayoutContextValue {
   onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
-  onAuthorCell?: (nodeId: string, text: string) => void;
-  onHoldCellText?: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
+  onAuthorCell?: (nodeId: string) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -330,7 +329,6 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     onToggleEditMode,
     onSyncPairHeights,
     onUpdateCombinedPlan,
-    onHoldCellText,
     onAuthorCell,
     setGeneratedContent,
     setModifiedContent,
@@ -418,14 +416,13 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                   nodeId={node.id}
                   toolbarEnd={<PlanCellEditToggle editing takeFocus={switchedId === node.id} onToggle={() => toggleCell(node.id)} />}
                   value={nodeContent}
-                  onHoldText={typed => onHoldCellText?.(node.id, typed)}
                   editable={!generatingIds[node.id]}
                   valueBeforeUserAction={foreignValuesBeforeAction[node.id]}
                   valueIsUserAction={userActionValues[node.id] !== undefined && userActionValues[node.id] === nodeContent}
                   placeholder={noContentText}
                   minHeight={node.kind === "subPoint" ? "90px" : "120px"}
                   onChange={(newContent) => {
-                    onAuthorCell?.(node.id, newContent);
+                    onAuthorCell?.(node.id);
                     setGeneratedContent((prev) => ({ ...prev, [node.id]: newContent }));
                     setModifiedContent((prev) => ({ ...prev, [node.id]: newContent !== nodeSaved }));
                     onUpdateCombinedPlan(node.id, newContent, sectionKey);
@@ -629,8 +626,7 @@ export interface PlanMainLayoutProps {
   onToggleEditMode: (nodeId: string, outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
-  onAuthorCell?: (nodeId: string, text: string) => void;
-  onHoldCellText?: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
+  onAuthorCell?: (nodeId: string) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -675,7 +671,6 @@ export default function PlanMainLayout({
   onToggleEditMode,
   onSyncPairHeights,
   onUpdateCombinedPlan,
-  onHoldCellText,
   onAuthorCell,
   setGeneratedContent,
   setModifiedContent,
@@ -713,7 +708,6 @@ export default function PlanMainLayout({
     onToggleEditMode,
     onSyncPairHeights,
     onUpdateCombinedPlan,
-    onHoldCellText,
     onAuthorCell,
     setGeneratedContent,
     setModifiedContent,

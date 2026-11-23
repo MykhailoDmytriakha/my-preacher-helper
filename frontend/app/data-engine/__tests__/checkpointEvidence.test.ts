@@ -66,6 +66,8 @@ const evidence = {
   thoughtLockDrafts: rowDrafts, thoughtTextDrafts: rowDrafts, thoughtPlacementDrafts: rowDrafts,
   exegeticalPointDrafts: [{ nodeId: 'point', kind: 'title', observedRevision: 1, time, predecessorOperationId: 'earlier-save',
     generation: 'g', title: 'Later', ancestors: ['parent'] }],
+  serviceOrderInputs: { '["step","body"]': { field: 'body', stepId: 'step', before: 'Original', value: 'Later',
+    version: { generation: 'g', observedRevision: 1 }, time } },
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
   preachDateAudienceDrafts: rowDrafts, preachDateCityDrafts: { row: { generation: 'g', action: cityObservation } },
@@ -123,6 +125,11 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
+  if (key === 'serviceOrderInputs') {
+    source.checkpoint.confirmed.resource = { collection: 'serviceOrders', id: 'order' };
+    source.checkpoint.confirmed.value = { userId: 'owner', title: 'Service', steps: [{ id: 'step', body: 'Original' }] };
+    source.checkpoint.draft = { ...source.checkpoint.confirmed.value, steps: [{ id: 'step', body: 'Later' }] };
+  }
   if (key.startsWith('studyNote')) {
     source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     source.checkpoint.confirmed.value = { userId: 'owner', type: 'note', content: 'Original', title: 'Original' };
@@ -155,6 +162,22 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
   const kept = await throughDeviceStorage(record, key === 'groupTextReview');
   for (const checkpoint of Object.values(kept)) expect((checkpoint as unknown as Record<string, unknown>)[key]).toEqual(value);
   expect(kept.read.draft).toEqual(source.checkpoint.draft);
+});
+
+it('keeps service input and its observed revision when its clock cannot be trusted', async () => {
+  const source = titleRecord();
+  const key = '["step","body"]';
+  const input = evidence.serviceOrderInputs[key];
+  source.checkpoint.confirmed.resource = { collection: 'serviceOrders', id: 'order' };
+  source.checkpoint.confirmed.value = { userId: 'owner', title: 'Service', steps: [{ id: 'step', body: 'Original' }] };
+  source.checkpoint.draft = { ...source.checkpoint.confirmed.value, steps: [{ id: 'step', body: 'Later' }] };
+  source.checkpoint.serviceOrderInputs = { [key]: { ...input, field: 'body', time: { earliestMs: 8, latestMs: 2 } } };
+  const kept = await throughDeviceStorage(source);
+  for (const checkpoint of Object.values(kept)) {
+    expect(checkpoint.serviceOrderInputs?.[key]).toEqual({ ...input, time: null });
+    expect(checkpoint.draft).toEqual(source.checkpoint.draft);
+  }
+  takeDroppedProof('serviceOrderInputs');
 });
 
 it.each(Object.entries(placementRetries))('does not keep %s through native write, read, discovery or fork, as before, and says nothing', async (key, value) => {

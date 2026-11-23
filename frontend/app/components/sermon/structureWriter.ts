@@ -27,6 +27,8 @@ export interface OutlinePointMove { pointId: string; before: SermonOutline; vers
 
 export interface StructureWriter {
   captureNoteEdit?: CaptureOutlineNote;
+  /** The outline window may keep showing the structure it opened with while the document refreshes. */
+  pinOutlineNoteEditor?(): CaptureOutlineNote;
   /**
    * Scratch notes («наброски») on a point or a sub-point: each one a piece of its own, never glued into
    * the node's old one-line `note`. Editing is bound to what the person saw through `captureSketchEdit`.

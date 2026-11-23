@@ -51,7 +51,6 @@ import { StructureReadOnlyBoard } from "./components/StructureReadOnlyBoard";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
-import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
 import { ThoughtLockHistory, ThoughtPlacementHistory, useThoughtPlacementComparison } from "./ThoughtLockHistory";
@@ -282,11 +281,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
     ambiguous: getSectionLabel(t, 'ambiguous'),
   }), [t]);
 
-  // Pending state comes from the optimistic write path, so no separate sync callback is needed.
-  const { debouncedSaveThought, debouncedSaveStructure, retryThoughtSave } = usePersistence({
-    setSermon,
-  });
-
   // Section visibility (subsumes focus mode: 1 visible = focus, 2 = pair, 3 = all)
   const {
     focusedColumn,
@@ -339,8 +333,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
     projectBoard,
     setSermon,
     sermonId,
-    debouncedSaveThought,
-    debouncedSaveStructure,
   });
 
   // Sermon actions hook
@@ -358,14 +350,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
     containers,
     setContainers,
     containersRef,
-    allowedTags,
     onPlacementCaptured: handlePlacementCaptured,
-    debouncedSaveThought,
-    debouncedSaveStructure,
-    retryThoughtSave: async (thoughtId: string) => {
-      if (!sermonId) return;
-      await retryThoughtSave(sermonId, thoughtId);
-    },
   });
 
   const requestAiSortForOutlinePoint = useCallback(async (columnId: "introduction" | "main" | "conclusion", outlinePointId: string) => {
@@ -512,7 +497,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
       // 3) Update sermon state (thoughts + structure)
       setSermon((prev) => prev ? { ...prev, thoughts: [...prev.thoughts, thought], structure: newStructure, thoughtsBySection: newStructure } : prev);
 
-      // Use debounced structure save
       // Third argument: the arrangement as this screen holds it stored, so a move
       // made on another device is not reverted by this save.
       await structureWriter.updateStructure(sermon.id, newStructure, sermon.structure, { thoughtIds: [thought.id] });
@@ -678,12 +662,10 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
     }
   };
 
-  const handleAddOutlinePoint = async (sectionId: string, index: number, text: string) => {
+  const handleAddOutlinePoint = async (sectionId: string, index: number, text: string, newPointId = newClientId()) => {
     if (!sermon || !text.trim()) return;
 
     try {
-      // The merge identifies plan points by id, so this id must remain unique after it is saved.
-      const newPointId = newClientId();
       const newPoint: SermonPoint = {
         id: newPointId,
         text: text.trim(),
@@ -727,11 +709,9 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
 
       // 3. insert new point at specified index
       const sectionPoints = updatedOutline[sectionId as keyof SermonOutline] || [];
-      if (index >= sectionPoints.length) {
-        sectionPoints.push(newPoint);
-      } else {
-        sectionPoints.splice(index, 0, newPoint);
-      }
+      const previousIndex = sectionPoints.findIndex(point => point.id === newPointId);
+      if (previousIndex >= 0) sectionPoints[previousIndex] = { ...sectionPoints[previousIndex], text: newPoint.text };
+      else sectionPoints.splice(index, 0, newPoint);
       updatedOutline[sectionId as keyof SermonOutline] = sectionPoints;
 
       // 4. Update local sermon state
@@ -752,10 +732,10 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
         currentSaveState.confirmedOutline = savedOutline ?? updatedOutline;
         currentSaveState.confirmedSequence = saveSequence;
       }
-
+      return savedOutline;
     } catch (error) {
       console.error('Error adding outline point:', error);
-      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Failed to save structure' }));
+      throw error;
     }
   };
 

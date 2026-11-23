@@ -15,11 +15,11 @@ import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { orphanedCells } from "../OrphanedPlanText";
-import { showPlanCellDrafts } from "../planDraftCheckpoint";
+import { showDirtyPlanCells, showPlanCellDrafts } from "../planDraftCheckpoint";
 import { usePlanTextBaseline } from "../planTextBaseline";
-import { usePlanWriter } from "../planWriter";
+import { usePlanWriter, type IsPlanTextSourceStored } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
-import usePlanTextDraft, { type PlanTextDraft } from "../usePlanTextDraft";
+import usePlanTextDraft, { type PlanCellBackupAuthority } from "../usePlanTextDraft";
 import { useSettledPlanCells } from '../useSettledPlanCells';
 
 import type { DurablePlanState } from "../planDraftCheckpoint";
@@ -49,13 +49,14 @@ const containsParagraph = (text: string, paragraph: string) => ("\n\n" + text + 
 interface UseManualConspectusParams {
   sermon: Sermon | null;
   confirmedRevision?: number;
-  draftScope?: { owner: string | null; sermonId: string; state?: DurablePlanState | null; frozen: boolean };
+  draftScope?: { owner: string | null; sermonId: string; state?: DurablePlanState | null; frozen: boolean; backupAuthority?: PlanCellBackupAuthority };
+  retainOrphan?: (nodeId: string, text: string) => Promise<boolean>;
   mode?: 'manual' | 'note';
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
 export interface ManualConspectus {
-  draft: PlanTextDraft;
+  draft: ReturnType<typeof usePlanTextDraft>;
   livePlanNodes: Set<string>;
   contentByNodeId: Record<string, string>;
   userActionValues: Record<string, string>;
@@ -68,12 +69,12 @@ export interface ManualConspectus {
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
   pendingNodeIds: Set<string>;
   /** The queued words of those cells — see `usePendingPlanCells`. */
-  pendingText: Record<string, string>;
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
   restoreCells: (cells: Record<string, string>) => boolean;
-  applyGeneratedCells: (cells: Record<string, string>) => boolean;
-  applyProposal?: (cells: Record<string, string>, before: Record<string, string>) => Promise<void> | null | undefined;
+  restoreLegacyCells: (cells: Record<string, string>, before: Record<string, string>) => Promise<boolean>;
+  applyProposal: (cells: Record<string, string>, before: Record<string, string>,
+    isSourceStored?: IsPlanTextSourceStored) => Promise<boolean> | null | undefined;
   /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
   discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
@@ -98,6 +99,7 @@ export function useManualConspectus({
   sermon,
   confirmedRevision,
   draftScope,
+  retainOrphan,
   t,
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
@@ -121,7 +123,9 @@ export function useManualConspectus({
   const isTransferringText = useCallback((nodeId: string) => busyNodes.current.has(nodeId), []);
   const [rescuedAppend, setRescuedAppend] = useState<ManualConspectus["rescuedAppend"]>();
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
-  const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
+  const [bufferedEdits, setModifiedNodeIds] = useState<Record<string, boolean>>({});
+  const checkpoint = draftScope?.state?.checkpoint;
+  const modifiedNodeIds = useMemo(() => showDirtyPlanCells(bufferedEdits, checkpoint), [bufferedEdits, checkpoint]);
   const showSettled = useCallback((cells: Record<string, string>) => {
     setContentByNodeId(previous => ({ ...previous, ...cells }));
     setModifiedNodeIds(previous => ({ ...previous, ...Object.fromEntries(Object.keys(cells).map(id => [id, false])) }));
@@ -132,14 +136,14 @@ export function useManualConspectus({
   const baseline = usePlanTextBaseline(sermon?.id);
 
   /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
-  const { nodeIds: pendingNodeIds, text: pendingText, refresh: refreshPending } =
+  const { nodeIds: pendingNodeIds, refresh: refreshPending } =
     usePendingPlanCells(sermon);
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
   const draft = usePlanTextDraft({
-    uid: draftScope?.owner, sermonId: draftScope?.sermonId, contentByNodeId, modifiedNodeIds, pendingNodeIds, pendingText,
-    liveNodeIds: livePlanNodes, frozen: draftScope?.frozen, durableState: draftScope?.state,
+    uid: draftScope?.owner, sermonId: draftScope?.sermonId, liveNodeIds: livePlanNodes, frozen: draftScope?.frozen,
+    backupAuthority: draftScope?.backupAuthority,
   });
-  const { keepDetachedCell, prepareTransferCapture } = draft;
+  const { prepareTransferCapture, refreshLegacy } = draft;
 
   const sermonRef = useRef<Sermon | null>(sermon);
   useEffect(() => {
@@ -721,8 +725,13 @@ export function useManualConspectus({
         const needsCopy = transfer && removal.sourceText !== rescued
           && !containsParagraph(removal.parentText ?? "", rescued);
         if (!modifiedRef.current[subPointId]) {
-          const saved = !needsCopy || keepDetachedCell(subPointId, rescued);
-          if (saved) forgetCells([subPointId]);
+          const retained = needsCopy && await retainOrphan?.(subPointId, rescued).catch(error => {
+            debugLog("Keeping an independent plan cell failed", { sermonId, subPointId, error });
+            return false;
+          });
+          if (!mounted.current) return !needsCopy;
+          if (retained) refreshLegacy();
+          if (!needsCopy || retained) forgetCells([subPointId]);
           else {
             contentRef.current = { ...contentRef.current, [subPointId]: rescued };
             modifiedRef.current = { ...modifiedRef.current, [subPointId]: true };
@@ -731,7 +740,7 @@ export function useManualConspectus({
             toast.error(t(SAVE_POINT_ERROR_KEY));
           }
         }
-        if (needsCopy) toast.warning(t("plan.orphanedBody"));
+        if (needsCopy && mounted.current) toast.warning(t("plan.orphanedBody"));
         return !needsCopy;
       }
 
@@ -759,7 +768,7 @@ export function useManualConspectus({
       refreshPending();
       setBusy([]);
     }
-  }, [baseline, forgetCells, keepDetachedCell, mode, planWriter, prepareTransferCapture, refreshPending, setBusy, setContentByNodeId, settle, t]);
+  }, [baseline, forgetCells, mode, planWriter, prepareTransferCapture, refreshLegacy, refreshPending, retainOrphan, setBusy, setContentByNodeId, settle, t]);
 
   /** The accepted outline removal retires the text it observed in the same command. */
   const removePoint = useCallback(async (pointId: string) => {
@@ -823,31 +832,32 @@ export function useManualConspectus({
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never
    * confirmed, so the screen must keep saying so until a save actually succeeds.
    */
-  const restoreCells = (cells: Record<string, string>) => {
-    if (!changeOwnCells(cells)) return false;
-    void planWriter.restorePlanText?.(cells).catch(() => toast.error(t(SAVE_POINT_ERROR_KEY)));
-    return true;
+  const restoreCells = changeOwnCells;
+  const restoreLegacyCells = async (cells: Record<string, string>, before: Record<string, string>) => {
+    if (!planWriter.stagePlanText || Object.keys(cells).some(id => busyNodes.current.has(id))) return false;
+    try {
+      const staging = planWriter.stagePlanText(cells, before);
+      changeOwnCells(cells);
+      await staging;
+      return true;
+    } catch (error) {
+      if (mounted.current) toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
+      return false;
+    }
   };
 
-  const applyGeneratedCells = (cells: Record<string, string>) => {
-    const entries = Object.entries(cells);
-    if (entries.some(([id]) => busyNodes.current.has(id))) return false;
-    // The proposal stays in storage unless every accepted cell has its own durable copy.
-    if (!entries.every(([id, text]) => draft.keepGeneratedCell(id, text))) return false;
-    return changeOwnCells(cells);
-  };
-
-  const applyProposal: NonNullable<ManualConspectus['applyProposal']> = (cells, before) => {
+  const applyProposal: ManualConspectus['applyProposal'] = (cells, before, isSourceStored) => {
     if (Object.keys(cells).some(id => busyNodes.current.has(id))) return null;
-    const applying = planWriter.applyPlanProposal?.(cells, before);
+    const applying = planWriter.applyPlanProposal?.(cells, before, isSourceStored);
     if (!applying) return applying;
     changeOwnCells(cells);
     return applying.then(saved => {
-      if (!saved || !mounted.current) return;
+      if (!saved || !mounted.current) return saved;
       settle(cells);
       const current = sermonRef.current;
       if (current && !current.planMode) void planWriter.initializePlanMode(current.id, mode).catch(error =>
         debugLog("Recording the plan editor failed", { error }));
+      return true;
     });
   };
 
@@ -863,10 +873,9 @@ export function useManualConspectus({
     busyNodeIds,
     modifiedNodeIds,
     pendingNodeIds,
-    pendingText,
     setNodeContent,
     restoreCells,
-    applyGeneratedCells,
+    restoreLegacyCells,
     applyProposal,
     discardCells,
     savePoint,

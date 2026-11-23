@@ -9,9 +9,10 @@ import React from 'react';
 import { toast } from 'sonner';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
+import { planPointResultKey } from '@/(pages)/(private)/sermons/[id]/plan/planPointResult.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { draftKey, findDraftCopies, readDraft, saveDraft } from '@/utils/durableDraft';
 import '@testing-library/jest-dom';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
@@ -765,6 +766,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await screen.findByTestId('plan-introduction-left-section');
 
     const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
+    await waitFor(() => expect(generateButtons[0]).toBeEnabled());
     fireEvent.click(generateButtons[0]);
 
     await waitFor(() => {
@@ -772,9 +774,170 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
 
     expect(screen.getAllByText('Mock Generated Content').length).toBeGreaterThan(0);
+    const deviceCopies = await harness.checkpoints.listRecoverable('test-user', resource);
+    expect(deviceCopies.some(({ record }) => record.checkpoint.planCellDrafts?.['intro-p1']?.text === 'Mock Generated Content')).toBe(true);
+    expect(storedPlanText()['intro-p1']).not.toBe('Mock Generated Content');
     const previewSurfaces = screen.getAllByTestId('plan-point-preview-surface');
     expect(previewSurfaces[0]).toHaveClass('overflow-visible');
     expect(previewSurfaces[0]).toHaveClass('bg-gray-50/70');
+  });
+
+  it('retains the complete generated result until the engine has verified its device copy', async () => {
+    const content = 'Mock Generated Content';
+    const key = planPointResultKey('test-user', resource.id, 'intro-p1');
+    const started = deferred();
+    const release = deferred();
+    const put = harness.checkpoints.put;
+    const storage = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+      if (record.checkpoint.planCellDrafts?.['intro-p1']?.text === content) {
+        started.resolve();
+        await release.promise;
+      }
+      await put(record);
+    });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      await screen.findByTestId('plan-introduction-left-section');
+      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
+      await waitFor(() => expect(generate).toBeEnabled());
+      fireEvent.click(generate);
+      await act(async () => { await started.promise; });
+
+      expect(readDraft(key)?.value).toMatchObject({ kind: 'ready', content });
+      expect((await harness.checkpoints.listRecoverable('test-user', resource)).some(({ record }) =>
+        record.checkpoint.planCellDrafts?.['intro-p1']?.text === content)).toBe(false);
+      expect(mockToast.success).not.toHaveBeenCalledWith('Content generated');
+
+      await act(async () => { release.resolve(); });
+      await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith('Content generated'));
+      expect(readDraft(key)).toBeNull();
+      expect((await harness.checkpoints.listRecoverable('test-user', resource)).some(({ record }) =>
+        record.checkpoint.planCellDrafts?.['intro-p1']?.text === content)).toBe(true);
+    } finally {
+      release.resolve();
+      view.unmount();
+      storage.mockRestore();
+    }
+  });
+
+  it('uses the stored generation as the only recovery copy when IndexedDB refuses the handoff', async () => {
+    const content = 'Mock Generated Content';
+    const resultKey = planPointResultKey('test-user', resource.id, 'intro-p1');
+    const cellCopies = () => findDraftCopies('test-user', resource.id, 'plan:intro-p1');
+    const put = harness.checkpoints.put;
+    const storage = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+      if (record.checkpoint.planCellDrafts?.['intro-p1']?.text === content) throw new Error('IndexedDB refused the draft');
+      await put(record);
+    });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      await screen.findByTestId('plan-introduction-left-section');
+      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
+      await waitFor(() => expect(generate).toBeEnabled());
+      fireEvent.click(generate);
+      await waitFor(() => expect(mockToast.info).toHaveBeenCalledWith('draftStorage.title'));
+
+      expect(readDraft(resultKey)?.value).toMatchObject({ kind: 'ready', content });
+      expect(cellCopies()).toEqual([]);
+      expect(mockToast.success).not.toHaveBeenCalledWith('Content generated');
+      expect(storedPlanText()['intro-p1']).not.toBe(content);
+    } finally {
+      view.unmount();
+      storage.mockRestore();
+    }
+  });
+
+  it('does not recover a declined generation after IndexedDB refused to take it into the plan', async () => {
+    const content = 'Mock Generated Content';
+    const earlier = 'Paragraph already in the plan.';
+    openSermon({ ...defaultSermon(), planText: { 'intro-p1': earlier } });
+    const resultKey = planPointResultKey('test-user', resource.id, 'intro-p1');
+    const put = harness.checkpoints.put;
+    const storage = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+      if (record.checkpoint.planCellDrafts?.['intro-p1']?.text === content) throw new Error('IndexedDB refused the draft');
+      await put(record);
+    });
+    const view = renderWithQueryClient(<SermonPlanPage />);
+    try {
+      await screen.findByTestId('plan-introduction-left-section');
+      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
+      await waitFor(() => expect(generate).toBeEnabled());
+      fireEvent.click(generate);
+      await waitFor(() => expect(mockToast.info).toHaveBeenCalledWith('draftStorage.title'));
+      expect(readDraft(resultKey)?.value).toMatchObject({ kind: 'ready', content });
+
+      fireEvent.click(screen.getByRole('button', { name: 'plan.pointResultDismiss' }));
+      expect(readDraft(resultKey)).toBeNull();
+      fireEvent(window, new Event('pagehide'));
+      expect(findDraftCopies('test-user', resource.id, 'plan:intro-p1')).toEqual([]);
+      view.unmount();
+      const reopened = renderWithQueryClient(<SermonPlanPage />);
+      await screen.findByText(earlier);
+      expect(screen.queryByText(content)).not.toBeInTheDocument();
+      expect(storedPlanText()['intro-p1']).toBe(earlier);
+      reopened.unmount();
+    } finally {
+      view.unmount();
+      storage.mockRestore();
+    }
+  });
+
+  it.each(['in a sibling while writing', 'in the same cell after refusal'] as const)(
+    'keeps manual words beside a refused generation (%s)', async scenario => {
+      mockRealEditor = true;
+      const content = 'Mock Generated Content';
+      const earlier = 'Paragraph already in the plan.';
+      openSermon({ ...defaultSermon(), planText: { 'intro-p1': earlier } });
+      const held = deferred();
+      const release = deferred();
+      const put = harness.checkpoints.put;
+      const storage = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+        if (record.checkpoint.planCellDrafts?.['intro-p1']?.text === content) {
+          held.resolve();
+          await release.promise;
+          throw new Error('IndexedDB refused the generated draft');
+        }
+        await put(record);
+      });
+      const view = renderWithQueryClient(<SermonPlanPage />);
+      try {
+        const inSibling = scenario === 'in a sibling while writing';
+        const target = await screen.findByTestId(inSibling ? 'plan-main-right-section' : 'plan-introduction-right-section');
+        const nodeId = inSibling ? 'main-p1' : 'intro-p1';
+        fireEvent.click(within(target).getByTitle('Edit Mode'));
+        const editor = mountedEditor(target);
+        const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
+        await waitFor(() => expect(generate).toBeEnabled());
+        fireEvent.click(generate);
+        await act(async () => { await held.promise; });
+        if (inSibling) {
+          expect(editor.isEditable).toBe(true);
+          typeAtEnd(editor, ' My later sentence.');
+        }
+
+        await act(async () => { release.resolve(); });
+        await waitFor(() => expect(mockToast.info).toHaveBeenCalledWith('draftStorage.title'));
+        if (!inSibling) {
+          await waitFor(() => expect(editor.isEditable).toBe(true));
+          expect(markdown(editor)).toBe(earlier);
+          typeAtEnd(editor, ' My later sentence.');
+        }
+        const later = markdown(editor);
+        expect(later).toMatch(/My later sentence\.$/);
+        fireEvent.click(screen.getByRole('button', { name: 'plan.pointResultDismiss' }));
+        await waitFor(async () => {
+          const drafts = await harness.checkpoints.listRecoverable('test-user', resource);
+          expect(drafts.some(({ record }) => record.checkpoint.planCellDrafts?.[nodeId]?.text === later)).toBe(true);
+          expect(drafts.some(({ record }) => record.checkpoint.planCellDrafts?.['intro-p1']?.text === content)).toBe(false);
+        });
+        expect(markdown(editor)).toBe(later);
+        expect(storedPlanText()['intro-p1']).toBe(earlier);
+      } finally {
+        release.resolve();
+        view.unmount();
+        storage.mockRestore();
+        mockRealEditor = false;
+      }
   });
 
   it('keeps multiple plan point generate loaders independent', async () => {
@@ -1234,6 +1397,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       saveDraft(draftKey('test-user', 'test-sermon-id', 'plan:intro-p1', 'second'), 'Second requested words.', undefined, false, 2);
       const view = renderWithQueryClient(<SermonPlanPage />);
       fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      await screen.findAllByTitle('Edit Mode');
       fireEvent.click(screen.getAllByTitle('Edit Mode')[0]);
       const editor = mountedEditor(view.container);
       const before = markdown(editor);
@@ -1256,7 +1420,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     try {
       fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
       const restore = await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' });
-      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      fireEvent.click((await screen.findAllByTitle(/Generate|Regenerate/))[0]);
       if (nodeId === 'intro-p1') {
         expect(restore).toBeDisabled();
         fireEvent.click(restore);
@@ -1264,7 +1428,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       } else {
         expect(restore).toBeEnabled();
         fireEvent.click(restore);
-        expect(screen.getByText('Second draft.')).toBeInTheDocument();
+        expect(within(screen.getByTestId('plan-main-right-section')).getByText('Second draft.')).toBeInTheDocument();
       }
       await act(async () => {
         answer.resolve({ ok: true, status: 200, json: async () => ({ content: 'AI replacement.' }) } as Response);
@@ -1273,9 +1437,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       if (nodeId === 'intro-p1') {
         expect(restore).toBeEnabled();
         fireEvent.click(restore);
-        expect(await screen.findByText('Second draft.')).toBeInTheDocument();
+        expect(await within(screen.getByTestId('plan-introduction-right-section')).findByText('Second draft.')).toBeInTheDocument();
       } else {
-        expect(screen.getByText('Second draft.')).toBeInTheDocument();
+        expect(within(screen.getByTestId('plan-main-right-section')).getByText('Second draft.')).toBeInTheDocument();
       }
     } finally {
       view.unmount();

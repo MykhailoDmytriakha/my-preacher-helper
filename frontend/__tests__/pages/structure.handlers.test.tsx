@@ -6,6 +6,7 @@ import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { getExportContent } from '@/utils/exportContent';
 import { mergeOutline } from '@/utils/mergeOutline';
+import type { AddOutlinePoint } from '@/components/column/types';
 import type { DocumentData } from '@/data-engine/types';
 import { toast } from 'sonner';
 import { createMockSermon, createMockThought, createMockItem, createMockSermonPoint } from '@test-utils/structure-test-utils';
@@ -69,15 +70,13 @@ jest.mock('sonner', () => ({
 }));
 
 const focusModeState: { focusedColumn: string | null } = { focusedColumn: 'introduction' };
-const debouncedSaveThoughtSpy = jest.fn();
-const debouncedSaveStructureSpy = jest.fn();
 const handleAiSortSpy = jest.fn();
 let autoTriggerAiSort = false;
 let autoTriggerPointLock = true;
 let autoTriggerThoughtLock = false;
 let autoTriggerSubPointDelete = false;
 let suppressAutomaticColumnHandlers = false;
-let addOutlinePointHandler: ((sectionId: string, index: number, text: string) => Promise<void>) | null = null;
+let addOutlinePointHandler: AddOutlinePoint | null = null;
 
 jest.mock('@dnd-kit/core', () => {
   const MockDndContext = ({ children, onDragEnd }: any) => {
@@ -139,13 +138,6 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useOutlineStats', ()
   useOutlineStats: () => ({ thoughtsPerSermonPoint: {} }),
 }));
 
-jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/usePersistence', () => ({
-  usePersistence: () => ({
-    debouncedSaveThought: debouncedSaveThoughtSpy,
-    debouncedSaveStructure: debouncedSaveStructureSpy,
-  }),
-}));
-
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions', () => ({
   useSermonActions: () => ({
     editingItem: null,
@@ -153,13 +145,11 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions', (
     handleEdit: jest.fn(),
     handleCloseEdit: jest.fn(),
     handleAddThoughtToSection: jest.fn(),
-    handleSaveEdit: jest.fn(),
     handleDeleteThought: jest.fn(async (id) => {
       await mockEngineWriter.deleteThought('sermon-1', { id });
       await mockEngineWriter.updateStructure('sermon-1', {});
     }),
     handleMoveToAmbiguous: jest.fn(),
-    handleRetryPendingThought: jest.fn(),
   }),
 }));
 
@@ -326,7 +316,6 @@ describe('StructurePage handlers', () => {
       expect(updateSermonOutline).toHaveBeenCalled();
       expect(updateStructure).toHaveBeenCalled();
       expect(getExportContent).toHaveBeenCalled();
-      expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -548,7 +537,6 @@ describe('StructurePage handlers', () => {
       expect(sermonState.thoughts[0]).toMatchObject({ id: 't1', text: 'Intro', outlinePointId: undefined, subPointId: null });
       expect(containersState.introduction[0]).toMatchObject({ id: 't1', outlinePointId: undefined, subPointId: null });
     });
-    expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
   });
 
   it('clears sub-point ids when a sub-point is deleted', async () => {
@@ -608,7 +596,6 @@ describe('StructurePage handlers', () => {
       expect(sermonState.thoughts[0]).toMatchObject({ id: 't1', text: 'Intro', outlinePointId: 'op-1', subPointId: null });
       expect(containersState.introduction[0]).toMatchObject({ id: 't1', outlinePointId: 'op-1', subPointId: null });
     });
-    expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
   });
 
   it('submits the point locks in one write and leaves the displayed copy intact on failure', async () => {
@@ -798,7 +785,7 @@ describe('StructurePage handlers', () => {
     const { rerender } = render(<StructurePage />);
     await waitFor(() => expect(addOutlinePointHandler).not.toBeNull());
 
-    let firstSave: Promise<void>;
+    let firstSave: ReturnType<AddOutlinePoint>;
     act(() => {
       firstSave = addOutlinePointHandler!('introduction', 1, 'Point A');
     });
@@ -806,7 +793,7 @@ describe('StructurePage handlers', () => {
 
     rerender(<StructurePage />);
     await act(async () => {
-      await addOutlinePointHandler!('introduction', 2, 'Point B');
+      await expect(addOutlinePointHandler!('introduction', 2, 'Point B')).rejects.toThrow('newer save failed');
     });
     expect(serverOutline.introduction.map((point) => point.text)).not.toContain('Point B');
 

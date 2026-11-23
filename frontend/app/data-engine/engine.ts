@@ -1,3 +1,6 @@
+import debounce from 'lodash/debounce';
+import { v5 as uuidV5 } from 'uuid';
+
 import { isConnectionFailure } from '@/utils/connectionFailure';
 import { noteCaptureWriter } from '@/utils/draftCaptureRecovery.client';
 
@@ -21,10 +24,11 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
+import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, PendingMeetingResume, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
@@ -44,6 +48,7 @@ import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerC
 import { hasOutlineParentChoice, readOutlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { readOutlineTitleComparison } from './outlineTitleEdit';
 import { oversizedNoteOpening } from './oversizedNoteCorrection';
+import { PlanCellEmergency, type PlanCellEmergencyStorage } from './planCellEmergency';
 import { unresolvedPreachDateField } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
@@ -52,6 +57,11 @@ import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation,
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
+import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
+import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
+import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
+import { projectServiceOrderInput, readServiceOrderInputValue, serviceOrderInputKey, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
+import { includesServiceOrderReserve, matchesServiceOrderReserve, SERVICE_ORDER_INPUT_SLOT, ServiceOrderInputReserve, type ServiceOrderReserveStorage } from './serviceOrderInputReserve';
 import { DataSession, hasUnreadableDraftProof } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -73,13 +83,13 @@ import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
-import type { PlanCellOpening } from './sermonPlanCellSession';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import type { EditorCommitAction, StudyNoteContentCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
+import type { PlanDraftBinding } from '@/utils/planDraftCapture.client';
 import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
@@ -107,6 +117,8 @@ export interface DataEngineOptions {
   membershipScopes?: MembershipScopeStore;
   /** Retired device writes survive replacement of the browser provider. */
   localWriteback?: LocalWriteback;
+  planCellEmergencyStorage?: PlanCellEmergencyStorage;
+  serviceOrderReserveStorage?: ServiceOrderReserveStorage;
   /** Optional device-local knowledge used only by recovery choice lists. */
   recoveryPresence?: RecoveryPresencePort;
   /** A failure of background work, with the document or collection it concerns when there is one. */
@@ -118,7 +130,7 @@ export interface ManagedManualForm {
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
-  update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void>;
+  update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
   save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave, onCaptured?: () => void): Promise<void>;
   cancel(): Promise<void>;
@@ -130,10 +142,15 @@ export interface ManagedManualForm {
   discardRecovery(source: StoredManualScope): Promise<void>;
 }
 
-type ClosingSaveIntent = { checkpoint: SessionCheckpoint; action?: EditorCommitAction; planCellSaveIds?: readonly string[] };
+type ClosingSaveIntent = { checkpoint: SessionCheckpoint; action?: EditorCommitAction; planCellSaveIds?: readonly string[]; serviceOrderInput?: ServiceOrderInput; serviceOrderComparison?: ServiceOrderInputComparison };
 
 interface HeldDraftAlternative extends RecoveryCheckpoint {
   isStaged: () => Promise<boolean>;
+}
+
+interface HeldPlanCellAlternative {
+  retained: Promise<boolean>;
+  settle(keep: boolean, chosenWrite?: void | Promise<unknown>): Promise<void>;
 }
 
 export interface ManagedEditor {
@@ -152,11 +169,21 @@ export interface ManagedEditor {
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
   importLegacyStudyNote(edits: LegacyStudyNoteImport): Promise<void>;
-  editPlanCell(opening: PlanCellOpening, text: string): Promise<void>;
+  editPlanCell(opening: PlanCellOpening, text: string, previous?: string, isSourceStored?: () => boolean): Promise<void>;
+  editUnverifiedPlanCell?(nodeId: string, text: string, previous: string): Promise<void>;
+  backsUpPlanCell?(nodeId: string, text: string): boolean;
+  bindPlanCellBackups?(cells: Readonly<Record<string, string>>): PlanDraftBinding[];
+  assertPlanCellsStored(cells: Readonly<Record<string, string>>): Promise<void>;
   savePlanCells(nodeIds: readonly string[]): Promise<void>;
+  stageServiceOrderInput(value: DocumentData | null, shown: ShownCopy | undefined, input: ServiceOrderInput): Promise<void>;
+  flushServiceOrderInputs(filter?: ServiceOrderInputFilter): Promise<void>;
+  saveServiceOrderInput(input: ServiceOrderInput, compared?: ServiceOrderInputComparison): Promise<void>;
+  useStoredServiceOrderInput(input: ServiceOrderInput, compared: ServiceOrderInputComparison): Promise<void>;
   /** Keep a distinct, unsent alternative based on the confirmed copy, without replacing the open draft. */
-  holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
+  holdDraftAlternative(alternative: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
+  holdPlanCellAlternative?(alternative: PlanCellAlternative): HeldPlanCellAlternative;
+  retainSermonOutlineReview?(input: SermonOutlineReviewInput): { location: 'active' | 'deferred'; durable: Promise<void> } | undefined;
+  editOutlineTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<DocumentData | null>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
@@ -188,6 +215,9 @@ export interface EditorOpenOptions {
 
 interface EditorEntry {
   autoSaveOnResume?: boolean;
+  planCellEmergency?: PlanCellEmergency;
+  serviceOrderInputReserve?: ServiceOrderInputReserve;
+  serviceOrderAutosave?: ServiceOrderAutosave;
   retirement?: { owner: string; generation: number; editorId: string; resource: ResourceRef };
   manualChoices?: ManualChoiceSources;
   presence: RecoveryPresenceLease;
@@ -219,6 +249,7 @@ interface ManualFormEntry {
   scopeId: string;
   emit(): void;
   presence: RecoveryPresenceLease | null;
+  meetingSave?: { (): void; cancel(): void; flush(): void };
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -382,6 +413,11 @@ export class DataEngine {
 
   setVisible(visible: boolean): void {
     if (this.disposed) return;
+    if (!visible) {
+      this.preserveDraftReserves();
+      this.flushServiceOrderInputs();
+      this.flushGroupMeetingEdits();
+    }
     const changed = this.visible !== visible;
     this.visible = visible;
     if (visible) this.refreshLocalOnReturn();
@@ -391,6 +427,22 @@ export class DataEngine {
     this.options.observer.setVisible(visible);
     if (visible) this.backgroundDrain();
     this.notifyReachable();
+  }
+
+  /** Complete only device-local emergency writes before the page can disappear. */
+  preserveDraftReserves(): void {
+    for (const entry of this.editors.values()) {
+      entry.planCellEmergency?.preserve();
+      entry.serviceOrderInputReserve?.preserve();
+    }
+  }
+
+  flushServiceOrderInputs(): void {
+    for (const entry of this.editors.values()) void entry.serviceOrderAutosave?.flush().catch(() => undefined);
+  }
+
+  flushGroupMeetingEdits(): void {
+    for (const form of this.manualForms.values()) form.meetingSave?.flush();
   }
 
   /** Focus is a hint to reread durable local work, never proof of delivery or action order. */
@@ -1252,15 +1304,97 @@ export class DataEngine {
       .filter(({ record }) => isRecoverableCheckpoint(record) && !isPassiveManualContinuation(record));
   }
 
+  /** Import only a closed writer's exact reserve. A live writer still owns its in-flight checkpoint. */
+  private async importServiceOrderReserves(owner: string, generation: number, resource: ResourceRef, store: CheckpointRecoveryStore): Promise<void> {
+    const reserves = this.options.serviceOrderReserveStorage?.list(owner, resource.id);
+    if (!reserves?.length) return;
+    const known = await this.knownSnapshot(owner, generation, resource);
+    for (const source of reserves) {
+      const { editorId, token, payload } = source;
+      const held = await this.recoveryPresence.held(owner, 'checkpoint', recoveryCheckpointId(owner, editorId));
+      this.assertCurrent(owner, generation);
+      if (held === true || this.editors.has(editorId)) continue;
+      const original = await store.read(owner, editorId);
+      this.assertCurrent(owner, generation);
+      if (original && matchesServiceOrderReserve(original.checkpoint.confirmed, payload)) {
+        const opening = original.checkpoint;
+        const address = serviceOrderInputKey(payload.input);
+        if (includesServiceOrderReserve(opening, payload) || (opening.editGeneration >= payload.editGeneration
+          && opening.serviceOrderInputs?.[address])) {
+          if (held === false) source.retire();
+          continue;
+        }
+        if (held === false && store.replaceClosedServiceInput && opening.editGeneration < payload.editGeneration
+          && !original.prepared && !original.unfinalized.length && !Object.keys(opening.pending).length) {
+          const draft = projectServiceOrderInput(opening.draft, payload.input);
+          if (draft) {
+            const checkpoint = { ...opening, draft, dirty: true, editGeneration: payload.editGeneration,
+              serviceOrderInputs: { ...opening.serviceOrderInputs, [address]: payload.input } };
+            const replaced = await store.replaceClosedServiceInput(original, { ...original, checkpoint });
+            this.assertCurrent(owner, generation);
+            if (replaced) { source.retire(); continue; }
+          }
+        }
+      }
+      const confirmed = known ?? original?.checkpoint.confirmed;
+      if (!confirmed || !snapshotBelongsToOwner(owner, confirmed) || (!confirmed.value && !confirmed.metadata?.deleted)) continue;
+      const matches = matchesServiceOrderReserve(confirmed, payload);
+      if (matches && payload.input.version && (payload.input.version.generation !== confirmed.metadata?.generation
+        || payload.input.version.observedRevision > confirmed.metadata.revision)) continue;
+      const draft = matches && !payload.input.retainedOnly ? projectServiceOrderInput(confirmed.value, payload.input) : null;
+      const input = draft ? payload.input : { ...payload.input, retainedOnly: true as const };
+      const backupEditorId = editorIdentity('service-order-reserve', resource, SERVICE_ORDER_INPUT_SLOT, token);
+      const checkpoint: SessionCheckpoint = {
+        ...new DataSession(confirmed).checkpoint(), draft: draft ?? confirmed.value, dirty: Boolean(draft), editGeneration: payload.editGeneration,
+        serviceOrderInputs: { [serviceOrderInputKey(input)]: input },
+      };
+      try {
+        await store.create({ owner, editorId: backupEditorId, checkpoint, autoSaveOnResume: false, prepared: null, unfinalized: [] });
+      } catch (error) {
+        this.assertCurrent(owner, generation);
+        // Two openings may import the same immutable reserve. Neither can replace its durable copy.
+        const winner = await store.read(owner, backupEditorId);
+        if (!winner || !includesServiceOrderReserve(winner.checkpoint, payload)) throw error;
+      }
+      this.assertCurrent(owner, generation);
+      if (held === false) source.retire();
+    }
+  }
+
+  /** Keep a route to drafts even if the service itself vanished from the library. */
+  async listServiceOrderDraftLinks(): Promise<{ id: string; title?: string }[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const documents = new Map<string, { id: string; title?: string }>();
+    for (const source of this.options.serviceOrderReserveStorage?.listServices(owner) ?? []) documents.set(source.id, source);
+    const records = await this.discoverRecoverable(undefined, true, record =>
+      record.checkpoint.confirmed.resource.collection === 'serviceOrders' && Object.keys(record.checkpoint.serviceOrderInputs ?? {}).length > 0);
+    this.assertCurrent(owner, generation);
+    for (const { record } of records) {
+      const { confirmed, draft } = record.checkpoint;
+      const { id } = confirmed.resource;
+      const title = draft?.title ?? confirmed.value?.title;
+      if (!documents.has(id) || typeof title === 'string') documents.set(id, { id, title: typeof title === 'string' ? title : undefined });
+    }
+    return [...documents.values()];
+  }
+
   /** Choice-list boundary; unresolved-decision consumers retain listRecoverable. */
   async listRecoveryChoices(resource?: ResourceRef, manualChoicesOnly = false): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner(), generation = this.generation;
     if (resource) this.validateResource(resource, owner);
     const store = this.recoveryStore();
+    if (!manualChoicesOnly && resource?.collection === 'serviceOrders') await this.importServiceOrderReserves(owner, generation, resource, store);
     const records = manualChoicesOnly && store.listManualChoiceCopies
       ? await store.listManualChoiceCopies(owner, resource) : await this.discoverRecoverable(resource, true);
     const choices = manualChoicesOnly ? records.filter(({ record }) => isManualChoiceRecoveryIdentity(record.editorId)) : records;
-    return this.recoveryChoices(owner, generation, 'checkpoint', choices, record => record.id);
+    // A durable descendant owns its exact recovery origin. A source with a renewed version stays available.
+    const key = (id: string, version?: string) => JSON.stringify([id, version]);
+    const outlineOrigins = new Set(choices.filter(({ record }) => hasSermonOutlineReview(record.checkpoint))
+      .map(({ id, record }) => key(id, record.recoveryVersion)));
+    const claimed = new Set(choices.flatMap(({ record }) => (record.recoveryOrigins ?? []).map(({ id, version }) => key(id, version))
+      .filter(origin => resource?.collection === 'serviceOrders' || outlineOrigins.has(origin))));
+    return this.recoveryChoices(owner, generation, 'checkpoint', choices.filter(({ id, record }) =>
+      !claimed.has(key(id, record.recoveryVersion))), record => record.id);
   }
 
   /** Restore only new comments left at this passage or in the Studies place picker. */
@@ -1320,20 +1454,38 @@ export class DataEngine {
   /** Explicit removal owns only the shown persisted version, with no queue cancellation. */
   async discardRecovery(source: RecoveryCheckpoint): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
+    await this.discardRecoveryForOwner(source, owner, () => this.current(owner, generation));
+    this.assertCurrent(owner, generation);
+  }
+
+  private async discardRecoveryForOwner(source: RecoveryCheckpoint, owner: string, isCurrent: () => boolean): Promise<void> {
     const record = validateRecoveryRecord(source.discardRecord ?? source.record, owner, source.record.editorId, source.record.checkpoint.confirmed.resource);
     if (source.id !== recoveryCheckpointId(owner, record.editorId)) throw new Error('Recovery removal identity mismatch');
     this.validateResource(record.checkpoint.confirmed.resource, owner);
-    await this.requireClosedRecovery(owner, generation, 'checkpoint', source.id);
+    const held = await this.recoveryPresence.held(owner, 'checkpoint', source.id);
+    if (!isCurrent()) throw new Error('Account changed');
+    this.assertRecoveryClosed(held);
     const store = this.recoveryStore();
     if (!store.discardRecovery) throw new Error(RECOVERY_REMOVAL_UNAVAILABLE);
-    await store.discardRecovery(record, () => this.current(owner, generation));
-    this.assertCurrent(owner, generation);
+    await store.discardRecovery(record, isCurrent);
+  }
+
+  private async discardSupersededPlanCell(source: RecoveryCheckpoint, owner: string, generation: number): Promise<void> {
+    const current = () => this.current(owner, generation);
+    const held = await this.recoveryPresence.held(owner, 'checkpoint', source.id);
+    // This receipt is for our own interim write. The checkpoint store still checks
+    // its exact version and any captured request even without a presence adapter.
+    if (held !== true && current()) await this.recoveryStore().discardRecovery?.(source.record, current);
   }
 
   private async requireClosedRecovery(owner: string, generation: number,
     kind: RecoveryPresenceKind, id: string): Promise<void> {
     const held = await this.recoveryPresence.held(owner, kind, id);
     this.assertCurrent(owner, generation);
+    this.assertRecoveryClosed(held);
+  }
+
+  private assertRecoveryClosed(held: boolean | null): void {
     if (held !== false) throw Object.assign(new Error(held ? 'This draft is still open' : 'Could not verify that this draft is closed'),
       { code: held ? DRAFT_OPEN : 'draft-presence-unknown' });
   }
@@ -1671,7 +1823,8 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' && checkpoint.unreadableExegeticalProofs?.length;
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length
+                : frozen.collection === 'serviceOrders' && Object.keys(checkpoint.serviceOrderInputs ?? {}).length;
             if (!review) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);
@@ -1767,7 +1920,13 @@ export class DataEngine {
     const operation = (async () => {
       const copies = await store.listRecoverable!(owner);
       active();
-      if (!copies.length) { state.waiting.clear(); return; }
+      const manualStore = this.options.manualScopes;
+      const meetingDrafts = manualStore?.pinRecovery && this.options.commits.createWithMeetingResume
+        ? await manualStore.listMeetingDrafts?.(owner).catch(error => {
+          active(); this.reportFailure(error); return [];
+        }) ?? [] : [];
+      active();
+      if (!copies.length && !meetingDrafts.length) { state.waiting.clear(); return; }
       const requests = await this.commits.list();
       active();
       requests.forEach(request => this.rememberCommit(request));
@@ -1798,11 +1957,97 @@ export class DataEngine {
         state.attempts.set(id, 2);
         if (originalAutosaveStillApplies(record, fresh)) await this.captureResumedAutosave(owner, generation, id, record, store.pinRecovery!);
       }
+      if (meetingDrafts.length && manualStore?.pinRecovery) {
+        await this.resumeGroupMeetingAutosaves(owner, generation, state, meetingDrafts, requests, manualStore);
+      }
     })().catch(error => { if (this.current(owner, generation)) this.reportFailure(error); })
       .finally(() => { state.operation = null; });
     state.operation = operation;
     this.resumingAutosaves = state;
     return operation;
+  }
+
+  private async resumeGroupMeetingAutosaves(owner: string, generation: number, scan: StartupDraftRecovery,
+    drafts: readonly StoredManualScope[], requests: readonly CommitRequest[], store: ManualScopeStore): Promise<void> {
+    const active = () => this.assertCurrent(owner, generation);
+    const byId = new Map(requests.map(request => [request.id, request]));
+    const intents = requests.flatMap(request => request.value ? [{
+      id: request.id, owner: request.owner, resource: request.baseline.resource,
+      value: request.value, predecessorId: request.predecessor,
+    }] : []);
+    const counts = new Map<string, number>();
+    for (const { record: { resource } } of drafts) counts.set(resource.id, (counts.get(resource.id) ?? 0) + 1);
+    const isSettled = (id: string) => ['acknowledged', 'cancelled'].includes(byId.get(id)?.state ?? '');
+    const isCancelled = (id: string) => byId.get(id)?.state === 'cancelled';
+
+    for (const source of drafts) {
+      const { scopeId } = source;
+      const attempts = scan.attempts.get(scopeId) ?? 0;
+      if (counts.get(source.record.resource.id) !== 1 || source.record.recoveryOrigins?.length || attempts >= 2) continue;
+      const record = reconcileManualCaptures(source.record, requests);
+      const { resource, baseline, predecessor } = record;
+      // Partial input and decisions after a cancelled Save belong to the recovery UI.
+      const ready = readyMeetingAutosave(record);
+      const capturedHere = record !== source.record && predecessor && equalValues(record.stage, record.savedSelection)
+        ? byId.get(predecessor.id) : undefined;
+      if ((!ready && !capturedHere) || (predecessor && isCancelled(predecessor.id))) continue;
+      if ([...this.manualForms.values()].some(form => form.scopeId === scopeId)
+        || await this.recoveryPresence.held(owner, 'manual', scopeId) !== false) continue;
+      active();
+      if (capturedHere) {
+        if (capturedHere.state === 'acknowledged') await store.retireAcknowledgedMeetingDraft?.(source, capturedHere.id);
+        else if (!scan.recheckedReceipts.has(capturedHere.id)) scan.waiting.add(capturedHere.id);
+        active();
+        continue;
+      }
+      const waiting = requests.filter(request => sameResource(request.baseline.resource, resource) && !isSettled(request.id));
+      if (waiting.length) {
+        for (const { id } of waiting) if (!scan.recheckedReceipts.has(id)) scan.waiting.add(id);
+        continue;
+      }
+      if (!this.canSend()) { scan.retryRead = true; return; }
+      let fresh: ResourceSnapshot | null;
+      try { fresh = await this.readWriteTarget(resource); }
+      catch (error) {
+        active();
+        if ((error as { code?: unknown } | null)?.code === 'resource-exhausted') return;
+        scan.attempts.set(scopeId, attempts + 1);
+        scan.retryRead ||= attempts === 0;
+        continue;
+      }
+      active();
+      if (!fresh) { scan.retryRead = true; continue; }
+      scan.attempts.set(scopeId, 2);
+      if (!fresh.value || !baseline.value || fresh.metadata?.deleted
+        || (baseline.metadata ? baseline.metadata.generation !== fresh.metadata?.generation : !equalValues(baseline, fresh))) continue;
+      const version = await store.pinRecovery?.(source);
+      active();
+      if (!version || !this.canSend() || await this.recoveryPresence.held(owner, 'manual', scopeId) !== false) continue;
+      active();
+
+      const scope = ManualScope.restore({ owner, resource, scopeId, selection: record.selection, port: {
+        capture: () => ({ checkpoint: new DataSession(baseline).checkpoint(), provenance: [], requests: intents }),
+        isCurrent: () => this.current(owner, generation), isSettled, isCancelled,
+        // The commit and the closed form receipt share one storage transaction.
+        persist: async () => undefined,
+        save: async (id, checkpoint, options) => {
+          const request = await this.commits.save(id, checkpoint, { ...options, resumeMeetingVersion: version });
+          if (!request?.value) throw new Error('Meeting recovery did not capture its form');
+          return { id: request.id, owner, resource, value: request.value, predecessorId: request.predecessor };
+        },
+      } }, record);
+      try { await scope.save(); }
+      catch (error) {
+        if (!this.current(owner, generation)) return;
+        if (error instanceof PendingMeetingResume) {
+          // A command admitted during the fresh read can defer exactly this source again.
+          scan.attempts.delete(scopeId);
+          for (const id of error.receipts) if (!scan.recheckedReceipts.has(id)) scan.waiting.add(id);
+          (await this.commits.list()).forEach(request => { if (this.current(owner, generation)) this.rememberCommit(request); });
+          active();
+        } else if ((error as { code?: unknown } | null)?.code !== 'commit-changed') this.reportFailure(error, resource);
+      } finally { scope.dispose(); }
+    }
   }
 
   private async captureResumedAutosave(owner: string, generation: number, id: string, source: EditorRecord,
@@ -1829,6 +2074,44 @@ export class DataEngine {
         this.reportFailure(error, source.checkpoint.confirmed.resource);
       }
     }
+  }
+
+  private async createDraftAlternative(owner: string, editorId: string, confirmed: ResourceSnapshot,
+    alternative: ((confirmed: DocumentData) => DocumentData) | PlanCellAlternative,
+    { verify, reuse }: { verify?: () => void; reuse?: boolean } = {}): Promise<RecoveryCheckpoint | null> {
+    if (!confirmed.value || confirmed.metadata?.deleted) {
+      throw Object.assign(new Error('The record is not available for this alternative'), { code: 'decision-changed' });
+    }
+    const session = new DataSession(confirmed);
+    if (typeof alternative === 'function') session.edit(alternative(copy(confirmed.value)));
+    else {
+      const { nodeId, text } = alternative;
+      const opening = planCellOpening(session.checkpoint(), nodeId, readPlanCellText(confirmed.value, nodeId));
+      if (!opening) throw Object.assign(new Error('The plan cell is unavailable'), { code: 'decision-changed' });
+      session.editPlanCell(opening, text);
+    }
+    const checkpoint = session.checkpoint();
+    if (!checkpoint.dirty) return null;
+    return this.persistDraftAlternative({
+      owner, editorId, checkpoint, prepared: null, unfinalized: [],
+      ...(typeof alternative !== 'function' && { planCellAlternative: true, autoSaveOnResume: false }),
+    }, { verify, reuse });
+  }
+
+  private async persistDraftAlternative(draft: EditorRecord, { verify, reuse }: { verify?: () => void; reuse?: boolean }): Promise<RecoveryCheckpoint> {
+    const { owner, editorId, checkpoint: { confirmed } } = draft;
+    const record = validateRecoveryRecord(draft, owner, editorId, confirmed.resource);
+    const store = this.recoveryStore();
+    let stored = reuse ? await store.read(owner, editorId) : undefined;
+    if (!stored) {
+      await store.create(record);
+      verify?.();
+      stored = await store.read(owner, editorId);
+    }
+    verify?.();
+    if (!stored) throw new Error('The alternative checkpoint is missing after its write');
+    return { id: recoveryCheckpointId(owner, editorId),
+      record: validateRecoveryRecord(stored, owner, editorId, confirmed.resource) };
   }
 
   private recoveryStore(): CheckpointRecoveryStore {
@@ -2118,6 +2401,11 @@ export class DataEngine {
     const frozen = copy(resource);
     const entry: EditorEntry = {
       autoSaveOnResume: options?.autoSaveOnResume,
+      planCellEmergency: frozen.collection === 'sermons' && this.options.planCellEmergencyStorage
+        ? new PlanCellEmergency(owner, editorId, this.options.planCellEmergencyStorage) : undefined,
+      serviceOrderInputReserve: this.options.serviceOrderReserveStorage
+        && isDocumentEditorSlot(editorId, frozen, SERVICE_ORDER_INPUT_SLOT) && frozen.collection === 'serviceOrders'
+        ? new ServiceOrderInputReserve(owner, frozen.id, editorId, this.options.serviceOrderReserveStorage) : undefined,
       presence: this.recoveryPresence.hold(owner, 'checkpoint', [recoveryCheckpointId(owner, editorId), ...recoverySourceIds]),
       initializing: null,
       controller: null, stopObservation: null, stopController: null, closed: false,
@@ -2204,7 +2492,23 @@ export class DataEngine {
           const cached = await this.persistSnapshot(owner, generation, snapshot);
           if (!canReplaceSnapshot(snapshot, cached)) throw new Error('Confirmed deletion was not stored');
         },
-        commits: this.commits, autoSaveOnResume: entry.autoSaveOnResume,
+        commits: this.commits, autoSaveOnResume: entry.autoSaveOnResume, planCellEmergency: entry.planCellEmergency,
+        serviceOrderInputReserve: entry.serviceOrderInputReserve,
+        retainRemovedPlanCell: frozen.collection === 'sermons' ? async (basis, nodeId, draft) => {
+          const reserve = entry.planCellEmergency?.hold(frozen.id, nodeId, draft.text);
+          const key = uuidV5(JSON.stringify(['removed-plan-cell', editorId, nodeId, draft]), uuidV5.URL);
+          try {
+            const retained = await this.createDraftAlternative(owner, recoveryEditorIdentity(editorId, key), basis,
+              { kind: 'plan-cell', nodeId, text: draft.text }, { reuse: true });
+            if (retained?.record.checkpoint.planCellDrafts?.[nodeId]?.text === draft.text) {
+              reserve?.release();
+              return { identity: retained.id, discard: () => this.discardSupersededPlanCell(retained, owner, generation) };
+            }
+          } catch {
+            // Keep the same words synchronously when the checkpoint store refuses the copy.
+          }
+          return reserve?.preserve() ? { identity: Symbol(), discard: reserve.release } : null;
+        } : undefined,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
         manualReturnSources: readManualSources,
         manualChoiceSources: readManualChoices,
@@ -2254,9 +2558,12 @@ export class DataEngine {
       }
       assertOpening();
       let lastConfirmed: ResourceSnapshot | null = null;
+      let resumeCreatedStepInputs: (() => void) | undefined;
+      let resumeServiceOrderInputs: ((state: EditorState) => void) | undefined;
       const updateCache = () => {
         if (entry.closed || !this.current(owner, generation)) return;
-        const confirmed = controller.getState().checkpoint.confirmed;
+        const state = controller.getState();
+        const { confirmed } = state.checkpoint;
         if (!equalValues(confirmed, lastConfirmed)) {
           lastConfirmed = confirmed;
           // A new, unsubmitted editor's absence is not evidence of a server deletion.
@@ -2277,6 +2584,8 @@ export class DataEngine {
           if (entry.closed || !this.current(owner, generation)) stopObservation();
           else entry.stopObservation = stopObservation;
         }
+        resumeCreatedStepInputs?.();
+        resumeServiceOrderInputs?.(state);
         this.emit(entry);
       };
       entry.stopController = controller.subscribe(updateCache);
@@ -2317,6 +2626,83 @@ export class DataEngine {
         return pending;
       };
       const { pendingActionSaves } = entry;
+      const saveServiceOrderField = async (input: ServiceOrderInput, compared?: ServiceOrderInputComparison) => {
+        active();
+        const checkpoint = controller.captureFieldSave();
+        const serviceOrderInput = copy(input);
+        const serviceOrderComparison = compared && copy(compared);
+        const field = { serviceOrderInput, serviceOrderComparison };
+        const saving = controller.save({ ...checkpoint, ...field });
+        pendingActionSaves.set(checkpoint.editGeneration, [{ checkpoint, ...field }]);
+        await saving.catch(error => {
+          if (error instanceof ServiceOrderInputDecisionError) pendingActionSaves.delete(checkpoint.editGeneration);
+          throw error;
+        });
+        pendingActionSaves.delete(checkpoint.editGeneration);
+        active();
+        this.backgroundDrain();
+        this.prepareCommitsInBackground();
+      };
+      const stageServiceInput = (value: DocumentData | null, shown: ShownCopy | undefined, input: ServiceOrderInput) => {
+        active();
+        const autosave = entry.serviceOrderAutosave;
+        if (!autosave) throw new Error('This editor does not own service input');
+        const { confirmed, pending } = controller.getState().checkpoint;
+        const metadata = confirmed.metadata;
+        const followsAdd = input.field !== 'orderTitle' && metadata && !metadata.deleted
+          && readServiceOrderInputValue(confirmed.value, input) === undefined
+          && (input.waitingForStep || Object.values(pending).some(saved =>
+            equalValues(readServiceOrderInputValue(saved.value, input), input.before)));
+        const opening = autosave.opening(followsAdd ? { ...input, waitingForStep: true,
+          version: input.version ?? { generation: metadata.generation, observedRevision: metadata.revision } } : input);
+        const persistence = controller.edit(value, shown, { field: 'service-order-input', input: opening });
+        const stamp = controller.getState().checkpoint.serviceOrderInputs?.[serviceOrderInputKey(input)];
+        autosave.arrange(input, stamp);
+        return persistence;
+      };
+      if (frozen.collection === 'serviceOrders' && isDocumentEditorSlot(editorId, frozen, SERVICE_ORDER_INPUT_SLOT)) {
+        entry.serviceOrderAutosave = new ServiceOrderAutosave(
+          input => equalValues(controller.getState().checkpoint.serviceOrderInputs?.[serviceOrderInputKey(input)], input),
+          input => saveServiceOrderField(input).catch(error => {
+            if (!entry.closed && this.current(owner, generation)) this.reportFailure(error, frozen);
+            throw error;
+          }),
+          input => {
+            const { checkpoint: { confirmed, remoteCandidate, pending }, result } = controller.getState();
+            const version = input.version;
+            return Boolean(Object.keys(pending).length && result?.kind !== 'conflict' && result?.kind !== 'refused'
+              && version && confirmed.metadata?.generation === version.generation
+              && confirmed.metadata.revision < version.observedRevision && remoteCandidate?.metadata?.generation === version.generation
+              && !remoteCandidate.metadata.deleted && remoteCandidate.metadata.revision >= version.observedRevision);
+          },
+        );
+        resumeServiceOrderInputs = ({ checkpoint, result }) => {
+          if (result?.kind === 'refused' || result?.kind === 'conflict' || !Object.keys(checkpoint.pending).length) {
+            entry.serviceOrderAutosave?.finishPredecessor(result?.kind === 'acknowledged');
+          }
+        };
+        resumeCreatedStepInputs = () => {
+          if (loadingBranchAnswer) return;
+          const { checkpoint, result } = controller.getState();
+          if (result?.kind === 'refused' || result?.kind === 'conflict') return;
+          const { confirmed, draft, serviceOrderInputs } = checkpoint;
+          if (confirmed.metadata?.deleted) return;
+          for (const input of Object.values(serviceOrderInputs ?? {})) {
+            if (!input.waitingForStep || !input.retainedOnly
+              || (input.version && input.version.generation !== confirmed.metadata?.generation)) continue;
+            const stored = readServiceOrderInputValue(confirmed.value, input);
+            if (recovering ? stored === undefined : (!input.version && !equalValues(stored, input.before))
+              || !equalValues(readServiceOrderInputValue(draft, input), input.before)) continue;
+            const { retainedOnly: _retained, ...created } = input;
+            const next = projectServiceOrderInput(controller.getState().checkpoint.draft, created);
+            if (!next) continue;
+            const staged = recovering ? controller.edit(next, undefined, { field: 'service-order-input', input: created })
+              : stageServiceInput(next, undefined, created);
+            this.background(staged, owner, generation, frozen);
+          }
+        };
+        resumeCreatedStepInputs();
+      }
       const commit = (updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction, noteContent?: StudyNoteContentCapture | null) => {
         active();
         const checkpoint = controller.getState().checkpoint;
@@ -2509,6 +2895,9 @@ export class DataEngine {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         const current = controller.getState().checkpoint;
+        if (hasSermonOutlineReview(current) && !compared) {
+          throw Object.assign(new Error('Read both versions of the structure before choosing'), { code: 'decision-changed' });
+        }
         if ((current.groupTextReview || readPrivateDocumentReview(current)) && !compared) {
           throw Object.assign(new Error('Finish comparing the group fields'), { code: 'decision-changed' });
         }
@@ -2516,12 +2905,12 @@ export class DataEngine {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
         if ((current.unreadableExegeticalProofs?.length && !Object.keys(current.pending).length)
-          || (compared && readSermonSettingComparison(current))) {
+          || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
           const shown = current.remoteCandidate ?? current.confirmed;
           if (!saved || !canReplaceSnapshot(shown, saved)) {
-            throw Object.assign(new Error('Read the current sermon before choosing'), { code: 'fresh-read-required' });
+            throw Object.assign(new Error('Read the current record before choosing'), { code: 'fresh-read-required' });
           }
           if (!equalValues(shown, saved)) {
             await controller.observe(saved, 'server');
@@ -2534,6 +2923,79 @@ export class DataEngine {
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
       };
+      const holdAlternative = async (alternative: ((confirmed: DocumentData) => DocumentData) | PlanCellAlternative): Promise<HeldDraftAlternative | null> => {
+        active();
+        const confirmed = controller.getState().checkpoint.confirmed;
+        const alternativeId = recoveryEditorIdentity(editorId, this.options.operationId());
+        const source = await this.createDraftAlternative(owner, alternativeId, confirmed, alternative, {
+          verify: typeof alternative === 'function' ? () => this.assertCurrent(owner, generation) : undefined,
+        });
+        if (!source) return null;
+        const matchesGeneration = (basis: ResourceSnapshot) => {
+          const birth = confirmed.value?.createdAt;
+          const sameGeneration = confirmed.metadata
+            ? basis.metadata?.generation === confirmed.metadata.generation
+            : basis.metadata === null && typeof birth === 'string' && basis.value?.createdAt === birth;
+          return sameGeneration && !basis.metadata?.deleted;
+        };
+        const matches = (basis: ResourceSnapshot, value: DocumentData | null) => {
+          if (!matchesGeneration(basis) || !value) return false;
+          try { return typeof alternative === 'function' && equalValues(alternative(copy(value)), value); } catch { return false; }
+        };
+        return {
+          ...source,
+          isStaged: async () => {
+            active();
+            const live = controller.getState().checkpoint.confirmed;
+            if (typeof alternative !== 'function') {
+              if (!matchesGeneration(live)) return false;
+              try {
+                await controller.assertPlanCellsStored({ [alternative.nodeId]: alternative.text });
+                return true;
+              } catch { return false; }
+            }
+            if (matches(live, live.value)) return true;
+            const primary = await this.recoveryStore().read(owner, editorId);
+            active();
+            if (!primary) return false;
+            const { checkpoint } = validateRecoveryRecord(primary, owner, editorId, frozen);
+            return matches(checkpoint.confirmed, checkpoint.draft);
+          },
+        };
+      };
+      const holdPlanCellAlternative = (alternative: PlanCellAlternative): HeldPlanCellAlternative => {
+        active();
+        const reserve = entry.planCellEmergency?.hold(frozen.id, alternative.nodeId, alternative.text);
+        let discarded = false;
+        const held = holdAlternative(alternative).then(source => {
+          if (source) reserve?.release();
+          return { source, retained: Boolean(source) || (!discarded && Boolean(reserve?.preserve())) };
+        }, error => {
+          if (discarded) return { source: null, retained: false };
+          if (!reserve?.preserve()) throw error;
+          return { source: null, retained: true };
+        });
+        return {
+          retained: held.then(answer => answer.retained),
+          settle: async (keep, chosenWrite) => {
+            active();
+            if (!keep) {
+              discarded = true;
+              reserve?.release();
+            } else {
+              if (!chosenWrite) return;
+              reserve?.followAdmittedCell();
+            }
+            const [{ source }] = await Promise.all([held, keep ? chosenWrite : undefined]);
+            if (!source) return;
+            // The explicit discard was admitted in this editor. Finish only
+            // its exact device-local removal if the account has since changed.
+            if (!keep) await this.discardRecoveryForOwner(source, owner, () => true);
+            else if (await source.isStaged()) await this.discardRecovery(source);
+          },
+        };
+      };
+
       const managed: ManagedEditor = {
         getState: () => {
           active();
@@ -2627,59 +3089,45 @@ export class DataEngine {
           });
         },
         importLegacyStudyNote: edits => { active(); return controller.importLegacyStudyNote(edits); },
-        editPlanCell: (opening, text) => { active(); return controller.editPlanCell(opening, text); },
-        holdDraftAlternative: async updater => {
+        editPlanCell: (opening, text, previous, isSourceStored) => {
           active();
-          const confirmed = controller.getState().checkpoint.confirmed;
-          if (!confirmed.value || confirmed.metadata?.deleted) {
-            throw Object.assign(new Error('The record is not available for this alternative'), { code: 'decision-changed' });
-          }
-          const session = new DataSession(confirmed);
-          session.edit(updater(copy(confirmed.value)));
-          const checkpoint = session.checkpoint();
-          if (!checkpoint.dirty) return null;
-
-          const alternativeId = recoveryEditorIdentity(editorId, this.options.operationId());
-          const record = validateRecoveryRecord({
-            owner, editorId: alternativeId, checkpoint, prepared: null, unfinalized: [],
-          }, owner, alternativeId, frozen);
-          const store = this.recoveryStore();
-          await store.create(record);
-          this.assertCurrent(owner, generation);
-          const stored = await store.read(owner, alternativeId);
-          this.assertCurrent(owner, generation);
-          if (!stored) throw new Error('The alternative checkpoint is missing after its write');
-          const matches = (basis: ResourceSnapshot, value: DocumentData | null) => {
-            const birth = confirmed.value?.createdAt;
-            const sameGeneration = confirmed.metadata
-              ? basis.metadata?.generation === confirmed.metadata.generation
-              : basis.metadata === null && typeof birth === 'string' && basis.value?.createdAt === birth;
-            if (!sameGeneration || !value || basis.metadata?.deleted) return false;
-            try { return equalValues(updater(copy(value)), value); } catch { return false; }
-          };
-          return {
-            id: recoveryCheckpointId(owner, alternativeId),
-            record: validateRecoveryRecord(stored, owner, alternativeId, frozen),
-            isStaged: async () => {
-              active();
-              const live = controller.getState().checkpoint.confirmed;
-              if (matches(live, live.value)) return true;
-              const primary = await store.read(owner, editorId);
-              active();
-              if (!primary) return false;
-              const { checkpoint } = validateRecoveryRecord(primary, owner, editorId, frozen);
-              return matches(checkpoint.confirmed, checkpoint.draft);
-            },
-          };
+          return controller.editPlanCell(opening, text, previous, isSourceStored);
         },
-        editTemplateTitle: (shown, opening, title, time) => { active(); return controller.editTemplateTitle(shown, opening, title, time); },
+        editUnverifiedPlanCell: (nodeId, text, previous) => {
+          active();
+          return controller.editUnverifiedPlanCell(nodeId, text, previous);
+        },
+        backsUpPlanCell: (nodeId, text) => entry.planCellEmergency?.covers(nodeId, text) ?? false,
+        bindPlanCellBackups: cells => { active(); return entry.planCellEmergency?.bind(cells) ?? []; },
+        assertPlanCellsStored: cells => { active(); return controller.assertPlanCellsStored(cells); },
+        holdDraftAlternative: holdAlternative,
+        holdPlanCellAlternative,
+        retainSermonOutlineReview: input => {
+          active();
+          const retaining = controller.retainSermonOutlineReview(input);
+          if (retaining) return { location: 'active', durable: retaining };
+          const { confirmed, pending } = controller.getState().checkpoint;
+          if (!Object.keys(pending).length) return;
+          // An earlier Save keeps its own editor and outcome. This comparison is independent work
+          // and can be recovered after that Save, using the same device checkpoint store.
+          const session = new DataSession(confirmed);
+          if (!session.retainSermonOutlineReview(input)) return;
+          const alternativeId = recoveryEditorIdentity(editorId, this.options.operationId());
+          const draft = { owner, editorId: alternativeId, checkpoint: session.checkpoint(), prepared: null, unfinalized: [], autoSaveOnResume: false };
+          const durable = this.retainLocal({
+            address: { owner, kind: 'checkpoint', id: alternativeId, resource: frozen },
+            persist: async () => { await this.persistDraftAlternative(draft, { reuse: true }); },
+          }, generation);
+          return { location: 'deferred', durable };
+        },
+        editOutlineTitle: (shown, opening, title, time) => { active(); return controller.editOutlineTitle(shown, opening, title, time); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action, options?.noteContent)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         savePlanCells: async nodeIds => {
           active();
-          const checkpoint = controller.capturePlanCellSave();
+          const checkpoint = controller.captureFieldSave();
           const planCellSaveIds = [...nodeIds];
           const saving = controller.save({ ...checkpoint, planCellSaveIds });
           pendingActionSaves.set(checkpoint.editGeneration, [{ checkpoint, planCellSaveIds }]);
@@ -2688,6 +3136,28 @@ export class DataEngine {
           active();
           this.backgroundDrain();
           this.prepareCommitsInBackground();
+        },
+        stageServiceOrderInput: stageServiceInput,
+        flushServiceOrderInputs: async filter => { active(); await entry.serviceOrderAutosave?.flush(filter); },
+        saveServiceOrderInput: async (input, compared) => {
+          active();
+          if (compared || !input.version) {
+            // An unversioned copy can resume against its unchanged opening. If we can see a
+            // newer field now, ask before making a request instead of discovering it by refusal.
+            const latest = await this.readWriteTarget(frozen).catch(() => null);
+            active();
+            if (latest) await controller.observe(latest, 'server');
+            active();
+          }
+          await saveServiceOrderField(input, compared);
+        },
+        useStoredServiceOrderInput: async (input, compared) => {
+          active();
+          const latest = await this.readWriteTarget(frozen).catch(() => null);
+          active();
+          if (latest) await controller.observe(latest, 'server');
+          active();
+          await controller.useStoredServiceOrderInput(input, compared);
         },
         remove: () => remove(),
         acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
@@ -2699,8 +3169,9 @@ export class DataEngine {
         close: ({ flush = false } = {}) => {
           if (entry.closed) return;
           const current = this.current(owner, generation);
+          if (current) void entry.serviceOrderAutosave?.flush().catch(() => undefined);
           const leaving = flush && current ? this.leavingIntent(controller) : null;
-          const actions = flush && current ? [...pendingActionSaves.values()].flat() : [];
+          const actions = current ? [...pendingActionSaves.values()].flat().filter(intent => flush || intent.serviceOrderInput) : [];
           const record = leaving || actions.length ? this.closingRecord(controller) : null;
           const closingRequests: CommitRequest[] = [];
           // Register before closing. The local handoff outlives the controller and gates only
@@ -2711,7 +3182,7 @@ export class DataEngine {
           // With no request taking the last words along, retain the unwritten checkpoint.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
           const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
-            Promise.allSettled([controller.settled(), saving]), frozen, closingRequests) : undefined;
+            Promise.allSettled([controller.settled(), saving]), frozen, closingRequests, entry.planCellEmergency) : undefined;
           const writing = saving && keeping ? Promise.all([saving, keeping]) : keeping ?? saving;
           this.close(entry, writing);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -2786,25 +3257,29 @@ export class DataEngine {
     }
     if (trailing && !intents.has(trailing.editGeneration)) intents.set(trailing.editGeneration, { checkpoint: trailing });
     const ordered = [...intents.values()].sort((a, b) => a.checkpoint.editGeneration - b.checkpoint.editGeneration);
-    const captures = ordered.map(({ checkpoint, action, planCellSaveIds }) => {
+    const captures = ordered.map(({ checkpoint, action, planCellSaveIds, serviceOrderInput, serviceOrderComparison }) => {
       const predecessor = Object.entries(checkpoint.pending).sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
-      return { capture: this.commits.admitSave(editorId, checkpoint), checkpoint, action, planCellSaveIds, predecessor };
+      return { capture: this.commits.admitSave(editorId, checkpoint), checkpoint, action, planCellSaveIds, serviceOrderInput, serviceOrderComparison, predecessor };
     });
     const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: ordered[0].checkpoint.confirmed.resource },
       persist: async () => {
         await settled.catch(() => undefined);
         let previous: string | undefined;
-        for (const { capture, checkpoint, action, planCellSaveIds, predecessor } of captures) {
+        for (const { capture, checkpoint, action, planCellSaveIds, serviceOrderInput, serviceOrderComparison, predecessor } of captures) {
           const project = record && ((request: CommitRequest) => reconcileRecoveryRecord({ ...record, checkpoint }, [...closingRequests, request]));
           const retentionScope = action?.kind === 'sermon-plan-text' ? action.draftCaptureScope : undefined;
           const request = await capture({ predecessorId: previous ?? predecessor ?? null, ...(action && { action }),
             ...(planCellSaveIds && { planCellSaveIds }),
+            ...(serviceOrderInput && { serviceOrderInput, serviceOrderComparison }),
             ...(retentionScope && { retentionScope }),
-            ...(project && { checkpoint: project }), deferRetention: true });
+            ...(project && { checkpoint: project }), deferRetention: true }).catch(error => {
+            if (error instanceof ServiceOrderInputDecisionError) return null;
+            throw error;
+          });
           if (request) {
             previous = request.id; closingRequests.push(request);
             if (project && !this.options.commits.createWithCheckpoint) await this.options.checkpoints.put(project(request));
-          } else if (record && checkpoint.planCellDrafts) {
+          } else if (record && (checkpoint.planCellDrafts || checkpoint.serviceOrderInputs)) {
             await this.options.checkpoints.put(reconcileRecoveryRecord({ ...record, checkpoint }, closingRequests));
           }
         }
@@ -2817,8 +3292,9 @@ export class DataEngine {
   private keepRetiringEditor(owner: string, generation: number, editorId: string, entry: EditorEntry): Promise<unknown> | undefined {
     const { controller } = entry;
     if (!controller || entry.closed) return undefined;
+    void entry.serviceOrderAutosave?.flush().catch(() => undefined);
     const actions = [...entry.pendingActionSaves.values()].flat().filter(intent =>
-      intent.action?.kind === 'sermon-plan-text' || intent.planCellSaveIds);
+      intent.action?.kind === 'sermon-plan-text' || intent.planCellSaveIds || intent.serviceOrderInput);
     const unwritten = this.unwrittenRecord(controller);
     if (!actions.length && !unwritten) return undefined;
     const settled = controller.settled(), requests: CommitRequest[] = [];
@@ -2826,7 +3302,7 @@ export class DataEngine {
       ? this.keepClosingActionSaves(owner, generation, editorId, settled, actions, this.closingRecord(controller), requests)
       : undefined;
     const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation,
-      saving ? Promise.allSettled([settled, saving]) : settled, undefined, requests) : undefined;
+      saving ? Promise.allSettled([settled, saving]) : settled, undefined, requests, entry.planCellEmergency) : undefined;
     return saving && keeping ? Promise.all([saving, keeping]) : saving ?? keeping;
   }
 
@@ -2836,9 +3312,15 @@ export class DataEngine {
   }
 
   /** The old queue finishes before its immutable last checkpoint can repair the same identity. */
-  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress, closingRequests: readonly CommitRequest[] = []): Promise<void> {
+  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress,
+    closingRequests: readonly CommitRequest[] = [], planCellEmergency?: PlanCellEmergency): Promise<void> {
     return this.retainLocal({ address: { owner, kind: 'checkpoint', id: record.editorId, resource: record.checkpoint.confirmed.resource },
-      persist: async () => { await pending.catch(() => undefined); await this.options.checkpoints.put(closingRequests.length ? reconcileRecoveryRecord(record, closingRequests) : record); } }, generation, about);
+      persist: async () => {
+        await pending.catch(() => undefined);
+        const next = closingRequests.length ? reconcileRecoveryRecord(record, closingRequests) : record;
+        await this.options.checkpoints.put(next);
+        planCellEmergency?.stored(next.checkpoint);
+      } }, generation, about);
   }
 
   private retainLocal(handoff: LocalWriteHandoff, generation: number, failureAddress?: FailureAddress): Promise<void> {
@@ -2849,6 +3331,7 @@ export class DataEngine {
   }
 
   private retireManual(manual: ManualFormEntry, generation: number, finishPending = false): void {
+    manual.meetingSave?.cancel();
     const presence = manual.presence; manual.presence = null;
     if (manual.scope) {
       const pending = this.retainLocal(manual.scope.retire({ finishPending }), generation);
@@ -2906,7 +3389,9 @@ export class DataEngine {
     }).map(item => ({ item, scope: item.scope! }));
     let failure: unknown;
     try {
-      if (choice === 'remote') {
+      if (expected && hasSermonOutlineReview(checkpoint)) {
+        await controller.chooseSermonOutlineReview(choice, expected);
+      } else if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected, titles);
         const resolved = controller.getState().checkpoint;
         if ((preference || meeting || finalPrivateFieldChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
@@ -2960,7 +3445,7 @@ export class DataEngine {
     const store = this.options.manualScopes;
     const listeners = new Set<() => void>();
     const emit = () => { if (parent.closed || !this.current(owner, generation)) return; for (const listener of listeners) { try { listener(); } catch { /* Rendering cannot change staged intent. */ } } };
-    const state = { parent, selection: copy(selection), scopeId: manualScopeIdentity(parentEditorId, slot), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
+    const state: ManualFormEntry = { parent, selection: copy(selection), scopeId: manualScopeIdentity(parentEditorId, slot), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
     this.manualForms.set(registryKey, state);
     let opening: Promise<void> | null = null;
     let requestedRecovery: { scope: ManualScope; generation: number } | undefined;
@@ -3033,7 +3518,11 @@ export class DataEngine {
           isCancelled: (id: string) => this.commitRecords.get(id)?.state === 'cancelled',
           persist: async (record: ReturnType<ManualScope['getState']>['record']) => {
             const envelope: StoredManualScope = { owner, scopeId: targetId, parentEditorId, slot, record, commitReferences: record.predecessor ? [record.predecessor.id] : [] };
-            if (creating) { await store.create(envelope); creating = false; } else await store.put(envelope);
+            if (creating) {
+              if (source && sourceVersion) await store.create(envelope, { id: source.scopeId, version: sourceVersion });
+              else await store.create(envelope);
+              creating = false;
+            } else await store.put(envelope);
             if (!record.active) {
               await store.compact(owner, targetId);
               presence.releaseAfter(scope.settled());
@@ -3205,6 +3694,21 @@ export class DataEngine {
         // Reopen from the resolved document, never from the retired form's displayed values.
         if (parent.controller!.getState().checkpoint.draft) await start();
     };
+    if (resource.collection === 'groups' && slot === GROUP_MEETING_SLOT) {
+      state.meetingSave = debounce(() => {
+        const scope = state.scope;
+        if (!scope || parent.closed || !this.current(owner, generation)) return;
+        const stage = scope.getState();
+        if (!scope.meetingAutosaveReady() || stage.choiceRequired || hasFailedDelivery()) return;
+        const saving = execute(async () => {
+          await scope.save();
+          if (!scope.getState().dirty && !parent.closed) await scope.cancel();
+        });
+        void saving.catch(error => {
+          if (!parent.closed && this.current(owner, generation)) this.reportFailure(error, resource);
+        });
+      }, GROUP_MEETING_SAVE_DELAY);
+    }
     state.form = {
       getState: () => {
         active();
@@ -3226,7 +3730,16 @@ export class DataEngine {
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
       follow: () => execute(() => requireScope().follow(capture())),
-      update: (updater, fieldInput) => execute(() => requireScope().update(updater, fieldInput)),
+      update: (updater, fieldInput, autosaveGroupMeeting) => execute(() => {
+        if (autosaveGroupMeeting && !state.meetingSave) throw new Error('Meeting autosave requires its own form');
+        const scope = requireScope();
+        const staged = scope.update(updater, fieldInput, autosaveGroupMeeting);
+        if (autosaveGroupMeeting) {
+          if (scope.meetingAutosaveReady()) state.meetingSave?.();
+          else state.meetingSave?.cancel();
+        }
+        return staged;
+      }),
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
@@ -3248,6 +3761,7 @@ export class DataEngine {
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {
+        state.meetingSave?.cancel();
         const scope = requireScope();
         const privateStage = scope.getState().dirty;
         await scope.cancel(); active();
@@ -3480,6 +3994,10 @@ export class DataEngine {
 
   private close(entry: EditorEntry, writeback?: Promise<unknown>): void {
     if (entry.closed) return;
+    entry.planCellEmergency?.preserve();
+    entry.serviceOrderInputReserve?.preserve();
+    entry.serviceOrderAutosave?.dispose();
+    for (const form of this.manualForms.values()) if (form.parent === entry) form.meetingSave?.flush();
     entry.closed = true;
     const settled = Promise.allSettled([entry.initializing, entry.controller?.settled()]);
     entry.presence.releaseAfter(Promise.allSettled([settled, writeback]));

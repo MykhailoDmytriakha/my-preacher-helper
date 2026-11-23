@@ -12,6 +12,7 @@ import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/compo
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
+import { useOutlineTitleDraftDocuments } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
@@ -87,14 +88,21 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   userIdRef.current = owner;
   const [storedTitles, setStoredTitles] = useState<{ owner: string; ids: string[] } | null>(null);
   const [retainedTitles, setRetainedTitles] = useState<{ owner: string; ids: string[] } | null>(null);
+  const savedTitleDocuments = useOutlineTitleDraftDocuments(owner, 'planTemplates');
   useEffect(() => {
-    const ids = owner ? listOutlineTitleDraftIds(owner, 'planTemplates') : [];
-    setStoredTitles(previous => {
-      if (!owner) return null;
-      return previous?.owner === owner && previous.ids.length === ids.length && previous.ids.every((id, index) => id === ids[index])
-        ? previous : { owner, ids };
-    });
-  }, [owner, templates, retainedTitles]);
+    if (!owner) { setStoredTitles(null); return; }
+    let active = true;
+    const legacy = listOutlineTitleDraftIds(owner, 'planTemplates');
+    const publish = (ids: string[]) => {
+      if (!active) return;
+      setStoredTitles(previous => previous?.owner === owner && previous.ids.length === ids.length
+        && previous.ids.every((id, index) => id === ids[index]) ? previous : { owner, ids });
+    };
+    if (savedTitleDocuments) {
+      void savedTitleDocuments().then(ids => publish([...new Set([...legacy, ...ids])]), () => publish(legacy));
+    } else publish(legacy);
+    return () => { active = false; };
+  }, [owner, templates, retainedTitles, savedTitleDocuments]);
   const reportTitlePresence = useCallback((id: string, present: boolean) => {
     if (!owner || userIdRef.current !== owner) return;
     setRetainedTitles(previous => {

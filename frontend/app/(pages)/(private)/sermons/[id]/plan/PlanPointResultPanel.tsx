@@ -42,9 +42,9 @@ export default function PlanPointResultPanel({ results, generating, outline, app
             </>
           ) : (
             <>
-              {result.kind === 'ready' && point && <button type="button" className={button} disabled={applyDisabled}
+              {result.kind === 'ready' && point && <button type="button" className={button} disabled={applyDisabled || generating[pointId]}
                 onClick={() => apply(pointId, result)}>{t('plan.pointResultApply')}</button>}
-              <button type="button" className={button} onClick={() => discard(pointId, result)}>{t('plan.pointResultDismiss')}</button>
+              <button type="button" className={button} disabled={generating[pointId]} onClick={() => discard(pointId, result)}>{t('plan.pointResultDismiss')}</button>
             </>
           )}
         </div>

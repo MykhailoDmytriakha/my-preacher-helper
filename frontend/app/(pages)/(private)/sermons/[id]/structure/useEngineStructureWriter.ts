@@ -12,7 +12,7 @@ import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
 import { placeOfNode, scratchNoteAt } from '@/utils/scratchPlacement';
-import { readOutlineNoteText, readOutlineTitleText, withOutlineNoteText, withOutlineTitleText } from '@/utils/sermonNoteText';
+import { readOutlineTitleText, withOutlineTitleText } from '@/utils/sermonNoteText';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
@@ -21,16 +21,19 @@ import { captureAiReview } from './captureAiReview';
 
 import type { OutlinePlacementVersion, StructureWriter } from '@/components/sermon/structureWriter';
 import type { ActionTime } from '@/data-engine/actionClock';
+import type { SessionCheckpoint } from '@/data-engine/session';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
 import type { DocumentData, OutlinePointPlacementCapture, OutlineSubpointMove } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
-import type { OutlineNoteOpening, OutlineTitleOpening } from '@/utils/sermonNoteText';
+import type { OutlineTitleOpening, OutlineTitleVersion } from '@/utils/sermonNoteText';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 type DocumentUpdater = Parameters<SermonDocument['update']>[0];
 type StructureDocument = Pick<SermonDocument, 'update'> & Partial<Pick<SermonDocument, 'captureSermonNoteText'>> & {
   outlineTitleVersion?: StructureWriter['outlineTitleVersion'];
+  pinOutlineNoteEditor?: StructureWriter['pinOutlineNoteEditor'];
+  admitOutlineTitle?: (opening: OutlineTitleOpening, title: string) => Promise<SermonOutline | null> | undefined;
   commitSubpointMove?: (fn: DocumentUpdater, move: OutlineSubpointMove) => Promise<void>;
   outlinePlacementVersion?: (shown?: SermonOutline) => OutlinePlacementVersion | undefined;
   commitOutlineMove?: (updater: DocumentUpdater, move: OutlinePointPlacementCapture) => Promise<void>;
@@ -101,19 +104,6 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
     result = outcome.result;
     return asDocument(outcome.next);
   }, options).then(() => result as T);
-}
-
-function mergeOpenOutlineNote(opening: OutlineNoteOpening, proposed: SermonOutline, stored: SermonOutline | null, base: SermonOutline | null) {
-  const { target, text } = opening;
-  const mine = readOutlineNoteText(proposed, target);
-  const live = readOutlineNoteText(stored, target);
-  if (!stored || !mine || !live) {
-    throw new OutlineCollisionError([target.id], stored, 0, { outline: base });
-  }
-  if (live.text !== (text ?? null) && live.text !== mine.text) {
-    throw new OutlineCollisionError([target.id], stored, 0, { outline: withOutlineNoteText(stored, target, text) ?? base });
-  }
-  return withOutlineNoteText(stored, target, mine.text ?? undefined) ?? stored;
 }
 
 function mergeOpenOutlineTitle(opening: OutlineTitleOpening, proposed: SermonOutline, stored: SermonOutline | null,
@@ -187,6 +177,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
     outlineTitleVersion: document.outlineTitleVersion,
     outlinePlacementVersion: document.outlinePlacementVersion,
     captureNoteEdit: captureSermonNoteText,
+    pinOutlineNoteEditor: document.pinOutlineNoteEditor,
     addSketch: (target, text) => {
       // The id is chosen once, outside the update: a replayed update finds its note already there.
       const note = { id: newClientId(), text: text.trim(), createdAt: new Date().toISOString() };
@@ -236,8 +227,14 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
         gesture.pointId, gesture.version.observedRevision, document.captureActionTime?.() ?? null);
       const target = move ? { update: (fn: DocumentUpdater) => document.commitSubpointMove!(fn, move) } : document;
       const titleOpening = inputSequence?.titleOpening;
+      if (titleOpening && !inputSequence?.titleChoice && !move) {
+        const title = readOutlineTitleText(outline, titleOpening.target);
+        const admitted = title !== undefined && document.admitOutlineTitle?.(titleOpening, title);
+        if (admitted) return admitted;
+      }
+      let reviewOutline: SermonOutline | undefined;
       try {
-        return await editEngineSermon(target, owner, current => {
+        const result = await editEngineSermon(target, owner, current => {
           const apply = (base: SermonOutline | null) => {
             const live = current.outline ?? null;
             const selectedTitle = inputSequence?.titleChoice;
@@ -245,15 +242,8 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
               // The selection can remain backed up while this same editor accepts its next input.
               const previousTitle = readOutlineTitleText(base, selectedTitle.target);
               const accepted = mergeOpenOutlineTitle(selectedTitle, outline, live, base, previousTitle, true);
-              if (accepted !== undefined && !inputSequence?.noteOpening) {
+              if (accepted !== undefined) {
                 const next = accepted ? replaceSermonOutline(current, accepted) : current;
-                return { next, result: next.outline ?? null };
-              }
-            }
-            if (inputSequence?.noteOpening) {
-              const accepted = mergeOpenOutlineNote(inputSequence.noteOpening, outline, live, base);
-              if (!selectedTitle) {
-                const next = replaceSermonOutline(current, accepted);
                 return { next, result: next.outline ?? null };
               }
             }
@@ -273,10 +263,21 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
             return { next, result: next.outline ?? null };
           };
           return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply(baseOutline ?? null);
-        }, { handlesRefusal: isOutlineCollisionError, ...(titleOpening && { action: { kind: 'outline-title', opening: titleOpening } }) });
+        }, {
+          handlesRefusal: isOutlineCollisionError,
+          ...(titleOpening && { action: { kind: 'outline-title', opening: titleOpening } }),
+          ...(!titleOpening && !inputSequence?.titleChoice && !move && {
+            retainSermonOutlineReview: failure => {
+              if (!isOutlineCollisionError(failure)) return;
+              reviewOutline = failure.comparison?.local ?? outline;
+              return { base: failure.baseline ? failure.baseline.outline : baseOutline ?? null,
+                mine: reviewOutline, stored: failure.serverOutline, reviewWhole: failure.comparison?.reviewWhole };
+            },
+          }),
+        });
+        return reviewOutline ?? result;
       } catch (error) {
-        // Modal editors already own their durable comparison. Older automatic callers used
-        // preferMine to suppress it; retain every refused input before their UI callbacks settle.
+        // Existing backups can still receive a refusal from an earlier opening or an older writer.
         if (onCollision === 'preferMine' && isOutlineCollisionError(error)) {
           const local = error.comparison?.local ?? outline;
           const retained = onOutlineConflict?.(local, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
@@ -300,6 +301,7 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
   // target keeps its old facade, which rejects writes after that opening has retired.
   const opening = useMemo(() => ({
     owner, sermonId, identity: document.recoveryIdentity, document, captureActionTime,
+    titleOpenings: new WeakMap<OutlineTitleVersion, SessionCheckpoint>(),
   }), [owner, sermonId, document.recoveryIdentity]);
   opening.document = document;
   opening.captureActionTime = captureActionTime;
@@ -309,11 +311,24 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
     save: () => opening.document.save(),
     captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
     captureSermonNoteText: (target, text) => opening.document.captureSermonNoteText(target, text),
+    pinOutlineNoteEditor: () => {
+      const frame = opening.document.state?.checkpoint;
+      return (target, text) => opening.document.captureSermonNoteText(target, text, frame);
+    },
     outlineTitleVersion: ({ target, text }) => {
-      const { confirmed, data } = opening.document;
-      const metadata = confirmed?.metadata;
-      if (!metadata || metadata.deleted || readOutlineTitleText((data?.outline as unknown as SermonOutline | undefined) ?? null, target) !== text) return undefined;
-      return { generation: metadata.generation, observedRevision: metadata.revision };
+      const checkpoint = opening.document.state?.checkpoint;
+      const metadata = checkpoint?.confirmed.metadata;
+      if (!checkpoint || !metadata || metadata.deleted
+        || readOutlineTitleText((checkpoint.draft?.outline as unknown as SermonOutline | undefined) ?? null, target) !== text) return undefined;
+      const version = { generation: metadata.generation, observedRevision: metadata.revision };
+      opening.titleOpenings.set(version, checkpoint);
+      return version;
+    },
+    admitOutlineTitle: (titleOpening, title) => {
+      const frame = titleOpening.version && opening.titleOpenings.get(titleOpening.version);
+      if (!frame || !opening.document.editSermonOutlineTitle) return;
+      return opening.document.editSermonOutlineTitle(frame, titleOpening, title).then(draft =>
+        (draft?.outline as unknown as SermonOutline | undefined) ?? null);
     },
     outlinePlacementVersion: shown => {
       const snapshot = opening.document.confirmed;

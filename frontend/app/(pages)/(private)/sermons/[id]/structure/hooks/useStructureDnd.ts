@@ -629,8 +629,6 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  /** Compatibility for existing callers; DnD writes now submit directly. */
-  debouncedSaveThought?: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
 }
 
 export const useStructureDnd = ({

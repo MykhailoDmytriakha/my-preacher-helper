@@ -3,10 +3,11 @@
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible/ScriptureLinks';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
+import { ServiceOrderDraftRecovery } from '@/components/care/ServiceOrderDraftRecovery';
 import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
 import { ServiceOrderStepHistory } from '@/components/care/ServiceOrderStepHistory';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
@@ -15,13 +16,14 @@ import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouteId } from '@/hooks/useRouteId';
+import { useServiceOrderInputDraft } from '@/hooks/useServiceOrderInputDraft';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import {
   isOfflineQueuedError,
   isStaleWriteError,
   isUnreachableWriteError,
 } from '@/services/conflictSafeUpdate.client';
-import { SERVICE_ORDER_STEPS_AGGREGATE } from '@/services/serviceOrders.client';
+import { hydrateServiceOrder, SERVICE_ORDER_STEPS_AGGREGATE } from '@/services/serviceOrders.client';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { textLanguage } from '@/utils/appLocale';
 import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
@@ -35,8 +37,8 @@ import { useTranslation } from '@locales/useTranslation';
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
 
-import type { ActionTime } from '@/data-engine/actionClock';
-import type { ServiceOrderStepCapture, ServiceOrderStepTitleCapture, ServiceOrderStepVersion } from '@/data-engine/serviceOrderStepAction';
+import type { ServiceOrderInput } from '@/data-engine/react.client';
+import type { ServiceOrderStepCapture, ServiceOrderStepVersion } from '@/data-engine/serviceOrderStepAction';
 import type { LabeledServiceOrderPlacement } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 import '@locales/i18n';
@@ -60,12 +62,6 @@ import '@locales/i18n';
  */
 
 const tone = CARE_CARD_TONES.emerald;
-
-/**
- * The pending-write key for the name of the rite. Step keys are `<step id>:<field>`, and a
- * client id never spells this, so the two can never take each other's place in the queue.
- */
-const TITLE_KEY = 'title';
 
 /**
  * The question a marker under this name asks is not "are these words saved" but "is this step
@@ -127,10 +123,8 @@ const parseRefs = (value: string): string[] =>
 /**
  * THE ROUTE'S HALF. It knows which service is open and nothing else — and it hands the editor a
  * KEY, which is the whole point: when the router swaps one service for another under this page,
- * React unmounts the old editor instead of the old editor having to notice. Its cleanup then
- * flushes whatever was still waiting, and the new one starts with its own state and its own
- * timers. Before this, the swap was handled by clearing refs during render, which is both a
- * React rule broken and a silent way to lose the last sentence typed.
+ * React unmounts the old editor. The engine then captures the remaining text for that
+ * service before the new editor opens.
  */
 export default function ServiceOrderPage() {
   const orderId = useRouteId(2);
@@ -187,8 +181,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
-  const { orders, loading, isOnline, updateSteps, stepVersion, captureStepPlacement, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
+  const { orders, loading, isOnline, updateSteps, stepVersion, captureStepPlacement, shownTitle, recheck, orderPresence, captureTitleTime, titleHistory, deleteOrder } =
     useServiceOrders();
+  const inputDraft = useServiceOrderInputDraft(orderId);
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
   const presence = orderPresence?.(orderId);
   // The copy on screen; it follows the engine row whenever nothing on screen is unsaved (below).
@@ -200,31 +195,56 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (!acceptedOrder && cachedOrder) setAccepted(fromShownOrder(cachedOrder));
   }, [acceptedOrder, cachedOrder, fromShownOrder]);
-  const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
+  const listOrder = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
+  const nativeSnapshot = inputDraft.latest;
+  const nativeVersion = nativeSnapshot?.metadata;
+  const listVersion = accepted?.stepVersion;
+  const nativeOrder = useMemo(() => {
+    if (!listOrder || !nativeVersion || nativeVersion.deleted || !nativeSnapshot?.value
+      || (listVersion && (nativeVersion.generation !== listVersion.generation || nativeVersion.revision <= listVersion.observedRevision))) {
+      return undefined;
+    }
+    return hydrateServiceOrder(nativeSnapshot.value as unknown as Omit<ServiceOrder, 'id'>, listOrder.id);
+  }, [listOrder, listVersion, nativeSnapshot, nativeVersion]);
+  const order = nativeOrder ?? listOrder;
   const confirmContent = (patch: Partial<ServiceOrder>) => {
     setAccepted(current => current ? { ...current, order: { ...current.order, ...patch } } : current);
   };
-  /** Always the current document, for a write that runs long after the keystroke that armed it. */
+  /** The current service for a confirmation that stayed open across a change. */
   const orderRef = useRef(order);
   orderRef.current = order;
   /** The rite as it was last seen, for the one screen that has to speak about it once it is gone. */
   const lastKnown = useRef(order);
   if (order) lastKnown.current = order;
 
-  /**
-   * ONE LOCAL TRUTH FOR WHAT IS ON SCREEN.
-   *
-   * The fields are controlled from this mirror, so what a person sees, what will be written and
-   * what the page believes are the same value. `null` means "nothing unsaved here" — then the
-   * screen simply follows the document, which is how a change made on another device shows up.
-   */
-  const [typed, setTyped] = useState<ServiceOrderStep[] | null>(null);
-  const liveSteps = typed ?? order?.steps ?? [];
-  /** Always the current mirror, for code that runs after an await and must not read a stale one. */
-  const typedRef = useRef<ServiceOrderStep[]>(liveSteps);
-  typedRef.current = liveSteps;
-
-  const pending = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; run: () => void; step?: ServiceOrderStepCapture }>());
+  // Keep structural optimism here. The session supplies the editable fields on top of it.
+  const [structuralSteps, setStructuralSteps] = useState<ServiceOrderStep[] | null>(null);
+  const newSteps = useRef(new Set<string>());
+  useEffect(() => {
+    if (!Array.isArray(nativeSnapshot?.value?.steps)) return;
+    for (const step of nativeSnapshot.value.steps) {
+      if (step && typeof step === 'object' && !Array.isArray(step) && typeof step.id === 'string') {
+        newSteps.current.delete(step.id);
+      }
+    }
+  }, [nativeSnapshot]);
+  const steps = structuralSteps ?? order?.steps ?? lastKnown.current?.steps ?? [];
+  const inputs = inputDraft.restored ? [] : inputDraft.inputs;
+  const liveSteps = useMemo(() => {
+    if (!inputs.length) return steps;
+    const byStep = new Map<string, Partial<ServiceOrderStep>>();
+    const removed = new Set<string>();
+    for (const input of inputs) {
+      if (input.field === 'orderTitle') continue;
+      if (input.retainedOnly && !input.waitingForStep) removed.add(input.stepId);
+      else byStep.set(input.stepId, { ...byStep.get(input.stepId), [input.field]: input.value });
+    }
+    return steps.filter(step => !removed.has(step.id)).map(step => byStep.has(step.id) ? { ...step, ...byStep.get(step.id) } : step);
+  }, [steps, inputs]);
+  const structureRef = useRef(steps);
+  structureRef.current = steps;
+  const liveStepsRef = useRef(liveSteps);
+  liveStepsRef.current = liveSteps;
 
   // An order just created opens ready to be written in: its name is a placeholder, and the first
   // thing its owner wants is to replace it.
@@ -232,25 +252,23 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const editingRef = useRef(editing);
   editingRef.current = editing;
 
-  /**
-   * ONE NAME FOR ONE SITTING AT THIS RITE.
-   *
-   * The guard's baseline is released behind whatever is still being written, which can be after
-   * the pastor has already pressed "Изменить" again. Without a name for the sitting, that late
-   * release took the baseline out from under the new one, and its first rename went to the
-   * server with nothing to be refused against.
-   */
   const [session, setSession] = useState(() => newClientId());
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const orderIdRef = useRef(orderId);
   orderIdRef.current = orderId;
-  const startEditing = () => {
-    if (!editing) setSession(newClientId());
-    setEditing((was) => !was);
-  };
-
   const [failure, setFailure] = useState<FailureWords | null>(null);
+  const stageInput = (input: ServiceOrderInput) => {
+    void inputDraft.stage(input).catch(error => setFailure(describeFailure(error)));
+  };
+  const flushInput = (filter?: Parameters<typeof inputDraft.flush>[0]) => {
+    if (inputDraft.ready) void inputDraft.flush(filter).catch(error => setFailure(describeFailure(error)));
+  };
+  const startEditing = () => {
+    if (editing) flushInput();
+    else setSession(newClientId());
+    setEditing(was => !was);
+  };
 
   /**
    * ONE STRUCTURAL CHANGE AT A TIME. Typing is never held up.
@@ -276,18 +294,15 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   /** What he has typed into a references field while he is still in it, exactly as typed. */
   const [refsDraft, setRefsDraft] = useState<Record<string, string>>({});
 
-  /**
-   * And the name, for the same reason: until a save comes back, the only place it exists is the
-   * field he typed it into — which the rite's own screen stops rendering the moment the rite is
-   * deleted elsewhere. What is not held is what cannot be shown back to him.
-   */
-  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleInput = inputs.find(input => input.field === 'orderTitle');
+  const titleDraft = titleInput?.raw ?? titleInput?.value ?? null;
+  const titleRequired = titleInput?.value === '';
   // The shown local words decide a reference's language, even before delivery or on a retained copy.
   const shownOrder = order ?? lastKnown.current;
   const orderWrittenIn = serviceOrderLanguage(shownOrder ? {
     ...shownOrder,
     title: titleDraft ?? shownOrder.title,
-    steps: typed ?? shownOrder.steps,
+    steps: liveSteps,
   } : null);
 
   const [verdict, setVerdict] = useState<'checking' | 'absent' | 'unreachable' | null>(null);
@@ -374,110 +389,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   };
 
   /**
-   * SAVED WHILE HE TYPES, not only when he leaves the field.
-   *
-   * Blur used to be the only trigger, and blur is exactly the event that does not happen when
-   * a phone is locked, a laptop lid is closed or a PWA is killed in the background. A pastor
-   * would have written a paragraph and lost it with nothing on screen suggesting he might.
-   * Keystrokes are coalesced so a sentence is one write, and leaving the field still flushes
-   * immediately — the blur is now a shortcut, not the guarantee.
-   */
-
-  /**
-   * WHATEVER IS STILL WAITING GETS SENT, it is never thrown away.
-   *
-   * The first version of this cleanup only cleared the timers — so typing a sentence and
-   * immediately going back lost it: unmount is not obliged to fire a blur, and the pending
-   * write died with the component. `pagehide` covers the tab being closed and a phone being
-   * put away, which is exactly when the last sentence matters most.
-   */
-  const flushAll = useCallback(() => {
-    pending.current.forEach(({ timer, run }) => {
-      clearTimeout(timer);
-      run();
-    });
-    pending.current.clear();
-  }, []);
-
-  useEffect(() => {
-    const onHide = () => flushAll();
-    // Only on the way OUT. `visibilitychange` also fires on the way back in, and flushing then
-    // sends a write for text the person is still in the middle of typing.
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') flushAll();
-    };
-    window.addEventListener('pagehide', onHide);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('pagehide', onHide);
-      document.removeEventListener('visibilitychange', onVisibility);
-      flushAll();
-    };
-  }, [flushAll]);
-
-  /**
-   * LEAVING EDIT MODE IS NOT A REASON TO THROW WORDS AWAY.
-   *
-   * It used to hand the screen straight back to the document, and that was a quiet way to lose
-   * the last thing typed: the words are flushed on the way out, and a write flushed here can
-   * still be refused a second later — by then the local copy holding them was already gone, so
-   * the failure was announced about text that no longer existed anywhere. The screen goes back
-   * to the document when a write SUCCEEDS, which is the only moment that proves it can.
-   */
-  useEffect(() => {
-    if (!editing) return;
-    return () => {
-      /*
-       * IN THIS ORDER, AND THE ORDER IS THE WHOLE POINT.
-       *
-       * What is waiting goes first, and the baseline is released behind it. The other way round
-       * — which is what declaring this effect above the page-exit one quietly produced — the
-       * baseline was deleted while a half-typed name was still on a timer, and that rename then
-       * went to the server with nothing to be refused against: an unguarded write able to
-       * overwrite a title another device had just changed.
-       */
-      flushAll();
-      void closedEditing(orderId, session);
-    };
-  }, [editing, closedEditing, flushAll, orderId, session]);
-
-  /**
-   * Every pending write remembers WHICH service and WHICH generation it was made for. A timer
-   * armed on one service and fired after the route swapped to another used to reach the new
-   * editor's mirror — the funeral's sentence appearing inside the wedding.
-   */
-  const schedule = useCallback((key: string, run: () => void, step?: ServiceOrderStepCapture) => {
-    const existing = pending.current.get(key);
-    if (existing) clearTimeout(existing.timer);
-    const timer = setTimeout(() => {
-      pending.current.delete(key);
-      run();
-    }, 700);
-    pending.current.set(key, { timer, run, step });
-  }, []);
-
-  /** Runs what is waiting under this key, if anything is. Nothing waiting means nothing to do. */
-  const flush = useCallback((key: string) => {
-    const existing = pending.current.get(key);
-    if (!existing) return;
-    clearTimeout(existing.timer);
-    pending.current.delete(key);
-    existing.run();
-  }, []);
-
-
-  /**
-   * Moves the mirror NOW. Called from the field's own change handler, not from the write: the
-   * write waits 700ms, and a page that dies inside that window would otherwise leave the draft
-   * holding the version from before the sentence was typed.
-   */
-  /**
-   * Moves the mirror NOW and reports exactly what it moved to.
-   *
-   * Synchronous on purpose: the caller needs the post-change value before it awaits anything, and
-   * reading it back from state a line later would hand it the version from before the keystroke.
-   */
-  /**
    * EVERY FIELD WHOSE LAST WRITE WAS REFUSED, AND WHAT WAS SAID ABOUT IT.
    *
    * Those words exist on this screen and nowhere else. Two things follow, and both were learned
@@ -486,14 +397,11 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * the very text the banner was about. And the banner itself must not be cleared by that
    * success: words left on screen with nothing said about them read as saved, and the next
    * reload takes them.
-   *
-   * The name of the rite belongs here too, under `null` — it is not a step, and a step id is
-   * always a string, so the two can never be taken for one another.
    */
-  const unresolved = useRef(new Map<string | null, Map<string, { said: FailureWords; value?: string }>>());
+  const unresolved = useRef(new Map<string, Map<string, { said: FailureWords; value?: string }>>());
 
   const rememberRefusal = useCallback(
-    (owner: string | null, field: string, said: FailureWords, value?: string) => {
+    (owner: string, field: string, said: FailureWords, value?: string) => {
       const fields =
         unresolved.current.get(owner) ?? new Map<string, { said: FailureWords; value?: string }>();
       fields.set(field, { said, value });
@@ -503,7 +411,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   );
 
   /** That same field, saved at last. */
-  const forgetRefusal = useCallback((owner: string | null, field: string) => {
+  const forgetRefusal = useCallback((owner: string, field: string) => {
     const fields = unresolved.current.get(owner);
     if (!fields) return;
     fields.delete(field);
@@ -522,23 +430,11 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     return null;
   }, []);
 
-  /** Only the STEPS pin the mirror. An unsaved name lives in its own field, not in this list. */
-  const stepRefusalsPending = useCallback(
-    () => [...unresolved.current.keys()].some((owner) => owner !== null),
-    []
-  );
-
-  /** Timers for the steps only — the name's timer is not a reason to hold the steps' mirror. */
-  const stepWritesWaiting = useCallback(
-    () => [...pending.current.keys()].some((key) => key !== TITLE_KEY),
-    []
-  );
-
   const mirror = useCallback(
     (mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null) => {
-      const next = mutate(typedRef.current) ?? typedRef.current;
-      typedRef.current = next;
-      setTyped(next);
+      const next = mutate(structureRef.current) ?? structureRef.current;
+      structureRef.current = next;
+      setStructuralSteps(next);
       return next;
     },
     []
@@ -570,7 +466,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     // A step that was only being MOVED, which the server no longer has, leaves the screen: a step
     // announced as gone while still sitting in the list is a page arguing with itself.
     if (gone && options?.dropOnGone) {
-      const standing = typedRef.current.find((step) => step.id === options.dropOnGone);
+      const standing = liveStepsRef.current.find((step) => step.id === options.dropOnGone);
       const empty =
         !standing || (!standing.title && !standing.body && (standing.scriptureRefs ?? []).length === 0);
       if (empty) {
@@ -596,7 +492,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     if (unknown && options?.dropOnGone) rememberRefusal(options.dropOnGone, EXISTENCE, said);
     // A step that was created and then written into survives its own refusal: its words are on
     // this screen and nowhere else, and the undo leaves it standing for that reason.
-    if (!unknown && options?.created && typedRef.current.some((step) => step.id === options.created)) {
+    if (!unknown && options?.created && structureRef.current.some((step) => step.id === options.created)) {
       rememberRefusal(options.created, EXISTENCE, said);
     }
     return said;
@@ -624,7 +520,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     setFailure(stillUnsaid());
     if (options?.undo) setRearranging(true);
     mirror(mutate);
-    const sentSteps = typedRef.current;
+    const sentSteps = structureRef.current;
     try {
       const committed = await (options?.step ? updateSteps(orderId, mutate, options.step) : updateSteps(orderId, mutate));
       const movingStep = options?.step?.field === 'placement';
@@ -681,79 +577,20 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
        * answer would lift the newer words off the screen. The write carrying them is already on
        * its way with the truthful one.
        */
-      if (typedRef.current !== sentSteps) return;
-      /*
-       * NO STEP WRITE MAY BE WAITING EITHER.
-       *
-       * Type a sentence and add a step before the timer fires: the structural write goes to the
-       * server, which knows nothing of the sentence, and comes back with a truthful answer that
-       * does not contain it. Adopting it takes the sentence off the screen — and the next
-       * keystroke lands on the version without it, so the words are lost for real. The write
-       * carrying them is already on the timer; when it answers, nothing will be waiting.
-       *
-       * The NAME is counted out of this. It is not part of the steps, and a name still on its
-       * timer would otherwise pin the mirror for the rest of the session — which is its own
-       * quiet failure: the screen stops following the document and a change made elsewhere
-       * never appears.
-       */
-      if (stepWritesWaiting()) return;
+      if (structureRef.current !== sentSteps) return;
       // A refused write elsewhere in this rite is still unresolved, and its words are only here.
-      if (stepRefusalsPending()) return;
+      if (unresolved.current.size) return;
       /*
        * Nothing is unsaved any more, so the mirror lets go: the hook has just cached exactly
        * these steps, and a screen pinned to a local copy would stop showing anything that
        * happened elsewhere for as long as the tab stayed open.
        */
-      if (committed) typedRef.current = committed;
-      setTyped(null);
+      if (committed) structureRef.current = committed;
+      setStructuralSteps(null);
     } catch (error) {
       setFailure(settleFailure(error, options));
     } finally {
       if (options?.undo) setRearranging(false);
-    }
-  };
-
-  /**
-   * THE NAME IS SAVED ON THE SAME TERMS AS THE WORDS UNDER IT.
-   *
-   * It used to save on blur alone, while every field below it saved as it was typed — so the
-   * one thing a person renames and immediately closes the page on was the one thing the page
-   * did not keep. Blur is exactly the event that does not happen when a phone is locked or a
-   * tab is closed. Through the same timer it is coalesced, flushed on leaving the field, and
-   * caught by the same page-exit flush as everything else.
-   */
-  const saveTitle = async (value: string, time?: ActionTime) => {
-    const next = value.trim();
-    /*
-     * A rite with no name at all is the one value worth refusing here — and refusing it SAYS so.
-     * Silently returning left the pastor watching his emptied field turn back into the old name
-     * on "Готово", with nothing to explain why what he did had no effect.
-     *
-     * Whether the name has actually CHANGED is decided beside the queue, where the answer is not
-     * one save out of date.
-     */
-    if (!next) {
-      const said: FailureWords = { key: 'serviceOrders.titleRequired' };
-      rememberRefusal(null, TITLE_KEY, said);
-      setFailure(said);
-      return;
-    }
-    setFailure(stillUnsaid());
-    try {
-      const revision = await (time ? renameOrder(orderId, next, session, time) : renameOrder(orderId, next, session));
-      confirmContent({ title: next, ...(revision == null ? {} : { rev: { ...orderRef.current?.rev, meta: revision } }) });
-      forgetRefusal(null, TITLE_KEY);
-      // Only if it is still the name that was saved. Clearing it outright threw away a NEWER
-      // one: type again while the first save is travelling, and the draft holding the second
-      // name was dropped by the first one's success — leaving nothing to show him if the rite
-      // then disappeared underneath it.
-      setTitleDraft((current) => (current === next ? null : current));
-      setFailure(stillUnsaid());
-    } catch (error) {
-      const said = describeFailure(error);
-      // The typed name is in the field and nowhere else, exactly like a refused paragraph.
-      rememberRefusal(null, TITLE_KEY, said);
-      setFailure(said);
     }
   };
 
@@ -765,7 +602,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * nowhere else. Nothing said so, and leaving the page took it. So the words are shown instead,
    * plainly and selectably, with what happened said above them.
    */
-  const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
+  const hasLocalChanges = structuralSteps !== null || inputs.length > 0 || unresolved.current.size > 0 || rearranging;
   // Reading is safe while words are kept here; leaving is offered only after this sitting has no unfinished work.
   const titleHistorySession = titleHistory?.(orderId);
   const canLeaveReading = Boolean(order) && presence?.kind !== 'absent' && presence?.kind !== 'deleting' && !hasLocalChanges;
@@ -776,10 +613,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * new sitting, so a rename is judged against the title now on screen.
    */
   useEffect(() => {
-    if (!cachedOrder || hasLocalChanges || acceptedOrder === cachedOrder) return;
-    if (acceptedOrder && acceptedOrder.title !== cachedOrder.title) setSession(newClientId());
+    if (!cachedOrder || structuralSteps || rearranging || acceptedOrder === cachedOrder) return;
     setAccepted(fromShownOrder(cachedOrder));
-  }, [cachedOrder, hasLocalChanges, acceptedOrder, fromShownOrder]);
+  }, [cachedOrder, structuralSteps, rearranging, acceptedOrder, fromShownOrder]);
 
   // Both the current and retained reading copy open through the same screen-owned window.
   const reading = (children: ReactNode) => (
@@ -793,15 +629,16 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     const kept = cachedOrder ?? lastKnown.current;
     return reading(<RecordUnavailable presence={presence} onBack={() => router.push('/care/orders')}
       onRetry={() => recheck(orderId)}>
+      <ServiceOrderDraftRecovery draft={inputDraft} editing={false} />
       {kept && <section className="space-y-4">
         <h2 className="text-xl font-bold"><ScriptureText text={titleDraft ?? kept.title} /></h2>
         <ServiceOrderFailure message={t(presence.kind === 'absent' ? 'serviceOrders.goneWithWords' : 'recordAvailability.deleting') as string} testId="service-order-gone" />
-        <RetainedOrderSteps steps={typed ?? kept.steps} refsDraft={refsDraft} />
+        <RetainedOrderSteps steps={liveSteps} refsDraft={refsDraft} />
       </section>}
     </RecordUnavailable>);
   }
 
-  if (!order && (typed || titleDraft || unresolved.current.size > 0) && lastKnown.current) {
+  if (!order && (structuralSteps || inputs.length > 0 || unresolved.current.size > 0) && lastKnown.current) {
     return reading(
       <div className="mx-auto w-full max-w-3xl">
         <BackToList />
@@ -818,7 +655,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           testId="service-order-gone"
         />
 
-        <RetainedOrderSteps steps={typed ?? lastKnown.current.steps} refsDraft={refsDraft} />
+        <RetainedOrderSteps steps={liveSteps} refsDraft={refsDraft} />
+        <ServiceOrderDraftRecovery draft={inputDraft} editing={false} />
       </div>
     );
   }
@@ -855,6 +693,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           {verdict === 'absent' ? t('serviceOrders.notFound') : t('serviceOrders.notHereYet')}
         </p>
         <BackToList className="mt-4" />
+        <ServiceOrderDraftRecovery draft={inputDraft} editing={false} />
       </div>
     );
   }
@@ -889,7 +728,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   };
 
   const restoreStepPlacement = async (gap: LabeledServiceOrderPlacement, stepId: string) => {
-    const current = typedRef.current;
+    const current = structureRef.current;
     const version = shownStepVersion();
     if ([gap.previous, gap.next].some(anchor => anchor && anchor.generation !== version?.generation)) throw new StepGoneError();
     const projected = projectServiceOrderStep(current, stepId, {
@@ -921,33 +760,42 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
       { field: { stepId, name: field, value: patchedValue(patch, field) }, step }
     );
 
-  const shownStepVersion = () => accepted?.stepVersion ?? fromShownOrder(order).stepVersion;
+  const shownStepVersion = () => nativeOrder && nativeVersion
+    ? { generation: nativeVersion.generation, observedRevision: nativeVersion.revision }
+    : accepted?.stepVersion ?? fromShownOrder(order).stepVersion;
   const setStepFlag = (step: ServiceOrderStep, flagged: boolean) => {
     const version = shownStepVersion();
     const change = version && { ...version, rowId: step.id, before: Boolean(step.flagged), after: flagged, time: captureTitleTime?.() ?? null };
     return patchStep(step.id, 'flagged', { flagged }, change && { field: 'flagged', change });
   };
 
-  const stepTextCapture = (step: ServiceOrderStep, field: 'title' | 'body', text: string): ServiceOrderStepTitleCapture | undefined => {
-    const version = shownStepVersion();
-    return version && { ...version, rowId: step.id, before: step[field] ?? '', after: text, time: captureTitleTime?.() ?? null };
-  };
+  const stepInputScope = (stepId: string) => ({
+    stepId, time: captureTitleTime?.() ?? null, version: shownStepVersion(),
+    ...(newSteps.current.has(stepId) && { waitingForStep: true as const }),
+  });
   const editStepText = (step: ServiceOrderStep, field: 'title' | 'body', text: string) => {
-    const key = `${step.id}:${field}`;
-    const waiting = pending.current.get(key);
-    const opening = waiting?.step?.field === field ? waiting.step.change : undefined;
-    // A pause or blur saves one burst with its first displayed value and last input time.
-    const change = waiting
-      ? opening && { ...opening, after: text, time: captureTitleTime?.() ?? null }
-      : stepTextCapture(step, field, text);
-    const capture = change && { field, change };
-    const patch = { [field]: text };
-    mirror(steps => steps.map(entry => entry.id === step.id ? { ...entry, ...patch } : entry));
-    schedule(key, () => patchStep(step.id, field, patch, capture), capture);
+    stageInput({ field, value: text, before: step[field] ?? '', ...stepInputScope(step.id) });
   };
-  const restoreStepTitle = (step: ServiceOrderStep, title: string) => {
-    const change = stepTextCapture(step, 'title', title);
-    return patchStep(step.id, 'title', { title }, change && { field: 'title', change });
+  const restoreStepTitle = async (step: ServiceOrderStep, title: string) => {
+    const scope = stepInputScope(step.id);
+    if (scope.version?.generation !== titleHistorySession?.generation) throw new StepGoneError();
+    await inputDraft.stage({ field: 'title', before: step.title, value: title, ...scope });
+    await inputDraft.flush({ field: 'title', stepId: step.id });
+  };
+  const orderTitleInput = (raw: string): ServiceOrderInput => {
+    const seen = nativeOrder && nativeVersion ? {
+      generation: nativeVersion.generation, revision: nativeVersion.revision,
+    } : shownTitle?.(orderId, { title: order.title, revision: order.rev?.meta ?? 0 });
+    const version = seen && { generation: seen.generation, observedRevision: seen.revision,
+      ...('requestId' in seen && { requestId: seen.requestId }) };
+    return { field: 'orderTitle', value: raw.trim(), raw, before: titleInput?.value ?? order.title,
+      version, time: captureTitleTime?.() ?? null };
+  };
+  const restoreOrderTitle = async (title: string) => {
+    const input = orderTitleInput(title);
+    if (input.version?.generation !== titleHistorySession?.generation) throw new StepGoneError();
+    await inputDraft.stage(input);
+    await inputDraft.flush({ field: 'orderTitle' });
   };
 
   /**
@@ -957,10 +805,11 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    */
   const addStep = () => {
     const step: ServiceOrderStep = { id: newClientId(), title: '', body: '', scriptureRefs: [] };
+    newSteps.current.add(step.id);
     return write((steps) => (steps.some((s) => s.id === step.id) ? null : [...steps, step]), {
       created: step.id,
       undo: (steps) => {
-        const standing = steps.find((entry) => entry.id === step.id);
+        const standing = liveStepsRef.current.find((entry) => entry.id === step.id) ?? steps.find((entry) => entry.id === step.id);
         if (!standing) return null;
         // Still empty — it was never anything, so it goes. Written into — it stays, because
         // those words exist here and nowhere else.
@@ -974,7 +823,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const removeStep = async (stepId: string) => {
     const capturedOrder = orderRef.current;
     const capturedSession = sessionRef.current;
-    const capturedStep = typedRef.current.find((step) => step.id === stepId);
+    const capturedStep = liveStepsRef.current.find((step) => step.id === stepId);
     if (!capturedOrder || !capturedStep || !editingRef.current) return;
     const accepted = await confirm({
       title: { key: 'common.deleteItem.title' },
@@ -984,11 +833,13 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     });
     if (!accepted) return;
 
-    const latestOrder = orderRef.current;
-    if (!editingRef.current || orderIdRef.current !== capturedOrder.id || !latestOrder ||
-        latestOrder.id !== capturedOrder.id || latestOrder.userId !== capturedOrder.userId ||
-        sessionRef.current !== capturedSession ||
-        JSON.stringify(typedRef.current.find((step) => step.id === stepId)) !== JSON.stringify(capturedStep)) return;
+    const stillShown = () => {
+      const latest = liveStepsRef.current.find(step => step.id === stepId);
+      return editingRef.current && orderIdRef.current === capturedOrder.id && orderRef.current?.id === capturedOrder.id
+        && orderRef.current.userId === capturedOrder.userId && sessionRef.current === capturedSession && latest
+        && ['title', 'body', 'refs', 'flagged'].every(field => fieldValue(latest, field) === fieldValue(capturedStep, field));
+    };
+    if (!stillShown()) return;
 
     /*
      * The words go FIRST, even though the step is about to be removed.
@@ -998,9 +849,13 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
      * and nothing ever said so. Writes for one service are serialised, so the text lands before
      * the removal and costs nothing when the removal succeeds.
      */
-    pending.current.forEach((entry, key) => {
-      if (key.startsWith(`${stepId}:`)) flush(key);
-    });
+    try {
+      if (inputDraft.ready) await inputDraft.flush({ stepId });
+    } catch (error) {
+      setFailure(describeFailure(error));
+      return;
+    }
+    if (!stillShown()) return;
     const removed = liveSteps.find((step) => step.id === stepId);
     const wasAt = liveSteps.findIndex((step) => step.id === stepId);
     return write(
@@ -1026,8 +881,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     if (!(await confirm({ title: { key: 'serviceOrders.deleteConfirm' }, confirmText: { key: 'common.delete' } }))) return;
     // Same rule as a removed step: whatever was typed is sent before the document goes, so a
     // refused deletion cannot swallow it.
-    pending.current.forEach((_entry, key) => flush(key));
     try {
+      if (inputDraft.ready) await inputDraft.flush();
       await deleteOrder(orderId);
       router.push('/care/orders');
     } catch (error) {
@@ -1050,23 +905,16 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           {editing ? (
             <input
               key={session}
-              defaultValue={order.title}
+              value={titleDraft ?? order.title}
               aria-label={t('serviceOrders.orderTitle') as string}
-              onFocus={() =>
-                openedWith(orderId, { title: order.title, revision: order.rev?.meta ?? 0 }, session)
-              }
-              onChange={(event) => {
-                const next = event.target.value;
-                setTitleDraft(next);
-                const time = captureTitleTime?.();
-                schedule(TITLE_KEY, () => saveTitle(next, time));
-              }}
-              onBlur={() => flush(TITLE_KEY)}
+              disabled={!inputDraft.ready}
+              onChange={event => stageInput(orderTitleInput(event.target.value))}
+              onBlur={() => flushInput({ field: 'orderTitle' })}
               className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-2xl font-extrabold tracking-tight text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
           ) : (
             <h1 className="min-w-0 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
-              <ScriptureText text={order.title} />
+              <ScriptureText text={titleInput?.value || order.title} />
             </h1>
           )}
 
@@ -1084,7 +932,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         </div>
 
         {titleHistorySession && <DocumentFieldHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
-          session={titleHistorySession} current={titleDraft ?? order.title} disabled={hasLocalChanges || editing} />}
+          session={{ ...titleHistorySession, restore: restoreOrderTitle }} current={titleDraft ?? order.title}
+          disabled={!inputDraft.ready || hasLocalChanges || editing} />}
         {titleHistorySession && <>
           <ServiceOrderPlacementHistory
             key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation, 'position'])}
@@ -1096,7 +945,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           <ServiceOrderStepHistory
             key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation, 'title'])}
             owner={titleHistorySession.owner} orderId={orderId} generation={titleHistorySession.generation}
-            steps={liveSteps} disabled={hasLocalChanges || editing} field="title" onRestore={restoreStepTitle} />
+            steps={liveSteps} disabled={!inputDraft.ready || hasLocalChanges || editing} field="title" onRestore={restoreStepTitle} />
         </>}
 
         {order.summary && !editing && (
@@ -1106,7 +955,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         )}
       </header>
 
-      {failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-order-failure" />}
+      <ServiceOrderDraftRecovery draft={inputDraft} editing={editing} />
+      {(failure || titleRequired) && <ServiceOrderFailure
+        message={failure ? sayFailure(failure, t) : t('serviceOrders.titleRequired') as string} testId="service-order-failure" />}
 
       {liveSteps.length === 0 && !editing && (
         <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
@@ -1146,8 +997,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                       value={step.title}
                       placeholder={t('serviceOrders.stepTitle') as string}
                       aria-label={t('serviceOrders.stepTitle') as string}
+                      disabled={!inputDraft.ready}
                       onChange={(event) => editStepText(step, 'title', event.target.value)}
-                      onBlur={() => flush(`${step.id}:title`)}
+                      onBlur={() => flushInput({ stepId: step.id, field: 'title' })}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
                     />
                     <textarea
@@ -1155,8 +1007,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                       rows={3}
                       placeholder={t('serviceOrders.stepWords') as string}
                       aria-label={t('serviceOrders.stepWords') as string}
+                      disabled={!inputDraft.ready}
                       onChange={(event) => editStepText(step, 'body', event.target.value)}
-                      onBlur={() => flush(`${step.id}:body`)}
+                      onBlur={() => flushInput({ stepId: step.id, field: 'body' })}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
                     />
                     <input
@@ -1172,29 +1025,15 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                       value={refsDraft[step.id] ?? (step.scriptureRefs ?? []).join(', ')}
                       placeholder={t('serviceOrders.refsHint') as string}
                       aria-label={t('serviceOrders.refs') as string}
-                      // The same rules as the words above: mirrored on the keystroke so the
-                      // draft holds them, written after the pause, flushed early on leaving.
+                      disabled={!inputDraft.ready}
                       onChange={(event) => {
-                        const typedRefs = event.target.value;
-                        setRefsDraft((drafts) => ({ ...drafts, [step.id]: typedRefs }));
-                        const next = parseRefs(typedRefs);
-                        const key = `${step.id}:refs`;
-                        const waiting = pending.current.get(key);
-                        const prior = waiting?.step?.field === 'scriptureRefs' ? waiting.step.change : undefined;
-                        const version = waiting ? undefined : shownStepVersion();
-                        const change = prior ? { ...prior, after: next,
-                          time: JSON.stringify(prior.after) === JSON.stringify(next) ? prior.time : captureTitleTime?.() ?? null }
-                          : version && { ...version, rowId: step.id, before: step.scriptureRefs ?? [], after: next, time: captureTitleTime?.() ?? null };
-                        const capture = change && { field: 'scriptureRefs' as const, change };
-                        mirror((steps) =>
-                          steps.map((entry) =>
-                            entry.id === step.id ? { ...entry, scriptureRefs: next } : entry
-                          )
-                        );
-                        schedule(key, () => patchStep(step.id, 'refs', { scriptureRefs: next }, capture), capture);
+                        const raw = event.target.value;
+                        setRefsDraft(drafts => ({ ...drafts, [step.id]: raw }));
+                        stageInput({ field: 'scriptureRefs', value: parseRefs(raw), raw, before: step.scriptureRefs ?? [],
+                          ...stepInputScope(step.id) });
                       }}
                       onBlur={() => {
-                        flush(`${step.id}:refs`);
+                        flushInput({ stepId: step.id, field: 'scriptureRefs' });
                         // Leaving the field hands it back to the stored list, tidily separated.
                         setRefsDraft((drafts) => {
                           const rest = { ...drafts };

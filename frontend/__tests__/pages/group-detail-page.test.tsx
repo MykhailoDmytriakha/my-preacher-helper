@@ -218,7 +218,7 @@ describe('GroupDetailPage', () => {
     // Pushes everything the page queued to the (fake) server and returns what it now stores.
     // `pagehide` makes the editor save now instead of waiting out its autosave delay.
     const delivered = async () => {
-      // First let the edit land in the draft and the editor re-arm its page-hide listener ...
+      // Let the form persist the last input before flushing it.
       await act(async () => { await settleEngine(); });
       await act(async () => { window.dispatchEvent(new Event('pagehide')); await settleEngine(); });
       await act(async () => { await harness.engine.retry(); await settleEngine(); });
@@ -659,6 +659,45 @@ describe('GroupDetailPage', () => {
     view.rerender(<DataEngineProvider>{null}</DataEngineProvider>);
     await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
     expect((harness.server.value as any).meetingDates[0].location).toBe('Hall typed just before leaving');
+  });
+
+  it.each([
+    { field: 'location', opening: 'Hall', edited: 'New hall saved locally before switching devices', send: true },
+    { field: 'date', opening: '2026-02-11', edited: '', send: true },
+    { field: 'date', opening: '2026-02-11', edited: '2026-0', send: false },
+  ] as const)('handles a durable meeting $field edit after the browser stops before its autosave (send: $send)', async ({ field, opening, edited, send }) => {
+    const { harness, view } = setupGroupPage();
+    const input = await screen.findByDisplayValue(opening);
+    act(() => harness.engine.setOnline(false));
+    fireEvent.change(input, { target: { value: edited } });
+    await waitFor(() => expect([...harness.storage.rows.values()].some(value => {
+      const copy = value as { slot?: string; record?: { active: boolean; stage: [{ value?: Array<Record<string, string>> }] } };
+      return copy.slot === 'group-meeting' && copy.record?.active && copy.record.stage[0].value?.[0]?.[field] === edited;
+    })).toBe(true));
+    expect(await harness.commits.list('user-1')).toHaveLength(0);
+    act(() => harness.engine.dispose());
+    view.unmount();
+
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => harness.createBrowser({
+      recoveryPresence: { hold: () => () => undefined, held: async () => false },
+    }));
+    const reopened = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await screen.findByDisplayValue('Family Group');
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+    if (send) {
+      await waitFor(() => expect(harness.server.value?.meetingDates).toEqual([
+        expect.objectContaining({ id: 'date-1', date: '2026-02-11', location: 'Hall', audience: 'Youth', [field]: edited }),
+      ]));
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    } else {
+      const choices = await screen.findByLabelText('dataSync.recoveryLabel');
+      const option = choices.querySelectorAll('option')[1] as HTMLOptionElement;
+      fireEvent.change(choices, { target: { value: option.value } });
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+      expect(await screen.findByDisplayValue(edited)).toBeInTheDocument();
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    }
+    reopened.unmount();
   });
 
   it('flushes the staged detail even when pagehide arrives before React renders its dirty state', async () => {

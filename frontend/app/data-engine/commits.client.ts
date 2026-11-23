@@ -7,9 +7,12 @@ import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { isRetirableOrdinaryEditor } from './editorIdentity';
-import { equalValues } from './fieldValues';
-import { writeManualChoiceRecoveries } from './manualScopes.client';
+import { equalValues, readField } from './fieldValues';
+import { GROUP_MEETING_SLOT, PendingMeetingResume, readyMeetingAutosave } from './groupMeetingAutosave';
+import { reconcileManualCaptures } from './manualScope';
+import { writeManualChoiceRecoveries, type ManualStorageRecord } from './manualScopes.client';
 import { reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
+import { versionRecoveryRecord } from './recoverySource.client';
 import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -234,6 +237,38 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
               && record.recoveryOrigins.some((origin: { id?: string; version?: string }) => origin?.id === id && origin.version === version));
             if (forked) throw changed();
             capture('resume');
+          });
+        });
+      });
+    },
+    createWithMeetingResume: (request, version) => {
+      const frozen = clone(request), value = frozen.value;
+      if (!value) return Promise.reject(changed());
+      return transaction('readwrite', (store, read, done) => {
+        read(store.get(['manual', frozen.owner, frozen.editorId]), (source: ManualStorageRecord | undefined) => {
+          const input = source?.record;
+          if (!source || !input || source.slot !== GROUP_MEETING_SLOT || source.recoveryVersion !== version
+            || input.owner !== frozen.owner || input.scopeId !== frozen.editorId
+            || input.generation !== frozen.editGeneration) throw changed();
+          read(store.getAll(engineOwnerRange('manual', frozen.owner)), (scopes: ManualStorageRecord[]) => {
+            // A chosen recovery fork or a newer on-device record has its own authority.
+            if (scopes.some(scope => scope.record?.recoveryOrigins?.some(origin =>
+              origin.id === source.scopeId && origin.version === version))) throw changed();
+            readCommitRows(store, read, frozen.owner, requests => {
+              const waiting = requests.filter(item => equalValues(item.baseline.resource, frozen.baseline.resource)
+                && !['acknowledged', 'cancelled'].includes(item.state));
+              if (waiting.length) throw new PendingMeetingResume(waiting.map(item => item.id));
+              const stage = reconcileManualCaptures(input, requests);
+              if (!readyMeetingAutosave(stage) || (stage.predecessor?.id ?? null) !== frozen.predecessor
+                || !equalValues(stage.baseline, frozen.baseline)
+                || !equalValues(stage.stage[0], readField(value, ['meetingDates']))) throw changed();
+              createRecord(store, read, frozen, saved => {
+                const record = reconcileManualCaptures(stage, [...requests.filter(item => item.id !== saved.id), saved]);
+                const captured = versionRecoveryRecord({ ...source, record: { ...record, active: false }, commitReferences: [saved.id] });
+                store.put(captured, ['manual', frozen.owner, frozen.editorId]);
+                done(saved);
+              });
+            });
           });
         });
       });

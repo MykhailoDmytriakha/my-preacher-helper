@@ -1,6 +1,7 @@
 import { findPointSection, findSubPointParent } from '@/utils/outlineDnd';
 import { outlineTitleConflictTarget, outlineTitleField, withOutlineTitleText, type OutlineTitleOpening } from '@/utils/sermonNoteText';
 
+import { outlinePlacementField } from './outlinePlacementResource';
 import { OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { mergeDocumentFields } from './protocol';
 
@@ -25,7 +26,7 @@ function sameGeneration(a: ResourceSnapshot, b: ResourceSnapshot): boolean {
 }
 
 /** A visible pending create remains the same opening when that exact operation is acknowledged. */
-function continuesTemplateCreation(shown: SessionCheckpoint, current: SessionCheckpoint, stored: ResourceSnapshot): boolean {
+function continuesOutlineCreation(shown: SessionCheckpoint, current: SessionCheckpoint, stored: ResourceSnapshot): boolean {
   const opening = shown.confirmed;
   const birth = shown.draft?.createdAt, owner = shown.draft?.userId;
   if (opening.value !== null || opening.metadata !== null || !sameResource(opening, stored) || stored.metadata?.deleted
@@ -40,31 +41,33 @@ function continuesTemplateCreation(shown: SessionCheckpoint, current: SessionChe
   return stored.value === null && pending.some(([id]) => matches(current.pending[id]?.value));
 }
 
-/** Prepare one explicit title over the live template, retaining a competing stored title. */
-export function templateTitleEdit(state: SessionCheckpoint, shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string) {
+/** Prepare one explicit title over the live outline, retaining a competing stored title. */
+export function prepareOutlineTitleEdit(state: SessionCheckpoint, shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string) {
   const stored = state.remoteCandidate ?? state.confirmed;
+  const field = outlinePlacementField(stored.resource.collection);
+  if (!field) throw changedTitle();
   const draft = state.draft;
-  const live = outlineOf(draft, 'structure');
-  const savedOutline = outlineOf(stored.value, 'structure');
-  const openingOutline = outlineOf(shown.confirmed.value, 'structure');
-  const creating = continuesTemplateCreation(shown, state, stored);
-  if (stored.resource.collection !== 'planTemplates' || (!sameGeneration(shown.confirmed, stored) && !creating) || !draft || !live
-    || outlineTitleField(outlineOf(shown.draft, 'structure'), opening.target, 'structure')?.text !== opening.text) throw changedTitle();
+  const live = outlineOf(draft, field);
+  const savedOutline = outlineOf(stored.value, field);
+  const openingOutline = outlineOf(shown.confirmed.value, field);
+  const creating = continuesOutlineCreation(shown, state, stored);
+  if ((!sameGeneration(shown.confirmed, stored) && !creating) || !draft || !live
+    || outlineTitleField(outlineOf(shown.draft, field), opening.target, field)?.text !== opening.text) throw changedTitle();
   const projected = withOutlineTitleText(live, opening.target, title);
   if (!projected || (!creating && (!savedOutline || !openingOutline))) throw changedTitle();
-  const updated = { ...draft, structure: projected as unknown as Json };
+  const updated = { ...draft, [field]: projected as unknown as Json };
   const forTitle = ({ path }: ConflictDetail) => outlineTitleConflictTarget(path)?.id === opening.target.id;
   const existing = state.conflicts.find(forTitle);
-  const saved = outlineTitleField(savedOutline, opening.target, 'structure');
+  const saved = outlineTitleField(savedOutline, opening.target, field);
   if (!saved) {
     const hasRow = (outline: SermonOutline) => findPointSection(outline, opening.target.id) || findSubPointParent(outline, opening.target.id);
-    const confirmed = outlineOf(state.confirmed.value, 'structure');
+    const confirmed = outlineOf(state.confirmed.value, field);
     // An earlier local insertion already belongs to the live draft, even before its first ACK.
     if (existing || (savedOutline && hasRow(savedOutline)) || (openingOutline && hasRow(openingOutline))
       || (confirmed && hasRow(confirmed))) throw changedTitle();
     return { draft: updated, stored, conflicts: state.conflicts, conflictingTitle: false };
   }
-  const earlier = outlineTitleField(openingOutline, opening.target, 'structure')?.text;
+  const earlier = outlineTitleField(openingOutline, opening.target, field)?.text;
   const conflict = saved.text !== title && (existing || (saved.text !== opening.text && saved.text !== earlier))
     ? { path: saved.path, base: existing?.base ?? titleValue(opening.text), mine: titleValue(title), theirs: titleValue(saved.text) }
     : undefined;

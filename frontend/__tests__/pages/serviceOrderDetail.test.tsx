@@ -4,6 +4,7 @@ import React from 'react';
 
 import ServiceOrderPage from '@/(pages)/(private)/care/orders/[id]/page';
 import '@testing-library/jest-dom';
+import type { ServiceOrderInput } from '@/data-engine/react.client';
 import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { ServiceOrderStep } from '@/models/models';
 
@@ -14,9 +15,7 @@ import type { ServiceOrderStep } from '@/models/models';
  */
 
 const mockUpdateSteps = jest.fn().mockResolvedValue(undefined);
-const mockRenameOrder = jest.fn().mockResolvedValue(undefined);
-const mockOpenedWith = jest.fn();
-const mockClosedEditing = jest.fn().mockResolvedValue(undefined);
+const mockShownTitle = jest.fn();
 const mockRecheck = jest.fn().mockResolvedValue('absent');
 const mockDeleteOrder = jest.fn().mockResolvedValue(undefined);
 const mockPush = jest.fn();
@@ -31,16 +30,38 @@ const state = {
   orderPresence: undefined as undefined | ((id: string) => RecordPresence),
 };
 
+const mockStageInput = jest.fn<Promise<void>, [ServiceOrderInput]>().mockResolvedValue(undefined);
+const mockFlushInputs = jest.fn<Promise<void>, [{ stepId?: string; field?: ServiceOrderInput['field'] }?]>().mockResolvedValue(undefined);
+
+jest.mock('@/hooks/useServiceOrderInputDraft', () => ({
+  useServiceOrderInputDraft: () => {
+    const [inputs, setInputs] = React.useState<ServiceOrderInput[]>([]);
+    const [error, setError] = React.useState<string>();
+    const flush = async (scope?: Parameters<typeof mockFlushInputs>[0]) => {
+      try { await (scope === undefined ? mockFlushInputs() : mockFlushInputs(scope)); }
+      catch (failure) {
+        setError(failure instanceof Error ? failure.message : String(failure));
+        throw failure;
+      }
+    };
+    const stage = (input: ServiceOrderInput) => {
+      const key = (entry: ServiceOrderInput) => JSON.stringify([entry.field, 'stepId' in entry ? entry.stepId : null]);
+      setInputs(previous => [...previous.filter(entry => key(entry) !== key(input)), input]);
+      return mockStageInput(input);
+    };
+    return { ready: true, stage, inputs, flush, error, status: null, recoveredFields: [],
+      recovery: { choices: [], loading: false, error: null } };
+  },
+}));
+
 jest.mock('@/hooks/useServiceOrders', () => ({
   useServiceOrders: () => ({
     ...state,
     updateSteps: mockUpdateSteps,
     stepVersion: mockStepVersion,
     captureTitleTime: mockCaptureTitleTime,
-    openedWith: mockOpenedWith,
-    closedEditing: mockClosedEditing,
+    shownTitle: mockShownTitle,
     recheck: mockRecheck,
-    renameOrder: mockRenameOrder,
     deleteOrder: mockDeleteOrder,
   }),
 }));
@@ -74,19 +95,24 @@ const order = (steps: unknown[]) => ({
 
 const step = (id: string, title: string, body = ''): ServiceOrderStep => ({ id, title, body, scriptureRefs: [] });
 
-describe('One service', () => {
-  beforeEach(() => {
+beforeEach(() => {
     jest.clearAllMocks();
     mockStepVersion.mockReset();
     mockCaptureTitleTime.mockReset();
+    mockShownTitle.mockReset();
+    mockUpdateSteps.mockReset().mockResolvedValue(undefined);
+    mockRecheck.mockReset().mockResolvedValue('absent');
+    mockStageInput.mockReset().mockResolvedValue(undefined);
+    mockFlushInputs.mockReset().mockResolvedValue(undefined);
     jest.useRealTimers();
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
     state.loading = false;
     state.isOnline = true;
     state.orderPresence = undefined;
-  });
+});
 
-  it('uses the flag revision of the displayed copy while unsaved words keep it pinned', async () => {
+describe('One service', () => {
+  it('uses the flag revision of the updated display while keeping independent words', async () => {
     const opening = { ...order([step('s1', 'Opening', 'Earlier words')]), rev: { steps: 1 } };
     const time = { earliestMs: 10, latestMs: 11 };
     state.orders = [opening];
@@ -100,14 +126,14 @@ describe('One service', () => {
     view.rerender(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.flag' }));
     await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledWith('order-1', expect.any(Function), {
-      field: 'flagged', change: { rowId: 's1', generation: 'g', observedRevision: 5, before: false, after: true, time },
+      field: 'flagged', change: { rowId: 's1', generation: 'g', observedRevision: 7, before: false, after: true, time },
     }));
   });
 
   it.each([
     { field: 'title', label: 'serviceOrders.stepTitle', before: 'Opening', next: 'Opening revised' },
     { field: 'body', label: 'serviceOrders.stepWords', before: 'Original words', next: 'Text revised' },
-  ])('saves the original step $field and last input time together after a burst of typing', async ({ field, label, before, next }) => {
+  ])('hands off each $field input with its shown value and the action time', async ({ field, label, before, next }) => {
     state.orders = [{ ...order([step('s1', 'Opening', 'Original words')]), rev: { steps: 1 } }];
     mockStepVersion.mockReturnValue({ generation: 'g', observedRevision: 5 });
     const finalTime = { earliestMs: 20, latestMs: 21 };
@@ -118,9 +144,11 @@ describe('One service', () => {
     fireEvent.change(input, { target: { value: 'Ed' } });
     fireEvent.change(input, { target: { value: next } });
     fireEvent.blur(input);
-    await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledWith('order-1', expect.any(Function), {
-      field, change: { rowId: 's1', generation: 'g', observedRevision: 5, before, after: next, time: finalTime },
+    expect(mockStageInput).toHaveBeenNthCalledWith(1, expect.objectContaining({ field, stepId: 's1', before, value: 'Ed' }));
+    expect(mockStageInput).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      field, stepId: 's1', before: 'Ed', value: next, version: { generation: 'g', observedRevision: 5 }, time: finalTime,
     }));
+    expect(mockFlushInputs).toHaveBeenCalledWith({ field, stepId: 's1' });
   });
 
   it('reads as a page, with the steps in order and no fields in sight', () => {
@@ -152,80 +180,23 @@ describe('One service', () => {
       fireEvent.click(within(dialog).getAllByRole('button')[0]);
     };
 
-    /**
-     * THE SAVE THAT DOES NOT WAIT FOR A BLUR. A phone locks, a lid closes, a PWA is killed —
-     * none of those fire a blur, and before this the paragraph was simply gone.
-     */
-    it('saves while he is still typing', async () => {
-      jest.useFakeTimers();
-      render(<ServiceOrderPage />);
-      enterEdit();
 
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'Кого попросить петь' } });
 
-      expect(mockUpdateSteps).not.toHaveBeenCalled();
-      jest.advanceTimersByTime(800);
-      expect(mockUpdateSteps).toHaveBeenCalledTimes(1);
-      jest.useRealTimers();
-    });
 
-    /**
-     * Typed a sentence and went straight back. Unmount does not have to fire a blur, and the
-     * first version of the cleanup simply cleared the timer — the sentence died with the page.
-     *
-     * What this proves is that the write is STARTED, which is all the page can promise: the
-     * transaction behind it needs the server, and a process killed a moment later takes it with
-     * it. Making the words themselves survive the death of the page needs a durable record of
-     * the operation, which is deliberately separate work — see BUGS.md.
-     */
-    it('starts the waiting write when the page goes away', () => {
-      jest.useFakeTimers();
-      const { unmount } = render(<ServiceOrderPage />);
-      enterEdit();
-
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'Начать с Иоанна' } });
-      expect(mockUpdateSteps).not.toHaveBeenCalled();
-
-      unmount();
-
-      expect(mockUpdateSteps).toHaveBeenCalledTimes(1);
-      jest.useRealTimers();
-    });
 
     it('flushes immediately when he leaves the field', () => {
-      jest.useFakeTimers();
       render(<ServiceOrderPage />);
       enterEdit();
 
       const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'Что читаю почти всегда' } });
-      fireEvent.blur(words);
-
-      expect(mockUpdateSteps).toHaveBeenCalledTimes(1);
-      jest.useRealTimers();
-    });
-
-    /**
-     * Type, wait for the timer, then tab away. The blur used to write again — the same words,
-     * a second time, moving the revision counter for nothing and giving a second chance to
-     * fail. Now it only sends what is still waiting.
-     */
-    it('does not write the same words twice when the timer already sent them', () => {
-      jest.useFakeTimers();
-      render(<ServiceOrderPage />);
-      enterEdit();
-
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'уже сохранено' } });
-      jest.advanceTimersByTime(800);
-      expect(mockUpdateSteps).toHaveBeenCalledTimes(1);
+      fireEvent.change(words, { target: { value: 'The next paragraph' } });
+      expect(mockFlushInputs).not.toHaveBeenCalled();
 
       fireEvent.blur(words);
-      expect(mockUpdateSteps).toHaveBeenCalledTimes(1);
-      jest.useRealTimers();
+      expect(mockFlushInputs).toHaveBeenCalledWith({ stepId: 's1', field: 'body' });
     });
+
+
 
     /** Text waiting for a step that is being removed must not be sent after it. */
     it('leaves no timer behind for a step that is removed', async () => {
@@ -314,26 +285,17 @@ describe('One service', () => {
       );
     });
 
-    /**
-     * A step being removed still gets its words sent first. Cancelling them was tidy and quietly
-     * lossy: a refused removal brings the step back on the next read without the sentence that
-     * was typed into it, and nothing anywhere says so.
-     */
     it('sends the words of a step before removing it', async () => {
-      jest.useFakeTimers();
       render(<ServiceOrderPage />);
       enterEdit();
-
       const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
       fireEvent.change(words, { target: { value: 'не выбрасывать' } });
-      expect(mockUpdateSteps).not.toHaveBeenCalled();
-
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
-      await confirmStepRemoval();
 
-      // Two writes, in this order: the words, then the removal.
-      expect(mockUpdateSteps.mock.calls.length).toBeGreaterThanOrEqual(2);
-      jest.useRealTimers();
+      await confirmStepRemoval();
+      await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledTimes(1));
+      expect(mockFlushInputs).toHaveBeenCalledWith({ stepId: 's1' });
+      expect(mockFlushInputs.mock.invocationCallOrder[0]).toBeLessThan(mockUpdateSteps.mock.invocationCallOrder[0]);
     });
 
     /**
@@ -363,82 +325,28 @@ describe('One service', () => {
       expect(result.map((s) => s.id)).toEqual(['s2', 's1']);
     });
 
-    /**
-     * The guard needs the values the editor OPENED with. The page hands them over once and
-     * keeps none of it: the baseline belongs beside the queue that serialises the writes, or
-     * the second save of the same name is judged against a number the server has left behind.
-     */
-    it('hands over the revision and title it opened on, and renames without a baseline', async () => {
+    it('hands the engine the exact shown title, revision and action time', async () => {
+      const time = { earliestMs: 10, latestMs: 11 };
+      mockCaptureTitleTime.mockReturnValue(time);
+      mockShownTitle.mockReturnValue({ title: 'Погребение', revision: 3, generation: 'g' });
       render(<ServiceOrderPage />);
       enterEdit();
 
       const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
       fireEvent.change(title, { target: { value: 'Погребение ребёнка' } });
       fireEvent.blur(title);
 
-      expect(mockOpenedWith).toHaveBeenCalledWith(
-        'order-1',
-        { title: 'Погребение', revision: 3 },
-        expect.any(String)
-      );
-      await waitFor(() =>
-        expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Погребение ребёнка', expect.any(String))
-      );
+      expect(mockShownTitle).toHaveBeenCalledWith('order-1', { title: 'Погребение', revision: 3 });
+      expect(mockStageInput).toHaveBeenCalledWith(expect.objectContaining({
+        field: 'orderTitle', before: 'Погребение', value: 'Погребение ребёнка',
+        version: { generation: 'g', observedRevision: 3 }, time,
+      }));
+      expect(mockFlushInputs).toHaveBeenCalledWith({ field: 'orderTitle' });
     });
 
-    /**
-     * THE NAME IS NOT THE ONE FIELD THAT WAITS FOR A BLUR.
-     *
-     * It was, and a locked phone never blurs: every word under the name saved itself as it was
-     * typed while the name itself was thrown away. Same timer, same flush, same guarantee.
-     */
-    it('saves a name that was typed and never left', () => {
-      jest.useFakeTimers();
-      render(<ServiceOrderPage />);
-      enterEdit();
 
-      const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
-      fireEvent.change(title, { target: { value: 'Погребение ребёнка' } });
-      act(() => {
-        jest.advanceTimersByTime(700);
-      });
 
-      expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Погребение ребёнка', expect.any(String));
-      jest.useRealTimers();
-    });
 
-    /**
-     * CHANGING YOUR MIND BACK IS STILL A CHANGE.
-     *
-     * Rename the rite, then return the name to what it was while the first save is still
-     * travelling: the page used to compare against the cached title — the version from before
-     * that save — call it a no-op and drop it. The rejected name landed and stayed. Whether the
-     * name actually changed is decided beside the queue, where the answer is current.
-     */
-    it('saves a name changed back while the first save is still travelling', () => {
-      jest.useFakeTimers();
-      // The first save never answers, which is exactly the window the mistake lived in.
-      mockRenameOrder.mockImplementationOnce(() => new Promise(() => {}));
-      render(<ServiceOrderPage />);
-      enterEdit();
-
-      const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
-      fireEvent.change(title, { target: { value: 'Отпевание' } });
-      act(() => {
-        jest.advanceTimersByTime(700);
-      });
-      fireEvent.change(title, { target: { value: 'Погребение' } });
-      act(() => {
-        jest.advanceTimersByTime(700);
-      });
-
-      expect(mockRenameOrder).toHaveBeenCalledTimes(2);
-      expect(mockRenameOrder).toHaveBeenLastCalledWith('order-1', 'Погребение', expect.any(String));
-      jest.useRealTimers();
-    });
 
     /**
      * A REFUSED REMOVAL COMES BACK. The step is still on the server, and a screen that keeps
@@ -706,10 +614,8 @@ describe('One service', () => {
         step('s2', 'Молитва'),
         step(addedId, ''),
       ]);
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'слово' } });
       await act(async () => {
-        fireEvent.blur(words);
+        fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.flag' })[0]);
       });
 
       expect(screen.queryByTestId('service-order-failure')).not.toBeInTheDocument();
@@ -730,7 +636,7 @@ describe('One service', () => {
 
     /** The opposite rule for words: refused or not, they stay — they are the thing to save. */
     it('keeps refused words in the field', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -779,7 +685,6 @@ describe('One service', () => {
       });
 
       expect(screen.getByTestId('service-order-failure')).toHaveTextContent('serviceOrders.titleRequired');
-      expect(mockRenameOrder).not.toHaveBeenCalled();
     });
 
     /**
@@ -790,7 +695,7 @@ describe('One service', () => {
      * content until a reload took it.
      */
     it('keeps saying a paragraph is unsaved after the name saves', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -812,7 +717,7 @@ describe('One service', () => {
 
     /** And the other way round: a refused NAME is not made to look saved by a saved paragraph. */
     it('keeps saying the name is unsaved after a paragraph saves', async () => {
-      mockRenameOrder.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -842,7 +747,7 @@ describe('One service', () => {
      * had left, and the refused paragraph was adopted away with it.
      */
     it('keeps a refused body when the same step\'s heading saves', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -878,7 +783,7 @@ describe('One service', () => {
      * adopting that answer wiped the screen clean of the very text the banner was about.
      */
     it('keeps refused words when a later structural write succeeds', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -902,41 +807,7 @@ describe('One service', () => {
       expect(
         (screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0] as HTMLTextAreaElement).value
       ).toBe('над этим гробом');
-      expect(screen.getByTestId('service-order-failure')).toBeInTheDocument();
-    });
-
-    /**
-     * A STEP ANOTHER DEVICE DELETED IS NOT A STEP THIS PASTOR DISCARDED.
-     *
-     * Both leave the rite; only one of them means the words may go. Retiring a refusal because
-     * the step was simply ABSENT from a later server answer covered the wrong case too: the
-     * refused paragraph, which existed on this screen and nowhere else, was adopted away by the
-     * next successful action.
-     */
-    it('keeps refused words when the step was removed somewhere else', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
-      render(<ServiceOrderPage />);
-      enterEdit();
-
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'над этим гробом' } });
-      await act(async () => {
-        fireEvent.blur(words);
-      });
-
-      // Another device has meanwhile deleted that step, so the server's answer to the next
-      // action has no trace of it.
-      mockUpdateSteps.mockImplementationOnce(async () => [step('s2', 'Молитва'), step('s3', '')]);
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.addStep' }));
-      });
-
-      expect(
-        screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })
-          .map((field) => (field as HTMLTextAreaElement).value)
-      ).toContain('над этим гробом');
-      // And it is still SAID: words kept on screen with nothing said about them read as saved.
-      expect(screen.getByTestId('service-order-failure')).toBeInTheDocument();
+      expect(screen.getByText('Missing or insufficient permissions.')).toBeVisible();
     });
 
     /**
@@ -947,7 +818,7 @@ describe('One service', () => {
      * the document for the rest of the session.
      */
     it('stops holding the screen once the refused step is gone', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       const { rerender } = render(<ServiceOrderPage />);
       enterEdit();
 
@@ -973,75 +844,18 @@ describe('One service', () => {
       ).toEqual(['Молитва', 'Пришло с ноутбука']);
     });
 
-    /**
-     * A STEP THAT IS GONE IS NOT A STEP THAT WAS SAVED.
-     *
-     * The mutator runs against the rite as the server now has it. With the step removed on
-     * another device, mapping over the list changed nothing and handed back a perfectly valid
-     * array — so the write reported success and the words were dropped as confirmed while
-     * existing nowhere at all.
-     */
-    it('refuses a write into a step another device removed', async () => {
-      mockUpdateSteps.mockImplementationOnce(
-        async (_id: string, mutate: (steps: unknown[]) => unknown[] | null) => mutate([])
-      );
+    it('refuses to flag a step another device removed', async () => {
+      mockUpdateSteps.mockImplementationOnce(async (_id: string, mutate: (steps: unknown[]) => unknown[] | null) =>
+        mutate([step('s2', 'Молитва')]));
       render(<ServiceOrderPage />);
       enterEdit();
-
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'что-то' } });
-      fireEvent.blur(words);
-
-      await waitFor(() =>
-        expect(screen.getByTestId('service-order-failure')).toHaveTextContent('serviceOrders.stepGone')
-      );
-      expect(
-        (screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0] as HTMLTextAreaElement).value
-      ).toBe('что-то');
+      fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.flag' })[0]);
+      await waitFor(() => expect(screen.getByTestId('service-order-failure')).toHaveTextContent('serviceOrders.stepGone'));
     });
 
-    /**
-     * WHAT IS WAITING GOES BEFORE THE BASELINE IS RELEASED.
-     *
-     * Leaving the page with a half-typed name used to release the guard's baseline first and
-     * send the rename second — through a queue that no longer had anything to judge it by. That
-     * rename could then overwrite a title another device had changed in the meantime.
-     */
-    it('sends a waiting name before it lets go of the baseline', () => {
-      jest.useFakeTimers();
-      const { unmount } = render(<ServiceOrderPage />);
-      enterEdit();
 
-      const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
-      fireEvent.change(title, { target: { value: 'Отпевание' } });
-      unmount();
 
-      expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Отпевание', expect.any(String));
-      expect(mockClosedEditing).toHaveBeenCalledWith('order-1', expect.any(String));
-      expect(mockRenameOrder.mock.invocationCallOrder[0]).toBeLessThan(
-        mockClosedEditing.mock.invocationCallOrder[0]
-      );
-      jest.useRealTimers();
-    });
 
-    /** The same order on the ordinary way out: pressing "Готово" with a name still on the timer. */
-    it('sends a waiting name before it lets go of the baseline on Done', () => {
-      jest.useFakeTimers();
-      render(<ServiceOrderPage />);
-      enterEdit();
-
-      const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
-      fireEvent.change(title, { target: { value: 'Отпевание' } });
-      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.done' }));
-
-      expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Отпевание', expect.any(String));
-      expect(mockRenameOrder.mock.invocationCallOrder[0]).toBeLessThan(
-        mockClosedEditing.mock.invocationCallOrder[0]
-      );
-      jest.useRealTimers();
-    });
 
     /**
      * A STRUCTURAL WRITE MUST NOT TAKE UNSENT WORDS OFF THE SCREEN.
@@ -1071,38 +885,14 @@ describe('One service', () => {
       jest.useRealTimers();
     });
 
-    /**
-     * THE NAME'S TIMER IS NOT THE STEPS' BUSINESS.
-     *
-     * Holding the mirror while ANY write was waiting was too broad a rule: a name still on its
-     * timer pinned the steps to a local copy for the rest of the session, so the screen stopped
-     * following the document and a change made on another device never appeared at all.
-     */
-    it('lets the steps follow the document while the name is still on its timer', async () => {
-      jest.useFakeTimers();
-      render(<ServiceOrderPage />);
+    it('lets unrelated steps follow the document while the title has a draft', async () => {
+      const view = render(<ServiceOrderPage />);
       enterEdit();
-
-      const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-      fireEvent.focus(title);
-      fireEvent.change(title, { target: { value: 'Отпевание' } });
-
-      // The step write succeeds and the document now carries another device's words.
-      mockUpdateSteps.mockImplementationOnce(async () => {
-        state.orders = [order([step('s1', 'Перед началом', 'с другого устройства'), step('s2', 'Молитва')])];
-        return (state.orders[0] as { steps: unknown[] }).steps;
-      });
-
-      const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-      fireEvent.change(words, { target: { value: 'моё' } });
-      await act(async () => {
-        fireEvent.blur(words);
-      });
-
-      expect(
-        (screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0] as HTMLTextAreaElement).value
-      ).toBe('с другого устройства');
-      jest.useRealTimers();
+      fireEvent.change(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }), { target: { value: 'Отпевание' } });
+      state.orders = [order([step('s1', 'Перед началом', 'с другого устройства'), step('s2', 'Молитва')])];
+      view.rerender(<ServiceOrderPage />);
+      expect(screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0]).toHaveValue('с другого устройства');
+      expect(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' })).toHaveValue('Отпевание');
     });
 
     /**
@@ -1127,7 +917,7 @@ describe('One service', () => {
     });
 
     it('says on the page when a write is refused', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+      mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
       render(<ServiceOrderPage />);
       enterEdit();
 
@@ -1153,32 +943,6 @@ describe('One service', () => {
   });
 
   /**
-   * A CONTROLLED MIRROR THAT NEVER LETS GO WOULD FREEZE THE PAGE on the version it first saw.
-   * A SAVED write hands the screen back to the document, so a change made elsewhere shows up
-   * instead of the tab quietly displaying yesterday until it is closed.
-   */
-  it('shows a change made elsewhere once the save is done, without being asked', async () => {
-    mockUpdateSteps.mockImplementationOnce(async () => [
-      step('s1', 'Перед началом', 'местное'),
-      step('s2', 'Молитва'),
-    ]);
-    const { rerender } = render(<ServiceOrderPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
-
-    const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-    fireEvent.change(words, { target: { value: 'местное' } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.done' }));
-    });
-
-    // Meanwhile the document moved on elsewhere; the engine row already is the server copy.
-    state.orders = [order([step('s1', 'Перед началом', 'пришло с другого устройства'), step('s2', 'Молитва')])];
-    rerender(<ServiceOrderPage />);
-
-    expect(screen.getByText('пришло с другого устройства')).toBeInTheDocument();
-  });
-
-  /**
    * AND "ГОТОВО" IS NOT A SAVE. The words flushed on the way out can still be refused a second
    * later; handing the screen back to the document at the moment the button is pressed announced
    * a failure about text that no longer existed anywhere.
@@ -1198,12 +962,12 @@ describe('One service', () => {
     state.orders = [{ ...order([step('s1', 'Step')]), title: 'Remote title', rev: { meta: 9 } }];
     rerender(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
-    fireEvent.focus(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }));
-    expect(mockOpenedWith).toHaveBeenLastCalledWith('order-1', { title: 'Remote title', revision: 9 }, expect.any(String));
+    fireEvent.change(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }), { target: { value: 'New title' } });
+    expect(mockShownTitle).toHaveBeenLastCalledWith('order-1', { title: 'Remote title', revision: 9 });
   });
 
   it('keeps words the server refused after editing is done', async () => {
-    mockUpdateSteps.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+    mockFlushInputs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
     const { rerender } = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
 
@@ -1233,7 +997,7 @@ describe('One service', () => {
     };
 
     it('says a queued write will be saved later, not that it failed', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(
+      mockFlushInputs.mockRejectedValueOnce(
         Object.assign(new Error('offline'), { isOfflineQueued: true })
       );
       render(<ServiceOrderPage />);
@@ -1246,7 +1010,7 @@ describe('One service', () => {
     });
 
     it('names a conflict as a conflict', async () => {
-      mockUpdateSteps.mockRejectedValueOnce(
+      mockFlushInputs.mockRejectedValueOnce(
         Object.assign(new Error('stale'), { isStaleWrite: true })
       );
       render(<ServiceOrderPage />);
@@ -1391,7 +1155,6 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
     expect(screen.getByText('Words still in the local queue')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'serviceOrders.edit' })).not.toBeInTheDocument();
     expect(mockUpdateSteps).not.toHaveBeenCalled();
-    expect(mockRenameOrder).not.toHaveBeenCalled();
   });
 
   it('keeps unchanged steps when a title-only retained copy becomes unknown offline', async () => {
@@ -1420,7 +1183,6 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
       expect(screen.getByText('Second original words')).toBeVisible();
       expect(screen.getByTestId('service-order-gone')).toHaveTextContent('serviceOrders.goneWithWords');
       expect(mockUpdateSteps).not.toHaveBeenCalled();
-      expect(mockRenameOrder).not.toHaveBeenCalled();
     } finally {
       view.unmount();
       jest.clearAllTimers();
@@ -1482,34 +1244,19 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
    * the draft holding the second name, and if the rite then disappeared there was nothing left
    * to show him.
    */
-  it('keeps a newer name when an older save comes back', async () => {
-    let finishFirst: (() => void) | undefined;
-    mockRenameOrder.mockImplementationOnce(
-      () => new Promise((resolve) => { finishFirst = () => resolve(undefined); })
-    );
-    const { rerender } = render(<ServiceOrderPage />);
+  it('keeps a newer name when an older save is published', () => {
+    const view = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+    const field = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
+    fireEvent.change(field, { target: { value: 'Погребение ребёнка' } });
+    fireEvent.blur(field);
+    fireEvent.change(field, { target: { value: 'Погребение младенца' } });
 
-    const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
-    fireEvent.focus(title);
-    fireEvent.change(title, { target: { value: 'Погребение ребёнка' } });
-    await act(async () => {
-      fireEvent.blur(title);
-    });
-
-    fireEvent.change(title, { target: { value: 'Погребение младенца' } });
-    await act(async () => {
-      finishFirst?.();
-      await Promise.resolve();
-    });
-
-    state.orders = [];
-    rerender(<ServiceOrderPage />);
-
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Погребение младенца');
+    state.orders = [{ ...order([step('s1', 'Opening original')]), title: 'Погребение ребёнка' }];
+    view.rerender(<ServiceOrderPage />);
+    expect(field).toHaveValue('Погребение младенца');
   });
 
-  /** And the references exactly as typed, comma and all — not the parsed list joined back. */
   it('shows the references as they stood in the field', () => {
     const { rerender } = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
@@ -1555,7 +1302,8 @@ describe('One service following the engine row', () => {
     expect(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' })).toHaveValue('Typed here');
     fireEvent.blur(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }));
     // The rename is judged in the sitting that saw the old title, so it can be refused.
-    expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Typed here', mockOpenedWith.mock.calls[0][2]);
+    expect(mockStageInput).toHaveBeenCalledWith(expect.objectContaining({ field: 'orderTitle', before: 'Погребение', value: 'Typed here' }));
+    expect(mockFlushInputs).toHaveBeenCalledWith({ field: 'orderTitle' });
   });
 });
 
@@ -1578,7 +1326,6 @@ describe('References in the words of a service', () => {
     expect(screen.getByRole('button', { name: 'bible.sheet.openInBible' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(mockUpdateSteps).not.toHaveBeenCalled();
-    expect(mockRenameOrder).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
   });
 });
@@ -1606,7 +1353,6 @@ describe('Verse reading from a retained service', () => {
     // Queued words can be projected into a retained copy after the local editing mirror resets.
     expect(leave).not.toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();
-    expect(mockRenameOrder).not.toHaveBeenCalled();
   });
 });
 

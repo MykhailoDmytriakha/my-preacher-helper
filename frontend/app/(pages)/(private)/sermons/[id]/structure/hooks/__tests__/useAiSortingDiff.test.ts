@@ -106,8 +106,6 @@ describe('useAiSortingDiff', () => {
     outlinePoints: mockSermonPoints,
     sermon: mockSermon,
     sermonId: 'sermon-1',
-    debouncedSaveThought: jest.fn(),
-    debouncedSaveStructure: jest.fn()
   };
 
   beforeEach(() => {
@@ -654,8 +652,6 @@ describe('useAiSortingDiff', () => {
       mockSortItemsWithAI.mockResolvedValueOnce([
         { ...mockContainers.introduction[0], outlinePointId: 'intro-1' },
       ]);
-      const debouncedSaveThought = jest.fn();
-      const debouncedSaveStructure = jest.fn();
 
       const keepAllHook = renderHook(() =>
         {
@@ -664,8 +660,6 @@ describe('useAiSortingDiff', () => {
             ...defaultProps,
             containers,
             setContainers,
-            debouncedSaveThought,
-            debouncedSaveStructure,
           });
         }
       );
@@ -701,8 +695,6 @@ describe('useAiSortingDiff', () => {
       );
       expect(mockToast.success).toHaveBeenCalled();
 
-      const revertSaveThought = jest.fn();
-      const revertSaveStructure = jest.fn();
       mockSortItemsWithAI.mockResolvedValueOnce([
         { ...mockContainers.introduction[0], outlinePointId: 'intro-1' },
       ]);
@@ -713,8 +705,6 @@ describe('useAiSortingDiff', () => {
             ...defaultProps,
             containers,
             setContainers,
-            debouncedSaveThought: revertSaveThought,
-            debouncedSaveStructure: revertSaveStructure,
           });
         }
       );
@@ -727,8 +717,6 @@ describe('useAiSortingDiff', () => {
 
       expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
       expect(mockUpdateThought).not.toHaveBeenCalled();
-      expect(revertSaveThought).not.toHaveBeenCalled();
-      expect(revertSaveStructure).not.toHaveBeenCalled();
     });
   });
 

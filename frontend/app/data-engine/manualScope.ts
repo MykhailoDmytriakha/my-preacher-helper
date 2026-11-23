@@ -1,5 +1,6 @@
 import { CaptureContinuations } from './captureContinuations';
 import { datedRowTarget, stagedMeetingDate, stageMeetingDate } from './datedRowAction';
+import { groupMeetingForm, normalizeGroupMeetingDraft, readyMeetingAutosave } from './groupMeetingAutosave';
 import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
 import { MAX_HOMILETIC_MOVES, stageHomileticMove } from './homileticPlanMoves';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
@@ -60,6 +61,8 @@ export interface ManualScopeRecord {
   generation: number;
   savedGeneration: number | null;
   active: boolean;
+  /** The group screen admitted the exact stage for automatic save once its date is ready. */
+  autosaveGroupMeeting?: true;
   recoverySources?: RecoverySource[];
   recoveryOrigins?: RecoveryOrigin[];
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
@@ -153,6 +156,8 @@ export class ManualScope {
       || (record.savedGeneration !== null && (!Number.isSafeInteger(record.savedGeneration) || record.savedGeneration < 0 || record.savedGeneration > record.generation || !record.predecessor))) throw new Error('Manual recovery identity mismatch');
     if (record.recoverySources !== undefined && (!Array.isArray(record.recoverySources) || record.recoverySources.some(source => !source || typeof source.id !== 'string' || !source.id))) throw new Error('Invalid manual recovery sources');
     validateManualRecoveryEvidence(record);
+    if (record.autosaveGroupMeeting !== undefined && (record.autosaveGroupMeeting !== true
+      || !groupMeetingForm(record.resource, record.selection))) throw new Error('Invalid meeting autosave');
     if (record.openingSelection !== undefined && (!Array.isArray(record.openingSelection) || record.openingSelection.length !== options.selection.length)) throw new Error('Invalid manual opening selection');
     if (record.openingGeneration !== undefined && (!Number.isSafeInteger(record.openingGeneration) || record.openingGeneration < 0 || record.openingGeneration > record.generation)) throw new Error('Invalid manual opening generation');
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
@@ -179,6 +184,8 @@ export class ManualScope {
     return !equalValues(this.record.stage, this.record.savedSelection) || Boolean(this.record.outlineSubpointMoves?.length);
   }
 
+  meetingAutosaveReady(): boolean { return readyMeetingAutosave(this.record, this.tail?.stage); }
+
   getState() {
     this.assertCurrent();
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
@@ -188,10 +195,13 @@ export class ManualScope {
     return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: this.hasChanges(), durable: this.durable };
   }
 
-  update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void> {
+  update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true): Promise<void> {
     this.assertActive();
+    if (autosaveGroupMeeting && !groupMeetingForm(this.record.resource, this.record.selection)) throw new Error('Meeting autosave requires a meeting form');
     const current = this.value();
-    const next = copy(updater(copy(current)));
+    const edited = copy(updater(copy(current)));
+    const initial = this.record.predecessor?.value ?? this.record.baseline.value;
+    const next = autosaveGroupMeeting ? normalizeGroupMeetingDraft(edited, initial) : edited;
     const stage = this.record.selection.map(path => readSelection(next, path));
     const selectedOnly = project(current, this.record.selection, stage);
     if (!equalValues(next, selectedOnly)) throw new Error('Manual update changed an unselected field');
@@ -215,6 +225,7 @@ export class ManualScope {
         { editGeneration: this.record.generation + 1, move }].slice(-MAX_OUTLINE_SUBPOINT_MOVES);
     }
     this.record.stage = stage;
+    if (autosaveGroupMeeting) this.record.autosaveGroupMeeting = true;
     this.record.generation += 1;
     return this.persist();
   }
@@ -609,12 +620,15 @@ function captureRecord(options: ScopeOptions, generation: number): ManualScopeRe
 }
 
 /** Recover a request already captured by this exact opening before its form receipt was written. */
+export function awaitingManualReceipt(record: ManualScopeRecord, request: CommitRequest): boolean {
+  return request.owner === record.owner && request.editorId === record.scopeId
+    && sameResource(request.baseline.resource, record.resource) && Boolean(request.value)
+    && request.editGeneration >= (record.openingGeneration ?? record.generation)
+    && request.editGeneration <= record.generation && request.editGeneration > (record.savedGeneration ?? -1);
+}
+
 export function reconcileManualCaptures(record: ManualScopeRecord, requests: readonly CommitRequest[]): ManualScopeRecord {
-  const floor = record.openingGeneration ?? record.generation;
-  const candidates = requests.filter(request => request.owner === record.owner && request.editorId === record.scopeId
-    && sameResource(request.baseline.resource, record.resource) && request.value
-    && request.editGeneration >= floor && request.editGeneration <= record.generation
-    && request.editGeneration > (record.savedGeneration ?? -1));
+  const candidates = requests.filter(request => awaitingManualReceipt(record, request));
   if (!candidates.length) return record;
   const captured = candidates.sort((a, b) => b.editGeneration - a.editGeneration)[0];
   if (candidates.some(other => other.id !== captured.id && other.editGeneration === captured.editGeneration)) throw new Error('Ambiguous manual capture identity');

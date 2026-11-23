@@ -73,14 +73,8 @@ export function planTextConflictValues(error: unknown): Record<string, string | 
 /**
  * Which plan cells are STILL WAITING to reach the server, from the offline queue.
  *
- * Two different things need this same answer, which is why it is one function:
- *
- *   - the baseline must NOT adopt a queued value as "what the server holds", or the screen
- *     starts vouching for text no server has seen — and if the replay is later refused, every
- *     further save is judged against a value that never existed;
- *   - the durable draft must KEEP such a cell, because "queued" is precisely "not confirmed",
- *     and dropping it is how the words written on a train stop existing anywhere the person
- *     can see.
+ * The original queue retains the words and their opening until replay or recovery.
+ * The screen uses the node IDs to keep a queued value out of its confirmed baseline.
  *
  * Reading the queue rather than tracking a flag is deliberate: the queue is the fact. A flag
  * would have to be released correctly on drain, on refusal and on reload, and any one of those
@@ -97,28 +91,6 @@ export function pendingPlanTextNodeIds(
     .forEach((entry) => {
       Object.keys(entry.patch ?? {}).forEach((field) => {
         if (field.startsWith('planText.')) waiting.add(field.slice('planText.'.length));
-      });
-    });
-  return waiting;
-}
-
-/**
- * THE WORDS STILL WAITING IN THE QUEUE, per plan cell — the newest intent wins, as replay would
- * make it. The queue is the fact about them: a screen may hold other words for the same cell (a
- * copy for reading, or an engine document that never saw a write queued before its collection
- * moved), and the device draft keeps these (BUG-20261003-preaching-on-copy-stores-copy-words-as-draft).
- */
-export function pendingPlanText(
-  uid: string | null | undefined,
-  sermonId: string | null | undefined
-): Record<string, string> {
-  const waiting: Record<string, string> = {};
-  if (!uid || !sermonId) return waiting;
-  listOutbox(uid)
-    .filter((entry) => entry.docId === sermonId && entry.aggregate === SERMON_PLAN_AGGREGATE)
-    .forEach((entry) => {
-      Object.entries(entry.patch ?? {}).forEach(([field, value]) => {
-        if (field.startsWith('planText.') && typeof value === 'string') waiting[field.slice('planText.'.length)] = value;
       });
     });
   return waiting;

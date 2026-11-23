@@ -1,8 +1,13 @@
+import { deferred } from '../../../test-utils/deferred';
+
 import { pendingAutosaveReceipts } from '../automaticDraftResume';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { retirableEditorIdentity } from '../editorIdentity';
+import { manualScopeIdentity, retirableEditorIdentity } from '../editorIdentity';
+import { GROUP_MEETING_SLOT } from '../groupMeetingAutosave';
+import { recoverManualScopeRecord } from '../manualScope';
+import { createIndexedDbManualScopes } from '../manualScopes.client';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
@@ -31,7 +36,7 @@ const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
   installStorageHarness();
   const checkpoints = createIndexedDbCheckpoints();
-  const commits = createIndexedDbCommitStore();
+  const commits = createIndexedDbCommitStore(), forms = createIndexedDbManualScopes();
   let server = copy(serverCopy);
   let saved = serverCopy.resource.collection === 'groups' ? copy(opening) : undefined;
   let sequence = 0;
@@ -50,7 +55,7 @@ function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
     remove: async (_uid, id) => { journal.delete(id); },
   } });
   const engine = new DataEngine({
-    transport, runtime, checkpoints, commits,
+    transport, runtime, checkpoints, commits, manualScopes: forms,
     observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
     snapshots: { read: async (_owner, ref) => saved?.resource.id === ref.id && saved.resource.collection === ref.collection ? copy(saved) : undefined, put: async (_owner, snapshot) => { saved = copy(snapshot); } },
     recoveryPresence: { held: async () => held, hold: () => () => undefined },
@@ -80,8 +85,99 @@ function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
     engine.setOwner(owner);
     await engine.retry();
   };
-  return { engine, checkpoints, commits, transport, start, leaveDraft, stored: () => copy(server) };
+  const queue = new CommitQueue({ store: commits, runtime, operationId: () => 'prepared-' + ++sequence, readConfirmed: transport.read });
+  queue.setOwner(owner);
+  return { engine, checkpoints, commits, forms, queue, transport, start, leaveDraft, stored: () => copy(server) };
 }
+
+const meeting = { id: 'meeting', date: '2026-11-23', location: 'Main hall', createdAt: '2026-11-20T12:00:00.000Z' };
+const meetingOpening: ResourceSnapshot = { ...opening, value: { ...baseline, meetingDates: [meeting] } };
+const meetingStage = (location: string): DocumentData => ({ ...meetingOpening.value, meetingDates: [{ ...meeting, location }] });
+const parentEditorId = retirableEditorIdentity('closed-tab', resource, 'group-detail', 'prior');
+const scopeId = manualScopeIdentity(parentEditorId, GROUP_MEETING_SLOT);
+
+describe('starting again after a meeting edit was saved on the device', () => {
+  let device: ReturnType<typeof boot>;
+  beforeEach(() => { device = boot(meetingOpening); });
+  afterEach(() => device.engine.dispose());
+
+  const time = (ms: number) => ({ earliestMs: 1_800_000_000_000 + ms, latestMs: 1_800_000_000_001 + ms });
+  const locationProof = (after: string, ms: number) =>
+    ({ location: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, after, time: time(ms) } });
+  const leaveMeeting = async (location: string, generation = 1) => {
+    await device.forms.create({ owner, scopeId, parentEditorId, slot: GROUP_MEETING_SLOT, commitReferences: [],
+      record: { kind: 'manual', version: 1, owner, resource, scopeId, selection: [['meetingDates']], baseline: meetingOpening,
+        predecessor: null, stage: [{ exists: true, value: meetingStage(location).meetingDates }],
+        savedSelection: [{ exists: true, value: [meeting] }], generation, savedGeneration: null, openingGeneration: 0,
+        active: true, autosaveGroupMeeting: true, groupMeetingFieldCaptures: locationProof(location, 10) } });
+  };
+
+  const queueChange = (identity: string, value: DocumentData, options?: Parameters<CommitQueue['save']>[2]) => {
+    const session = new DataSession(meetingOpening);
+    session.edit(value);
+    return device.queue.save(identity, session.checkpoint(), options);
+  };
+
+  it.each(['Later hall', meeting.location])('sends %s after an earlier Save survived without its form receipt', async location => {
+    await leaveMeeting(location, 2);
+    await queueChange(scopeId, meetingStage('First hall'), { groupMeetingFieldCaptures: locationProof('First hall', 0) });
+
+    await device.start();
+    await device.engine.retry();
+
+    expect(device.transport.send).toHaveBeenCalledTimes(2);
+    const command = device.transport.send.mock.calls[1][0];
+    expect(command.kind === 'update' && command.groupMeetingFieldActions?.location?.time).toEqual(time(10));
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location }]);
+  });
+
+  it('retires the exact closed form once its surviving Save is acknowledged', async () => {
+    await leaveMeeting('First hall');
+    await queueChange(scopeId, meetingStage('First hall'), { groupMeetingFieldCaptures: locationProof('First hall', 0) });
+
+    await device.start();
+    await device.engine.retry();
+
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'First hall' }]);
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(await device.forms.list(owner)).toHaveLength(0);
+  });
+
+  it('retries after a same-group change first appears during the startup target read', async () => {
+    await leaveMeeting('Later hall');
+    const reading = deferred(), continueRead = deferred();
+    device.transport.read.mockImplementationOnce(async () => {
+      reading.resolve();
+      await continueRead.promise;
+      return device.stored();
+    });
+    const started = device.start();
+    await reading.promise;
+    try {
+      expect(await queueChange('independent-title', { ...meetingOpening.value, title: 'New title' })).not.toBeNull();
+    } finally { continueRead.resolve(); }
+    await started;
+    await device.engine.retry();
+
+    expect(device.stored().value).toMatchObject({ title: 'New title', meetingDates: [{ ...meeting, location: 'Later hall' }] });
+    expect(device.transport.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot fork a recovered meeting draft after the automatic save has claimed its source version', async () => {
+    await leaveMeeting('Later hall');
+    const [source] = await device.forms.list(owner);
+    const version = (await device.forms.pinRecovery!(source))!;
+    const recoveredId = manualScopeIdentity(parentEditorId, GROUP_MEETING_SLOT, 'recovered');
+    const origin = { id: source.scopeId, version };
+
+    await device.start();
+    await expect(device.forms.create({ ...source, scopeId: recoveredId,
+      record: recoverManualScopeRecord(source.record, recoveredId, origin) }, origin))
+      .rejects.toMatchObject({ code: 'decision-changed' });
+    expect(await device.forms.read(owner, recoveredId)).toBeUndefined();
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('starting again after a group description was saved on the device but not submitted', () => {
   let device: ReturnType<typeof boot> | undefined;

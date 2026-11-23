@@ -137,23 +137,18 @@ export function useNotePlanGeneration(options: Options) {
       });
       discardProposal(scope, proposal);
     };
-    const applying = conspectus.applyProposal?.(cells, proposal.before);
-    if (applying === null) {
-      setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
+    const applying = conspectus.applyProposal?.(cells, proposal.before, (nodeId, text) => {
+      const stored = readProposal(scope, proposal.id);
+      return stored?.state === 'ready' && stored.result.contentByNodeId[nodeId] === text;
+    });
+    if (!applying) {
+      setErrors(previous => ({ ...previous, [id]: applying === null ? 'contextChanged' : 'draftStorage' }));
       return false;
     }
-    if (applying) {
-      accepting.current.add(proposal.id);
-      void applying.then(() => { if (isHere()) finish(); }, () => {
-        if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
-      }).finally(() => accepting.current.delete(proposal.id));
-      return true;
-    }
-    const apply = conspectus.applyGeneratedCells ?? conspectus.restoreCells;
-    if (!apply(cells)) return false;
-    // Choosing a proposal is the decision to keep it: it is written now, not left for the save button.
-    void conspectus.saveCells?.(Object.keys(cells));
-    finish();
+    accepting.current.add(proposal.id);
+    void applying.then(saved => { if (saved && isHere()) finish(); }, () => {
+      if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
+    }).finally(() => accepting.current.delete(proposal.id));
     return true;
   };
 

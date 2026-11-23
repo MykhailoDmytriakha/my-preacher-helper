@@ -24,7 +24,7 @@ const point = { id: 'p', text: 'Who stood out?', note: 'List the people', subPoi
 const sermon = { id: 's', title: 'Title', verse: '', date: '', thoughts: [], userId: 'u', sourceNoteIds: ['n'],
   outline: { introduction: [], main: [point], conclusion: [] } } as Sermon;
 const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(), busyNodeIds: new Set(), isTransferringText: () => false,
-  restoreCells: jest.fn(() => true), saveModified: jest.fn(), saveCells: jest.fn(async () => undefined) } as unknown as ManualConspectus;
+  applyProposal: jest.fn(async () => true), saveModified: jest.fn() } as unknown as ManualConspectus;
 
 const requestRefinement = () => {
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
@@ -62,11 +62,10 @@ it('shows the placed reminder and the review before accepting a replacement', as
   expect(within(screen.getByTestId('cell-sub')).getByText('No detail in source')).toBeInTheDocument();
   // The choice buttons stand once, under the last cell the version covers.
   expect(within(screen.getByTestId('cell-p')).queryByRole('button', { name: 'plan.fromNote.apply' })).not.toBeInTheDocument();
-  expect(conspectus.restoreCells).not.toHaveBeenCalled();
+  expect(conspectus.applyProposal).not.toHaveBeenCalled();
   fireEvent.click(within(screen.getByTestId('cell-sub')).getByRole('button', { name: 'plan.fromNote.apply' }));
-  expect(conspectus.restoreCells).toHaveBeenCalledWith({ p: '- Extracted people' });
-  // Choosing it saves it — the floppy is not needed for a chosen version.
-  expect(conspectus.saveCells).toHaveBeenCalledWith(['p']);
+  expect(conspectus.applyProposal).toHaveBeenCalledWith({ p: '- Extracted people' },
+    { p: 'Original words', sub: '' }, expect.any(Function));
 });
 
 it('writes an empty point straight in — no review, no "Generating…" box beside the spinning button', async () => {
@@ -82,8 +81,8 @@ it('writes an empty point straight in — no review, no "Generating…" box besi
   expect(screen.queryByRole('button', { name: 'plan.pointResultCheck' })).not.toBeInTheDocument();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   resolve({ contentByNodeId: { p: '- Written', sub: '- Child' }, missingMaterial: {} });
-  await waitFor(() => expect(empty.restoreCells).toHaveBeenCalledWith({ p: '- Written', sub: '- Child' }));
-  expect(empty.saveCells).toHaveBeenCalledWith(['p', 'sub']);
+  await waitFor(() => expect(empty.applyProposal).toHaveBeenCalledWith({ p: '- Written', sub: '- Child' },
+    { p: '', sub: '' }, expect.any(Function)));
   expect(screen.queryByRole('button', { name: 'plan.fromNote.apply' })).not.toBeInTheDocument();
   expect(screen.queryByText('plan.fromNote.current')).not.toBeInTheDocument();
 });
@@ -235,7 +234,7 @@ it('reviews a targeted proposal inside its child and applies only that child', a
   expect(within(screen.getByTestId('parent-actions')).queryByText('plan.fromNote.suggested')).not.toBeInTheDocument();
   expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub' }), undefined, expect.objectContaining({ operationId: expect.any(String) }));
   fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.fromNote.apply' }));
-  expect(conspectus.restoreCells).toHaveBeenCalledWith({ sub: '- Selected child' });
+  expect(conspectus.applyProposal).toHaveBeenCalledWith({ sub: '- Selected child' }, { sub: 'Child words' }, expect.any(Function));
 });
 
 it('moves a version whose every written cell was removed to its own card, where it can still be read and dismissed', async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { readPlanText } from "@/utils/planText";
@@ -54,7 +54,7 @@ export function PlanDraftRecoveryBar({
   restoreDisabled = false,
 }: {
   cells: RecoveredCell[];
-  onRestore: () => void;
+  onRestore: () => void | Promise<void>;
   restoreDisabled?: boolean;
   onDiscard: () => void;
   subject?: unknown;
@@ -65,6 +65,12 @@ export function PlanDraftRecoveryBar({
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion('text');
   const current = useRef({ cells, subject });
   current.current = { cells, subject };
+  const [restoring, setRestoring] = useState(false);
+  const restore = async () => {
+    if (restoring || restoreDisabled) return;
+    setRestoring(true);
+    try { await onRestore(); } finally { setRestoring(false); }
+  };
   const discard = () => {
     const shown = JSON.stringify(cells);
     void askBeforeDiscard(true, onDiscard, () =>
@@ -90,8 +96,8 @@ export function PlanDraftRecoveryBar({
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
-            onClick={onRestore}
-            disabled={restoreDisabled}
+            onClick={() => void restore()}
+            disabled={restoreDisabled || restoring}
             className="inline-flex items-center rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("plan.draftRecoveryRestore")}
@@ -99,6 +105,7 @@ export function PlanDraftRecoveryBar({
           <button
             type="button"
             onClick={discard}
+            disabled={restoring}
             className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
           >
             {t("plan.draftRecoveryDiscard")}
@@ -114,6 +121,7 @@ export function PlanDraftRecoveryBar({
               <select
                 className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-2 py-1 dark:bg-gray-900"
                 value={cell.selectedKey ?? ""}
+                disabled={restoring}
                 onChange={event => onChoose(cell.id, event.target.value)}
               >
                 {cell.choices.map((copy, index) => <option key={copy.key} value={copy.key}>{index + 1}. {copy.text.slice(0, 100) || emptyText}</option>)}

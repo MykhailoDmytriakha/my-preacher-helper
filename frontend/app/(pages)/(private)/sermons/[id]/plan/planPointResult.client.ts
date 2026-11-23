@@ -23,6 +23,11 @@ export function readPlanPointResult(key: string): PlanPointResult | undefined {
       || result.kind === 'failed' && typeof result.message === 'string') ? result : undefined;
 }
 
+export function isPlanPointResultStored(key: string, result: Extract<PlanPointResult, { kind: 'ready' }>): boolean {
+  const stored = readDraft<PlanPointResult>(key)?.value;
+  return stored?.kind === 'ready' && stored.id === result.id && stored.content === result.content;
+}
+
 export function listPlanPointResults(owner: string, sermonId: string): Record<string, PlanPointResult> {
   const keys = new Set([...findDraftCopies(owner, sermonId, aggregate).map(copy => copy.key), ...unsaved.keys()]);
   return Object.fromEntries([...keys].flatMap(key => {

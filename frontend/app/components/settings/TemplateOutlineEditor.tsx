@@ -96,7 +96,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         onAcceptRemote={() => document.acceptRemote(compared)} recoveryChoices={recovery.choices}
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
         onDiscardRecovery={recovery.discard} />
-      <OutlineTitleDraftNotices />
+      <OutlineTitleDraftNotices shown={outline} />
       {generation && typeof owner === 'string' && outline && <OutlinePointPlacementHistory owner={owner} id={templateId}
         collection="planTemplates" generation={generation} outline={outline} disabled={disabled || document.readOnly || Boolean(comparison)}
         restore={async (next, pointId, subpoint) => subpoint ? moveSubpoint(next, pointId) : movePoint(next, pointId)} />}
@@ -108,7 +108,14 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
           isReadOnly={disabled || document.readOnly} onPointMove={(next, id) => { void movePoint(next, id)?.catch(() => undefined); }}
           onSubPointPlacement={(next, id) => { void moveSubpoint(next, id).catch(() => undefined); }} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
-          onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
+          onChange={structure => {
+            const captured = document.update(current => {
+              if (!current) throw new Error('The template is no longer available');
+              return { ...current, structure: structure as never };
+            }).then(() => structure);
+            void captured.catch(() => undefined);
+            return captured;
+          }} />}
     </fieldset>;
   }
 );

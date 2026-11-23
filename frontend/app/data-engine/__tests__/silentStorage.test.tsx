@@ -41,8 +41,8 @@ function makeEditor(title: string): ManagedEditor {
   } };
   const observation: Observation = { snapshot: snapshot(title), source: 'server', readiness: 'server', checking: false, error: false };
   return {
-    importLegacyStudyNote: jest.fn(), editPlanCell: jest.fn(), savePlanCells: jest.fn(), holdDraftAlternative: jest.fn(),
-    editTemplateTitle: jest.fn(), commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
+    importLegacyStudyNote: jest.fn(), editPlanCell: jest.fn(), assertPlanCellsStored: jest.fn(), savePlanCells: jest.fn(), stageServiceOrderInput: jest.fn(), flushServiceOrderInputs: jest.fn().mockResolvedValue(undefined), saveServiceOrderInput: jest.fn(), useStoredServiceOrderInput: jest.fn(), holdDraftAlternative: jest.fn(),
+    editOutlineTitle: jest.fn(), commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
     getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     form: jest.fn(), getPresence: () => UNKNOWN_RECORD_PRESENCE, getState: jest.fn(() => state), getObservation: jest.fn(() => observation), getDelivery: jest.fn(() => []),
     subscribe: jest.fn(() => () => undefined), edit: jest.fn(async () => undefined), commit: jest.fn(async () => undefined),

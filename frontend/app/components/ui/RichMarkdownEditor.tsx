@@ -527,7 +527,8 @@ function BufferedMarkdownEditor({
                                         adoptForeign(editor, update.value);
                                         showDraft(editor, result.text, true);
                                     }
-                                    publish(result.text);
+                                    const previous = boundary || merged ? update.value : active.opening.markdown;
+                                    publish(result.text, includeEditOpening ? previous : undefined);
                                     break;
                                 }
                                 case 'compare':

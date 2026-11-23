@@ -1,6 +1,7 @@
 'use client';
 
 import { isRetirableOrdinaryEditor, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
+import { awaitingManualReceipt, type ManualScopeRecord } from './manualScope';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
 import type { CommitRequest } from './commits';
@@ -91,12 +92,16 @@ export const deferCollection: typeof collectCommitRows = (_store, _read, _owner,
 export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owner: string, done: () => void): void {
   let requests: CommitRequest[] = [];
   const references = new Set<string>();
+  const meetingStages = new Map<string, ManualScopeRecord>();
   let remaining = 4;
   const finish = () => {
     remaining -= 1;
     if (remaining) return;
     for (const request of requests) {
       if (!request.initialized && request.predecessor) references.add(request.predecessor);
+      const stage = meetingStages.get(request.editorId);
+      // The renderer can stop after queuing a Save and before recording its form receipt.
+      if (stage && awaitingManualReceipt(stage, request)) references.add(request.id);
     }
     retainAtomicParticipants(requests, references);
     const watermarks = new Map<string, number>();
@@ -132,7 +137,12 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
   });
   for (const kind of ['manual', 'reference']) {
     read(store.getAll(engineOwnerRange(kind, owner)), values => {
-      for (const record of values as Array<{ commitReferences?: string[] }>) for (const id of record.commitReferences ?? []) references.add(id);
+      for (const envelope of values as Array<{ commitReferences?: string[]; record?: ManualScopeRecord | null }>) {
+        for (const id of envelope.commitReferences ?? []) references.add(id);
+        if (kind === 'manual' && envelope.record?.active && envelope.record.autosaveGroupMeeting) {
+          meetingStages.set(envelope.record.scopeId, envelope.record);
+        }
+      }
       finish();
     });
   }

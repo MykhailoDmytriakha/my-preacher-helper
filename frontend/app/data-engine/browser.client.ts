@@ -12,6 +12,7 @@ import { createIndexedDbCheckpoints } from './checkpoint.client';
 import { createIndexedDbCollectionCursors } from './collectionCursors.client';
 import { CollectionReader } from './collections';
 import { createIndexedDbCommitStore } from './commits.client';
+import { watchDraftReserves } from './draftReserveLifecycle.client';
 import { watchEditQueue } from './editDiagnostics.client';
 import { ACTION_SLOT, editorIdentity, retirableEditorIdentity } from './editorIdentity';
 import { DataEngine } from './engine';
@@ -20,9 +21,12 @@ import { LocalWriteback } from './localWriteback';
 import { createIndexedDbManualScopes } from './manualScopes.client';
 import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
+import { createOutlineTitleDraftStore, type OutlineTitleDraftStore } from './outlineTitleDrafts.client';
+import { localPlanCellEmergencyStorage } from './planCellEmergency.client';
 import { recoveryPresenceKey } from './recoveryPresence';
 import { createCommitCollectionWindow } from './retention.client';
 import { DataEngineRuntime } from './runtime';
+import { localServiceOrderReserveStorage } from './serviceOrderInputReserve.client';
 import { createIndexedDbSnapshots } from './snapshots.client';
 import { createFirestoreObservationSource } from './source.client';
 import { createHttpEngineTransport } from './transport.client';
@@ -35,6 +39,7 @@ const ATTENTION_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'tou
 
 export interface BrowserDataEngine {
   engine: DataEngine;
+  outlineTitleDrafts?: OutlineTitleDraftStore;
   dispose(): void;
   /** Allocate once per editor opening; recovery of a previous lifetime is explicit. */
   editorId(resource: ResourceRef, slot?: string): string;
@@ -42,6 +47,7 @@ export interface BrowserDataEngine {
 
 // Only unfinished device copies outlive a provider; no account, read cache or transport lives here.
 const retiredWrites = new LocalWriteback();
+const outlineTitleDrafts = createOutlineTitleDraftStore(retiredWrites);
 
 /** Create once per mounted provider and dispose its account/read/network lifecycle on unmount. */
 export function createBrowserDataEngine({ onError }: { onError?: (error: unknown, about?: FailureAddress) => void } = {}): BrowserDataEngine {
@@ -57,6 +63,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(commitCollection.collect), collections,
     snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
+    planCellEmergencyStorage: localPlanCellEmergencyStorage, serviceOrderReserveStorage: localServiceOrderReserveStorage,
     recoveryPresence: {
       hold: (owner, kind, id) => holdWhileOpen(recoveryPresenceKey(owner, kind, id)),
       held: (owner, kind, id) => heldInSomeTab(recoveryPresenceKey(owner, kind, id)),
@@ -68,6 +75,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   let owner: string | null = null;
   // What the person did and what waits to be sent, for the technical report (owner, 2026-10-10).
   const stopEditDiagnostics = watchEditQueue(engine, () => owner);
+  const stopDraftReserves = watchDraftReserves(engine);
   let generation = 0;
   let retrying = false;
   let stopAuth: (() => void) | undefined;
@@ -137,6 +145,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     for (const type of ATTENTION_EVENTS) window.removeEventListener(type, attentionSeen, { capture: true });
     stopAuth?.();
     stopEditDiagnostics();
+    stopDraftReserves();
     engine.dispose();
   };
   try {
@@ -155,7 +164,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   // A clean checkpoint is compacted after ACK. Reusing its editor ID would restart
   // editGeneration at zero behind the durable dedupe watermark. Every page opening
   // therefore gets a new identity; DataDocumentProvider shares it within that page.
-  return { engine, dispose, editorId: (resource, slot = 'default') => slot === ACTION_SLOT
+  return { engine, outlineTitleDrafts, dispose, editorId: (resource, slot = 'default') => slot === ACTION_SLOT
     ? editorIdentity(tabId, resource, slot, newClientId())
     : retirableEditorIdentity(tabId, resource, slot, newClientId()) };
 }

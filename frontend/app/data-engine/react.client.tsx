@@ -41,6 +41,7 @@ import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
 import { equalValues as engineValuesEqual } from './fieldValues';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
+import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as meetingRows, normalizeGroupMeetingDraft as normalizeMeetingDraft } from './groupMeetingAutosave';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
@@ -50,6 +51,9 @@ import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen
 import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { captureOutlineSubpointMove as captureSubpointMove } from './outlineSubpointMove';
+import { discardLegacyOutlineTitle as discardLegacyTitle, listLegacyOutlineTitleDraftIds as listLegacyTitleDraftIds,
+  mergeOutlineTitleDrafts as mergeTitleDrafts, outlineTitleDraftKey as titleDraftKey, outlineTitleDraftResource as titleDraftResource,
+  readLegacyOutlineTitleDrafts as readLegacyTitles, type OutlineTitleDraftCopy } from './outlineTitleDrafts.client';
 import { readOutlineTitleComparison as outlineTitleComparison } from './outlineTitleEdit';
 import { prayerTextEditAction as capturePrayerTextEdit } from './prayerTextAction';
 import { unresolvedPreachDateField } from './preachDateChoice';
@@ -59,9 +63,11 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
+import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readOutlineNoteConflict as outlineNoteConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
+import { readSermonOutlineReview as sermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
+import { isReturnedServiceOrderInput as returnedServiceInput, readServiceOrderInputComparison as compareSavedServiceInput, readServiceOrderInputValue as readSavedServiceOrderInput, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
@@ -92,8 +98,10 @@ import type { PreachStatusIntent } from './preachStatusAction';
 import type { RowFieldActionKind } from './rowFieldAutosave';
 import type { SeriesHistorySelection, SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SeriesReorderComparison } from './seriesReorder';
+import type { ServiceOrderInputFilter } from './serviceOrderAutosave';
 import type { EditorCommitAction, StudyNoteContentCapture } from './types';
 import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { SermonOutline } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
 
@@ -141,6 +149,11 @@ export function readUnreadableScalarComparison(checkpoint: SessionCheckpoint) {
   return { field: choice.path[0], mine, stored: saved,
     identity: JSON.stringify([checkpoint.editGeneration, stored.metadata?.revision, choice]) };
 }
+export const GROUP_MEETING_SLOT = groupMeetingAutosaveSlot;
+export function groupMeetingRows(value: DocumentData | null | undefined) { return meetingRows(value); }
+export function normalizeGroupMeetingDraft(value: DocumentData, initial: DocumentData | null | undefined) {
+  return normalizeMeetingDraft(value, initial);
+}
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export const captureOutlinePointPlacement = captureOutlinePlacement;
 export const captureOutlineSubpointMove = captureSubpointMove;
@@ -164,6 +177,8 @@ export const writeAccountPreference = writePreference;
 export function readAccountPreferenceComparison(checkpoint: SessionCheckpoint) { return accountPreferenceComparison(checkpoint); }
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) { return sermonPlanModeComparison(checkpoint); }
 export function readOutlineTitleComparison(checkpoint: SessionCheckpoint) { return outlineTitleComparison(checkpoint); }
+export function readSermonOutlineReview(checkpoint: SessionCheckpoint) { return sermonOutlineReview(checkpoint); }
+export function readOutlineNoteConflict(checkpoint: SessionCheckpoint) { return outlineNoteConflict(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
@@ -193,6 +208,19 @@ export function knownCollectionRemovals(state?: CollectionState | null): Readonl
   return collectionRemovals(state);
 }
 export type { RecoveryChoiceScope } from './recoveryChoice';
+export type { ServiceOrderInput } from './serviceOrderInput';
+
+export function readServiceOrderInputValue(value: DocumentData | null, input: ServiceOrderInput) {
+  return readSavedServiceOrderInput(value, input);
+}
+
+export function readServiceOrderInputComparison(snapshot: ResourceSnapshot | null, input: ServiceOrderInput) {
+  return compareSavedServiceInput(snapshot, input);
+}
+
+export function isReturnedServiceOrderInput(checkpoint: SessionCheckpoint, input: ServiceOrderInput) {
+  return returnedServiceInput(checkpoint, input);
+}
 export type { LegacyRecoverySource } from './legacyRecovery.client';
 export type { DocumentWriteReceipt } from './commitReceipt';
 
@@ -242,6 +270,26 @@ const ANY_ADDRESS = '*';
 const failureKey = (about?: FailureAddress) => (about ? (about.id ? `${about.collection}/${about.id}` : about.collection) : ANY_ADDRESS);
 const NO_FAILURES: Readonly<Record<string, number>> = {};
 const EngineContext = createContext<EngineContextValue | null>(null);
+
+export type { OutlineTitleDraftCopy } from './outlineTitleDrafts.client';
+export function outlineTitleDraftResource(collection: string, id: string) { return titleDraftResource(collection, id); }
+export function outlineTitleDraftKey(owner: string, resource: string, openingId: string) { return titleDraftKey(owner, resource, openingId); }
+export function readLegacyOutlineTitleDrafts(owner: string, resource: string) { return readLegacyTitles(owner, resource); }
+export function listLegacyOutlineTitleDraftIds(owner: string, collection: string) { return listLegacyTitleDraftIds(owner, collection); }
+export function discardLegacyOutlineTitle(copy: OutlineTitleDraftCopy) { return discardLegacyTitle(copy); }
+export function mergeOutlineTitleDrafts(copies: Iterable<OutlineTitleDraftCopy>) { return mergeTitleDrafts(copies); }
+
+export function useOutlineTitleDraftSession(owner: string | null, resource: string) {
+  const current = useContext(EngineContext);
+  const available = current?.owner === owner ? current?.browser?.outlineTitleDrafts : undefined;
+  return useMemo(() => owner && available ? available.forDocument(owner, resource) : null, [available, owner, resource]);
+}
+export function useOutlineTitleDraftDocuments(owner: string | null, collection: string) {
+  const current = useContext(EngineContext);
+  const available = current?.owner === owner ? current?.browser?.outlineTitleDrafts : undefined;
+  return useMemo(() => owner && available ? () => available.listDocuments(owner, collection) : null, [available, collection, owner]);
+}
+
 const EDITOR_CHANGED = 'The active editor changed';
 const ENGINE_NOT_READY = 'The data engine is not ready';
 /** What a list, or a screen waiting on the engine's background work, says when that work failed. */
@@ -645,6 +693,11 @@ export function useDocumentActions() {
       ]), () => undefined, readOnlyReason(true));
       return actionOwner.current === owner && (Boolean(saved?.value && saved.metadata && !saved.metadata.deleted)
         || copies.some(({ record }) => editorSlot(record.editorId) === 'study-note' && record.checkpoint.draft !== null));
+    },
+    listServiceOrderDraftLinks: async () => {
+      if (!browser || !owner || actionOwner.current !== owner) return [];
+      const copies = await untilStorageSilent(browser.engine.listServiceOrderDraftLinks(), () => undefined, readOnlyReason(true));
+      return actionOwner.current === owner ? copies : [];
     },
     listStudyNoteCreations: async () => {
       if (!browser || !owner || actionOwner.current !== owner) return [];
@@ -1091,12 +1144,14 @@ export function projectCapturedGroupStep(...args: Parameters<typeof projectGroup
 
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
+  retainSermonOutlineReview?: (failure: unknown) => SermonOutlineReviewInput | undefined;
   /** A blank creation may be dropped while it still has no captured request. */
   blankBeforeCreation?: (draft: DocumentData) => boolean;
   action?: 'group-title' | 'group-status' | 'group-description' | 'council-title' | 'council-date'
     | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] }
     | { kind: 'outline-title'; opening: OutlineTitleOpening } | { kind: 'study-note-field'; field: import('./documentFieldAction').StudyNoteTimedField; opening: string; saveImmediately?: true }
-    | { kind: 'comment-kind' } | { kind: 'comment-place' };
+    | { kind: 'comment-kind' } | { kind: 'comment-place' }
+    | { kind: 'service-order-input'; input: ServiceOrderInput };
 }
 
 interface DocumentOptions {
@@ -1179,6 +1234,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const key = JSON.stringify([collection, id, slot, create, recoverySourceId]);
   const [opened, setOpened] = useState<OpenEditor | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [outlineReviewVersion, setOutlineReviewVersion] = useState(0);
   const base = useMemo(() => ({ owner, key, browser }), [owner, key, browser]);
   const [selection, setSelection] = useState<RecoveryRequest | null>(null);
   const requestedRecovery = useRef<RecoveryRequest | null>(null);
@@ -1301,13 +1357,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const editorRefusal = editorError === null ? null
     : say(refusalWords(Object.assign(new Error(editorError), { code: editorErrorCode }), DOCUMENT_FAILED));
   const isCurrent = useCallback(() => mounted.current && scope.current === identity, [identity]);
-  const run = useCallback(async <T,>(action: (editor: ManagedEditor) => Promise<T>): Promise<T> => {
+  const run = useCallback(async <T,>(action: (editor: ManagedEditor) => Promise<T>, options?: { allowClosedReceipt: true }): Promise<T> => {
     if (!isCurrent()) throw new Error(EDITOR_CHANGED);
     if (!current) throw copy ? readOnlyError(readOnlyReasonKey()) : new Error('The editor is not ready');
     try {
       const result = await action(current.editor);
-      if (!isCurrent()) throw new Error(EDITOR_CHANGED);
-      setError(null);
+      if (isCurrent()) setError(null);
+      else if (!options?.allowClosedReceipt) throw new Error(EDITOR_CHANGED);
       return result;
     } catch (failure) {
       if (isCurrent()) setError(failure);
@@ -1371,11 +1427,18 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     return manualEditor.form(formSlot, fields, recovery);
   }, [manualEditor, copy, readOnlyReason, isCurrent]);
 
+  const startPlanCellAlternative = (nodeId: string, text: string) => {
+    if (!isCurrent()) return;
+    return current?.editor.holdPlanCellAlternative?.({ kind: 'plan-cell', nodeId, text });
+  };
+
   return {
     getManualForm,
     /** Notification metadata; `error` still reports the read failure to data consumers. */
     ...(observedFailure ? { errorWords: observedFailure.words } : {}),
     recoveryIdentity: identity as object,
+    outlineReviewVersion,
+    restored: Boolean(recovery && current),
     data: current ? current.state.checkpoint.draft : copy?.snapshot.value ?? null,
     presence: current?.presence ?? (copy ? documentRecordPresence(copy.snapshot.resource, { snapshot: copy.snapshot, source: copy.source === 'server' ? 'server' : 'cache', readiness: copy.source === 'server' ? 'server' : 'cache', checking: false, error: false }) : UNKNOWN_RECORD_PRESENCE),
     confirmed: current?.state.checkpoint.confirmed ?? null,
@@ -1422,6 +1485,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
             && options?.blankBeforeCreation?.(next)) next = null;
         }
         catch (error) {
+          const review = options?.retainSermonOutlineReview?.(error);
+          const retaining = review && editor.retainSermonOutlineReview?.(review);
+          if (retaining) {
+            if (retaining.location === 'active') cancelScheduledSave();
+            return retaining.durable.then(() => {
+              if (retaining.location === 'deferred' && isCurrent()) setOutlineReviewVersion(version => version + 1);
+            });
+          }
           if (!options?.handlesRefusal?.(error)) throw error;
           refused = { error };
           return Promise.resolve();
@@ -1429,6 +1500,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         // An expected question changed no draft and must not cancel an earlier save.
         cancelScheduledSave();
         if (owner && typeof action === 'object') {
+          if (action.kind === 'service-order-input') return editor.stageServiceOrderInput(next, shown, action.input);
           if (action.kind === 'exegetical-point') {
             return editor.edit(next, shown, { field: action.kind, nodeId: action.nodeId, intent: action.intent, time: time ?? null });
           }
@@ -1459,7 +1531,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
           return editor.edit(next, shown, { field: action.kind, ...rows, time: time ?? null });
         }
         return time || observeWithoutClock ? editor.edit(next, shown, { field, time: time ?? null }) : editor.edit(next, shown);
-      }).then(() => { if (refused) throw refused.error; }, error => {
+      }, options?.retainSermonOutlineReview && { allowClosedReceipt: true }).then(() => {
+        if (refused) throw refused.error;
+      }, error => {
         // A question already established for the departed owner must still reach its backup.
         throw refused ? refused.error : error;
       });
@@ -1470,11 +1544,24 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       return importing;
     }),
     capturePlanCellOpening: (nodeId: string, text: string) => planCellOpening(current?.state.checkpoint, nodeId, text),
-    editPlanCell: (opening: PlanCellOpening, text: string) => run(editor => {
-      const editing = editor.editPlanCell(opening, text);
+    editPlanCell: (opening: PlanCellOpening, text: string, previous?: string, isSourceStored?: () => boolean) => run(editor => {
+      const editing = editor.editPlanCell(opening, text, previous, isSourceStored);
       cancelScheduledSave();
       return editing;
     }),
+    editUnverifiedPlanCell: (nodeId: string, text: string, previous: string) => run(editor => {
+      if (!editor.editUnverifiedPlanCell) throw new Error(EDITOR_CHANGED);
+      const editing = editor.editUnverifiedPlanCell(nodeId, text, previous);
+      cancelScheduledSave();
+      return editing;
+    }),
+    backsUpPlanCell: (nodeId: string, text: string) => current?.editor.backsUpPlanCell?.(nodeId, text) ?? false,
+    bindPlanCellBackups: (cells: Readonly<Record<string, string>>) =>
+      isCurrent() ? current?.editor.bindPlanCellBackups?.(cells) ?? [] : [],
+    flushServiceOrderInputs: (filter?: ServiceOrderInputFilter) => run(editor => editor.flushServiceOrderInputs(filter)),
+    saveServiceOrderInput: (input: ServiceOrderInput, compared?: ServiceOrderInputComparison) => run(editor => editor.saveServiceOrderInput(input, compared)),
+    useStoredServiceOrderInput: (input: ServiceOrderInput, compared: ServiceOrderInputComparison) => run(editor => editor.useStoredServiceOrderInput(input, compared)),
+    assertPlanCellsStored: (cells: Readonly<Record<string, string>>) => run(editor => editor.assertPlanCellsStored(cells)),
     savePlanCells: (nodeIds: readonly string[]) => run(editor => {
       cancelScheduledSave();
       return editor.savePlanCells(nodeIds);
@@ -1485,12 +1572,20 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         const time = owner ? actionClock.capture(owner) ?? null : null;
         return run(editor => {
           if (!shown) throw new Error(EDITOR_CHANGED);
-          return editor.editTemplateTitle(shown, opening, title, time);
+          return editor.editOutlineTitle(shown, opening, title, time).then(() => undefined);
         });
       };
     },
-    captureSermonNoteText: (target: SermonNoteTarget, text: string | undefined) => {
-      const checkpoint = current?.state.checkpoint;
+    readLiveSermonOutline: () => isCurrent()
+      ? (current?.editor.getState().checkpoint.draft?.outline as unknown as SermonOutline | undefined) ?? null : null,
+    editSermonOutlineTitle: (shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string) => {
+      const time = owner ? actionClock.capture(owner) ?? null : null;
+      return run(editor => editor.editOutlineTitle(shown, opening, title, time), { allowClosedReceipt: true });
+    },
+    captureSermonNoteText: (target: SermonNoteTarget, text: string | undefined, opening?: SessionCheckpoint) => {
+      const live = current?.state.checkpoint;
+      const checkpoint = live && readSermonNoteText(live.draft, target)?.text === (text ?? null) ? live
+        : opening && opening.confirmed.resource.id === live?.confirmed.resource.id && opening.draft?.userId === owner ? opening : live;
       const birth = checkpoint?.confirmed.value?.createdAt;
       const captured: SermonNoteOpening | undefined = checkpoint && owner && isCurrent()
         && checkpoint.confirmed.resource.collection === 'sermons'
@@ -1536,15 +1631,29 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       cancelScheduledSave();
       return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
     },
-    holdDraftAlternative: (updater: (confirmed: DocumentData) => DocumentData) => {
-      const held = run(editor => editor.holdDraftAlternative(updater));
-      void held.catch(() => undefined);
+    retainPlanCellAlternative: async (nodeId: string, text: string) =>
+      startPlanCellAlternative(nodeId, text)?.retained ?? false,
+    holdPlanCellAlternative: (nodeId: string, text: string) => {
+      try {
+        const held = startPlanCellAlternative(nodeId, text);
+        if (!held) return;
+        void held.retained.catch(failure => { if (isCurrent()) setError(failure); });
+        return (keep: boolean, chosenWrite?: void | Promise<unknown>) => {
+          if (isCurrent()) void held.settle(keep, chosenWrite).catch(failure => { if (isCurrent()) setError(failure); });
+        };
+      } catch (failure) {
+        if (isCurrent()) setError(failure);
+        return;
+      }
+    },
+    holdDraftAlternative: (alternative: (confirmed: DocumentData) => DocumentData) => {
+      const held = run(editor => editor.holdDraftAlternative(alternative)).catch(() => null);
       return (keep: boolean, chosenWrite?: void | Promise<unknown>) => {
-        // Selecting a copy is not durable ownership. If the chosen edit cannot
-        // be staged, its separately held checkpoint remains recoverable.
-        if (keep && !chosenWrite) return;
+        if (!isCurrent() || (keep && !chosenWrite)) return;
         void Promise.all([held, keep ? chosenWrite : undefined]).then(async ([source]) => {
-          if (source && browser && isCurrent() && (!keep || await source.isStaged()) && isCurrent()) await browser.engine.discardRecovery(source);
+          if (source && browser && isCurrent() && (!keep || await source.isStaged()) && isCurrent()) {
+            await browser.engine.discardRecovery(source);
+          }
         }).catch(failure => { if (isCurrent()) setError(failure); });
       };
     },
@@ -1563,7 +1672,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
-      const time = owner && (collection === 'series' || compared && (compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
+      const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || readSermonSettingComparison(compared)
         || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
@@ -1576,7 +1685,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
      * failure is not the document's, and its success does not clear the document's own failure
      * (BUG-20261003-draft-search-failure-shown-twice).
      */
-    listRecoverable: async (options?: { omitBorrowedSlots?: readonly string[]; manualChoiceCopies?: 'only' | 'omit' }) => {
+    listRecoverable: async (options?: { omitBorrowedSlots?: readonly string[]; manualChoiceCopies?: 'only' | 'omit'; slot?: string }) => {
       if (!isCurrent() || !browser || !owner || !collection || !id) throw new Error(EDITOR_CHANGED);
       // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
       const resource = { collection, id };
@@ -1592,6 +1701,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         return Boolean(slot && options.omitBorrowedSlots?.includes(slot));
       };
       return records.filter(({ record }) => {
+        if (options.slot && !isDocumentEditorSlot(record.editorId, resource, options.slot)) return false;
         const preserved = isManualChoiceRecoveryIdentity(record.editorId);
         if (options.manualChoiceCopies === 'only') return preserved;
         if (options.manualChoiceCopies === 'omit' && preserved) return false;
@@ -1823,8 +1933,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const controller = new AbortController(); proposals.pending.add(controller);
       return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
     },
-    update: (updater: (draft: DocumentData) => DocumentData, fieldInput?: ManualFieldInput) =>
-      run(form => form.update(updater, fieldInput), false),
+    update: (updater: (draft: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true) =>
+      run(form => autosaveGroupMeeting ? form.update(updater, fieldInput, autosaveGroupMeeting) : form.update(updater, fieldInput), false),
     captureOutlineSubpoint: (subPointId: string) => ({ outlineSubpoint: { subPointId,
       time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
     captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined =>

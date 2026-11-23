@@ -3,52 +3,46 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
 import { useStructureWriter } from '@/components/sermon/structureWriter';
+import { discardLegacyOutlineTitle, mergeOutlineTitleDrafts, outlineTitleDraftKey, readLegacyOutlineTitleDrafts, useOutlineTitleDraftSession,
+  type OutlineTitleDraftCopy as DraftCopy } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
-import { serializeContent } from '@/utils/contentFingerprint';
-import { clearDraftIfMatches, draftKey, findDraftCopies, findDraftDocIds, nextDraftEditTime, readDraft, saveDraft, type DurableDraft } from '@/utils/durableDraft';
+import { readOutlineTitleText } from '@/utils/sermonNoteText';
 import { changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
+import type { SermonOutline } from '@/models/models';
+import type { OutlineNoteTarget, OutlineTitleOpening } from '@/utils/sermonNoteText';
 
-type DraftValue = { target: OutlineTitleOpening['target']; text: string };
-type DraftCopy = { key: string; value: DraftValue; stored: DurableDraft<DraftValue> | null };
 
 type DraftActions = {
   keyFor: (openingId: string) => string;
-  remember: (key: string, value: DraftValue) => DraftCopy;
-  discard: (draft: DraftCopy) => void;
+  remember: (openingId: string, value: DraftCopy['value'], prior?: DraftCopy) => DraftCopy;
+  discard: (draft: DraftCopy) => Promise<void> | void;
+  submit: (draft: DraftCopy, pending: boolean) => void;
   attach: (key: string, attached: boolean) => void;
 };
 
-const AGGREGATE = 'outline-title';
 const HEADING = 'structure.unsubmittedTitle.heading';
 const TitleDraftActions = createContext<DraftActions | null>(null);
 const DetachedTitles = createContext<readonly DraftCopy[]>([]);
 
 type DraftScopeProps = PropsWithChildren<{ owner: string | null; resource: string; discover?: boolean; onPresenceChange?: (present: boolean) => void }>;
 
-export const outlineTitleDraftResource = (collection: string, id: string) => JSON.stringify([collection, id]);
-
-export function listOutlineTitleDraftIds(owner: string, collection: string): string[] {
-  return findDraftDocIds(owner, AGGREGATE).flatMap(address => {
-    try {
-      const parts: unknown = JSON.parse(address);
-      return Array.isArray(parts) && parts.length === 2 && parts[0] === collection && typeof parts[1] === 'string' ? [parts[1]] : [];
-    } catch { return []; }
-  });
-}
+export { listLegacyOutlineTitleDraftIds as listOutlineTitleDraftIds, outlineTitleDraftResource } from '@/data-engine/react.client';
 
 export function OutlineTitleDraftScope(props: DraftScopeProps) {
   return <DraftScope key={JSON.stringify([props.owner, props.resource])} {...props} />;
 }
 
 function DraftScope({ owner, resource, discover = true, onPresenceChange, children }: DraftScopeProps) {
+  const session = useOutlineTitleDraftSession(owner, resource);
   const copies = useRef(new Map<string, DraftCopy>());
+  const discarded = useRef(new Map<string, number>());
   const [detached, setDetached] = useState<readonly DraftCopy[]>([]);
   const attached = useRef(new Set<string>());
+  const submitting = useRef(new Set<DraftCopy>());
   const notifyPresence = useRef(onPresenceChange);
   notifyPresence.current = onPresenceChange;
   const hadCopies = useRef(false);
@@ -58,46 +52,56 @@ function DraftScope({ owner, resource, discover = true, onPresenceChange, childr
       hadCopies.current = hasCopies;
       notifyPresence.current?.(hasCopies);
     }
-    const visible = [...copies.current.values()].filter(copy => !attached.current.has(copy.key));
+    const visible = [...copies.current.values()].filter(copy => !attached.current.has(copy.key) && !submitting.current.has(copy));
     setDetached(previous => previous.length === visible.length && previous.every((copy, index) => copy === visible[index])
       ? previous : visible);
   }, []);
+  const forget = useCallback((copy: DraftCopy) => {
+    discarded.current.set(copy.key, Math.max(copy.editedAt, discarded.current.get(copy.key) ?? -Infinity));
+    const visible = copies.current.get(copy.key);
+    if (!visible || visible.editedAt > copy.editedAt) return;
+    copies.current.delete(copy.key);
+    publish();
+  }, [publish]);
+  useEffect(() => session?.subscribeRetirements(forget), [session, forget]);
   useEffect(() => {
     if (!owner || !discover) return;
-    for (const { key, value, sourceRecord } of findDraftCopies<DraftValue>(owner, resource, AGGREGATE)) {
-      if (typeof value?.text !== 'string' || !value.text || copies.current.has(key)) continue;
-      copies.current.set(key, { key, value, stored: sourceRecord as DurableDraft<DraftValue> });
-    }
-    publish();
-  }, [owner, resource, publish, discover]);
+    let active = true;
+    const include = (stored: readonly DraftCopy[]) => {
+      if (!active) return;
+      const visible = stored.filter(copy => copy.editedAt > (discarded.current.get(copy.key) ?? -Infinity));
+      const merged = mergeOutlineTitleDrafts([...visible, ...copies.current.values()]);
+      copies.current = new Map(merged.map(copy => [copy.key, copy]));
+      publish();
+    };
+    include(session ? session.readLocal() : readLegacyOutlineTitleDrafts(owner, resource));
+    void session?.readStored().then(include, () => undefined);
+    return () => { active = false; };
+  }, [owner, resource, session, publish, discover]);
   const actions = useMemo<DraftActions>(() => ({
-    keyFor: openingId => owner ? draftKey(owner, resource, AGGREGATE, openingId) : openingId,
-    remember: (key, value) => {
-      const previous = copies.current.get(key)?.stored ?? null;
-      const editedAt = nextDraftEditTime(previous?.editedAt);
-      const stored = owner && saveDraft(key, value, undefined, false, editedAt) ? readDraft<DraftValue>(key) : previous;
-      const copy = { key, value, stored };
-      copies.current.set(key, copy);
+    keyFor: openingId => owner ? outlineTitleDraftKey(owner, resource, openingId) : openingId,
+    remember: (openingId, value, prior) => {
+      const copy = session?.remember(openingId, value, prior) ?? {
+        key: owner ? outlineTitleDraftKey(owner, resource, openingId) : openingId, value, editedAt: Date.now(),
+      };
+      copies.current.set(copy.key, copy);
       publish();
       return copy;
     },
     discard: draft => {
       if (copies.current.get(draft.key) !== draft) return;
-      if (owner) {
-        const stored = readDraft<DraftValue>(draft.key);
-        if (stored && serializeContent(stored) !== serializeContent(draft.stored)) {
-          // A confirmed dismissal still names the physical copy the user saw.
-          copies.current.set(draft.key, { key: draft.key, value: stored.value, stored });
-          publish();
-          return;
-        }
-        clearDraftIfMatches(draft.key, draft.value, stored ?? undefined);
-        if (stored && serializeContent(stored.value) !== serializeContent(draft.value)) {
-          // The latest backup was refused. Discard the older physical copy too.
-          clearDraftIfMatches(draft.key, stored.value, stored);
-        }
-      }
-      copies.current.delete(draft.key);
+      const finish = (remaining?: DraftCopy) => {
+        if (copies.current.get(draft.key) !== draft) return;
+        if (!remaining) { forget(draft); return; }
+        copies.current.set(draft.key, remaining);
+        publish();
+      };
+      if (session) return session.discard(draft).then(finish, () => undefined);
+      finish(discardLegacyOutlineTitle(draft));
+    },
+    submit: (draft, pending) => {
+      if (pending) submitting.current.add(draft);
+      else submitting.current.delete(draft);
       publish();
     },
     attach: (key, active) => {
@@ -105,7 +109,7 @@ function DraftScope({ owner, resource, discover = true, onPresenceChange, childr
       else attached.current.delete(key);
       publish();
     },
-  }), [owner, resource, publish]);
+  }), [owner, resource, publish, session, forget]);
   return <TitleDraftActions.Provider value={actions}>
     <DetachedTitles.Provider value={detached}>{children}</DetachedTitles.Provider>
   </TitleDraftActions.Provider>;
@@ -132,8 +136,10 @@ function DetachedTitle({ copy, discard }: { copy: DraftCopy; discard: () => void
   </div>;
 }
 
-export function OutlineTitleDraftNotices() {
-  const copies = useContext(DetachedTitles);
+export function OutlineTitleDraftNotices({ shown }: { shown?: SermonOutline } = {}) {
+  const detached = useContext(DetachedTitles);
+  const copies = shown ? detached.filter(copy =>
+    readOutlineTitleText(shown, copy.value.target) !== normalizeCapitalizedTitle(copy.value.text)) : detached;
   const actions = useContext(TitleDraftActions);
   const { t } = useTranslation();
   if (!copies.length || !actions) return null;
@@ -141,7 +147,7 @@ export function OutlineTitleDraftNotices() {
     className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
     <p className="text-sm font-semibold">{t(HEADING)}</p>
     <p className="text-sm">{t('structure.unsubmittedTitle.body')}</p>
-    {copies.map(copy => <DetachedTitle key={JSON.stringify([copy.key, copy.stored?.editedAt])} copy={copy} discard={() => actions.discard(copy)} />)}
+    {copies.map(copy => <DetachedTitle key={JSON.stringify([copy.key, copy.editedAt])} copy={copy} discard={() => actions.discard(copy)} />)}
   </section>;
 }
 
@@ -150,19 +156,23 @@ export function useOutlineTitleDraft(visibleTargetId: string | null) {
   const actions = useContext(TitleDraftActions);
   const writer = useStructureWriter();
   const observed = useRef<OutlineTitleOpening | undefined>(undefined);
-  const field = useRef<{ key: string; opening: OutlineTitleOpening; displayed: string; copy?: DraftCopy } | null>(null);
+  const field = useRef<{ key: string; openingId: string; opening: OutlineTitleOpening; displayed: string; copy?: DraftCopy } | null>(null);
   useLayoutEffect(() => {
     const open = field.current;
     if (!actions || !open || open.opening.target.id !== visibleTargetId) return;
     actions.attach(open.key, true);
     return () => actions.attach(open.key, false);
   }, [actions, visibleTargetId]);
+  const openField = (opening: OutlineTitleOpening, displayed: string, openingId: string) => {
+    if (actions) field.current = { openingId, key: actions.keyFor(openingId), opening, displayed };
+  };
   return {
     open: (opening: OutlineTitleOpening, displayed: string) => {
       const version = writer.outlineTitleVersion?.(opening);
       observed.current = version ? { ...opening, version } : opening;
-      if (actions) field.current = { key: actions.keyFor(newClientId()), opening, displayed };
+      openField(opening, displayed, newClientId());
     },
+    openNew: (target: OutlineNoteTarget) => openField({ target, text: '' }, '', target.id),
     opening: () => observed.current,
     change: (text: string) => {
       const open = field.current;
@@ -172,19 +182,46 @@ export function useOutlineTitleDraft(visibleTargetId: string | null) {
         open.copy = undefined;
         return;
       }
-      open.copy = actions.remember(open.key, { target: open.opening.target, text });
+      open.copy = actions.remember(open.openingId, { target: open.opening.target, text }, open.copy);
     },
     cancel: () => {
       if (field.current?.copy) actions?.discard(field.current.copy);
     },
-    handoff: (writing: Promise<unknown> | void) => {
+    handoff: <T,>(writing: Promise<T> | void, accepted?: (value: T) => boolean) => {
       const copy = field.current?.copy;
       if (!actions || !copy || !writing) return;
-      void writing.then(() => actions.discard(copy), error => {
+      actions.submit(copy, true);
+      void writing.then(value => {
+        if (!accepted || accepted(value)) return actions.discard(copy);
+      }, error => {
         const retained = isOutlineCollisionError(error) ? error.retainedTitle : undefined;
         if (retained?.target.id === copy.value.target.id && retained.target.kind === copy.value.target.kind
-          && retained.text === normalizeCapitalizedTitle(copy.value.text)) actions.discard(copy);
-      });
+          && retained.text === normalizeCapitalizedTitle(copy.value.text)) return actions.discard(copy);
+      }).finally(() => actions.submit(copy, false));
+    },
+  };
+}
+
+
+export type OutlineCreation = Promise<SermonOutline | null | void> | void;
+
+/** Reserve the new node's identity on opening. Existing copies are retired by proof of creation. */
+export function useNewOutlineTitleDraft(kind: OutlineNoteTarget['kind'], visible: boolean) {
+  const openingId = useRef<string | undefined>(undefined);
+  const draft = useOutlineTitleDraft(visible ? openingId.current ?? null : null);
+  return {
+    id: () => openingId.current,
+    open: () => {
+      const id = newClientId();
+      openingId.current = id;
+      draft.openNew({ kind, id });
+    },
+    change: draft.change,
+    cancel: draft.cancel,
+    handoff: (writing: OutlineCreation, text: string) => {
+      const id = openingId.current;
+      if (!id || !writing) return;
+      draft.handoff(writing, saved => readOutlineTitleText(saved ?? null, { kind, id }) === text);
     },
   };
 }

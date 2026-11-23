@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { OutlineConflictScopeProvider, type OutlineConflictController } from '@/components/plan-editor/OutlineConflictScope';
+import { OutlineEditReviewProvider } from '@/components/plan-editor/OutlineEditReview';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { useQuietScreen } from '@/utils/quietScreen';
@@ -15,7 +16,8 @@ import type { ReactNode } from 'react';
 interface OutlineWriteRecoveryProps {
   owner: string | null;
   sermonId: string;
-  document: Pick<ReturnType<typeof useDataDocument>, 'data' | 'readOnly'>;
+  document: Pick<ReturnType<typeof useDataDocument>, 'data' | 'readOnly' | 'state' | 'status' | 'confirmed' | 'recoveryIdentity' | 'outlineReviewVersion'
+    | 'listRecoverable' | 'recover' | 'discardRecovery' | 'keepLocal' | 'acceptRemote' | 'readLiveSermonOutline'>;
   writer: StructureWriter;
   recovery: OutlineConflictController;
   children: ReactNode;
@@ -45,8 +47,10 @@ export function OutlineWriteRecovery({ owner, sermonId, document, writer, recove
         <button type="button" className="mt-3 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700"
           onClick={() => setOpenedFor(identity)}>{t('freshness.reviewAction')}</button>
       </section>}
-      {children}
-      {canReview && sermon && isOpen && <PlanEditorModal isOpen onClose={close} sermon={sermon} />}
+      <OutlineEditReviewProvider document={document} enabled={canReview} showActiveOutline={!recovery.editing}>
+        {children}
+        {canReview && sermon && isOpen && <PlanEditorModal isOpen onClose={close} sermon={sermon} />}
+      </OutlineEditReviewProvider>
     </OutlineConflictScopeProvider>
   </StructureWriterContext.Provider>;
 }

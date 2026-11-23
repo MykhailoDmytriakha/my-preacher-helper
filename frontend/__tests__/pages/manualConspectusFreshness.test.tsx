@@ -10,18 +10,23 @@ import { toast } from 'sonner';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
 import { OrphanedPlanText } from '@/(pages)/(private)/sermons/[id]/plan/OrphanedPlanText';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
+import { PlanCellDocument, PlanCellEditor } from '@/(pages)/(private)/sermons/[id]/plan/PlanCellEditor';
 import '@testing-library/jest-dom';
 
+import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataEngineProvider } from '@/data-engine/react.client';
+import { DataEngineProvider, useDataDocument } from '@/data-engine/react.client';
+import { planCellOpening } from '@/data-engine/sermonPlanCellSession';
+import { enqueueWrite, listOutbox, removeFromOutbox } from '@/services/writeOutbox.client';
 import { draftKey, listDraftKeys, readDraft, saveDraft } from '@/utils/durableDraft';
 
 import { deferred } from '@test-utils/deferred';
 import { markdown, mountedEditor, typeAtEnd, undo } from '@test-utils/richMarkdownHistory';
 
-import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
+import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 
 import type { CommitRequest } from '@/data-engine/commits';
+import type { RecoveryPresencePort } from '@/data-engine/recoveryPresence';
 import type { Sermon } from '@/models/models';
 
 /**
@@ -96,8 +101,8 @@ const sermon = (planText: Record<string, string>): Sermon => ({
  * so a bare `render` here would fail on plumbing rather than on anything this file is about.
  */
 const queryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
-const page = (client: QueryClient) => (
-  <QueryClientProvider client={client}><DataEngineProvider><ManualConspectusPage /></DataEngineProvider></QueryClientProvider>
+const page = (client: QueryClient, showPlan = true, plan: React.ReactNode = <ManualConspectusPage />) => (
+  <QueryClientProvider client={client}><DataEngineProvider>{showPlan && plan}</DataEngineProvider></QueryClientProvider>
 );
 /** Opens every cell of one point card for writing — each cell has its own switch with its text. */
 const openPointCells = (index = 0) => {
@@ -105,18 +110,18 @@ const openPointCells = (index = 0) => {
   within(card).queryAllByTitle('plan.editMode').forEach(button => fireEvent.click(button));
 };
 
-const render = async () => {
+const render = async (recoveryPresence?: RecoveryPresencePort, plan?: React.ReactNode) => {
   const { id: _id, ...stored } = mockSermon as unknown as Record<string, unknown>;
   harness = documentEngineHarness({
     resource: { collection: 'sermons', id: 'sermon-1' },
     metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
     value: JSON.parse(JSON.stringify(stored)),
   });
-  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  jest.mocked(createBrowserDataEngine).mockImplementation(options => harness.createBrowser({ ...options, recoveryPresence }));
   const client = queryClient();
-  const view = rtlRender(page(client));
+  const view = rtlRender(page(client, true, plan));
   await screen.findAllByText('A sermon in progress');
-  return view;
+  return { ...view, showPlan: (visible: boolean) => view.rerender(page(client, visible, plan)) };
 };
 const markers = () => screen.queryAllByTestId('plan-progress-point');
 const filled = () => markers().filter((marker) => marker.style.backgroundColor !== '');
@@ -225,7 +230,7 @@ describe('the save button on the hand-written screen', () => {
     await render();
     fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
 
-    expect(saveButton()).toBeEnabled();
+    await waitFor(() => expect(saveButton()).toBeEnabled());
     // Introduction's tone — literal classes, because Tailwind cannot see a computed one.
     expect(saveButton().className).toContain('bg-amber-600');
   });
@@ -339,6 +344,7 @@ it('regression pin: keeps a second requested manual draft replacement undoable i
   saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1', 'second'), 'Second requested words.', undefined, false, 2);
   const view = await render();
   fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  await screen.findByTitle('plan.editMode');
   openPointCells();
   const editor = mountedEditor(view.container);
   const before = markdown(editor);
@@ -347,6 +353,331 @@ it('regression pin: keeps a second requested manual draft replacement undoable i
   expect(mountedEditor(view.container)).toBe(editor);
   expect(undo(editor)).toBe(true);
   expect(markdown(editor)).toBe(before);
+});
+
+it('keeps typed plan text in the engine and creates no second local copy on page hide', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Stored words.' });
+  const view = await render();
+  openPointCells();
+  typeAtEnd(mountedEditor(view.container), ' Kept on this device.');
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  await waitFor(async () => {
+    const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+    expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === 'Stored words. Kept on this device.')).toBe(true);
+  });
+  fireEvent(window, new Event('pagehide'));
+  expect(listDraftKeys()).toEqual([]);
+  expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+});
+
+it.each(['pagehide', 'close', 'owner change'] as const)('backs up an admitted plan edit before screen render (%s)', async departure => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Stored words.' });
+  await render();
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  const editor = await harness.engine.openEditor(resource, 'independent-plan-opening');
+  const opening = planCellOpening(editor.getState().checkpoint, 'p1', 'Stored words.')!;
+  const writing = deferred();
+  const put = harness.checkpoints.put;
+  const newer = 'Words admitted before the screen could show them.';
+  const hold = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+    if (record.checkpoint.planCellDrafts?.p1?.text === newer) await writing.promise;
+    return put(record);
+  });
+  let edit: Promise<void> | undefined;
+  try {
+    act(() => {
+      edit = editor.editPlanCell(opening, newer);
+      void edit.catch(() => undefined);
+      if (departure === 'pagehide') window.dispatchEvent(new Event('pagehide'));
+      if (departure === 'close') editor.close();
+      if (departure === 'owner change') harness.engine.setOwner('another-owner');
+    });
+    expect(listDraftKeys().map(key => readDraft(key)?.value)).toEqual([newer]);
+
+    await act(async () => { writing.resolve(); await Promise.allSettled([edit]); });
+    await waitFor(() => expect(listDraftKeys()).toEqual([]));
+    const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+    expect(copies.map(({ record }) => record.checkpoint.planCellDrafts?.p1?.text)).toContain(newer);
+    expect(await harness.checkpoints.listRecoverable('another-owner', resource)).toEqual([]);
+    expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+  } finally {
+    writing.resolve();
+    await Promise.allSettled([edit]);
+    hold.mockRestore();
+    editor.close();
+  }
+});
+
+it('reopens a previously blank plan cell without the words erased behind a delayed device write', async () => {
+  localStorage.clear();
+  const initial = sermon({});
+  delete initial.planText;
+  mockSermon = initial;
+  const view = await render();
+  const phrase = 'Words I later erase.';
+  let waiting = false;
+  harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+    if (waiting || mode !== 'readwrite') return false;
+    waiting = [...rows.values()].some(row =>
+      (row as { checkpoint?: { planCellDrafts?: { p1?: { text: string } } } })?.checkpoint?.planCellDrafts?.p1?.text === phrase);
+    return waiting;
+  };
+  const release = () => {
+    harness.storage.holdCompletionAfterCommit = undefined;
+    if (waiting) { waiting = false; harness.storage.finishCompletion(); }
+  };
+  try {
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    typeAtEnd(editor, phrase);
+    await waitFor(() => expect(waiting).toBe(true));
+    fireEvent(window, new Event('pagehide'));
+    expect(listDraftKeys().map(key => readDraft(key)?.value)).toContain(phrase);
+
+    act(() => { editor.commands.clearContent(); });
+    expect(markdown(editor)).toBe('');
+    await act(async () => { release(); await settleEngine(); });
+    await waitFor(() => expect(listDraftKeys()).toEqual([]));
+    const backups = await harness.checkpoints.listRecoverable('user-1', { collection: 'sermons', id: 'sermon-1' });
+    expect(backups.map(copy => copy.record.checkpoint.planCellDrafts?.p1?.text)).not.toContain(phrase);
+    expect(harness.server.value?.planText).toBeUndefined();
+
+    view.showPlan(false);
+    view.showPlan(true);
+    await screen.findAllByText('A sermon in progress');
+    expect(screen.queryByRole('button', { name: 'plan.draftRecoveryRestore' })).not.toBeInTheDocument();
+  } finally { release(); }
+});
+
+it('leaves the existing offline Save in its queue when leaving the plan', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'The stored paragraph.' });
+  mockSermon.planMode = 'manual';
+  const queued = {
+    id: 'old-plan-save', uid: 'user-1', collection: 'sermons', docId: 'sermon-1', aggregate: 'plan',
+    patch: { 'planText.p1': 'Words queued by the earlier app.' },
+    expectedBaseline: { 'planText.p1': 'The stored paragraph.' }, baseRevision: 1,
+    savedAt: Date.now(), status: 'pending' as const,
+  };
+  expect(enqueueWrite(queued)).toBe(true);
+  const view = await render();
+  try {
+    fireEvent(window, new Event(OUTBOX_CHANGED_EVENT));
+    await waitFor(() => expect(mockConspectus.pendingNodeIds.has('p1')).toBe(true));
+    fireEvent(window, new Event('pagehide'));
+    await act(async () => { view.showPlan(false); await settleEngine(); });
+    expect(listOutbox('user-1')).toEqual([queued]);
+    expect(listDraftKeys()).toEqual([]);
+    expect(harness.server.value?.planText).toEqual({ p1: 'The stored paragraph.' });
+    view.showPlan(true);
+    await screen.findAllByText('A sermon in progress');
+    expect(screen.queryByRole('button', { name: 'plan.draftRecoveryRestore' })).not.toBeInTheDocument();
+  } finally {
+    view.unmount();
+    removeFromOutbox(queued.id);
+    localStorage.clear();
+  }
+});
+
+it('stages a selected legacy plan copy before retiring it and offers the engine copy on reopening', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Stored words.' });
+  const previous = draftKey('user-1', 'sermon-1', 'plan:p1', 'previous-editor');
+  saveDraft(previous, 'Words from the old device copy.');
+  const view = await render();
+  const storage = harness.checkpoints;
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  await waitFor(async () => {
+    const copies = await storage.listRecoverable('user-1', resource);
+    expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === 'Words from the old device copy.')).toBe(true);
+    expect(readDraft(previous)).toBeNull();
+  });
+  expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+  view.unmount();
+
+  rtlRender(page(queryClient()));
+  const recover = await screen.findByRole('button', { name: 'dataSync.recover' });
+  const copies = screen.getByRole('combobox', { name: 'dataSync.recoveryLabel' });
+  await userEvent.selectOptions(copies, within(copies).getAllByRole<HTMLOptionElement>('option')[1]);
+  await userEvent.click(recover);
+  await screen.findByText('Words from the old device copy.');
+  expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+  expect(screen.getByTitle('plan.save')).toBeEnabled();
+});
+
+it.each([
+  { keep: true, departure: 'stay' },
+  { keep: false, departure: 'stay' },
+  { keep: true, departure: 'hide while writing' },
+  { keep: false, departure: 'close after choosing' },
+  { keep: false, departure: 'switch account after choosing' },
+] as const)('holds composition as a native plan copy, keep=$keep, $departure', async ({ keep, departure }) => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Old paragraph.' });
+  mockSermon.planMode = 'manual';
+  const view = await render({ held: async () => false, hold: () => () => undefined });
+  let delayed = false;
+  if (departure !== 'stay') {
+    harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+      if (delayed || mode !== 'readwrite') return false;
+      delayed = [...rows.values()].some(value => Boolean((value as { planCellAlternative?: boolean })?.planCellAlternative));
+      return delayed;
+    };
+  }
+  try {
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    const typed = 'Old paragraph. Confirmed composition.';
+    const newer = 'Different words from the phone.';
+    fireEvent.compositionStart(editor.view.dom);
+    typeAtEnd(editor, ' Confirmed composition.');
+    await act(async () => { await harness.remote({ planText: { p1: newer } }); });
+    await act(async () => {
+      fireEvent.compositionEnd(editor.view.dom, { data: 'Confirmed composition.' });
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'richEditor.compositionChoice.title' });
+    expect(within(dialog).getByText(typed)).toBeVisible();
+    expect(within(dialog).getByText(newer)).toBeVisible();
+    const resource = { collection: 'sermons', id: 'sermon-1' };
+    await waitFor(async () => {
+      const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+      expect(copies.some(({ record }) => record.planCellAlternative && record.checkpoint.planCellDrafts?.p1?.text === typed)).toBe(true);
+    });
+    expect(listDraftKeys()).toEqual([]);
+    if (departure === 'hide while writing') {
+      expect(delayed).toBe(true);
+      fireEvent(window, new Event('pagehide'));
+      expect(listDraftKeys()).toHaveLength(1);
+      await act(async () => { harness.storage.finishCompletion(); await settleEngine(); });
+      expect(listDraftKeys()).toEqual([]);
+    }
+    fireEvent.click(within(dialog).getByRole('button', {
+      name: keep ? 'richEditor.compositionChoice.keepTyped' : 'richEditor.compositionChoice.keepUpdated',
+    }));
+    if (departure === 'close after choosing' || departure === 'switch account after choosing') {
+      expect(delayed).toBe(true);
+      view.showPlan(false);
+      if (departure === 'switch account after choosing') harness.engine.setOwner('another-owner');
+      await act(async () => { harness.storage.finishCompletion(); await settleEngine(); });
+    }
+    await waitFor(async () => {
+      const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+      expect(copies.some(({ record }) => record.planCellAlternative)).toBe(false);
+      expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === typed)).toBe(keep);
+    });
+    expect(listDraftKeys()).toEqual([]);
+    expect(await harness.checkpoints.listRecoverable('another-owner', resource)).toEqual([]);
+    expect(harness.server.value?.planText).toEqual({ p1: newer });
+  } finally {
+    harness.storage.holdCompletionAfterCommit = undefined;
+    if (delayed) harness.storage.finishCompletion();
+    view.unmount();
+  }
+});
+
+it('retries a composition backup when both device writes temporarily refuse it', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Old paragraph.' });
+  mockSermon.planMode = 'manual';
+  const view = await render();
+  const gate = deferred(), started = jest.fn(), refused = jest.fn();
+  const create = harness.checkpoints.create!;
+  const write = jest.spyOn(harness.checkpoints, 'create').mockImplementation(async (record, origin) => {
+    if (!record.planCellAlternative) return create(record, origin);
+    started();
+    await gate.promise;
+    throw new Error('Device storage temporarily refused the alternative');
+  });
+  const setItem = Storage.prototype.setItem;
+  let backingUp = false;
+  const backup = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    if (backingUp && key.includes('plan%3Ap1')) {
+      refused();
+      throw new Error('Backup storage temporarily refused the alternative');
+    }
+    setItem.call(this, key, value);
+  });
+  try {
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    fireEvent.compositionStart(editor.view.dom);
+    typeAtEnd(editor, ' Confirmed composition.');
+    await act(async () => { await harness.remote({ planText: { p1: 'Different words from the phone.' } }); });
+    await act(async () => { fireEvent.compositionEnd(editor.view.dom, { data: 'Confirmed composition.' }); });
+    await screen.findByRole('dialog', { name: 'richEditor.compositionChoice.title' });
+    await waitFor(() => expect(started).toHaveBeenCalled());
+
+    backingUp = true;
+    fireEvent(window, new Event('pagehide'));
+    expect(refused).toHaveBeenCalledTimes(1);
+    await act(async () => { gate.resolve(); await settleEngine(); });
+    expect(refused).toHaveBeenCalledTimes(2);
+    expect(listDraftKeys()).toEqual([]);
+
+    backingUp = false;
+    fireEvent(window, new Event('pagehide'));
+    const [key] = listDraftKeys();
+    expect(key).toBeDefined();
+    expect(readDraft(key)?.value).toBe('Old paragraph. Confirmed composition.');
+  } finally {
+    gate.resolve();
+    write.mockRestore();
+    backup.mockRestore();
+    view.unmount();
+  }
+});
+
+it('stages ordinary composition after earlier typing in the same plan cell', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Original paragraph.' });
+  mockSermon.planMode = 'manual';
+  const view = await render();
+  try {
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    const resource = { collection: 'sermons', id: 'sermon-1' };
+    const stored = async (words: string) => {
+      const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+      expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === words)).toBe(true);
+    };
+    typeAtEnd(editor, ' First edit.');
+    await waitFor(() => stored('Original paragraph. First edit.'));
+    fireEvent.compositionStart(editor.view.dom);
+    typeAtEnd(editor, ' Confirmed composition.');
+    await act(async () => {
+      fireEvent.compositionEnd(editor.view.dom, { data: 'Confirmed composition.' });
+    });
+    await waitFor(() => stored('Original paragraph. First edit. Confirmed composition.'));
+    expect(listDraftKeys()).toEqual([]);
+    expect(harness.server.value?.planText).toEqual({ p1: 'Original paragraph.' });
+  } finally { view.unmount(); }
+});
+
+it('retains the selected older plan copy until the exact restored words are on disk', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Stored words.' });
+  const previous = draftKey('user-1', 'sermon-1', 'plan:p1', 'earlier-opening');
+  const words = 'The only copy of these words.';
+  saveDraft(previous, words);
+  const view = await render();
+  const put = harness.checkpoints.put;
+  const finishWithoutWrite = jest.fn();
+  const write = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+    if (record.checkpoint.planCellDrafts?.p1?.text === words) {
+      finishWithoutWrite();
+      return;
+    }
+    return put(record);
+  });
+  try {
+    fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+    await waitFor(() => expect(finishWithoutWrite).toHaveBeenCalled());
+    expect(readDraft(previous)?.value).toBe(words);
+    expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+  } finally { view.unmount(); write.mockRestore(); }
 });
 
 it('saves the selected old copy when a newer draft is already staged in the plan session', async () => {
@@ -359,6 +690,7 @@ it('saves the selected old copy when a newer draft is already staged in the plan
   const view = await render();
   fireEvent.change(await screen.findByLabelText('unsavedDraft.chooseCopy'), { target: { value: current } });
   fireEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  await screen.findByTitle('plan.editMode');
   openPointCells();
   const editor = mountedEditor(view.container);
   typeAtEnd(editor, ' More recent draft.');
@@ -719,11 +1051,12 @@ it.each(['child', 'parent'] as const)('keeps the last visible copy when the %s w
   mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
   mockSermon.planMode = 'manual';
   mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
-  const view = await render();
+  const view = await render({ held: async () => false, hold: () => () => undefined });
   const gate = deferred();
   let reached = false;
   mockWaitForRescue = () => { reached = true; return gate.promise; };
   let reopened: ReturnType<typeof rtlRender> | undefined;
+  const resource = { collection: 'sermons', id: 'sermon-1' };
   try {
     fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
     fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
@@ -732,18 +1065,266 @@ it.each(['child', 'parent'] as const)('keeps the last visible copy when the %s w
     const planText = { p1: removed === 'parent' ? '' : 'Opening.', child: '' };
     await act(async () => { await harness.remote({ outline: { introduction, main: [], conclusion: [] }, planText }); });
     await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    jest.mocked(harness.transport.send).mockClear();
     await act(async () => { gate.resolve(); await gate.promise; });
     const dialog = await screen.findByRole('status', { name: 'plan.orphanedTitle' });
     expect(within(dialog).getByText('Child paragraph.')).toBeVisible();
+    const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+    expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.child?.text === 'Child paragraph.')).toBe(true);
+    expect(listDraftKeys()).toEqual([]);
     expect(harness.server.value).toMatchObject({ outline: { introduction }, planText });
     view.unmount();
+    const independent = draftKey('user-1', 'sermon-1', 'plan:child', 'other-opening');
+    saveDraft(independent, 'Child paragraph from the other opening.');
     reopened = rtlRender(page(queryClient()));
-    expect(await screen.findByText('Child paragraph.')).toBeVisible();
+    const retained = await screen.findByText('Child paragraph.');
+    expect(retained).toBeVisible();
     expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument();
+    const leaving = new Event('beforeunload', { cancelable: true });
+    fireEvent(window, leaving);
+    expect(leaving.defaultPrevented).toBe(false);
+    fireEvent.click(within(retained.closest('li')!).getByRole('button', { name: 'plan.orphanedDiscard' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(async () => {
+      expect(screen.queryByText('Child paragraph.')).not.toBeInTheDocument();
+      expect(await harness.checkpoints.listRecoverable('user-1', resource)).toHaveLength(0);
+    });
+    expect(readDraft(independent)?.value).toBe('Child paragraph from the other opening.');
+    expect(harness.transport.send).not.toHaveBeenCalled();
   } finally {
     gate.resolve();
     mockWaitForRescue = undefined;
     reopened?.unmount();
+    view.unmount();
+  }
+});
+
+it('retains typed plan text separately when a remote deletion clears the card and its saved text', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening words.' });
+  mockSermon.planMode = 'manual';
+  const view = await render();
+  const words = 'Opening words. Kept on this device.';
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  try {
+    openPointCells();
+    typeAtEnd(mountedEditor(view.container), ' Kept on this device.');
+    await act(async () => { await settleEngine(); });
+
+    await act(async () => {
+      await harness.remote({ outline: { introduction: [], main: [], conclusion: [] }, planText: { p1: '' } });
+    });
+
+    const panel = await screen.findByRole('status', { name: 'plan.orphanedTitle' });
+    expect(within(panel).getAllByText(words, { exact: true })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'First point' })).not.toBeInTheDocument();
+
+    view.showPlan(false);
+    await act(async () => { await settleEngine(); });
+    view.showPlan(true);
+    const reopened = await screen.findByRole('status', { name: 'plan.orphanedTitle' });
+    expect(within(reopened).getAllByText(words, { exact: true })).toHaveLength(1);
+    expect((await harness.checkpoints.listRecoverable('user-1', resource)).some(({ record }) =>
+      record.planCellAlternative && record.checkpoint.planCellDrafts?.p1?.text === words)).toBe(true);
+    expect(listDraftKeys()).toEqual([]);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+  }
+});
+
+it('keeps only the latest keystrokes when the shown cell has no verified opening', async () => {
+  localStorage.clear();
+  const shown = 'Words still shown from an earlier view.';
+  const saved = 'Newer words already observed by the engine.';
+  const latest = shown + ' First letters and the rest.';
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  mockSermon = sermon({ p1: saved });
+  mockSermon.planMode = 'manual';
+
+  const saveRefusal = jest.fn();
+  function UnverifiedView() {
+    const document = useDataDocument(resource);
+    const [text, setText] = React.useState(shown);
+    if (!document.state) return null;
+    return <PlanCellDocument.Provider value={document}>
+      <h1>A sermon in progress</h1>
+      <PlanCellEditor nodeId="p1" value={text} onChange={setText} />
+      <button onClick={() => void document.savePlanCells(['p1']).catch(saveRefusal)}>Save</button>
+    </PlanCellDocument.Provider>;
+  }
+
+  const view = await render(undefined, <UnverifiedView />);
+  const editor = mountedEditor(view.container);
+  expect(editor.isEditable).toBe(true);
+  expect(markdown(editor)).toBe(shown);
+  const retained = async () => (await harness.checkpoints.listRecoverable('user-1', resource))
+    .map(({ record }) => record.checkpoint).filter(checkpoint => checkpoint.planCellDrafts?.p1);
+  jest.mocked(harness.transport.send).mockClear();
+
+  typeAtEnd(editor, ' First letters');
+  typeAtEnd(editor, ' and the rest.');
+  expect(markdown(editor)).toBe(latest);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await act(async () => { view.showPlan(false); await settleEngine(); });
+
+  await waitFor(async () => expect((await retained()).map(copy => copy.planCellDrafts?.p1?.text)).toEqual([latest]));
+  const [copy] = await retained();
+  expect(copy.conflicts).toEqual([{ path: ['planText', 'p1'], base: { exists: true, value: shown },
+    mine: { exists: true, value: latest }, theirs: { exists: true, value: saved } }]);
+  expect(saveRefusal).toHaveBeenCalledWith(expect.objectContaining({ code: 'resolve-version-first' }));
+  expect(harness.server.value?.planText).toEqual({ p1: saved });
+  expect(harness.transport.send).not.toHaveBeenCalled();
+});
+
+it.each(['append', 'clear'] as const)('respects the latest action while the removed card is being set aside (%s)', async action => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening words.' });
+  mockSermon.planMode = 'manual';
+  const view = await render();
+  const first = 'Opening words. First addition.';
+  const last = first + ' Last letters.';
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  const started = deferred();
+  const release = deferred();
+  const nativeCreate = harness.checkpoints.create;
+  const storage = jest.spyOn(harness.checkpoints, 'create').mockImplementation(async (record, source) => {
+    await nativeCreate(record, source);
+    if (record.planCellAlternative && record.checkpoint.planCellDrafts?.p1?.text === first) {
+      started.resolve();
+      await release.promise;
+    }
+  });
+  let arrival: Promise<void> | undefined;
+  try {
+    openPointCells();
+    const editor = mountedEditor(view.container);
+    typeAtEnd(editor, ' First addition.');
+    await act(async () => { await settleEngine(); });
+
+    await act(async () => {
+      arrival = harness.remote({ outline: { introduction: [], main: [], conclusion: [] }, planText: { p1: '' } });
+      await started.promise;
+    });
+    if (action === 'append') typeAtEnd(editor, ' Last letters.');
+    else act(() => { editor.commands.clearContent(); });
+    await act(async () => { release.resolve(); await arrival; });
+
+    const retainedWords = async () => (await harness.checkpoints.listRecoverable('user-1', resource))
+      .filter(({ record }) => record.planCellAlternative).map(({ record }) => record.checkpoint.planCellDrafts?.p1?.text);
+    const expected = action === 'append' ? [last] : [];
+    await waitFor(async () => expect(await retainedWords()).toEqual(expected));
+    const recoveryText = () => screen.queryByRole('status', { name: 'plan.orphanedTitle' });
+    const checkWords = () => {
+      const panel = recoveryText();
+      if (action === 'clear') expect(panel).not.toBeInTheDocument();
+      else {
+        expect(within(panel!).getAllByText(last, { exact: true })).toHaveLength(1);
+        expect(within(panel!).queryByText(first, { exact: true })).not.toBeInTheDocument();
+      }
+    };
+    await waitFor(checkWords);
+    expect(screen.queryByRole('heading', { name: 'First point' })).not.toBeInTheDocument();
+
+    view.showPlan(false);
+    await act(async () => { await settleEngine(); });
+    view.showPlan(true);
+    await screen.findByText('A sermon in progress');
+    await waitFor(checkWords);
+    expect(await retainedWords()).toEqual(expected);
+    expect(listDraftKeys()).toEqual([]);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally {
+    release.resolve();
+    await arrival;
+    storage.mockRestore();
+    view.unmount();
+  }
+});
+
+it('keeps one native orphan copy if the plan closes during its durable write', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.planMode = 'manual';
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  const gate = deferred();
+  let atRemoval = false, atReceipt = false;
+  mockWaitForRescue = () => { atRemoval = true; return gate.promise; };
+  harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+    if (atReceipt || mode !== 'readwrite') return false;
+    atReceipt = [...rows.values()].some(value => Boolean((value as { planCellAlternative?: boolean })?.planCellAlternative));
+    return atReceipt;
+  };
+  try {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(atRemoval).toBe(true));
+    await act(async () => { await harness.remote({ outline: { introduction: [], main: [], conclusion: [] }, planText: { p1: '', child: '' } }); });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    await act(async () => { gate.resolve(); await gate.promise; });
+    await waitFor(() => expect(atReceipt).toBe(true));
+
+    view.showPlan(false);
+    await act(async () => { harness.storage.finishCompletion(); await settleEngine(); });
+
+    expect(listDraftKeys()).toEqual([]);
+    view.showPlan(true);
+    expect(await screen.findByText('Child paragraph.')).toBeVisible();
+  } finally {
+    gate.resolve();
+    harness.storage.holdCompletionAfterCommit = undefined;
+    if (atReceipt) harness.storage.finishCompletion();
+    mockWaitForRescue = undefined;
+    view.unmount();
+  }
+});
+
+it.each(['stay', 'close'] as const)('offers the exact orphan reserve when its IndexedDB write refuses (%s)', async departure => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child words for recovery.' });
+  mockSermon.planMode = 'manual';
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  const removing = deferred();
+  const writing = deferred();
+  let removalStarted = false;
+  mockWaitForRescue = () => { removalStarted = true; return removing.promise; };
+  const create = harness.checkpoints.create;
+  const started = jest.fn();
+  const storage = jest.spyOn(harness.checkpoints, 'create').mockImplementation(async (record, source) => {
+    if (!record.planCellAlternative) return create(record, source);
+    started();
+    await writing.promise;
+    throw new Error('The device refused this independent checkpoint');
+  });
+  try {
+    fireEvent.click(screen.getByTitle('plan.deleteSubPoint'));
+    fireEvent.click(screen.getByTitle('plan.deleteSubPointConfirm'));
+    await waitFor(() => expect(removalStarted).toBe(true));
+    await act(async () => {
+      await harness.remote({ outline: { introduction: [], main: [], conclusion: [] }, planText: {} });
+    });
+    await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+    await act(async () => { removing.resolve(); await removing.promise; });
+    await waitFor(() => expect(started).toHaveBeenCalled());
+
+    if (departure === 'close') {
+      view.showPlan(false);
+      expect(listDraftKeys().map(key => readDraft(key)?.value)).toEqual(['Child words for recovery.']);
+      view.showPlan(true);
+      expect(await screen.findByText('Child words for recovery.')).toBeVisible();
+    }
+    await act(async () => { writing.resolve(); await settleEngine(); });
+    const panel = await screen.findByRole('status', { name: 'plan.orphanedTitle' });
+    expect(within(panel).getAllByText('Child words for recovery.')).toHaveLength(1);
+    expect(listDraftKeys().map(key => readDraft(key)?.value)).toEqual(['Child words for recovery.']);
+    expect(harness.server.value?.planText).toEqual({});
+  } finally {
+    removing.resolve();
+    writing.resolve();
+    storage.mockRestore();
+    mockWaitForRescue = undefined;
     view.unmount();
   }
 });
@@ -824,7 +1405,44 @@ describe('manual deletion locks', () => {
     await userEvent.type(editor.view.dom, ' Later typing', { skipClick: true });
   };
 
-  it.each([false, true])('retires the restored source only after its transfer is accepted (token=%s)', async token => {
+  it('uses the offline transfer for a durable child without creating a second draft', async () => {
+    mockSermon!.planMode = 'manual';
+    const view = await render();
+    let reopened: ReturnType<typeof rtlRender> | undefined;
+    try {
+      openPointCells();
+      const child = view.container.querySelectorAll<HTMLElement>('.tiptap')[1];
+      typeAtEnd(mountedEditor(child.parentElement!), ' Written on this device.');
+      const words = 'Child words. Written on this device.';
+      const resource = { collection: 'sermons', id: 'sermon-1' };
+      await waitFor(async () => {
+        const copies = await harness.checkpoints.listRecoverable('user-1', resource);
+        expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.child?.text === words)).toBe(true);
+      });
+      act(() => { harness.engine.setOnline(false); });
+
+      removeChild();
+
+      await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
+      expect(listDraftKeys()).toEqual([]);
+      expect(harness.server.value?.planText).toMatchObject({ child: 'Child words.' });
+      await waitFor(async () => {
+        const requests = await harness.commits.list('user-1');
+        const transfer = requests.find(request => request.planTextEvidence?.planSubpointTransfer?.subPointId === 'child');
+        expect(transfer).toMatchObject({
+          value: expect.objectContaining({ planText: expect.objectContaining({ p1: 'Opening.\n\n' + words }) }),
+        });
+        expect(['prepared', 'queued']).toContain(transfer?.state);
+      });
+      view.unmount();
+      reopened = rtlRender(page(queryClient()));
+      await screen.findAllByText('A sermon in progress');
+      await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
+      await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\n' + words, child: '' }));
+    } finally { reopened?.unmount(); view.unmount(); }
+  });
+
+  it.each([false, true])('transfers the restored child from the engine and retains the independent copy (token=%s)', async token => {
     mockSermon!.planMode = 'manual';
     const words = 'Words restored from a previous opening.';
     const chosen = draftKey('user-1', 'sermon-1', 'plan:child', token ? 'chosen-opening' : undefined);
@@ -833,15 +1451,17 @@ describe('manual deletion locks', () => {
     const view = await render();
     try {
       fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
-      await waitFor(() => expect(mockConspectus.contentByNodeId.child).toBe(words));
+      await waitFor(() => {
+        expect(mockConspectus.contentByNodeId.child).toBe(words);
+        expect(readDraft(chosen)).toBeNull();
+      });
       saveDraft(independent, words, undefined, true);
       act(() => { harness.engine.setOnline(false); });
       removeChild();
       await waitFor(() => expect(screen.queryByTitle('plan.deleteSubPoint')).not.toBeInTheDocument());
-      expect(readDraft(chosen)?.value).toBe(words);
+      expect(harness.server.value?.planText).toMatchObject({ child: 'Child words.' });
       await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); });
       await waitFor(() => expect(harness.server.value?.planText).toMatchObject({ p1: 'Opening.\n\n' + words, child: '' }));
-      await waitFor(() => expect(readDraft(chosen)).toBeNull());
       expect(readDraft(independent)?.value).toBe(words);
     } finally { view.unmount(); }
   });

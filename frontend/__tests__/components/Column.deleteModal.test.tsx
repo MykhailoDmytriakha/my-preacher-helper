@@ -405,7 +405,7 @@ describe('Column — normal mode insert/edit flows', () => {
     fireEvent.keyDown(insertInput, { key: 'Enter', code: 'Enter' });
 
     await waitFor(() => {
-      expect(onAddOutlinePoint).toHaveBeenCalledWith('introduction', 1, 'Inserted point B');
+      expect(onAddOutlinePoint).toHaveBeenCalledWith('introduction', 1, 'Inserted point B', expect.any(String));
     });
   });
 

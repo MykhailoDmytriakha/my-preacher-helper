@@ -14,6 +14,7 @@ export interface PlanOrphanCell {
   id: string;
   text: string;
   copyKey?: string;
+  discard?: () => Promise<void>;
   stored?: true;
 }
 

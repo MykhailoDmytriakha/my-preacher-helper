@@ -25,6 +25,7 @@ import { getPlaceholderColors, getPointLockToggleLabel, getSectionIconClasses, i
 
 
 import type { OnAudioThoughtCreated, ThoughtItemRenderer, Translate } from './types';
+import type { SubPointActionHandlers } from './useSubPointActions';
 import type { Item, SermonPoint, SubPoint } from '@/models/models';
 import type { FailureWords } from '@/utils/actionFailureMessage';
 import type { OutlineTitleVersion } from '@/utils/sermonNoteText';
@@ -61,7 +62,7 @@ export const OutlinePointCard: React.FC<{
   // For inline edit in normal mode
   onSaveEdit?: (pointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => Promise<unknown> | void;
   // Sub-point operations
-  onAddSubPoint?: (outlinePointId: string, text: string) => void;
+  onAddSubPoint?: SubPointActionHandlers['onAdd'];
   onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => void;
   onSetPointNote?: (pointId: string, note?: string) => void;
   onSetSubPointNote?: (pointId: string, subPointId: string, note?: string) => void;

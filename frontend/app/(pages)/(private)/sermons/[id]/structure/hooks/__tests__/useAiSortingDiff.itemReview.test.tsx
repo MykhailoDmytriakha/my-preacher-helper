@@ -50,8 +50,6 @@ function setup() {
   const hook = renderHook(() => {
     const [containers, setContainers] = useState<Record<string, Item[]>>({ introduction: [], main: items, conclusion: [], ambiguous: [] });
     const review = useAiSortingDiff({ containers, setContainers, outlinePoints: initial.outline!, sermon: initial, sermonId: initial.id,
-      debouncedSaveStructure: (...args) => { void writer.updateStructure(...args).catch(() => undefined); },
-      debouncedSaveThought: (...args) => { void writer.updateThought(...args).catch(() => undefined); },
     });
     return { ...review, containers };
   }, { wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider> });

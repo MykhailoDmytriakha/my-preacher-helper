@@ -6,10 +6,12 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { SubPointList } from '@/components/column/SubPointList';
+import { OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope, useNewOutlineTitleDraft, useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
 import planActions from '@/components/plan-editor/PlanRowActions.module.css';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
+import { useAuth } from '@/providers/AuthProvider';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { OutlineCapture } from '@/utils/outlineCapture';
@@ -61,9 +63,15 @@ const expandedOutline = (outline?: SermonOutline): Record<SectionType, boolean> 
   };
 };
 
-const SermonOutline: React.FC<SermonOutlineProps> = (props) => (
-  <SermonOutlineEditor key={`${props.sermon.userId}:${props.sermon.id}`} {...props} />
-);
+const SermonOutline: React.FC<SermonOutlineProps> = (props) => {
+  const { user } = useAuth();
+  const { sermon } = props;
+  const owner = user?.uid === sermon.userId ? user.uid : null;
+  return <OutlineTitleDraftScope owner={owner} resource={outlineTitleDraftResource('sermons', sermon.id)}>
+    <OutlineTitleDraftNotices />
+    <SermonOutlineEditor key={`${sermon.userId}:${sermon.id}`} {...props} />
+  </OutlineTitleDraftScope>;
+};
 
 const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   sermon,
@@ -121,7 +129,10 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   }, []);
 
   // --- All useRef hooks after useState ---
-  const openingTitle = useRef<OutlineTitleOpening | null>(null);
+  const activeTitle = editingPointId && (Object.keys(sectionPoints) as SectionType[]).some(section =>
+    expandedSections[section] && sectionPoints[section].some(point => point.id === editingPointId));
+  const titleDraft = useOutlineTitleDraft(activeTitle ? editingPointId : null);
+  const newTitleDraft = useNewOutlineTitleDraft('point', Boolean(addingNewToSection && expandedSections[addingNewToSection]));
   /**
    * The plan THIS VIEW LOADED WITH — the base its saves merge against.
    *
@@ -194,7 +205,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     }
 
     const newPoint = {
-      id: newClientId(),
+      id: newTitleDraft.id() ?? newClientId(),
       text: textToSave,
     };
 
@@ -225,8 +236,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     // Update state
     setSectionPoints(updatedSectionPoints);
 
-    // Directly pass the updated data to saveOutlineChanges
-    directlySaveOutlineChanges(updatedSectionPoints);
+    newTitleDraft.handoff(directlySaveOutlineChanges(updatedSectionPoints), textToSave);
   };
 
   // Local ownership begins with the accepted edit; the engine schedules delivery.
@@ -240,7 +250,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       conclusion: pointsToSave.conclusion,
     };
     setError(null);
-    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, titleOpening, begin: () => ({
+    return outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, titleOpening, begin: () => ({
       stored: (saved, sameView) => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
         const parent = parentOutlineRef.current;
@@ -289,21 +299,25 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(point.text);
     const opening: OutlineTitleOpening = { target: { kind: 'point', id: point.id }, text: point.text };
-    const version = writer.outlineTitleVersion?.(opening);
-    openingTitle.current = version ? { ...opening, version } : opening;
+    titleDraft.open(opening, title);
     setEditingPointId(point.id);
     setEditingText(title);
     setAddingNewToSection(null); // Ensure add mode is off
   };
 
-  const handleCancelEdit = () => {
+  const closeEdit = () => {
     setEditingPointId(null);
-    setEditingText(""); // Clear editing text
+    setEditingText("");
+  };
+
+  const handleCancelEdit = () => {
+    titleDraft.cancel();
+    closeEdit();
   };
 
   const handleSaveEdit = () => {
     if (isReadOnly) return;
-    const opening = openingTitle.current;
+    const opening = titleDraft.opening();
     const textToSave = changedCapitalizedTitle(editingText, capitalizeFirstLetter(opening?.text ?? ''));
     if (!editingPointId || !textToSave) {
       handleCancelEdit();
@@ -318,8 +332,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     }, {} as Record<SectionType, SermonPoint[]>);
 
     setSectionPoints(updatedPoints);
-    handleCancelEdit(); // Exit edit mode
-    directlySaveOutlineChanges(updatedPoints, undefined, opening ?? undefined);
+    closeEdit();
+    titleDraft.handoff(directlySaveOutlineChanges(updatedPoints, undefined, opening));
   };
 
   const handleDeletePoint = async (pointToDelete: SermonPoint) => {
@@ -340,7 +354,15 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     }
   };
 
+  const startAdding = (section: SectionType) => {
+    newTitleDraft.open();
+    setNewPointTexts(previous => ({ ...previous, [section]: '' }));
+    setAddingNewToSection(section);
+    setEditingPointId(null);
+  };
+
   const handleCancelAdd = (section: SectionType) => {
+    newTitleDraft.cancel();
     setAddingNewToSection(null);
     setNewPointTexts({
       ...newPointTexts,
@@ -381,7 +403,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   };
 
   // --- Sub-point operations ---
-  const handleAddSubPoint = (outlinePointId: string, text: string) => {
+  const handleAddSubPoint = (outlinePointId: string, text: string, subPointId?: string) => {
     const textToSave = normalizeCapitalizedTitle(text);
     if (isReadOnly || !textToSave) return;
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
@@ -389,13 +411,13 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         if (p.id !== outlinePointId) return p;
         const existing = p.subPoints ?? [];
         const maxPos = existing.length > 0 ? Math.max(...existing.map((sp) => sp.position)) : 0;
-        const newSp: SubPoint = { id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: textToSave, position: maxPos + 1000 };
+        const newSp: SubPoint = { id: subPointId ?? `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: textToSave, position: maxPos + 1000 };
         return { ...p, subPoints: [...existing, newSp] };
       });
       return acc;
     }, {} as Record<SectionType, SermonPoint[]>);
     setSectionPoints(updatedPoints);
-    directlySaveOutlineChanges(updatedPoints);
+    return directlySaveOutlineChanges(updatedPoints);
   };
 
   const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => {
@@ -409,7 +431,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       return acc;
     }, {} as Record<SectionType, SermonPoint[]>);
     setSectionPoints(updatedPoints);
-    directlySaveOutlineChanges(updatedPoints, undefined, { target: { kind: 'subpoint', id: subPointId }, text: openingText,
+    return directlySaveOutlineChanges(updatedPoints, undefined, { target: { kind: 'subpoint', id: subPointId }, text: openingText,
       ...(version && { version }) });
   };
 
@@ -493,7 +515,10 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       <input
         type="text"
         value={editingText}
-        onChange={(e) => setEditingText(capitalizeFirstLetter(e.target.value))}
+        onChange={event => {
+          titleDraft.change(event.target.value);
+          setEditingText(capitalizeFirstLetter(event.target.value));
+        }}
         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
         className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         placeholder={t('structure.editPointPlaceholder')}
@@ -698,7 +723,11 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                   <input
                     type="text"
                     value={newPointTexts[sectionType]}
-                    onChange={(e) => setNewPointTexts({ ...newPointTexts, [sectionType]: capitalizeFirstLetter(e.target.value) })}
+                    onChange={event => {
+                      const typed = event.target.value;
+                      newTitleDraft.change(typed);
+                      setNewPointTexts(previous => ({ ...previous, [sectionType]: capitalizeFirstLetter(typed) }));
+                    }}
                     onKeyDown={(e) => { if (e.key === 'Enter') addPoint(sectionType); if (e.key === 'Escape') handleCancelAdd(sectionType); }}
                     placeholder={t('structure.addPointPlaceholder')}
                     className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500 dark:placeholder-gray-400"
@@ -724,7 +753,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                 </div>
               ) : (
                 <button
-                  onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
+                  onClick={() => startAdding(sectionType)}
                   aria-label={t('structure.addPointButton')}
                   className={`flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 rounded border border-dashed border-gray-300 dark:border-gray-600 transition-colors ${isReadOnly
                     ? DISABLED_ACTION_CLASSES

@@ -3,62 +3,39 @@ import { act, renderHook } from '@testing-library/react';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useGroupMeetingEditor } from '@/hooks/useGroupMeetingEditor';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/groupMeetingAutosave'),
+  useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(),
+}));
 
 const meeting = { id: 'meeting', date: '2026-11-21', location: 'Hall', audience: 'Youth', createdAt: 'created' };
 
-it('flushes the engine-owned stage even before React publishes its dirty state', async () => {
-  let stage = { meetingDates: [{ ...meeting }] };
-  const save = jest.fn(async (updater: (value: typeof stage) => typeof stage) => { stage = updater(stage); });
-  jest.mocked(useDataForm).mockReturnValue({
-    active: true, loading: false, dirty: false, data: { meetingDates: [{ ...meeting }] },
-    begin: jest.fn(), cancel: jest.fn(), save, captureMeetingField: jest.fn(),
-    update: jest.fn(async updater => { stage = updater(stage) as typeof stage; }),
-    listRecoverable: jest.fn(async () => []), recover: jest.fn(), discardRecovery: jest.fn(async () => undefined), recoveryIdentity: {}, status: null,
-  } as unknown as ReturnType<typeof useDataForm>);
-  jest.mocked(useRecoveryDiscovery).mockReturnValue({ choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()) });
-  const hook = renderHook(() => useGroupMeetingEditor('group', [meeting], false));
-  act(() => {
-    hook.result.current.field('location')('Hall from the last browser event');
-    window.dispatchEvent(new Event('pagehide'));
-  });
-  await act(async () => { await Promise.resolve(); });
-  expect(save).toHaveBeenCalledTimes(1);
-  expect(stage.meetingDates[0].location).toBe('Hall from the last browser event');
-  hook.unmount();
-});
-
-it('captures the cleared date before autosave and leaves that action intact when the location changes', async () => {
+it('hands clear-date and location input to the engine with the original action evidence', () => {
   let stage = { meetingDates: [{ ...meeting }] };
   const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
   const captureMeetingDateInput = jest.fn(() => ({ meetingDate: { time } }));
   const locationTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_030 };
   const captureMeetingField = jest.fn((field: string, rowId: string) => ({ field, rowId, time: locationTime }));
-  const update = jest.fn(async (updater: (value: typeof stage) => typeof stage, _action?: unknown) => { stage = updater(stage); });
-  const save = jest.fn(async (updater: (value: typeof stage) => typeof stage) => { stage = updater(stage); });
+  const update = jest.fn(async (updater: (value: typeof stage) => typeof stage, _action: unknown, _automatic: true) => { stage = updater(stage); });
+  const save = jest.fn();
   jest.mocked(useDataForm).mockReturnValue({
-    active: true, loading: false, dirty: false, data: { meetingDates: [{ ...meeting }] }, captureMeetingDateInput, captureMeetingField,
-    begin: jest.fn(), cancel: jest.fn(), save,
-    update,
+    active: true, loading: false, dirty: false, data: stage, captureMeetingDateInput, captureMeetingField,
+    begin: jest.fn(), cancel: jest.fn(), save, update,
     listRecoverable: jest.fn(async () => []), recover: jest.fn(), discardRecovery: jest.fn(async () => undefined), recoveryIdentity: {}, status: null,
   } as unknown as ReturnType<typeof useDataForm>);
+  jest.mocked(useRecoveryDiscovery).mockReturnValue({
+    choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()),
+  });
   const hook = renderHook(() => useGroupMeetingEditor('group', [meeting], false));
   act(() => hook.result.current.field('date')(''));
   expect(captureMeetingDateInput).toHaveBeenCalledTimes(1);
-  expect(update).toHaveBeenLastCalledWith(expect.any(Function), { meetingDate: { time } });
-  expect(save).not.toHaveBeenCalled();
-  act(() => {
-    hook.result.current.field('location')('Side room');
-    window.dispatchEvent(new Event('pagehide'));
-  });
-  await act(async () => { await Promise.resolve(); });
+  expect(update).toHaveBeenLastCalledWith(expect.any(Function), { meetingDate: { time } }, true);
+  act(() => hook.result.current.field('location')('Side room'));
   expect(captureMeetingField).toHaveBeenCalledWith('location', meeting.id);
-  expect(update).toHaveBeenLastCalledWith(expect.any(Function), { field: 'location', rowId: meeting.id, time: locationTime });
-  expect(save).toHaveBeenCalledWith(expect.any(Function));
+  expect(update).toHaveBeenLastCalledWith(expect.any(Function), { field: 'location', rowId: meeting.id, time: locationTime }, true);
+  expect(save).not.toHaveBeenCalled();
   expect(stage.meetingDates).toEqual([{ ...meeting, date: '', location: 'Side room' }]);
-  hook.unmount();
 });
-
 
 it('captures a history restore in the Save itself and preserves sibling meeting fields', async () => {
   const stage = { meetingDates: [{ ...meeting }] };

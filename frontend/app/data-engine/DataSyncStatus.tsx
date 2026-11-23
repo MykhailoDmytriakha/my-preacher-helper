@@ -45,6 +45,7 @@ export interface TextComparison {
   stored: string;
   title?: string;
   description?: string;
+  heading?: string;
   valueKind?: 'field' | 'removed-row';
   scopedChoice?: true;
   keepMineDisabled?: boolean;
@@ -268,7 +269,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
       localAllowed={Boolean(keep)} remoteAllowed={Boolean(accept)} apply={(placement, titles) => keepChecked(() => outlineReview.apply(placement, titles))} />}
     {comparison && !outlineReview && !completeReview && <FieldComparison comparison={comparison} />}
     {outlineReview ? null : completeReview ? <button type="button" className={buttonClass} disabled={busy}
-      onClick={() => keepChecked(completeReview)}>{t('dataSync.applyReviewedVersions')}</button> : conflictBanner ? <SaveConflictBanner description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
+      onClick={() => keepChecked(completeReview)}>{t('dataSync.applyReviewedVersions')}</button> : conflictBanner ? <SaveConflictBanner heading={comparison?.heading}
+      description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
       keepMineLabel={conflictPresentation?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
       keepMineDisabled={comparison?.keepMineDisabled}
       takeTheirsLabel={conflictPresentation?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">

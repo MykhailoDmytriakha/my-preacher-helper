@@ -7,7 +7,6 @@ const object = (value: unknown): value is DocumentData => value !== null && type
 
 export type OutlineNoteTarget = { kind: 'point' | 'subpoint'; id: string };
 export type SermonNoteTarget = { kind: 'scratch'; id: string; createdAt: string } | OutlineNoteTarget;
-export type OutlineNoteOpening = { target: OutlineNoteTarget; text: string | undefined };
 export type OutlineTitleVersion = { generation: string; observedRevision: number };
 export type OutlineTitleOpening = { target: OutlineNoteTarget; text: string; version?: OutlineTitleVersion };
 export type SaveSermonNoteText = (text: string | undefined) => void | Promise<void>;

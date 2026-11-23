@@ -27,7 +27,7 @@ import { PlanCellDocument, PlanCellEditor } from "../PlanCellEditor";
 import { PlanCellEditToggle } from "../PlanCellEditToggle";
 import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
-import { PlanModeHistory, PlanModeStatus } from '../PlanModeStatus';
+import { PlanModeHistory, PlanModeStatus, usePlanRecovery, type PlanRecovery } from '../PlanModeStatus';
 import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
 import PlanPageHeader from "../PlanPageHeader";
@@ -67,8 +67,7 @@ interface ManualPointCardProps {
   index: number;
   section: SermonSectionKey;
   conspectus: ManualConspectus;
-  onAuthorCell: (nodeId: string, text: string) => void;
-  onHoldCellText: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
+  onAuthorCell: (nodeId: string) => void;
   /** The text each cell shows — the editor's cells, or the document itself on a copy for reading. */
   text: Record<string, string>;
   noteMode?: boolean;
@@ -142,7 +141,7 @@ const EditableTitle = ({
   );
 };
 
-const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, onAuthorCell, text, noteMode, readOnly = false, filedNotes }: ManualPointCardProps) => {
+const ManualPointCard = ({ point, index, section, conspectus, onAuthorCell, text, noteMode, readOnly = false, filedNotes }: ManualPointCardProps) => {
   const { t } = useTranslation();
   // Each cell opens for writing on its own, by the switch standing with its text.
   const [editingIds, setEditingIds] = useState<Record<string, boolean>>({});
@@ -254,10 +253,9 @@ const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, on
                   placeholder={t(NO_PLAN_CONTENT_KEY)}
                   minHeight={node.kind === "subPoint" ? "90px" : "120px"}
                   onChange={(text) => {
-                    onAuthorCell(node.id, text);
+                    onAuthorCell(node.id);
                     return conspectus.setNodeContent(node.id, text);
                   }}
-                  onHoldText={typed => onHoldCellText(node.id, typed)}
                 />
               ) : (
                 <div className="flow-root rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
@@ -298,20 +296,23 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const { writer, outlineRecovery } = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
+  const recovery = usePlanRecovery(document, source.sermon?.outline);
   // The read-only screen stands exactly where the separate reader stood — on every copy, preaching
   // included — and as its own tree, so every switch mounts the other one fresh, as the swap did.
   // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
-    <PlanModeStatus document={document} />
+    <PlanModeStatus document={document} recovery={recovery} />
     <PlanCellDocument.Provider value={document}>
-      <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
+      <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} recovery={recovery} readOnly={document.readOnly} />
     </PlanCellDocument.Provider>
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { source: SermonSource; readOnly?: boolean }) {
+function ManualConspectusContent({ source, recovery, readOnly: copyReadOnly = false }: {
+  source: SermonSource; recovery: PlanRecovery; readOnly?: boolean;
+}) {
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
@@ -325,7 +326,8 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
   const confirmedRevision = source.document.confirmed?.metadata?.revision;
   const conspectus = useManualConspectus({
     sermon, confirmedRevision, t, mode: noteMode ? 'note' : 'manual',
-    draftScope: { owner, sermonId, frozen: copyReadOnly, state: source.document.state },
+    retainOrphan: recovery.retainOrphan,
+    draftScope: { owner, sermonId, frozen: copyReadOnly, state: source.document.state, backupAuthority: source.document },
   });
   const { draft, livePlanNodes } = conspectus;
   /**
@@ -363,7 +365,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
     orphanedCells(conspectus.contentByNodeId, conspectus.modifiedNodeIds, livePlanNodes),
-    draft.orphaned
+    [...draft.orphaned, ...recovery.orphaned]
   );
 
   /**
@@ -522,9 +524,12 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
           cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies, conspectus.contentByNodeId)}
           restoreDisabled={Object.keys(draft.recovered).some(id => conspectus.busyNodeIds.has(id))}
           onChoose={draft.selectCopy}
-          onRestore={() => {
-            if (!conspectus.restoreCells(draft.recovered ?? {})) return;
-            draft.accept();
+          onRestore={async () => {
+            const selected = draft.selectedCopies;
+            const shown = recoveredCells(draft.recovered ?? {}, sermon, draft.copies, selected, conspectus.contentByNodeId);
+            const before = Object.fromEntries(shown.map(cell => [cell.id, cell.current]));
+            if (!await conspectus.restoreLegacyCells(draft.recovered ?? {}, before)) return;
+            draft.accept(selected);
             answerDraftQuestion();
           }}
           onDiscard={() => { draft.discard(); answerDraftQuestion(); }}
@@ -571,7 +576,6 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
                   index={index}
                   section={section}
                   conspectus={conspectus}
-                  onHoldCellText={draft.holdCellAlternative}
                   onAuthorCell={draft.markCellAuthored}
                   text={shownText}
                   noteMode={noteMode}

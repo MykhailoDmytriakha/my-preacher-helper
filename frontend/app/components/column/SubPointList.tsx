@@ -19,7 +19,7 @@ import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition } from "@/utils/subPoints";
 
 import { getSubPointStyles } from "./subPointStyles";
-import { useSubPointActions } from "./useSubPointActions";
+import { useSubPointActions, type SubPointActionHandlers } from "./useSubPointActions";
 
 import type { SubPoint } from "@/models/models";
 import type { OutlineTitleVersion } from '@/utils/sermonNoteText';
@@ -29,7 +29,7 @@ interface SubPointListProps {
   subPoints: SubPoint[];
   outlinePointId: string;
   isPointLocked: boolean;
-  onAdd: (outlinePointId: string, text: string) => void;
+  onAdd: SubPointActionHandlers['onAdd'];
   onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => Promise<unknown> | void;
   onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;

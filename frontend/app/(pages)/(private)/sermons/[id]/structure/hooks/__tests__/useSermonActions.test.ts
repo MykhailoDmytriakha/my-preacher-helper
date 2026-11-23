@@ -1,36 +1,16 @@
 import { renderHook as rtlRenderHook, act } from '@testing-library/react';
 import React from 'react';
-import { toast } from 'sonner';
 import { useSermonActions } from '../useSermonActions';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Sermon, Item } from '@/models/models';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
-const mockUnsubscribe = jest.fn();
-
-jest.mock('firebase/firestore', () => ({
-    doc: jest.fn((_db: unknown, collectionName: string, id: string) => ({ collectionName, id })),
-    onSnapshot: jest.fn(() => mockUnsubscribe),
-}));
-jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
-
-// This suite exercises a restored session; the default empty Auth context is still loading.
-jest.mock('@/providers/AuthProvider', () => ({
-    useAuth: () => {
-        const { auth } = jest.requireMock('@services/firebaseAuth.service');
-        return { user: auth.currentUser, loading: false, isAuthenticated: Boolean(auth.currentUser) };
-    },
-}));
-
-// Mock dependencies
 jest.mock('sonner');
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string) => key,
     }),
 }));
-
-const mockToast = toast as jest.Mocked<typeof toast>;
 
 /** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
 const mockUpdateStructure = jest.fn();
@@ -87,9 +67,6 @@ describe('useSermonActions', () => {
         },
         setContainers: jest.fn(),
         containersRef: { current: { introduction: [mockItem], main: [], conclusion: [], ambiguous: [] } },
-        allowedTags: [{ name: 'intro', color: '#ff0000' }],
-        debouncedSaveThought: jest.fn(),
-        debouncedSaveStructure: jest.fn(),
     };
 
     beforeEach(() => {
@@ -119,257 +96,6 @@ describe('useSermonActions', () => {
 
         expect(result.current.editingItem?.id).toMatch(/^temp-/);
         expect(result.current.addingThoughtToSection).toBe('introduction');
-    });
-
-    describe('handleSaveEdit - New Thought', () => {
-        it('creates a new manual thought and updates state', async () => {
-            const addedThought = { ...mockSermon.thoughts[0], id: 'new-id' };
-            mockCreateManualThought.mockResolvedValue(addedThought);
-            mockUpdateStructure.mockResolvedValue({});
-
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-
-            act(() => {
-                result.current.handleAddThoughtToSection('introduction', 'point-1');
-            });
-
-            await act(async () => {
-                await result.current.handleSaveEdit('New Content', ['tag1'], 'point-1');
-            });
-
-            expect(mockCreateManualThought).toHaveBeenCalled();
-            expect(defaultProps.setSermon).toHaveBeenCalled();
-            expect(mockUpdateStructure).toHaveBeenCalled();
-            expect(result.current.editingItem).not.toBeNull();
-            act(() => result.current.handleCloseEdit());
-            expect(result.current.editingItem).toBeNull();
-        });
-
-        it('closes normally after a successful retry — no stale copy comes back', async () => {
-            /**
-             * The sequence the earlier version could not survive: create is refused while
-             * its editor is open, the person fixes it and saves successfully, then closes.
-             * With the refusal queued, closing pulled the stale rejected copy back into
-             * the editor, so a save that WORKED looked like it had failed — and saving
-             * again would have duplicated the thought.
-             */
-            mockCreateManualThought.mockRejectedValueOnce(
-                Object.assign(new Error('Failed'), { code: 'permission-denied' })
-            );
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-
-            act(() => {
-                result.current.handleAddThoughtToSection('introduction');
-            });
-
-            let refused!: WriteOperation;
-            act(() => {
-                refused = result.current.handleSaveEdit('New Content', [], undefined) as WriteOperation;
-            });
-            await expect(awaitWriteOperation(refused, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(awaitWriteOperation(refused, () => undefined)).rejects.toThrow('Failed');
-
-            // The person corrects and saves again — this time it works.
-            mockCreateManualThought.mockResolvedValueOnce({
-                id: 'thought-new',
-                text: 'Fixed content',
-                tags: [],
-                date: '2026-08-14',
-            });
-            let accepted!: WriteOperation;
-            await act(async () => {
-                accepted = result.current.handleSaveEdit('Fixed content', [], undefined) as WriteOperation;
-                await awaitWriteOperation(accepted, () => undefined).catch(() => undefined);
-            });
-
-            act(() => {
-                result.current.handleCloseEdit();
-            });
-
-            expect(result.current.editingItem).toBeNull();
-        });
-
-        it('handles errors during creation', async () => {
-            const refusal = Object.assign(new Error('Failed'), { code: 'permission-denied' });
-            mockCreateManualThought.mockRejectedValue(refusal);
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-
-            act(() => {
-                result.current.handleAddThoughtToSection('introduction');
-            });
-
-            let submission!: WriteOperation;
-            act(() => {
-                submission = result.current.handleSaveEdit('New Content', [], undefined) as typeof submission;
-            });
-
-            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Failed');
-            /**
-             * The editor that STARTED this create is still open and holding the text, so
-             * it explains the refusal itself — one refusal, one reporter. Nothing is
-             * queued either: a queued copy made the editor un-closable, and a successful
-             * retry then looked like a failure.
-             */
-            expect(mockToast.error).not.toHaveBeenCalled();
-            expect(result.current.editingItem).not.toBeNull();
-        });
-
-        it('waits for actual create capture and stays silent', async () => {
-            let capture!: (thought: Sermon['thoughts'][number]) => void;
-            mockCreateManualThought.mockReturnValue(new Promise(resolve => { capture = resolve; }));
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-            act(() => result.current.handleAddThoughtToSection('introduction'));
-            let submission!: WriteOperation;
-            act(() => { submission = result.current.handleSaveEdit('Captured create', [], undefined); });
-            let accepted = false;
-            const waiting = awaitWriteOperation(submission, () => undefined).then(() => { accepted = true; });
-            await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-            expect(accepted).toBe(false);
-            await act(async () => { capture(mockCreateManualThought.mock.calls[0][1]); await waiting; });
-            expect(accepted).toBe(true);
-            expect(mockToast.error).not.toHaveBeenCalled();
-            expect(mockUnsubscribe).not.toHaveBeenCalled();
-        });
-
-        it('recovers an abandoned create after refused capture and reuses its client id on retry', async () => {
-            let rejectPersistence!: (error: Error) => void;
-            mockCreateManualThought.mockReturnValue(new Promise((_resolve, reject) => {
-                rejectPersistence = reject;
-            }));
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-            act(() => result.current.handleAddThoughtToSection('introduction'));
-
-            let submission!: WriteOperation;
-            act(() => {
-                submission = result.current.handleSaveEdit('Recover this create', [], undefined) as typeof submission;
-            });
-            const firstId = mockCreateManualThought.mock.calls[0][1].id;
-            await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-            act(() => result.current.handleCloseEdit());
-            expect(result.current.editingItem).toBeNull();
-
-            await act(async () => {
-                rejectPersistence(Object.assign(new Error('Permission denied'), { code: 'permission-denied' }));
-                await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Permission denied');
-            });
-            expect(result.current.editingItem?.content).toBe('Recover this create');
-
-            mockCreateManualThought.mockReturnValue(new Promise(() => undefined));
-            act(() => {
-                result.current.handleSaveEdit('Recover this create', [], undefined);
-            });
-            expect(mockCreateManualThought.mock.calls[1][1].id).toBe(firstId);
-        });
-
-        it('returns early if sermon is missing', async () => {
-            const { result } = renderHook(() => useSermonActions({ ...defaultProps, sermon: null }));
-            await result.current.handleSaveEdit('text', [], undefined);
-            expect(mockCreateManualThought).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('handleSaveEdit - Update Thought', () => {
-        it('updates an existing thought', async () => {
-            const updatedThought = { ...mockSermon.thoughts[0], text: 'Updated' };
-            mockUpdateThought.mockResolvedValue(updatedThought);
-
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-
-            act(() => {
-                result.current.handleEdit(mockItem);
-            });
-
-            await act(async () => {
-                await result.current.handleSaveEdit('Updated Text', ['Tag A'], 'point-1');
-            });
-
-            expect(mockUpdateThought).toHaveBeenCalledWith(
-                'sermon-1',
-                expect.objectContaining({
-                    id: 'thought-1',
-                    text: 'Updated Text',
-                    tags: ['intro', 'Tag A'],
-                    outlinePointId: 'point-1',
-                }),
-                // AND the thought AS IT WAS BEFORE the modal: without it the write
-                // claims every field, so an untouched one carries this screen's
-                // hours-old copy over whatever another device stored.
-                expect.objectContaining({ id: 'thought-1', text: 'Existing Thought' })
-            );
-            expect(defaultProps.setSermon).toHaveBeenCalled();
-            expect(defaultProps.setContainers).toHaveBeenCalled();
-        });
-
-        it('handles update errors gracefully', async () => {
-            const refusal = Object.assign(new Error('Update failed'), { code: 'permission-denied' });
-            mockUpdateThought.mockRejectedValue(refusal);
-            const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
-
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-            act(() => {
-                result.current.handleEdit(mockItem);
-            });
-
-            let submission!: WriteOperation;
-            act(() => {
-                submission = result.current.handleSaveEdit('text', [], undefined) as typeof submission;
-            });
-
-            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Update failed');
-            expect(consoleErrorSpy).toHaveBeenCalled();
-            // The editor for THIS thought is still open, so IT explains the refusal
-            // inline and holds the text — one refusal, one reporter. The restore path
-            // speaks only when that editor is gone.
-            expect(mockToast.error).not.toHaveBeenCalled();
-            expect(result.current.editingItem).not.toBeNull();
-            consoleErrorSpy.mockRestore();
-        });
-
-        it('accepts an update only after actual local capture without a server receipt', async () => {
-            mockUpdateThought.mockResolvedValue({ ...mockSermon.thoughts[0], text: 'Saved online' });
-            const { result } = renderHook(() => useSermonActions(defaultProps));
-            act(() => result.current.handleEdit(mockItem));
-
-            let submission!: WriteOperation;
-            act(() => {
-                submission = result.current.handleSaveEdit('Queued update', [], 'point-1') as typeof submission;
-            });
-            await expect(awaitWriteOperation(submission, () => undefined)).resolves.toBeNull();
-            expect(mockToast.error).not.toHaveBeenCalled();
-        });
-
-        it('recovers the exact abandoned edit after local capture is refused', async () => {
-            let rejectPersistence!: (error: Error) => void;
-            mockUpdateThought.mockReturnValue(new Promise((_resolve, reject) => {
-                rejectPersistence = reject;
-            }));
-            const originalOnline = navigator.onLine;
-            Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
-            try {
-                const { result } = renderHook(() => useSermonActions(defaultProps));
-                act(() => result.current.handleEdit(mockItem));
-
-                let submission!: WriteOperation;
-                act(() => {
-                    submission = result.current.handleSaveEdit('Recover this edit', [], 'point-1') as typeof submission;
-                });
-                await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-                act(() => result.current.handleCloseEdit());
-
-                await act(async () => {
-                    rejectPersistence(Object.assign(new Error('Permission denied'), { code: 'permission-denied' }));
-                    await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Permission denied');
-                });
-                expect(result.current.editingItem?.content).toBe('Recover this edit');
-                // Reopened AND explained — reopening in silence read as a glitch.
-                expect(mockToast.error).toHaveBeenCalledTimes(1);
-                expect(mockToast.error.mock.calls[0][1]).toMatchObject({ description: 'Recover this edit' });
-            } finally {
-                Object.defineProperty(navigator, 'onLine', { configurable: true, value: originalOnline });
-            }
-        });
     });
 
     describe('handleMoveToAmbiguous', () => {
@@ -409,8 +135,6 @@ describe('useSermonActions', () => {
             });
 
             expect(props.setContainers).toHaveBeenCalled();
-            expect(defaultProps.debouncedSaveThought).not.toHaveBeenCalled();
-            expect(defaultProps.debouncedSaveStructure).not.toHaveBeenCalled();
             expect(mockUpdateStructure).toHaveBeenCalledWith(
                 'sermon-1',
                 { introduction: [], main: [], conclusion: [], ambiguous: ['thought-1'] },

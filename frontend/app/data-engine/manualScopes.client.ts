@@ -1,18 +1,19 @@
 'use client';
 
 import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
+import { GROUP_MEETING_SLOT, hasMeetingDraft } from './groupMeetingAutosave';
 import { replaySavedChoiceDelta } from './manualChoice';
 import { retireManualRecoverySources } from './manualRecovery.client';
 import { storedManualContinuation } from './manualReturnSources';
-import { ManualScope, retainedManualScopeRecord, sameManualSelection, type ManualScopeRecord } from './manualScope';
+import { ManualScope, reconcileManualCaptures, retainedManualScopeRecord, sameManualSelection, type ManualScopeRecord } from './manualScope';
 import { equalValues } from './protocol';
 import { changedRecoveryChoice, discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
-import { collectCommitRows } from './retention.client';
+import { collectCommitRows, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 import type { CommitRequest, ManualChoiceRecovery } from './commits';
-import type { VersionedRecovery } from './recoverySource';
+import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DocumentData, ResourceRef } from './types';
 
 export interface StoredManualScope extends VersionedRecovery {
@@ -33,11 +34,13 @@ export type ManualStorageRecord = StoredManualScope | ManualScopeWatermark;
 export interface ManualScopeStore {
   read(owner: string, scopeId: string): Promise<ManualStorageRecord | undefined>;
   list(owner: string, resource?: ResourceRef): Promise<StoredManualScope[]>;
-  create(value: StoredManualScope): Promise<void>;
+  listMeetingDrafts?(owner: string): Promise<StoredManualScope[]>;
+  create(value: StoredManualScope, origin?: RecoveryOrigin): Promise<void>;
   put(value: StoredManualScope): Promise<void>;
   compact(owner: string, scopeId: string): Promise<void>;
   discardRecovery?(value: StoredManualScope, isCurrent: () => boolean): Promise<void>;
   pinRecovery?(value: StoredManualScope): Promise<string | null>;
+  retireAcknowledgedMeetingDraft?(value: StoredManualScope, requestId: string): Promise<void>;
 }
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const key = (owner: string, scopeId: string): IDBValidKey => ['manual', owner, scopeId];
@@ -155,10 +158,10 @@ export function writeManualChoiceRecoveries(store: IDBObjectStore, read: Storage
 /** Shares the commit database so a saved form cannot race collection of its predecessor. */
 export function createIndexedDbManualScopes(collect = collectCommitRows): ManualScopeStore {
   const transaction = createEngineStorageTransaction();
-  const write = async (value: StoredManualScope, create: boolean) => {
+  const write = async (value: StoredManualScope, create: boolean, origin?: RecoveryOrigin) => {
     const frozen = validate(value) as StoredManualScope;
     return transaction<void>('readwrite', (store, read, done) => {
-      read(store.get(key(frozen.owner, frozen.scopeId)), (existing: ManualStorageRecord | undefined) => {
+      const writeCurrent = () => read(store.get(key(frozen.owner, frozen.scopeId)), (existing: ManualStorageRecord | undefined) => {
         if (create ? Boolean(existing) : !existing) throw new Error(create ? 'Manual scope already exists' : 'Manual scope no longer exists');
         if (existing && !existing.record && existing.discarded) throw changedRecoveryChoice();
         if (existing && (existing.parentEditorId !== frozen.parentEditorId || existing.slot !== frozen.slot
@@ -174,6 +177,11 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
           else writeTarget();
         });
       });
+      if (!origin) { writeCurrent(); return; }
+      read(store.get(key(frozen.owner, origin.id)), (source: ManualStorageRecord | undefined) => {
+        if (!source?.record || source.recoveryVersion !== origin.version) throw changedRecoveryChoice();
+        writeCurrent();
+      });
     });
   };
   return {
@@ -182,6 +190,13 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
       read(store.getAll(engineOwnerRange('manual', owner)), (values: ManualStorageRecord[]) => {
         const valid = values.map(value => validate(value, owner)).filter((value): value is StoredManualScope => Boolean(value.record));
         done(valid.filter(value => !resource || value.record.resource.collection === resource.collection && value.record.resource.id === resource.id));
+      });
+    }),
+    listMeetingDrafts: owner => transaction('readonly', (store, read, done) => {
+      read(store.getAll(engineOwnerRange('manual', owner)), (values: ManualStorageRecord[]) => {
+        const meetings = values.filter((value): value is StoredManualScope =>
+          value?.slot === GROUP_MEETING_SLOT && Boolean(value.record && hasMeetingDraft(value.record)));
+        done(meetings.map(value => validate(value, owner) as StoredManualScope));
       });
     }),
     discardRecovery: (value, isCurrent) => discardRecoveryRecord<StoredManualScope>(transaction, {
@@ -201,10 +216,28 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
         store.put(versionRecoveryRecord(watermark), key(current.owner, current.scopeId));
       },
     }),
-    create: value => write(value, true),
+    create: (value, origin) => write(value, true, origin),
     pinRecovery: value => pinRecoveryVersion(transaction, key(value.owner, value.scopeId), value,
       candidate => validate(candidate as ManualStorageRecord, value.owner, value.scopeId) as StoredManualScope),
     put: value => write(value, false),
+    retireAcknowledgedMeetingDraft: (value, requestId) => transaction('readwrite', (store, read, done) => {
+      const target = key(value.owner, value.scopeId);
+      read(store.get(target), (current: ManualStorageRecord | undefined) => {
+        const record = current?.record;
+        if (!record || current.slot !== GROUP_MEETING_SLOT || !current.recoveryVersion
+          || current.recoveryVersion !== value.recoveryVersion || !record.active
+          || !record.autosaveGroupMeeting || !hasMeetingDraft(record)) { done(undefined); return; }
+        readCommitRows(store, read, value.owner, requests => {
+          if (!requests.some(request => request.id === requestId && request.state === 'acknowledged')) { done(undefined); return; }
+          const saved = reconcileManualCaptures(record, requests);
+          if (saved === record || saved.predecessor?.id !== requestId
+            || !equalValues(saved.stage, saved.savedSelection)) { done(undefined); return; }
+          const watermark = { generation: saved.generation, selection: saved.selection, resource: saved.resource };
+          store.put(versionRecoveryRecord({ ...current, record: null, watermark, commitReferences: [] }), target);
+          collect(store, read, value.owner, done);
+        });
+      });
+    }),
     compact: (owner, scopeId) => transaction('readwrite', (store, read, done) => {
       read(store.get(key(owner, scopeId)), (value: ManualStorageRecord | undefined) => {
         if (!value) { done(undefined); return; }

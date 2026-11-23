@@ -1,7 +1,7 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { exegeticalDraftTitlePreview, isWorkspaceRecoveryCopy, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, isWorkspaceRecoveryCopy, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -123,7 +123,8 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
         const { checkpoint: { draft, confirmed } } = record;
         const laterPointTitle = canOfferAfterRefusal && source.answer === 'refused'
           && record.checkpoint.unreadableExegeticalProofs?.some(proof => proof.pendingAddition);
-        if (!isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
+        if (readOutlineTitleComparison(record.checkpoint) || readOutlineNoteConflict(record.checkpoint) || readSermonOutlineReview(record.checkpoint)
+          || !isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
         const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '') : exegeticalDraftTitlePreview(record);
         return [{ id, title: String(draft?.title ?? confirmed.value?.title ?? sermonId ?? ''), preview,
           discard: () => document.discardRecovery(source) }];

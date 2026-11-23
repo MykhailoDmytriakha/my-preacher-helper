@@ -190,7 +190,7 @@ describe('inline template capture and folding', () => {
       fireEvent.click(screen.getByLabelText('common.collapse'));
       await waitFor(() => expect(screen.queryByLabelText('common.collapse')).not.toBeInTheDocument());
       fireEvent.click(screen.getByLabelText('common.expand'));
-      expect(await screen.findByText(NAME)).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText(NAME, { selector: 'span' })).toBeVisible());
       await waitFor(() => expect(harness.server.value?.structure).toEqual(expect.objectContaining({
         introduction: [expect.objectContaining({ text: NAME })], main: [expect.objectContaining({ text: 'Retained point' })],
       })));
@@ -206,8 +206,12 @@ describe('inline template capture and folding', () => {
   it('waits for the actual checkpoint completion before folding an editor with newly typed points', async () => {
     const { harness, view } = await setup();
     try {
-      harness.storage.holdCompletionAfterCommit = (rows, mode) => mode === 'readwrite'
-        && [...rows.values()].some(row => JSON.stringify(row).includes(NAME));
+      let held = false;
+      harness.storage.holdCompletionAfterCommit = (rows, mode) => {
+        if (held || mode !== 'readwrite') return false;
+        held = [...rows].some(([key, row]) => JSON.parse(key)[0] === 'checkpoint' && JSON.stringify(row).includes(NAME));
+        return held;
+      };
       addPoint();
       await act(settleEngine);
       fireEvent.click(screen.getByLabelText('common.collapse'));

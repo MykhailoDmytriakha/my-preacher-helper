@@ -102,7 +102,6 @@ describe('useStructureDnd', () => {
 
   const mockSetContainers = jest.fn();
   const mockSetSermon = jest.fn();
-  const mockDebouncedSaveThought = jest.fn();
 
   const defaultProps = {
     containers: mockContainers,
@@ -110,7 +109,6 @@ describe('useStructureDnd', () => {
     containersRef: { current: mockContainers },
     sermon: mockSermon,
     setSermon: mockSetSermon,
-    debouncedSaveThought: mockDebouncedSaveThought,
   };
 
   const buildItem = (id: string, overrides: Partial<Item> = {}): Item => ({
@@ -835,13 +833,11 @@ describe('useStructureDnd', () => {
         },
       });
       const containersRef = { current: containers };
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1257,14 +1253,12 @@ describe('useStructureDnd', () => {
       });
       const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         setContainers: mockSetContainers,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1370,13 +1364,11 @@ describe('useStructureDnd', () => {
         },
       });
       const containersRef = { current: containers };
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1435,13 +1427,11 @@ describe('useStructureDnd', () => {
         structure: { introduction: [THOUGHT_ONE, THOUGHT_TWO], main: [], conclusion: [], ambiguous: [] },
       });
       const containersRef = { current: containers };
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1503,14 +1493,12 @@ describe('useStructureDnd', () => {
       });
       const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         setContainers: mockSetContainers,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1577,14 +1565,12 @@ describe('useStructureDnd', () => {
       });
       const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         setContainers: mockSetContainers,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1658,7 +1644,6 @@ describe('useStructureDnd', () => {
       const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
       const mockSetSermon = jest.fn();
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
@@ -1666,7 +1651,6 @@ describe('useStructureDnd', () => {
         setContainers: mockSetContainers,
         setSermon: mockSetSermon,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1730,13 +1714,11 @@ describe('useStructureDnd', () => {
         },
       });
       const containersRef = { current: containers };
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1781,7 +1763,6 @@ describe('useStructureDnd', () => {
       const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
       const mockSetSermon = jest.fn();
-      const mockDebouncedSaveThought = jest.fn();
 
       mockUpdateStructure.mockRejectedValueOnce(new Error('boom'));
 
@@ -1792,7 +1773,6 @@ describe('useStructureDnd', () => {
         setContainers: mockSetContainers,
         setSermon: mockSetSermon,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {
@@ -1827,13 +1807,11 @@ describe('useStructureDnd', () => {
         },
       });
       const containersRef = { current: containers };
-      const mockDebouncedSaveThought = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
         containers,
         containersRef,
         sermon,
-        debouncedSaveThought: mockDebouncedSaveThought,
       }));
 
       act(() => {

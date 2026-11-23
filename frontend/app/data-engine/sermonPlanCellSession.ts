@@ -1,4 +1,4 @@
-import { readPlanText } from '@/utils/planTextStorage';
+import { liveNodeIds, readPlanText } from '@/utils/planTextStorage';
 
 import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
@@ -16,12 +16,17 @@ export type PlanCellOpening = PlanCellVersion & {
   sermonId: string;
   nodeId: string;
   text: string;
+  // The address is current, but the text the person saw could not be tied to a revision.
+  unverified?: true;
 };
 
 export type PlanCellDraft = PlanCellVersion & {
   opening: string;
   text: string;
+  unverified?: true;
 };
+
+export type PlanCellAlternative = { kind: 'plan-cell'; nodeId: string; text: string };
 
 const field = (value: string) => ({ exists: true, value } as const);
 const pathFor = (nodeId: string) => ['planText', nodeId];
@@ -29,13 +34,14 @@ const cellText = (value: DocumentData | null, key: string) => {
   const displayed = readPlanText(value as unknown as Sermon | null);
   return own(displayed, key) ? displayed[key] : '';
 };
+export { cellText as readPlanCellText };
 
 function legacyPlanBirth(value: DocumentData | null): string | undefined {
   const birth = value?.createdAt;
   return typeof birth === 'string' && birth.length ? birth : undefined;
 }
 
-function matchesPlanCellVersion(snapshot: ResourceSnapshot, version: PlanCellVersion): boolean {
+export function matchesPlanCellVersion(snapshot: ResourceSnapshot, version: PlanCellVersion): boolean {
   const { metadata, value } = snapshot;
   if (!value || metadata?.deleted) return false;
   const birth = legacyPlanBirth(value);
@@ -44,15 +50,24 @@ function matchesPlanCellVersion(snapshot: ResourceSnapshot, version: PlanCellVer
     && version.observedRevision > 0 && version.observedRevision <= metadata.revision;
 }
 
+function planCellVersion(confirmed: ResourceSnapshot): PlanCellVersion | undefined {
+  const { resource, value, metadata } = confirmed;
+  if (resource.collection !== 'sermons' || !value || metadata?.deleted) return;
+  const birth = legacyPlanBirth(value);
+  return metadata ? { generation: metadata.generation, observedRevision: metadata.revision }
+    : { generation: null, observedRevision: null, ...(birth && { legacyBirth: birth }) };
+}
+
 export function planCellOpening(checkpoint: SessionCheckpoint | undefined, nodeId: string, text: string): PlanCellOpening | undefined {
-  if (!checkpoint?.draft) return;
-  const { confirmed, draft } = checkpoint;
-  const metadata = confirmed.metadata;
-  if (confirmed.resource.collection !== 'sermons' || !confirmed.value || metadata?.deleted || cellText(draft, nodeId) !== text) return;
-  const cell = { sermonId: confirmed.resource.id, nodeId, text };
-  const birth = legacyPlanBirth(confirmed.value);
-  return metadata ? { ...cell, generation: metadata.generation, observedRevision: metadata.revision }
-    : { ...cell, generation: null, observedRevision: null, ...(birth && { legacyBirth: birth }) };
+  if (!checkpoint?.draft || cellText(checkpoint.draft, nodeId) !== text) return;
+  const version = planCellVersion(checkpoint.confirmed);
+  if (version) return { ...version, sermonId: checkpoint.confirmed.resource.id, nodeId, text };
+}
+
+/** A pending Save can hold a displayed version behind a newer accepted copy. */
+export function settledPlanCellView(checkpoint: SessionCheckpoint): SessionCheckpoint | undefined {
+  if (checkpoint.remoteCandidate || Object.keys(checkpoint.pending).length) return;
+  return { ...checkpoint, draft: checkpoint.confirmed.value };
 }
 
 function latestLocalPlanSave(checkpoint: SessionCheckpoint): DocumentData | null | undefined {
@@ -77,7 +92,7 @@ export function stagePlanCell(checkpoint: SessionCheckpoint, seen: PlanCellOpeni
   const latest = remoteCandidate && matchesPlanCellVersion(remoteCandidate, proof) ? remoteCandidate : confirmed;
   const pending = latestLocalPlanSave(checkpoint);
   const pendingOpening = pending && cellText(pending, nodeId) === proof.opening && equalValues(latest, confirmed);
-  const conflict = pendingOpening ? undefined : planCellConflict(nodeId, proof, latest);
+  const conflict = pendingOpening && !proof.unverified ? undefined : planCellConflict(nodeId, proof, latest);
   const others = checkpoint.conflicts.filter(conflict => !equalValues(conflict.path, path));
 
   return {
@@ -90,9 +105,9 @@ export function stagePlanCell(checkpoint: SessionCheckpoint, seen: PlanCellOpeni
 
 function planCellConflict(nodeId: string, proof: PlanCellDraft, saved: ResourceSnapshot): ConflictDetail | undefined {
   if (!matchesPlanCellVersion(saved, proof)
-    || (proof.observedRevision !== null && (saved.metadata?.revision ?? 0) <= proof.observedRevision)) return;
+    || (!proof.unverified && proof.observedRevision !== null && (saved.metadata?.revision ?? 0) <= proof.observedRevision)) return;
   const stored = cellText(saved.value, nodeId);
-  if (stored === proof.opening || stored === proof.text) return;
+  if (stored === proof.text || (!proof.unverified && stored === proof.opening)) return;
   return { path: pathFor(nodeId), base: field(proof.opening), mine: field(proof.text), theirs: field(stored) };
 }
 
@@ -103,6 +118,20 @@ export function reviewObservedPlanCells(checkpoint: SessionCheckpoint, saved: Re
   const owned = Object.keys(checkpoint.planCellDrafts);
   const other = checkpoint.conflicts.filter(({ path }) => !(path[0] === 'planText' && path.length === 2 && owned.includes(path[1])));
   return [...other, ...reviewed];
+}
+
+export function removedConflictingPlanCells(checkpoint: SessionCheckpoint, incoming: ResourceSnapshot): Record<string, PlanCellDraft> {
+  const { confirmed, remoteCandidate, planCellDrafts } = checkpoint;
+  if (!planCellDrafts || confirmed.resource.collection !== 'sermons' || incoming.resource.collection !== 'sermons'
+    || confirmed.resource.id !== incoming.resource.id || !confirmed.metadata || !incoming.metadata
+    || !object(incoming.value?.outline) || confirmed.metadata.generation !== incoming.metadata.generation
+    || confirmed.metadata.revision >= incoming.metadata.revision
+    || (remoteCandidate?.metadata?.generation === incoming.metadata.generation
+      && remoteCandidate.metadata.revision > incoming.metadata.revision)) return {};
+  const oldNodes = liveNodeIds((confirmed.value as unknown as Sermon | null)?.outline);
+  const newNodes = liveNodeIds((incoming.value as unknown as Sermon).outline);
+  return Object.fromEntries(Object.entries(planCellDrafts).filter(([id, draft]) =>
+    oldNodes.has(id) && !newNodes.has(id) && planCellConflict(id, draft, incoming)));
 }
 
 /** A receipt for a different cell does not answer a comparison already on this screen. */
@@ -118,13 +147,12 @@ export function preservePlanCellComparisons(checkpoint: SessionCheckpoint, incom
 /** Keeping the local side explicitly answers only the compared cells. */
 export function acceptPlanCellComparison(checkpoint: SessionCheckpoint): void {
   const { confirmed, planCellDrafts } = checkpoint;
-  const metadata = confirmed.metadata;
-  if (!planCellDrafts || !metadata || metadata.deleted) return;
+  const version = planCellVersion(confirmed);
+  if (!planCellDrafts || !version) return;
   for (const { path } of checkpoint.conflicts) {
     if (path[0] !== 'planText' || path.length !== 2 || !own(planCellDrafts, path[1])) continue;
-    const proof = planCellDrafts[path[1]];
-    planCellDrafts[path[1]] = { generation: metadata.generation, observedRevision: metadata.revision,
-      opening: cellText(confirmed.value, path[1]), text: proof.text };
+    const nodeId = path[1];
+    planCellDrafts[nodeId] = { ...version, opening: cellText(confirmed.value, nodeId), text: planCellDrafts[nodeId].text };
   }
 }
 
@@ -152,17 +180,19 @@ export function adoptFirstPlanCellVersion(checkpoint: SessionCheckpoint, accepte
   for (const [nodeId, proof] of Object.entries(planCellDrafts)) {
     if (!matchesPlanCellVersion(confirmed, proof)) continue;
     planCellDrafts[nodeId] = { generation: effect.generation, observedRevision: effect.revision,
-      opening: cellText(submitted, nodeId), text: proof.text };
+      opening: proof.unverified ? proof.opening : cellText(submitted, nodeId), text: proof.text,
+      ...(proof.unverified && { unverified: true }) };
   }
 }
 
 export function retainPlanCellDrafts(checkpoint: SessionCheckpoint, draft: DocumentData | null) {
   if (!checkpoint.planCellDrafts) return;
-  const { confirmed } = checkpoint;
+  const { confirmed, remoteCandidate } = checkpoint;
   const pending = latestLocalPlanSave(checkpoint);
   const entries = Object.entries(checkpoint.planCellDrafts).filter(([nodeId, proof]) =>
     matchesPlanCellVersion(confirmed, proof) && draft && cellText(draft, nodeId) === proof.text
-    && (cellText(confirmed.value, nodeId) !== proof.text || (pending && cellText(pending, nodeId) !== proof.text)));
+    && (cellText(confirmed.value, nodeId) !== proof.text || (pending && cellText(pending, nodeId) !== proof.text)
+      || (proof.unverified && remoteCandidate && planCellConflict(nodeId, proof, remoteCandidate))));
   if (entries.length) checkpoint.planCellDrafts = Object.fromEntries(entries);
   else delete checkpoint.planCellDrafts;
 }
@@ -173,7 +203,7 @@ export function capturePlanCellOpenings(checkpoint: SessionCheckpoint): SermonTe
   const metadata = confirmed.metadata;
   if (confirmed.resource.collection !== 'sermons' || !metadata || !draft || !planCellDrafts) return;
   const captured = Object.entries(planCellDrafts).flatMap(([id, proof]) =>
-    proof.generation !== null && proof.generation === metadata.generation && proof.observedRevision <= metadata.revision
+    !proof.unverified && proof.generation !== null && proof.generation === metadata.generation && proof.observedRevision <= metadata.revision
     && readField(draft, pathFor(id)).value === proof.text ? [[sermonTextKey('planText', id), proof.observedRevision] as const] : []);
   return captured.length ? Object.fromEntries(captured) : undefined;
 }

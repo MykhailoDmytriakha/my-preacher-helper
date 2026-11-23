@@ -19,6 +19,8 @@ export type PlaceholderColors = {
   headerText: string;
 };
 
+export type AddOutlinePoint = (sectionId: string, index: number, text: string, pointId?: string) => Promise<SermonOutline | null | void>;
+
 export interface ColumnProps {
   id: string;
   title: string;
@@ -43,7 +45,7 @@ export interface ColumnProps {
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
   onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
-  onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
+  onAddOutlinePoint?: AddOutlinePoint;
   thoughtsPerSermonPoint?: Record<string, number>;
   isDiffModeActive?: boolean;
   isApplyingSort?: boolean;

@@ -44,11 +44,11 @@ import {
 import { copyFormattedFromElement } from "./copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "./OrphanedPlanText";
 import { PlanCellDocument } from "./PlanCellEditor";
-import { showPlanCellDrafts } from './planDraftCheckpoint';
+import { showDirtyPlanCells, showPlanCellDrafts } from './planDraftCheckpoint';
 import { PlanDraftRecoveryBar, recoveredCells } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
-import { PlanModeHistory, PlanModeStatus } from './PlanModeStatus';
+import { PlanModeHistory, PlanModeStatus, usePlanRecovery, type PlanRecovery } from './PlanModeStatus';
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
 import PlanPageHeader from "./PlanPageHeader";
@@ -104,6 +104,7 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const { writer, outlineRecovery } = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
+  const recovery = usePlanRecovery(document, source.sermon?.outline);
   // The read-only screen stands exactly where the separate reader stood — on a copy, except while
   // preaching — and as its own tree, so it never shares state with the editor: every switch mounts
   // the other one fresh, as the swap did. Nothing seeded from the copy reaches the editor.
@@ -112,16 +113,18 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   // The address's way in is held here, above the copy and the editor: the copy giving way is not a new arrival.
   const wayIn = useWayInOnce();
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
-    <PlanModeStatus document={document} />
+    <PlanModeStatus document={document} recovery={recovery} />
     <PlanCellDocument.Provider value={document}>
-      <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
+      <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} recovery={recovery} readOnly={onCopy} wayIn={wayIn} />
     </PlanCellDocument.Provider>
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSource; readOnly?: boolean; wayIn: WayIn }) {
+function PlanPageContent({ source, recovery, readOnly = false, wayIn }: {
+  source: SermonSource; recovery: PlanRecovery; readOnly?: boolean; wayIn: WayIn;
+}) {
   const { t } = useTranslation();
   const planWriter = usePlanWriter();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -212,7 +215,9 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const [savedSermonPoints, setSavedSermonPoints] = useState<Record<string, boolean>>({});
 
   // Track which content has been modified since last save
-  const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
+  const [bufferedEdits, setModifiedContent] = useState<Record<string, boolean>>({});
+  const checkpoint = source.document.state?.checkpoint;
+  const modifiedContent = useMemo(() => showDirtyPlanCells(bufferedEdits, checkpoint), [bufferedEdits, checkpoint]);
   const showSettled = useCallback((cells: Record<string, string>) => {
     observeGeneratedContent(previous => ({ ...previous, ...cells }));
     setModifiedContent(previous => ({ ...previous, ...Object.fromEntries(Object.keys(cells).map(id => [id, false])) }));
@@ -224,21 +229,13 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
 
-  /**
-   * Text that never reached the server survives a closed tab. The guard states this as its own
-   * precondition: refusing a stale save without it turns "overwrote someone else" into "lost
-   * your own", which is a move rather than a fix.
-   */
+  // Present retained copies without adding a writer beside the document session.
   const planDraft = usePlanTextDraft({
     uid: sermon?.userId,
     sermonId: sermon?.id,
-    contentByNodeId: generatedContent,
-    modifiedNodeIds: modifiedContent,
-    pendingNodeIds: pendingPlanCells.nodeIds,
-    pendingText: pendingPlanCells.text,
     liveNodeIds: livePlanNodes,
     frozen: readOnly,
-    durableState: source.document.state,
+    backupAuthority: source.document,
   });
   const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([sermon?.userId, sermonId]), Boolean(planDraft.recovered));
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
@@ -250,16 +247,19 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     void planWriter.discardPlanText?.(nodeIds).catch(() => toast.error(t('errors.failedToSavePoint')));
   }, [planWriter, setGeneratedContent, t]);
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
-  const planOrphans = mergeOrphans(orphanedCells(generatedContent, modifiedContent, livePlanNodes), planDraft.orphaned);
-  const restorePlanCells = useCallback((cells: Record<string, string>) => {
-    // Recovered cells come back marked UNSAVED — they were never confirmed, so the screen must
-    // keep saying so until a save actually succeeds.
-    setGeneratedContent((prev) => ({ ...prev, ...cells }));
-    setModifiedContent((prev) => ({
-      ...prev,
-      ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
-    }));
-    void planWriter.restorePlanText?.(cells).catch(() => toast.error(t('errors.failedToSavePoint')));
+  const planOrphans = mergeOrphans(orphanedCells(generatedContent, modifiedContent, livePlanNodes), [...planDraft.orphaned, ...recovery.orphaned]);
+  const restorePlanCells = useCallback(async (cells: Record<string, string>, before: Record<string, string>) => {
+    if (!planWriter.stagePlanText) return false;
+    try {
+      const staging = planWriter.stagePlanText(cells, before);
+      setGeneratedContent(prev => ({ ...prev, ...cells }));
+      setModifiedContent(prev => ({ ...prev, ...Object.fromEntries(Object.keys(cells).map(id => [id, true])) }));
+      await staging;
+      return true;
+    } catch (error) {
+      toast.error(t(writeFailureTranslationKey(error, 'errors.failedToSavePoint')));
+      return false;
+    }
   }, [planWriter, setGeneratedContent, t]);
 
   // Add state to track which outline points are in edit mode
@@ -632,7 +632,6 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     t,
     setGeneratingIds,
     cellAuthoringVersion: planDraft.cellAuthoringVersion,
-    retainGeneratedDraft: planDraft.keepGeneratedCell,
     onGenerated: handlePlanPointGenerated,
     onSaved: handlePlanPointSaved,
     onAiSuccess: refreshAiUsage,
@@ -1097,9 +1096,12 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
           cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies, generatedContent)}
           onChoose={planDraft.selectCopy}
           restoreDisabled={Object.keys(planDraft.recovered).some((nodeId) => generatingIds[nodeId])}
-          onRestore={() => {
-            restorePlanCells(planDraft.recovered ?? {});
-            planDraft.accept();
+          onRestore={async () => {
+            const selected = planDraft.selectedCopies;
+            const shown = recoveredCells(planDraft.recovered ?? {}, sermon, planDraft.copies, selected, generatedContent);
+            const before = Object.fromEntries(shown.map(cell => [cell.id, cell.current]));
+            if (!await restorePlanCells(planDraft.recovered ?? {}, before)) return;
+            planDraft.accept(selected);
             answerDraftQuestion();
           }}
           onDiscard={() => { planDraft.discard(); answerDraftQuestion(); }}
@@ -1196,7 +1198,6 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         onToggleEditMode={toggleEditMode}
         onSyncPairHeights={syncPairHeights}
         onUpdateCombinedPlan={updateCombinedPlan}
-        onHoldCellText={planDraft.holdCellAlternative}
         onAuthorCell={planDraft.markCellAuthored}
         setGeneratedContent={setGeneratedContent}
         setModifiedContent={setModifiedContent}

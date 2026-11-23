@@ -71,6 +71,7 @@ export function OrphanedPlanText({
   useEffect(() => { withdraw(); }, [subject, readOnly, shownCells, busyCells, withdraw]);
   const discard = (cell: PlanOrphanCell) => {
     void askBeforeDiscard(true, () => {
+      if (cell.discard) return cell.discard().catch(() => { toast.error(t("common.saveError")); });
       if (cell.stored && storedSermon) {
         void writer.savePlanText(storedSermon.id, { [cell.id]: "" }, [], {
           orphaned: true, baselineByNodeId: { [cell.id]: cell.text },

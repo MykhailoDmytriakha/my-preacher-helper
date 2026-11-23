@@ -28,7 +28,7 @@ import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
-import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
+import { outlineTitleChoiceFrames, prepareOutlineTitleEdit, readOutlineTitleComparison, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
@@ -37,7 +37,9 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
-import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
+import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
+import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
+import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
@@ -70,6 +72,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   remoteCandidate: ResourceSnapshot | null;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   planCellDrafts?: Record<string, PlanCellDraft>;
+  serviceOrderInputs?: Record<string, import('./serviceOrderInput').ServiceOrderInput>;
   conflicts: ConflictDetail[];
   /** Private scalar edits whose saved observation no longer establishes an opening. */
   unreadableScalarProof?: string[];
@@ -231,10 +234,14 @@ export class DataSession {
   }
 
   private applyEdit(value: DocumentData | null, generation: number, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): void {
+    if (hasSermonOutlineReview(this.state) && !equalValues(value?.outline, this.state.draft?.outline)) {
+      throw Object.assign(new Error('Finish comparing the structure before editing it'), { code: 'other-changes-first' });
+    }
     if (value !== null && shown && deletedUnder(this.state, shown)) {
       this.state.remoteCandidate = copy(this.state.confirmed);
       this.state.confirmed = copy(shown.confirmed);
     }
+    if (autosaveStamp?.field === 'service-order-input') stageServiceOrderInput(this.state, value, autosaveStamp.input);
     const field = autosaveStamp?.field;
     const previousConflicts = this.state.conflicts;
     if (this.state.confirmed.resource.collection === 'studyNotes' && previousConflicts.length) {
@@ -260,7 +267,8 @@ export class DataSession {
     else delete this.state.exegeticalPointDrafts;
     this.replaceDraft(value);
     this.state.editGeneration = generation;
-    this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
+    this.state.dirty = hasSermonOutlineReview(this.state)
+      || !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
       || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
     const waiting = this.state.remoteCandidate;
     if (field === 'content' && waiting?.value && waiting.resource.collection === 'studyNotes' && isOrdinaryStudyNote(value)
@@ -280,7 +288,60 @@ export class DataSession {
     this.edit(staged.draft);
   }
 
-  pinPlanCellSave(): SessionCheckpoint {
+  /** Restore only the attempted cell and its opening. Other edits remain in the session. */
+  restoreUnwrittenPlanCell(nodeId: string, before: SessionCheckpoint, attempted: SessionCheckpoint): boolean {
+    const current = this.state;
+    const path = ['planText', nodeId];
+    if (!before.draft || !attempted.draft || !current.draft || !equalValues(current.confirmed, attempted.confirmed)
+      || !equalValues(current.pending, attempted.pending)
+      || !equalValues(readField(current.draft, path), readField(attempted.draft, path))
+      || !equalValues(current.planCellDrafts?.[nodeId], attempted.planCellDrafts?.[nodeId])) return false;
+
+    const proof = before.planCellDrafts?.[nodeId];
+    const proofs = { ...current.planCellDrafts };
+    if (proof) proofs[nodeId] = proof;
+    else delete proofs[nodeId];
+    current.planCellDrafts = proofs;
+    const unrelated = current.conflicts.filter(conflict => !equalValues(conflict.path, path));
+    current.conflicts = [...unrelated, ...copy(before.conflicts.filter(conflict => equalValues(conflict.path, path)))];
+    if (!unrelated.length && equalValues(current.remoteCandidate, attempted.remoteCandidate)) {
+      current.remoteCandidate = copy(before.remoteCandidate);
+    }
+    const value = writeField(current.draft, path, readField(before.draft, path));
+    const planText = value.planText;
+    this.replaceDraft(!readField(before.draft, ['planText']).exists && object(planText) && !Object.keys(planText).length
+      ? writeField(value, ['planText'], { exists: false }) : value);
+    current.editGeneration = this.reserveEditGeneration();
+    current.dirty = !equalValues(current.draft, current.confirmed.value)
+      || hasUncapturedAutosaveField(current) || hasUncapturedAutosaveRowField(current)
+      || Boolean(current.serviceOrderPlacementRetry || current.serviceOrderStepPlacementRetry || current.outlinePointPlacementRetry);
+    this.refreshUnreadableComparisons();
+    return true;
+  }
+
+  retainServiceOrderChoiceFields(source: SessionCheckpoint, discarded?: ServiceOrderInput): void {
+    const inputs = Object.entries(source.serviceOrderInputs ?? {}).filter(([key]) => !discarded || key !== serviceOrderInputKey(discarded));
+    if (!inputs.length) return;
+    let draft = this.state.draft;
+    for (const [, input] of inputs) if (!input.retainedOnly) draft = projectServiceOrderInput(draft, input) ?? draft;
+    this.state.serviceOrderInputs = Object.fromEntries(inputs);
+    this.edit(draft);
+  }
+
+  useStoredServiceOrderInput(input: ServiceOrderInput, compared: ServiceOrderInputComparison): void {
+    const latest = requireServiceOrderInputComparison(this.state, input, compared);
+    const baseline = readServiceOrderInputValue(this.state.confirmed.value, input);
+    if (typeof baseline !== 'string' && !Array.isArray(baseline)) {
+      throw new ServiceOrderInputDecisionError('The selected service field is unavailable');
+    }
+    const draft = projectServiceOrderInput(this.state.draft, input, baseline as string | string[]);
+    if (!draft) throw new ServiceOrderInputDecisionError('The selected service field is unavailable');
+    delete this.state.serviceOrderInputs?.[serviceOrderInputKey(input)];
+    this.edit(draft);
+    this.observe(latest, { source: 'server' });
+  }
+
+  pinFieldSave(): SessionCheckpoint {
     this.state.editGeneration = this.reserveEditGeneration();
     return this.checkpoint();
   }
@@ -310,8 +371,26 @@ export class DataSession {
     }
   }
 
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
-    const { draft, stored, conflicts, conflictingTitle } = templateTitleEdit(this.state, shown, opening, title);
+  retainSermonOutlineReview(input: SermonOutlineReviewInput): boolean {
+    const review = prepareSermonOutlineReview(this.state, input);
+    if (!review) return false;
+    this.state.remoteCandidate = copy(this.state.confirmed);
+    this.state.conflicts = [copy(review)];
+    this.state.editGeneration = this.reserveEditGeneration();
+    this.state.dirty = true;
+    return true;
+  }
+
+  chooseSermonOutlineReview(side: 'local' | 'remote'): void {
+    const chosen = projectSermonOutlineDecision(this.state, side);
+    this.state.confirmed = copy(chosen.confirmed);
+    this.state.remoteCandidate = chosen.conflicts.length ? copy(chosen.confirmed) : null;
+    this.state.conflicts = copy(chosen.conflicts);
+    this.edit(chosen.draft);
+  }
+
+  editOutlineTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
+    const { draft, stored, conflicts, conflictingTitle } = prepareOutlineTitleEdit(this.state, shown, opening, title);
     const metadata = shown.confirmed.metadata;
     const version = metadata && !metadata.deleted ? { generation: metadata.generation, observedRevision: metadata.revision } : undefined;
     this.edit(draft, shown, { field: 'outline-title', rowId: opening.target.id, time, titleOpening: { ...opening, version } });
@@ -594,6 +673,8 @@ export class DataSession {
           mergeDocumentAfterAcknowledgement(templateAncestor, this.state.draft, { ...accepted, value: incoming }));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     adoptFirstPlanCellVersion(this.state, accepted, result.committed ?? result.snapshot.metadata, result.operationId, submitted.value);
+    acknowledgeServiceOrderInput(this.state, request);
+    retainRemovedServiceOrderInputs(this.state, accepted);
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
@@ -601,6 +682,21 @@ export class DataSession {
     this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     this.refreshUnreadableComparisons();
+  }
+
+  /** The controller has already given these exact words an independent local owner. */
+  releaseRemovedPlanCells(retained: Readonly<Record<string, PlanCellDraft>>): void {
+    const proofs = this.state.planCellDrafts;
+    if (!proofs) return;
+    const released = Object.keys(retained).filter(id => equalValues(retained[id], proofs[id]));
+    if (!released.length) return;
+    const stays = Object.keys(proofs).filter(id => !released.includes(id));
+    const remaining = reservePrivatePlanCells(this.state, this.state.confirmed.value, stays);
+    this.replaceDraft(remaining.draft);
+    this.state.conflicts = this.state.conflicts.filter(({ path }) =>
+      path[0] !== 'planText' || path.length !== 2 || !released.includes(path[1]));
+    this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value)
+      || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
@@ -613,6 +709,13 @@ export class DataSession {
       const candidate = this.state.remoteCandidate;
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
+      const outlineReview = refreshSermonOutlineReview(this.state, snapshot);
+      if (outlineReview) {
+        this.state.remoteCandidate = copy(snapshot);
+        this.state.conflicts = [copy(outlineReview)];
+        return;
+      }
+      retainRemovedServiceOrderInputs(this.state, snapshot);
       if (!awaiting && !preserveDraft) {
         const merged = mergeUnsentObservation(this.state, snapshot);
         if (merged) {
@@ -631,6 +734,7 @@ export class DataSession {
       this.refreshUnreadableComparisons();
       return;
     }
+    retainRemovedServiceOrderInputs(this.state, snapshot);
     this.state.confirmed = copy(snapshot);
     this.replaceDraft(snapshot.value);
     this.clearAutosaveFieldDrafts();
@@ -1060,6 +1164,7 @@ export class DataSession {
   }
 
   private replaceDraft(value: DocumentData | null): void {
+    retainServiceOrderInputs(this.state, value);
     // A retry owns exactly its displayed target, regardless of who replaces the draft.
     const rankMove = this.state.serviceOrderPlacementRetry;
     if (rankMove && value?.rank !== rankMove.rank) delete this.state.serviceOrderPlacementRetry;

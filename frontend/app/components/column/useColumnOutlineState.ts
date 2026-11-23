@@ -3,7 +3,7 @@ import { type DropResult } from "@hello-pangea/dnd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { useOutlineTitleDraft } from "@/components/plan-editor/OutlineTitleDrafts";
+import { useNewOutlineTitleDraft, useOutlineTitleDraft } from "@/components/plan-editor/OutlineTitleDrafts";
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { isInactiveEditorError } from "@/data-engine/react.client";
 import {
@@ -16,7 +16,7 @@ import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import { mapColumnIdToSectionType } from "./utils";
 
-import type { SectionType, Translate } from "./types";
+import type { AddOutlinePoint, SectionType, Translate } from "./types";
 import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
 import type { OutlineTitleOpening, OutlineTitleVersion } from "@/utils/sermonNoteText";
 
@@ -51,7 +51,7 @@ interface UseColumnOutlineStateOptions {
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
   onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
-  onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
+  onAddOutlinePoint?: AddOutlinePoint;
   onAiSuccess?: () => Promise<void> | void;
   aiBlocked?: boolean;
   scheduleTask?: (callback: () => void | Promise<void>, delayMs: number) => ReturnType<typeof setTimeout>;
@@ -92,6 +92,11 @@ export function useColumnOutlineState({
   const insertInputRef = useRef<HTMLInputElement>(null);
 
   const titleDraft = useOutlineTitleDraft(localSermonPoints.some(point => point.id === editingPointId) ? editingPointId : null);
+  const newPointDraft = useNewOutlineTitleDraft('point', addingNewPoint);
+  const insertedPointDraft = useNewOutlineTitleDraft('point', insertPointIndex !== null && insertPointIndex < localSermonPoints.length);
+  const creationText = useRef({ newPointText, insertPointText });
+  creationText.current = { newPointText, insertPointText };
+  const pendingCreations = useRef(new Map<string, { text: string }>());
   const pointToDeleteDetail = localSermonPoints.find((point) => point.id === deletePointId);
 
   // The exact base object stays stable until this view adopts a parent or a returned section.
@@ -153,6 +158,8 @@ export function useColumnOutlineState({
   };
 
   const startAddingNewPoint = () => {
+    newPointDraft.open();
+    setNewPointText("");
     setAddingNewPoint(true);
     setEditingPointId(null);
   };
@@ -163,16 +170,22 @@ export function useColumnOutlineState({
   };
 
   const setCapitalizedNewPointText = (value: string) => {
+    newPointDraft.change(value);
     setNewPointText(capitalizeFirstLetter(value));
   };
 
   const setCapitalizedInsertPointText = (value: string) => {
+    insertedPointDraft.change(value);
     setInsertPointText(capitalizeFirstLetter(value));
   };
 
-  const cancelAddingNewPoint = () => {
+  const closeAddingNewPoint = () => {
     setAddingNewPoint(false);
     setNewPointText("");
+  };
+  const cancelAddingNewPoint = () => {
+    newPointDraft.cancel();
+    closeAddingNewPoint();
   };
 
   const handleAddPoint = () => {
@@ -183,15 +196,14 @@ export function useColumnOutlineState({
     }
 
     const newPoint: SermonPoint = {
-      id: newClientId(),
+      id: newPointDraft.id() ?? newClientId(),
       text: textToSave,
     };
 
     const updatedPoints = [...localSermonPoints, newPoint];
     setLocalSermonPoints(updatedPoints);
-    setNewPointText("");
-    setAddingNewPoint(false);
-    triggerSaveOutline(updatedPoints);
+    closeAddingNewPoint();
+    newPointDraft.handoff(triggerSaveOutline(updatedPoints), textToSave);
   };
 
   const handleStartEdit = (point: SermonPoint) => {
@@ -265,39 +277,52 @@ export function useColumnOutlineState({
     setDeletePointId(null);
   };
 
-  const closeInsertPointForm = () => {
+  const finishInsertPoint = () => {
     setInsertPointIndex(null);
     setInsertPointText("");
   };
+  const closeInsertPointForm = () => {
+    insertedPointDraft.cancel();
+    finishInsertPoint();
+  };
 
   const openInsertPointForm = (index: number) => {
+    insertedPointDraft.open();
     setInsertPointIndex(index);
     setInsertPointText("");
     scheduleTask(() => insertInputRef.current?.focus(), 10);
   };
 
   const handleInsertSave = async (index: number, specificText?: string) => {
-    const textToSave = specificText !== undefined ? specificText : insertPointText;
-    const normalizedText = normalizeCapitalizedTitle(textToSave);
-
-    if (!normalizedText || !onAddOutlinePoint) {
-      if (specificText === undefined) {
-        closeInsertPointForm();
-      } else {
-        cancelAddingNewPoint();
-      }
+    const inserting = specificText === undefined;
+    const entered = specificText ?? insertPointText;
+    const normalizedText = normalizeCapitalizedTitle(entered);
+    const draft = inserting ? insertedPointDraft : newPointDraft;
+    const pointId = draft.id();
+    if (!normalizedText) {
+      if (inserting) closeInsertPointForm();
+      else cancelAddingNewPoint();
       return;
     }
-
+    if (!onAddOutlinePoint) return;
+    const attempt = { text: normalizedText };
+    if (pointId) {
+      if (pendingCreations.current.get(pointId)?.text === normalizedText) return;
+      pendingCreations.current.set(pointId, attempt);
+    }
     try {
-      await onAddOutlinePoint(id, index, normalizedText);
-      if (specificText === undefined) {
-        closeInsertPointForm();
-      } else {
-        cancelAddingNewPoint();
-      }
+      const writing = pointId ? onAddOutlinePoint(id, index, normalizedText, pointId) : onAddOutlinePoint(id, index, normalizedText);
+      draft.handoff(writing, normalizedText);
+      await writing;
+      const currentText = inserting ? creationText.current.insertPointText : creationText.current.newPointText;
+      if (draft.id() !== pointId) return;
+      if (pointId && (pendingCreations.current.get(pointId) !== attempt || currentText !== entered)) return;
+      if (inserting) finishInsertPoint();
+      else closeAddingNewPoint();
     } catch {
       toast.error(t("structure.saveError", { defaultValue: "Failed to save structure point" }));
+    } finally {
+      if (pointId && pendingCreations.current.get(pointId) === attempt) pendingCreations.current.delete(pointId);
     }
   };
 
@@ -363,7 +388,7 @@ export function useColumnOutlineState({
 
   // --- Sub-point operations ---
 
-  const handleAddSubPoint = (outlinePointId: string, text: string) => {
+  const handleAddSubPoint = (outlinePointId: string, text: string, subPointId?: string) => {
     const textToSave = normalizeCapitalizedTitle(text);
     if (!textToSave) return;
 
@@ -374,7 +399,7 @@ export function useColumnOutlineState({
         ? Math.max(...existing.map((sp) => sp.position))
         : 0;
       const newSubPoint: SubPoint = {
-        id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: subPointId ?? `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         text: textToSave,
         position: maxPos + 1000,
       };
@@ -382,7 +407,7 @@ export function useColumnOutlineState({
     });
 
     setLocalSermonPoints(updatedPoints);
-    triggerSaveOutline(updatedPoints);
+    return triggerSaveOutline(updatedPoints);
   };
 
   const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText?: string, version?: OutlineTitleVersion) => {

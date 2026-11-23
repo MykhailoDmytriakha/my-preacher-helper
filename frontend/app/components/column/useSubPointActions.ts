@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
+import { useNewOutlineTitleDraft, useOutlineTitleDraft, type OutlineCreation } from '@/components/plan-editor/OutlineTitleDrafts';
 import { subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 
@@ -13,7 +13,7 @@ export interface SubPointActionHandlers {
   subPoints: SubPoint[];
   outlinePointId: string;
   isPointLocked: boolean;
-  onAdd: (outlinePointId: string, text: string) => void;
+  onAdd: (outlinePointId: string, text: string, subPointId?: string) => OutlineCreation;
   onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => Promise<unknown> | void;
   onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
@@ -40,6 +40,7 @@ export function useSubPointActions({
   const editInputRef = useRef<HTMLInputElement>(null);
   const titleDraft = useOutlineTitleDraft(active && subPoints.some(point => point.id === editingId) ? editingId : null);
 
+  const newTitle = useNewOutlineTitleDraft('subpoint', active && !isPointLocked && isAdding);
   const hasTitleDraft = isAdding || editingId !== null;
   useLayoutEffect(() => {
     if (!onTitleDraftChange || !hasTitleDraft) return;
@@ -58,16 +59,29 @@ export function useSubPointActions({
     }
   }, [editingId, active]);
 
-  const cancelAdd = () => {
+  const startAdding = () => {
+    newTitle.open();
+    setAddTextRaw('');
+    setIsAdding(true);
+  };
+  const setAddText = (value: string) => {
+    newTitle.change(value);
+    setAddTextRaw(capitalizeFirstLetter(value));
+  };
+  const closeAdd = () => {
     setIsAdding(false);
     setAddTextRaw('');
+  };
+  const cancelAdd = () => {
+    newTitle.cancel();
+    closeAdd();
   };
   const handleAdd = () => {
     // Locked while the field was open: nothing is written, and the typed words stay in the field.
     if (isPointLocked) return;
     const textToSave = normalizeCapitalizedTitle(addText);
-    if (textToSave) onAdd(outlinePointId, textToSave);
-    cancelAdd();
+    if (textToSave) newTitle.handoff(onAdd(outlinePointId, textToSave, newTitle.id()), textToSave);
+    closeAdd();
   };
 
   const handleEditSave = () => {
@@ -109,7 +123,7 @@ export function useSubPointActions({
   };
 
   return {
-    isAdding, startAdding: () => setIsAdding(true), addText, setAddText: (value: string) => setAddTextRaw(capitalizeFirstLetter(value)),
+    isAdding, startAdding, addText, setAddText,
     handleAdd, cancelAdd, addInputRef,
     editingId, editText, changeEditText, startEditing, handleEditSave, cancelEdit, editInputRef,
     confirmDeleteId, confirmThoughtCount: confirmDeleteId ? getAffectedThoughtCount?.(confirmDeleteId) ?? 0 : 0,

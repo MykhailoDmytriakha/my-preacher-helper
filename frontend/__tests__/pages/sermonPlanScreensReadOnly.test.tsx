@@ -14,7 +14,11 @@ import { planCellOpening } from '@/data-engine/sermonPlanCellSession';
 import { DataSession } from '@/data-engine/session';
 import { draftKey, findDraftCopies } from '@/utils/durableDraft';
 import AiPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
+import { listOutbox } from '@/services/writeOutbox.client';
+import { deferred } from '@test-utils/deferred';
+import { documentEngineHarness } from '@test-utils/documentEngineHarness';
 
+import type { ManagedEditor } from '@/data-engine/engine';
 import type { DocumentData } from '@/data-engine/types';
 import type { Sermon } from '@/models/models';
 
@@ -33,8 +37,8 @@ import type { Sermon } from '@/models/models';
 const writes: string[] = [];
 let mockSermon: DocumentData | null = null;
 let mockReadOnly = true;
-let mockDurable = false;
-beforeEach(() => { mockDurable = false; });
+let mockPlanEditor: ManagedEditor | null = null;
+beforeEach(() => { mockPlanEditor = null; });
 let mockSearchParams = new URLSearchParams();
 
 function mockDurableCheckpoint() {
@@ -57,17 +61,21 @@ jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: () => ({ owner: 'user-1' }),
   useDataDocument: () => ({
     data: mockSermon, confirmed: mockReadOnly ? null : mockSermon, remote: null, status: null,
-    state: mockDurable ? { durable: true, checkpoint: mockDurableCheckpoint() } : null,
+    state: mockReadOnly ? null : mockPlanEditor?.getState() ?? null,
     loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
     readOnlyReason: null, error: null,
     edit: refuse('edit'), update: refuse('update'), commit: refuse('commit'), save: refuse('save'),
     capturePlanCellOpening: (nodeId: string, text: string) =>
-      planCellOpening(mockReadOnly ? undefined : mockDurableCheckpoint(), nodeId, text),
-    editPlanCell: mockReadOnly ? refuse('editPlanCell') : jest.fn().mockResolvedValue(undefined),
+      planCellOpening(mockReadOnly ? undefined : mockPlanEditor?.getState().checkpoint ?? mockDurableCheckpoint(), nodeId, text),
+    editPlanCell: mockReadOnly ? refuse('editPlanCell') : mockPlanEditor?.editPlanCell ?? jest.fn().mockResolvedValue(undefined),
+    editUnverifiedPlanCell: mockPlanEditor?.editUnverifiedPlanCell,
+    backsUpPlanCell: mockPlanEditor?.backsUpPlanCell,
     savePlanCells: mockReadOnly ? refuse('savePlanCells') : jest.fn().mockResolvedValue(undefined),
+    assertPlanCellsStored: mockReadOnly ? refuse('assertPlanCellsStored') : jest.fn().mockResolvedValue(undefined),
     remove: refuse('remove'), acceptRemote: jest.fn(), keepLocal: jest.fn(), retry: jest.fn().mockResolvedValue(undefined),
   }),
 }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => <div data-testid="engine-sync-status" /> }));
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
 jest.mock('@/hooks/useFreshnessUid', () => ({ useFreshnessUid: () => 'user-1' }));
@@ -91,8 +99,8 @@ jest.mock('@/components/plan/ViewPlanMenu', () => ({ __esModule: true, default: 
 jest.mock('@/components/ExportButtons', () => ({ __esModule: true, default: () => <div data-testid="plan-header-export" /> }));
 jest.mock('@/components/plan/PlanStyleSelector', () => ({ __esModule: true, default: () => <div data-testid="plan-style-selector" /> }));
 jest.mock('@components/ui/RichMarkdownEditor', () => ({
-  RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (text: string) => void }) => (
-    <textarea data-testid="rich-editor" value={value} onChange={(event) => onChange(event.target.value)} />
+  RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (text: string, previous: string) => void }) => (
+    <textarea data-testid="rich-editor" value={value} onChange={(event) => onChange(event.target.value, value)} />
   ),
 }));
 let timerMounts = 0;
@@ -491,55 +499,58 @@ describe('drafts across copy and editor', () => {
   });
   afterEach(() => { jest.useRealTimers(); });
 
-  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('stores the last keystrokes when the copy arrives at once (%s)', (_name, Page) => {
+  const openDevice = async () => {
+    const checkpoint = mockDurableCheckpoint();
+    const device = documentEngineHarness(checkpoint.confirmed);
+    const browser = device.createBrowser();
+    device.engine.setOwner('user-1');
+    const editor = await device.engine.openEditor(checkpoint.confirmed.resource, browser.editorId(checkpoint.confirmed.resource));
+    mockPlanEditor = editor;
+    return { device, browser, editor, resource: checkpoint.confirmed.resource };
+  };
+
+  it.each([
+    ['AI plan', AiPlanPage, false], ['hand-written plan', ManualConspectusPage, false],
+    ['AI plan in the preaching view', AiPlanPage, true], ['hand-written plan in the preaching view', ManualConspectusPage, true],
+  ] as const)('stores the last keystrokes on the device as a read-only copy takes over (%s)', async (_name, Page, preaching) => {
+    const text = 'Last editable words before the copy.';
+    const { device, browser, editor, resource } = await openDevice();
+    const started = deferred();
+    const release = deferred();
+    const realPut = device.checkpoints.put;
+    const writing = jest.spyOn(device.checkpoints, 'put').mockImplementation(async record => {
+      if (record.checkpoint.planCellDrafts?.p1?.text === text) {
+        started.resolve();
+        await release.promise;
+      }
+      return realPut(record);
+    });
     const view = renderPage(<Page />);
-    typeIntoFirstCell('Safe swap words');
-    mockReadOnly = true;
-    switchTo(view, Page);
-    expect(draftOf('p1')).toBe('Safe swap words');
-  });
+    try {
+      typeIntoFirstCell(text);
+      await act(async () => { await started.promise; });
+      if (preaching) {
+        mockSearchParams = new URLSearchParams('planView=preaching');
+        switchTo(view, Page);
+      }
+      mockReadOnly = true;
+      editor.close({ flush: false });
+      switchTo(view, Page);
+      expect(draftOf('p1')).toBe(text);
+      expect(screen.queryByTestId('rich-editor')).not.toBeInTheDocument();
 
-  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('stores the last keystrokes when the copy arrives in the preaching view (%s)', (_name, Page) => {
-    const view = renderPage(<Page />);
-    typeIntoFirstCell('Last keystrokes before preaching');
-    mockSearchParams = new URLSearchParams('planView=preaching');
-    switchTo(view, Page);
-    mockReadOnly = true;
-    switchTo(view, Page);
-    act(() => { jest.advanceTimersByTime(350); });
-    view.unmount();
-    expect(draftOf('p1')).toBe('Last keystrokes before preaching');
-  });
-
-  // AI plan only: the hand-written plan offers a confirmed draft back after any remount, at HEAD too
-  // (BUGS.md, «Подтверждённый черновик может остаться…»).
-  it.each([['AI plan', AiPlanPage]])('retires its own exact words after a durable engine handoff, even across a copy (%s)', (_name, Page) => {
-    localStorage.setItem('outbox:v1:intent', JSON.stringify({ id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1',
-      aggregate: 'plan', patch: { 'planText.p1': 'Queued words' }, baseRevision: 0, status: 'migration-required', savedAt: Date.now() }));
-    mockSermon = sermonFixture({ planText: { p1: 'Queued words' } } as Partial<Sermon>);
-    const view = renderPage(<Page />);
-    act(() => { jest.advanceTimersByTime(350); });
-    expect(draftOf('p1')).toBe('Queued words');
-
-    mockSearchParams = new URLSearchParams('planView=preaching');
-    switchTo(view, Page);
-    mockReadOnly = true;
-    switchTo(view, Page);
-    act(() => { jest.advanceTimersByTime(350); });
-    // Still queued, so still owed: a copy on screen confirms nothing.
-    expect(draftOf('p1')).toBe('Queued words');
-    localStorage.removeItem('outbox:v1:intent');
-    // Supply the public durable checkpoint, not just disappearance from a legacy queue.
-    mockDurable = true;
-    mockReadOnly = false;
-    mockSermon = sermonFixture({ planText: { p1: 'Queued words' } } as Partial<Sermon>);
-    switchTo(view, Page);
-    act(() => { jest.advanceTimersByTime(350); });
-    mockSearchParams = new URLSearchParams();
-    switchTo(view, Page);
-
-    expect(screen.queryByText('plan.draftRecoveryRestore')).toBeNull();
-    expect(draftOf('p1')).toBeUndefined();
+      await act(async () => { release.resolve(); });
+      const words = async () => (await device.checkpoints.listRecoverable('user-1', resource))
+        .map(({ record }) => record.checkpoint.planCellDrafts?.p1?.text);
+      await waitFor(async () => expect(await words()).toEqual([text]));
+      await waitFor(() => expect(draftOf('p1')).toBeUndefined());
+      expect(device.transport.send).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      writing.mockRestore();
+      view.unmount();
+      browser.dispose();
+    }
   });
 
   /** A drained legacy queue alone cannot prove acceptance of this opening's exact words. */
@@ -548,8 +559,8 @@ describe('drafts across copy and editor', () => {
       aggregate: 'plan', patch: { 'planText.p1': 'Queued words' }, baseRevision: 0, status: 'migration-required', savedAt: Date.now() }));
     mockSearchParams = new URLSearchParams('planView=preaching');
     mockSermon = sermonFixture({ planText: { p1: 'Queued words' } } as Partial<Sermon>);
+    localStorage.setItem(draftKey('user-1', 'sermon-1', 'plan:p1'), JSON.stringify({ value: 'Queued words', savedAt: Date.now() }));
     const view = renderPage(<AiPlanPage />);
-    act(() => { jest.advanceTimersByTime(350); });
     expect(draftOf('p1')).toBe('Queued words');
 
     mockReadOnly = true;
@@ -575,10 +586,9 @@ describe('drafts across copy and editor', () => {
 
 /**
  * BUG-20261003-preaching-on-copy-stores-copy-words-as-draft. A queued cell's words live in the queue;
- * the screen may hold other words for it — a copy's, or a document that never saw a write queued
- * before its collection moved to the engine. The device draft must keep the queued words.
+ * a previous app may also have kept an unsent draft. The screen preserves both exact records.
  */
-describe('a device draft of a queued cell', () => {
+describe('older queued plan cells', () => {
   const key = 'draft:v1:user-1:sermon-1:plan:p1';
   const queue = (words: string) => window.localStorage.setItem('outbox:v1:intent', JSON.stringify({
     id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1', aggregate: 'plan',
@@ -616,13 +626,14 @@ describe('a device draft of a queued cell', () => {
     expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Later unsent draft');
   });
 
-  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('stores the queued words when no draft holds the cell (%s)', (_name, Page) => {
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('keeps an older write only in its original queue when leaving (%s)', (_name, Page) => {
     queue('Queued words only');
     mockSermon = sermonFixture({ planText: { p1: 'Older server words', p2: 'Other paragraph' } } as Partial<Sermon>);
     const view = renderPage(<Page />);
     act(() => { jest.advanceTimersByTime(350); });
     view.unmount();
-    expect(findDraftCopies<string>('user-1', 'sermon-1', 'plan:p1').map(copy => copy.value)).toEqual(['Queued words only']);
+    expect(findDraftCopies<string>('user-1', 'sermon-1', 'plan:p1')).toEqual([]);
+    expect(listOutbox('user-1')).toMatchObject([{ id: 'intent', patch: { 'planText.p1': 'Queued words only' } }]);
   });
 });
 
@@ -691,7 +702,7 @@ describe('a plan screen while unsent text from last time waits for an answer', (
     expect(editableFields()).toHaveLength(0);
   });
 
-  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('allows the selected copy to be edited while another source remains intact (%s)', (_name, Page) => {
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('allows the selected copy to be edited while another source remains intact (%s)', async (_name, Page) => {
     localStorage.clear();
     const first = draftKey('user-1', 'sermon-1', 'plan:p1', 'first-opening');
     const second = draftKey('user-1', 'sermon-1', 'plan:p1', 'second-opening');
@@ -703,15 +714,15 @@ describe('a plan screen while unsent text from last time waits for an answer', (
     fireEvent.click(screen.getByText('plan.draftRecoveryRestore'));
     expect(screen.getAllByText('Selected independent words').length).toBeGreaterThan(0);
     expect(localStorage.getItem(first)).toBe(firstRaw);
-    expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual(expect.arrayContaining(['plan.save', 'plan.editMode']));
+    await waitFor(() => expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual(expect.arrayContaining(['plan.save', 'plan.editMode'])));
     const comparedCurrent = screen.getByText('plan.draftRecoveryOnServer').nextElementSibling;
     expect(comparedCurrent).toHaveTextContent('Selected independent words');
   });
 
-  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('opens for writing once the words are brought back, with them in their card (%s)', (_name, Page) => {
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('opens for writing once the words are brought back, with them in their card (%s)', async (_name, Page) => {
     renderPage(<Page />);
     fireEvent.click(screen.getByText('plan.draftRecoveryRestore'));
-    expect(screen.queryByText('plan.draftRecoveryTitle')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('plan.draftRecoveryTitle')).toBeNull());
     // The words brought back stand in their card, the offer gone.
     expect(screen.getAllByText('Unsent words from before').length).toBeGreaterThan(0);
     expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual(expect.arrayContaining(['plan.save', 'plan.editMode']));

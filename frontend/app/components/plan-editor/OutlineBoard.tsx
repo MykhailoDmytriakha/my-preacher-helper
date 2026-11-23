@@ -26,7 +26,6 @@ import {
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
 import { findPointSection } from '@/utils/outlineDnd';
-import { sermonNoteChanged, withOutlineNoteText, type OutlineNoteOpening, type OutlineNoteTarget, type OutlineTitleOpening } from '@/utils/sermonNoteText';
 import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -37,13 +36,14 @@ import { useTranslation } from '@locales/useTranslation';
 import { DraggableCard, DropZone } from './BoardDragPrimitives';
 import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';
 import { indexScratchNotes } from './outlineBoardNotes';
-import { useOutlineTitleDraft } from './OutlineTitleDrafts';
+import { useNewOutlineTitleDraft, useOutlineTitleDraft, type OutlineCreation } from './OutlineTitleDrafts';
 import planActions from './PlanRowActions.module.css';
 import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
 import { useOutlineBoardDrag } from './useOutlineBoardDrag';
 
 import type { ScratchLayerProps } from './outlineBoardTypes';
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from '@/models/models';
+import type { CaptureOutlineNote, OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 const ACTIVE_DROP_INDICATOR_CLASS = 'bg-indigo-500';
 const INACTIVE_DROP_INDICATOR_CLASS = 'bg-transparent';
@@ -105,9 +105,9 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
 
 interface OutlineBoardProps {
   value: SermonOutline;
-  onChange: (next: SermonOutline) => void;
-  onTitleChange?: (next: SermonOutline, opening: OutlineTitleOpening) => void;
-  onNoteChange?: (next: SermonOutline, opening: OutlineNoteOpening) => void | Promise<void>;
+  onChange: (next: SermonOutline) => OutlineCreation;
+  onTitleChange?: (next: SermonOutline, opening: OutlineTitleOpening) => OutlineCreation;
+  captureNoteEdit?: CaptureOutlineNote;
   captureTitleEdit?: (opening: OutlineTitleOpening) => (title: string) => Promise<void>;
   onPointMove?: (next: SermonOutline, pointId: string) => void;
   onSubPointPlacement?: (next: SermonOutline, subPointId: string) => void;
@@ -153,7 +153,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onChange,
   onPointMove,
   onSubPointPlacement,
-  onNoteChange,
+  captureNoteEdit,
   onTitleChange,
   captureTitleEdit,
   isReadOnly = false,
@@ -177,12 +177,6 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   // (BUG-20261006-library-screen-reader-words-english): this board's targets carry no list position.
   const outlineRef = useRef(value);
   outlineRef.current = value;
-  const noteChangeRef = useRef(onNoteChange);
-  noteChangeRef.current = onNoteChange;
-  const captureNoteSave = (target: OutlineNoteTarget, text: string | undefined) => () => (next: string | undefined) => {
-    const outline = withOutlineNoteText(outlineRef.current, target, next);
-    return outline && noteChangeRef.current ? noteChangeRef.current(outline, { target, text }) : Promise.reject(sermonNoteChanged());
-  };
   const placeOf = useCallback((over: Over, active: Active) => {
     const place = describeDropPlace(String(over.id), outlineRef.current, parseDragId(String(active.id)) ?? undefined);
     if (!place) return undefined;
@@ -242,6 +236,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const subPointDraft = useOutlineTitleDraft(!editingDirectly && editingSubPointId && SECTIONS.some(section =>
     points[section.key].some(point => !collapsedPoints[point.id] && point.subPoints?.some(sub => sub.id === editingSubPointId)))
     ? editingSubPointId : null);
+  const newPointDraft = useNewOutlineTitleDraft('point', !isReadOnly && addingToSection !== null);
+  const newSubPointDraft = useNewOutlineTitleDraft('subpoint', !isReadOnly && Boolean(addingSubPointTo && !collapsedPoints[addingSubPointTo]
+    && SECTIONS.some(section => points[section.key].some(point => point.id === addingSubPointTo))));
   const titleDrafts = useRef({ point: editingText, subpoint: editingSubPointText });
   titleDrafts.current = { point: editingText, subpoint: editingSubPointText };
   const submitCapturedTitle = (kind: 'point' | 'subpoint', title: string, close: () => void) => {
@@ -262,8 +259,8 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   const emit = (next: Record<SectionKey, OutlinePoint[]>, opening?: OutlineTitleOpening) => {
     const outline = toOutline(next);
-    if (opening && onTitleChange) onTitleChange(outline, opening);
-    else onChange(outline);
+    if (opening && onTitleChange) return onTitleChange(outline, opening);
+    return onChange(outline);
   };
 
   const addPoint = (section: SectionKey) => {
@@ -274,9 +271,16 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       setNewPointText('');
       return;
     }
-    emit({ ...points, [section]: [...points[section], { id: newClientId(), text }] });
+    const next = { ...points, [section]: [...points[section], { id: newPointDraft.id() ?? newClientId(), text }] };
+    newPointDraft.handoff(emit(next), text);
     setNewPointText('');
     setAddingToSection(null);
+  };
+
+  const cancelNewPoint = () => {
+    newPointDraft.cancel();
+    setAddingToSection(null);
+    setNewPointText('');
   };
 
   const startEditingPoint = (point: OutlinePoint) => {
@@ -308,7 +312,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     }, {} as Record<SectionKey, OutlinePoint[]>);
     setEditingPointId(null);
     setEditingText('');
-    emit(next, pointDraft.opening());
+    pointDraft.handoff(emit(next, pointDraft.opening()));
   };
 
   // Two-step delete via a custom in-board confirm overlay (no window.confirm — it
@@ -337,23 +341,23 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       acc[s.key] = points[s.key].map((p) => (p.id === outlinePointId ? fn(p) : p));
       return acc;
     }, {} as Record<SectionKey, OutlinePoint[]>);
-    emit(next, opening);
+    return emit(next, opening);
   };
 
   const addSubPoint = (outlinePointId: string, text: string) => {
     const value2 = normalizeCapitalizedTitle(text);
     if (isReadOnly || !value2) return;
-    mutatePoint(outlinePointId, (p) => {
+    return mutatePoint(outlinePointId, (p) => {
       const existing = p.subPoints ?? [];
       const maxPos = existing.length > 0 ? Math.max(...existing.map((sp) => sp.position)) : 0;
-      return { ...p, subPoints: [...existing, { id: newClientId(), text: value2, position: maxPos + 1000 }] };
+      return { ...p, subPoints: [...existing, { id: newSubPointDraft.id() ?? newClientId(), text: value2, position: maxPos + 1000 }] };
     });
   };
 
   const editSubPoint = (outlinePointId: string, subPointId: string, newText: string, opening?: OutlineTitleOpening) => {
     const value2 = normalizeCapitalizedTitle(newText);
     if (isReadOnly || !value2) return;
-    mutatePoint(outlinePointId, (p) => ({
+    return mutatePoint(outlinePointId, (p) => ({
       ...p,
       subPoints: (p.subPoints ?? []).map((sp) => (sp.id === subPointId ? { ...sp, text: value2 } : sp)),
     }), opening);
@@ -376,6 +380,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         { id: newClientId(), text: '', position: Math.max(0, ...(point.subPoints ?? []).map(sub => sub.position)) + 1000 }] }));
       return;
     }
+    newSubPointDraft.open();
     setAddingSubPointTo(outlinePointId);
     setNewSubPointText('');
     setEditingSubPointId(null);
@@ -385,9 +390,13 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const saveNewSubPoint = (outlinePointId: string) => {
     if (isReadOnly) return;
     const value2 = normalizeCapitalizedTitle(newSubPointText);
-    if (value2) {
-      addSubPoint(outlinePointId, value2);
-    }
+    if (value2) newSubPointDraft.handoff(addSubPoint(outlinePointId, value2), value2);
+    setAddingSubPointTo(null);
+    setNewSubPointText('');
+  };
+
+  const cancelNewSubPoint = () => {
+    newSubPointDraft.cancel();
     setAddingSubPointTo(null);
     setNewSubPointText('');
   };
@@ -412,7 +421,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         setEditingSubPointId(null);
         setEditingSubPointText('');
       })) return;
-      editSubPoint(outlinePointId, subPointId, value2, subPointDraft.opening());
+      subPointDraft.handoff(editSubPoint(outlinePointId, subPointId, value2, subPointDraft.opening()));
     }
     setEditingSubPointId(null);
     setEditingSubPointText('');
@@ -570,7 +579,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     <NodeSketches node={{ kind: 'point', id: point.id }} isReadOnly={isReadOnly} indentClass="ml-6"
       addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
       outlineNote={{ text: point.note, onChange: note => mutatePoint(point.id, current => ({ ...current, note })),
-        captureSave: onNoteChange && captureNoteSave({ kind: 'point', id: point.id }, point.note) }} />
+        captureSave: captureNoteEdit && (() => captureNoteEdit({ kind: 'point', id: point.id }, point.note)) }} />
   );
 
   const renderSubPointControls = (point: OutlinePoint, sp: SubPoint) => {
@@ -732,7 +741,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
                               outlineNote={{
                                 text: sp.note,
-                                captureSave: onNoteChange && captureNoteSave({ kind: 'subpoint', id: sp.id }, sp.note),
+                                captureSave: captureNoteEdit && (() => captureNoteEdit({ kind: 'subpoint', id: sp.id }, sp.note)),
                                 onChange: (n) => mutatePoint(point.id, (p) => ({
                                   ...p,
                                   subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
@@ -793,13 +802,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                     <input
                       type="text"
                       value={newSubPointText}
-                      onChange={(e) => setNewSubPointText(capitalizeFirstLetter(e.target.value))}
+                      onChange={event => {
+                        newSubPointDraft.change(event.target.value);
+                        setNewSubPointText(capitalizeFirstLetter(event.target.value));
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') saveNewSubPoint(point.id);
                         if (e.key === 'Escape') {
                           e.stopPropagation(); // answered here: the window around the board stays open
-                          setAddingSubPointTo(null);
-                          setNewSubPointText('');
+                          cancelNewSubPoint();
                         }
                       }}
                       placeholder={t('structure.subPointPlaceholder', { defaultValue: 'Sub-point name...' })}
@@ -814,10 +825,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                       <CheckIcon className="h-3.5 w-3.5" />
                     </button>
                     <button type="button"
-                      onClick={() => {
-                        setAddingSubPointTo(null);
-                        setNewSubPointText('');
-                      }}
+                      onClick={cancelNewSubPoint}
                       className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
                       aria-label={t(CANCEL_KEY)}
                     >
@@ -1056,13 +1064,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                 <input
                   type="text"
                   value={newPointText}
-                  onChange={(e) => setNewPointText(capitalizeFirstLetter(e.target.value))}
+                  onChange={event => {
+                    newPointDraft.change(event.target.value);
+                    setNewPointText(capitalizeFirstLetter(event.target.value));
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addPoint(section);
                     if (e.key === 'Escape') {
                       e.stopPropagation(); // answered here: the window around the board stays open
-                      setAddingToSection(null);
-                      setNewPointText('');
+                      cancelNewPoint();
                     }
                   }}
                   placeholder={t('structure.addPointPlaceholder')}
@@ -1074,10 +1084,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                 </button>
                 <button type="button"
                   aria-label={t(CANCEL_KEY)}
-                  onClick={() => {
-                    setAddingToSection(null);
-                    setNewPointText('');
-                  }}
+                  onClick={cancelNewPoint}
                   className="p-1.5 text-red-600 hover:text-red-800"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -1090,7 +1097,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                     emit({ ...points, [section]: [...points[section], { id: newClientId(), text: '' }] });
                     return;
                   }
+                  newPointDraft.open();
                   setAddingToSection(section);
+                  setNewPointText('');
                   setEditingPointId(null);
                 }}
                 className="flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:text-indigo-600 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"

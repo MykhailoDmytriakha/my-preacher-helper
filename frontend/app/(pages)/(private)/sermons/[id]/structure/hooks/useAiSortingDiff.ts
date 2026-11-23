@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { toast } from 'sonner';
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
-import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
+import { Item, SermonPoint, Sermon, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import { isUsageCapReachedError } from "@/services/usageLimits";
@@ -36,8 +36,6 @@ interface UseAiSortingDiffProps {
   projectBoard?: (sermon: Sermon) => Record<string, Item[]>;
   setSermon?: React.Dispatch<React.SetStateAction<Sermon | null>>;
   sermonId: string | null;
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
-  debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
 }
 
 // Helper function to collect thought updates from highlighted items

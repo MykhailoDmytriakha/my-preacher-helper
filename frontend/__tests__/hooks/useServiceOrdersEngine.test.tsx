@@ -8,7 +8,6 @@ import type { ResourceSnapshot } from '@/data-engine/types';
 import { collectionRecordPresence } from '@/data-engine/recordPresence';
 import type { CollectionState } from '@/data-engine/collections';
 import { useServiceOrdersEngine } from '@/hooks/useServiceOrdersEngine';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 
 import type { ServiceOrderStep } from '@/models/models';
@@ -76,28 +75,7 @@ describe('orders of service on the engine', () => {
     expect(store.get('o1')).toBe(before);
   });
 
-  it('refuses a rename when the title changed elsewhere since editing began, then accepts it against the title now shown', async () => {
-    store.set('o1', order('o1', { title: 'Funeral', rev: { meta: 3 } }));
-    const { result } = render();
-    act(() => { result.current.openedWith('o1', { title: 'Funeral', revision: 3 }, 'sitting'); });
-    store.set('o1', order('o1', { title: 'Burial service', rev: { meta: 4 } }));
-    let error: unknown;
-    await act(async () => { error = await result.current.renameOrder('o1', 'Funeral service', 'sitting').catch(e => e); });
-    expect(isStaleWriteError(error)).toBe(true);
-    expect((error as { serverValues?: Row }).serverValues).toEqual({ title: 'Burial service' });
-    expect(store.get('o1')!.title).toBe('Burial service');
-    let revision: number | null = null;
-    await act(async () => { revision = await result.current.renameOrder('o1', 'Funeral service', 'sitting'); });
-    expect(store.get('o1')!.title).toBe('Funeral service');
-    // The stored counter belongs to the engine: the draft does not touch it.
-    expect(store.get('o1')!.rev).toEqual({ meta: 4 });
-    expect(revision).toBe(5);
-  });
-
-  it.each([
-    { clock: 'available', time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
-    { clock: 'unavailable', time: undefined },
-  ])('keeps the queued opening title when the action clock is $clock', async ({ time }) => {
+  it('identifies an opening on the displayed queued title', () => {
     const baseline: ResourceSnapshot = {
       resource: { collection: 'serviceOrders', id: 'o1' },
       value: { userId: 'u', title: 'Original', steps: [], rank: 1000, createdAt: 'c', updatedAt: 'u' },
@@ -114,19 +92,11 @@ describe('orders of service on the engine', () => {
     const state: CollectionState = { snapshots, documents: collectionDocumentViews('u', 'serviceOrders', snapshots, [pending]),
       complete: true, freshness: 'cache', checking: false, version: 1, error: null };
     store.set('o1', value);
-    const submit = jest.fn(async (_resource: unknown, action: { update: (current: Row) => Row }) => {
-      store.set('o1', action.update(value));
-      return { requestId: 'second' };
-    });
-    jest.mocked(useDocumentActions).mockReturnValue({ ...actions, submit } as never);
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
     jest.mocked(useDataCollection).mockReturnValue({ state, loading: false, error: null } as never);
     const { result } = renderHook(() => useServiceOrdersEngine('u', true));
-    act(() => result.current.openedWith('o1', { title: localTitle, revision: 0 }, 'new-sitting'));
-    await act(async () => { await result.current.renameOrder('o1', 'Second local title', 'new-sitting', time); });
-    expect(submit).toHaveBeenCalledWith(baseline.resource, expect.objectContaining({ kind: 'update' }), {
-      action: { kind: 'service-order-title', title: {
-        seen: { title: localTitle, generation: 'g', revision: 1, requestId: pending.id }, time: time ?? null,
-      } },
+    expect(result.current.shownTitle('o1', { title: localTitle, revision: 0 })).toEqual({
+      title: localTitle, generation: 'g', revision: 1, requestId: pending.id,
     });
   });
 

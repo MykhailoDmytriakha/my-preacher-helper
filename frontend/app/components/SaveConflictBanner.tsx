@@ -29,6 +29,7 @@ export interface SaveConflictBannerProps {
   pendingText?: string;
   /** Context-specific words when the compared versions are already visible. */
   description?: string;
+  heading?: string;
   keepMineLabel?: string;
   takeTheirsLabel?: string;
   /**
@@ -51,7 +52,7 @@ export interface SaveConflictBannerProps {
 export function SaveConflictBanner({
   entityKey = 'entityRecord',
   pendingText,
-  description, keepMineLabel, takeTheirsLabel,
+  description, heading, keepMineLabel, takeTheirsLabel,
   onKeepMine,
   keepMineDisabled = false,
   onTakeTheirs,
@@ -70,7 +71,7 @@ export function SaveConflictBanner({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="font-medium text-rose-900 dark:text-rose-200">
-            {t('freshness.conflictTitle')}
+            {heading ?? t('freshness.conflictTitle')}
           </p>
           <p className="mt-0.5 text-rose-800/80 dark:text-rose-200/70">
             {description ?? t('freshness.conflictDescription', { entity })}

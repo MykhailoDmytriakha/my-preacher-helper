@@ -15,12 +15,20 @@ import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { generatePlanPointContent } from "./planApi";
 import { getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
-import { beginPlanPointResult, dismissPlanPointResult, listPlanPointResults, planPointResultKey, readPlanPointResult, retainPlanPointResult, watchPlanPointResults, type PlanPointResult } from './planPointResult.client';
+import { beginPlanPointResult, dismissPlanPointResult, isPlanPointResultStored, listPlanPointResults, planPointResultKey, readPlanPointResult, retainPlanPointResult, watchPlanPointResults, type PlanPointResult } from './planPointResult.client';
 import { usePlanWriter } from "./planWriter";
 
 import type { PlanOutlineLookup } from "./planOutlineLookup";
 import type { PlanTextBaseline } from "./planTextBaseline";
+import type { PlanWriter } from "./planWriter";
 import type { SermonSectionKey } from "./types";
+
+function stagePointResult(writer: PlanWriter, key: string, id: string, result: Extract<PlanPointResult, { kind: 'ready' }>,
+  opening: string): Promise<void> {
+  if (!writer.stagePlanText) return Promise.reject(new Error('Plan draft storage is unavailable'));
+  return writer.stagePlanText({ [id]: result.content }, { [id]: opening },
+    (nodeId, text) => nodeId === id && text === result.content && isPlanPointResultStored(key, result));
+}
 
 interface UsePlanActionsParams {
   sermon: Sermon | null;
@@ -35,7 +43,6 @@ interface UsePlanActionsParams {
     content: string;
     section: SermonSectionKey;
   }) => void;
-  retainGeneratedDraft?: (pointId: string, content: string) => boolean;
   onSaved: (params: {
     outlinePointId: string;
     /** Every cell this save wrote, so the screen can clear "modified" on all of them. */
@@ -63,7 +70,6 @@ export default function usePlanActions({
   t,
   setGeneratingIds,
   onGenerated,
-  retainGeneratedDraft,
   onSaved,
   onAiSuccess,
   aiBlocked = false,
@@ -155,25 +161,31 @@ export default function usePlanActions({
       const result = { ...attempt, kind: 'ready' as const, content };
       const retainedAttempt = readPlanPointResult(key);
       if (retainedAttempt?.id !== attempt.id || retainedAttempt.kind === 'ready') return;
-      if (retainedAttempt.kind === 'failed') {
-        retainPlanPointResult(key, result, attempt);
-        return;
-      }
+      // A completed generation is available offline even before the editor accepts it.
+      retainPlanPointResult(key, result, attempt);
+      if (retainedAttempt.kind === 'failed') return;
 
       const current = currentGeneration.current;
       const currentSection = getPointSectionFromLookup(current.outlineLookup, outlinePointId);
       if (!mounted.current || current.scope !== scope || !currentSection || (generatedContentRef.current[outlinePointId] ?? "") !== openingText
         || current.cellAuthoringVersion?.(outlinePointId) !== openingAuthoring) {
-        retainPlanPointResult(key, result, attempt);
         if (!mounted.current || current.scope !== scope) return;
         toast.info(t("plan.generationTextChanged"));
         await onAiSuccess?.();
         return;
       }
-      current.onGenerated({ outlinePointId, content, section: currentSection });
-      if (!retainGeneratedDraft || retainGeneratedDraft(outlinePointId, content)) {
-        dismissPlanPointResult(key, attempt);
-      } else retainPlanPointResult(key, result, attempt);
+      try {
+        await stagePointResult(planWriter, key, outlinePointId, result, openingText);
+      } catch (error) {
+        if (mounted.current && currentGeneration.current.scope === scope) toast.info(t(
+          failureCode(error) === 'decision-changed' ? 'plan.generationTextChanged' : 'draftStorage.title'));
+        return;
+      }
+      if (mounted.current && currentGeneration.current.scope === scope
+        && currentGeneration.current.cellAuthoringVersion?.(outlinePointId) === openingAuthoring) {
+        currentGeneration.current.onGenerated({ outlinePointId, content, section: currentSection });
+      }
+      dismissPlanPointResult(key, result);
       await onAiSuccess?.();
 
       if (mounted.current && currentGeneration.current.scope === scope) toast.success(t("plan.contentGenerated"));
@@ -194,7 +206,7 @@ export default function usePlanActions({
         });
       }
     }
-  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, retainGeneratedDraft, scope, sermon, setGeneratingIds, t]);
+  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, planWriter, scope, sermon, setGeneratingIds, t]);
 
   const recoveredResults = results?.scope === scope ? results.points : {};
   const recoverPointResult = async (pointId: string, resume = false) => {
@@ -226,18 +238,30 @@ export default function usePlanActions({
       }
     }
   };
-  const applyPointResult = (pointId: string, result: PlanPointResult) => {
-    if (!ownerId || !sermonId || result.kind !== 'ready') return;
+  const applyPointResult = async (pointId: string, result: PlanPointResult) => {
+    if (!ownerId || !sermonId || result.kind !== 'ready' || requests.current.get(pointId) === scope) return;
     const section = getPointSectionFromLookup(currentGeneration.current.outlineLookup, pointId);
     if (!section) return;
     const key = planPointResultKey(ownerId, sermonId, pointId);
     if (readPlanPointResult(key)?.id !== result.id) return;
-    if (retainGeneratedDraft && !retainGeneratedDraft(pointId, result.content)) return;
-    currentGeneration.current.onGenerated({ outlinePointId: pointId, content: result.content, section });
+    const authoring = currentGeneration.current.cellAuthoringVersion?.(pointId);
+    try {
+      await stagePointResult(planWriter, key, pointId, result, generatedContentRef.current[pointId] ?? '');
+    } catch (error) {
+      if (mounted.current && currentGeneration.current.scope === scope) toast.info(t(
+        failureCode(error) === 'decision-changed' ? 'plan.generationTextChanged' : 'draftStorage.title'));
+      return;
+    }
+    if (mounted.current && currentGeneration.current.scope === scope
+      && currentGeneration.current.cellAuthoringVersion?.(pointId) === authoring) {
+      currentGeneration.current.onGenerated({ outlinePointId: pointId, content: result.content, section });
+    }
     dismissPlanPointResult(key, result);
   };
   const discardPointResult = (pointId: string, result: PlanPointResult) => {
-    if (ownerId && sermonId && result.kind !== 'pending') dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+    if (ownerId && sermonId && result.kind !== 'pending' && requests.current.get(pointId) !== scope) {
+      dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+    }
   };
 
   /**

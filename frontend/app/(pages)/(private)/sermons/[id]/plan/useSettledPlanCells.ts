@@ -17,7 +17,8 @@ export function useSettledPlanCells(state: DurablePlanState | null | undefined, 
     if (!removed.length) return;
     const live = liveNodeIds(document.outline);
     const saved = readPlanText(document);
-    const settled = removed.filter(id => live.has(id)).map(id => [id, saved[id] ?? '']);
-    if (settled.length) show(Object.fromEntries(settled));
+    // Once the engine retires a removed card's draft, the screen's mirror must
+    // stop presenting a second copy. Recovery has its own durable record.
+    show(Object.fromEntries(removed.map(id => [id, live.has(id) ? saved[id] ?? '' : ''])));
   }, [document, drafts, show]);
 }

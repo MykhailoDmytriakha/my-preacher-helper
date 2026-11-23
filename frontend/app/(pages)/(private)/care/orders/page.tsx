@@ -43,6 +43,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
+import { ServiceOrderDraftLinks } from '@/components/care/ServiceOrderDraftLinks';
 import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
@@ -396,6 +397,7 @@ export default function ServiceOrdersPage() {
         </div>
       )}
 
+      <ServiceOrderDraftLinks visibleIds={orders.map(order => order.id)} />
       {!isEmpty && failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-orders-failure" />}
 
       {!isEmpty && (

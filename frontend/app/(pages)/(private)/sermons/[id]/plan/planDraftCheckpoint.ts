@@ -5,6 +5,7 @@ export interface DurablePlanState {
     confirmed: { resource: { collection: string; id: string } };
     draft: Record<string, unknown> | null;
     planCellDrafts?: Record<string, { text: string }>;
+    pending?: Record<string, { generation: number; value: Record<string, unknown> | null }>;
   };
 }
 
@@ -12,12 +13,11 @@ export function showPlanCellDrafts(buffered: Record<string, string>, drafts: Dur
   return drafts ? { ...buffered, ...Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, draft.text])) } : buffered;
 }
 
-export function durablePlanCells(state: DurablePlanState | null | undefined, owner: string | null | undefined, documentId: string | null | undefined): Record<string, string> | null {
-  const resource = state?.checkpoint.confirmed.resource;
-  const draft = state?.checkpoint.draft;
-  if (!state?.durable || !owner || !documentId || resource?.collection !== 'sermons'
-    || resource.id !== documentId || draft?.userId !== owner) return null;
-  const text = draft.planText;
-  if (!text || typeof text !== 'object' || Array.isArray(text)) return null;
-  return Object.fromEntries(Object.entries(text).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+/** One selected Save in the engine covers its captured words, including after a recovery. */
+export function showDirtyPlanCells(buffered: Record<string, boolean>, checkpoint: DurablePlanState['checkpoint'] | undefined): Record<string, boolean> {
+  if (!checkpoint?.planCellDrafts) return buffered;
+  const latest = Object.values(checkpoint.pending ?? {}).reduce<{ generation: number; value: Record<string, unknown> | null } | undefined>(
+    (prior, intent) => !prior || intent.generation > prior.generation ? intent : prior, undefined);
+  const submitted = latest?.value?.planText as Record<string, unknown> | undefined;
+  return { ...buffered, ...Object.fromEntries(Object.entries(checkpoint.planCellDrafts).map(([id, cell]) => [id, submitted?.[id] !== cell.text])) };
 }

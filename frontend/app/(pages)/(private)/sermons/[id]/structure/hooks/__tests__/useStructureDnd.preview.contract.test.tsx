@@ -38,7 +38,7 @@ function setup() {
   return renderHook(() => {
     const [containers, setContainers] = useState<Record<string, Item[]>>(initial);
     const containersRef = useRef(containers);
-    const dnd = useStructureDnd({ containers, setContainers, containersRef, sermon, setSermon: jest.fn(), debouncedSaveThought: jest.fn() });
+    const dnd = useStructureDnd({ containers, setContainers, containersRef, sermon, setSermon: jest.fn() });
     return { containers, containersRef, dnd };
   });
 }

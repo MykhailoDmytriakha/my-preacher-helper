@@ -2,7 +2,7 @@ import type { ResourceRef } from './types';
 
 export interface LocalWriteAddress {
   owner: string;
-  kind: 'checkpoint' | 'manual' | 'membership' | 'closing-save' | 'editor-retirement';
+  kind: 'checkpoint' | 'manual' | 'membership' | 'closing-save' | 'editor-retirement' | 'outline-title-draft';
   id: string;
   resource?: ResourceRef;
 }

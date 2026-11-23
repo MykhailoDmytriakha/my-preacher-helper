@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 import type { Sermon, SermonOutline, Thought } from '@/models/models';
 
 export type PlanMode = NonNullable<Sermon['planMode']>;
+export type IsPlanTextSourceStored = (nodeId: string, text: string) => boolean;
 export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<string, string | null>; revisionsByNodeId?: Record<string, number | null>; orphaned?: true }
 export interface SubpointTextTransfer {
   parentText: string;
@@ -21,8 +22,8 @@ export interface SubpointTextTransfer {
 export interface PlanWriter {
   savePlanText(sermonId: string, changedText: Record<string, string>, removedNodeIds?: string[], context?: PlanTextContext): Promise<void>;
   discardPlanText?(nodeIds: readonly string[]): Promise<void>;
-  restorePlanText?(cells: Record<string, string>): Promise<void>;
-  applyPlanProposal?(cells: Record<string, string>, before: Record<string, string>): Promise<boolean> | null;
+  stagePlanText?(cells: Record<string, string>, before: Record<string, string>, isSourceStored?: IsPlanTextSourceStored): Promise<void>;
+  applyPlanProposal?(cells: Record<string, string>, before: Record<string, string>, isSourceStored?: IsPlanTextSourceStored): Promise<boolean> | null;
   savePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
   preparePlanMode(sermonId: string, mode: PlanMode): () => Promise<void>;
   initializePlanMode(sermonId: string, mode: PlanMode): Promise<void>;

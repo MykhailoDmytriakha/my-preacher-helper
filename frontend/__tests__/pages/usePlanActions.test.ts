@@ -28,6 +28,7 @@ describe("usePlanActions", () => {
   const mockSavePlanText = jest.fn();
   const mockPlanWriter: PlanWriter = {
     savePlanText: mockSavePlanText,
+    stagePlanText: jest.fn().mockResolvedValue(undefined),
     savePlanMode: jest.fn().mockResolvedValue(undefined),
     initializePlanMode: jest.fn().mockResolvedValue(undefined),
     preparePlanMode: jest.fn(() => async () => undefined),
@@ -236,7 +237,7 @@ describe("usePlanActions", () => {
     await act(async () => { finish({ content: "Answer for the removed point" }); await request; });
     const proposal = reopened.result.current.recoveredResults.p1;
     expect(proposal).toMatchObject({ kind: "ready", content: "Answer for the removed point" });
-    act(() => reopened.result.current.applyPointResult("p1", proposal));
+    await act(async () => { await reopened.result.current.applyPointResult("p1", proposal); });
     expect(onGenerated).not.toHaveBeenCalled();
   });
 

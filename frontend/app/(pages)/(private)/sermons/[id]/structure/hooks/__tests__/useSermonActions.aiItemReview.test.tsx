@@ -4,7 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 import { StructureWriterContext } from '@/components/sermon/structureWriter';
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
 import type { DocumentData } from '@/data-engine/types';
-import type { Item, Sermon, ThoughtsBySection, Thought } from '@/models/models';
+import type { Item, Sermon, ThoughtsBySection } from '@/models/models';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
 import { useSermonActions } from '../useSermonActions';
@@ -34,7 +34,6 @@ const previewItems: Item[] = reversedIds.map(id => ({
 /** Exercises the real action hook and engine writer over a local document snapshot. */
 function setup() {
   let stored = JSON.parse(JSON.stringify(initial)) as unknown as DocumentData;
-  const writes: Promise<unknown>[] = [];
   const writer = createEngineStructureWriter({
     update: async updater => { stored = updater(stored)!; },
   }, 'owner');
@@ -44,21 +43,12 @@ function setup() {
       introduction: [], main: previewItems, conclusion: [], ambiguous: [],
     });
     const containersRef = useRef(containers);
-    const debouncedSaveThought = (sermonId: string, thought: Thought, base: Thought | null) => {
-      writes.push(writer.updateThought(sermonId, thought, base));
-    };
-    const debouncedSaveStructure = (...args: Parameters<typeof writer.updateStructure>) => {
-      writes.push(writer.updateStructure(...args));
-    };
     const actions = useSermonActions({
       sermon,
       setSermon,
       containers,
       setContainers,
       containersRef,
-      allowedTags: [],
-      debouncedSaveThought,
-      debouncedSaveStructure,
     });
     return { ...actions, containers };
   }, {
@@ -66,24 +56,10 @@ function setup() {
   });
 
   const saved = () => stored as unknown as Sermon;
-  const settleWrites = async () => { await Promise.all(writes.splice(0)); };
-  return { ...hook, saved, settleWrites };
+  return { ...hook, saved };
 }
 
 describe('useSermonActions while an AI order is awaiting review', () => {
-  it('creates one thought without saving the unreviewed order of existing thoughts', async () => {
-    const hook = setup();
-    act(() => hook.result.current.handleAddThoughtToSection('main', 'point'));
-    let submission!: WriteOperation;
-    act(() => { submission = hook.result.current.handleSaveEdit('New thought', [], 'point'); });
-    await act(async () => { await awaitWriteOperation(submission, () => undefined); });
-
-    const saved = hook.saved();
-    const created = saved.thoughts.find(thought => thought.text === 'New thought');
-    expect(created).toBeDefined();
-    expect(saved.structure?.main).toEqual([...originalIds, created!.id]);
-  });
-
   it('deletes one thought without saving the unreviewed order of the remaining thoughts', async () => {
     const hook = setup();
     let submission!: WriteOperation;
@@ -95,8 +71,9 @@ describe('useSermonActions while an AI order is awaiting review', () => {
 
   it('moves one thought to ambiguous without saving the unreviewed order of the remaining thoughts', async () => {
     const hook = setup();
-    act(() => { hook.result.current.handleMoveToAmbiguous('a', 'main'); });
-    await act(async () => { await hook.settleWrites(); });
+    let submission!: WriteOperation;
+    act(() => { submission = hook.result.current.handleMoveToAmbiguous('a', 'main'); });
+    await act(async () => { await awaitWriteOperation(submission, () => undefined); });
 
     expect(hook.saved().structure?.main).toEqual(['b', 'c', 'd']);
     expect(hook.saved().structure?.ambiguous).toEqual(['a']);

@@ -16,6 +16,7 @@ import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } fr
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
+import { serviceOrderInputSchema } from './serviceOrderInputCodec';
 import { DataSession } from './session';
 import { json, serviceOrderPlacementComparison, snapshotSchema } from './transport.client';
 
@@ -134,6 +135,7 @@ const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
   autoSaveOnResume: z.boolean().optional(),
+  planCellAlternative: z.literal(true).optional(),
   recoveryVersion: z.string().min(1).optional(),
   retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
@@ -152,10 +154,11 @@ const recordSchema = z.object({
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
-    planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string() }).and(z.union([
+    planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string(), unverified: z.literal(true).optional() }).and(z.union([
       z.object({ generation: id, observedRevision: observedRevision.positive() }),
       z.object({ generation: z.null(), observedRevision: z.null(), legacyBirth: z.string().optional() }),
     ]))).optional(),
+    serviceOrderInputs: z.record(z.string(), serviceOrderInputSchema).optional(),
     unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
     accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
@@ -285,6 +288,8 @@ const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
   councilDateDraft: draftWithoutUnreadableClock,
   councilLifecycleDraft: draftWithoutUnreadableClock,
   exegeticalPointDrafts: value => Array.isArray(value) ? value.map(withoutUnreadableClock) : value,
+  serviceOrderInputs: value => isFields(value)
+    ? Object.fromEntries(Object.entries(value).map(([key, input]) => [key, withoutUnreadableClock(input)])) : value,
 };
 
 /** Keep the words and core fields even when an optional observation cannot be read. */
@@ -420,6 +425,10 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
     || (record.checkpoint.remoteCandidate && !sameResource(ref, record.checkpoint.remoteCandidate.resource))) throw new Error('Checkpoint identity mismatch');
   if (record.retainedManualChoice?.commentText && ref.collection !== 'studyNotes') throw new Error('Comment text checkpoint identity mismatch');
+  if (record.checkpoint.serviceOrderInputs && ref.collection !== 'serviceOrders') throw new Error('Service input checkpoint identity mismatch');
+  if (record.planCellAlternative && (ref.collection !== 'sermons' || record.autoSaveOnResume !== false || record.prepared !== null
+    || record.unfinalized.length || Object.keys(record.checkpoint.pending).length
+    || Object.keys(record.checkpoint.planCellDrafts ?? {}).length !== 1)) throw new Error('Plan cell alternative identity mismatch');
   const note = record.retainedManualChoice?.sermonNoteText;
   if (note && (ref.collection !== 'sermons' || note.sermonId !== ref.id)) throw new Error('Sermon note checkpoint identity mismatch');
   const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];
@@ -470,7 +479,8 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {
-  return record.checkpoint.dirty || record.prepared !== null || Object.keys(record.checkpoint.pending).length > 0 || record.unfinalized.length > 0;
+  return record.checkpoint.dirty || Object.values(record.checkpoint.serviceOrderInputs ?? {}).some(input => input.retainedOnly)
+    || record.prepared !== null || Object.keys(record.checkpoint.pending).length > 0 || record.unfinalized.length > 0;
 }
 
 /** A submitted projection is distinct from a checkpoint that also contains private work. */
@@ -552,7 +562,7 @@ export function unreadableCheckpointDraft(value: unknown, owner: string, editorI
 }
 
 function checkpointForkRecord(original: EditorRecord, sourceId: string, editorId: string, version: string | null): EditorRecord {
-  return clone({ ...original, editorId, recoveryVersion: undefined, retainedManualChoice: undefined,
+  return clone({ ...original, editorId, recoveryVersion: undefined, retainedManualChoice: undefined, planCellAlternative: undefined,
     recoverySources: recoverySources(original.recoverySources, sourceId),
     recoveryOrigins: version ? recoveryOrigins(original.recoveryOrigins, { id: sourceId, version }) : undefined });
 }

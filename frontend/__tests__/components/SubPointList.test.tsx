@@ -242,7 +242,7 @@ describe('SubPointList', () => {
 
     fireEvent.click(screen.getByLabelText('common.save'));
 
-    expect(handleAdd).toHaveBeenCalledWith('point-1', '"Хочется спать');
+    expect(handleAdd).toHaveBeenCalledWith('point-1', '"Хочется спать', expect.any(String));
   });
 
   it('capitalizes the first letter while editing a sub-point', () => {

@@ -3,18 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { OUTBOX_CHANGED_EVENT } from "@/components/OutboxDrain";
-import { pendingPlanText, pendingPlanTextNodeIds } from "@/services/sermons.client";
+import { pendingPlanTextNodeIds } from "@/services/sermons.client";
 
 import type { Sermon } from "@/models/models";
 
 /**
  * WHICH PLAN CELLS ARE WRITTEN BUT UNSEEN BY ANY SERVER.
  *
- * One notion, because three things depend on the same answer and they must never disagree:
+ * The legacy queue still protects its original opening and displayed text:
  *
  *   - the baseline must NOT adopt a queued value as "what the server holds" — otherwise the
  *     screen vouches for words no server saw, and a later refusal becomes inescapable;
- *   - the durable draft MUST keep such a cell, because queued is precisely unconfirmed;
  *   - the screen SHOWS the queued text, so nobody rewrites their own paragraph blind.
  *
  * Read from the queue rather than tracked as a flag: the queue is the fact. A flag would need
@@ -23,8 +22,6 @@ import type { Sermon } from "@/models/models";
  */
 export interface PendingPlanCells {
   nodeIds: Set<string>;
-  /** The queued words of each cell, newest intent per cell — what the device draft keeps. */
-  text: Record<string, string>;
   /** Always current, for predicates that must not re-run an effect to stay fresh. */
   ref: React.MutableRefObject<Set<string>>;
   /**
@@ -40,15 +37,9 @@ export interface PendingPlanCells {
 }
 
 const EMPTY: Set<string> = new Set();
-const NO_TEXT: Record<string, string> = {};
-
-const sameText = (a: Record<string, string>, b: Record<string, string>) =>
-  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([nodeId, words]) => b[nodeId] === words);
 
 export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingPlanCells {
   const [nodeIds, setNodeIds] = useState<Set<string>>(EMPTY);
-  const [text, setText] = useState<Record<string, string>>(NO_TEXT);
-  const textRef = useRef(text);
   const ref = useRef(nodeIds);
   useEffect(() => {
     ref.current = nodeIds;
@@ -58,8 +49,7 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
   sermonRef.current = sermon;
 
   /**
-   * The SAME set is returned when nothing changed, and that is load-bearing: this value feeds
-   * the durable draft, so a fresh object each time would rewrite storage on every render.
+   * Reuse the previous set when the queued cells are unchanged.
    */
   const refresh = useCallback((): Set<string> => {
     const current = sermonRef.current;
@@ -69,12 +59,6 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
     // The ref moves NOW, not after a render: callers ask again within the same effect.
     ref.current = answer;
     if (!unchanged) setNodeIds(answer);
-    // The words move with the ids: a cell queued again with new words keeps its id.
-    const words = pendingPlanText(current?.userId, current?.id);
-    if (!sameText(words, textRef.current)) {
-      textRef.current = words;
-      setText(words);
-    }
     return answer;
   }, []);
 
@@ -84,7 +68,7 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
    * Draining on reconnect, and "keep mine" / "take theirs" in the conflict banner, all remove
    * entries. Nothing here would notice: the set would keep calling a cell queued, so the
    * baseline would refuse to adopt text the server had already confirmed, the durable draft
-   * would keep offering it back after every reload, and the next save would be refused for a
+   * would keep covering confirmed text after every reload, and the next save would be refused for a
    * reason that no longer existed.
    */
   useEffect(() => {
@@ -99,5 +83,5 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
    * sets state, which renders, which runs it again. The same trap already killed the baseline
    * hook once, with the page dying of an exhausted heap before anything reached storage.
    */
-  return useMemo(() => ({ nodeIds, text, ref, refresh }), [nodeIds, text, refresh]);
+  return useMemo(() => ({ nodeIds, ref, refresh }), [nodeIds, refresh]);
 }

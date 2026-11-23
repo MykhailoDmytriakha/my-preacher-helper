@@ -51,6 +51,8 @@ import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConfli
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
+import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
+import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -69,10 +71,12 @@ import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
 import type { AutosaveFieldStamp } from './documentFieldAction';
+import type { PlanCellEmergency } from './planCellEmergency';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
-import type { PlanCellOpening } from './sermonPlanCellSession';
+import type { SermonOutlineReviewInput } from './sermonOutlineReview';
+import type { ServiceOrderInputReserve } from './serviceOrderInputReserve';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CouncilTopicPlacementCapture, EditorCommitAction, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot, StudyNoteContentCapture } from './types';
@@ -104,6 +108,8 @@ export interface EditorRecord extends VersionedRecovery {
   checkpoint: SessionCheckpoint;
   /** The originating screen intended to save ordinary typing without a button. */
   autoSaveOnResume?: boolean;
+  /** An independently held, single plan cell. It can be read without applying it to the active editor. */
+  planCellAlternative?: true;
   /** Persisted before journal submission so a crash can resume the identical command. */
   prepared: DataCommand | null;
   unfinalized: string[];
@@ -147,6 +153,8 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   pinRecovery?(record: EditorRecord): Promise<string | null>;
   /** Closed editors' copies whose Saves were all answered; unsupported stores keep them. */
   settleClosed?(owner: string, entries: readonly SettledCheckpoint[]): Promise<void>;
+  /** Replace only the expected closed service checkpoint after importing a newer reserve. */
+  replaceClosedServiceInput?(expected: EditorRecord, next: EditorRecord): Promise<boolean>;
 }
 
 export interface UnreadableCheckpoint {
@@ -160,6 +168,18 @@ export interface UnreadableCheckpoint {
 export interface SettledCheckpoint {
   stored: EditorRecord;
   settled: EditorRecord;
+}
+
+interface RemovedPlanCellCopy {
+  readonly identity: string | symbol;
+  discard(): void | Promise<void>;
+}
+
+type RetainRemovedPlanCell = (basis: ResourceSnapshot, id: string, draft: PlanCellDraft) => Promise<RemovedPlanCellCopy | null>;
+
+interface RemovedPlanCellSettlement {
+  replaced: RemovedPlanCellCopy[];
+  settled: [id: string, text: string][];
 }
 
 interface ControllerOptions {
@@ -176,6 +196,9 @@ interface ControllerOptions {
   /** A clean legacy checkpoint can be collected, so cache the proof before retiring its reply. */
   persistConfirmedDeletion?: (snapshot: ResourceSnapshot) => Promise<void>;
   commits?: CommitQueue;
+  planCellEmergency?: PlanCellEmergency;
+  serviceOrderInputReserve?: ServiceOrderInputReserve;
+  retainRemovedPlanCell?: RetainRemovedPlanCell;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
   autoSaveOnResume?: boolean;
@@ -327,6 +350,9 @@ export class EditorController {
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void> {
     this.assertCurrent();
     this.session.edit(value, shown, autosaveStamp);
+    if (autosaveStamp?.field === 'service-order-input') {
+      this.options.serviceOrderInputReserve?.admit(this.session.checkpoint(), autosaveStamp.input);
+    }
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persistGroupTextEdit());
@@ -385,30 +411,113 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
-  editPlanCell(opening: PlanCellOpening, text: string): Promise<void> {
+  editUnverifiedPlanCell(nodeId: string, text: string, previous: string): Promise<void> {
     this.assertCurrent();
+    const checkpoint = this.session.checkpoint();
+    const address = planCellOpening(checkpoint, nodeId, readPlanCellText(checkpoint.draft, nodeId));
+    if (!address) throw Object.assign(new Error('The plan cell is unavailable'), { code: 'decision-changed' });
+    return this.editPlanCell({ ...address, text: previous, unverified: true }, text, previous);
+  }
+
+  editPlanCell(opening: PlanCellOpening, text: string, previous?: string, isSourceStored?: () => boolean): Promise<void> {
+    this.assertCurrent();
+    const before = isSourceStored?.() ? this.session.checkpoint() : undefined;
     this.session.editPlanCell(opening, text);
+    const attempted = before && this.session.checkpoint();
+    const emergency = this.options.planCellEmergency;
+    const reserved = emergency?.admit(opening, text, previous, isSourceStored);
+    this.durable = false;
+    this.emit();
+    return this.enqueue(async () => {
+      try {
+        await this.persist();
+      } catch (error) {
+        const current = !this.disposed && this.options.isCurrentOwner(this.options.owner);
+        if (current && !this.durable && before && attempted && isSourceStored?.() && !this.pendingCaptures.pending
+          && (reserved ? reserved.isCurrent() : this.session.checkpoint().editGeneration === attempted.editGeneration)
+          && this.session.restoreUnwrittenPlanCell(opening.nodeId, before, attempted)) {
+          reserved?.restore();
+          await this.persist().catch(() => undefined);
+        }
+        emergency?.preserve();
+        throw error;
+      }
+    });
+  }
+
+  /** The handoff of an independent source needs the actual stored words, not a completed edit callback. */
+  async assertPlanCellsStored(cells: Readonly<Record<string, string>>): Promise<void> {
+    this.assertCurrent();
+    const expected = Object.entries(cells);
+    // A pending Save may deliberately hold the displayed baseline behind the server.
+    const settledView = (checkpoint: SessionCheckpoint) =>
+      this.pendingCaptures.pending ? undefined : settledPlanCellView(checkpoint);
+    const confirmed = settledView(this.session.checkpoint());
+    if (expected.every(([id, text]) => planCellOpening(confirmed, id, text))) return;
+
+    const stored = (await this.options.store.read(this.options.owner, this.options.editorId))?.checkpoint;
+    this.assertCurrent();
+    const live = this.session.checkpoint();
+    const current = settledView(live);
+    const sameRecord = stored && live.confirmed.value && !live.confirmed.metadata?.deleted
+      && stored.confirmed.resource.id === live.confirmed.resource.id
+      && stored.confirmed.metadata?.generation === live.confirmed.metadata?.generation
+      && (live.confirmed.metadata || stored.confirmed.value?.createdAt === live.confirmed.value.createdAt);
+    if (expected.every(([id, text]) => planCellOpening(current, id, text)
+      || (sameRecord && stored.planCellDrafts?.[id]?.text === text && planCellOpening(stored, id, text)))) return;
+    throw Object.assign(new Error('The selected plan words have not reached the device checkpoint'), { code: 'decision-changed' });
+  }
+
+  useStoredServiceOrderInput(input: ServiceOrderInput, compared: ServiceOrderInputComparison): Promise<void> {
+    this.assertCurrent();
+    return this.enqueue(async () => {
+      this.session.useStoredServiceOrderInput(input, compared);
+      this.durable = false;
+      this.emit();
+      await this.persist();
+    });
+  }
+
+  captureFieldSave(): SessionCheckpoint {
+    this.assertCurrent();
+    if (!this.options.commits) throw new Error('Saving a field requires the commit queue');
+    return this.session.pinFieldSave();
+  }
+
+  retainSermonOutlineReview(input: SermonOutlineReviewInput): Promise<void> | undefined {
+    this.assertCurrent();
+    if (this.prepared || this.preparations || this.choices || this.pendingCaptures.pending
+      || !this.session.retainSermonOutlineReview(input)) return;
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());
   }
 
-  capturePlanCellSave(): SessionCheckpoint {
-    this.assertCurrent();
-    if (!this.options.commits) throw new Error('Saving plan cells requires the commit queue');
-    return this.session.pinPlanCellSave();
+  chooseSermonOutlineReview(side: 'local' | 'remote', expected: EditorRecord): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
+    return this.enqueueChoice(async () => {
+      this.assertRecoveryChoice(expected);
+      const source = this.session.checkpoint();
+      const chosen = DataSession.restore(source);
+      chosen.chooseSermonOutlineReview(side);
+      const record = { ...this.record(), checkpoint: chosen.checkpoint() };
+      // Retire the compared versions only after the replacement's exact checkpoint is on disk.
+      await this.options.store.put(record);
+      await this.applyChoiceProjection(source, record, captures);
+    });
   }
 
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<void> {
+  editOutlineTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<DocumentData | null> {
     this.assertCurrent();
     // Close captures the current session while an earlier disk write can still be pending.
-    this.session.editTemplateTitle(shown, opening, title, time);
+    this.session.editOutlineTitle(shown, opening, title, time);
+    const draft = this.session.checkpoint().draft;
     this.durable = false;
     this.emit();
-    return this.enqueue(() => this.persist());
+    return this.enqueue(() => this.persist()).then(() => draft);
   }
 
-  save(capturedIntent?: SessionCheckpoint & { planCellSaveIds?: readonly string[] }, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
+  save(capturedIntent?: SessionCheckpoint & { planCellSaveIds?: readonly string[]; serviceOrderInput?: ServiceOrderInput; serviceOrderComparison?: ServiceOrderInputComparison }, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
     action?: EditorCommitAction, pendingRemoval?: PendingRemovalOpening, noteContent?: StudyNoteContentCapture | null): Promise<void> {
     this.assertCurrent();
     const capturedAction = action && JSON.parse(JSON.stringify(action)) as EditorCommitAction;
@@ -417,7 +526,7 @@ export class EditorController {
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
-    const { planCellSaveIds, ...captured } = intent;
+    const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
     const capture = async (captureComplete: () => void) => {
@@ -435,9 +544,16 @@ export class EditorController {
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
         const options = { ...captureSaveOptions(captured, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint,
-          ...(capturedAction && { action: capturedAction }), noteContent: capturedContent, planCellSaveIds };
-        const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
-        const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
+          ...(capturedAction && { action: capturedAction }), noteContent: capturedContent, planCellSaveIds, serviceOrderInput, serviceOrderComparison };
+        const saved = async () => {
+          const capture = onCaptured ? await this.options.commits!.saveWithReceipt(this.options.editorId, captured, options) : null;
+          const request = capture ? capture.request : await this.options.commits!.save(this.options.editorId, captured, options);
+          return { capture, request };
+        };
+        const { capture, request } = await saved().catch(error => {
+          if (error instanceof ServiceOrderInputDecisionError) captureComplete();
+          throw error;
+        });
         captureComplete();
         if (capture) onCaptured!(capture.receipt);
         if (request) await this.applyCommit(request);
@@ -523,11 +639,72 @@ export class EditorController {
 
   observe(snapshot: ResourceSnapshot, source: 'server' | 'cache'): Promise<void> {
     return this.enqueue(async () => {
-      const preserveDraft = this.preparations > 0 || this.choices > 0 || this.atomicPending.size > 0
-        || this.result?.kind === 'conflict' || this.result?.kind === 'refused';
-      this.session.observe(snapshot, { source, preserveDraft });
-      await this.persist();
+      const retaining = this.preserveDraftOnObservation() ? undefined : this.retainRemovedPlanCells(snapshot);
+      const settlement = retaining && await retaining;
+      this.session.observe(snapshot, { source, preserveDraft: this.preserveDraftOnObservation() });
+      await this.persist(settlement && (async () => {
+        for (const [id, text] of settlement.settled) this.options.planCellEmergency?.settleRetained(id, text);
+        await Promise.allSettled(settlement.replaced.map(async copy => copy.discard()));
+      }));
     });
+  }
+
+  private preserveDraftOnObservation(): boolean {
+    return this.preparations > 0 || this.choices > 0 || this.atomicPending.size > 0
+      || this.result?.kind === 'conflict' || this.result?.kind === 'refused';
+  }
+
+  private retainRemovedPlanCells(snapshot: ResourceSnapshot): Promise<RemovedPlanCellSettlement | undefined> | undefined {
+    const retain = this.options.retainRemovedPlanCell;
+    if (!retain) return;
+    const checkpoint = this.session.checkpoint();
+    if (Object.keys(checkpoint.pending).length) return;
+    const removed = Object.entries(removedConflictingPlanCells(checkpoint, snapshot));
+    if (!removed.length) return;
+    return this.retainLatestRemovedCells(snapshot, checkpoint.confirmed, removed, retain);
+  }
+
+  private async retainLatestRemovedCells(snapshot: ResourceSnapshot, basis: ResourceSnapshot,
+    removed: [string, PlanCellDraft][], retain: RetainRemovedPlanCell): Promise<RemovedPlanCellSettlement | undefined> {
+    const attempted = new Map<string, PlanCellDraft>();
+    const stored = new Map<string, { draft: PlanCellDraft; copy: RemovedPlanCellCopy }>();
+    const replaced = new Map<RemovedPlanCellCopy['identity'], RemovedPlanCellCopy>();
+    let pending = removed;
+    while (pending.length) {
+      const writes = await Promise.all(pending.map(async ([id, draft]) => ({ id, draft, copy: await retain(basis, id, draft) })));
+      this.assertCurrent();
+      for (const { id, draft, copy } of writes) {
+        attempted.set(id, draft);
+        if (!copy) continue;
+        const older = stored.get(id);
+        if (older) replaced.set(older.copy.identity, older.copy);
+        replaced.delete(copy.identity);
+        stored.set(id, { draft, copy });
+      }
+      const current = this.session.checkpoint();
+      if (this.preserveDraftOnObservation() || Object.keys(current.pending).length) return;
+      pending = Object.entries(removedConflictingPlanCells(current, snapshot))
+        .filter(([id, draft]) => !equalValues(attempted.get(id), draft));
+    }
+
+    // A synchronous edit can land while IndexedDB is finishing the earlier copy.
+    // Release only the version this observation has actually preserved.
+    const current = this.session.checkpoint();
+    const release: [string, PlanCellDraft][] = [];
+    const settled: RemovedPlanCellSettlement['settled'] = [];
+    for (const [id, retained] of stored) {
+      const latest = current.planCellDrafts?.[id];
+      if (!latest) continue;
+      if (equalValues(latest, retained.draft)) {
+        release.push([id, retained.draft]);
+        settled.push([id, latest.text]);
+      } else if (latest.text === readPlanCellText(snapshot.value, id)) {
+        replaced.set(retained.copy.identity, retained.copy);
+        settled.push([id, latest.text]);
+      }
+    }
+    this.session.releaseRemovedPlanCells(Object.fromEntries(release));
+    return { replaced: [...replaced.values()], settled };
   }
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
@@ -764,7 +941,7 @@ export class EditorController {
     this.emit();
   }
 
-  private async persist(): Promise<void> {
+  private async persist(afterWrite?: () => Promise<void>): Promise<void> {
     if (this.pendingCaptures.capturing) return;
     const record = this.record();
     const keeps = isRecoverableCheckpoint(record);
@@ -779,8 +956,13 @@ export class EditorController {
     }
     // Another keystroke may have arrived during the storage transaction.
     this.durable = this.session.getState().editGeneration === record.checkpoint.editGeneration;
+    if (this.durable) {
+      this.options.planCellEmergency?.stored(record.checkpoint, !this.pendingCaptures.pending);
+      this.options.serviceOrderInputReserve?.stored(record.checkpoint);
+    }
     this.error = null;
     this.errorCode = null;
+    if (afterWrite) await afterWrite();
     this.emit();
   }
 
@@ -1113,6 +1295,8 @@ export class EditorController {
           && equalValues(decided.conflicts[0].path, ['content']);
         const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
         const stepText = !selection && !correction ? readServiceStepTextChoice(decided, local) : undefined;
+        const serviceInput = !selection && !correction ? Object.values(decided.serviceOrderInputs ?? {})
+          .find(input => isReturnedServiceOrderInput(decided, input)) : undefined;
         const scriptureRow = !selection && !correction ? serviceStepScriptureConflict(decided) : undefined;
         const scriptureRows = scriptureRow ? [scriptureRow]
           : !selection && !correction ? reviewedServiceStepScriptureRows(decided) : [];
@@ -1291,6 +1475,9 @@ export class EditorController {
               stepId, opening, destination: actualDestination, observedRevision: accepted.metadata?.revision ?? 0, time: choiceTime ?? null,
             } }, projected);
           }
+        } else if (serviceInput) {
+          session.acceptRemote();
+          session.retainServiceOrderChoiceFields(decided, choice === 'remote' ? serviceInput : undefined);
         } else if (choice === 'local') {
           if (ordinary) {
             const rejected = ordinary.first.command ? ordinary.first.command.generation : decided.confirmed.metadata?.generation;
@@ -1413,6 +1600,8 @@ export class EditorController {
             session.retainUnreviewedAutosaveActions({ ...decided, groupStatusDraft: separateGroupStatus });
           }
         }
+        const serviceChoiceIntent = (checkpoint: SessionCheckpoint) => serviceInput
+          ? { ...checkpoint, draft: projectServiceOrderInput(checkpoint.confirmed.value, serviceInput) } : checkpoint;
         const replacements: CommitRequest[] = [];
         const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
         if (meeting) {
@@ -1499,7 +1688,7 @@ export class EditorController {
           const { value, metadata } = next.confirmed;
           if (typeof value?.title === 'string' && metadata && !metadata.deleted && next.draft?.title !== value.title) {
             const seen = { title: value.title, generation: metadata.generation, revision: metadata.revision };
-            const replacement = this.options.commits!.choiceReplacement(record.editorId, next, {
+            const replacement = this.options.commits!.choiceReplacement(record.editorId, serviceChoiceIntent(next), {
               action: { kind: 'service-order-title', title: { seen, time: choiceTime ?? null } },
             });
             if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
@@ -1528,13 +1717,13 @@ export class EditorController {
           if (!text) throw Object.assign(new Error('The compared service step changed'), { code: 'decision-changed' });
           const action: EditorCommitAction = stepText.field === 'title'
             ? { kind: 'service-order-step-title', title: text } : { kind: 'service-order-step-body', body: text };
-          const replacement = this.options.commits!.choiceReplacement(record.editorId, checkpoint, { action });
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, serviceChoiceIntent(checkpoint), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
         if (choice === 'local' && scriptureRows.length) {
           const checkpoint = session.checkpoint();
           const scriptures = scriptureRows.flatMap(row => serviceStepScriptureChoice(checkpoint, row, choiceTime ?? null) ?? []);
-          const replacement = scriptures.length && this.options.commits!.choiceReplacement(record.editorId, checkpoint, {
+          const replacement = scriptures.length && this.options.commits!.choiceReplacement(record.editorId, serviceChoiceIntent(checkpoint), {
             action: scriptureRow ? { kind: 'service-order-step-scripture', scripture: scriptures[0] }
               : { kind: 'service-order-step-scripture-review', scriptures },
           });
