@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { v5 as uuidV5 } from 'uuid';
 
-import { COMMENT_EDITOR_SLOT, newCommentEditorSlot } from '@/data-engine/commentEditorScope';
-import { isWorkspaceRecoveryCopy, useDataDocument, useDataEngine } from '@/data-engine/react.client';
+import { COMMENT_EDITOR_SLOT, isWorkspaceRecoveryCopy, newCommentEditorSlot, useDataDocument, useDataEngine } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { commentDraftDocument } from '@/utils/commentDrafts';
 import { serializeContent } from '@/utils/contentFingerprint';

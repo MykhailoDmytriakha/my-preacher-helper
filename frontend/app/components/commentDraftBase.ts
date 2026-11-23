@@ -1,4 +1,4 @@
-import { leadingReferenceValue } from '@/data-engine/commentPlaceAction';
+import { leadingReferenceValue } from '@/data-engine/react.client';
 import { engineNote, storedReferences } from '@/hooks/useStudyNotesEngine';
 import { serializeContent } from '@/utils/contentFingerprint';
 

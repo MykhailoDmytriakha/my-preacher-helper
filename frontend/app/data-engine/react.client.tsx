@@ -20,8 +20,9 @@ import { createBrowserDataEngine, type BrowserDataEngine } from './browser.clien
 import { isChurchValue as churchValue } from './churchFieldValue';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
+import { COMMENT_EDITOR_SLOT as existingCommentEditorSlot, newCommentEditorSlot as creationCommentSlot } from './commentEditorScope';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
-import { firstCommentReference as readCommentReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
+import { firstCommentReference as readCommentReference, leadingReferenceValue as readLeadingReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
 import { commentPlaceChoiceOpening, readCommentPlaceComparison as commentPlaceComparison, readCommentTextComparison as commentTextComparison, readReturnedCommentText } from './commentPlaceChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { readCouncilSummaryChoice as councilSummaryChoice, readPrivateCouncilComparison as privateCouncilComparison } from './councilPrivateFields';
@@ -38,6 +39,7 @@ import { seriesTextChoiceFields as seriesChoice, readDocumentTextChoice } from '
 import { ACTION_SLOT, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { exegeticalPlan, restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
+import { equalValues as engineValuesEqual } from './fieldValues';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
@@ -98,6 +100,10 @@ import type { BookText } from '@/utils/bibleText';
 export type { HomileticMoveInput } from './homileticPlan';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+export const COMMENT_EDITOR_SLOT = existingCommentEditorSlot;
+export function newCommentEditorSlot(...args: Parameters<typeof creationCommentSlot>) { return creationCommentSlot(...args); }
+export function leadingReferenceValue(...args: Parameters<typeof readLeadingReference>) { return readLeadingReference(...args); }
+export function equalValues(left: unknown, right: unknown): boolean { return engineValuesEqual(left, right); }
 export function isSermonPlanMode(value: unknown) { return validSermonPlanMode(value); }
 /** Stable capture ownership for the public initial-analysis creation flow. */
 export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
