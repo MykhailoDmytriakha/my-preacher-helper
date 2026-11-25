@@ -10,37 +10,46 @@ const createBuildCommands = ({
   nextCli = require.resolve('next/dist/bin/next'),
   nodeExecutable = process.execPath,
   tscCli = require.resolve('typescript/bin/tsc'),
-} = {}) => ({
-  typegen: {
-    args: [nextCli, 'typegen'],
-    cwd,
-    env: { ...env, NEXT_TYPEGEN_DIST_DIR: '.next-typecheck' },
-    executable: nodeExecutable,
-    label: 'Next.js route type generation',
-  },
-  build: {
-    args: [nextCli, 'build'],
-    cwd,
-    env: { ...env, NEXT_EXTERNAL_TYPECHECK: 'true' },
-    executable: nodeExecutable,
-    label: 'Next.js production build',
-  },
-  typecheck: {
-    args: [
-      tscCli,
-      '--project',
-      'tsconfig.build.json',
-      '--noEmit',
-      '--incremental',
-      '--tsBuildInfoFile',
-      '.next/cache/typecheck-build.tsbuildinfo',
-    ],
+} = {}) => {
+  const typecheck = {
+    args: [tscCli, '--project', 'tsconfig.build.json', '--noEmit'],
     cwd,
     env,
     executable: nodeExecutable,
-    label: 'TypeScript validation',
-  },
-})
+  }
+
+  return {
+    typegen: {
+      args: [nextCli, 'typegen'],
+      cwd,
+      env: { ...env, NEXT_TYPEGEN_DIST_DIR: '.next-typecheck' },
+      executable: nodeExecutable,
+      label: 'Next.js route type generation',
+    },
+    build: {
+      args: [nextCli, 'build'],
+      cwd,
+      env: { ...env, NEXT_EXTERNAL_TYPECHECK: 'true' },
+      executable: nodeExecutable,
+      label: 'Next.js production build',
+    },
+    typecheck: {
+      ...typecheck,
+      args: [
+        ...typecheck.args,
+        '--incremental',
+        '--tsBuildInfoFile',
+        '.next/cache/typecheck-build.tsbuildinfo',
+      ],
+      label: 'TypeScript validation',
+    },
+    typecheckClean: {
+      ...typecheck,
+      args: [...typecheck.args, '--incremental', 'false'],
+      label: 'TypeScript validation without build cache',
+    },
+  }
+}
 
 const executeCommand = command => new Promise((resolve, reject) => {
   const startedAt = Date.now()
@@ -64,7 +73,7 @@ const executeCommand = command => new Promise((resolve, reject) => {
     }
 
     const outcome = signal ? `signal ${signal}` : `exit code ${code}`
-    reject(new Error(`${command.label} failed with ${outcome}`))
+    reject(Object.assign(new Error(`${command.label} failed with ${outcome}`), { exitCode: code }))
   })
 })
 
@@ -76,7 +85,12 @@ const runProductionBuild = async ({
 
   const parallelResults = await Promise.allSettled([
     execute(commands.build),
-    execute(commands.typecheck),
+    execute(commands.typecheck).catch(error => {
+      if (!Number.isInteger(error?.exitCode)) throw error
+
+      console.log('[build] Cached TypeScript validation failed; checking without the build cache')
+      return execute(commands.typecheckClean)
+    }),
   ])
   const failures = parallelResults
     .filter(result => result.status === 'rejected')
