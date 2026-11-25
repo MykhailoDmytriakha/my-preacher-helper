@@ -2,6 +2,7 @@ import { hasOutlinePointOrder, SECTION_KEYS, type OutlinePointOrder } from '@/ut
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
+import { accountPreferenceRetryFields, needsAccountPreferenceReview, readAccountPreferenceReview } from './accountPreference';
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { keepReviewedAuthoredLists } from './authoredListChoice';
@@ -51,7 +52,7 @@ import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
-import type { AccountPreferenceField } from './accountPreference';
+import type { AccountPreferenceField, AccountPreferenceResolution, AccountPreferenceRetry } from './accountPreference';
 import type { ActionTime } from './actionClock';
 import type { CommentPlaceObservation } from './commentPlaceAction';
 import type { CommitRequest } from './commits';
@@ -91,7 +92,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   reviewedSermonOutlineOrder?: { generation: string | null; observedRevision: number; before: OutlinePointOrder; after: OutlinePointOrder };
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
-  accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
+  accountPreferenceRetry?: AccountPreferenceRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
@@ -204,6 +205,12 @@ export class DataSession {
     if (questions.length) {
       this.state.remoteCandidate = copy(target);
       this.state.dirty = true;
+      const settings = readAccountPreferenceReview(this.state);
+      if (settings?.kind === 'choices' && !settings.fields.length) {
+        // The account already contains every held choice and the draft has no independent work.
+        this.finishChoiceAgainstRemote(settings.basis.value);
+        delete this.state.unreadableScalarProof;
+      }
     } else {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.privateFieldReview;
@@ -521,8 +528,8 @@ export class DataSession {
       delete this.state.groupMeetingReview;
     }
     const preferenceRetry = this.state.accountPreferenceRetry;
-    if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
-      && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
+    if (preferenceRetry && accountPreferenceRetryFields(preferenceRetry).every(field =>
+      request.accountPreferenceActions?.[field] && equalValues(request.accountPreferenceActions[field]?.time, preferenceRetry.time))) {
       delete this.state.accountPreferenceRetry;
     }
     const newRowMove = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove)
@@ -845,6 +852,25 @@ export class DataSession {
     return true;
   }
 
+  applyAccountPreferenceReview(choices: AccountPreferenceResolution, time: ActionTime | null): void {
+    const review = readAccountPreferenceReview(this.state);
+    if (review?.kind === 'saved-only' && choices === 'saved-draft') {
+      this.finishChoiceAgainstRemote(review.basis.value);
+      delete this.state.unreadableScalarProof;
+      return;
+    }
+    if (review?.kind !== 'choices' || choices === 'saved-draft' || Object.keys(choices).length !== review.fields.length
+      || review.fields.some(({ field }) => choices[field] !== 'local' && choices[field] !== 'remote')) {
+      throw Object.assign(new Error('Choose a version for each displayed setting'), { code: 'decision-changed' });
+    }
+    const kept = review.fields.filter(({ field }) => choices[field] === 'local');
+    const value = kept.reduce((data, { path, mineField }) => writeField(data, path, mineField), review.basis.value);
+    this.finishChoiceAgainstRemote(value);
+    delete this.state.unreadableScalarProof;
+    if (kept.length === 1) this.stageAccountPreferenceRetry(kept[0].field, time);
+    if (kept.length > 1) this.state.accountPreferenceRetry = { fields: kept.map(({ field }) => field), time };
+  }
+
   /** A choice about a private unreadable edit owns only its displayed fields. */
   private acceptStoredUnreadableFields(atChoice: DocumentData | null | undefined): boolean {
     const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, conflicts } = this.state;
@@ -940,7 +966,7 @@ export class DataSession {
     if (atChoice === undefined || this.state.conflicts.some(conflict => conflict.code === UNREADABLE_SCALAR_PROOF)) delete this.state.unreadableScalarProof;
     const referenceChoice = chooseStudyNoteReferences(this.state, 'stored');
     if (referenceChoice) {
-      this.finishReferenceChoice(referenceChoice);
+      this.finishChoiceAgainstRemote(referenceChoice);
       return;
     }
     const planChoice = projectStoredPlanCellChoice(this.state, atChoice);
@@ -980,7 +1006,7 @@ export class DataSession {
     this.state.conflicts = [later.conflict];
   }
 
-  private finishReferenceChoice(draft: DocumentData): void {
+  private finishChoiceAgainstRemote(draft: DocumentData | null): void {
     this.state.confirmed = copy(this.state.remoteCandidate!);
     this.state.draft = copy(draft);
     this.state.remoteCandidate = null;
@@ -993,6 +1019,9 @@ export class DataSession {
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
+    if (needsAccountPreferenceReview(this.state)) {
+      throw Object.assign(new Error('Choose a version for each displayed setting'), { code: 'decision-changed' });
+    }
     if (waitsForServiceOrderPosition(this.state) || hasTwoPrivateServiceOrderMoves(this.state)) {
       throw Object.assign(new Error('Choose the service order position again'), { code: 'decision-changed' });
     }
@@ -1004,7 +1033,7 @@ export class DataSession {
     assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {
-      this.finishReferenceChoice(referenceChoice);
+      this.finishChoiceAgainstRemote(referenceChoice);
       return;
     }
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));

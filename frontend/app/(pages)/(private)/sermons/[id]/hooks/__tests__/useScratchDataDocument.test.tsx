@@ -44,7 +44,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
     await save();
   });
   jest.mocked(useDocumentActions).mockReturnValue({ commit: (_resource, updater) => commit(updater) } as ReturnType<typeof useDocumentActions>);
-  const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), discardRecovery: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
+  const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), applyAccountPreferenceReview: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), discardRecovery: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     outlineReviewVersion: 0,

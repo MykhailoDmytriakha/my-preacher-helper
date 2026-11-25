@@ -227,6 +227,7 @@
     "outlinePointNote": "Point note",
     "outlinePointTitle": "Point title",
     "applyReviewedVersions": "Apply reviewed versions",
+    "unreviewableSettingsDraft": "Copy any settings you want to keep before restoring the saved version.",
     "groupRowRemoved": "This block or step was removed on your other device.",
     "groupRowRemovedLocally": "This block or step was removed on this device.",
     "unverifiedPlanCellTitle": "Choose which text to keep",

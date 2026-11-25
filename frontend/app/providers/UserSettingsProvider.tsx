@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNod
 
 import { accountPreferenceLabels, accountPreferenceWords } from '@/components/settings/accountPreferenceWords';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { readAccountPreferenceComparison, readingPreferenceFields, useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { needsAccountPreferenceReview, readAccountPreferenceComparison, readAccountPreferenceReview, readingPreferenceFields, useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { UserSettingsEngineContext, useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useAuth } from '@/providers/AuthProvider';
 import { setLanguageCookie } from '@/services/userSettings.service';
@@ -112,8 +112,24 @@ function EngineSettingsStatus() {
   const { t } = useTranslation();
   const title = t('settings.title');
   const shown = document.state?.checkpoint;
-  const preference = shown && readAccountPreferenceComparison(shown);
-  const comparison = preference && {
+  const needsReview = shown && needsAccountPreferenceReview(shown);
+  const review = shown && readAccountPreferenceReview(shown);
+  const fieldReview = shown && review?.kind === 'choices' && review.fields.length ? {
+    identity: review.identity,
+    fields: review.fields.map(field => ({
+      id: field.field, label: t(accountPreferenceLabels[field.field]),
+      mine: accountPreferenceWords(field.field, field.mine, t), stored: accountPreferenceWords(field.field, field.stored, t),
+    })),
+    apply: (choices: Record<string, 'local' | 'remote'>) => document.applyAccountPreferenceReview(shown, choices),
+  } : undefined;
+  const preference = shown && !needsReview ? readAccountPreferenceComparison(shown) : undefined;
+  const comparison = review?.kind === 'saved-only' ? {
+    identity: review.identity, valueKind: 'field' as const,
+    title: t(review.basis.value ? 'dataSync.unreviewableSettingsDraft' : 'recordAvailability.keptCopyHelp'),
+    mine: JSON.stringify(review.draft, null, 2),
+    stored: review.basis.value ? JSON.stringify(review.basis.value, null, 2) : t('recordAvailability.notFound'),
+    actions: { stored: t(review.basis.value ? 'dataSync.acceptRemote' : 'common.discardChanges.confirm'), confirmStored: 'common.discardChanges' as const },
+  } : preference && {
     identity: preference.identity, title: t(accountPreferenceLabels[preference.field]),
     mine: accountPreferenceWords(preference.field, preference.mine, t), stored: accountPreferenceWords(preference.field, preference.stored, t), valueKind: 'field' as const, scopedChoice: true as const,
   };
@@ -129,9 +145,10 @@ function EngineSettingsStatus() {
   // Whether there is anything to say is the status's own rule (isSyncTrouble); it names the settings only then.
   // A copy for reading is not a failure: DeviceStorageNotice already says why above every page, and a
   // retry cannot wake the device storage — passed as an error it stood there as a dead button.
-  return <DataSyncStatus workspaceNotice comparison={comparison} subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error} errorWords={document.errorWords}
-    onRetry={document.retry} onKeepLocal={() => document.keepLocal(preference ? shown : undefined)}
-    onAcceptRemote={() => document.acceptRemote(preference ? shown : undefined)}
+  return <DataSyncStatus workspaceNotice comparison={comparison} fieldReview={fieldReview} subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error} errorWords={document.errorWords}
+    onRetry={document.retry} onKeepLocal={needsReview ? undefined : () => document.keepLocal(preference ? shown : undefined)}
+    onAcceptRemote={shown && review?.kind === 'saved-only' ? () => document.applyAccountPreferenceReview(shown, 'saved-draft')
+      : needsReview ? undefined : () => document.acceptRemote(preference ? shown : undefined)}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />;
 }

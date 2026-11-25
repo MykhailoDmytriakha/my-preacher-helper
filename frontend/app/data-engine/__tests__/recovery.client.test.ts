@@ -1,4 +1,4 @@
-import { readAccountPreferenceComparison } from '../accountPreference';
+import { readAccountPreferenceComparison, readAccountPreferenceReview } from '../accountPreference';
 import { EditorController, type CheckpointRecoveryStore, type EditorRecord } from '../controller';
 import { uncapturedAutosaveFields } from '../documentFieldAction';
 import { captureExegeticalPointActions } from '../exegeticalPointCapture';
@@ -212,6 +212,97 @@ describe('Explicit checkpoint recovery', () => {
       editor.dispose();
       runtime.setOwner(null);
     }
+  });
+
+
+  it.each([
+    ['local', 'remote', 'main', false],
+    ['remote', 'local', 'all', true],
+    ['remote', 'remote', 'main', true],
+    ['local', 'local', 'all', false],
+  ] as const)('durably applies only the reviewed settings (%s, %s)', (show, mode, savedMode, savedShow) => {
+    const source = record();
+    const resource = { collection: 'users', id: 'owner' };
+    const metadata = { protocol: 1 as const, generation: 'test-settings', revision: 8, deleted: false };
+    const opening = { reading: { crossReferences: { mode: 'main', show: true, inWindow: true } } };
+    const draft = { reading: { crossReferences: { mode: 'all', show: false, inWindow: true } } };
+    const saved = { reading: { crossReferences: { mode: 'main', show: true, inWindow: false } } };
+    const raw = {
+      ...source, checkpoint: { ...source.checkpoint, confirmed: { resource, value: opening, metadata }, draft,
+        remoteCandidate: { resource, value: saved, metadata: { ...metadata, revision: 9 } },
+        accountPreferenceRetry: { field: 'reading.damaged', time: null } },
+    };
+    const { checkpoint } = validateRecoveryRecord(raw, 'owner', 'source');
+    takeDroppedProof('accountPreferenceRetry');
+    const session = DataSession.restore(checkpoint);
+    const time = { earliestMs: 3000, latestMs: 3010 };
+    expect(() => session.keepLocal()).toThrow('Choose a version for each displayed setting');
+    expect(() => session.applyAccountPreferenceReview({ 'reading.crossReferences.show': show }, time))
+      .toThrow('Choose a version for each displayed setting');
+    expect(session.checkpoint()).toEqual(checkpoint);
+    session.applyAccountPreferenceReview({ 'reading.crossReferences.show': show, 'reading.crossReferences.mode': mode }, time);
+    const kept = [...(show === 'local' ? ['reading.crossReferences.show'] : []), ...(mode === 'local' ? ['reading.crossReferences.mode'] : [])];
+    const after = session.checkpoint();
+    expect(after.draft).toEqual({ reading: { crossReferences: { mode: savedMode, show: savedShow, inWindow: false } } });
+    expect(after.dirty).toBe(Boolean(kept.length));
+    expect(after.conflicts).toEqual([]);
+    expect(after.unreadableScalarProof).toBeUndefined();
+    const restored = validateRecoveryRecord(clone({ ...source, checkpoint: after }), 'owner', 'source').checkpoint;
+    expect(restored.accountPreferenceRetry).toEqual(kept.length > 1 ? { fields: kept, time } : kept.length ? { field: kept[0], time } : undefined);
+    if (kept.length > 1) {
+      const broken = validateRecoveryRecord({ ...source, checkpoint: { ...after,
+        accountPreferenceRetry: { fields: kept, time: { earliestMs: 3010, latestMs: 3000 } } },
+      }, 'owner', 'source').checkpoint;
+      takeDroppedProof('accountPreferenceRetry');
+      expect(broken.unreadableScalarProof).toEqual(kept);
+      expect(DataSession.restore(broken).prepare('unreviewed-damaged-batch', 'owner')).toBeNull();
+    }
+  });
+
+
+  it('adopts settings already saved on the other device without asking or writing again', () => {
+    const source = record();
+    const resource = { collection: 'users', id: 'owner' };
+    const metadata = { protocol: 1 as const, generation: 'test-settings', revision: 8, deleted: false };
+    const opening = { reading: { crossReferences: { mode: 'main', show: true, inWindow: true } } };
+    const draft = { reading: { crossReferences: { mode: 'all', show: false, inWindow: true } } };
+    const saved = { reading: { crossReferences: { mode: 'all', show: false, inWindow: false } } };
+    const { checkpoint } = validateRecoveryRecord({
+      ...source, checkpoint: { ...source.checkpoint, confirmed: { resource, value: opening, metadata }, draft,
+        remoteCandidate: { resource, value: saved, metadata: { ...metadata, revision: 9 } },
+        accountPreferenceRetry: { field: 'reading.damaged', time: null } },
+    }, 'owner', 'source');
+    takeDroppedProof('accountPreferenceRetry');
+    const session = DataSession.restore(checkpoint);
+    expect(session.checkpoint()).toMatchObject({ draft: saved, dirty: false, conflicts: [], remoteCandidate: null });
+    expect(session.checkpoint().unreadableScalarProof).toBeUndefined();
+    expect(session.prepare('already-saved', 'owner')).toBeNull();
+  });
+
+
+  it.each([false, true])('shows a settings draft with an unsupported sibling and requires explicit discard (saved record deleted: %s)', deleted => {
+    const source = record();
+    const resource = { collection: 'users', id: 'owner' };
+    const metadata = { protocol: 1 as const, generation: 'test-settings', revision: 8, deleted: false };
+    const opening = { language: 'en', showAppVersion: false, displayName: 'Before' };
+    const draft = { language: 'uk', showAppVersion: true, displayName: 'Draft name' };
+    const saved = deleted ? null : { ...opening, displayName: 'Saved name' };
+    const { checkpoint } = validateRecoveryRecord({
+      ...source, checkpoint: { ...source.checkpoint, confirmed: { resource, value: opening, metadata }, draft,
+        remoteCandidate: { resource, value: saved, metadata: { ...metadata, revision: 9, deleted } },
+        conflicts: [{ path: ['displayName'], base: { exists: true, value: opening.displayName },
+          mine: { exists: true, value: draft.displayName }, theirs: saved ? { exists: true, value: saved.displayName } : { exists: false } }],
+        accountPreferenceRetry: { field: 'damaged', time: null } },
+    }, 'owner', 'source');
+    takeDroppedProof('accountPreferenceRetry');
+    const session = DataSession.restore(checkpoint);
+    expect(readAccountPreferenceReview(session.checkpoint())).toMatchObject({ kind: 'saved-only', draft, basis: { value: saved } });
+    expect(() => session.applyAccountPreferenceReview({ language: 'local', showAppVersion: 'remote' }, null)).toThrow();
+    expect(session.checkpoint().draft).toEqual(draft);
+    expect(session.prepare('unsafe-settings-review', 'owner')).toBeNull();
+    session.applyAccountPreferenceReview('saved-draft', null);
+    expect(session.checkpoint()).toMatchObject({ draft: saved, conflicts: [], dirty: false });
+    expect(session.prepare('settings-already-saved', 'owner')).toBeNull();
   });
 
   it('validates complete checkpoints including conflicts, pending values and command owner binding', () => {

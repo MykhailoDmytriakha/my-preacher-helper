@@ -231,6 +231,7 @@
     "outlinePointNote": "Нотатка до пункту",
     "outlinePointTitle": "Заголовок пункту",
     "applyReviewedVersions": "Застосувати вибрані версії",
+    "unreviewableSettingsDraft": "Скопіюйте потрібні налаштування з чернетки перед відновленням збереженої версії.",
     "groupRowRemoved": "На іншому пристрої цей блок або крок видалено.",
     "groupRowRemovedLocally": "На цьому пристрої блок або крок видалено.",
     "unverifiedPlanCellTitle": "Виберіть, який текст залишити",

@@ -38,7 +38,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
       await durable;
     }),
     save: jest.fn(async () => undefined),
-    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), applyAccountPreferenceReview: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
   } as ReturnType<typeof useDataDocument>;
   api.commit = jest.fn(async updater => {
     const staged = api.update(updater);

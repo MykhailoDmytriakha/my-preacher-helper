@@ -4,7 +4,7 @@ import { v5 as uuidV5 } from 'uuid';
 import { isConnectionFailure } from '@/utils/connectionFailure';
 import { noteCaptureWriter } from '@/utils/draftCaptureRecovery.client';
 
-import { readAccountPreferenceComparison } from './accountPreference';
+import { needsAccountPreferenceReview, readAccountPreferenceComparison, readAccountPreferenceReview, type AccountPreferenceResolution } from './accountPreference';
 import { analysisCreationScope } from './analysisCreation';
 import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnalysisCreation } from './analysisCreationCapture';
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
@@ -194,6 +194,7 @@ export interface ManagedEditor {
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
+  applyAccountPreferenceReview(compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null): Promise<void>;
   acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   dispose(): void;
@@ -2978,6 +2979,9 @@ export class DataEngine {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         const current = controller.getState().checkpoint;
+        if (needsAccountPreferenceReview(current)) {
+          throw Object.assign(new Error('Choose a version for each displayed setting'), { code: 'decision-changed' });
+        }
         if (hasSermonOutlineReview(current) && !compared) {
           throw Object.assign(new Error('Read both versions of the structure before choosing'), { code: 'decision-changed' });
         }
@@ -3005,6 +3009,28 @@ export class DataEngine {
         }
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
+      };
+      const applyAccountPreferenceReview = async (compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null) => {
+        active();
+        const review = readAccountPreferenceReview(compared);
+        if (loadingBranchAnswer || !review || !equalValues(controller.getState().checkpoint, compared)) {
+          throw Object.assign(new Error('The shown settings comparison changed'), { code: 'decision-changed' });
+        }
+        const saved = await this.readWriteTarget(frozen).catch(() => null);
+        active();
+        if (!saved || !canReplaceSnapshot(review.basis, saved)) {
+          throw Object.assign(new Error('Read the current settings before choosing'), { code: 'fresh-read-required' });
+        }
+        if (!equalValues(review.basis, saved)) {
+          await controller.observe(saved, 'server');
+          throw Object.assign(new Error('The shown settings comparison changed'), { code: 'decision-changed' });
+        }
+        await controller.applyAccountPreferenceReview(compared, choices, time);
+        active();
+        const resolved = controller.getState().checkpoint;
+        if (resolved.dirty && resolved.accountPreferenceRetry) await controller.save();
+        active();
+        this.prepareCommitsInBackground(); this.backgroundDrain();
       };
       const holdAlternative = async (alternative: ((confirmed: DocumentData) => DocumentData) | PlanCellAlternative): Promise<HeldDraftAlternative | null> => {
         active();
@@ -3243,6 +3269,7 @@ export class DataEngine {
           await controller.useStoredServiceOrderInput(input, compared);
         },
         remove: () => remove(),
+        applyAccountPreferenceReview,
         acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
         keepLocal: (expected, compared, choiceTime, titles) => choose('local', expected, compared, choiceTime, titles),
         dispose: () => {

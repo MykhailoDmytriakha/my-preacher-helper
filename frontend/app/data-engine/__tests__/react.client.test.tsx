@@ -75,7 +75,7 @@ function makeEditor() {
       const id = `op-${++sequence}`;
       state = { ...state, checkpoint: { ...state.checkpoint, pending: { ...state.checkpoint.pending, [id]: { generation: state.checkpoint.editGeneration, value: state.checkpoint.draft } } } }; emit();
     }),
-    acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined), remove: jest.fn(async () => undefined), dispose: jest.fn(), close: jest.fn(),
+    acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined), applyAccountPreferenceReview: jest.fn(async () => undefined), remove: jest.fn(async () => undefined), dispose: jest.fn(), close: jest.fn(),
   };
   return {
     editor, emit,

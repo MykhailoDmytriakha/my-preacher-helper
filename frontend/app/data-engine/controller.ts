@@ -1,7 +1,7 @@
 import { failureCode } from '@/utils/failureCode';
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
-import { readAccountPreferenceComparison } from './accountPreference';
+import { readAccountPreferenceComparison, type AccountPreferenceResolution } from './accountPreference';
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
 import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
@@ -491,6 +491,25 @@ export class EditorController {
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());
+  }
+
+  applyAccountPreferenceReview(compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
+    const expected = this.captureRecoveryChoice();
+    return this.enqueueChoice(async () => {
+      this.assertRecoveryChoice(expected);
+      this.assertChoiceAuthority();
+      this.assertManualResolution();
+      const source = this.session.checkpoint();
+      if (!equalValues(compared, source)) {
+        throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
+      }
+      const chosen = DataSession.restore(source);
+      chosen.applyAccountPreferenceReview(choices, time);
+      const record = { ...this.record(), checkpoint: chosen.checkpoint() };
+      await this.options.store.put(record);
+      await this.applyChoiceProjection(source, record, captures);
+    });
   }
 
   chooseSermonOutlineReview(side: 'local' | 'remote', expected: EditorRecord): Promise<void> {

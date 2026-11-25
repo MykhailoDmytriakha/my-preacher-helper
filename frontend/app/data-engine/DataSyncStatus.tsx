@@ -51,10 +51,19 @@ export interface TextComparison {
   keepMineDisabled?: boolean;
   completeReview?: true;
   outlineReview?: { titles: readonly (OutlineTitleVersion & { label: string })[]; apply: ApplyOutlineReview; placementSettled?: true };
-  actions?: { local: string; stored: string; confirmStored?: DiscardQuestionKey };
+  actions?: { local?: string; stored: string; confirmStored?: DiscardQuestionKey };
 }
+type VersionSide = 'local' | 'remote';
+type ComparedField = { id: string; label?: string; mine: string; stored: string };
+type FieldReview = {
+  identity: string;
+  fields: readonly ComparedField[];
+  apply: (choices: Record<string, VersionSide>) => void | Promise<void>;
+};
+
 export interface DataSyncStatusProps {
   comparison?: TextComparison;
+  fieldReview?: FieldReview;
   conflictCopy?: Pick<TextComparison, 'identity' | 'description' | 'actions'>;
   /**
    * What this status speaks about: the hook's `recoveryIdentity`, or any value that changes exactly
@@ -101,6 +110,41 @@ export function FieldComparison({ comparison }: { comparison: TextComparison }) 
   </div>;
 }
 
+const versionReviewClass = 'space-y-3 rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-800 dark:bg-rose-950/20';
+const applyReviewLabel = 'dataSync.applyReviewedVersions';
+const applyReviewClass = 'rounded-md bg-rose-700 px-3 py-2 font-medium text-white disabled:opacity-50';
+
+function FieldVersionOptions({ label, mine, stored, choice, disabled, select, allowed }: Omit<ComparedField, 'id'> & {
+  choice?: VersionSide; disabled: boolean; select: (side: VersionSide) => void; allowed?: (side: VersionSide) => boolean;
+}) {
+  const { t } = useTranslation();
+  const name = useId();
+  return <fieldset disabled={disabled} className="min-w-0 space-y-2">
+    <legend className="font-medium">{label}</legend>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {(['local', 'remote'] as const).map(side => <label key={side} className="flex min-w-0 cursor-pointer items-start gap-2 rounded border border-current/20 p-2 has-[:checked]:border-current">
+        <input className="mt-1" type="radio" name={name} checked={choice === side} disabled={allowed && !allowed(side)} onChange={() => select(side)} />
+        <span className="min-w-0"><span className="block font-medium">{t(side === 'local' ? 'dataSync.yourVersion' : 'dataSync.storedVersion')}</span>
+          <span className="block whitespace-pre-wrap break-words">{side === 'local' ? mine : stored}</span></span>
+      </label>)}
+    </div>
+  </fieldset>;
+}
+
+function FieldVersionReview({ review, busy, allowed, submit }: {
+  review: FieldReview; busy: boolean; allowed: (side: VersionSide) => boolean; submit: FieldReview['apply'];
+}) {
+  const { t } = useTranslation();
+  const [choices, setChoices] = useState<Record<string, VersionSide>>({});
+  const complete = review.fields.every(field => Object.hasOwn(choices, field.id) && allowed(choices[field.id]));
+  return <div className={versionReviewClass}>
+    {review.fields.map(({ id, ...field }) => <FieldVersionOptions key={id} {...field}
+      choice={choices[id]} disabled={busy} allowed={allowed} select={side => setChoices(previous => ({ ...previous, [id]: side }))} />)}
+    <button type="button" className={applyReviewClass} disabled={busy || !complete}
+      onClick={() => { if (complete) void submit(choices); }}>{t(applyReviewLabel)}</button>
+  </div>;
+}
+
 function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, apply }: {
   comparison: TextComparison & { outlineReview: NonNullable<TextComparison['outlineReview']> };
   busy: boolean;
@@ -109,7 +153,6 @@ function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, 
   apply: ApplyOutlineReview;
 }) {
   const { t } = useTranslation();
-  const id = useId();
   const [placement, setPlacement] = useState<'local' | 'remote'>();
   const chosenPlacement = comparison.outlineReview.placementSettled
     ? (remoteAllowed ? 'remote' : localAllowed ? 'local' : undefined) : placement;
@@ -119,21 +162,13 @@ function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, 
   const placementAllowed = (side: 'local' | 'remote') => side === 'local' ? localAllowed : remoteAllowed;
   const decisions = comparison.outlineReview.titles.flatMap(({ id, mine, stored, field }) =>
     Object.prototype.hasOwnProperty.call(titles, id) ? [{ id, mine, stored, ...(field && { field }), side: titles[id] }] : []);
-  return <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-800 dark:bg-rose-950/20">
-    {fields.map(({ id: fieldId, label, mine, stored }, index) => <fieldset key={fieldId ?? 'placement'} disabled={busy} className="min-w-0 space-y-2">
-      <legend className="font-medium">{label}</legend>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(['local', 'remote'] as const).map(side => <label key={side} className="flex min-w-0 cursor-pointer items-start gap-2 rounded border border-current/20 p-2 has-[:checked]:border-current">
-          <input className="mt-1" type="radio" name={id + index} checked={(fieldId === null ? placement : titles[fieldId]) === side} disabled={fieldId === null && !placementAllowed(side)}
-            onChange={() => fieldId === null ? setPlacement(side) : setTitles(previous => ({ ...previous, [fieldId]: side }))} />
-          <span className="min-w-0"><span className="block font-medium">{t(side === 'local' ? 'dataSync.yourVersion' : 'dataSync.storedVersion')}</span>
-            <span className="block whitespace-pre-wrap break-words">{side === 'local' ? mine : stored}</span></span>
-        </label>)}
-      </div>
-    </fieldset>)}
-    <button type="button" className="rounded-md bg-rose-700 px-3 py-2 font-medium text-white disabled:opacity-50"
+  return <div className={versionReviewClass}>
+    {fields.map(({ id: fieldId, ...field }) => <FieldVersionOptions key={fieldId ?? 'placement'} {...field} disabled={busy}
+      choice={fieldId === null ? placement : titles[fieldId]} allowed={fieldId === null ? placementAllowed : undefined}
+      select={side => fieldId === null ? setPlacement(side) : setTitles(previous => ({ ...previous, [fieldId]: side }))} />)}
+    <button type="button" className={applyReviewClass}
       disabled={busy || !chosenPlacement || !placementAllowed(chosenPlacement) || decisions.length !== comparison.outlineReview.titles.length}
-      onClick={() => { if (chosenPlacement) void apply(chosenPlacement, decisions); }}>{t('dataSync.applyReviewedVersions')}</button>
+      onClick={() => { if (chosenPlacement) void apply(chosenPlacement, decisions); }}>{t(applyReviewLabel)}</button>
   </div>;
 }
 
@@ -141,13 +176,13 @@ function OutlineVersionChoices({ comparison, busy, localAllowed, remoteAllowed, 
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, conflictCopy, workspaceNotice = false, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, fieldReview, conflictCopy, workspaceNotice = false, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const conflictPresentation = comparison ?? conflictCopy;
-  const comparisonIdentity = conflictPresentation?.identity;
+  const comparisonIdentity = fieldReview?.identity ?? conflictPresentation?.identity;
   const currentComparison = useRef(comparisonIdentity);
   useLayoutEffect(() => {
     currentComparison.current = comparisonIdentity;
@@ -237,7 +272,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     conflictPresentation?.actions?.confirmStored ?? (comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined));
   const completeReview = comparison?.completeReview && status?.phase === 'conflict' && keep;
   const outlineReview = status?.phase === 'conflict' && comparison?.outlineReview;
-  const conflictBanner = !outlineReview && !completeReview && !deleting && status?.phase === 'conflict' && keep && accept;
+  const fieldChoices = status?.phase === 'conflict' && fieldReview;
+  const conflictBanner = !fieldChoices && !outlineReview && !completeReview && !deleting && status?.phase === 'conflict' && keep && accept;
   const repeatDeletion = () => {
     if (!keep) return;
     keepChecked(async () => {
@@ -258,18 +294,21 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
   const pendingDeletion = Boolean(status?.deleting && !trouble);
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
-  const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !outlineReview && !completeReview && !(comparison && conflictBanner))));
+  const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !fieldChoices && !outlineReview && !completeReview && !(comparison && conflictBanner))));
   const said = [pendingDeletion, showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (quiet || !said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   const content = <>
-  <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
+  <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison || fieldChoices ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
+    {fieldChoices && <FieldVersionReview key={comparisonIdentity} review={fieldChoices} busy={busy}
+      allowed={side => Boolean(side === 'local' ? status?.canKeepLocal : status?.canAcceptRemote)}
+      submit={choices => keepChecked(() => fieldChoices.apply(choices))} />}
     {outlineReview && comparison && <OutlineVersionChoices key={comparisonIdentity} comparison={{ ...comparison, outlineReview }} busy={busy}
       localAllowed={Boolean(keep)} remoteAllowed={Boolean(accept)} apply={(placement, titles) => keepChecked(() => outlineReview.apply(placement, titles))} />}
     {comparison && !outlineReview && !completeReview && <FieldComparison comparison={comparison} />}
     {outlineReview ? null : completeReview ? <button type="button" className={buttonClass} disabled={busy}
-      onClick={() => keepChecked(completeReview)}>{t('dataSync.applyReviewedVersions')}</button> : conflictBanner ? <SaveConflictBanner heading={comparison?.heading}
+      onClick={() => keepChecked(completeReview)}>{t(applyReviewLabel)}</button> : conflictBanner ? <SaveConflictBanner heading={comparison?.heading}
       description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
       keepMineLabel={conflictPresentation?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
       keepMineDisabled={comparison?.keepMineDisabled}
@@ -284,9 +323,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {/* A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained). */}
     <OutdatedTabNotice refused={status?.phase === 'refused'} />
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
-    {((!outlineReview && !completeReview && !conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
-      {!outlineReview && !completeReview && !conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
-      {!outlineReview && !completeReview && !conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => chooseStored(accept))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
+    {((!fieldChoices && !outlineReview && !completeReview && !conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
+      {!fieldChoices && !outlineReview && !completeReview && !conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
+      {!fieldChoices && !outlineReview && !completeReview && !conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => chooseStored(accept))}>{deleting ? t('dataSync.keepRecord') : conflictPresentation?.actions?.stored ?? t('dataSync.acceptRemote')}</button>}
       {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
     </div>}
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}

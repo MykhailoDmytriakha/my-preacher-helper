@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { DataSession } from '@/data-engine/session';
 import { UserSettingsEngineContext } from '@/hooks/userSettingsEngineContext';
 import { UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
 
@@ -46,4 +47,37 @@ describe('UserSettingsSyncStatus above every page', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('The settings could not be delivered.');
     expect(screen.getByRole('button', { name: 'dataSync.retry' })).toBeInTheDocument();
   });
+  it('lists both recovered settings and lets the user apply a different version of each', async () => {
+    const resource = { collection: 'users', id: 'u1' };
+    const metadata = { protocol: 1 as const, generation: 'settings-generation', revision: 8, deleted: false };
+    const opening = { reading: { crossReferences: { show: true, mode: 'main', inWindow: true } } };
+    const draft = { reading: { crossReferences: { show: false, mode: 'all', inWindow: true } } };
+    const saved = { reading: { crossReferences: { show: true, mode: 'main', inWindow: false } } };
+    const checkpoint = DataSession.restore({
+      confirmed: { resource, value: opening, metadata },
+      draft, dirty: true, editGeneration: 1, conflicts: [], pending: {},
+      remoteCandidate: { resource, value: saved, metadata: { ...metadata, revision: 9 } },
+      unreadableScalarProof: ['reading.crossReferences.show', 'reading.crossReferences.mode'],
+    }).checkpoint();
+    const apply = jest.fn();
+    const document = {
+      state: { checkpoint, durable: true, error: null, result: null },
+      status: { phase: 'conflict', canKeepLocal: true, canAcceptRemote: true },
+      applyAccountPreferenceReview: apply,
+    };
+    renderStatus(document as unknown as Partial<SettingsDocument>);
+    const visible = screen.getByRole('group', { name: 'settings.bible.crossRefs.marks' });
+    const mode = screen.getByRole('group', { name: 'settings.bible.crossRefs.count' });
+    const submit = screen.getByRole('button', { name: 'dataSync.applyReviewedVersions' });
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(visible).getByRole('radio', { name: /dataSync.storedVersion/ }));
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(mode).getByRole('radio', { name: /dataSync.yourVersion/ }));
+    expect(apply).not.toHaveBeenCalled();
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+    expect(apply).toHaveBeenCalledWith(checkpoint, { 'reading.crossReferences.show': 'remote', 'reading.crossReferences.mode': 'local' });
+  });
+
 });

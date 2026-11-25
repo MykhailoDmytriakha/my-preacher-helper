@@ -80,6 +80,8 @@ const exegeticalPointDraft = fieldAction.extend({
 const unreadableExegeticalProof = exegeticalPointDraft.pick({ nodeId: true, kind: true, generation: true, ancestors: true });
 const unreadableExegeticalAddress = unreadableExegeticalProof.extend({ pendingAddition: z.literal(true).optional() });
 const accountPreferenceField = z.custom<AccountPreferenceField>(field => ACCOUNT_PREFERENCE_TARGETS.some(target => target.field === field));
+const accountPreferenceFields = z.array(accountPreferenceField).min(1).max(ACCOUNT_PREFERENCE_TARGETS.length)
+  .refine(fields => new Set(fields).size === fields.length);
 const checkpointConflict = z.object({
   path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema, code: z.string().optional(),
   outlineSubpointIds: z.array(id).max(32).optional(),
@@ -173,7 +175,10 @@ const recordSchema = z.object({
     serviceOrderInputs: z.record(z.string(), serviceOrderInputSchema).optional(),
     unreadableExegeticalProofs: z.array(unreadableExegeticalAddress).max(32).optional(),
     serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional(),
-    accountPreferenceRetry: z.object({ field: accountPreferenceField, time: actionTime }).optional(),
+    accountPreferenceRetry: z.union([
+      z.object({ field: accountPreferenceField, time: actionTime }).strict(),
+      z.object({ fields: accountPreferenceFields, time: actionTime }).strict(),
+    ]).optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
       decisions: z.array(privateFieldDecision) }).optional(),
     groupMeetingReview: z.object({ generation: id, rowId: z.string().min(1), rowCreatedAt: z.string().min(1),
@@ -460,12 +465,15 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (collection === 'users') {
         const lostRetry = dropped.includes('accountPreferenceRetry') && checkpoint.accountPreferenceRetry === undefined;
         const retry = value.checkpoint.accountPreferenceRetry;
-        const namedField = isFields(retry) && accountPreferenceField.safeParse(retry.field).success ? retry.field : undefined;
+        const field = accountPreferenceField.safeParse(isFields(retry) ? retry.field : undefined);
+        const batch = accountPreferenceFields.safeParse(isFields(retry) ? retry.fields : undefined);
+        const malformedShape = isFields(retry) && Object.hasOwn(retry, 'field') && Object.hasOwn(retry, 'fields');
+        const namedFields = malformedShape ? undefined : field.success ? [field.data] : batch.success ? batch.data : undefined;
         const opening = isFields(confirmed) && isFields(confirmed.value) ? confirmed.value as DocumentData : null;
         const draft = isFields(checkpoint.draft) ? checkpoint.draft as DocumentData : null;
         for (const { field, path } of ACCOUNT_PREFERENCE_TARGETS) {
           // When the retry cannot identify its field, keep every possible pending preference under review.
-          if (held.includes(field) || (lostRetry && (!namedField || field === namedField) && opening && draft
+          if (held.includes(field) || (lostRetry && (!namedFields || namedFields.includes(field)) && opening && draft
             && !equalValues(readField(opening, path), readField(draft, path)))) fields.push(field);
         }
       }

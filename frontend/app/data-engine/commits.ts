@@ -5,6 +5,7 @@ import { matchesSermonNoteOpening, withSermonNoteText, type SermonNoteOpening } 
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 
+import { accountPreferenceRetryFields, type AccountPreferenceObservations } from './accountPreference';
 import { boundedActionTime, type ActionTime } from './actionClock';
 import { sameAnalysisFrame } from './analysisReshapeFields';
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
@@ -60,7 +61,6 @@ import { captureStudyNoteContent, type StudyNoteContentObservation } from './stu
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 import { hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof } from './unreadableDraftProof';
 
-import type { AccountPreferenceObservations } from './accountPreference';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { CommentCompanionProofs } from './commentPlaceChoice';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -828,7 +828,7 @@ export class CommitQueue {
     const editorAction = frozenOptions?.action ?? (intent.sourceNoteLinkRetry
       ? { kind: 'sermon-source-note-links', selection: intent.sourceNoteLinkRetry } as const
       : accountRetry
-      ? { kind: 'account-preference', fields: [accountRetry.field], time: accountRetry.time } as const
+      ? { kind: 'account-preference', fields: accountPreferenceRetryFields(accountRetry), time: accountRetry.time } as const
       : intent.serviceOrderPlacementRetry
       ? { kind: 'service-order-placement', move: intent.serviceOrderPlacementRetry } as const
       : intent.serviceOrderStepPlacementRetry

@@ -11,7 +11,7 @@ import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client
 import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSermonNoteText, type OutlineTitleOpening, type SermonNoteOpening, type SermonNoteTarget } from '@/utils/sermonNoteText';
 import { useTranslation } from '@locales/useTranslation';
 
-import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
+import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference, type AccountPreferenceResolution } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
@@ -172,6 +172,7 @@ export function previewReviewedListChoice(checkpoint: SessionCheckpoint) {
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }
+export { needsAccountPreferenceReview, readAccountPreferenceReview } from './accountPreference';
 export const accountPreferenceValues = preferenceValues;
 export const readingPreferenceFields = readingFields;
 export const writeAccountPreference = writePreference;
@@ -1684,6 +1685,11 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     discardAction: (id: string) => run(editor => editor.discardAction(id)),
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
+    applyAccountPreferenceReview: (compared: SessionCheckpoint, choices: AccountPreferenceResolution) => {
+      cancelScheduledSave();
+      const time = owner ? actionClock.capture(owner) ?? null : null;
+      return run(editor => editor.applyAccountPreferenceReview(compared, choices, time));
+    },
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {

@@ -3,6 +3,7 @@ import { isModelPreference, isModelPreferenceField, MODEL_PREFERENCE_FIELDS, typ
 
 import { equalValues, readField, writeField } from './fieldValues';
 
+import type { ActionTime } from './actionClock';
 import type { DocumentFieldObservation, DocumentFieldStamp } from './documentFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue } from './types';
@@ -69,6 +70,55 @@ export const ACCOUNT_PREFERENCE_TARGETS: readonly AccountPreferenceTarget[] =
     },
   }));
 
+export type AccountPreferenceRetry = ({ field: AccountPreferenceField } | { fields: AccountPreferenceField[] }) & { time: ActionTime | null };
+export type AccountPreferenceChoices = Partial<Record<AccountPreferenceField, 'local' | 'remote'>>;
+export type AccountPreferenceResolution = AccountPreferenceChoices | 'saved-draft';
+
+export function accountPreferenceRetryFields(retry: AccountPreferenceRetry): readonly AccountPreferenceField[] {
+  return 'field' in retry ? [retry.field] : retry.fields;
+}
+
+export function needsAccountPreferenceReview(checkpoint: SessionCheckpoint): boolean {
+  return checkpoint.confirmed.resource.collection === 'users' && (checkpoint.unreadableScalarProof?.length ?? 0) > 1
+    && Object.keys(checkpoint.pending).length === 0;
+}
+
+/** Hold every unreadable preference until the user explicitly confirms the displayed versions. */
+export function readAccountPreferenceReview(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, editGeneration } = checkpoint;
+  if (!needsAccountPreferenceReview(checkpoint) || !confirmed.value || !draft || !remoteCandidate?.metadata) return undefined;
+  const basis = { ...remoteCandidate, value: remoteCandidate.value, metadata: remoteCandidate.metadata };
+  const identity = JSON.stringify([editGeneration, basis.metadata, basis.value, draft]);
+  const savedOnly = { kind: 'saved-only' as const, identity, basis, draft };
+  if (!basis.value || confirmed.metadata?.generation !== basis.metadata.generation || basis.metadata.deleted) return savedOnly;
+  const held = checkpoint.unreadableScalarProof!;
+  if (held.some(field => !ACCOUNT_PREFERENCE_TARGETS.some(target => target.field === field))) return savedOnly;
+  let accounted = confirmed.value;
+  const fields = [];
+  for (const target of ACCOUNT_PREFERENCE_TARGETS) {
+    const before = readField(confirmed.value, target.path);
+    const mine = readField(draft, target.path);
+    if (!held.includes(target.field) && equalValues(mine, before)) continue;
+    if (!equalValues(mine, before)) accounted = writeField(accounted, target.path, mine);
+    const stored = readField(basis.value, target.path);
+    if (equalValues(mine, stored)) continue;
+    const values = preferenceVersions(target, mine, stored);
+    if (!values) return savedOnly;
+    fields.push({ ...values, field: target.field, path: target.path, mineField: mine });
+  }
+  // An unrelated draft change has no preference proof. It stays visible for copying and cannot ride this Save.
+  const authored = (data: DocumentData) => Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'rev' && key !== 'updatedAt'));
+  if (!equalValues(authored(accounted), authored(draft))) return savedOnly;
+  return { kind: 'choices' as const, fields, basis: { ...basis, value: basis.value }, identity };
+}
+
+function preferenceVersions(target: AccountPreferenceTarget, mine: FieldValue, stored: FieldValue) {
+  const mineValue = mine.exists ? mine.value : null;
+  const storedValue = stored.exists ? stored.value : null;
+  if ((mineValue !== null && !target.accepts(mineValue)) || (storedValue !== null && !target.accepts(storedValue))) return undefined;
+  return { mine: mineValue, stored: storedValue };
+}
+
 export type AccountPreferenceHistoryPage = {
   owner: string; userId: string; generation: string; nextCursor: string | null;
   entries: { id: string; fields: { field: AccountPreferenceField; value: PreferenceValue | null; winner: PreferenceValue | null }[] }[];
@@ -83,10 +133,8 @@ export function readAccountPreferenceComparison(checkpoint: SessionCheckpoint) {
   if (!target) return undefined;
   const mine = readField(draft, target.path);
   const stored = readField(remoteCandidate.value, target.path);
-  const mineValue = mine.exists ? mine.value : null;
-  const storedValue = stored.exists ? stored.value : null;
-  if ((mineValue !== null && !target.accepts(mineValue)) || (storedValue !== null && !target.accepts(storedValue))
-    || equalValues(mine, stored) || !equalValues(mine, conflict.mine) || !equalValues(stored, conflict.theirs)) return undefined;
-  return { field: target.field, path: target.path, mine: mineValue, stored: storedValue,
+  const values = preferenceVersions(target, mine, stored);
+  if (!values || equalValues(mine, stored) || !equalValues(mine, conflict.mine) || !equalValues(stored, conflict.theirs)) return undefined;
+  return { ...values, field: target.field, path: target.path,
     identity: JSON.stringify([editGeneration, remoteCandidate.metadata.generation, remoteCandidate.metadata.revision, conflict]) };
 }
