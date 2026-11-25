@@ -467,3 +467,151 @@ describe('a new study note after the page was killed before it could submit a cr
     expect((await device.checkpoints.read(owner, editorId))?.checkpoint.draft?.content).toBe(draft.content);
   });
 });
+
+const order = { collection: 'serviceOrders', id: 'order' };
+const firstStep = { id: 'welcome', title: 'Welcome', body: 'Original field', scriptureRefs: ['John 1:1'] };
+const orderOpening: ResourceSnapshot = {
+  resource: order, metadata: { protocol: 1, generation: 'order-created', revision: 5, deleted: false },
+  value: { userId: owner, title: 'Evening service', rank: 1, steps: [firstStep], createdAt: '2026-11-20', updatedAt: '2026-11-20' },
+};
+const input = { field: 'body', stepId: firstStep.id, before: firstStep.body, value: 'Entire final word',
+  version: { generation: 'order-created', observedRevision: 5 }, time: { earliestMs: 1795431000000, latestMs: 1795431000001 } } as const;
+
+describe('F2 service input interrupted before its pause', () => {
+  let device: ReturnType<typeof boot>;
+  afterEach(() => device.engine.dispose());
+
+  async function leaveSession(saved: ResourceSnapshot) {
+    device = boot(saved);
+    const editorId = retirableEditorIdentity('closed-tab', order, 'service-order-input', 'previous');
+    const session = new DataSession(orderOpening);
+    session.edit({ ...orderOpening.value, steps: [{ ...firstStep, body: input.value }] }, undefined, { field: 'service-order-input', input });
+    await device.checkpoints.create({ owner, editorId, checkpoint: session.checkpoint(), autoSaveOnResume: false, prepared: null, unfinalized: [] });
+    const persisted = await device.checkpoints.read(owner, editorId);
+    expect(Object.values(persisted?.checkpoint.serviceOrderInputs ?? {})).toEqual([input]);
+    expect(device.transport.send).toHaveBeenCalledTimes(0);
+    return editorId;
+  }
+
+  it.each([false, true])('drains exact body once before service route is visited; unrelated revision changed = %s', async renamed => {
+    const current = renamed ? { ...orderOpening, metadata: { ...orderOpening.metadata!, revision: 6 },
+      value: { ...orderOpening.value, title: 'Renamed on another device' } } : orderOpening;
+    const id = await leaveSession(current);
+    await device.start();
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(device.stored().value).toMatchObject({ ...current.value, steps: [{ ...firstStep, body: input.value }] });
+    expect(device.transport.send.mock.calls[0][0]).toMatchObject({
+      serviceOrderStepBodyActions: [{ rowId: firstStep.id, time: input.time, observedRevision: input.version.observedRevision }],
+    });
+    expect(await device.checkpoints.read(owner, id)).toBeUndefined();
+  });
+
+  it('resumes a service name using its saved revision and action time', async () => {
+    device = boot(orderOpening);
+    const editorId = retirableEditorIdentity('closed-tab', order, 'service-order-input', 'previous');
+    const title = { field: 'orderTitle', before: 'Evening service', value: 'Sunday evening service', version: input.version, time: input.time } as const;
+    const session = new DataSession(orderOpening);
+    session.edit({ ...orderOpening.value, title: title.value }, undefined, { field: 'service-order-input', input: title });
+    await device.checkpoints.create({ owner, editorId, checkpoint: session.checkpoint(), autoSaveOnResume: false, prepared: null, unfinalized: [] });
+    await device.start();
+    await device.engine.retry();
+    expect(device.stored().value?.title).toBe(title.value);
+    expect(device.stored().value?.steps).toEqual([firstStep]);
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(device.transport.send.mock.calls[0][0]).toMatchObject({
+      serviceOrderTitleAction: { before: title.before, after: title.value, observedRevision: input.version.observedRevision, time: title.time },
+    });
+  });
+
+  it('does not send changed basis and leaves the exact edit available in recovery', async () => {
+    const changed = { ...orderOpening, metadata: { ...orderOpening.metadata!, revision: 6 },
+      value: { ...orderOpening.value, steps: [{ ...firstStep, body: 'Rewritten on another device' }] } };
+    const id = await leaveSession(changed);
+    await device.start();
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(0);
+    expect(device.stored()).toEqual(changed);
+    const [choice] = await device.engine.listRecoveryChoices(order);
+    expect(choice.record.editorId).toEqual(id);
+    expect(Object.values(choice.record.checkpoint.serviceOrderInputs ?? {})).toEqual([input]);
+  });
+});
+
+const secondInput = { field: 'title', stepId: firstStep.id, before: firstStep.title, value: 'Later independent title',
+  version: input.version, time: { earliestMs: 1795431000020, latestMs: 1795431000021 } } as const;
+
+describe('startup ownership of service field drafts', () => {
+  let device: ReturnType<typeof boot>;
+  beforeEach(() => { device = boot(orderOpening); });
+  afterEach(() => device.engine.dispose());
+
+  async function leaveDraft(suffix: string, fields = 'body', bodyValue: string = input.value) {
+    const id = retirableEditorIdentity('closed-' + suffix, order, 'service-order-input', suffix);
+    const session = new DataSession(orderOpening);
+    if (fields.includes('body')) {
+      session.edit({ ...orderOpening.value, steps: [{ ...firstStep, body: bodyValue }] },
+        undefined, { field: 'service-order-input', input: { ...input, value: bodyValue } });
+    }
+    if (fields.includes('title')) {
+      const step = fields.includes('body') ? { ...firstStep, body: input.value } : firstStep;
+      session.edit({ ...orderOpening.value, steps: [{ ...step, title: secondInput.value }] },
+        undefined, { field: 'service-order-input', input: secondInput });
+    }
+    await device.checkpoints.create({ owner, editorId: id, checkpoint: session.checkpoint(), autoSaveOnResume: false, prepared: null, unfinalized: [] });
+    return id;
+  }
+
+  function holdFreshRead() {
+    const reading = deferred(), continueRead = deferred();
+    device.transport.read.mockImplementationOnce(async () => {
+      reading.resolve();
+      await continueRead.promise;
+      return device.stored();
+    });
+    return { reading, continueRead };
+  }
+
+  it('resumes after a different write is captured during the target read', async () => {
+    await leaveDraft('first');
+    const { reading, continueRead } = holdFreshRead();
+    const started = device.start();
+    await reading.promise;
+    try {
+      const session = new DataSession(orderOpening);
+      session.edit({ ...orderOpening.value, title: 'Renamed during startup' });
+      expect(await device.queue.save('independent-title', session.checkpoint())).not.toBeNull();
+    } finally { continueRead.resolve(); }
+    await started;
+    await device.engine.retry();
+    await device.engine.retry();
+    expect(device.stored().value).toMatchObject({ title: 'Renamed during startup', steps: [{ ...firstStep, body: input.value }] });
+    expect(device.transport.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not pick a copy if a competing closed source is persisted during the target read', async () => {
+    const first = await leaveDraft('first');
+    const { reading, continueRead } = holdFreshRead();
+    const started = device.start();
+    await reading.promise;
+    let second;
+    try { second = await leaveDraft('second', 'body', 'Competing text for the same field'); }
+    finally { continueRead.resolve(); }
+    await started;
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(0);
+    expect(device.stored()).toEqual(orderOpening);
+    expect((await device.checkpoints.listRecoverable(owner, order)).map(({ record }) => record.editorId).sort())
+      .toEqual([first, second].sort());
+  });
+
+  it('saves both eligible fields independently from a single exact source', async () => {
+    const id = await leaveDraft('both', 'body title');
+    await device.start();
+    await device.engine.retry();
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(2);
+    expect(device.stored().value?.steps).toEqual([{ ...firstStep, body: input.value, title: secondInput.value }]);
+    expect(await device.checkpoints.read(owner, id)).toBeUndefined();
+  });
+});

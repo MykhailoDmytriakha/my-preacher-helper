@@ -419,6 +419,7 @@ it.each(['step', 'service'] as const)('shows the retained words after another de
     await writing();
     old.close();
     await settleEngine();
+    expect(harness.transport.send).not.toHaveBeenCalled();
     harness.silentRemote({ steps: [] });
   }
   previous.dispose();
@@ -831,5 +832,70 @@ it.each(['order title', 'step title'] as const)('restores the %s through the sam
     await act(settleEngine);
     jest.mocked(requestOwnerJson).mockImplementation(jest.requireActual('@/services/ownerHttpTransport.client').requestOwnerJson);
     jest.mocked(editHistoryShown).mockReturnValue(false);
+  }
+});
+
+const presence = { held: async () => false as const, hold: () => () => undefined };
+const startupStep = { id: 'step-1', title: 'Opening prayer', scriptureRefs: ['John 1:1'] };
+const startupBody = 'The entire local word.';
+const updatedStartupBody = 'Updated on the phone without opening this tab.';
+const startupInput = { field: 'body', stepId: startupStep.id, before: 'The original paragraph.', value: startupBody, time: null,
+  version: { generation: 'order-generation', observedRevision: 5 } } as const;
+
+it.each([
+  { changed: false, reserveOnly: false }, { changed: true, reserveOnly: false }, { changed: false, reserveOnly: true },
+])('reopens service after startup, stored field changed=$changed reserve only=$reserveOnly', async ({ changed, reserveOnly }) => {
+  const harness = documentEngineHarness(initial);
+  const previous = harness.createBrowser({ recoveryPresence: presence });
+  previous.engine.setOwner('owner');
+  await previous.engine.retry();
+  const old = await previous.engine.openEditor(resource, previous.editorId(resource, 'service-order-input'), { autoSaveOnResume: false });
+  // Persist the exact field stamp produced before the editor's pause. A renderer crash cannot run the timer or flush.
+  if (reserveOnly) harness.storage.writeFailureFor = key => Array.isArray(key) && key[0] === 'checkpoint';
+  const writing = old.edit({ ...initial.value, steps: [{ ...startupStep, body: startupInput.value }] },
+    undefined, { field: 'service-order-input', input: startupInput });
+  if (reserveOnly) {
+    await expect(writing).rejects.toThrow();
+    expect(await harness.checkpoints.listRecoverable('owner', resource)).toEqual([]);
+    expect(findDraftCopies('owner', resource.id, 'service-order-input')).toHaveLength(1);
+  } else {
+    await writing;
+    expect((await harness.checkpoints.listRecoverable('owner', resource))[0]?.record.checkpoint.serviceOrderInputs).toMatchObject({
+      '["step-1","body"]': startupInput,
+    });
+  }
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  if (reserveOnly) old.dispose();
+  else old.close();
+  await settleEngine();
+  previous.dispose();
+  harness.storage.writeFailureFor = undefined;
+  if (changed) harness.silentRemote({ steps: [{ ...startupStep, body: updatedStartupBody }] });
+  const reopened = harness.createBrowser({ withCollections: true, recoveryPresence: presence });
+  let view: ReturnType<typeof render> | undefined;
+  try {
+    reopened.engine.setOwner('owner');
+    await reopened.engine.retry();
+    await reopened.engine.retry();
+    expect(harness.transport.send).toHaveBeenCalledTimes(changed ? 0 : 1);
+    expect(harness.server.value?.steps).toEqual([{ ...startupStep, body: changed ? updatedStartupBody : startupInput.value }]);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(reopened);
+    view = render(<DataEngineProvider><ServiceOrderPage /></DataEngineProvider>);
+    await screen.findByRole('heading', { name: 'Evening service' });
+    await act(settleEngine);
+    if (changed) {
+      fireEvent.click(await screen.findByRole('button', { name: 'dataSync.reviewSavedChange' }));
+      const review = within(await screen.findByRole('region', { name: 'dataSync.reviewSavedChange' }));
+      expect(await review.findByText(startupInput.value)).toBeInTheDocument();
+      expect(await review.findByText(updatedStartupBody)).toBeInTheDocument();
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    } else {
+      expect(screen.queryByRole('button', { name: 'dataSync.reviewSavedChange' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'dataSync.reviewSavedChange' })).not.toBeInTheDocument();
+    }
+  } finally {
+    view?.unmount();
+    await act(settleEngine);
+    reopened.dispose();
   }
 });

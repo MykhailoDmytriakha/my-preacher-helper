@@ -1,6 +1,7 @@
 'use client';
 
 import { cancellationScope } from './atomicCommits';
+import { PendingStartupAutosave } from './automaticDraftResume';
 import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
 import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './checkpointStorage.client';
 import { createCollectionCommitReads } from './collectionCommitReads.client';
@@ -8,17 +9,28 @@ import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCo
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { isRetirableOrdinaryEditor } from './editorIdentity';
 import { equalValues, readField } from './fieldValues';
-import { GROUP_MEETING_SLOT, PendingMeetingResume, readyMeetingAutosave } from './groupMeetingAutosave';
+import { GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { reconcileManualCaptures } from './manualScope';
 import { writeManualChoiceRecoveries, type ManualStorageRecord } from './manualScopes.client';
-import { reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
+import { isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { versionRecoveryRecord } from './recoverySource.client';
 import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
+import { projectServiceOrderInput, serviceOrderInputKey } from './serviceOrderInput';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
+
+function otherRecoverableCheckpoint(record: unknown, current: CommitRequest): boolean {
+  const candidate = record as { editorId?: unknown } | undefined;
+  if (typeof candidate?.editorId !== 'string' || candidate.editorId === current.editorId) return false;
+  try {
+    return isRecoverableCheckpoint(validateRecoveryRecord(record, current.owner, candidate.editorId, current.baseline.resource));
+  } catch {
+    return false;
+  }
+}
 /** Older collectors honor reference rows even when they cannot read a new request format. */
 function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
   const key = commitDependencyKey(request.owner, request.id);
@@ -226,9 +238,15 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
         read(store.get(checkpointKey(frozen.owner, frozen.editorId)), value => {
           if (value?.recoveryVersion !== version) throw changed();
           const { checkpoint } = validateRecoveryRecord(value, frozen.owner, frozen.editorId, frozen.baseline.resource);
+          const input = options?.resumedServiceInput;
           if (!checkpoint.dirty || !frozen.value || Object.keys(checkpoint.pending).length
-            || checkpoint.editGeneration !== frozen.editGeneration || !equalValues(checkpoint.draft, frozen.value)
             || !equalValues(checkpoint.confirmed, frozen.baseline)) throw changed();
+          if (input) {
+            if (frozen.baseline.resource.collection !== 'serviceOrders' || frozen.predecessor || !input.version || input.retainedOnly
+              || checkpoint.editGeneration + 1 !== frozen.editGeneration
+              || !equalValues(checkpoint.serviceOrderInputs?.[serviceOrderInputKey(input)], input)
+              || !equalValues(projectServiceOrderInput(checkpoint.confirmed.value, input), frozen.value)) throw changed();
+          } else if (checkpoint.editGeneration !== frozen.editGeneration || !equalValues(checkpoint.draft, frozen.value)) throw changed();
           // A person may have taken over this same source between the presence check
           // and the transaction. The fork's existing source proof settles the race.
           const id = recoveryCheckpointId(frozen.owner, frozen.editorId);
@@ -236,7 +254,15 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
             const forked = records.some(record => Array.isArray(record?.recoveryOrigins)
               && record.recoveryOrigins.some((origin: { id?: string; version?: string }) => origin?.id === id && origin.version === version));
             if (forked) throw changed();
-            capture('resume');
+            if (!input) { capture('resume'); return; }
+            readCommitRows(store, read, frozen.owner, requests => {
+              const competing = requests.filter(item => equalValues(item.baseline.resource, frozen.baseline.resource)
+                && !['acknowledged', 'cancelled'].includes(item.state));
+              if (competing.some(item => item.state === 'conflict' || item.state === 'refused')) throw changed();
+              if (competing.length) throw new PendingStartupAutosave(competing.map(item => item.id));
+              if (records.some(record => otherRecoverableCheckpoint(record, frozen))) throw changed();
+              capture('resume');
+            });
           });
         });
       });
@@ -257,7 +283,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
             readCommitRows(store, read, frozen.owner, requests => {
               const waiting = requests.filter(item => equalValues(item.baseline.resource, frozen.baseline.resource)
                 && !['acknowledged', 'cancelled'].includes(item.state));
-              if (waiting.length) throw new PendingMeetingResume(waiting.map(item => item.id));
+              if (waiting.length) throw new PendingStartupAutosave(waiting.map(item => item.id));
               const stage = reconcileManualCaptures(input, requests);
               if (!readyMeetingAutosave(stage) || (stage.predecessor?.id ?? null) !== frozen.predecessor
                 || !equalValues(stage.baseline, frozen.baseline)
