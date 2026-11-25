@@ -13,6 +13,7 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { readServiceOrderTitleConflict, captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readDocumentTextComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForOutlineParentReview, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { hasPrivateServiceOrderPosition, waitsForServiceOrderPosition } from '@/data-engine/unreadableDraftProof';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -55,7 +56,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  */
 interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
-  refused?: boolean; refusalCodes?: readonly string[]; retainedCommentText?: RecoveryCheckpoint }
+  refused?: boolean; refusalCodes?: readonly string[]; retainedCommentText?: RecoveryCheckpoint; privateServiceMove?: RecoveryCheckpoint }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -330,7 +331,8 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const resource = record.checkpoint.confirmed.resource;
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
       const waiting = decided.filter(candidate => isOneShotRecord(candidate.record) !== screen && sameResource(candidate.record.checkpoint.confirmed.resource, resource));
-      const exactAnswer = !screen && (sourceNoteChoiceRecord(waiting) || commentPlaceChoiceRecord(waiting));
+      const privateServiceMove = screen ? undefined : waiting.find(({ record: draft }) => hasPrivateServiceOrderPosition(draft.checkpoint));
+      const exactAnswer = !screen && (sourceNoteChoiceRecord(waiting) || commentPlaceChoiceRecord(waiting) || privateServiceMove);
       const drafts = exactAnswer ? [exactAnswer] : waiting;
       const { checkpoint } = drafts[0].record;
       const scope = captureRecoveryChoice(drafts.map(draft => draft.record));
@@ -342,6 +344,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
         refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
         refusalCodes: scope.operationIds.flatMap(id => refusalCodes.get(id) ?? []),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
+        ...(privateServiceMove && exactAnswer === privateServiceMove && { privateServiceMove }),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(previewReviewedListChoice(draft.checkpoint), draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
         ...scope });
@@ -568,16 +571,16 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
   // A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained).
   const outdated = <OutdatedTabNotice refused={Boolean(entry.refused) || REFUSAL_KINDS.has(entry.kind)} className="mb-3" />;
   const notice = (body: ReactNode) => <><SyncNotice>{outdated}{body}</SyncNotice>{discardDialog}{confirmDialog}</>;
+  const discardClosedDraft = (source: RecoveryCheckpoint) => askBeforeDiscard(true, async () => {
+    if (!browser || browserRef.current !== browser || ownerRef.current !== owner || !sameWaitingChoice(entryRef.current, entry)) return;
+    setBusy(true);
+    try { await browser.engine.discardRecovery(source); }
+    catch (error) { toast.error(refusalMessage(error, t, 'common.saveError')); }
+    finally { setBusy(false); await refresh(); }
+  });
   if (entry.retainedCommentText) {
     const source = entry.retainedCommentText;
     const href = documentScreenHref(entry.resource);
-    const discard = () => askBeforeDiscard(true, async () => {
-      if (!browser || !sameWaitingChoice(entryRef.current, entry)) return;
-      setBusy(true);
-      try { await browser.engine.discardRecovery(source); }
-      catch (error) { toast.error(refusalMessage(error, t, 'common.saveError')); }
-      finally { setBusy(false); await refresh(); }
-    });
     return notice(<div role="status" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{t('unsavedDraft.title')}</p>
       <p className={NOTICE_BODY}>{t('unsavedDraft.description')}</p>
@@ -585,7 +588,7 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={busy} className={PRIMARY_BUTTON} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
         {href && <Link href={href} className={SECONDARY_BUTTON}>{t('bible.preview.openNote')}</Link>}
-        <button type="button" disabled={busy} className={SECONDARY_BUTTON} onClick={() => { void discard(); }}>{t('unsavedDraft.discard')}</button>
+        <button type="button" disabled={busy} className={SECONDARY_BUTTON} onClick={() => { void discardClosedDraft(source); }}>{t('unsavedDraft.discard')}</button>
       </div>
     </div>);
   }
@@ -604,6 +607,37 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
     return notice(entry.decidable
       ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />
       : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />);
+  }
+  if (entry.privateServiceMove) {
+    const source = entry.privateServiceMove;
+    const checkpoint = source.record.checkpoint;
+    const { draft, confirmed, remoteCandidate } = checkpoint;
+    const serviceGone = remoteCandidate && (!remoteCandidate.value || remoteCandidate.metadata?.deleted
+      || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation);
+    if (serviceGone) {
+      const { rank: _draftRank, ...draftWords } = draft ?? {};
+      const { rank: _savedRank, ...savedWords } = confirmed.value ?? {};
+      const words = changedText(draftWords, savedWords, fieldNameRef.current, entry.resource.collection, displayValue);
+      return notice(<div role="status" className={NOTICE_BOX}>
+        <p className={NOTICE_TITLE}>{t('serviceOrders.placementHistory.positionUnavailable')}</p>
+        <p className={NOTICE_BODY}>{t('serviceOrders.placementHistory.moveUnavailable')}</p>
+        {words && <pre className={NOTICE_TEXT}>{words}</pre>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {words && <button type="button" className={PRIMARY_BUTTON} onClick={() => { void copyToClipboard(words); }}>{t(COPY_ACTION)}</button>}
+          <button type="button" disabled={busy} className={SECONDARY_BUTTON} onClick={() => { void discardClosedDraft(source); }}>{t('unsavedDraft.discard')}</button>
+        </div>
+      </div>);
+    }
+    const needsReview = waitsForServiceOrderPosition(checkpoint) || Boolean(checkpoint.remoteCandidate) || checkpoint.conflicts.length > 0;
+    const title = checkpoint.confirmed.value?.title;
+    return notice(<div role="status" className={NOTICE_BOX}>
+      <p className={NOTICE_TITLE}>{t('serviceOrders.placementHistory.position')}{typeof title === 'string' && ` · ${title}`}</p>
+      <p className={NOTICE_BODY}>{t(needsReview ? 'serviceOrders.placementHistory.moveNeedsReview' : 'serviceOrders.placementHistory.moveReady')}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {!needsReview && <button type="button" disabled={busy} className={PRIMARY_BUTTON} onClick={() => { void settle('mine', browser, entry, true); }}>{t('serviceOrders.placementHistory.savePosition')}</button>}
+        <button type="button" disabled={busy} className={needsReview ? PRIMARY_BUTTON : SECONDARY_BUTTON} onClick={() => { void settle('theirs', browser, entry, true); }}>{t('serviceOrders.placementHistory.keepSavedPosition')}</button>
+      </div>
+    </div>);
   }
   if (entry.kind === 'conflict') {
     const comparison = fieldComparison(entry, t, resolveAppLocale(interfaceLanguage));

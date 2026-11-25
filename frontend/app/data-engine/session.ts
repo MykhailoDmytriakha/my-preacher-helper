@@ -48,7 +48,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, unreadableScalarPath } from './unreadableDraftProof';
+import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, hasPrivateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -838,12 +838,20 @@ export class DataSession {
   /** A choice about a private unreadable edit owns only its displayed fields. */
   private acceptStoredUnreadableFields(atChoice: DocumentData | null | undefined): boolean {
     const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, conflicts } = this.state;
-    if (!confirmed.value || !remoteCandidate?.value || !draft || !hasUnreadableDraftProof(this.state)
-      || !conflicts.length || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF && conflict.code !== UNREADABLE_EXEGETICAL_PROOF)
-      || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return false;
+    const rankChoice = hasPrivateServiceOrderPosition(this.state);
+    const target = remoteCandidate ?? (rankChoice ? confirmed : null);
+    if (!confirmed.value || !target?.value || !draft || confirmed.metadata?.generation !== target.metadata?.generation) {
+      if (rankChoice) throw Object.assign(new Error('The service order changed before this choice'), { code: 'decision-changed' });
+      return false;
+    }
+    if (!rankChoice && (!hasUnreadableDraftProof(this.state) || !conflicts.length
+      || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF && conflict.code !== UNREADABLE_EXEGETICAL_PROOF))) return false;
     const source = this.checkpoint();
     const shown = atChoice ?? draft;
-    const scalars = (unreadableScalarProof ?? []).reduce((value, field) => {
+    if (rankChoice && !equalValues(readField(draft, ['rank']), readField(shown, ['rank']))) {
+      throw Object.assign(new Error('The service order position changed before this choice'), { code: 'decision-changed' });
+    }
+    const scalars = (rankChoice ? ['rank'] : unreadableScalarProof ?? []).reduce((value, field) => {
       const path = unreadableScalarPath(confirmed.resource.collection, field);
       if (!equalValues(readField(value, path), readField(shown, path))) return value;
       const opening = readField(confirmed.value!, path);
@@ -864,13 +872,14 @@ export class DataSession {
       else remainingPoints.push(address);
     }
     if (remainingPoints.length && remainingPoints.length === unreadableExegeticalProofs?.length) return false;
-    const result = mergeDocumentFields(confirmed.value, withPoints, remoteCandidate.value);
-    this.state.confirmed = copy(remoteCandidate);
+    const result = mergeDocumentFields(confirmed.value, withPoints, target.value);
+    this.state.confirmed = copy(target);
     this.replaceDraft(result.value.exists ? result.value.value as DocumentData : null);
     this.state.conflicts = copy(result.conflicts);
-    this.state.remoteCandidate = result.conflicts.length ? copy(remoteCandidate) : null;
+    this.state.remoteCandidate = result.conflicts.length ? copy(target) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
     this.state.editGeneration = this.reserveEditGeneration();
+    if (rankChoice) delete this.state.serviceOrderPlacementRetry;
     delete this.state.unreadableScalarProof;
     delete this.state.unreadableRowProofs;
     this.state.unreadableExegeticalProofs = remainingPoints.length ? remainingPoints : undefined;
@@ -883,7 +892,7 @@ export class DataSession {
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
-    if (!this.state.remoteCandidate || this.acceptStoredUnreadableFields(atChoice)) return;
+    if (this.acceptStoredUnreadableFields(atChoice) || !this.state.remoteCandidate) return;
     if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) {
       if (this.state.unreadableExegeticalProofs?.some(address => unreadableExegeticalChoice(this.state, address))) {
         throw Object.assign(new Error('Other changes in the plan need review'), { code: 'other-changes-first' });
@@ -947,6 +956,10 @@ export class DataSession {
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
+    if (this.state.serviceOrderPlacementRetry && !this.state.remoteCandidate && !this.state.conflicts.length) return;
+    if (waitsForServiceOrderPosition(this.state)) {
+      throw Object.assign(new Error('Choose the service order position again'), { code: 'decision-changed' });
+    }
     assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {

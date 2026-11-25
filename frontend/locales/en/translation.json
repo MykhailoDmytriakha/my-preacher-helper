@@ -5418,6 +5418,11 @@
       "restore": "Restore step title"
     },
     "placementHistory": {
+      "moveNeedsReview": "We couldn't restore this move. Keep the saved order, then move the service again from the Services list.",
+      "moveUnavailable": "This move belongs to a service that is no longer here. You can copy any unsaved text before discarding the draft.",
+      "moveReady": "This move is saved on this device. You can save it or keep the current order.",
+      "savePosition": "Save position",
+      "keepSavedPosition": "Keep saved position",
       "neighborNeedsReview": "A neighboring service still has a move to review. Review its position and try this move again.",
       "position": "Position in list",
       "title": "Position history",

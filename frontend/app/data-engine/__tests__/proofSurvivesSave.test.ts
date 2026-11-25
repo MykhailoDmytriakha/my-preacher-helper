@@ -1134,7 +1134,7 @@ describe.each(['rank', 'step', 'outline'] as const)('a recovered %s placement re
     expect(outcome.kind).toBe('acknowledged');
     const sentPaths = outcome.commands.flatMap(command => (command.changes as Array<{ path: string[] }>).map(change => change.path[0]));
     const hasRowWords = family !== 'rank';
-    const sentPlacement = !undo && !reload;
+    const sentPlacement = !undo && (family === 'rank' || !reload);
     const placementActions = outcome.commands.filter(command => command.serviceOrderPlacement || command.serviceOrderStepPlacement || command.outlinePointPlacement);
     expect(placementActions).toHaveLength(Number(sentPlacement));
     if (sentPlacement && hasRowWords) expect(JSON.stringify(placementActions[0].changes)).not.toContain(words);
@@ -1145,7 +1145,9 @@ describe.each(['rank', 'step', 'outline'] as const)('a recovered %s placement re
     const rows = family === 'step' ? server.steps as Loose[] : (server.outline as { main: Loose[] }).main;
     if (hasRowWords) expect(rows.find(row => row.id === 'a')?.title).toBe(words);
     const order = family === 'rank' ? server.rank : rows.map(point => point.id);
-    if (family === 'rank' && !undo && !reload) expect(order).toBeGreaterThan(3);
-    else expect(order).toEqual(family === 'rank' ? (undo ? 1 : 4) : (undo ? ['a', 'b'] : ['b', 'a']));
+    if (family === 'rank') {
+      if (undo) expect(order).toBe(1);
+      else expect(order).toBeGreaterThan(3);
+    } else expect(order).toEqual(undo ? ['a', 'b'] : ['b', 'a']);
   });
 });

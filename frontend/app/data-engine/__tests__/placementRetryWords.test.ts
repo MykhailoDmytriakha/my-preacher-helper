@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
+import { takeDroppedProof } from '@test-utils/droppedEvidence';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
@@ -8,6 +9,7 @@ import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { recoveryChoiceFingerprint } from '../recoveryChoice';
 import { DataEngineRuntime } from '../runtime';
 import { processCommand, readDocument } from '../server';
 import { DataSession } from '../session';
@@ -163,6 +165,93 @@ it('ordinary step and outline moves carry sibling differences; a preference swit
     expect(wire(h)).toEqual([['firstDayOfWeek']]);
     expect(await h.server()).toMatchObject({ language: 'en', firstDayOfWeek: 'monday' });
     expect(h.session.checkpoint()).toMatchObject({ dirty: false, draft: { language: 'en', firstDayOfWeek: 'monday' } });
+  } finally { h.stop(); }
+});
+
+it.each(['intact', 'intact with a missing neighbor', 'damaged', 'older checkpoint'] as const)('reopens an unsaved order move with %s placement evidence', async mode => {
+  const h = fixture('rank', true);
+  try {
+    h.stage();
+    editWords(h);
+    const checkpoint = h.session.checkpoint();
+    const retry = checkpoint.serviceOrderPlacementRetry!;
+    const raw = { ...checkpoint, serviceOrderPlacementRetry: mode === 'older checkpoint' ? undefined
+      : mode === 'damaged' ? { ...retry, placement: { ...retry.placement, time: 'unreadable' } } : retry };
+    const store = createIndexedDbCheckpoints();
+    await store.put({ owner: 'owner', editorId: 'closed', checkpoint: raw as SessionCheckpoint, prepared: null, unfinalized: [] });
+    const restored = DataSession.restore((await store.read('owner', 'closed'))!.checkpoint);
+    expect(h.commands).toEqual([]);
+    expect(restored.checkpoint().draft?.title).toBe(words);
+
+    if (mode === 'intact' || mode === 'intact with a missing neighbor') {
+      expect(restored.checkpoint().serviceOrderPlacementRetry).toEqual(retry);
+      if (mode === 'intact with a missing neighbor') h.db.documents.delete('serviceOrders/neighbor');
+      await h.queue.save('closed', restored.checkpoint());
+      await h.drain();
+      expect(h.commands[0]).toMatchObject({ serviceOrderPlacement: retry.placement });
+      if (mode === 'intact with a missing neighbor') {
+        expect(wire(h)).toEqual([['rank']]);
+        expect(await h.server()).toMatchObject({ rank: h.value.rank, title: h.value.title });
+        return;
+      }
+      expect(wire(h)).toEqual([['rank'], ['title']]);
+      expect(await h.server()).toMatchObject({ title: words });
+      return;
+    }
+
+    if (mode === 'damaged') takeDroppedProof('serviceOrderPlacementRetry');
+    expect(restored.checkpoint().serviceOrderPlacementRetry).toBeUndefined();
+    expect(restored.checkpoint().conflicts).toEqual([expect.objectContaining({ path: ['rank'] })]);
+    await expect(h.queue.save('closed', restored.checkpoint())).rejects.toMatchObject({ code: 'resolve-version-first' });
+    expect(() => restored.keepLocal()).toThrow('Choose the service order position again');
+    expect(wire(h)).toEqual([]);
+    restored.acceptRemote();
+    await h.queue.save('closed', restored.checkpoint());
+    await h.drain();
+    expect(wire(h)).toEqual([['title']]);
+    expect(await h.server()).toMatchObject({ title: words, rank: h.value.rank });
+  } finally { h.stop(); }
+});
+
+it('does not let a choice about the displayed rank settle a newer position', () => {
+  const h = fixture('rank');
+  try {
+    h.session.edit({ ...h.value, rank: 4, title: words });
+    const restored = DataSession.restore({ ...h.session.checkpoint(), unreadableScalarProof: ['rank'] });
+    const shown = restored.checkpoint().draft;
+    restored.edit({ ...shown, rank: 7 });
+    expect(() => restored.acceptRemote(shown)).toThrow('The service order position changed before this choice');
+    expect(restored.checkpoint()).toMatchObject({ unreadableScalarProof: ['rank'], draft: { rank: 7, title: words } });
+  } finally { h.stop(); }
+});
+
+it('accepting the saved rank still leaves both versions of a separately changed title', () => {
+  const h = fixture('rank');
+  try {
+    h.session.edit({ ...h.value, rank: 4, title: words });
+    const restored = DataSession.restore({ ...h.session.checkpoint(), unreadableScalarProof: ['rank'] });
+    restored.observe({ ...h.snapshot, value: { ...h.value, rank: 9, title: 'Title saved elsewhere' },
+      metadata: { ...h.snapshot.metadata!, revision: 2 } }, { source: 'server' });
+    restored.acceptRemote();
+    expect(restored.checkpoint()).toMatchObject({
+      confirmed: { value: { title: 'Title saved elsewhere', rank: 9 } },
+      draft: { title: words, rank: 9 },
+      conflicts: [{ path: ['title'], mine: { value: words }, theirs: { value: 'Title saved elsewhere' } }],
+    });
+  } finally { h.stop(); }
+});
+
+it('pins the exact saved move when two placements share the same numeric position', () => {
+  const h = fixture('rank');
+  try {
+    h.stage();
+    const checkpoint = h.session.checkpoint();
+    const retry = checkpoint.serviceOrderPlacementRetry!;
+    const original = { owner: 'owner', editorId: 'closed', checkpoint, prepared: null, unfinalized: [] };
+    const changed = { ...original, checkpoint: { ...checkpoint, serviceOrderPlacementRetry: {
+      ...retry, placement: { ...retry.placement, destination: { previous: { id: 'different-neighbor', generation: 'g' }, next: null } },
+    } } };
+    expect(recoveryChoiceFingerprint([original])).not.toBe(recoveryChoiceFingerprint([changed]));
   } finally { h.stop(); }
 });
 

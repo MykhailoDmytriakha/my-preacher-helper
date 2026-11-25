@@ -4,6 +4,7 @@ import { compatibleObservation } from './editorObservation';
 import { sameManualSelection } from './manualScope';
 import { hasUnreadableDraftProof } from './session';
 import { shownDeliveryState } from './unanswered';
+import { waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { EditorState } from './controller';
 import type { ManualScope } from './manualScope';
@@ -142,7 +143,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canAcceptRemote: !state.actionResolutionRequired && (foreign
       || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
       || (phase === 'refused' && !state.manualWork)) && settled,
-    canKeepLocal: !(state.result?.kind === 'refused' && ['group-step-placement-needs-review', 'council-topic-placement-needs-review', 'template-point-placement-needs-review'].includes(state.result.code))
+    canKeepLocal: !waitsForServiceOrderPosition(checkpoint) && !(state.result?.kind === 'refused' && ['group-step-placement-needs-review', 'council-topic-placement-needs-review', 'template-point-placement-needs-review'].includes(state.result.code))
       && !councilTopicRefusalCode(state.result) && !councilTopicConflictCode(checkpoint.conflicts) && !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }

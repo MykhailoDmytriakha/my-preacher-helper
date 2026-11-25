@@ -77,6 +77,7 @@ import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './
 import { readStudyNoteFieldsComparison as studyNoteFieldsComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
+import { hasPrivateServiceOrderPosition } from './unreadableDraftProof';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 
@@ -522,7 +523,8 @@ export function useOpenDocumentAnswerScopes(): readonly OpenDocumentAnswer[] {
  * request (possibly another tab's), does not.
  */
 export function waitsForDecision(record: EditorRecord, journal: readonly JournalEntry[], answer?: DocumentAnswer): boolean {
-  return record.checkpoint.conflicts.length > 0 || Boolean(answer) || Boolean(savedDocumentAnswer(record.owner,
+  return record.checkpoint.conflicts.length > 0 || (isOneShotRecord(record) && hasPrivateServiceOrderPosition(record.checkpoint))
+    || Boolean(answer) || Boolean(savedDocumentAnswer(record.owner,
     record.checkpoint.confirmed.resource, Object.keys(record.checkpoint.pending), [], journal));
 }
 
@@ -814,6 +816,9 @@ export function useDocumentActions() {
         if (sharedAnswer) waiting = [sharedAnswer];
         const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
           && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
+        if (exactField && scope?.records.some(({ checkpoint }) => hasPrivateServiceOrderPosition(checkpoint))) {
+          waiting = waiting.filter(({ record }) => hasPrivateServiceOrderPosition(record.checkpoint) && shown(record));
+        }
         if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
           new Error('The shown saved copy changed'), { code: 'decision-changed' });
         let taken = 0;
@@ -859,6 +864,10 @@ export function useDocumentActions() {
             const { checkpoint } = editor.getState();
             if (exactField) publishStoredBody?.(checkpoint.confirmed);
             if (Object.keys(checkpoint.pending).length) continue;
+            if (exactField && hasPrivateServiceOrderPosition(record.checkpoint)) {
+              if (checkpoint.dirty && !checkpoint.conflicts.length) await editor.save();
+              continue;
+            }
             if (checkpoint.dirty && exactField && (readReturnedCommentText(record.checkpoint) || documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'title', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')
               || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
             else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);

@@ -13,7 +13,7 @@ import { readManualScopeIdentity } from './editorIdentity';
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { readField } from './fieldValues';
 import { outlinePlacementField } from './outlinePlacementResource';
-import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
+import { equalValues, getResourcePolicy, isValidIdentifier, validServiceOrderPlacementGap, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
@@ -117,8 +117,13 @@ const sermonNoteOpening = z.object({
     z.object({ kind: z.enum(['point', 'subpoint']), id }),
   ]),
 });
-// These in-memory instructions can resend a move after later typing or an undo.
-type PlacementRetry = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry';
+const rankAnchor = z.object({ id, generation: id.nullable() });
+const rankGap = z.object({ previous: rankAnchor.nullable(), next: rankAnchor.nullable() });
+const rankRetry = z.object({ generation: id.nullable(), before: fieldSchema, rank: z.number().finite(),
+  afterRequests: z.array(id).optional(), placement: z.object({ opening: rankGap, destination: rankGap,
+    observedRevision, time: actionTime, predecessorOperationId: id.optional() }),
+});
+type PlacementRetry = 'serviceOrderStepPlacementRetry';
 const groupTextDecision = z.object({
   path: z.array(z.string()), birth: z.string().nullable(), mine: z.union([z.string(), z.number(), z.boolean(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
   stored: z.union([z.string(), z.number(), z.boolean(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]), side: z.enum(['local', 'remote']),
@@ -172,6 +177,7 @@ const recordSchema = z.object({
     groupTextReview: z.object({ requestId: id, revision: z.number().int().safe().nonnegative(),
       decisions: z.array(groupTextDecision), separateDraft: z.literal(true).optional() }).optional(),
     sourceNoteLinkRetry: sourceNoteLinkCapture.optional(),
+    serviceOrderPlacementRetry: rankRetry.optional(),
     outlinePointPlacementRetry: outlinePlacement.optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
@@ -329,6 +335,27 @@ function recoverPointEvidence(checkpoint: Fields, raw: unknown, confirmed: Resou
     unreadableExegeticalProofs: addresses.size ? [...addresses.values()].slice(0, 32) : undefined };
 }
 
+/** An order's private numeric rank needs the exact move and its neighbour identities. */
+function recoverRankRetry(checkpoint: Fields, confirmed: Fields, held: readonly unknown[]) {
+  const retry = checkpoint.serviceOrderPlacementRetry as z.infer<typeof rankRetry> | undefined;
+  const opening = confirmed.value, draft = checkpoint.draft, resource = confirmed.resource;
+  if (!isFields(opening) || !isFields(draft) || !isFields(resource)) return { retry: undefined, review: false };
+  const before = readField(opening as DocumentData, ['rank']);
+  const mine = readField(draft as DocumentData, ['rank']);
+  const metadata = isFields(confirmed.metadata) ? confirmed.metadata : undefined;
+  const valid = retry && mine.exists && retry.rank === mine.value && equalValues(before, retry.before)
+    && retry.generation === (metadata?.generation ?? null) && !metadata?.deleted
+    && retry.placement.observedRevision <= Number(metadata?.revision ?? 0) && typeof resource.id === 'string'
+    && validServiceOrderPlacementGap(retry.placement.opening, resource.id)
+    && validServiceOrderPlacementGap(retry.placement.destination, resource.id);
+  if (valid) return { retry, review: false };
+  const pending = isFields(checkpoint.pending) ? Object.values(checkpoint.pending).filter(isFields) : [];
+  const latest = pending.reduce<Fields | undefined>((last, item) => typeof item.generation === 'number'
+    && (!last || item.generation > Number(last.generation)) ? item : last, undefined);
+  const submitted = isFields(latest?.value) ? readField(latest.value as DocumentData, ['rank']) : before;
+  return { retry: undefined, review: held.includes('rank') || !equalValues(mine, submitted) };
+}
+
 /** Validate recovered disk data before it can enter a controller or another account. */
 export function validateRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
   const dropped: string[] = [];
@@ -355,7 +382,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (Object.keys(kept).some(operationId => kept[operationId] !== pending[operationId])) checkpoint = { ...checkpoint, pending: kept };
     }
     const collection = isFields(confirmed) && isFields(confirmed.resource) && confirmed.resource.collection;
-    if (dropped.length || checkpoint.unreadableScalarProof !== undefined) {
+    if (collection !== 'serviceOrders' && checkpoint.serviceOrderPlacementRetry !== undefined) {
+      const { serviceOrderPlacementRetry: _retry, ...rest } = checkpoint;
+      checkpoint = rest;
+    }
+    if (dropped.length || checkpoint.unreadableScalarProof !== undefined || collection === 'serviceOrders') {
       const held = Array.isArray(checkpoint.unreadableScalarProof) ? checkpoint.unreadableScalarProof : [];
       const fields: string[] = typeof collection === 'string' ? autosaveFieldTargets(collection).filter(target => held.includes(target.field)
         || (dropped.includes(target.draft) && checkpoint[target.draft] === undefined)).map(target => target.field) : [];
@@ -370,6 +401,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
           if (held.includes(field) || (lostRetry && (!namedField || field === namedField) && opening && draft
             && !equalValues(readField(opening, path), readField(draft, path)))) fields.push(field);
         }
+      }
+      if (collection === 'serviceOrders' && isFields(confirmed)) {
+        const { retry, review } = recoverRankRetry(checkpoint, confirmed, held);
+        if (retry !== checkpoint.serviceOrderPlacementRetry) checkpoint = { ...checkpoint, serviceOrderPlacementRetry: retry };
+        if (review) fields.push('rank');
       }
       if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
     }
