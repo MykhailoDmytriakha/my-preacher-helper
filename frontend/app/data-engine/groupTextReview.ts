@@ -4,9 +4,10 @@ import { groupStatusOutsideChoice } from './documentFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, isOrderedGroupFlowText } from './groupFlowTitleAction';
-import { groupPlacementSteps } from './groupFlowTopology';
+import { groupFlowCopySources, groupPlacementSteps } from './groupFlowTopology';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
-import { readPrivateFieldReview } from './privateFieldReview';
+import { mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
+import { privateFieldsForPaths, readPrivateFieldReview } from './privateFieldReview';
 import { mergeDocumentFields } from './protocol';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 
@@ -245,10 +246,11 @@ function removedText(checkpoint: SessionCheckpoint, conflict: ConflictDetail): R
   const words = changes.length ? [mine, ...changes].filter(value => value !== null && value !== undefined).join('\n') : mine;
   const absent = removedBy === 'remote' ? checkpoint.remoteCandidate?.value?.[root] : checkpoint.draft?.[root];
   if (findGroupRow(absent, id)) return undefined;
-  const linkedSteps = root === 'templates' && removedBy === 'local'
-    ? groupPlacementSteps(checkpoint.remoteCandidate?.value?.flow)?.filter(step =>
-      step.templateId === id && !findGroupRow(checkpoint.draft?.flow, step.id)
-      && findGroupRow(checkpoint.confirmed.value?.flow, step.id)?.templateId === id) : undefined;
+  const presentDocument = removedBy === 'local' ? checkpoint.remoteCandidate?.value : checkpoint.draft;
+  const absentDocument = removedBy === 'local' ? checkpoint.draft : checkpoint.remoteCandidate?.value;
+  const linkedSteps = root === 'templates' ? groupPlacementSteps(presentDocument?.flow)?.filter(step =>
+    step.templateId === id && !findGroupRow(absentDocument?.flow, step.id)
+    && findGroupRow(checkpoint.confirmed.value?.flow, step.id)?.templateId === id) : undefined;
   return { field: root === 'templates' ? 'removedContent' : 'removedNotes', path: conflict.path, birth,
     mine: removedBy === 'remote' ? words : null, stored: removedBy === 'local' ? words : null, removedBy, row: draft, linkedSteps };
 }
@@ -273,8 +275,62 @@ export function groupTextDecision(field: GroupText, side: GroupTextDecision['sid
     ...('row' in field && { row: field.row, removedBy: field.removedBy, ...(field.linkedSteps?.length && { linkedSteps: field.linkedSteps }) }) };
 }
 
+/** A deleted block and its linked removed steps form one choice. Keep the words from each visible. */
+function removedParentOfLocalStep(checkpoint: SessionCheckpoint, field: RemovedGroupText, merged: DocumentData) {
+  const { templateId } = field.row;
+  if (field.field !== 'removedNotes' || field.removedBy !== 'local' || typeof templateId !== 'string'
+    || findGroupRow(checkpoint.draft?.templates, templateId)) return;
+  if (groupPlacementSteps(merged.flow)?.some(step => step.templateId === templateId)) return;
+  const before = findGroupRow(checkpoint.confirmed.value?.templates, templateId);
+  const stored = findGroupRow(checkpoint.remoteCandidate?.value?.templates, templateId);
+  if (!before || !stored) return;
+  return removedText(checkpoint, { path: ['templates', 'id:' + templateId],
+    base: { exists: true, value: before }, mine: { exists: false }, theirs: { exists: true, value: stored } });
+}
+
+/** With a single opening step, its retirement and the block's retirement were one deletion. */
+function onlyRetiredStep(checkpoint: SessionCheckpoint, field: RemovedGroupText) {
+  if (field.removedBy !== 'local' || field.field !== 'removedContent') return;
+  const blockId = field.path[1].slice(3);
+  const openingSteps = groupPlacementSteps(checkpoint.confirmed.value?.flow)?.filter(step => step.templateId === blockId);
+  if (openingSteps?.length === 1) return field.linkedSteps?.find(step => step.id === openingSteps[0].id);
+}
+
+function privateGroupFields(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[], merged: DocumentData) {
+  const removed = conflicts.flatMap(conflict => removedText(checkpoint, conflict) ?? []);
+  const parents = removed.flatMap(field => removedParentOfLocalStep(checkpoint, field, merged) ?? []);
+  const scopes = [...new Map([...parents, ...removed].map(field => [JSON.stringify(field.path), field])).values()];
+  const onRow = (path: string[], row: RemovedGroupText) => equalValues(path.slice(0, 2), row.path);
+  const linkedTo = (path: string[], row: RemovedGroupText) =>
+    path[0] === 'flow' && row.linkedSteps?.some(step => path[1] === 'id:' + step.id);
+  return privateFieldsForPaths(conflicts, path => {
+    const field = scopes.find(row => onRow(path, row));
+    if (!field) return textAt(checkpoint, path);
+    const side = field.removedBy === 'local' ? 'stored' : 'mine';
+    const linked = scopes.filter(item => item.removedBy === field.removedBy && linkedTo(item.path, field));
+    const only = linked.length ? undefined : onlyRetiredStep(checkpoint, field);
+    const linkedSteps = only ? [only] : field.linkedSteps?.filter(step => linked.some(item => item.path[1] === 'id:' + step.id));
+    const words = only ? [only.instanceTitle, only.instanceNotes].filter((word): word is string => typeof word === 'string' && Boolean(word))
+      : linked.flatMap(item => item[side] ?? []);
+    return { ...field, linkedSteps, ...(words.length && { [side]: [field[side], ...words].filter(value => value !== null).join('\n') }) };
+  }, path => scopes.find(row => linkedTo(path, row))?.path ?? scopes.find(row => onRow(path, row))?.path ?? path);
+}
+
+export function hasUnreviewedGroupCopy(checkpoint: SessionCheckpoint): boolean {
+  const { confirmed, draft, remoteCandidate, unreadableScalarProof, unreadableRowProofs, pending } = checkpoint;
+  if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
+    || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation || Object.keys(pending).length
+    || !(unreadableScalarProof?.length || unreadableRowProofs?.length)) return false;
+  // A newly copied step is not the original removed row. Neither side of a
+  // field comparison is authority to publish or abandon that copy.
+  const savedTemplates = remoteCandidate.value.templates;
+  return groupFlowCopySources(confirmed.value, draft).some(({ id }) => typeof id === 'string' && !findGroupRow(savedTemplates, id));
+}
+
 export function readPrivateGroupTextReview(checkpoint: SessionCheckpoint) {
-  const review = checkpoint.confirmed.resource.collection === 'groups' ? readPrivateFieldReview(checkpoint, textAt) : undefined;
+  if (checkpoint.confirmed.resource.collection !== 'groups' || hasUnreviewedGroupCopy(checkpoint)) return undefined;
+  const review = readPrivateFieldReview(checkpoint,
+    (conflicts, merged) => privateGroupFields(checkpoint, conflicts, merged), mergeGroupFlowRebase);
   return review && { ...review, settled: [] };
 }
 
@@ -353,8 +409,21 @@ export function projectGroupTextDecisions(review: Pick<NonNullable<ReturnType<ty
       const rows = value[root];
       if (!Array.isArray(rows)) return undefined;
       if (field.removedBy === decision.side) {
+        if (root === 'templates') {
+          const flow = value.flow === undefined ? [] : groupPlacementSteps(value.flow);
+          if (!flow) return undefined;
+          const removed = new Set(field.linkedSteps?.map(step => step.id));
+          const kept = flow.filter(step => !removed.has(step.id));
+          if (kept.length !== flow.length) value = restoreGroupPlacementOrder({ ...value, flow: kept })!;
+          // An independently surviving step still owns its block.
+          if (kept.some(step => step.templateId === id)) {
+            if (!findGroupRow(rows, id)) return undefined;
+            continue;
+          }
+        }
         value = { ...value, [root]: rows.filter(item => !object(item) || item.id !== id) };
       } else if (!findGroupRow(rows, id)) {
+        if (root === 'flow' && (typeof field.row.templateId !== 'string' || !findGroupRow(value.templates, field.row.templateId))) return undefined;
         const acceptedRows = review.stored[root];
         if (!Array.isArray(acceptedRows)) return undefined;
         const index = acceptedRows.findIndex(item => object(item) && item.id === id);
@@ -375,9 +444,10 @@ export function projectGroupTextDecisions(review: Pick<NonNullable<ReturnType<ty
               : previous ? flow.findIndex(step => step.id === previous.id) + 1 : flow.length;
             flow.splice(at, 0, saved);
           }
-          value = { ...value, flow: flow.map((step, index) => ({ ...step, order: index + 1 })) };
+          value = restoreGroupPlacementOrder({ ...value, flow })!;
         }
       }
+      if (root === 'flow') value = restoreGroupPlacementOrder(value)!;
     } else {
       const reviewed = writeGroupFlowTextChoice(value, field, side);
       if (!reviewed) return undefined;

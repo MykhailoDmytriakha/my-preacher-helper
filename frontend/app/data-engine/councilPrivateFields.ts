@@ -3,7 +3,7 @@ import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow, incompatibl
 import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_SUMMARY_POLICY, COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
-import { readPrivateFieldReview } from './privateFieldReview';
+import { privateFieldsForPaths, readPrivateFieldReview } from './privateFieldReview';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 
 import type { FieldSelection } from './privateFieldReview';
@@ -70,14 +70,14 @@ function readCouncilField(checkpoint: SessionCheckpoint, path: string[]): Counci
 
 export function readPrivateCouncilReview(checkpoint: SessionCheckpoint) {
   if (checkpoint.confirmed.resource.collection !== 'councils') return undefined;
-  const review = readPrivateFieldReview(checkpoint, readCouncilField, (path, conflict) => {
+  const review = readPrivateFieldReview(checkpoint, conflicts => privateFieldsForPaths(conflicts, path => readCouncilField(checkpoint, path), (path, conflict) => {
     if (conflict?.code === 'council-option-gone' && path.length === 2 && path[0] === 'topics') return [...path, 'outcome'];
     if (path.length === 1 && path[0] === 'status') return ['heldAt'];
     if (path[0] === 'topics' && path.length === 3 && COUNCIL_OUTCOME_FIELDS.some(field => path[2] === field)) {
       return [path[0], path[1], 'outcome'];
     }
     return path;
-  });
+  }));
   if (!review) return undefined;
   const topics = review.merged.value.exists && object(review.merged.value.value) && review.merged.value.value.topics;
   const fields = review.fields.map((field): CouncilPrivateField => {

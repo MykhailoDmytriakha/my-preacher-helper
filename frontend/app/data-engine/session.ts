@@ -24,6 +24,7 @@ import { object, readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
+import { hasUnreviewedGroupCopy } from './groupTextReview';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
@@ -1028,6 +1029,9 @@ export class DataSession {
     const review = readPrivateDocumentReview(this.state);
     const next = review?.remaining[0];
     if (!review || !next) return false;
+    if (side === 'local' && 'removedBy' in next && next.removedBy === 'remote') {
+      throw Object.assign(new Error('The edited group row was removed'), { code: 'decision-changed' });
+    }
     if (side === 'local' && 'localAvailable' in next && next.localAvailable === false) {
       throw Object.assign(new Error('The selected council option is unavailable'), { code: 'council-option-gone' });
     }
@@ -1039,7 +1043,9 @@ export class DataSession {
     }
     const chosen = review.project(decisions);
     const candidate = this.state.remoteCandidate;
-    if (!chosen || !candidate) return false;
+    if (!chosen || !candidate) {
+      throw Object.assign(new Error('The compared fields changed'), { code: 'decision-changed' });
+    }
     const source = this.checkpoint();
     this.state.confirmed = copy(candidate);
     this.state.remoteCandidate = null;
@@ -1148,6 +1154,7 @@ export class DataSession {
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(atChoice?: DocumentData | null): void {
+    this.assertNoUnreviewedGroupCopy();
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
     const storedPosition = storedSermonPointOrderChoice(this.state, atChoice);
     if (storedPosition) {
@@ -1231,7 +1238,14 @@ export class DataSession {
   }
 
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
+  private assertNoUnreviewedGroupCopy(): void {
+    if (hasUnreviewedGroupCopy(this.state)) {
+      throw Object.assign(new Error('The copied group step needs its own review'), { code: 'other-changes-first' });
+    }
+  }
+
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
+    this.assertNoUnreviewedGroupCopy();
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     if (needsAccountPreferenceReview(this.state)) {
       throw Object.assign(new Error('Choose a version for each displayed setting'), { code: 'decision-changed' });

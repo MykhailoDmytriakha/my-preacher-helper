@@ -734,6 +734,116 @@ it.each(['local', 'remote'] as const)('persists a %s choice for one recovered fi
   expect((await readDocument('owner', resource)).value?.templates).toEqual(complete.draft?.templates);
 });
 
+it.each(['block-removed-on-desktop', 'step-removed-on-desktop', 'block-removed-on-phone', 'confirm-phone-removal', 'damaged-proof-of-removed-block',
+  'last-step-notes', 'remote-keeps-a-copy', 'cleared-leader-notes', 'remote-block-with-notes', 'restore-step-order', 'keep-other-deletion', 'restore-only-step-with-block'] as const)(
+  'reviews a recovered group name separately from a removed row (%s)', async mode => {
+    const db = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'groups', id: 'group-private-with-removed-row' };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const row = { id: 'b', title: 'Block to review', content: 'Opening words', status: 'filled', type: 'custom', createdAt: 'b-born', updatedAt: 'b-born' };
+    const other = { ...row, id: 'other', title: 'Other block', createdAt: 'other-born' };
+    const step = { id: 's', templateId: row.id, order: 1, instanceNotes: 'Opening leader notes' };
+    const restoreOrder = mode === 'restore-step-order';
+    const keepOtherDeletion = mode === 'keep-other-deletion';
+    const following = { ...step, id: 'following', order: 2 };
+    const value = { userId: 'owner', title: 'The saved group name', status: 'active', templates: [row, other],
+      flow: restoreOrder || keepOtherDeletion ? [step, following] : [step], meetingDates: [] };
+    const opened = new DataSession({ resource, value, metadata });
+    const checkpoint = opened.checkpoint();
+    const keepRemoval = mode === 'confirm-phone-removal';
+    const survivingCopy = mode === 'remote-keeps-a-copy';
+    const notesOnly = mode === 'last-step-notes' || keepOtherDeletion;
+    const restoreOnlyStep = mode === 'restore-only-step-with-block';
+    const cleared = mode === 'cleared-leader-notes';
+    const linkedText = mode === 'remote-block-with-notes';
+    const localRemoval = mode === 'block-removed-on-phone' || keepRemoval || notesOnly || survivingCopy || restoreOnlyStep;
+    const removedStep = mode === 'step-removed-on-desktop' || cleared;
+    const damagedRowProof = mode === 'damaged-proof-of-removed-block';
+    const privateWords = "The leader's unsent words in the removed row";
+    const linkedWords = 'Separate leader words in the linked step';
+    const changed = { ...row, ...(damagedRowProof ? { title: privateWords } : { content: privateWords }) };
+    const changedStep: Omit<typeof step, 'instanceNotes'> & { instanceNotes?: string } = { ...step };
+    if (cleared) delete changedStep.instanceNotes;
+    else changedStep.instanceNotes = linkedText ? linkedWords : privateWords;
+    const savedRow = notesOnly || survivingCopy ? row : { ...row, content: 'Block text edited on the desktop' };
+    const savedStep = survivingCopy || restoreOnlyStep ? step : { ...step, instanceNotes: 'Leader notes edited on the desktop' };
+    const copiedStep = { ...step, id: 'copy', order: 2 };
+    const savedNeighbor = { ...other, content: 'Independent content saved on the desktop' };
+    const stored = { ...value, templates: removedStep || restoreOrder ? [row, savedNeighbor] : localRemoval ? [savedRow, savedNeighbor] : [savedNeighbor],
+      flow: survivingCopy ? [savedStep, copiedStep] : restoreOrder || keepOtherDeletion ? [savedStep, following] : localRemoval ? [savedStep] : [] };
+    const local = { ...value, title: 'The unsent group name', templates: removedStep || restoreOrder ? [row, other] : localRemoval ? [other] : [changed, other],
+      flow: removedStep || linkedText ? [changedStep] : restoreOrder ? [{ ...following, order: 1 }] : localRemoval ? [] : [step] };
+    checkpoint.draft = local;
+    checkpoint.dirty = true;
+    checkpoint.unreadableScalarProof = ['title'];
+    if (damagedRowProof) checkpoint.unreadableRowProofs = [{ field: 'groupBlockTitleDrafts', rowId: row.id, birth: row.createdAt, generation: 'g' }];
+    checkpoint.remoteCandidate = { resource, value: stored, metadata: { ...metadata, revision: 3 } };
+    const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+    db.documents.set('groups/' + resource.id, { ...stored, _dataEngine: checkpoint.remoteCandidate.metadata });
+    const session = DataSession.restore((await throughDeviceStorage(record)).checkpoint);
+    expect(readGroupFlowFieldConflict(session.checkpoint())).toMatchObject({
+      field: 'title', mine: local.title, stored: stored.title,
+    });
+    expect(session.choosePrivateFields('local', null)).toBe(true);
+    const intermediate = session.checkpoint();
+    if (survivingCopy) {
+      const surviving = { ...copiedStep, order: 1 };
+      expect(intermediate.conflicts).toEqual([]);
+      expect(intermediate.draft).toEqual({ ...stored, title: local.title, flow: [surviving] });
+      expect((await save(intermediate)).kind).toBe('acknowledged');
+      expect((await readDocument('owner', resource)).value).toMatchObject(intermediate.draft!);
+      return;
+    }
+    expect((await save(intermediate)).code).toBe('resolve-version-first');
+    const reopened = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: intermediate })).checkpoint);
+    expect(readGroupFlowFieldConflict(reopened.checkpoint())).toMatchObject({
+      field: removedStep || restoreOrder ? 'removedNotes' : 'removedContent', removedBy: localRemoval || restoreOrder ? 'local' : 'remote',
+      ...(localRemoval ? { stored: [savedRow.content, savedStep.instanceNotes].join('\n') } : restoreOrder ? { stored: savedStep.instanceNotes }
+        : { mine: damagedRowProof ? 'Opening words\n' + privateWords : cleared ? null : linkedText ? privateWords + '\n' + linkedWords : privateWords }),
+    });
+    if (!localRemoval && !restoreOrder) {
+      expect(() => reopened.choosePrivateFields('local', null)).toThrow(/removed|unavailable/i);
+      expect(reopened.checkpoint()).toEqual(intermediate);
+    }
+    expect(reopened.choosePrivateFields(keepRemoval ? 'local' : 'remote', null)).toBe(true);
+    const completed = reopened.checkpoint();
+    expect(completed.draft).toEqual({ ...stored, title: local.title, ...(keepRemoval && { templates: [savedNeighbor], flow: [] }),
+      ...(keepOtherDeletion && { flow: [savedStep] }) });
+    expect(completed.conflicts).toEqual([]);
+    expect(completed.groupTitleDraft?.action.observedRevision).toBe(3);
+    const delivered = await save(completed);
+    expect(delivered.kind).toBe('acknowledged');
+    expect(delivered.commands).toHaveLength(1);
+    expect(delivered.commands[0]?.changes).toMatchObject(keepRemoval || keepOtherDeletion ?
+      expect.arrayContaining([{ path: ['title'], before: expect.anything(), after: expect.anything() }]) : [{ path: ['title'] }]);
+    expect((await readDocument('owner', resource)).value).toMatchObject(completed.draft!);
+  });
+
+it('keeps a private duplicated step for its own decision when the saved block was removed', async () => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'group-private-copied-step' };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const block = { id: 'b', title: 'Opening block', content: 'Opening text', status: 'filled', type: 'custom', createdAt: 'born' };
+  const step = { id: 's', templateId: block.id, order: 1 };
+  const value = { userId: 'owner', title: 'Opening group', status: 'active', templates: [block], flow: [step] };
+  const checkpoint = new DataSession({ resource, value, metadata }).checkpoint();
+  checkpoint.draft = { ...value, title: 'My private name', templates: [{ ...block, content: 'Local copy text' }],
+    flow: [step, { ...step, id: 'new-copy', order: 2 }] };
+  checkpoint.dirty = true;
+  checkpoint.unreadableScalarProof = ['title'];
+  const stored = { resource, value: { ...value, templates: [], flow: [] }, metadata: { ...metadata, revision: 2 } };
+  checkpoint.remoteCandidate = stored;
+  db.documents.set('groups/' + resource.id, { ...stored.value, _dataEngine: stored.metadata });
+  const session = DataSession.restore(checkpoint);
+  const before = session.checkpoint();
+  expect(readGroupFlowFieldConflict(before)).toBeUndefined();
+  expect(() => session.keepLocal()).toThrow('The copied group step needs its own review');
+  expect(() => session.acceptRemote(before.draft)).toThrow('The copied group step needs its own review');
+  expect(session.checkpoint()).toEqual(before);
+  expect((await save(before)).code).toBe('resolve-version-first');
+  expect((await readDocument('owner', resource)).value).toMatchObject(stored.value);
+});
+
 it.each(['missing birth', 'wrong birth', 'wrong generation', 'wrong row id', 'wrong words', 'wrong opening', 'unreadable map'] as const)(
   'holds the exact group block whose original observation has %s', async mode => {
     const db = installWorldFirestore(() => T + 1000);

@@ -147,7 +147,7 @@ const groupTextDecision = z.object({
   linkedSteps: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
-const privateFieldDecision = groupTextDecision.omit({ row: true, removedBy: true, linkedSteps: true }).extend({
+const privateFieldDecision = groupTextDecision.omit({ row: true, linkedSteps: true }).extend({
   mine: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
   stored: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
 });
