@@ -3,8 +3,10 @@ import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
 import { takeDroppedProof } from '@test-utils/droppedEvidence';
 
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
+import { checkpointKey } from '../checkpointStorage.client';
 import { CommitQueue, createMemoryCommitStore, type CommitRequest } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { EditorController, type EditorRecord } from '../controller';
 import { COUNCIL_OUTCOME_POLICY } from '../councilOutcomeAction';
 import { readPrivateCouncilComparison } from '../councilPrivateFields';
 import { COUNCIL_TOPIC_TITLE_POLICY } from '../councilTopicTitleAction';
@@ -13,6 +15,7 @@ import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowT
 import { GROUP_STEP_DURATION_POLICY } from '../groupStepDurationAction';
 import { readGroupFlowFieldConflict } from '../groupTextReview';
 import { diffFields } from '../protocol';
+import { commitRowKey } from '../retention.client';
 import { readSermonConflict } from '../rowConflictDetails';
 import { DataEngineRuntime } from '../runtime';
 import { processCommand, readDocument } from '../server';
@@ -21,7 +24,6 @@ import { THOUGHT_LOCK_POLICY } from '../thoughtLockAction';
 import { THOUGHT_PLACEMENT_POLICY } from '../thoughtPlacementAction';
 import { installStorageHarness } from './storageHarness';
 
-import type { EditorRecord } from '../controller';
 import type { RowDetailPolicy } from '../rowDetailAction';
 import type { RowValue } from '../rowFieldAction';
 import type { DataCommand, DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
@@ -88,6 +90,101 @@ async function throughDeviceStorage(record: EditorRecord, request?: CommitReques
   await store.put(record);
   return (await store.read('owner', record.editorId))!;
 }
+
+it.each([
+  ['queued', 'unchanged'], ['queued', 'later return'], ['prepared', 'unchanged'], ['prepared', 'later return'], ['missing', 'unchanged'],
+] as const)('reopens a %s Save with a damaged copy of its evidence after %s', async (phase, remote) => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'groups', id: 'captured-proof' };
+  const block = { id: 'block', title: 'Original block', type: 'custom', content: '', status: 'empty', createdAt: 'born', updatedAt: 'born' };
+  const opening = { userId: 'owner', title: 'Opening group', status: 'draft', templates: [block], flow: [], meetingDates: [] };
+  const snapshot: ResourceSnapshot = { resource, value: opening, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+  db.documents.set('groups/' + resource.id, { ...opening, _dataEngine: snapshot.metadata });
+  const mine = { ...opening, title: 'Offline group title', templates: [{ ...block, title: 'Offline block title' }] };
+  const storage = installStorageHarness();
+  const store = createIndexedDbCheckpoints();
+  const commitStore = createIndexedDbCommitStore();
+  const entries = new Map<string, JournalEntry>();
+  const sent: DataCommand[] = [];
+  const runtime = new DataEngineRuntime({
+    transport: { read: (_owner, ref) => readDocument('owner', ref),
+      send: async command => { sent.push(clone(command)); return processCommand('owner', command); } },
+    journal: { list: async () => clone([...entries.values()]), put: async item => { entries.set(item.command.operationId, clone(item)); },
+      remove: async (_owner, id) => { entries.delete(id); } },
+  });
+  runtime.setOwner('owner');
+  const queue = new CommitQueue({ store: commitStore, runtime, operationId: () => 'phone-' + ++sequence,
+    readConfirmed: ref => readDocument('owner', ref) });
+  queue.setOwner('owner');
+  const editorId = 'phone-editor';
+  const options = { owner: 'owner', editorId, snapshot, store, runtime, commits: queue, isCurrentOwner: (owner: string) => owner === 'owner',
+    operationId: () => 'editor-' + ++sequence };
+  let editor = await EditorController.open(options);
+  try {
+    await editor.edit({ ...opening, title: mine.title }, undefined, { field: 'title', time: null });
+    await editor.edit(mine, undefined, { field: 'group-block-title', rowId: 'block', time: null });
+    await editor.save();
+    if (phase === 'prepared') await queue.drain(false);
+    const [captured] = await queue.list();
+    expect(captured.state).toBe(phase === 'missing' ? 'queued' : phase);
+    expect(captured.groupTitleAction).toMatchObject({ before: opening.title, after: mine.title, observedRevision: 1, time: null });
+    expect(captured.groupBlockTitleActions).toEqual([expect.objectContaining({ rowId: 'block', before: block.title, after: mine.templates[0].title, observedRevision: 1 })]);
+    editor.dispose();
+
+    const key = JSON.stringify(checkpointKey('owner', editorId));
+    const damaged = clone(storage.rows.get(key)) as EditorRecord;
+    const pending = damaged.checkpoint.pending[captured.id];
+    loose(pending.groupTitleAction).observedRevision = 'unreadable';
+    loose(pending.groupBlockTitleActions?.[0]).rowId = 42;
+    storage.rows.set(key, damaged);
+    if (phase === 'missing') storage.rows.delete(JSON.stringify(commitRowKey(captured)));
+
+    if (remote === 'later return') {
+      const temporary = { ...opening, title: 'Temporary desktop title' };
+      const write = (operationId: string, before: typeof opening, after: typeof opening, observedRevision: number) => processCommand('owner', {
+        protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+        changes: diffFields(before, after), groupTitleAction: { observedRevision, time: null },
+      });
+      expect((await write('desktop-away', opening, temporary, 1)).kind).toBe('acknowledged');
+      expect((await write('desktop-back', temporary, opening, 2)).kind).toBe('acknowledged');
+    }
+
+    editor = await EditorController.open(options);
+    takeDroppedProof('pending.groupTitleAction', 'pending.groupBlockTitleActions');
+    if (phase === 'missing') {
+      await expect(editor.save()).rejects.toThrow();
+      await queue.drain(true);
+      expect(sent).toEqual([]);
+      expect(editor.getState().checkpoint.draft).toMatchObject(mine);
+      expect((await readDocument('owner', resource)).value).toMatchObject(opening);
+      return;
+    }
+    expect(editor.getState().checkpoint.pending[captured.id]).toMatchObject({
+      groupTitleAction: captured.groupTitleAction, groupBlockTitleActions: captured.groupBlockTitleActions,
+    });
+    expect(editor.getState().checkpoint.conflicts).toEqual([]);
+    await editor.save();
+    expect((await queue.list()).map(request => request.id)).toEqual([captured.id]);
+
+    await queue.drain(true);
+    await editor.settled();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ operationId: captured.id,
+      groupTitleAction: captured.groupTitleAction, groupBlockTitleActions: captured.groupBlockTitleActions,
+    });
+    if (captured.command) expect(sent[0]).toEqual(captured.command);
+    if (remote === 'later return') {
+      expect(editor.getState().result?.kind).toBe('conflict');
+      expect(editor.getState().checkpoint.draft).toMatchObject(mine);
+      expect((await readDocument('owner', resource)).value).toMatchObject(opening);
+    } else {
+      expect((await readDocument('owner', resource)).value).toMatchObject(mine);
+    }
+  } finally {
+    editor.dispose();
+    runtime.setOwner(null);
+  }
+});
 
 const PROOF_RECOVERY = ['never persisted', 'persisted and reloaded', 'persisted with unreadable time'] as const;
 async function reopenWithTime(record: EditorRecord, mode: typeof PROOF_RECOVERY[number], key: string, row?: string) {
