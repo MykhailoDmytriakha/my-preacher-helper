@@ -2,7 +2,7 @@ import { isPreparationTextField } from '@/utils/preparationFieldValues';
 import { isSermonTextRecoveryField, SERMON_TEXT_RECOVERY_FIELDS, sermonTextRecoveryField, sermonTextRecoveryPath, type SermonTextRecoveryField } from '@/utils/sermonTextRecoveryFields';
 
 import { acceptsSermonRecoveryText, captureSermonRecoveryText, type DocumentFieldObservation } from './documentFieldAction';
-import { equalValues, object, readField, writeField } from './fieldValues';
+import { equalValues, readField, restoreStoredField, writeField } from './fieldValues';
 import { hasUnreadableSermonText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
@@ -56,20 +56,6 @@ export function sermonTextRetryMatches(checkpoint: Pick<SessionCheckpoint, 'conf
     && equalValues(captureSermonTextRetry(checkpoint, retry.field, action.time), { ...retry, action });
 }
 
-function restoreStoredSermonText(document: DocumentData, saved: DocumentData, path: readonly string[]): DocumentData {
-  const stored = readField(saved, path);
-  let result = writeField(document, path, stored);
-  if (stored.exists || !readField(document, path).exists) return result;
-  // Only remove a container made empty by clearing this field when there is no saved container.
-  for (let length = path.length - 1; length > 0; length -= 1) {
-    const parent = path.slice(0, length);
-    const { value } = readField(result, parent);
-    if (!object(value) || Object.keys(value).length || readField(saved, parent).exists) break;
-    result = writeField(result, parent, { exists: false });
-  }
-  return result;
-}
-
 export function recoverableSermonTextAfterRefusal(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
   const { confirmed, draft } = source;
   const openingValue = confirmed.value;
@@ -104,7 +90,7 @@ export function recoverableSermonTextAfterRefusal(source: SessionCheckpoint, pro
     const retry = action && { field, generation: metadata.generation, action };
     if (retry && sermonTextRetryMatches(continuation, retry)) continuation.sermonTextRetry = retry;
     else continuation.unreadableScalarProof = [field];
-    return [{ field, continuation, restoreStored: (document: DocumentData) => restoreStoredSermonText(document, saved, path) }];
+    return [{ field, continuation, restoreStored: (document: DocumentData) => restoreStoredField(document, saved, path) }];
   });
 }
 

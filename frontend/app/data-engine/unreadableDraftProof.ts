@@ -1,3 +1,4 @@
+import { isPreparationConfirmation, preparationConfirmationPaths } from '@/utils/preparationFieldValues';
 import { isSermonTextRecoveryField, sermonTextRecoveryPath } from '@/utils/sermonTextRecoveryFields';
 
 import { ACCOUNT_PREFERENCE_TARGETS } from './accountPreference';
@@ -17,6 +18,7 @@ export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean 
 
 /** Preference proof names use the same nested paths as their saved values. */
 export function unreadableScalarPath(collection: string, field: string): string[] {
+  if (collection === 'sermons' && isPreparationConfirmation(field)) return [...preparationConfirmationPaths[field]];
   if (collection === 'sermons' && isSermonTextRecoveryField(field)) return [...sermonTextRecoveryPath(field)];
   const preference = collection === 'users' && ACCOUNT_PREFERENCE_TARGETS.find(target => target.field === field);
   return preference ? [...preference.path] : [field];
@@ -24,6 +26,10 @@ export function unreadableScalarPath(collection: string, field: string): string[
 
 export function hasUnreadableSermonChurch(checkpoint: SessionCheckpoint): boolean {
   return checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.unreadableScalarProof?.includes('church') === true;
+}
+
+export function hasUnreadablePreparationCheck(checkpoint: SessionCheckpoint): boolean {
+  return checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.unreadableScalarProof?.some(isPreparationConfirmation) === true;
 }
 
 export function hasUnreadableSermonText(checkpoint: SessionCheckpoint): boolean {

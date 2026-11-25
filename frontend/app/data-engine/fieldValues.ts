@@ -35,3 +35,17 @@ export function writeField(data: DocumentData, [key, ...path]: readonly string[]
   if (!field.exists && !object(child)) return data;
   return { ...data, [key]: writeField(object(child) ? child : {}, path, field) };
 }
+
+export function restoreStoredField(document: DocumentData, saved: DocumentData, path: readonly string[]): DocumentData {
+  const stored = readField(saved, path);
+  let result = writeField(document, path, stored);
+  if (stored.exists || !readField(document, path).exists) return result;
+  // Only remove a container made empty by clearing this field when there is no saved container.
+  for (let length = path.length - 1; length > 0; length -= 1) {
+    const parent = path.slice(0, length);
+    const { value } = readField(result, parent);
+    if (!object(value) || Object.keys(value).length || readField(saved, parent).exists) break;
+    result = writeField(result, parent, { exists: false });
+  }
+  return result;
+}

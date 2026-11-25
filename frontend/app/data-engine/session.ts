@@ -38,10 +38,11 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
-import { readSermonPlanModeComparison } from './sermonFieldChoice';
+import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
+import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { observedSermonText } from './sermonTextRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
@@ -52,7 +53,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
+import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField, AccountPreferenceResolution, AccountPreferenceRetry } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -95,6 +96,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: AccountPreferenceRetry;
+  preparationCheckRetry?: PreparationCheckRetry;
   sermonChurchRecovery?: SermonChurchRecovery;
   sermonTextRetry?: import('./sermonTextRecovery').SermonTextRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
@@ -176,6 +178,13 @@ export class DataSession {
     const { unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, confirmed, draft, pending } = this.state;
     if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
+    const preparationCheck = privatePreparationCheck(this.state, target);
+    if (preparationCheck?.sameValue) {
+      this.state.remoteCandidate = copy(target);
+      this.finishChoiceAgainstRemote(target.value);
+      delete this.state.unreadableScalarProof;
+      return;
+    }
     const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION
       || conflict.code === UNREADABLE_OUTLINE_POINT_POSITION;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
@@ -293,6 +302,15 @@ export class DataSession {
       delete this.state.sermonChurchRecovery;
       if (value && !equalValues(value, this.state.confirmed.value)) {
         this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), 'church'])];
+      }
+    }
+    const checkRetry = this.state.preparationCheckRetry;
+    if (checkRetry && !validPreparationCheckRetry({ ...this.state, draft: value }, checkRetry)) {
+      delete this.state.preparationCheckRetry;
+      const base = this.state.confirmed.value;
+      if (base && value) {
+        const changed = changedPreparationChecks(base, value);
+        if (changed.length) this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), ...changed])];
       }
     }
     this.replaceDraft(value);
@@ -548,6 +566,10 @@ export class DataSession {
     const churchRecovery = this.state.sermonChurchRecovery;
     if (churchRecovery && equalValues(request.sermonChurchAction, churchRecovery.observation)
       && equalValues(request.sermonChurchFill, churchRecovery.fill)) delete this.state.sermonChurchRecovery;
+    const checkRetry = this.state.preparationCheckRetry;
+    if (checkRetry && equalValues(request.sermonPreparationCheckActions?.[checkRetry.field], checkRetry.action)) {
+      delete this.state.preparationCheckRetry;
+    }
     const textRetry = this.state.sermonTextRetry;
     if (textRetry && equalValues(observedSermonText(request, textRetry.field), textRetry.action)) {
       delete this.state.sermonTextRetry;
@@ -841,6 +863,23 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (hasUnreadablePreparationCheck(this.state) && !Object.keys(this.state.pending).length) {
+      const target = this.state.remoteCandidate;
+      const check = target && privatePreparationCheck(this.state, target);
+      const compared = readSermonPreparationConfirmation(this.state);
+      if (!target?.value || !check || !compared || !equalValues(check.path, compared.path) || check.sameValue) {
+        throw Object.assign(new Error('Read both versions of the preparation check before choosing'), { code: 'decision-changed' });
+      }
+      const draft = side === 'local' ? writeField(target.value, check.path, check.mine) : target.value;
+      const retry = side === 'local' ? capturePreparationCheckRetry({ confirmed: target, draft }, check.field, time, true) : undefined;
+      if (side === 'local' && !retry) {
+        throw Object.assign(new Error('The checked value could not be captured'), { code: 'decision-changed' });
+      }
+      this.finishChoiceAgainstRemote(draft);
+      delete this.state.unreadableScalarProof;
+      this.state.preparationCheckRetry = retry;
+      return true;
+    }
     if (hasUnreadableSermonChurch(this.state) && !Object.keys(this.state.pending).length) {
       const compared = readRecoveredSermonChurch(this.state);
       if (!compared || !this.state.remoteCandidate) {
@@ -1314,6 +1353,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.preparationCheckRetry;
     delete this.state.sermonChurchRecovery;
     delete this.state.sermonTextRetry;
     delete this.state.accountPreferenceRetry;

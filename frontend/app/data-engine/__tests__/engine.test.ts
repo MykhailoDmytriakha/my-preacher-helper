@@ -9,12 +9,13 @@ import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { installStorageHarness } from './storageHarness';
 import { editorIdentity } from '../editorIdentity';
 import { AddressedFailures, PausedReadFailure } from '../failures';
+import { readField } from '../fieldValues';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
-import { readSermonPlanModeComparison } from '../sermonFieldChoice';
+import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from '../sermonFieldChoice';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
 import { describeSync } from '../status';
@@ -1525,6 +1526,147 @@ describe('DataEngine composition', () => {
       } finally { s.engine.dispose(); }
     },
   );
+
+  it.each(['proven', 'own', 'saved', 'reversed', 'already-saved', 'matched-after-open', 'rechecked', 'hold-neighbor'] as const)('recovers two preparation confirmations separately after a refused point Save (%s)', async mode => {
+    const s = setup({ online: false, nativeChoice: true });
+    const ref = { collection: 'sermons', id: 'confirmation-after-refusal' };
+    const key = keyOf('owner', ref);
+    const point = { id: 'point', title: '', children: [] };
+    const latestPoint = { ...point, title: 'Latest point title' };
+    const openingPreparation = { exegeticalPlan: [], spiritual: { readAndPrayedConfirmed: false },
+      ...(mode === 'rechecked' && { textContext: { readWholeBookOnceConfirmed: false } }) };
+    const before: ResourceSnapshot = { ...initial(), resource: ref, value: { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+      thoughts: [], preparation: openingPreparation } };
+    const savedRead = mode === 'already-saved' || mode === 'reversed';
+    const saved = { ...before, metadata: { ...before.metadata!, revision: 2, operationId: 'desktop' },
+      value: { ...before.value!, preparation: { exegeticalPlan: [], spiritual: { readAndPrayedConfirmed: false },
+        textContext: { authorIntent: 'Words from the desktop', ...(savedRead && { readWholeBookOnceConfirmed: true }),
+          ...(mode === 'rechecked' && { readWholeBookOnceConfirmed: false }) } } } };
+    const firstTime = { earliestMs: 2000, latestMs: 2010 };
+    const secondTime = { earliestMs: 3000, latestMs: 3010 };
+    const recheckTime = { earliestMs: 5000, latestMs: 5010 };
+    const choiceTime = { earliestMs: 7000, latestMs: 7010 };
+    const editorId = editorIdentity('phone', ref, 'sermon', 'original');
+    s.server.set(key, before);
+    s.cache.set(key, before);
+    try {
+      const editor = await s.engine.openEditor(ref, editorId);
+      const first = { ...before.value!, preparation: { ...openingPreparation, exegeticalPlan: [point] } };
+      await editor.edit(first);
+      await editor.save();
+      const prayer = { ...first.preparation, spiritual: { readAndPrayedConfirmed: true } };
+      await editor.commit(current => ({ ...current, preparation: prayer }), {
+        kind: 'sermon-preparation-check', field: 'readAndPrayedConfirmed', time: firstTime,
+      });
+      const read = { ...prayer, textContext: { readWholeBookOnceConfirmed: true } };
+      await editor.commit(current => ({ ...current, preparation: read }), {
+        kind: 'sermon-preparation-check', field: 'readWholeBookOnceConfirmed', time: secondTime,
+      });
+      const readWholeBookOnceConfirmed = mode !== 'reversed';
+      const final = { ...read, textContext: { readWholeBookOnceConfirmed } };
+      if (mode === 'reversed' || mode === 'rechecked') {
+        await editor.commit(current => ({ ...current, preparation: { ...final, textContext: { readWholeBookOnceConfirmed: false } } }), {
+          kind: 'sermon-preparation-check', field: 'readWholeBookOnceConfirmed', time: { earliestMs: 4000, latestMs: 4010 },
+        });
+      }
+      if (mode === 'rechecked') {
+        await editor.commit(current => ({ ...current, preparation: final }), {
+          kind: 'sermon-preparation-check', field: 'readWholeBookOnceConfirmed', time: recheckTime,
+        });
+      }
+      const lastSave = (await s.commits.list('owner')).at(-1)!;
+      if (mode === 'rechecked') expect(lastSave.sermonPreparationCheckActions?.readWholeBookOnceConfirmed?.predecessorOperationId).toBeDefined();
+      expect(lastSave.sermonPreparationCheckActions).toMatchObject({
+        readWholeBookOnceConfirmed: { observedRevision: 1, after: { exists: true, value: readWholeBookOnceConfirmed } },
+      });
+      if (mode !== 'proven' && mode !== 'reversed' && mode !== 'rechecked') {
+        s.storage!.rows.set(JSON.stringify(commitRowKey(lastSave)), { ...lastSave, sermonPreparationCheckActions: undefined });
+      }
+      await editor.edit({ ...first, preparation: { ...final, exegeticalPlan: [latestPoint] } });
+      const record = (await s.checkpoints.read('owner', editorId))!;
+      await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+        { nodeId: point.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+      ] } });
+      editor.dispose();
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+        kind: 'refused', operationId: command.operationId, code: 'decision-changed',
+      }));
+      s.engine.setOnline(true);
+      await s.engine.retry();
+      s.server.set(key, saved);
+
+      const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+      const pointEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+      await pointEditor.acceptRemote(undefined, pointEditor.getState().checkpoint);
+      const pointComparison = pointEditor.getState().checkpoint;
+      expect(pointComparison.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+      await pointEditor.keepLocal(undefined, pointComparison);
+      await pointEditor.save();
+      await s.engine.retry();
+
+      const copies = await s.engine.listRecoveryChoices(ref, true);
+      expect(copies).toHaveLength(mode === 'already-saved' ? 1 : 2);
+      const prayerCopy = copies.find(({ record }) => readField(record.checkpoint.draft ?? {}, ['preparation', 'spiritual', 'readAndPrayedConfirmed']).value === true)!;
+      const readingCopy = copies.find(({ id }) => id !== prayerCopy.id);
+      const storageKeys = () => [...s.storage!.rows.keys()].map(key => JSON.parse(key));
+      expect(storageKeys()).toContainEqual(['sermon-preparation-check-choice-checkpoint', 'owner', prayerCopy.record.editorId]);
+      const prayerEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'prayer'), prayerCopy.id);
+      await prayerEditor.save();
+      await s.engine.retry();
+      expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ sermonPreparationCheckActions: {
+        readAndPrayedConfirmed: { observedRevision: 1, time: firstTime },
+      } }));
+
+      if (readingCopy) {
+        const readingEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'reading'), readingCopy.id);
+        if (mode === 'hold-neighbor') {
+          await readingEditor.edit({ ...readingEditor.getState().checkpoint.draft!, title: 'Independent pending title' });
+          const current = readingEditor.getState().checkpoint;
+          expect(readSermonPreparationConfirmation(current)).toBeUndefined();
+          await expect(readingEditor.keepLocal(undefined, current, choiceTime)).rejects.toMatchObject({ code: 'decision-changed' });
+          await expect(readingEditor.acceptRemote(undefined, current)).rejects.toMatchObject({ code: 'decision-changed' });
+          expect(readingEditor.getState().checkpoint.draft).toMatchObject({ title: 'Independent pending title',
+            preparation: { textContext: { readWholeBookOnceConfirmed: true } } });
+          expect(s.transport.send).toHaveBeenCalledTimes(3);
+          return;
+        }
+        if (mode === 'proven' || mode === 'rechecked') await readingEditor.save();
+        else {
+          const compared = readingEditor.getState().checkpoint;
+          expect(readSermonPreparationConfirmation(compared)).toMatchObject({ field: 'readWholeBookOnceConfirmed',
+            mine: { exists: true, value: readWholeBookOnceConfirmed }, stored: savedRead ? { exists: true, value: true } : { exists: false } });
+          await expect(readingEditor.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          if (mode === 'matched-after-open') {
+            const snapshot = s.server.get(key)!;
+            const preparation = snapshot.value?.preparation as DocumentData;
+            s.server.set(key, { ...snapshot, metadata: { ...snapshot.metadata!, revision: 5 },
+              value: { ...snapshot.value, preparation: { ...preparation, textContext: { authorIntent: 'Words from the desktop',
+                readWholeBookOnceConfirmed: true } } } });
+            await expect(readingEditor.keepLocal(undefined, compared, choiceTime)).rejects.toMatchObject({ code: 'decision-changed' });
+            expect(readingEditor.getState().checkpoint).toMatchObject({ dirty: false, conflicts: [] });
+          } else if (mode === 'own' || mode === 'reversed') await readingEditor.keepLocal(undefined, compared, choiceTime);
+          else await readingEditor.acceptRemote(undefined, compared);
+        }
+      }
+      await s.engine.retry();
+      expect(s.server.get(key)?.value?.preparation).toEqual({
+        exegeticalPlan: [latestPoint], spiritual: { readAndPrayedConfirmed: true },
+        textContext: { authorIntent: 'Words from the desktop', ...(mode !== 'saved' && { readWholeBookOnceConfirmed }) },
+      });
+      const writesReading = mode === 'proven' || mode === 'own' || mode === 'reversed' || mode === 'rechecked';
+      if (writesReading) expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ sermonPreparationCheckActions: {
+        readWholeBookOnceConfirmed: (mode === 'proven' || mode === 'rechecked') ? { observedRevision: 1, time: mode === 'rechecked' ? recheckTime : secondTime }
+          : { observedRevision: 4, time: choiceTime, reviewed: true },
+      } }));
+      if (mode === 'rechecked') {
+        const command = jest.mocked(s.transport.send).mock.calls.at(-1)?.[0];
+        expect(command?.kind === 'update' && command.sermonPreparationCheckActions?.readWholeBookOnceConfirmed)
+          .not.toHaveProperty('predecessorOperationId');
+      }
+      expect(s.transport.send).toHaveBeenCalledTimes(writesReading ? 4 : 3);
+      expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
 
   it.each(['calendar-add', 'calendar-clear', 'metadata-assign', 'metadata-reschedule'] as const)(
     'keeps a date form Save separate from a refused exegetical point Save (%s)', async mode => {

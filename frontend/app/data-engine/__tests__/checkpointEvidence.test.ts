@@ -72,6 +72,9 @@ const evidence = {
   sermonChurchRecovery: { generation: 'g', observation: {
     before: { exists: false }, after: { exists: true, value: church }, observedRevision: 1, time,
   } },
+  preparationCheckRetry: { field: 'readAndPrayedConfirmed', generation: 'g', action: {
+    before: { exists: false }, after: { exists: true, value: true }, observedRevision: 1, time,
+  } },
   sermonTextRetry: { field: 'authorIntent', generation: 'g', action: { before: { exists: true, value: 'Original' },
     after: { exists: true, value: 'Later' }, observedRevision: 1, time } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
@@ -133,6 +136,10 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     source.checkpoint.draft = { ...source.checkpoint.confirmed.value, church };
     source.checkpoint.draft.title = 'Original';
+  }
+  if (key === 'preparationCheckRetry') {
+    source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    source.checkpoint.draft = { ...source.checkpoint.confirmed.value, preparation: { spiritual: { readAndPrayedConfirmed: true } } };
   }
   if (key === 'sermonTextRetry') {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };

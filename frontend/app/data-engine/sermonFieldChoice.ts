@@ -14,11 +14,13 @@ import { isOrderedPreachDateField, preachDateChoiceFrames, withoutPreachDateRow 
 import { preachDateNoteConflictId, samePreachDateRow } from './preachDateFieldAction';
 import { mergeDocumentFields } from './protocol';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
+import { privatePreparationCheck } from './sermonPreparationCheckRecovery';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
 import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
+import { hasUnreadablePreparationCheck } from './unreadableDraftProof';
 
 import type { CommitRequest } from './commits';
 import type { DocumentFieldObservation } from './documentFieldAction';
@@ -131,6 +133,7 @@ export function readSermonPreparationConfirmation(checkpoint: SessionCheckpoint)
   const { path } = conflicts[0];
   const field = preparationConfirmationField(path);
   if (!field) return;
+  if (hasUnreadablePreparationCheck(checkpoint) && !privatePreparationCheck(checkpoint, remoteCandidate)) return;
   const mine = readField(draft, path), stored = readField(remoteCandidate.value, path);
   if ((mine.exists && typeof mine.value !== 'boolean') || (stored.exists && typeof stored.value !== 'boolean')
     || (mine.value === true) === (stored.value === true) || !equalValues(mine, conflicts[0].mine)) return;

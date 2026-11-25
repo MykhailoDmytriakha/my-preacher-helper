@@ -56,6 +56,10 @@ export const preparationConfirmationPaths = {
 } as const;
 export type PreparationConfirmation = keyof typeof preparationConfirmationPaths;
 
+export function isPreparationConfirmation(field: unknown): field is PreparationConfirmation {
+  return typeof field === 'string' && Object.hasOwn(preparationConfirmationPaths, field);
+}
+
 export function preparationConfirmationField(path: readonly string[]): PreparationConfirmation | undefined {
   const field = path[2] as PreparationConfirmation;
   if (path.length !== 3 || !Object.hasOwn(preparationConfirmationPaths, field)) return undefined;

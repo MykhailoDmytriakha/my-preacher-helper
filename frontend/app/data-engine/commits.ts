@@ -51,6 +51,7 @@ import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sa
 import { validSermonChurchRecovery } from './sermonChurchRecovery';
 import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { validPreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
 import { capturedSermonTextRetry, sermonTextRetryMatches } from './sermonTextRecovery';
 import { hasNewerServiceOrderInputOpening, selectServiceOrderInputSave, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
@@ -974,7 +975,11 @@ export class CommitQueue {
       && (!Object.keys(prayerStatus).length || Object.keys(prayerTextCapture.text.openings).length > 0)) {
       throw Object.assign(new Error('The prayer text opening changed'), { code: 'prayer-text-basis-changed' });
     }
-    const preparationChecks = editorAction?.kind === 'sermon-preparation-check'
+    const checkRetry = intent.preparationCheckRetry;
+    if (checkRetry && !validPreparationCheckRetry(intent, checkRetry)) {
+      throw Object.assign(new Error('The recovered preparation check changed'), { code: 'decision-changed' });
+    }
+    const preparationChecks = checkRetry ? { [checkRetry.field]: checkRetry.action } : editorAction?.kind === 'sermon-preparation-check'
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
     const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
       ? editorAction.time : frozenOptions?.documentMetadataTime;

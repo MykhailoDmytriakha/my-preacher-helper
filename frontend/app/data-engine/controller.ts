@@ -68,7 +68,7 @@ import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './s
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
-import { hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
+import { hasUnreadablePreparationCheck, hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -548,6 +548,9 @@ export class EditorController {
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
+    // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
+    if (hasUnreadablePreparationCheck(intent)) return Promise.reject(Object.assign(
+      new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
@@ -740,7 +743,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
-        if (hasUnreadableSermonChurch(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -798,7 +801,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
-        if (hasUnreadableSermonChurch(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
