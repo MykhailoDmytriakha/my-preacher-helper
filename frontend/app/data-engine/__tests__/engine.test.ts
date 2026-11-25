@@ -1,6 +1,7 @@
 import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
+import { scratchNoteAt } from '@/utils/scratchPlacement';
 import { addSermonThought, deleteSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
 
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
@@ -2083,6 +2084,162 @@ describe('DataEngine composition', () => {
         if (changed) expect(writes).toEqual(expect.arrayContaining(ids.map(rowId => expect.objectContaining({
           rowId, time: known ? time : clickTime, observedRevision: known ? 1 : 3,
         }))));
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each([
+    'append', 'several', 'already-stored', 'moved-point', 'removed-point', 'late-move',
+    'late-already-stored', 'reused-id', 'late-reused-id', 'late-reused-id-and-append', 'fork-move-known', 'fork-new-words', 'fork-keep-my-words', 'mixed',
+  ] as const)(
+    'retains a placed sketch after a refused exegetical point Save (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'placed-sketch-after-point' };
+      const key = keyOf('owner', ref);
+      const first = { id: 'point', title: '', children: [] };
+      const later = { ...first, title: 'Full latest words of the point' };
+      const body = { id: 'body', text: 'Body' };
+      const outline = { introduction: [], main: [body], conclusion: [] };
+      const timestamp = '2026-11-09T00:00:00.000Z';
+      const place = { section: 'main', pointId: 'body', subPointId: null } as const;
+      const sketch = scratchNoteAt(place, { id: 'new-sketch', createdAt: timestamp, text: 'New words by the body point' });
+      const neighbor = scratchNoteAt(place, { id: 'older', createdAt: timestamp, text: 'Existing sketch' });
+      const following = scratchNoteAt(place, { id: 'next-sketch', createdAt: timestamp, text: 'Second independent sketch' });
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', outline,
+        preparation: { exegeticalPlan: [] }, thoughts: [], scratch: [neighbor] as unknown as DocumentData[] };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const movedOutline = { ...outline, main: [], conclusion: [body] };
+      const savedOutline = mode === 'moved-point' ? movedOutline : mode === 'removed-point' ? { ...outline, main: [] } : outline;
+      const removedPlace = { ...place, pointId: null };
+      const movedPlace = { ...place, section: 'conclusion' } as const;
+      const saveNeighbor = (target: typeof place | typeof removedPlace | typeof movedPlace) => scratchNoteAt(target, {
+        id: neighbor.id, createdAt: neighbor.createdAt, text: 'Existing sketch edited on the desktop',
+      });
+      const savedNeighbor = saveNeighbor(mode === 'moved-point' ? movedPlace : mode === 'removed-point' ? removedPlace : place);
+      const savedSketch = { ...sketch, text: 'The same sketch with newer words' };
+      const replacement = { ...savedSketch, createdAt: '2026-11-25T00:00:00.000Z', text: 'A different sketch with the same ID' };
+      const latest: ResourceSnapshot = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, title: 'Newer sermon title', outline: savedOutline,
+          scratch: (mode === 'already-stored' ? [savedNeighbor, savedSketch]
+            : mode === 'reused-id' ? [savedNeighbor, replacement] : [savedNeighbor]) as unknown as DocumentData[] } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      const several = mode === 'several' || mode === 'late-reused-id-and-append';
+      const collision = mode === 'reused-id' || mode === 'late-reused-id' || mode === 'late-reused-id-and-append';
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [first] } });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        const editSketches = async (scratch: readonly unknown[]) => {
+          await editor.edit({ ...editor.getState().checkpoint.draft!, scratch: scratch as DocumentData[] });
+          await editor.save();
+        };
+        await editSketches([mode === 'mixed' ? { ...neighbor, text: 'A separate replacement' } : neighbor, sketch]);
+        if (several) await editSketches([neighbor, sketch, following]);
+        const [root, ...tail] = await s.commits.list('owner');
+        expect(root.id).toBe(earlier.id);
+        expect(tail[0].predecessor).toBe(earlier.id);
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === earlier.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+
+        const held = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), held.id);
+        if (mode === 'mixed') {
+          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const compared = point.getState().checkpoint;
+        expect(compared.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, compared);
+        await point.save();
+        await s.engine.retry();
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        const keepMyWords = mode === 'fork-keep-my-words';
+        const hasNewWords = mode === 'fork-new-words' || keepMyWords;
+        const moveLate = mode === 'late-move' || mode === 'fork-move-known' || keepMyWords;
+        const reopenFork = mode === 'fork-move-known' || hasNewWords;
+        const added = scratchNoteAt(mode === 'moved-point' || moveLate ? movedPlace : mode === 'removed-point' ? removedPlace : place,
+          { id: sketch.id, text: sketch.text, createdAt: sketch.createdAt });
+        const neighborAtRecovery = moveLate ? saveNeighbor(movedPlace) : savedNeighbor;
+        const outlineAtRecovery = moveLate ? movedOutline : savedOutline;
+        const alreadyDelivered = mode === 'already-stored' || mode === 'late-already-stored' || mode === 'fork-new-words';
+        const reopenedText = 'More words typed after opening the recovered sketch';
+        const storedWithNewPlace = { ...savedSketch, section: 'conclusion' };
+        const expected = [neighborAtRecovery, keepMyWords ? { ...storedWithNewPlace, text: reopenedText }
+          : alreadyDelivered ? savedSketch : collision ? replacement : added, ...(several ? [following] : [])];
+        expect(copies).toHaveLength(mode === 'already-stored' ? 0 : 1);
+        let recoveryId = copies[0]?.id;
+        if (reopenFork) {
+          const fork = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'first-sketch-opening'), recoveryId!);
+          if (hasNewWords) await fork.edit({ ...fork.getState().checkpoint.draft!,
+            scratch: [savedNeighbor, { ...sketch, text: reopenedText }] as unknown as DocumentData[] });
+          fork.dispose();
+          const [source] = await s.engine.listRecoveryChoices(ref, true);
+          recoveryId = source.id;
+          expect(source.record.editorId).toContain('first-sketch-opening');
+        }
+        if (moveLate || mode === 'late-already-stored' || mode === 'late-reused-id' || mode === 'late-reused-id-and-append' || mode === 'fork-new-words') {
+          const stored = s.server.get(key)!;
+          const freshScratch = keepMyWords ? [neighborAtRecovery, storedWithNewPlace]
+            : moveLate ? [neighborAtRecovery] : expected.slice(0, 2);
+          const fresh: ResourceSnapshot = { ...stored, metadata: { ...stored.metadata!, revision: stored.metadata!.revision + 1, operationId: 'late-desktop' },
+            value: { ...stored.value, outline: outlineAtRecovery, scratch: freshScratch as unknown as DocumentData[] } };
+          s.server.set(key, fresh);
+          if (mode === 'fork-move-known') {
+            const source = (await s.engine.listRecoveryChoices(ref, true))[0].record;
+            await s.checkpoints.put({ ...source, checkpoint: { ...source.checkpoint, remoteCandidate: fresh } });
+          }
+        }
+        if (recoveryId) {
+          const recovery = s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'sketch'), recoveryId);
+          if (mode === 'late-already-stored') {
+            await expect(recovery).rejects.toMatchObject({ code: 'draft-done' });
+          } else {
+            const draft = await recovery;
+            if (collision || hasNewWords) {
+              const unsaved = hasNewWords ? { ...sketch, text: reopenedText } : sketch;
+              const shown = draft.getState();
+              expect(shown.checkpoint.draft?.scratch).toEqual([mode === 'reused-id' ? neighbor : savedNeighbor, unsaved, ...(several ? [following] : [])]);
+              expect(shown.checkpoint.remoteCandidate?.value?.scratch).toEqual(keepMyWords
+                ? [neighborAtRecovery, storedWithNewPlace] : expected.slice(0, 2));
+              const status = describeSync(shown, draft.getObservation(), draft.getDelivery());
+              expect(status).toMatchObject({ phase: 'conflict', canSave: false, canKeepLocal: !collision });
+              expect(s.transport.send).toHaveBeenCalledTimes(2);
+              if (keepMyWords) await draft.keepLocal(undefined, shown.checkpoint);
+              else await draft.acceptRemote(undefined, shown.checkpoint);
+              if (several || keepMyWords) {
+                expect(draft.getState().checkpoint.draft?.scratch).toEqual(expected);
+                await draft.save();
+                await s.engine.retry();
+              }
+            } else {
+              expect(draft.getState().checkpoint.draft?.scratch).toEqual(expected);
+              await draft.save();
+              await s.engine.retry();
+            }
+          }
+        }
+        expect(s.server.get(key)?.value?.scratch).toEqual(expected);
+        expect(s.server.get(key)?.value).toMatchObject({
+          title: 'Newer sermon title', preparation: { exegeticalPlan: [later] }, outline: outlineAtRecovery,
+        });
+        expect(s.transport.send).toHaveBeenCalledTimes(alreadyDelivered || (collision && !several) ? 2 : 3);
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     },

@@ -2,7 +2,7 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isSermonPlanMode, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { isSermonPlanMode, sermonPlacedSketchDraft, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { liveNodeIds } from '@/utils/planText';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -22,7 +22,8 @@ export function usePlanRecovery(document: SermonDocument, outline: Sermon['outli
     identity: document.recoveryIdentity,
     enabled: Boolean(document.recoveryIdentity) && !document.loading,
     version: JSON.stringify([document.confirmed?.metadata?.generation, document.confirmed?.metadata?.revision, canRecover]),
-    list: async () => (await document.listRecoverable()).filter(source => source.record.checkpoint.planCellDrafts),
+    list: async () => (await document.listRecoverable()).filter(source =>
+      source.record.checkpoint.planCellDrafts || sermonPlacedSketchDraft(source.record) !== undefined),
     recover: document.recover,
   });
   const orphaned: PlanOrphanCell[] = [];
@@ -75,6 +76,16 @@ export function PlanModeStatus({ document, recovery }: { document: SermonDocumen
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     comparison={comparison} onKeepLocal={keepLocal}
     onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
+    recoveryChoices={recovery.canRecover ? recovery.choices.flatMap(source => {
+      const preview = sermonPlacedSketchDraft(source.record);
+      return preview === undefined ? [] : [{ id: source.id, title: t('scratch.card.label'), preview,
+        discard: () => document.discardRecovery(source) }];
+    }) : []}
+    onRecover={id => {
+      const source = recovery.choices.find(choice => choice.id === id);
+      return source && document.recover(id, source.discardRecord ?? source.record);
+    }}
+    onDiscardRecovery={recovery.discard}
     recoveryLoading={recovery.loading} recoveryError={recovery.canRecover ? recovery.error : null} /></div>;
 }
 

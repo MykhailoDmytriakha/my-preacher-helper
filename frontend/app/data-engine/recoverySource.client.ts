@@ -30,6 +30,7 @@ export function pinRecoveryVersion<T extends VersionedRecovery>(transaction: Sto
 interface RecoverySourceSelection {
   key: IDBValidKey;
   owns(value: unknown): boolean;
+  remove?(): void;
 }
 
 /** Run before the existing reference collector in the target's native transaction. */
@@ -43,7 +44,10 @@ export function retireRecoveryVersions(store: IDBObjectStore, read: StorageRead,
       // Corrupt, changed or unknown sources stay available; cleanup cannot reject a valid target decision.
       let owned = false;
       try { owned = value?.recoveryVersion === source.version && selection.owns(value); } catch { /* Preserve unknown data. */ }
-      if (owned) store.delete(selection.key);
+      if (owned) {
+        if (selection.remove) selection.remove();
+        else store.delete(selection.key);
+      }
       next(index + 1);
     });
   };

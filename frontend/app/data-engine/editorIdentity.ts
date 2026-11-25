@@ -48,6 +48,7 @@ const protectedSermonRecoveries = {
   'sermon-header': { choice: 'sermon-header-choice-recovery', fork: ':sermon-header-recovery' },
   'sermon-church': { choice: 'sermon-church-choice-recovery', fork: ':sermon-church-recovery' },
   'sermon-preparation-check': { choice: 'sermon-preparation-check-choice-recovery', fork: ':sermon-preparation-check-recovery' },
+  'sermon-placed-sketch': { choice: 'sermon-placed-sketch-choice-recovery', fork: ':sermon-placed-sketch-recovery' },
   'sermon-thought-lock': { choice: 'sermon-thought-lock-choice-recovery', fork: ':sermon-thought-lock-recovery' },
   'sermon-thought-removal': { choice: 'sermon-thought-removal-choice-recovery', fork: ':sermon-thought-removal-recovery' },
   'sermon-thought-placement': { choice: 'sermon-thought-placement-choice-recovery', fork: ':sermon-thought-placement-recovery' },
@@ -69,6 +70,10 @@ export function protectedSermonRecoveryKind(editorId: string): ProtectedSermonRe
     const protection = protectedSermonRecoveries[kind];
     return editorId.endsWith(protection.fork) || editorId.startsWith(choicePrefix(protection.choice));
   });
+}
+
+export function isSermonChoiceRecoveryIdentity(editorId: string, kind: ProtectedSermonRecoveryKind): boolean {
+  return editorId.startsWith(choicePrefix(protectedSermonRecoveries[kind].choice)) && isManualChoiceRecoveryIdentity(editorId);
 }
 
 export function protectSermonRecoveryEditor(editorId: string, kind: ProtectedSermonRecoveryKind): string {

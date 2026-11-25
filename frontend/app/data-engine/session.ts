@@ -40,6 +40,7 @@ import { keepReselectedRowFields } from './rowReselectionChoice';
 import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
+import { isPlacedSketchConflict, observePlacedSketchConflicts, resolvePlacedSketchComparison } from './sermonPlacedSketchRecovery';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
@@ -799,6 +800,15 @@ export class DataSession {
         return;
       }
       retainRemovedServiceOrderInputs(this.state, snapshot);
+      const sketchConflicts = awaiting ? [] : observePlacedSketchConflicts(this.state, snapshot);
+      if (sketchConflicts.length) {
+        this.state.remoteCandidate = copy(snapshot);
+        this.state.conflicts = copy(sketchConflicts);
+        return;
+      }
+      if (!awaiting && this.state.conflicts.some(isPlacedSketchConflict)) {
+        this.state.conflicts = this.state.conflicts.filter(conflict => !isPlacedSketchConflict(conflict));
+      }
       if (!awaiting && !preserveDraft) {
         const merged = mergeUnsentObservation(this.state, snapshot);
         if (merged) {
@@ -1097,6 +1107,11 @@ export class DataSession {
       return;
     }
     if (this.acceptStoredUnreadableFields(atChoice) || !this.state.remoteCandidate) return;
+    const savedSketches = resolvePlacedSketchComparison(this.state, 'remote');
+    if (savedSketches) {
+      this.finishChoiceAgainstRemote(savedSketches);
+      return;
+    }
     if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) {
       if (this.state.unreadableExegeticalProofs?.some(address => unreadableExegeticalChoice(this.state, address))) {
         throw Object.assign(new Error('Other changes in the plan need review'), { code: 'other-changes-first' });
@@ -1171,6 +1186,11 @@ export class DataSession {
     }
     if ((privateServiceOrderPosition(this.state) || hasPrivateSermonPointMove(this.state))
       && !this.state.remoteCandidate && !this.state.conflicts.length) return;
+    const mySketches = resolvePlacedSketchComparison(this.state, 'local');
+    if (mySketches) {
+      this.finishChoiceAgainstRemote(mySketches);
+      return;
+    }
     assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {

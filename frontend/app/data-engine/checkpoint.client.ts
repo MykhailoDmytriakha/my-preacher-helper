@@ -1,6 +1,6 @@
 'use client';
 
-import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
+import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
 import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './fieldValues';
 import { examineRecoveryCheckpoints, recoveryCheckpointId, recoveryCheckpointEditorId, unreadableCheckpointDraft, validateRecoveryRecord } from './recovery.client';
@@ -39,7 +39,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
     const ranges = [range, engineOwnerRange(SERMON_NOTE_CHOICE_ROW, owner), engineOwnerRange(SERMON_HEADER_CHOICE_ROW, owner),
       engineOwnerRange(SERMON_CHURCH_CHOICE_ROW, owner), engineOwnerRange(SERMON_PREPARATION_CHECK_CHOICE_ROW, owner),
       engineOwnerRange(SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, owner), engineOwnerRange(SERMON_THOUGHT_REMOVAL_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_THOUGHT_LOCK_CHOICE_ROW, owner)];
+      engineOwnerRange(SERMON_THOUGHT_LOCK_CHOICE_ROW, owner), engineOwnerRange(SERMON_PLACED_SKETCH_CHOICE_ROW, owner)];
     let remaining = ranges.length;
     for (const range of ranges) {
       let physical: IDBValidKey[] | undefined, values: unknown[] | undefined;
@@ -82,7 +82,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
       version: value => value.recoveryVersion, references: checkpointCommitReferences, scopeId: record.editorId,
       canRemove: value => value.prepared === null && value.unfinalized.length === 0, isCurrent,
       remove: (store, current) => {
-        store.delete(checkpointKey(current.owner, current.editorId));
+        deleteCheckpointRecord(store, current.owner, current.editorId);
         for (const id of current.completedCommits ?? []) store.delete(commitProjectionKey(current.owner, id));
       },
     }),

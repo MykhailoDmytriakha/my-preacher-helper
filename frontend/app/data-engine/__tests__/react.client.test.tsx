@@ -374,6 +374,24 @@ describe('React DataEngine contract', () => {
     expect(hook.result.current.error).toBe('Resolve the requested series before saving');
   });
 
+  it.each(['draft-done', 'draft-gone'])('reopens the workspace when recovery answers %s', async code => {
+    const editor = makeEditor(), browser = makeBrowser(editor.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data?.content).toBe('base'));
+    const failure = Object.assign(new Error('The recovery copy is no longer pending'), { code });
+    browser.engine.recoverEditor.mockRejectedValueOnce(failure);
+    let recovery!: Promise<void>;
+    await act(async () => {
+      recovery = result.current.recover('expired-copy');
+      void recovery.catch(() => undefined);
+    });
+    await expect(recovery).rejects.toBe(failure);
+    await waitFor(() => expect(result.current.data?.content).toBe('base'));
+    expect(browser.engine.openEditor).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBeNull();
+  });
+
   it('exposes asynchronous checkpoint failures and clears them after durable recovery', async () => {
     const editor = makeEditor(), browser = makeBrowser(editor.editor);
     jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);

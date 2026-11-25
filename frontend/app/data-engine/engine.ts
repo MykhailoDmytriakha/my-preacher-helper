@@ -24,7 +24,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -60,6 +60,7 @@ import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReo
 import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
+import { readPlacedSketchComparison, rebaseRecoveredPlacedSketches } from './sermonPlacedSketchRecovery';
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { changedPreparationChecks } from './sermonPreparationCheckRecovery';
@@ -1853,14 +1854,27 @@ export class DataEngine {
             const protection = protectedSermonRecoveryKind(reconciled!.editorId);
             const recoveredPlacement = protection === 'sermon-thought-placement' && Object.keys(checkpoint.thoughtPlacementDrafts ?? {}).length;
             const recoveredLock = protection === 'sermon-thought-lock' && Object.keys(checkpoint.thoughtLockDrafts ?? {}).length;
-            if (!review && !recoveredPlacement && !recoveredLock) return reconciled;
+            const recoveredSketches = protection === 'sermon-placed-sketch';
+            if (!review && !recoveredPlacement && !recoveredLock && !recoveredSketches) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);
             active();
-            if (!fresh || !storesNewCopy(checkpoint.remoteCandidate ?? checkpoint.confirmed, fresh)) return reconciled;
+            const observed = checkpoint.remoteCandidate ?? checkpoint.confirmed;
+            if (!fresh || !canReplaceSnapshot(observed, fresh)) return reconciled;
+            const rebasedSketches = recoveredSketches && storesNewCopy(checkpoint.confirmed, fresh)
+              && rebaseRecoveredPlacedSketches(checkpoint, fresh, isSermonChoiceRecoveryIdentity(reconciled!.editorId, 'sermon-placed-sketch'));
+            if (rebasedSketches) {
+              const next = { ...reconciled!, checkpoint: rebasedSketches };
+              if (record && !isRecoverableCheckpoint(next)) {
+                await store.settleClosed?.(uid, [{ stored: record, settled: next }]);
+                active();
+              }
+              return next;
+            }
+            if (equalValues(observed, fresh)) return reconciled;
             const available = recoveredPlacement ? reviewUnavailableThoughtPlacements(checkpoint, fresh)
               : recoveredLock ? reviewUnavailableThoughtLock(checkpoint, fresh) : checkpoint;
-            if (!review && available === checkpoint) return reconciled;
+            if (!review && !recoveredSketches && available === checkpoint) return reconciled;
             const session = DataSession.restore(available);
             session.observe(fresh, { source: 'server' });
             const next = { ...reconciled!, checkpoint: session.checkpoint() };
@@ -3046,6 +3060,10 @@ export class DataEngine {
         if (thoughtLock && (!compared || !current.remoteCandidate || recoveredThoughtLock(current, current.remoteCandidate)?.settled !== false)) {
           throw Object.assign(new Error('Read both versions of the thought lock before choosing'), { code: 'decision-changed' });
         }
+        const sketchReview = readPlacedSketchComparison(current);
+        if (sketchReview && (!compared || (choice === 'local' && sketchReview.keepMineDisabled))) {
+          throw Object.assign(new Error('Read the current scratch note before choosing'), { code: 'decision-changed' });
+        }
         const thoughtRemoval = unresolvedThoughtRemoval(current) && !Object.keys(current.pending).length;
         const removal = thoughtRemoval && current.remoteCandidate
           ? recoveredThoughtRemoval(current, current.remoteCandidate) : pendingThoughtRemoval(current);
@@ -3053,7 +3071,7 @@ export class DataEngine {
           throw Object.assign(new Error('Read the current thought before choosing its removal'), { code: 'decision-changed' });
         }
         if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement || thoughtRemoval || thoughtLock) && !Object.keys(current.pending).length) || removal
-          || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
+          || (compared && (sketchReview || frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
           const shown = current.remoteCandidate ?? current.confirmed;

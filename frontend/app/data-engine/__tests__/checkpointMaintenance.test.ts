@@ -3,6 +3,7 @@ import { acknowledge, record, request, seedRequest, snapshot } from '@test-utils
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { checkpointKey, writeCheckpointRecord } from '../checkpointStorage.client';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { protectSermonRecoveryEditor } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { DataEngineRuntime } from '../runtime';
@@ -76,6 +77,22 @@ it.each(['pin-first', 'collector-first'] as const)('serializes two tabs safely w
     await tab.put(record('recoverable words', 'other-tab'));
     expect((await tab.read('owner', 'other-tab'))?.checkpoint.draft?.content).toBe('recoverable words');
   }
+});
+
+it('keeps an answered request referenced by a protected sketch copy through the generic collection sweep', async () => {
+  const saved = acknowledge(request()); seedRequest(storage, saved);
+  const editorId = protectSermonRecoveryEditor('sketch-recovery-fork', 'sermon-placed-sketch');
+  const checkpoints = createIndexedDbCheckpoints();
+  await checkpoints.put(record('private sketch', editorId, [saved]));
+  await sweep();
+
+  expect(hasRequest(saved)).toBe(true);
+  expect((await checkpoints.read('owner', editorId))?.checkpoint.pending[saved.id]).toBeDefined();
+  await checkpoints.put(record('remaining new words', editorId));
+  await sweep();
+
+  expect(hasRequest(saved)).toBe(false);
+  expect((await checkpoints.read('owner', editorId))?.checkpoint.draft?.content).toBe('remaining new words');
 });
 
 it('does not report a late checkpoint completion as durable before its native outcome', async () => {

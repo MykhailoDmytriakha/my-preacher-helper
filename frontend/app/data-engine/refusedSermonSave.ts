@@ -4,6 +4,7 @@ import { hasTimedAncestor } from './commits';
 import { canRebaseRefusedPointTail, recoverablePointTitlesAfterRefusal } from './exegeticalPointCapture';
 import { equalValues } from './fieldValues';
 import { recoverableSermonChurchAfterRefusal } from './sermonChurchRecovery';
+import { recoverablePlacedSketches } from './sermonPlacedSketchRecovery';
 import { recoverablePreparationChecks } from './sermonPreparationCheckRecovery';
 import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
 import { recoverableThoughtLocks } from './sermonThoughtLockRecovery';
@@ -26,10 +27,12 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const texts = recoverableSermonTextAfterRefusal(source, projected, chain);
   const church = recoverableSermonChurchAfterRefusal(source, projected, chain);
   const checks = recoverablePreparationChecks(source, projected, chain);
+  const sketches = recoverablePlacedSketches(source, projected, chain);
   const placements = recoverableThoughtPlacements(source, projected, chain);
   const removals = placements ? undefined : recoverableThoughtRemovals(source, projected, chain);
   const locks = placements || removals ? undefined : recoverableThoughtLocks(source, projected, chain);
   const scopes = [
+    ...(sketches ? [{ key: 'placed-sketches', recoveryKind: 'sermon-placed-sketch' as const, ...sketches }] : []),
     ...(church ? [{ key: 'church', recoveryKind: 'sermon-church' as const, ...church }] : []),
     ...checks.map(({ field, ...scope }) => ({ key: field, recoveryKind: 'sermon-preparation-check' as const, ...scope })),
     ...titles.map(({ id, ...copy }) => ({ key: 'point:' + id, recoveryKind: undefined, ...copy })),

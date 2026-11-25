@@ -402,6 +402,7 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
 }
 
 export { sermonChurchDraft } from './sermonChurchRecovery';
+export { readPlacedSketchComparison, sermonPlacedSketchDraft } from './sermonPlacedSketchRecovery';
 export { sermonPreparationCheckDraft } from './sermonPreparationCheckRecovery';
 export { recoveredThoughtLock, sermonThoughtLockDraft } from './sermonThoughtLockRecovery';
 export { sermonThoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
@@ -1318,7 +1319,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     }).catch(failure => {
       recovery?.reject(failure);
       if (!active) return;
-      if (recovery?.shownRecovery && (failure as { code?: unknown } | null)?.code === 'decision-changed') {
+      const code = (failure as { code?: unknown } | null)?.code;
+      if (recovery && (code === 'draft-done' || code === 'draft-gone' || (recovery.shownRecovery && code === 'decision-changed'))) {
         setSelection(null);
         return;
       }

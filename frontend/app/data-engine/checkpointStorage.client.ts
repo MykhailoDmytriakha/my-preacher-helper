@@ -18,11 +18,13 @@ export const SERMON_NOTE_CHOICE_ROW = 'sermon-note-choice-checkpoint';
 export const SERMON_HEADER_CHOICE_ROW = 'sermon-header-choice-checkpoint';
 export const SERMON_CHURCH_CHOICE_ROW = 'sermon-church-choice-checkpoint';
 export const SERMON_PREPARATION_CHECK_CHOICE_ROW = 'sermon-preparation-check-choice-checkpoint';
+export const SERMON_PLACED_SKETCH_CHOICE_ROW = 'sermon-placed-sketch-choice-checkpoint';
 export const SERMON_THOUGHT_LOCK_CHOICE_ROW = 'sermon-thought-lock-choice-checkpoint';
 export const SERMON_THOUGHT_REMOVAL_CHOICE_ROW = 'sermon-thought-removal-choice-checkpoint';
 export const SERMON_THOUGHT_PLACEMENT_CHOICE_ROW = 'sermon-thought-placement-choice-checkpoint';
 const protectedSermonRows = { 'sermon-header': SERMON_HEADER_CHOICE_ROW, 'sermon-church': SERMON_CHURCH_CHOICE_ROW,
   'sermon-preparation-check': SERMON_PREPARATION_CHECK_CHOICE_ROW, 'sermon-thought-placement': SERMON_THOUGHT_PLACEMENT_CHOICE_ROW,
+  'sermon-placed-sketch': SERMON_PLACED_SKETCH_CHOICE_ROW,
   'sermon-thought-removal': SERMON_THOUGHT_REMOVAL_CHOICE_ROW, 'sermon-thought-lock': SERMON_THOUGHT_LOCK_CHOICE_ROW } as const;
 export const checkpointKey = (owner: string, editorId: string): IDBValidKey => {
   const protection = protectedSermonRecoveryKind(editorId);
@@ -30,6 +32,14 @@ export const checkpointKey = (owner: string, editorId: string): IDBValidKey => {
     : editorId.startsWith(SERMON_NOTE_CHOICE_RECOVERY_PREFIX) ? SERMON_NOTE_CHOICE_ROW : 'checkpoint';
   return [kind, owner, editorId];
 };
+
+const placedSketchCheckpointReference = (owner: string, editorId: string): IDBValidKey =>
+  ['reference', owner, 'placed-sketch-checkpoint', editorId];
+
+export function deleteCheckpointRecord(store: IDBObjectStore, owner: string, editorId: string): void {
+  store.delete(checkpointKey(owner, editorId));
+  if (protectedSermonRecoveryKind(editorId) === 'sermon-placed-sketch') store.delete(placedSketchCheckpointReference(owner, editorId));
+}
 
 function deviceCheckpointRecord(record: EditorRecord) {
   const { sermonTextRetry, ...checkpoint } = record.checkpoint;
@@ -127,15 +137,23 @@ function placeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record:
   const frozen = validateRecoveryRecord(record, record.owner, record.editorId);
   read(store.get(checkpointKey(record.owner, record.editorId)), current => {
     if (creating && current !== undefined) throw new Error('Recovery target already exists');
-    validateCommitReferences(store, read, record.owner, checkpointCommitReferences(frozen), () => {
+    const references = checkpointCommitReferences(frozen);
+    validateCommitReferences(store, read, record.owner, references, () => {
       const keeps = isRecoverableCheckpoint(frozen);
-      if (keeps) store.put(deviceCheckpointRecord(version(frozen)), checkpointKey(record.owner, record.editorId));
-      else store.delete(checkpointKey(record.owner, record.editorId));
+      if (keeps) {
+        store.put(deviceCheckpointRecord(version(frozen)), checkpointKey(record.owner, record.editorId));
+        // An older tab can deliver a request without being able to read the protected checkpoint.
+        if (protectedSermonRecoveryKind(record.editorId) === 'sermon-placed-sketch') {
+          const reference = placedSketchCheckpointReference(record.owner, record.editorId);
+          if (references.length) store.put({ commitReferences: references }, reference);
+          else store.delete(reference);
+        }
+      } else deleteCheckpointRecord(store, record.owner, record.editorId);
       for (const id of frozen.completedCommits ?? []) store.delete(commitProjectionKey(record.owner, id));
       retireRecoveryVersions(store, read, keeps ? [] : recoveryOrigins(frozen.recoveryOrigins), id => {
         const editorId = recoveryCheckpointEditorId(frozen.owner, id);
         if (editorId === null || editorId === frozen.editorId) return null;
-        return { key: checkpointKey(frozen.owner, editorId), owns: value => Boolean(validateRecoveryRecord(value,
+        return { key: checkpointKey(frozen.owner, editorId), remove: () => deleteCheckpointRecord(store, frozen.owner, editorId), owns: value => Boolean(validateRecoveryRecord(value,
           frozen.owner, editorId, frozen.checkpoint.confirmed.resource)) };
       }, done);
     });
