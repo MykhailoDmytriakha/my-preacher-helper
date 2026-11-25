@@ -1,8 +1,9 @@
 import { patchSermonThought } from '@/utils/sermonThoughtEdits';
 
 import { isActionTime } from './actionClock';
-import { equalValues, object, readField, writeField } from './fieldValues';
+import { equalValues, object } from './fieldValues';
 import { existingRowField, existingRowFields } from './rowFieldAction';
+import { copySermonThoughtFrame, sermonThoughtFrame as frame } from './sermonThoughtRecoveryFrame';
 import { isThoughtLocation, thoughtOutlineDestinations, THOUGHT_PLACEMENT_POLICY, type ThoughtLocation } from './thoughtPlacementAction';
 
 import type { CommitRequest } from './commits';
@@ -10,8 +11,6 @@ import type { SessionCheckpoint } from './session';
 import type { DocumentData, ResourceSnapshot } from './types';
 import type { Sermon } from '@/models/models';
 
-const fields = ['thoughts', 'structure', 'thoughtsBySection'] as const;
-const frame = (value: DocumentData) => fields.map(field => readField(value, [field]));
 const { birth } = THOUGHT_PLACEMENT_POLICY;
 const target = THOUGHT_PLACEMENT_POLICY.target('outlineLocation');
 type PlacementAction = NonNullable<CommitRequest['thoughtPlacementActions']>[number];
@@ -67,10 +66,8 @@ export function recoverableThoughtPlacements(source: SessionCheckpoint, projecte
   }
   if (!moves.size) return;
 
-  const copyFrame = (document: DocumentData, frameSource: DocumentData) => fields.reduce(
-    (result, field) => writeField(result, [field], readField(frameSource, [field])), document);
   const continuation: SessionCheckpoint = {
-    confirmed, draft: copyFrame(opening, last), editGeneration: source.editGeneration,
+    confirmed, draft: copySermonThoughtFrame(opening, last), editGeneration: source.editGeneration,
     dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
   };
   const proofs: NonNullable<SessionCheckpoint['thoughtPlacementDrafts']> = {};
@@ -89,7 +86,7 @@ export function recoverableThoughtPlacements(source: SessionCheckpoint, projecte
     }
   }
   if (Object.keys(proofs).length) continuation.thoughtPlacementDrafts = proofs;
-  return { continuation, restoreStored: (document: DocumentData) => copyFrame(document, saved) };
+  return { continuation, restoreStored: (document: DocumentData) => copySermonThoughtFrame(document, saved) };
 }
 
 /** Keep a captured move out of delivery if the freshly read thought or destination is gone. */

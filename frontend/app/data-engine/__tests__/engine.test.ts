@@ -1,7 +1,7 @@
 import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
-import { patchSermonThought } from '@/utils/sermonThoughtEdits';
+import { deleteSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
 
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
@@ -1812,6 +1812,138 @@ describe('DataEngine composition', () => {
           structure: expectedStructure, thoughtsBySection: expectedStructure,
         });
         expect(s.transport.send).toHaveBeenCalledTimes(!isMove || keepMove ? 3 : 2);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each(['remove', 'saved-version', 'already-removed', 'replacement', 'changed-during-choice', 'replaced-before-delivery', 'edited-before-delivery', 'replaced-before-delivery-with-draft', 'edited-before-delivery-with-draft', 'mixed-edit'] as const)(
+    'recovers the captured deletion after a refused exegetical point Save (%s)', async decision => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-removal-after-point' };
+      const key = keyOf('owner', ref);
+      const row = { id: 'thought', date: '2026-11-10T00:00:00.000Z', text: 'Opening thought', tags: [] };
+      const sibling = { ...row, id: 'sibling', text: 'Sibling idea' };
+      const newer = { ...row, text: 'Newer thought from the desktop',
+        date: decision === 'replacement' ? '2026-11-12T00:00:00.000Z' : row.date };
+      const structure = { introduction: [], main: [row.id, sibling.id], conclusion: [], ambiguous: [] };
+      const newPoint = { id: 'point', title: '', children: [] };
+      const laterPoint = { ...newPoint, title: 'Full latest words of the new point' };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+        preparation: { exegeticalPlan: [] }, thoughts: [row, sibling], structure, thoughtsBySection: structure };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const remove = (document: DocumentData) => deleteSermonThought(document as unknown as Sermon, row.id) as unknown as DocumentData;
+      const latestValue: DocumentData = { ...value, title: 'Newer sermon title', thoughts: [newer, sibling] };
+      const latest: ResourceSnapshot = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: decision === 'already-removed' ? remove(latestValue) : latestValue };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [newPoint] } });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        await editor.commit(current => {
+          const deleted = remove(current!);
+          return decision === 'mixed-edit' ? { ...deleted, thoughts: [{ ...sibling, text: 'Separate private words' }] } : deleted;
+        });
+        const later = (await s.commits.list('owner')).find(request => request.id !== earlier.id)!;
+        expect(later).toMatchObject({ predecessor: earlier.id, value: { thoughts: [expect.objectContaining({ id: sibling.id })] } });
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [laterPoint] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: newPoint.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === earlier.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+        if (decision === 'mixed-edit') {
+          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(point.getState().checkpoint.draft?.thoughts).toMatchObject([{ id: sibling.id, text: 'Separate private words' }]);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const shownPoint = point.getState().checkpoint;
+        expect(shownPoint.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, shownPoint);
+        await point.save();
+        await s.engine.retry();
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        const needsReview = decision !== 'already-removed' && decision !== 'replacement';
+        expect(copies).toHaveLength(needsReview ? 1 : 0);
+        if (needsReview) {
+          const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'deletion'), copies[0].id);
+          const shownDeletion = reopened.getState().checkpoint;
+          expect(shownDeletion.conflicts.map(({ path }) => path)).toEqual([['thoughts', 'id:thought']]);
+          expect(shownDeletion.remoteCandidate?.value?.thoughts).toMatchObject([newer, sibling]);
+          await expect(reopened.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          if (decision === 'changed-during-choice') {
+            const saved = s.server.get(key)!;
+            const amended = { ...newer, text: 'Latest words after reviewing' };
+            s.server.set(key, { ...saved, metadata: { ...saved.metadata!, revision: saved.metadata!.revision + 1 },
+              value: { ...saved.value, thoughts: [amended, sibling] } });
+            await expect(reopened.keepLocal(undefined, shownDeletion)).rejects.toMatchObject({ code: 'decision-changed' });
+            expect(s.server.get(key)?.value?.thoughts).toMatchObject([amended, sibling]);
+            return;
+          }
+          if (decision.includes('-before-delivery')) {
+            const newBirth = decision.startsWith('replaced');
+            const withDraft = decision.endsWith('-with-draft');
+            const privateTitle = 'Unsent title written while the removal was being delivered';
+            const changed = { ...newer, date: newBirth ? '2026-11-13T00:00:00.000Z' : row.date,
+              text: 'Changed after the last comparison' };
+            jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+              if (withDraft) await reopened.edit({ ...reopened.getState().checkpoint.draft!, title: privateTitle });
+              const saved = s.server.get(key)!;
+              s.server.set(key, { ...saved, metadata: { ...saved.metadata!, revision: saved.metadata!.revision + 1 },
+                value: { ...saved.value, thoughts: [changed, sibling] } });
+              return send(command);
+            });
+            await reopened.keepLocal(undefined, shownDeletion);
+            await s.engine.retry();
+            expect(s.server.get(key)?.value?.thoughts).toMatchObject([changed, sibling]);
+            expect(s.transport.send).toHaveBeenCalledTimes(3);
+            expect((await s.commits.list('owner')).at(-1)).toMatchObject({
+              result: { kind: 'conflict', conflicts: [expect.objectContaining({ path: ['thoughts', 'id:thought'] })] },
+            });
+            const afterRefusal = reopened.getState().checkpoint;
+            expect(afterRefusal.remoteCandidate?.value?.thoughts).toMatchObject([changed, sibling]);
+            if (newBirth) {
+              await expect(reopened.keepLocal(undefined, afterRefusal)).rejects.toMatchObject({ code: 'decision-changed' });
+              await reopened.acceptRemote(undefined, afterRefusal);
+            } else await reopened.keepLocal(undefined, afterRefusal);
+            await s.engine.retry();
+            expect(s.server.get(key)?.value?.thoughts).toMatchObject(newBirth ? [changed, sibling] : [sibling]);
+            expect(s.transport.send).toHaveBeenCalledTimes(newBirth ? 3 : 4);
+            expect(s.server.get(key)?.value?.title).toBe(latestValue.title);
+            if (withDraft) {
+              const [tail] = await s.engine.listRecoveryChoices(ref, true);
+              expect(tail?.record).toMatchObject({ retainedManualChoice: { base: { title: latestValue.title } },
+                checkpoint: { draft: { title: privateTitle } } });
+              const titleDraft = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'title'), tail.id);
+              expect(titleDraft.getState().checkpoint.draft?.title).toBe(privateTitle);
+              expect(titleDraft.getState().checkpoint.draft?.thoughts).toMatchObject(newBirth ? [changed, sibling] : [sibling]);
+            }
+            return;
+          }
+          if (decision === 'remove') await reopened.keepLocal(undefined, shownDeletion);
+          else await reopened.acceptRemote(undefined, shownDeletion);
+        }
+        await s.engine.retry();
+        const deleted = decision === 'remove' || decision === 'already-removed';
+        const expected = deleted ? remove(latestValue) : latestValue;
+        expect(s.server.get(key)?.value).toMatchObject({ title: expected.title, thoughts: expected.thoughts,
+          preparation: { exegeticalPlan: [laterPoint] }, structure: expected.structure, thoughtsBySection: expected.thoughtsBySection });
+        expect(s.transport.send).toHaveBeenCalledTimes(decision === 'remove' ? 3 : 2);
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     },

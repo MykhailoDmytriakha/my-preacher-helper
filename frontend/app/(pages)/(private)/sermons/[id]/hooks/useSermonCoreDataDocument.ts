@@ -1,7 +1,7 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, sermonChurchDraft, sermonPreparationCheckDraft, sermonTextDraft, sermonThoughtPlacementDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, sermonChurchDraft, sermonPreparationCheckDraft, sermonTextDraft, sermonThoughtPlacementDraft, sermonThoughtRemovalDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { useTranslation } from '@locales/useTranslation';
@@ -131,13 +131,15 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
         const pointTitle = exegeticalRecoveryOpeningTitle(record);
         const recoveredField = check?.field ?? recoveredText?.field;
         const placement = sermonThoughtPlacementDraft(record.checkpoint);
-        const title = placement !== undefined ? t('structure.thoughtPlacementTitle')
+        const removal = sermonThoughtRemovalDraft(record.checkpoint);
+        const title = removal !== undefined ? t('dataSync.thoughtRemovalTitle')
+          : placement !== undefined ? t('structure.thoughtPlacementTitle')
           : recoveredField ? fieldLabel(t, recoveredField)
           : pointTitle !== undefined ? [t('dataSync.exegeticalPointTitle'), pointTitle].filter(Boolean).join(' · ')
             : String(draft?.title ?? confirmed.value?.title ?? sermonId ?? '');
         const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '')
           : check ? t(check.checked ? 'common.confirmationChecked' : 'common.confirmationUnchecked')
-          : placement ?? recoveredText?.preview ?? exegeticalDraftTitlePreview(record);
+          : removal ?? placement ?? recoveredText?.preview ?? exegeticalDraftTitlePreview(record);
         return [{ id, title, preview,
           discard: () => document.discardRecovery(source) }];
       })];

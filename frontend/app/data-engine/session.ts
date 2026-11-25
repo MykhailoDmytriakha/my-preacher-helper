@@ -45,6 +45,7 @@ import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { observedSermonText } from './sermonTextRecovery';
 import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
+import { recoveredThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -186,6 +187,13 @@ export class DataSession {
       delete this.state.unreadableScalarProof;
       return;
     }
+    const removal = recoveredThoughtRemoval(this.state, target);
+    if (removal?.settled) {
+      this.state.remoteCandidate = copy(target);
+      this.finishChoiceAgainstRemote(target.value);
+      delete this.state.unreadableRowProofs;
+      return;
+    }
     const thoughtPlacement = recoveredThoughtPlacement(this.state, target);
     if (thoughtPlacement?.samePlace) {
       this.state.remoteCandidate = copy(target);
@@ -220,7 +228,7 @@ export class DataSession {
     if (!step) delete this.state.unreadableServiceOrderStepPlacement;
     const outlinePosition = this.state.unreadableOutlinePointPlacement && unreadableOutlinePointPosition(confirmed.value, draft, target.value);
     if (!outlinePosition) delete this.state.unreadableOutlinePointPlacement;
-    const questions = [...scalars, ...rows, ...points, ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
+    const questions = [...scalars, ...rows, ...points, ...(removal ? [removal.conflict] : []), ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
@@ -236,7 +244,7 @@ export class DataSession {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.privateFieldReview;
       delete this.state.unreadableScalarProof;
-      delete this.state.unreadableRowProofs;
+      if (!unresolvedThoughtRemoval(this.state)) delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
     }
   }
@@ -871,6 +879,16 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (unresolvedThoughtRemoval(this.state) && !Object.keys(this.state.pending).length) {
+      const target = this.state.remoteCandidate;
+      const removal = target && recoveredThoughtRemoval(this.state, target);
+      if (!target || !removal || removal.settled) {
+        throw Object.assign(new Error('The compared thought removal has changed'), { code: 'decision-changed' });
+      }
+      this.finishChoiceAgainstRemote(side === 'local' ? removal.proposed : target.value);
+      delete this.state.unreadableRowProofs;
+      return true;
+    }
     if (unresolvedThoughtPlacement(this.state) && !Object.keys(this.state.pending).length) {
       const target = this.state.remoteCandidate;
       const placement = target && recoveredThoughtPlacement(this.state, target);

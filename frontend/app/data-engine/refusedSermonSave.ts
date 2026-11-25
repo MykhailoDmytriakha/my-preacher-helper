@@ -7,6 +7,7 @@ import { recoverableSermonChurchAfterRefusal } from './sermonChurchRecovery';
 import { recoverablePreparationChecks } from './sermonPreparationCheckRecovery';
 import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
 import { recoverableThoughtPlacements } from './sermonThoughtPlacementRecovery';
+import { recoverableThoughtRemovals } from './sermonThoughtRemovalRecovery';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -25,6 +26,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const church = recoverableSermonChurchAfterRefusal(source, projected, chain);
   const checks = recoverablePreparationChecks(source, projected, chain);
   const placements = recoverableThoughtPlacements(source, projected, chain);
+  const removals = placements ? undefined : recoverableThoughtRemovals(source, projected, chain);
   const scopes = [
     ...(church ? [{ key: 'church', recoveryKind: 'sermon-church' as const, ...church }] : []),
     ...checks.map(({ field, ...scope }) => ({ key: field, recoveryKind: 'sermon-preparation-check' as const, ...scope })),
@@ -34,7 +36,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
       : { key: field, recoveryKind: 'sermon-header' as const, ...copy }),
   ];
   const restoreStoredFields = (document: DocumentData) => scopes.reduce<DocumentData | undefined>(
-    (value, copy) => value && copy.restoreStored(value), placements ? placements.restoreStored(document) : document);
+    (value, copy) => value && copy.restoreStored(value), (placements || removals)?.restoreStored(document) ?? document);
   const draft = restoreStoredFields(projected.draft);
   const neutralBefore = restoreStoredFields(before);
   const neutralDraft = restoreStoredFields(source.draft);
@@ -66,5 +68,5 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const copies = scopes.flatMap(scope => scope.continuation ? [{ ...scope, continuation: scope.continuation }] : []);
   return { checkpoint, copies: [...copies, ...(placements ? [{
     key: 'thought-placement', continuation: placements.continuation, recoveryKind: 'sermon-thought-placement' as const,
-  }] : [])] };
+  }] : []), ...(removals ? removals.copies : [])] };
 }

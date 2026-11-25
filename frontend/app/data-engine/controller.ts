@@ -55,6 +55,7 @@ import { keepUncontestedSermonFields, readSermonSettingComparison } from './serm
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
 import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
 import { unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
+import { pendingThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -123,7 +124,7 @@ export interface EditorRecord extends VersionedRecovery {
   retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null;
     councilTopicPlacement?: CouncilTopicPlacementCapture; councilFieldsGeneration?: string | null;
     outlinePointPlacement?: OutlinePointPlacementCapture; templateFieldsGeneration?: string | null; sourceNoteLinks?: SourceNoteLinkCapture;
-    sermonNoteText?: SermonNoteOpening; commentText?: true };
+    sermonNoteText?: SermonNoteOpening; sermonFieldsGeneration?: string | null; commentText?: true };
 }
 
 export interface CheckpointStore {
@@ -550,7 +551,7 @@ export class EditorController {
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
-    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent)) return Promise.reject(Object.assign(
+    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent)) return Promise.reject(Object.assign(
       new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
     this.assertManualResolution(selection, captured);
@@ -744,7 +745,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -802,7 +803,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -1447,7 +1448,19 @@ export class EditorController {
               source!, session.checkpoint().confirmed, tail.base, tail.value);
           }
         };
-        if (ordinary && savedOrder) {
+        const thoughtRemoval = !selection && !correction ? pendingThoughtRemoval(source) : undefined;
+        if (thoughtRemoval) {
+          if (!expected || !ordinary || ordinary.first.id !== thoughtRemoval.requestId || !source.remoteCandidate
+            || !equalValues(decided.remoteCandidate, source.remoteCandidate)
+            || (choice === 'local' && thoughtRemoval.settled)) {
+            throw Object.assign(new Error('The compared thought removal has changed'), { code: 'decision-changed' });
+          }
+          anchoredChoice = thoughtRemoval.requestId;
+          session.acceptRemote();
+          if (choice === 'local' && !thoughtRemoval.settled) session.edit(thoughtRemoval.proposed);
+          const latest = ordinary.scope.filter(request => source!.pending[request.id]).at(-1);
+          preservePlacementTail(anchoredChoice, latest && anchoredPlacementChoiceTail(source, latest.id), true);
+        } else if (ordinary && savedOrder) {
           anchoredChoice = ordinary.first.id;
           session.observe(savedOrder, { source: 'server' });
           if (session.checkpoint().remoteCandidate) session.acceptRemote();
@@ -1655,6 +1668,12 @@ export class EditorController {
         const serviceChoiceIntent = (checkpoint: SessionCheckpoint) => serviceInput
           ? { ...checkpoint, draft: projectServiceOrderInput(checkpoint.confirmed.value, serviceInput) } : checkpoint;
         const replacements: CommitRequest[] = [];
+        if (thoughtRemoval && choice === 'local') {
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {});
+          if (!replacement) throw Object.assign(new Error('The thought removal could not be captured'), { code: 'decision-changed' });
+          session.applyCommit(replacement);
+          replacements.push(replacement);
+        }
         const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
         if (meeting) {
           const next = session.checkpoint();

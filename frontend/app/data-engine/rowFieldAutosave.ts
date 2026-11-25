@@ -92,7 +92,7 @@ export function hasRowProofTarget(collection: string, key: string): boolean {
   return targetsFor(collection).some(target => target.draft === key);
 }
 
-export type UnreadableRowProof = { field: DraftKey; rowId: string; birth: string; generation: string };
+export type UnreadableRowProof = { field: DraftKey | 'thoughtRemoval'; rowId: string; birth: string; generation: string };
 
 /** A readable proof must still name this generation and match the exact words on the device. */
 export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'>, key: string,

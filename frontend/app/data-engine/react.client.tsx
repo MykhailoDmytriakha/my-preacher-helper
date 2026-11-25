@@ -404,6 +404,7 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
 export { sermonChurchDraft } from './sermonChurchRecovery';
 export { sermonPreparationCheckDraft } from './sermonPreparationCheckRecovery';
 export { sermonThoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
+export { pendingThoughtRemoval, recoveredThoughtRemoval, sermonThoughtRemovalDraft } from './sermonThoughtRemovalRecovery';
 export { sermonTextDraft } from './sermonTextRecovery';
 
 export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {

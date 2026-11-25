@@ -161,7 +161,7 @@ const recordSchema = z.object({
     groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional(),
     councilTopicPlacement: councilPlacementCapture.optional(), councilFieldsGeneration: id.nullable().optional(),
     outlinePointPlacement: outlinePlacement.optional(), templateFieldsGeneration: id.nullable().optional(),
-    sourceNoteLinks: sourceNoteLinkCapture.optional(), sermonNoteText: sermonNoteOpening.optional(), commentText: z.literal(true).optional() }).optional(),
+    sourceNoteLinks: sourceNoteLinkCapture.optional(), sermonNoteText: sermonNoteOpening.optional(), sermonFieldsGeneration: id.nullable().optional(), commentText: z.literal(true).optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
@@ -171,7 +171,7 @@ const recordSchema = z.object({
     unreadableScalarProof: z.array(z.string()).min(1).max(Math.max(ACCOUNT_PREFERENCE_TARGETS.length, SERMON_TEXT_RECOVERY_FIELDS.length)).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
-      'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
+      'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts', 'thoughtRemoval']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string(), unverified: z.literal(true).optional() }).and(z.union([
@@ -565,6 +565,9 @@ function validateScopedEvidence(record: z.infer<typeof recordSchema>, collection
     || pendingIntents.some(intent => intent.councilTopicPlacement))) throw new Error('Council placement checkpoint identity mismatch');
   if (collection !== 'planTemplates' && (record.retainedManualChoice?.outlinePointPlacement
     || record.retainedManualChoice?.templateFieldsGeneration !== undefined)) throw new Error('Template recovery checkpoint identity mismatch');
+  if (collection !== 'sermons' && record.retainedManualChoice?.sermonFieldsGeneration !== undefined) {
+    throw new Error('Sermon recovery checkpoint identity mismatch');
+  }
   if (!outlinePlacementField(collection) && pendingIntents.some(intent => intent.outlinePointPlacement)) {
     throw new Error('Outline checkpoint identity mismatch');
   }

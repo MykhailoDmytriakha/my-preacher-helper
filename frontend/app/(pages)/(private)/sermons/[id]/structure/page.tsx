@@ -22,7 +22,7 @@ import { SortableItemPreview } from "@/components/SortableItem";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { useThoughtTagComparison } from '@/components/thought/useThoughtTagComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, sermonThoughtRemovalDraft, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hasPrivateSermonPointMove } from '@/data-engine/sermonPointMoveRecovery';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
@@ -134,6 +134,9 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     enabled: canRecover,
     version: JSON.stringify([generation, document.confirmed?.metadata?.revision, document.status?.phase]),
     list: async () => (await document.listRecoverable({ manualChoiceCopies: 'only' })).map(source => {
+      const removal = sermonThoughtRemovalDraft(source.record.checkpoint);
+      if (removal !== undefined) return { id: source.id, title: t('dataSync.thoughtRemovalTitle'), preview: removal,
+        discard: () => document.discardRecovery(source) };
       const { draft, confirmed } = source.record.checkpoint;
       const value = draft as unknown as Sermon | null;
       const base = (source.record.retainedManualChoice?.base ?? confirmed.value) as unknown as Sermon | null;

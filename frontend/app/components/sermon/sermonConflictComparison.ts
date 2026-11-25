@@ -1,7 +1,7 @@
 import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
-import { churchFieldWords, readSermonConflict } from '@/data-engine/react.client';
+import { churchFieldWords, pendingThoughtRemoval, readSermonConflict, recoveredThoughtRemoval } from '@/data-engine/react.client';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -12,6 +12,17 @@ import type { Json } from '@/data-engine/types';
 import type { TFunction } from 'i18next';
 
 export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string, apply?: ApplyOutlineReview): TextComparison | undefined {
+  const pendingRemoval = pendingThoughtRemoval(checkpoint);
+  const privateRemoval = checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length
+    ? recoveredThoughtRemoval(checkpoint, checkpoint.remoteCandidate) : undefined;
+  const removal = pendingRemoval ?? (privateRemoval?.settled === false ? privateRemoval : undefined);
+  if (removal) {
+    const text = (value: string) => value || t('dataSync.emptyField');
+    return { identity: removal.identity, title: t('dataSync.thoughtRemovalTitle'), valueKind: 'field', scopedChoice: true,
+      mine: t('dataSync.thoughtRemoved') + '\n' + text(removal.opening), stored: removal.stored === undefined ? t('dataSync.thoughtRemoved') : text(removal.stored),
+      keepMineDisabled: removal.settled,
+      actions: { local: t('dataSync.removeThought'), stored: t('dataSync.keepSavedThought') } };
+  }
   const placement = outlinePointConflictComparison(checkpoint, t, apply);
   if (placement) return placement;
   const title = outlineTitleComparison(checkpoint, t);

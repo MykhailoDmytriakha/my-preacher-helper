@@ -64,6 +64,7 @@ import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { changedPreparationChecks } from './sermonPreparationCheckRecovery';
 import { changedSermonTextFields, readSermonTextDraftComparison } from './sermonTextRecovery';
 import { recoveredThoughtPlacement, reviewUnavailableThoughtPlacements, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
+import { pendingThoughtRemoval, recoveredThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
 import { projectServiceOrderInput, readServiceOrderInputValue, serviceOrderInputKey, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { includesServiceOrderReserve, matchesServiceOrderReserve, SERVICE_ORDER_INPUT_SLOT, ServiceOrderInputReserve, type ServiceOrderReserveStorage } from './serviceOrderInputReserve';
@@ -1844,7 +1845,7 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || hasPrivateSermonPointMove(checkpoint)
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || unresolvedThoughtRemoval(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             const recoveredPlacement = protectedSermonRecoveryKind(reconciled!.editorId) === 'sermon-thought-placement'
@@ -3032,7 +3033,13 @@ export class DataEngine {
         if (thoughtPlacement && (!compared || !current.remoteCandidate || !recoveredThoughtPlacement(current, current.remoteCandidate))) {
           throw Object.assign(new Error('Read both versions of the thought placement before choosing'), { code: 'decision-changed' });
         }
-        if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement) && !Object.keys(current.pending).length)
+        const thoughtRemoval = unresolvedThoughtRemoval(current) && !Object.keys(current.pending).length;
+        const removal = thoughtRemoval && current.remoteCandidate
+          ? recoveredThoughtRemoval(current, current.remoteCandidate) : pendingThoughtRemoval(current);
+        if ((thoughtRemoval || removal) && (!compared || !removal || (choice === 'local' && removal.settled))) {
+          throw Object.assign(new Error('Read the current thought before choosing its removal'), { code: 'decision-changed' });
+        }
+        if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement || thoughtRemoval) && !Object.keys(current.pending).length) || removal
           || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
@@ -3555,7 +3562,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

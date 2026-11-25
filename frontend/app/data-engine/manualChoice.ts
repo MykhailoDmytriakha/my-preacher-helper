@@ -7,7 +7,7 @@ import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { autosaveFieldTargets, isOrderedSermonMetadata } from './documentFieldAction';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields } from './documentTextChoice';
-import { areSameTabManualParents, editorSlot, manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
+import { areSameTabManualParents, editorSlot, manualChoiceRecoveryIdentity, protectSermonRecoveryEditor, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
@@ -250,7 +250,9 @@ export function retainedAnchoredPlacementDraft(owner: string, editorId: string, 
 
 function protectPlacementFields(record: EditorRecord, source: SessionCheckpoint): EditorRecord {
   const { collection } = record.checkpoint.confirmed.resource;
-  const field = collection === 'groups' ? 'groupFieldsGeneration' : collection === 'planTemplates' ? 'templateFieldsGeneration' : 'councilFieldsGeneration';
+  const field = collection === 'groups' ? 'groupFieldsGeneration' : collection === 'planTemplates' ? 'templateFieldsGeneration'
+    : collection === 'sermons' ? 'sermonFieldsGeneration' : 'councilFieldsGeneration';
+  if (collection === 'sermons') record.editorId = protectSermonRecoveryEditor(record.editorId, 'sermon-thought-removal');
   record.retainedManualChoice![field] = source.confirmed.metadata?.generation ?? null;
   carryAnchoredDraftChronology(source, record.checkpoint);
   return record;
@@ -433,8 +435,8 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
     checkpoint.dirty = true;
     return { ...record, checkpoint };
   }
-  const fieldsGeneration = retained.groupFieldsGeneration !== undefined ? retained.groupFieldsGeneration
-    : retained.councilFieldsGeneration !== undefined ? retained.councilFieldsGeneration : retained.templateFieldsGeneration;
+  const fieldsGeneration = [retained.groupFieldsGeneration, retained.councilFieldsGeneration,
+    retained.templateFieldsGeneration, retained.sermonFieldsGeneration].find(value => value !== undefined);
   if (fieldsGeneration !== undefined && retained.base && record.checkpoint.draft) {
     const generation = confirmed.metadata?.generation ?? null;
     if (!confirmed.value || confirmed.metadata?.deleted || generation !== fieldsGeneration) {
