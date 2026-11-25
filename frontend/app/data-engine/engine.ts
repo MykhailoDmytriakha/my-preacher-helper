@@ -211,6 +211,7 @@ export interface ManagedEditor {
 export interface EditorOpenOptions {
   signal?: AbortSignal;
   autoSaveOnResume?: boolean;
+  shownRecovery?: EditorRecord;
 }
 
 interface EditorEntry {
@@ -1814,7 +1815,12 @@ export class DataEngine {
           return version;
         } } : {}),
         read: async (uid, id) => {
-          const record = await store.read(uid, id); active(); storedSource = record;
+          const record = await store.read(uid, id); active();
+          const shown = options?.shownRecovery;
+          if (shown && !(shown.recoveryVersion ? record?.recoveryVersion === shown.recoveryVersion : equalValues(record, shown))) {
+            throw Object.assign(new Error('The displayed draft changed'), { code: 'decision-changed' });
+          }
+          storedSource = record;
           const requests = await this.commits.list(); active();
           const retained = record?.retainedManualChoice;
           if (!retained) {

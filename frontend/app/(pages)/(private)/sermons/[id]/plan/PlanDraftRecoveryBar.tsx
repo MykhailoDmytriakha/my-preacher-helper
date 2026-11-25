@@ -1,14 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { readPlanText } from "@/utils/planText";
+import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 import { useTranslation } from "@locales/useTranslation";
 
 import { planNodeNames } from "./planNodes";
 
 import type { PlanDraftCopy } from "./planDraftTypes";
+import type { PlanRecovery } from "./PlanModeStatus";
+import type usePlanTextDraft from "./usePlanTextDraft";
 import type { Sermon } from "@/models/models";
 
 /** One offered card beside the working text that restoring it would replace. */
@@ -52,11 +56,13 @@ export function PlanDraftRecoveryBar({
   subject,
   onChoose,
   restoreDisabled = false,
+  selectSource,
 }: {
   cells: RecoveredCell[];
   onRestore: () => void | Promise<void>;
   restoreDisabled?: boolean;
-  onDiscard: () => void;
+  onDiscard: () => void | Promise<void>;
+  selectSource?: { id: string; options: { id: string; label: string }[]; choose: (id: string) => void };
   subject?: unknown;
   onChoose?: (nodeId: string, key: string) => void;
 }) {
@@ -73,8 +79,10 @@ export function PlanDraftRecoveryBar({
   };
   const discard = () => {
     const shown = JSON.stringify(cells);
-    void askBeforeDiscard(true, onDiscard, () =>
-      current.current.subject === subject && JSON.stringify(current.current.cells) === shown);
+    void askBeforeDiscard(true, async () => {
+      setRestoring(true);
+      try { await onDiscard(); } finally { setRestoring(false); }
+    }, () => current.current.subject === subject && JSON.stringify(current.current.cells) === shown);
   };
 
   const box = "mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 px-3 py-2 text-gray-900 dark:bg-black/20 dark:text-gray-100";
@@ -112,6 +120,13 @@ export function PlanDraftRecoveryBar({
           </button>
         </div>
       </div>
+      {selectSource && <label className="mt-3 block">
+        <span>{t("dataSync.recoveryLabel")}</span>
+        <select className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-2 py-1 dark:bg-gray-900"
+          value={selectSource.id} disabled={restoring} onChange={event => selectSource.choose(event.target.value)}>
+          {selectSource.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </select>
+      </label>}
       <ul className="mt-3 space-y-3 border-t border-amber-200 pt-3 dark:border-amber-500/30">
         {cells.map((cell) => (
           <li key={cell.id} className="space-y-1">
@@ -140,4 +155,60 @@ export function PlanDraftRecoveryBar({
       {discardDialog}
     </div>
   );
+}
+
+/** One plan recovery banner for device-session drafts and still-independent older copies. */
+export function PlanDraftRecoveryOffers({ recovery, legacy, sermon, working, subject, busy, restoreLegacy, answered }: {
+  recovery: PlanRecovery;
+  legacy: ReturnType<typeof usePlanTextDraft>;
+  sermon: Sermon;
+  working: Readonly<Record<string, string>>;
+  subject: string;
+  busy: (id: string) => boolean;
+  restoreLegacy: (cells: Record<string, string>, before: Record<string, string>) => Promise<boolean>;
+  answered: () => void;
+}) {
+  const { t } = useTranslation();
+  const [selectedId, choose] = useState<string>();
+  const engines = recovery.canRecover ? recovery.offers : [];
+  const matches = (offer: (typeof engines)[number], copy: PlanDraftCopy) =>
+    Object.hasOwn(offer.cells, copy.id) && offer.cells[copy.id] === copy.text;
+  const choices = legacy.copies.filter(copy => !engines.some(offer => matches(offer, copy)));
+  const selection = legacy.selectedCopies.flatMap(previous => {
+    const selected = choices.find(copy => copy.key === previous.key) ?? choices.find(copy => copy.id === previous.id);
+    return selected ? [selected] : [];
+  });
+  const legacyText = Object.fromEntries(selection.map(copy => [copy.id, copy.text]));
+  const options = [
+    ...(selection.length ? [{ id: 'legacy', label: selection.map(copy => copy.text).join(' · ') }] : []),
+    ...engines.map(offer => ({ id: offer.id, label: Object.values(offer.cells).join(' · ') })),
+  ];
+  const selected = options.find(option => option.id === selectedId) ?? options[0];
+  if (!selected) return null;
+  const engine = engines.find(offer => offer.id === selected.id);
+  const cells = engine ? recoveredCells(engine.cells, sermon, [], [], working)
+    : recoveredCells(legacyText, sermon, choices, selection, working);
+  const duplicates = engine ? legacy.copies.filter(copy => matches(engine, copy)) : [];
+  const act = async (restore: boolean) => {
+    try {
+      if (engine) {
+        await (restore ? engine.restore() : engine.discard());
+        legacy.accept(duplicates);
+      } else {
+        const opening = Object.fromEntries(cells.map(cell => [cell.id, cell.current]));
+        if (restore && !await restoreLegacy(legacyText, opening)) return;
+        legacy.accept(selection);
+      }
+      answered();
+    } catch (error) {
+      toast.error(t(writeFailureTranslationKey(error, 'dataSync.documentFailed')));
+    }
+  };
+  return <PlanDraftRecoveryBar subject={JSON.stringify([subject, selected.id])} cells={cells}
+    restoreDisabled={cells.some(cell => busy(cell.id))}
+    onChoose={engine ? undefined : legacy.selectCopy}
+    selectSource={options.length > 1 ? { id: selected.id, options: options.map((option, index) => ({
+      id: option.id, label: `${index + 1}. ${option.label.slice(0, 100) || t("plan.draftRecoveryEmpty")}`,
+    })), choose } : undefined}
+    onRestore={() => act(true)} onDiscard={() => act(false)} />;
 }

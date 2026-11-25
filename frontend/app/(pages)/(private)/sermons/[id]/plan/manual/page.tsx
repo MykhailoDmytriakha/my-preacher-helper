@@ -25,7 +25,7 @@ import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "../OrphanedPlanText";
 import { PlanCellDocument, PlanCellEditor } from "../PlanCellEditor";
 import { PlanCellEditToggle } from "../PlanCellEditToggle";
-import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
+import { PlanDraftRecoveryOffers } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
 import { PlanModeHistory, PlanModeStatus, usePlanRecovery, type PlanRecovery } from '../PlanModeStatus';
 import { planNodesForPoint, pointHasContent } from "../planNodes";
@@ -360,7 +360,9 @@ function ManualConspectusContent({ source, recovery, readOnly: copyReadOnly = fa
    * Resolve the initial recovery question before writing. Remaining independent copies
    * stay available after that choice. A copy for reading never becomes writable.
    */
-  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([owner, sermonId]), Boolean(draft.recovered));
+  const draftSubject = JSON.stringify([owner, sermonId]);
+  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(draftSubject,
+    Boolean(draft.recovered) || (recovery.canRecover && recovery.offers.length > 0));
   const locked = readOnly || draftHeld;
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
@@ -518,23 +520,9 @@ function ManualConspectusContent({ source, recovery, readOnly: copyReadOnly = fa
         />
 
       {/* Not on a copy for reading — see the paired screen: the draft waits in storage. */}
-      {draft.recovered && !readOnly && (
-        <PlanDraftRecoveryBar
-          subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies, conspectus.contentByNodeId)}
-          restoreDisabled={Object.keys(draft.recovered).some(id => conspectus.busyNodeIds.has(id))}
-          onChoose={draft.selectCopy}
-          onRestore={async () => {
-            const selected = draft.selectedCopies;
-            const shown = recoveredCells(draft.recovered ?? {}, sermon, draft.copies, selected, conspectus.contentByNodeId);
-            const before = Object.fromEntries(shown.map(cell => [cell.id, cell.current]));
-            if (!await conspectus.restoreLegacyCells(draft.recovered ?? {}, before)) return;
-            draft.accept(selected);
-            answerDraftQuestion();
-          }}
-          onDiscard={() => { draft.discard(); answerDraftQuestion(); }}
-        />
-      )}
+      {!readOnly && <PlanDraftRecoveryOffers recovery={recovery} legacy={draft} sermon={sermon}
+        working={conspectus.contentByNodeId} subject={draftSubject} busy={id => conspectus.busyNodeIds.has(id)}
+        restoreLegacy={conspectus.restoreLegacyCells} answered={answerDraftQuestion} />}
 
       <OrphanedPlanText
       subject={JSON.stringify([sermon?.userId, sermonId])}
