@@ -131,12 +131,13 @@ async function otherDeviceSaves(fields: Record<string, unknown>) {
 }
 
 /** He opens the comment's window again, sees «Текст с прошлого раза», presses «Восстановить», then «Готово». */
-async function restoreAndSave() {
+async function restoreAndSave(nextWords?: string) {
   await openComment();
   expect(screen.getByRole('button', { name: 'unsavedDraft.restore' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
   await settle();
   expect(editor()).toHaveValue(typed);
+  if (nextWords !== undefined) fireEvent.change(editor(), { target: { value: nextWords } });
   fireEvent.click(screen.getByRole('button', { name: 'common.done' }));
   for (const ms of [0, 1000, 5000]) await settle(ms);
 }
@@ -458,6 +459,33 @@ it('uses the header trash action and confirms an existing comment deletion', asy
 });
 
 describe('restoring a written comment\'s words resumes the window session they were typed in', () => {
+  it.each(['matching', 'changed', 'unknown'] as const)('keeps the %s saved opening when typing after restoring a legacy copy', async basis => {
+    await start();
+    const key = draftKey('owner', 'c1', 'comment', 'historical-text');
+    const base = basis === 'unknown' ? undefined : { opened: {
+      content: opening, type: 'comment', title: '', scriptureRefs: [reference],
+    } };
+    saveDraft(key, { text: typed, reference: null, title: '' }, undefined, false, undefined, base);
+    if (basis === 'changed') await otherDeviceSaves({ content: phoneWords });
+    const continued = `${typed} Ещё одна фраза.`;
+
+    await restoreAndSave(continued);
+
+    if (basis === 'matching') {
+      expect(questionShown()).toBe(false);
+      expect((await storedComment()).content).toBe(continued);
+      expect(updates()).toBe(1);
+      expect(sends.mock.calls.find(([command]) => command.kind === 'update')?.[0]).toMatchObject({
+        changes: expect.arrayContaining([{ path: ['content'], before: { exists: true, value: opening }, after: { exists: true, value: continued } }]),
+      });
+    } else {
+      expect(questionShown()).toBe(true);
+      expect(editor()).toHaveValue(continued);
+      expect((await storedComment()).content).toBe(basis === 'changed' ? phoneWords : opening);
+      expect(updates()).toBe(0);
+    }
+  });
+
   it('does not silently replace words another device saved since: the save is refused before any command and the window asks', async () => {
     await start();
     await typeAndCloseTheTab(typed);

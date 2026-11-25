@@ -235,7 +235,10 @@ export function EngineCommentWindow({ target, place, context, bible, placeOf, on
     }
   });
 
-  const canSubmit = editable && !placeChanged && !choosing && phase !== 'deleted' && phase !== 'localFailure' && (!creating || Boolean((shownReference ?? reference)?.chapter)) && sentences > 0 && (!isNote || Boolean(title.draft.trim()));
+  // While a new keystroke is being stored, the phase can be savingLocally even with an unanswered comparison.
+  const canSubmit = editable && !placeChanged && !choosing && !checkpoint?.conflicts.length
+    && phase !== 'deleted' && phase !== 'localFailure' && (!creating || Boolean((shownReference ?? reference)?.chapter))
+    && sentences > 0 && (!isNote || Boolean(title.draft.trim()));
   const save = (reviewed = false) => {
     if (!editable || (!reviewed && !canSubmit) || !sentences || (isNote && !title.draft.trim()) || !checkpoint || (!creating && !current)) return;
     const checked = !isNote ? creating ? (shownReference ?? reference) : moved ?? (shown?.paragraph === true && current?.paragraph !== true ? home : undefined) : null;

@@ -355,10 +355,12 @@ export class DataSession {
     const { value, conflicts } = comment
       ? projectLegacyStudyComment(confirmed, edits.edits)
       : projectLegacyStudyNote(confirmed, edits);
-    // A historical comment copy never observed an engine revision.
-    const proofs = comment ? [] : autosaveFieldTargets(confirmed.resource.collection).flatMap(target => {
+    const proofs = autosaveFieldTargets(confirmed.resource.collection).flatMap(target => {
       const { field } = target;
       if (field !== 'title' && field !== 'content' && field !== 'type') return [];
+      // A comment's old copy has no engine revision. Only matching body text can inherit
+      // the opening verified during import, without claiming a time for the historical edit.
+      if (comment && field !== 'content') return [];
       if (conflicts.some(({ path }) => path[0] === field)) return [];
       const draft = stageAutosaveField(this.state, value, this.state, target, { field, time: null });
       return draft ? [[target.draft, draft] as const] : [];
