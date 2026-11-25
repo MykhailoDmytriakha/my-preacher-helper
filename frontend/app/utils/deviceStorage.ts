@@ -280,25 +280,45 @@ function askForRelease(label: string, name: string): void {
  * callback ran — nothing started — so it is repeated once on a fresh connection. A call whose callback
  * ran is never repeated: its transaction may have done work.
  */
-export function reconnectingStore(databaseName: string, storeName: string): UseStore {
+export function reconnectingStore(databaseName: string, storeName: string, upgradeVersion?: number): UseStore {
   let store: UseStore | undefined;
+  const prepared = upgradeVersion === undefined ? undefined : new WeakSet<IDBDatabase>();
+  const connect = () => createStore(databaseName, storeName);
   return async (mode, callback) => {
-    const used = (store ??= createStore(databaseName, storeName));
+    const used = (store ??= connect());
     let started = false;
+    const run = (connection: UseStore) => connection(mode, objectStore => {
+      started = true;
+      const database = prepared && objectStore.transaction?.db;
+      if (database && !prepared.has(database)) {
+        prepared.add(database);
+        database.addEventListener('versionchange', event => {
+          if (event.newVersion !== upgradeVersion) return;
+          // A graceful close lets the current transaction finish. The next call opens
+          // the resulting version; it must never repeat an already admitted transaction.
+          if (store === connection) store = undefined;
+          database.close();
+        });
+      }
+      return callback(objectStore);
+    });
     try {
-      return await used(mode, objectStore => { started = true; return callback(objectStore); });
+      return await run(used);
     } catch (error) {
       if (started || (error as { name?: unknown } | null)?.name !== 'InvalidStateError') throw error;
-      if (store === used) store = createStore(databaseName, storeName);
-      return store(mode, callback);
+      if (!store || store === used) store = connect();
+      return run(store);
     }
   };
 }
 
+// Version 2 is the WebKit release probe while the engine database is at version 1.
+const ENGINE_STATE_INDEX_VERSION = 3;
+
 /** The same store `idb-keyval` would create, reopened when the browser closes it, with every call watched under `label`. */
 export function watchedStore(databaseName: string, storeName: string, label: string): UseStore {
   if ((ENGINE_STORAGE as readonly string[]).includes(label)) engineDatabases.set(label, databaseName);
-  const store = reconnectingStore(databaseName, storeName);
+  const store = reconnectingStore(databaseName, storeName, label === RECORDS ? ENGINE_STATE_INDEX_VERSION : undefined);
   return (mode, callback) => trackStorage(label, store(mode, callback));
 }
 

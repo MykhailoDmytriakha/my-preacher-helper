@@ -61,6 +61,12 @@ While storage is silent `document.readOnly` is true and every write is refused. 
 - Whatever the bare reader showed must still be on the page. An old sermon's whole-section text comes from `legacySectionText`, the same rule the assembled plan uses.
 - Test with the real engine writers and a stand-in document that records writes (`confirmed: null` on a copy, as the engine gives). Put the buttons that may remain on an allow-list, add a writable control so the assertions are known to see controls, and check the draft store across every switch (`__tests__/pages/sermonPlanScreensReadOnly.test.tsx`, `structureBoardReadOnly.test.tsx`; BUG-20261002-sermon-read-only-copy-bare-page).
 
+## Prepare an IndexedDB index for saved work
+
+Existing tabs keep engine records in the same IndexedDB database. Ordinary opens are queued behind an outstanding version change. In Chrome, closing the tab or iframe that requested a blocked upgrade does not unblock a third open while the legacy connection remains open. Do not start the migration until older tabs have the connection handler; an older compiled tab that still lacks it must finish and close its connection first.
+
+The engine records watcher closes gracefully for the planned version 3, letting admitted transactions finish before the next connection opens. Version 2 is left to the WebKit release probe while the database is at version 1. The watcher does not request any version upgrade.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility readers are not templates for new features. `readOwnerList` and `readOwnerDocument` live in `frontend/app/services/ownerListRead.client.ts`.

@@ -225,6 +225,34 @@ describe('device storage that stops answering', () => {
     expect(createStore).toHaveBeenCalledTimes(2);
   });
 
+  it('lets admitted work finish and reopens engine records for the planned index upgrade', async () => {
+    const original = Object.assign(new EventTarget(), { version: 1, close: jest.fn() });
+    const upgraded = Object.assign(new EventTarget(), { version: 3, close: jest.fn() });
+    const provide = (db: typeof original) =>
+      (async (_mode: IDBTransactionMode, callback: (objectStore: IDBObjectStore) => unknown) =>
+        callback({ transaction: { db } } as unknown as IDBObjectStore)) as ReturnType<typeof createStore>;
+    jest.mocked(createStore).mockReturnValueOnce(provide(original)).mockReturnValueOnce(provide(upgraded));
+    const store = watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state');
+    const admitted = deferred<void>();
+    const committed = deferred<string>();
+    const persist = jest.fn(async () => { admitted.resolve(); return committed.promise; });
+    const writing = store('readwrite', persist);
+    await admitted.promise;
+
+    // A WebKit release probe asks for the very next version and does not close this live connection.
+    original.dispatchEvent(Object.assign(new Event('versionchange'), { newVersion: 2 }));
+    expect(original.close).not.toHaveBeenCalled();
+    original.dispatchEvent(Object.assign(new Event('versionchange'), { newVersion: 3 }));
+    expect(original.close).toHaveBeenCalledTimes(1);
+    committed.resolve('existing request survived');
+    await expect(writing).resolves.toBe('existing request survived');
+    expect(persist).toHaveBeenCalledTimes(1);
+
+    const version = await store('readonly', objectStore => objectStore.transaction.db.version);
+    expect(version).toBe(3);
+    expect(createStore).toHaveBeenCalledTimes(2);
+  });
+
   it('never repeats a call whose transaction had started', async () => {
     const closing = Object.assign(new Error('Connection on cached page closed'), { name: 'InvalidStateError' });
     const started = jest.fn(async (_mode: IDBTransactionMode, callback: (store: IDBObjectStore) => unknown) => { callback({} as IDBObjectStore); throw closing; });
