@@ -201,6 +201,30 @@ export function unreadableExegeticalChoice(checkpoint: SessionCheckpoint, origin
       ? (reviewed.mine.value as DocumentData)?.title === mine?.point.title : equalValues(reviewed.mine, conflict.mine) };
 }
 
+export function canRebaseRefusedPointTail(before: DocumentData | null, draft: DocumentData | null, projected: SessionCheckpoint): boolean {
+  if (!before || !draft || !projected.unreadableExegeticalProofs?.length) return false;
+  let opening = before;
+  let local = draft;
+  let projectedTail = projected.draft;
+  for (const address of projected.unreadableExegeticalProofs) {
+    const choice = unreadableExegeticalChoice(projected, address);
+    const neutralOpening = choice?.apply(opening, 'opening');
+    const neutralLocal = choice?.apply(local, 'opening');
+    const neutralProjected = projectedTail && choice?.apply(projectedTail, 'opening');
+    if (!neutralOpening || !neutralLocal || !neutralProjected) return false;
+    opening = neutralOpening;
+    local = neutralLocal;
+    projectedTail = neutralProjected;
+  }
+  // A deleted pending point can appear as a whole-plan merge conflict. Set aside the points
+  // already shown for review to test whether any other later words still require a decision.
+  const saved = projected.confirmed.value;
+  if (!saved || !projectedTail) return false;
+  const merged = mergeDocumentFields(opening, local, saved);
+  // A choice about the shown points cannot carry independent later words.
+  return !merged.conflicts.length && equalValues(merged.value.value, saved) && equalValues(projectedTail, saved);
+}
+
 export function readUnreadableExegeticalChoice(checkpoint: SessionCheckpoint, nodeId: string) {
   for (const address of checkpoint.unreadableExegeticalProofs ?? []) {
     const choice = unreadableExegeticalChoice(checkpoint, address);

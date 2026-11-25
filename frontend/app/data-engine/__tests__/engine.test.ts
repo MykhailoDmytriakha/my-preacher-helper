@@ -10,6 +10,7 @@ import { AddressedFailures, PausedReadFailure } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
+import { commitRowKey } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { readSermonPlanModeComparison } from '../sermonFieldChoice';
 import { DataSession } from '../session';
@@ -980,15 +981,25 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
-  it('keeps the later unreadable point title when the earlier refused addition is retired', async () => {
+  it.each([
+    { saves: 1, side: 'mine' },
+    { saves: 2, side: 'mine' },
+    { saves: 3, side: 'stored' },
+    { saves: 2, side: 'competing-intent' },
+    { saves: 2, side: 'unverified-intent' },
+    { saves: 2, side: 'captured-point-proof' },
+    { saves: 2, side: 'unverified-other-point' },
+  ] as const)('reviews the later unreadable point after retiring a refusal ($saves saves, $side)', async ({ saves, side }) => {
     const s = setup({ online: false, nativeChoice: true });
     const ref = { collection: 'sermons', id: 'two-stage-refusal' };
     const sibling = { id: 'sibling', title: 'Opening neighbor' };
     const point = { id: 'added', title: '', children: [] };
-    const value = (nodes: DocumentData[]) => ({ userId: 'owner', title: 'Sermon', thoughts: [],
-      preparation: { exegeticalPlan: nodes, authorIntent: 'Another field' } });
+    const value = (nodes: DocumentData[], authorIntent = 'Another field') => ({ userId: 'owner', title: 'Sermon', thoughts: [],
+      preparation: { exegeticalPlan: nodes, authorIntent } });
     const opening = { ...initial(), resource: ref, value: value([sibling]) };
-    const stored = { ...opening, value: value([{ ...sibling, title: 'Newer neighbor' }]),
+    const otherPointEdit = side === 'captured-point-proof' || side === 'unverified-other-point';
+    const newNeighbor = otherPointEdit ? sibling : { ...sibling, title: 'Newer neighbor' };
+    const stored = { ...opening, value: value([newNeighbor], side === 'competing-intent' ? 'Author words on the other device' : undefined),
       metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop' } };
     s.cache.set(keyOf('owner', ref), opening);
     s.server.set(keyOf('owner', ref), opening);
@@ -998,7 +1009,26 @@ describe('DataEngine composition', () => {
       const queued = value([sibling, point]);
       await editor.edit(queued);
       await editor.save();
-      const draft = value([sibling, { ...point, title: 'Written after Save' }]);
+      let authorIntent = 'Another field';
+      const independentIntent = side === 'competing-intent' || side === 'unverified-intent' || otherPointEdit;
+      for (let index = 1; index < saves; index += 1) {
+        if (independentIntent && !otherPointEdit) authorIntent = 'Independent words from Save ' + (index + 1);
+        if (side === 'captured-point-proof') {
+          await editor.edit(value([{ ...sibling, title: 'Existing point edited offline' }, point], authorIntent),
+            undefined, { field: 'exegetical-point', nodeId: sibling.id, intent: 'title', time: { earliestMs: 3000, latestMs: 3010 } });
+        } else if (independentIntent) await editor.edit(value([otherPointEdit ? { ...sibling, title: 'Existing point edited offline' } : sibling, point], authorIntent));
+        else await editor.edit(value([sibling, { ...point, title: 'Earlier captured point title ' + index }]));
+        await editor.save();
+        if (!independentIntent) {
+          // The old checkpoint is recovered with the proof already owned by the queued Save.
+          const captured = (await s.commits.list('owner')).at(-1)!;
+          s.storage!.rows.set(JSON.stringify(commitRowKey(captured)), { ...captured,
+            exegeticalPlanActions: [{ nodeId: point.id, kind: 'title', observedRevision: 1, time: { earliestMs: 3000, latestMs: 3010 } }] });
+        }
+      }
+      expect(Object.keys(editor.getState().checkpoint.pending)).toHaveLength(saves);
+      const existing = otherPointEdit ? { ...sibling, title: 'Existing point edited offline' } : sibling;
+      const draft = value([existing, { ...point, title: 'Written after Save' }], authorIntent);
       await editor.edit(draft, undefined, { field: 'exegetical-point', nodeId: point.id, intent: 'title', time: null });
       const record = await s.checkpoints.read('owner', editorId);
       expect(record).toBeDefined();
@@ -1015,18 +1045,31 @@ describe('DataEngine composition', () => {
       const source = (await s.engine.listRecoverable(ref)).find(copy => copy.answer === 'refused' && copy.record.checkpoint.unreadableExegeticalProofs?.length);
       expect(source).toBeDefined();
       const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source!.id);
-      await reopened.acceptRemote();
+      const openingReview = reopened.getState().checkpoint;
+      if (independentIntent) {
+        await expect(reopened.acceptRemote(undefined, openingReview)).rejects.toMatchObject({ code: 'other-changes-first' });
+        expect(reopened.getState().checkpoint.pending).toEqual(openingReview.pending);
+        expect(reopened.getState().checkpoint.draft).toEqual(openingReview.draft);
+        expect(s.transport.send).toHaveBeenCalledTimes(1);
+        const tail = (await s.commits.list('owner')).find(request => request.predecessor);
+        expect(tail?.state).toBe('queued');
+        if (side === 'captured-point-proof') expect(tail?.exegeticalPlanActions).toMatchObject([{ nodeId: sibling.id, observedRevision: 1, time: { earliestMs: 3000, latestMs: 3010 } }]);
+        return;
+      }
+      await reopened.acceptRemote(undefined, saves > 1 ? openingReview : undefined);
       const reviewed = reopened.getState().checkpoint;
       expect(reviewed.pending).toEqual({});
       expect(reviewed.conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:added']]);
-      expect(reviewed.draft?.preparation).toMatchObject({ exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
+      expect(reviewed.draft?.preparation).toMatchObject({ authorIntent, exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
       expect(s.transport.send).toHaveBeenCalledTimes(1);
-      await reopened.keepLocal(undefined, reviewed);
+      if (side === 'mine') await reopened.keepLocal(undefined, reviewed);
+      else await reopened.acceptRemote(undefined, reviewed);
       jest.mocked(s.transport.send).mockImplementation(send);
       await reopened.save();
       await s.engine.retry();
       const accepted = s.server.get(keyOf('owner', ref));
-      expect(accepted?.value?.preparation).toEqual(value([{ ...sibling, title: 'Newer neighbor' }, { ...point, title: 'Written after Save' }]).preparation);
+      const settled = side === 'mine' ? [newNeighbor, { ...point, title: 'Written after Save' }] : [newNeighbor];
+      expect(accepted?.value?.preparation).toEqual(value(settled, authorIntent).preparation);
     } finally { s.engine.dispose(); }
   });
 

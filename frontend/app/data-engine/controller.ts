@@ -8,7 +8,7 @@ import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreatio
 import { CaptureContinuations } from './captureContinuations';
 import { keepUncontestedCommentFields } from './commentKindChoice';
 import { commentCompanionProofs, commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, commentTextChoiceBasis, keepUncontestedCommentPlace, keepUncontestedCommentText, readCommentPlaceComparison, readReturnedCommentText } from './commentPlaceChoice';
-import { assertCommitCapture } from './commits';
+import { assertCommitCapture, hasTimedAncestor } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { isCouncilHeaderComparison } from './councilFieldAction';
 import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
@@ -26,7 +26,7 @@ import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
-import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
+import { canRebaseRefusedPointTail, hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { isOrderedGroupFlowText } from './groupFlowTitleAction';
@@ -1245,10 +1245,24 @@ export class EditorController {
       await this.options.publishStoredChoice?.(savedOrder);
       this.assertCurrent();
     }
-    const refusedPoint = !selection && !correction && ordinary?.answer.kind === 'refused' && ordinary.scope.length === 1
-      && hasLaterPendingExegeticalTitle(shown.checkpoint, ordinary.first.id) ? ordinary.first : undefined;
+    const planTail = ordinary?.scope.at(-1);
+    const refusedPoint = !selection && !correction && ordinary?.answer.kind === 'refused' && planTail && !ordinary.branched
+      && (choice === 'remote' || ordinary.scope.length === 1)
+      && Object.keys(shown.checkpoint.pending).length === ordinary.scope.length
+      && ordinary.scope.every(request => request.editorId === ordinary.first.editorId
+        && request.baseline.metadata?.generation === shown.checkpoint.confirmed.metadata?.generation
+        && equalValues(shown.checkpoint.pending[request.id]?.value, request.value))
+      && hasLaterPendingExegeticalTitle(shown.checkpoint, planTail.id) ? ordinary : undefined;
     let savedPlan: ResourceSnapshot | undefined;
     if (refusedPoint) {
+      // A later Save can share this decision only if its ordered fields belong to the point being reviewed.
+      const pointIds = new Set((shown.checkpoint.unreadableExegeticalProofs ?? []).map(address => address.nodeId));
+      const later = refusedPoint.scope.slice(1);
+      if (later.length && (later.some(request => request.sermonNoteText || hasTimedAncestor({ ...request,
+        exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointIds.has(action.nodeId)),
+      })) || shown.checkpoint.exegeticalPointDrafts?.some(action => !pointIds.has(action.nodeId)))) {
+        throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
+      }
       const live = await this.options.readWriteTarget?.(shown.checkpoint.confirmed.resource);
       this.assertCurrent();
       if (!live?.value || !canReplaceSnapshot(shown.checkpoint.remoteCandidate ?? shown.checkpoint.confirmed, live)) {
@@ -1288,7 +1302,7 @@ export class EditorController {
         source = record.checkpoint;
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
-        const answered = ordinary ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
+        const answered = ordinary && !refusedPoint ? ordinaryChoiceCheckpoint(ordinary, source, reviewingText) : source;
         const reviewedSeriesText = selection && choice === 'remote'
           && manualSeriesTextChoiceFields(answered.confirmed, answered.remoteCandidate, answered.conflicts, selection, answered.draft);
         const documentTextChoice = (!selection || reviewedSeriesText) && !correction ? readDocumentTextChoice(answered) : undefined;
@@ -1384,16 +1398,23 @@ export class EditorController {
           return { editorRecords: [projected, ...(recovery?.editorRecords ?? []), ...(retained ? [retained] : []),
             ...(removedCopy ? [removedCopy] : [])], manualRecoveries: recovery?.manualRecoveries ?? [], replacements: replacement ? [replacement] : [] };
         }
-        if (refusedPoint && savedPlan) {
-          if (!hasLaterPendingExegeticalTitle(decided, refusedPoint.id)
+        if (refusedPoint && planTail && savedPlan) {
+          if (!hasLaterPendingExegeticalTitle(decided, planTail.id)
             || !canReplaceSnapshot(decided.remoteCandidate ?? decided.confirmed, savedPlan)) {
             throw Object.assign(new Error('The later point edit changed'), { code: 'decision-changed' });
           }
-          const retained = DataSession.restore(decided);
+          const rootId = refusedPoint.first.id;
+          const captured = decided.pending[rootId];
+          // Only the refused Save owns the decision. The latest draft contains the rest of this editor's chain.
+          const retained = DataSession.restore({ ...decided, pending: { [rootId]: captured } });
           retained.observe(savedPlan, { source: 'server' });
-          const retirement = retired.find(request => request.id === refusedPoint.id)!;
+          const retirement = retired.find(request => request.id === rootId)!;
           retained.applyCommit(retirement);
-          projected = { ...record, checkpoint: retained.checkpoint(), completedCommits: [...completed] };
+          const checkpoint = retained.checkpoint();
+          if (refusedPoint.scope.length > 1 && !canRebaseRefusedPointTail(captured.value, decided.draft, checkpoint)) {
+            throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
+          }
+          projected = { ...record, checkpoint, completedCommits: [...completed] };
           return projected;
         }
         const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
