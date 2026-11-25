@@ -44,6 +44,7 @@ import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellCo
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { observedSermonText } from './sermonTextRecovery';
+import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -183,6 +184,13 @@ export class DataSession {
       this.state.remoteCandidate = copy(target);
       this.finishChoiceAgainstRemote(target.value);
       delete this.state.unreadableScalarProof;
+      return;
+    }
+    const thoughtPlacement = recoveredThoughtPlacement(this.state, target);
+    if (thoughtPlacement?.samePlace) {
+      this.state.remoteCandidate = copy(target);
+      this.finishChoiceAgainstRemote(target.value);
+      delete this.state.unreadableRowProofs;
       return;
     }
     const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION
@@ -863,6 +871,25 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (unresolvedThoughtPlacement(this.state) && !Object.keys(this.state.pending).length) {
+      const target = this.state.remoteCandidate;
+      const placement = target && recoveredThoughtPlacement(this.state, target);
+      if (!target?.value || !placement || placement.samePlace || (side === 'local' && !placement.proposed)) {
+        throw Object.assign(new Error('The compared thought placement has changed'), { code: 'decision-changed' });
+      }
+      const proposed = DataSession.restore({ confirmed: target, draft: side === 'local' ? placement.proposed! : target.value,
+        editGeneration: this.state.editGeneration, dirty: side === 'local', pending: {}, conflicts: [], remoteCandidate: null });
+      if (side === 'local') {
+        stageReviewedRowFields(proposed.state, [['thoughts', 'id:' + placement.rowId, 'outlineLocation']], time, ['thought-placement']);
+        if (!proposed.state.thoughtPlacementDrafts?.[placement.rowId]) {
+          throw Object.assign(new Error('The thought placement could not be captured'), { code: 'decision-changed' });
+        }
+      }
+      this.finishChoiceAgainstRemote(proposed.state.draft);
+      delete this.state.unreadableRowProofs;
+      this.state.thoughtPlacementDrafts = proposed.state.thoughtPlacementDrafts;
+      return true;
+    }
     if (hasUnreadablePreparationCheck(this.state) && !Object.keys(this.state.pending).length) {
       const target = this.state.remoteCandidate;
       const check = target && privatePreparationCheck(this.state, target);

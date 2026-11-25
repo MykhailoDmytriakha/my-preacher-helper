@@ -121,13 +121,15 @@ export function useThoughtPlacementComparison(checkpoint: Parameters<typeof read
   const [operationId] = Object.keys(checkpoint.pending);
   const owned = answers.filter(answer => answer.owner === owner && answer.resource.collection === 'sermons'
     && answer.resource.id === sermon.id && answer.operationIds.includes(operationId));
-  if (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length)) return;
   const placement = readThoughtPlacementComparison(checkpoint);
-  if (!placement) return;
+  if (!placement || (!placement.recovered && (!owned.length
+    || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length)))) return;
   const label = (outline: SermonOutline | undefined, location: ThoughtLocation) =>
     thoughtLocationLabel(outline, location, t('structure.unassigned'), t('structure.thoughtPlacementUnavailable'));
   const stored = checkpoint.remoteCandidate?.value?.outline as unknown as SermonOutline | undefined;
   return { identity: placement.identity, title: t('structure.thoughtPlacementTitle'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: placement.locations.map(value => value.text + ' · ' + label(value.mineUsesStoredOutline ? stored : sermon.outline, value.mine)).join('\n'),
-    stored: placement.locations.map(value => value.text + ' · ' + label(stored, value.stored)).join('\n') };
+    stored: placement.locations.map(value => value.text + ' · ' + (value.stored
+      ? label(stored, value.stored) : t('structure.thoughtPlacementUnavailable'))).join('\n'),
+    keepMineDisabled: placement.keepMineDisabled };
 }

@@ -1,6 +1,7 @@
 import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
+import { patchSermonThought } from '@/utils/sermonThoughtEdits';
 
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
@@ -15,7 +16,9 @@ import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
+import { readThoughtPlacementComparison } from '../rowConflictDetails';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from '../sermonFieldChoice';
+import { sermonThoughtPlacementDraft } from '../sermonThoughtPlacementRecovery';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
 import { describeSync } from '../status';
@@ -23,7 +26,7 @@ import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
-import type { PreachDate, SermonOutline } from '@/models/models';
+import type { PreachDate, Sermon, SermonOutline } from '@/models/models';
 import type { DocumentData, EngineTransport, JournalEntry, JournalStore, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -1667,6 +1670,152 @@ describe('DataEngine composition', () => {
       expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
     } finally { s.engine.dispose(); }
   });
+
+  it.each(['modal-text-and-tags', 'direct-move', 'multiple-moves', 'mixed-proof-group', 'compare-own', 'compare-saved', 'removed-destination', 'removed-thought', 'known-removed-destination', 'known-removed-thought', 'unrelated-edit'] as const)(
+    'keeps the thought action available when an earlier new point Save is refused (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-action-after-point' };
+      const key = keyOf('owner', ref);
+      const row = { id: 'thought', date: '2026-11-10T00:00:00.000Z', text: 'Opening thought', tags: [],
+        outlinePointId: 'body', subPointId: null };
+      const sibling = { ...row, id: 'sibling', text: 'Sibling idea' };
+      const structure = { introduction: [], main: [row.id, sibling.id], conclusion: [], ambiguous: [] };
+      const outline = { introduction: [{ id: 'intro', text: 'Introduction' }], main: [{ id: 'body', text: 'Body' }], conclusion: [{ id: 'closing', text: 'Closing' }] };
+      const newPoint = { id: 'point', title: '', children: [] };
+      const laterPoint = { ...newPoint, title: 'Full latest words of the new point' };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+        preparation: { exegeticalPlan: [] }, outline, thoughts: [row, sibling], structure, thoughtsBySection: structure };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const isMove = mode !== 'modal-text-and-tags';
+      const multiple = mode === 'multiple-moves' || mode === 'mixed-proof-group';
+      const removedThought = mode.endsWith('removed-thought'), removedDestination = mode.endsWith('removed-destination');
+      const known = mode === 'direct-move' || mode === 'unrelated-edit' || mode.startsWith('known-') || multiple;
+      const keepMove = mode === 'direct-move' || mode === 'compare-own' || multiple;
+      const closeInstead = mode === 'compare-own' || mode === 'compare-saved';
+      const latestThought = { ...row, text: isMove ? 'Newer words from desktop' : row.text,
+        outlinePointId: closeInstead ? 'closing' : 'body' };
+      const latestStructure = closeInstead ? { ...structure, main: [sibling.id], conclusion: [row.id] }
+        : removedThought ? { ...structure, main: [sibling.id] } : structure;
+      const latest = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, title: 'Edited title from desktop', thoughts: removedThought ? [sibling] : [latestThought, sibling],
+          outline: removedDestination ? { ...outline, introduction: [] } : outline,
+          structure: latestStructure, thoughtsBySection: latestStructure } };
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      const patch = (current: DocumentData, fields: Parameters<typeof patchSermonThought>[2]) =>
+        patchSermonThought(current as unknown as Sermon, row.id, fields) as unknown as DocumentData;
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [newPoint] } });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        if (mode === 'modal-text-and-tags') {
+          const form = editor.form('thought:' + row.id, [['thoughts', { id: row.id }], ['structure'], ['thoughtsBySection']]);
+          await form.begin();
+          await form.save(current => patch(current, { text: 'Edited thought', tags: ['Follow up'] }),
+            { documentMetadata: { time, thoughtTextId: row.id, thoughtTagId: row.id } });
+        } else {
+          await editor.commit(current => {
+            const moved = patch(current!, { outlinePointId: 'intro', subPointId: null });
+            return mode === 'unrelated-edit'
+              ? patchSermonThought(moved as unknown as Sermon, sibling.id, { text: 'Private sibling text' }) as unknown as DocumentData : moved;
+          },
+            { kind: 'thought-placement', rowId: row.id, time, shown: editor.getState().checkpoint });
+        }
+        const later = (await s.commits.list('owner')).find(request => request.id !== earlier.id)!;
+        if (isMove) {
+          expect(later).toMatchObject({ predecessor: earlier.id, thoughtPlacementActions: [{
+            rowId: row.id, rowCreatedAt: row.date, before: { outlinePointId: 'body', subPointId: null },
+            after: { outlinePointId: 'intro', subPointId: null }, time, observedRevision: 1,
+          }] });
+        } else {
+          expect(later).toMatchObject({ predecessor: null, value: { preparation: value.preparation },
+            thoughtTextActions: [{ rowId: row.id, after: 'Edited thought' }],
+            thoughtTagActions: [{ rowId: row.id, tag: 'Follow up', after: true }],
+          });
+        }
+        if (multiple) {
+          const siblingTime = { earliestMs: 4000, latestMs: 4010 };
+          await editor.commit(current => patchSermonThought(current as unknown as Sermon, sibling.id,
+            { outlinePointId: 'intro', subPointId: null }) as unknown as DocumentData,
+            { kind: 'thought-placement', rowId: sibling.id, time: siblingTime, shown: editor.getState().checkpoint });
+          if (mode === 'mixed-proof-group') {
+            const siblingSave = (await s.commits.list('owner')).at(-1)!;
+            s.storage!.rows.set(JSON.stringify(commitRowKey(siblingSave)), { ...siblingSave, thoughtPlacementActions: undefined });
+          }
+        }
+        if (isMove && !known) s.storage!.rows.set(JSON.stringify(commitRowKey(later)), { ...later, thoughtPlacementActions: undefined });
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [laterPoint] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: newPoint.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === earlier.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const pointEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+        if (mode === 'unrelated-edit' || mode === 'mixed-proof-group') {
+          await expect(pointEditor.acceptRemote(undefined, pointEditor.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(pointEditor.getState().checkpoint.draft?.thoughts).toMatchObject([{ id: row.id, outlinePointId: 'intro' }, mode === 'mixed-proof-group' ? { id: sibling.id, outlinePointId: 'intro' } : { id: sibling.id, text: 'Private sibling text' }]);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await pointEditor.acceptRemote(undefined, pointEditor.getState().checkpoint);
+        const compared = pointEditor.getState().checkpoint;
+        expect(compared.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await pointEditor.keepLocal(undefined, compared);
+        await pointEditor.save();
+        await s.engine.retry();
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        if (isMove) {
+          expect(copies).toHaveLength(1);
+          if (multiple) expect(sermonThoughtPlacementDraft(copies[0].record.checkpoint)).toBe([row.text, sibling.text].join('\n'));
+          const placementEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'placement'), copies[0].id);
+          if (known && !removedThought && !removedDestination) await placementEditor.save();
+          else {
+            const shown = placementEditor.getState().checkpoint;
+            expect(readThoughtPlacementComparison(shown)).toMatchObject({ recovered: true,
+              keepMineDisabled: removedDestination || removedThought,
+              locations: [{ text: removedThought ? row.text : latestThought.text }] });
+            await expect(placementEditor.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+            if (mode === 'compare-own') await placementEditor.keepLocal(undefined, shown, time);
+            else {
+              if (removedDestination || removedThought) {
+                await expect(placementEditor.keepLocal(undefined, shown, time)).rejects.toMatchObject({ code: 'decision-changed' });
+              }
+              await placementEditor.acceptRemote(undefined, shown);
+            }
+          }
+          await s.engine.retry();
+          if (keepMove) {
+            const command = jest.mocked(s.transport.send).mock.calls.at(-1)?.[0];
+            expect(command?.kind === 'update' && command.thoughtPlacementActions).toMatchObject([
+              { rowId: row.id, rowCreatedAt: row.date, time, observedRevision: known ? 1 : 3 },
+              ...(multiple ? [{ rowId: sibling.id, rowCreatedAt: sibling.date, observedRevision: 1, time: { earliestMs: 4000, latestMs: 4010 } }] : []),
+            ]);
+          }
+        } else expect(copies).toEqual([]);
+        const saved = s.server.get(key)?.value;
+        const expectedStructure = keepMove ? { introduction: multiple ? [row.id, sibling.id] : [row.id],
+          main: multiple ? [] : [sibling.id], conclusion: [], ambiguous: [] } : latestStructure;
+        const expectedThought = isMove ? { ...latestThought, ...(keepMove && { outlinePointId: 'intro' }) }
+          : { ...row, text: 'Edited thought', tags: ['Follow up'] };
+        expect(saved).toMatchObject({ title: 'Edited title from desktop', preparation: { exegeticalPlan: [laterPoint] },
+          thoughts: removedThought ? [sibling] : [expectedThought, multiple ? { ...sibling, outlinePointId: 'intro' } : sibling],
+          structure: expectedStructure, thoughtsBySection: expectedStructure,
+        });
+        expect(s.transport.send).toHaveBeenCalledTimes(!isMove || keepMove ? 3 : 2);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
 
   it.each(['calendar-add', 'calendar-clear', 'metadata-assign', 'metadata-reschedule'] as const)(
     'keeps a date form Save separate from a refused exegetical point Save (%s)', async mode => {

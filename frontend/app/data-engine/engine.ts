@@ -63,6 +63,7 @@ import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanC
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { changedPreparationChecks } from './sermonPreparationCheckRecovery';
 import { changedSermonTextFields, readSermonTextDraftComparison } from './sermonTextRecovery';
+import { recoveredThoughtPlacement, reviewUnavailableThoughtPlacements, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
 import { projectServiceOrderInput, readServiceOrderInputValue, serviceOrderInputKey, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { includesServiceOrderReserve, matchesServiceOrderReserve, SERVICE_ORDER_INPUT_SLOT, ServiceOrderInputReserve, type ServiceOrderReserveStorage } from './serviceOrderInputReserve';
@@ -1843,15 +1844,19 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || hasPrivateSermonPointMove(checkpoint)
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
-            if (!review) return reconciled;
+            const recoveredPlacement = protectedSermonRecoveryKind(reconciled!.editorId) === 'sermon-thought-placement'
+              && Boolean(Object.keys(checkpoint.thoughtPlacementDrafts ?? {}).length);
+            if (!review && !recoveredPlacement) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);
             active();
             if (!fresh || !storesNewCopy(checkpoint.remoteCandidate ?? checkpoint.confirmed, fresh)) return reconciled;
-            const session = DataSession.restore(checkpoint);
+            const available = recoveredPlacement ? reviewUnavailableThoughtPlacements(checkpoint, fresh) : checkpoint;
+            if (!review && available === checkpoint) return reconciled;
+            const session = DataSession.restore(available);
             session.observe(fresh, { source: 'server' });
             return { ...reconciled!, checkpoint: session.checkpoint() };
           }
@@ -3023,7 +3028,11 @@ export class DataEngine {
         if (checkReview && (!compared || !readSermonSettingComparison(current))) {
           throw Object.assign(new Error('Read both versions of the preparation check before choosing'), { code: 'decision-changed' });
         }
-        if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview) && !Object.keys(current.pending).length)
+        const thoughtPlacement = unresolvedThoughtPlacement(current) && !Object.keys(current.pending).length;
+        if (thoughtPlacement && (!compared || !current.remoteCandidate || !recoveredThoughtPlacement(current, current.remoteCandidate))) {
+          throw Object.assign(new Error('Read both versions of the thought placement before choosing'), { code: 'decision-changed' });
+        }
+        if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement) && !Object.keys(current.pending).length)
           || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
@@ -3546,7 +3555,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

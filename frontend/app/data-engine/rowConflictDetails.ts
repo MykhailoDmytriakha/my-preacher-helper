@@ -17,6 +17,7 @@ import { readSermonConflictField, readSermonPreparationConfirmation } from './se
 import { readPlanCellText } from './sermonPlanCellSession';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readSermonTextDraftComparison } from './sermonTextRecovery';
+import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
 import { readServiceStepTextChoice } from './serviceOrderStepChoice';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
@@ -252,7 +253,20 @@ export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
   const base = confirmed.value, stored = remoteCandidate?.value;
   if (confirmed.resource.collection !== 'sermons' || !base || !draft || !stored || !conflicts.length
-    || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation || Object.keys(pending).length !== 1) return;
+    || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation) return;
+  if (!Object.keys(pending).length && unresolvedThoughtPlacement(checkpoint) && conflicts.length === 1) {
+    const placement = recoveredThoughtPlacement(checkpoint, remoteCandidate);
+    const row = placement && Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === placement.rowId);
+    if (!placement || !object(row) || typeof row.text !== 'string' || placement.samePlace) return;
+    const savedRow = placement.stored && Array.isArray(stored.thoughts)
+      && stored.thoughts.find(value => object(value) && value.id === placement.rowId);
+    const text = object(savedRow) && typeof savedRow.text === 'string' ? savedRow.text : row.text;
+    const locations = [{ id: placement.rowId, text, mine: placement.mine, stored: placement.stored,
+      mineUsesStoredOutline: false as const }];
+    return { locations, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.revision, locations]),
+      recovered: true as const, keepMineDisabled: !placement.proposed };
+  }
+  if (Object.keys(pending).length !== 1) return;
   const locations = conflicts.flatMap(conflict => {
     const placement = readThoughtPlacementChoice(conflict, base, draft, stored);
     const row = placement && Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === placement.id);

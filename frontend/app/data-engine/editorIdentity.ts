@@ -48,6 +48,7 @@ const protectedSermonRecoveries = {
   'sermon-header': { choice: 'sermon-header-choice-recovery', fork: ':sermon-header-recovery' },
   'sermon-church': { choice: 'sermon-church-choice-recovery', fork: ':sermon-church-recovery' },
   'sermon-preparation-check': { choice: 'sermon-preparation-check-choice-recovery', fork: ':sermon-preparation-check-recovery' },
+  'sermon-thought-placement': { choice: 'sermon-thought-placement-choice-recovery', fork: ':sermon-thought-placement-recovery' },
 } as const;
 type ProtectedSermonRecoveryKind = keyof typeof protectedSermonRecoveries;
 const protectedKinds = Object.keys(protectedSermonRecoveries) as ProtectedSermonRecoveryKind[];

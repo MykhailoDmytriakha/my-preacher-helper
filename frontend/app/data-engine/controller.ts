@@ -54,6 +54,7 @@ import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
 import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
+import { unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -549,7 +550,7 @@ export class EditorController {
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
-    if (hasUnreadablePreparationCheck(intent)) return Promise.reject(Object.assign(
+    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent)) return Promise.reject(Object.assign(
       new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
     this.assertManualResolution(selection, captured);
@@ -743,7 +744,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -801,7 +802,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
