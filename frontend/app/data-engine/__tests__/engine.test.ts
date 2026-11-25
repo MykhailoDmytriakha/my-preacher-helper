@@ -1953,6 +1953,124 @@ describe('DataEngine composition', () => {
     },
   );
 
+  it.each(['lock-then-remove', 'remove-then-lock', 'same-save', 'same-row', 'unproved-neighbor'] as const)(
+    'recovers a thought lock and an independent removal after a refused point (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-lock-and-removal-after-point' };
+      const key = keyOf('owner', ref);
+      const locked = { id: 'locked', date: '2026-11-09T00:00:00.000Z', text: 'Opening thought to pin', tags: [] };
+      const removed = { ...locked, id: 'removed', text: 'Opening thought to delete' };
+      const neighbor = { ...locked, id: 'neighbor', text: 'An independent neighbor' };
+      const newest = { ...locked, text: 'Latest words of the pinned thought' };
+      const newestRemoved = { ...removed, text: 'Latest words of the thought to remove' };
+      const newestNeighbor = { ...neighbor, text: 'Later words of the neighbor' };
+      const rows = [locked, removed, neighbor];
+      const structure = { introduction: [], main: rows.map(({ id }) => id), conclusion: [] };
+      const first = { id: 'point', title: '', children: [] };
+      const later = { ...first, title: 'The words after the refused Save' };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+        preparation: { exegeticalPlan: [] }, thoughts: rows, structure, thoughtsBySection: structure };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const latest = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, thoughts: [newest, newestRemoved, newestNeighbor] } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      const remove = (document: DocumentData) => deleteSermonThought(document as unknown as Sermon,
+        mode === 'same-row' ? locked.id : removed.id) as unknown as DocumentData;
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [first] } });
+        await editor.save();
+        const [root] = await s.commits.list('owner');
+        const combined = mode === 'same-save' || mode === 'unproved-neighbor';
+        const pin = async () => {
+          const shown = editor.getState().checkpoint;
+          const pinned = { ...shown.draft!, thoughts: (shown.draft!.thoughts as typeof rows).map(row =>
+            row.id === locked.id ? { ...row, isLocked: true }
+              : mode === 'unproved-neighbor' && row.id === neighbor.id ? { ...row, text: 'Unproved edit outside both actions' } : row) };
+          await editor.edit(combined ? remove(pinned) : pinned, shown, { field: 'thought-lock', rowIds: [locked.id], time });
+          await editor.save();
+        };
+        if (mode === 'remove-then-lock') await editor.commit(current => remove(current!));
+        await pin();
+        if (mode === 'lock-then-remove' || mode === 'same-row') await editor.commit(current => remove(current!));
+        const queued = await s.commits.list('owner');
+        expect(queued).toHaveLength(combined ? 2 : 3);
+        expect(queued.some(request => request.thoughtLockActions?.some(action => action.rowId === locked.id && action.after))).toBe(true);
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => {
+          if (command.operationId === root.id) return { kind: 'refused', operationId: command.operationId, code: 'decision-changed' };
+          if (command.kind !== 'update' || !command.thoughtLockActions?.length) return send(command);
+          const stored = s.server.get(key)!;
+          const ordered = orderRowDetails(command, stored, stored.metadata, 10_000, THOUGHT_LOCK_POLICY);
+          if (ordered.uncertain.length) {
+            return { kind: 'conflict', operationId: command.operationId, snapshot: stored, conflicts: ordered.uncertain };
+          }
+          return send(alignThoughtLockRepresentation(ordered.command, stored));
+        });
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const source = (await s.engine.listRecoverable(ref)).find(copy => copy.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+        if (mode === 'same-row' || mode === 'unproved-neighbor') {
+          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const compared = point.getState().checkpoint;
+        expect(compared.conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, compared);
+        await point.save();
+        await s.engine.retry();
+        expect(s.server.get(key)?.value?.thoughts).toEqual(latest.value.thoughts);
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        expect(copies).toHaveLength(2);
+        const open = (scope: string) => s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', scope),
+          copies.find(copy => copy.id.includes(scope))!.id);
+        const recoverRemoval = async () => {
+          const removal = await open('sermon-thought-removal');
+          const review = removal.getState().checkpoint;
+          expect(review.conflicts).toMatchObject([{ path: ['thoughts', 'id:removed'], theirs: { value: newestRemoved } }]);
+          await removal.keepLocal(undefined, review);
+          removal.dispose();
+        };
+        const recoverLock = async () => {
+          const pinning = await open('sermon-thought-lock');
+          await pinning.save();
+          await s.engine.retry();
+          pinning.dispose();
+        };
+        if (mode === 'remove-then-lock') {
+          await recoverLock();
+          expect(s.server.get(key)?.value?.thoughts).toEqual([{ ...newest, isLocked: true }, newestRemoved, newestNeighbor]);
+          await recoverRemoval();
+        } else {
+          await recoverRemoval();
+          await recoverLock();
+        }
+        await s.engine.retry();
+        expect(s.server.get(key)?.value?.thoughts).toEqual([{ ...newest, isLocked: true }, newestNeighbor]);
+        const expected = remove(latest.value);
+        expect(s.server.get(key)?.value).toMatchObject({ structure: expected.structure, thoughtsBySection: expected.thoughtsBySection });
+        expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command)).toContainEqual(expect.objectContaining({
+          thoughtLockActions: [{ rowId: locked.id, rowCreatedAt: locked.date, before: false, after: true, observedRevision: 1, time }],
+        }));
+        expect(s.transport.send).toHaveBeenCalledTimes(4);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
   it.each(['known', 'both-locked', 'compare-mine', 'compare-saved', 'already-matched', 'replaced', 'late-replacement', 'changed-during-choice', 'reversed', 'mixed'] as const)(
     'keeps thought locks independent after a refused exegetical point Save (%s)', async decision => {
       const s = setup({ online: false, nativeChoice: true });

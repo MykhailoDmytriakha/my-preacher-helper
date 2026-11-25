@@ -1,7 +1,7 @@
 import { isActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 import { existingRowField, existingRowFields, replaceExistingRowField } from './rowFieldAction';
-import { copySermonThoughtFrame, sermonThoughtFrame } from './sermonThoughtRecoveryFrame';
+import { sermonThoughtFrame } from './sermonThoughtRecoveryFrame';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 
 import type { CommitRequest } from './commits';
@@ -18,11 +18,11 @@ function withLock(value: DocumentData, id: string, checked: boolean): DocumentDa
 }
 
 type CapturedLock = NonNullable<CommitRequest['thoughtLockActions']>[number];
-type LockChange = { rowId: string; birth: string; checked: boolean; evidence?: CapturedLock };
+export type ThoughtLockChange = { rowId: string; birth: string; checked: boolean; evidence?: CapturedLock };
 
-function capturedLocks(before: DocumentData, after: DocumentData, actions: readonly CapturedLock[] = []) {
+export function capturedThoughtLocks(before: DocumentData, after: DocumentData, actions: readonly CapturedLock[] = []) {
   const old = existingRowFields(before.thoughts, target);
-  const changes: LockChange[] = [];
+  const changes: ThoughtLockChange[] = [];
   let projected = before;
   for (const [rowId, checked] of existingRowFields(after.thoughts, target)) {
     const previous = old.get(rowId);
@@ -41,24 +41,13 @@ function capturedLocks(before: DocumentData, after: DocumentData, actions: reado
   return changes;
 }
 
-export function recoverableThoughtLocks(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
-  const { confirmed, draft } = source;
+export function thoughtLockRecoveryCopies(source: SessionCheckpoint, target: ResourceSnapshot, latest: readonly ThoughtLockChange[]) {
+  const { confirmed } = source;
   const { value: opening, metadata } = confirmed;
-  const first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  if (!metadata || !opening || !draft || !first || !last || !saved || !equalValues(sermonThoughtFrame(opening), sermonThoughtFrame(first))
-    || !equalValues(sermonThoughtFrame(last), sermonThoughtFrame(draft))) return;
+  const saved = target.value;
+  if (!metadata || !opening || !saved) return [];
 
-  const latest = new Map<string, LockChange>();
-  for (let index = 1; index < chain.length; index += 1) {
-    const request = chain[index], before = chain[index - 1].value, after = request.value;
-    if (!before || !after || request.baseline.metadata?.generation !== metadata.generation) return;
-    const changes = capturedLocks(before, after, request.thoughtLockActions);
-    if (!changes) return;
-    for (const change of changes) latest.set(change.rowId, change);
-  }
-  if (!latest.size) return;
-
-  const copies = [...latest.values()].flatMap(({ rowId, birth, checked, evidence: action }) => {
+  return latest.flatMap(({ rowId, birth, checked, evidence: action }) => {
     const original = lockAt(opening, rowId), remote = lockAt(saved, rowId);
     if (original === undefined || remote === undefined || bornAt(opening, rowId) !== birth || bornAt(saved, rowId) !== birth) return [];
     const proved = action && action.observedRevision === metadata.revision && action.before === original && !action.predecessorOperationId;
@@ -66,14 +55,13 @@ export function recoverableThoughtLocks(source: SessionCheckpoint, projected: Se
     // A reversal may equal the old opening. Preserve the last choice against the newer value.
     const compared = !proved && checked === original;
     const continuation: SessionCheckpoint = {
-      confirmed: compared ? projected.confirmed : confirmed, draft: withLock(compared ? saved : opening, rowId, checked),
+      confirmed: compared ? target : confirmed, draft: withLock(compared ? saved : opening, rowId, checked),
       dirty: true, editGeneration: source.editGeneration, remoteCandidate: null, conflicts: [], pending: {},
       ...(proved ? { thoughtLockDrafts: { [rowId]: { generation: metadata.generation, action } } }
         : { unreadableRowProofs: [{ field: 'thoughtLockDrafts', rowId, birth, generation: metadata.generation }] }),
     };
     return [{ key: 'thought-lock:' + rowId, recoveryKind: 'sermon-thought-lock' as const, continuation }];
   });
-  return { copies, restoreStored: (document: DocumentData) => copySermonThoughtFrame(document, saved) };
 }
 
 export function unresolvedThoughtLock(checkpoint: SessionCheckpoint): boolean {
