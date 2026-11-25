@@ -2477,6 +2477,7 @@
     "locked": "Заблоковано",
     "unlocked": "Розблоковано",
     "thoughtPlacementTitle": "Призначення думки",
+    "thoughtPlacementGroupHelp": "Виберіть розташування та порядок цих думок разом.",
     "thoughtPlacementHistory": "Історія призначення думок",
     "thoughtPlacementHistoryLabels": {
       "Loading": "Завантажуємо історію призначень…",

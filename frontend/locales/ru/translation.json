@@ -2477,6 +2477,7 @@
     "locked": "Заблокировано",
     "unlocked": "Разблокировано",
     "thoughtPlacementTitle": "Назначение мысли",
+    "thoughtPlacementGroupHelp": "Выберите расположение и порядок этих мыслей вместе.",
     "thoughtPlacementHistory": "История назначения мыслей",
     "thoughtPlacementHistoryLabels": {
       "Loading": "Загружаем историю назначений…",

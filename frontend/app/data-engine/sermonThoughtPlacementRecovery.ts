@@ -1,4 +1,5 @@
 import { patchSermonThought } from '@/utils/sermonThoughtEdits';
+import { normalizeStructure } from '@/utils/thoughtOrdering';
 
 import { isActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
@@ -49,16 +50,25 @@ export function capturedThoughtMove(before: DocumentData, after: DocumentData, r
   return { move: { id, birth: createdAt, location, action: proof } satisfies CapturedThoughtMove, proposed };
 }
 
+function projectThoughtMoves(value: DocumentData, moves: readonly Pick<CapturedThoughtMove, 'id' | 'birth' | 'location'>[]) {
+  let projected = value;
+  for (const move of moves) {
+    const next = projectRecoveredThoughtPlacement(projected, move.id, move.birth, move.location);
+    if (!next) return;
+    projected = next;
+  }
+  return projected;
+}
+
 export function thoughtPlacementRecoveryCopy(source: SessionCheckpoint, orderedMoves: readonly CapturedThoughtMove[]) {
   const { confirmed } = source;
   const { value: opening, metadata } = confirmed;
   if (!opening || !metadata || !orderedMoves.length) return;
-  let draft = opening;
+  const draft = projectThoughtMoves(opening, orderedMoves);
+  if (!draft) return;
   const moves = new Map<string, CapturedThoughtMove>();
   for (const move of orderedMoves) {
-    const next = projectRecoveredThoughtPlacement(draft, move.id, move.birth, move.location);
-    if (!next) return;
-    draft = next;
+    moves.delete(move.id);
     moves.set(move.id, move);
   }
   const continuation: SessionCheckpoint = {
@@ -76,13 +86,17 @@ export function thoughtPlacementRecoveryCopy(source: SessionCheckpoint, orderedM
     const action = move.action;
     if (action?.observedRevision === metadata.revision && !action.predecessorOperationId && equalValues(action.before, original)) {
       proofs[id] = { generation: metadata.generation, action };
-    } else {
-      // More than one Thought may depend on their combined relative order. Do not separate a partially witnessed order.
-      if (moves.size !== 1) return;
-      continuation.unreadableRowProofs = [{ field: 'thoughtPlacementDrafts', rowId: id, birth: move.birth, generation: metadata.generation }];
     }
   }
-  if (Object.keys(proofs).length) continuation.thoughtPlacementDrafts = proofs;
+  if (Object.keys(proofs).length === moves.size) continuation.thoughtPlacementDrafts = proofs;
+  else {
+    // A single grouped choice keeps the witnessed order even when only some original
+    // action stamps survived. Its final moves must reproduce the exact saved draft.
+    if (!equalValues(draft, projectThoughtMoves(opening, [...moves.values()]))) return;
+    continuation.unreadableRowProofs = [...moves.values()].map(move => ({
+      field: 'thoughtPlacementDrafts', rowId: move.id, birth: move.birth, generation: metadata.generation,
+    }));
+  }
   return { key: 'thought-placement', recoveryKind: 'sermon-thought-placement' as const, continuation };
 }
 
@@ -98,19 +112,52 @@ export function reviewUnavailableThoughtPlacements(checkpoint: SessionCheckpoint
     })) };
 }
 
+export function thoughtPlacementBoardOrder(value: DocumentData): string[] {
+  const sermon = value as unknown as Pick<Sermon, 'structure' | 'thoughtsBySection'>;
+  return Object.values(normalizeStructure(sermon.structure ?? sermon.thoughtsBySection)).flat();
+}
+
+function placementOrderFits(draft: DocumentData, projected: DocumentData, moves: readonly CapturedThoughtMove[]): boolean {
+  if (moves.length < 2) return true;
+  const wanted = thoughtPlacementBoardOrder(draft), actual = thoughtPlacementBoardOrder(projected);
+  const byPoint = new Map<string | null, Set<string>>();
+  for (const { id, location } of moves) {
+    const rows = byPoint.get(location.outlinePointId) ?? new Set<string>();
+    rows.add(id);
+    byPoint.set(location.outlinePointId, rows);
+  }
+  return [...byPoint.values()].every(rows => {
+    if (rows.size < 2) return true;
+    const order = wanted.filter(id => rows.has(id));
+    return order.length === rows.size && equalValues(order, actual.filter(id => rows.has(id)));
+  });
+}
+
 export function recoveredThoughtPlacement(checkpoint: SessionCheckpoint, targetSnapshot: ResourceSnapshot) {
-  const [address, other] = checkpoint.unreadableRowProofs ?? [];
-  if (other || address?.field !== 'thoughtPlacementDrafts' || checkpoint.unreadableScalarProof?.length
-    || checkpoint.unreadableExegeticalProofs?.length || checkpoint.confirmed.resource.collection !== 'sermons'
-    || checkpoint.confirmed.metadata?.generation !== address.generation || targetSnapshot.metadata?.generation !== address.generation
-    || targetSnapshot.metadata.deleted || !checkpoint.confirmed.value || !checkpoint.draft || !targetSnapshot.value) return;
-  const { rowId, birth: createdAt } = address;
-  const mine = readLocation(checkpoint.draft, rowId);
-  if (!mine || !equalValues(checkpoint.draft, projectRecoveredThoughtPlacement(checkpoint.confirmed.value, rowId, createdAt, mine))) return;
-  const sameThought = existingRowField(targetSnapshot.value.thoughts, rowId, birth) === createdAt;
-  const stored = sameThought ? readLocation(targetSnapshot.value, rowId) : undefined;
-  const proposed = stored && projectRecoveredThoughtPlacement(targetSnapshot.value, rowId, createdAt, mine);
-  return { rowId, mine, stored, proposed, samePlace: equalValues(mine, stored) };
+  const addresses = checkpoint.unreadableRowProofs ?? [];
+  const { confirmed, draft } = checkpoint;
+  const generation = confirmed.metadata?.generation;
+  if (!generation || !addresses.length || checkpoint.unreadableScalarProof?.length || checkpoint.unreadableExegeticalProofs?.length
+    || confirmed.resource.collection !== 'sermons' || targetSnapshot.resource.collection !== confirmed.resource.collection
+    || targetSnapshot.resource.id !== confirmed.resource.id || targetSnapshot.metadata?.generation !== generation
+    || targetSnapshot.metadata.deleted || !confirmed.value || !draft || !targetSnapshot.value
+    || addresses.some(address => address.field !== 'thoughtPlacementDrafts' || address.generation !== generation)
+    || new Set(addresses.map(address => address.rowId)).size !== addresses.length) return;
+  const saved = targetSnapshot.value;
+  const moves = [];
+  for (const { rowId: id, birth: createdAt } of addresses) {
+    const location = readLocation(draft, id);
+    if (!location || existingRowField(draft.thoughts, id, birth) !== createdAt) return;
+    moves.push({ id, birth: createdAt, location });
+  }
+  if (!equalValues(draft, projectThoughtMoves(confirmed.value, moves))) return;
+  const locations = moves.map(({ id, birth: createdAt, location: mine }) => ({
+    id, mine, stored: existingRowField(saved.thoughts, id, birth) === createdAt ? readLocation(saved, id) : undefined,
+  }));
+  const changed = moves.filter((move, index) => !equalValues(move.location, locations[index].stored));
+  const projected = locations.every(location => location.stored) ? projectThoughtMoves(saved, changed) : undefined;
+  const proposed = projected && placementOrderFits(draft, projected, moves) ? projected : undefined;
+  return { locations, proposed, rowIds: changed.map(move => move.id), samePlace: Boolean(proposed && !changed.length) };
 }
 
 export function unresolvedThoughtPlacement(checkpoint: SessionCheckpoint): boolean {

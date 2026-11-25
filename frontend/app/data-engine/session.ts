@@ -994,8 +994,8 @@ export class DataSession {
       const proposed = DataSession.restore({ confirmed: target, draft: side === 'local' ? placement.proposed! : target.value,
         editGeneration: this.state.editGeneration, dirty: side === 'local', pending: {}, conflicts: [], remoteCandidate: null });
       if (side === 'local') {
-        stageReviewedRowFields(proposed.state, [['thoughts', 'id:' + placement.rowId, 'outlineLocation']], time, ['thought-placement']);
-        if (!proposed.state.thoughtPlacementDrafts?.[placement.rowId]) {
+        stageReviewedRowFields(proposed.state, placement.rowIds.map(id => ['thoughts', 'id:' + id, 'outlineLocation']), time, ['thought-placement']);
+        if (placement.rowIds.some(id => !proposed.state.thoughtPlacementDrafts?.[id])) {
           throw Object.assign(new Error('The thought placement could not be captured'), { code: 'decision-changed' });
         }
       }

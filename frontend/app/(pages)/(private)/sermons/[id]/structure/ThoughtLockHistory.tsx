@@ -127,9 +127,15 @@ export function useThoughtPlacementComparison(checkpoint: Parameters<typeof read
   const label = (outline: SermonOutline | undefined, location: ThoughtLocation) =>
     thoughtLocationLabel(outline, location, t('structure.unassigned'), t('structure.thoughtPlacementUnavailable'));
   const stored = checkpoint.remoteCandidate?.value?.outline as unknown as SermonOutline | undefined;
+  const inOrder = (order?: readonly string[]) => {
+    if (!order || placement.locations.length < 2) return placement.locations;
+    const byId = new Map(placement.locations.map(value => [value.id, value]));
+    return [...new Set([...order, ...byId.keys()])].flatMap(id => byId.get(id) ?? []);
+  };
   return { identity: placement.identity, title: t('structure.thoughtPlacementTitle'), valueKind: 'field' as const, scopedChoice: true as const,
-    mine: placement.locations.map(value => value.text + ' · ' + label(value.mineUsesStoredOutline ? stored : sermon.outline, value.mine)).join('\n'),
-    stored: placement.locations.map(value => value.text + ' · ' + (value.stored
+    ...(placement.recovered && placement.locations.length > 1 && { description: t('structure.thoughtPlacementGroupHelp') }),
+    mine: inOrder(placement.mineOrder).map(value => value.text + ' · ' + label(value.mineUsesStoredOutline ? stored : sermon.outline, value.mine)).join('\n'),
+    stored: inOrder(placement.storedOrder).map(value => value.text + ' · ' + (value.stored
       ? label(stored, value.stored) : t('structure.thoughtPlacementUnavailable'))).join('\n'),
     keepMineDisabled: placement.keepMineDisabled };
 }

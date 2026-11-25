@@ -2443,6 +2443,7 @@
     "locked": "Locked",
     "unlocked": "Unlocked",
     "thoughtPlacementTitle": "Thought placement",
+    "thoughtPlacementGroupHelp": "Choose the placement and order of these thoughts together.",
     "thoughtPlacementHistory": "Thought placement history",
     "thoughtPlacementHistoryLabels": {
       "Loading": "Loading placement history…",

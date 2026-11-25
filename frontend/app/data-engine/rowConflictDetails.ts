@@ -17,11 +17,11 @@ import { readSermonConflictField, readSermonPreparationConfirmation } from './se
 import { readPlanCellText } from './sermonPlanCellSession';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readSermonTextDraftComparison } from './sermonTextRecovery';
-import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
+import { recoveredThoughtPlacement, thoughtPlacementBoardOrder, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
 import { readServiceStepTextChoice } from './serviceOrderStepChoice';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
-import { readThoughtPlacementChoice } from './thoughtPlacementAction';
+import { readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice } from './thoughtTagAction';
 
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
@@ -254,16 +254,24 @@ export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) {
   const base = confirmed.value, stored = remoteCandidate?.value;
   if (confirmed.resource.collection !== 'sermons' || !base || !draft || !stored || !conflicts.length
     || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation) return;
-  if (!Object.keys(pending).length && unresolvedThoughtPlacement(checkpoint) && conflicts.length === 1) {
+  if (!Object.keys(pending).length && unresolvedThoughtPlacement(checkpoint)) {
     const placement = recoveredThoughtPlacement(checkpoint, remoteCandidate);
-    const row = placement && Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === placement.rowId);
-    if (!placement || !object(row) || typeof row.text !== 'string' || placement.samePlace) return;
-    const savedRow = placement.stored && Array.isArray(stored.thoughts)
-      && stored.thoughts.find(value => object(value) && value.id === placement.rowId);
-    const text = object(savedRow) && typeof savedRow.text === 'string' ? savedRow.text : row.text;
-    const locations = [{ id: placement.rowId, text, mine: placement.mine, stored: placement.stored,
-      mineUsesStoredOutline: false as const }];
-    return { locations, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.revision, locations]),
+    if (!placement || placement.samePlace) return;
+    const addresses = new Set(placement.locations.map(location => location.id));
+    if (conflicts.length !== addresses.size || conflicts.some(conflict => !addresses.has(thoughtPlacementConflictId(conflict.path) ?? ''))) return;
+    const locations = placement.locations.flatMap(location => {
+      const row = Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === location.id);
+      if (!object(row) || typeof row.text !== 'string') return [];
+      const savedRow = location.stored && Array.isArray(stored.thoughts)
+        && stored.thoughts.find(value => object(value) && value.id === location.id);
+      const text = object(savedRow) && typeof savedRow.text === 'string' ? savedRow.text : row.text;
+      return [{ ...location, text, mineUsesStoredOutline: false as const }];
+    });
+    if (locations.length !== addresses.size) return;
+    const mineOrder = thoughtPlacementBoardOrder(draft).filter(id => addresses.has(id));
+    const storedOrder = thoughtPlacementBoardOrder(stored).filter(id => addresses.has(id));
+    return { locations, mineOrder, storedOrder,
+      identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.revision, locations, mineOrder, storedOrder]),
       recovered: true as const, keepMineDisabled: !placement.proposed };
   }
   if (Object.keys(pending).length !== 1) return;
