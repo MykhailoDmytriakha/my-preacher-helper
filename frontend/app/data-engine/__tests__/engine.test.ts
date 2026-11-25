@@ -17,6 +17,8 @@ import { applyCommand } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { readThoughtPlacementComparison } from '../rowConflictDetails';
+import { orderRowDetails } from '../rowDetailOrder.server';
+import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY } from '../thoughtLockAction';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from '../sermonFieldChoice';
 import { sermonThoughtPlacementDraft } from '../sermonThoughtPlacementRecovery';
 import { DataSession } from '../session';
@@ -1944,6 +1946,143 @@ describe('DataEngine composition', () => {
         expect(s.server.get(key)?.value).toMatchObject({ title: expected.title, thoughts: expected.thoughts,
           preparation: { exegeticalPlan: [laterPoint] }, structure: expected.structure, thoughtsBySection: expected.thoughtsBySection });
         expect(s.transport.send).toHaveBeenCalledTimes(decision === 'remove' ? 3 : 2);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each(['known', 'both-locked', 'compare-mine', 'compare-saved', 'already-matched', 'replaced', 'late-replacement', 'changed-during-choice', 'reversed', 'mixed'] as const)(
+    'keeps thought locks independent after a refused exegetical point Save (%s)', async decision => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-lock-after-point' };
+      const key = keyOf('owner', ref);
+      const row = { id: 'thought', date: '2026-11-09T00:00:00.000Z', text: 'Opening thought', tags: [] };
+      const sibling = { ...row, id: 'sibling', text: 'Sibling idea' };
+      const first = { id: 'point', title: '', children: [] };
+      const later = { ...first, title: 'Full latest words of the point' };
+      const structure = { introduction: [], main: [row.id, sibling.id], conclusion: [] };
+      const known = decision === 'known' || decision === 'both-locked' || decision === 'late-replacement';
+      const chosen = decision !== 'reversed';
+      const newest = { ...row, text: 'Newer words from the desktop',
+        date: decision === 'replaced' ? '2026-11-12T00:00:00.000Z' : row.date,
+        ...(decision === 'already-matched' || decision === 'reversed' ? { isLocked: true } : {}) };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+        preparation: { exegeticalPlan: [] }, thoughts: [row, sibling], structure, thoughtsBySection: structure };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const latest: ResourceSnapshot = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, title: 'Newer sermon title', thoughts: [newest, sibling] } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      const clickTime = { earliestMs: 8000, latestMs: 8010 };
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [first] } });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        const ids = decision === 'both-locked' ? [row.id, sibling.id] : [row.id];
+        const toggle = async (checked: boolean) => {
+          const shown = editor.getState().checkpoint;
+          await editor.edit({ ...shown.draft,
+            thoughts: (shown.draft!.thoughts as typeof row[]).map(item => ids.includes(item.id) ? { ...item, isLocked: checked }
+              : decision === 'mixed' ? { ...item, text: 'Separate private words' } : item),
+          }, shown, { field: 'thought-lock', rowIds: ids, time });
+          await editor.save();
+        };
+        await toggle(true);
+        if (decision === 'reversed') await toggle(false);
+        const commands = await s.commits.list('owner');
+        expect(commands[1]).toMatchObject({ predecessor: earlier.id, thoughtLockActions: ids.map(rowId => ({
+          rowId, rowCreatedAt: row.date, before: false, after: true, observedRevision: 1, time,
+        })) });
+        if (!known) {
+          const command = commands.at(-1)!;
+          s.storage!.rows.set(JSON.stringify(commitRowKey(command)), { ...command, thoughtLockActions: undefined });
+        }
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => {
+          if (command.operationId === earlier.id) return { kind: 'refused', operationId: command.operationId, code: 'decision-changed' };
+          if (command.kind !== 'update' || !command.thoughtLockActions?.length) return send(command);
+          const stored = s.server.get(key)!;
+          const ordered = orderRowDetails(command, stored, stored.metadata, 10_000, THOUGHT_LOCK_POLICY);
+          if (ordered.uncertain.length) {
+            return { kind: 'conflict', operationId: command.operationId, snapshot: stored, conflicts: ordered.uncertain };
+          }
+          return send(alignThoughtLockRepresentation(ordered.command, stored));
+        });
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+        if (decision === 'mixed') {
+          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(point.getState().checkpoint.draft?.thoughts).toMatchObject([{ id: row.id, isLocked: true }, { id: sibling.id, text: 'Separate private words' }]);
+          return;
+        }
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const shown = point.getState().checkpoint;
+        expect(shown.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, shown);
+        await point.save();
+        await s.engine.retry();
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        const noCopy = decision === 'already-matched' || decision === 'replaced';
+        expect(copies).toHaveLength(noCopy ? 0 : ids.length);
+        if (decision === 'late-replacement') {
+          const current = s.server.get(key)!;
+          const replacement = { ...newest, date: '2026-11-12T00:00:00.000Z', text: 'Replacement after the point decision' };
+          s.server.set(key, { ...current, metadata: { ...current.metadata!, revision: current.metadata!.revision + 1 },
+            value: { ...current.value, thoughts: [replacement, sibling] } });
+          await expect(s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'changed-lock'), copies[0].id))
+            .rejects.toMatchObject({ code: 'draft-done' });
+          expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+          expect(s.server.get(key)?.value?.thoughts).toMatchObject([replacement, sibling]);
+          expect(s.transport.send).toHaveBeenCalledTimes(2);
+          return;
+        }
+        for (let index = 0; index < copies.length; index += 1) {
+          const editor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'lock-' + index), copies[index].id);
+          const checkpoint = editor.getState().checkpoint;
+          if (known) await editor.save();
+          else {
+            expect(checkpoint.conflicts.map(({ path }) => path)).toEqual([['thoughts', 'id:thought', 'isLocked']]);
+            expect(checkpoint.remoteCandidate?.value?.thoughts).toMatchObject([newest, sibling]);
+            await expect(editor.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+            if (decision === 'changed-during-choice') {
+              const current = s.server.get(key)!;
+              const edited = { ...newest, text: 'Text typed while comparing the thought' };
+              s.server.set(key, { ...current, metadata: { ...current.metadata!, revision: current.metadata!.revision + 1 },
+                value: { ...current.value, thoughts: [edited, sibling] } });
+              await expect(editor.keepLocal(undefined, checkpoint, clickTime)).rejects.toMatchObject({ code: 'decision-changed' });
+              expect(editor.getState().checkpoint.remoteCandidate?.value?.thoughts).toMatchObject([edited, sibling]);
+              expect(s.transport.send).toHaveBeenCalledTimes(2);
+              return;
+            }
+            if (decision === 'compare-saved') await editor.acceptRemote(undefined, checkpoint);
+            else await editor.keepLocal(undefined, checkpoint, clickTime);
+          }
+          await s.engine.retry();
+          editor.dispose();
+        }
+        const changed = !noCopy && decision !== 'compare-saved';
+        expect(s.server.get(key)?.value).toMatchObject({
+          title: 'Newer sermon title', preparation: { exegeticalPlan: [later] }, structure, thoughtsBySection: structure,
+          thoughts: [changed ? { ...newest, isLocked: chosen } : newest, decision === 'both-locked' ? { ...sibling, isLocked: true } : sibling],
+        });
+        const writes = jest.mocked(s.transport.send).mock.calls.slice(2).map(([command]) =>
+          command.kind === 'update' ? command.thoughtLockActions?.[0] : null);
+        expect(writes).toHaveLength(changed ? ids.length : 0);
+        if (changed) expect(writes).toEqual(expect.arrayContaining(ids.map(rowId => expect.objectContaining({
+          rowId, time: known ? time : clickTime, observedRevision: known ? 1 : 3,
+        }))));
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     },

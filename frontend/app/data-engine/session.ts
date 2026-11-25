@@ -44,6 +44,7 @@ import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellCo
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { observedSermonText } from './sermonTextRecovery';
+import { recoveredThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { recoveredThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
@@ -188,7 +189,7 @@ export class DataSession {
       return;
     }
     const removal = recoveredThoughtRemoval(this.state, target);
-    if (removal?.settled) {
+    if (removal?.settled || recoveredThoughtLock(this.state, target)?.settled) {
       this.state.remoteCandidate = copy(target);
       this.finishChoiceAgainstRemote(target.value);
       delete this.state.unreadableRowProofs;
@@ -244,7 +245,7 @@ export class DataSession {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.privateFieldReview;
       delete this.state.unreadableScalarProof;
-      if (!unresolvedThoughtRemoval(this.state)) delete this.state.unreadableRowProofs;
+      if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state)) delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
     }
   }
@@ -879,6 +880,25 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (unresolvedThoughtLock(this.state) && !Object.keys(this.state.pending).length) {
+      const target = this.state.remoteCandidate;
+      const lock = target && recoveredThoughtLock(this.state, target);
+      if (!target || lock?.settled !== false) {
+        throw Object.assign(new Error('The compared thought lock has changed'), { code: 'decision-changed' });
+      }
+      const proposed = DataSession.restore({ confirmed: target, draft: side === 'local' ? lock.proposed : target.value,
+        editGeneration: this.state.editGeneration, dirty: side === 'local', pending: {}, conflicts: [], remoteCandidate: null });
+      if (side === 'local') {
+        stageReviewedRowFields(proposed.state, [['thoughts', 'id:' + lock.rowId, 'isLocked']], time, ['thought-lock']);
+        if (!proposed.state.thoughtLockDrafts?.[lock.rowId]) {
+          throw Object.assign(new Error('The thought lock could not be captured'), { code: 'decision-changed' });
+        }
+      }
+      this.finishChoiceAgainstRemote(proposed.state.draft);
+      delete this.state.unreadableRowProofs;
+      this.state.thoughtLockDrafts = proposed.state.thoughtLockDrafts;
+      return true;
+    }
     if (unresolvedThoughtRemoval(this.state) && !Object.keys(this.state.pending).length) {
       const target = this.state.remoteCandidate;
       const removal = target && recoveredThoughtRemoval(this.state, target);

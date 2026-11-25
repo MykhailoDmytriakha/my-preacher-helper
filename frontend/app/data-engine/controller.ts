@@ -54,6 +54,7 @@ import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
 import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
+import { unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { pendingThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
@@ -551,7 +552,7 @@ export class EditorController {
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
-    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent)) return Promise.reject(Object.assign(
+    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent) || unresolvedThoughtLock(intent)) return Promise.reject(Object.assign(
       new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
     this.assertManualResolution(selection, captured);

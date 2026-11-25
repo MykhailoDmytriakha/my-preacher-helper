@@ -1,7 +1,7 @@
 import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
-import { churchFieldWords, pendingThoughtRemoval, readSermonConflict, recoveredThoughtRemoval } from '@/data-engine/react.client';
+import { churchFieldWords, pendingThoughtRemoval, readSermonConflict, recoveredThoughtLock, recoveredThoughtRemoval } from '@/data-engine/react.client';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -12,6 +12,14 @@ import type { Json } from '@/data-engine/types';
 import type { TFunction } from 'i18next';
 
 export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string, apply?: ApplyOutlineReview): TextComparison | undefined {
+  const lock = checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length
+    ? recoveredThoughtLock(checkpoint, checkpoint.remoteCandidate) : undefined;
+  if (lock?.settled === false) {
+    const label = (checked: boolean) => t(checked ? 'structure.locked' : 'structure.unlocked');
+    return { identity: JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.revision, lock.rowId, lock.text]),
+      title: t('structure.thoughtLockState'), valueKind: 'field', scopedChoice: true,
+      mine: lock.text + ' · ' + label(lock.checked), stored: lock.text + ' · ' + label(lock.stored) };
+  }
   const pendingRemoval = pendingThoughtRemoval(checkpoint);
   const privateRemoval = checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length
     ? recoveredThoughtRemoval(checkpoint, checkpoint.remoteCandidate) : undefined;
