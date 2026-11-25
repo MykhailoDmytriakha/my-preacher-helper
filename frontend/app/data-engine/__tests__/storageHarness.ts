@@ -3,7 +3,7 @@ import { createStore } from 'idb-keyval';
 const clone = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 
 /** Transactional fake: native commit and the application's completion callback are separate boundaries. */
-export function installStorageHarness() {
+export function installStorageHarness(indexes: Record<string, (value: unknown) => unknown> = {}) {
   const freshCounts = () => ({ transactions: 0, enumerations: 0, rows: 0, gets: 0, puts: 0, deletes: 0 });
   const completionCallbacks: Array<() => void> = [];
   const harness = { counts: freshCounts(), resetCounts: () => { harness.counts = freshCounts(); }, rows: new Map<string, unknown>(), holdCommit: false, finishCommit: undefined as (() => void) | undefined,
@@ -73,6 +73,19 @@ export function installStorageHarness() {
       });
       const store = {
         transaction: tx,
+        indexNames: { contains: (name: string) => Object.hasOwn(indexes, name) },
+        index: (name: string) => {
+          const entries = (range: KeyRange) => inRange().filter(([, value]) =>
+            JSON.stringify(indexes[name](value)) === JSON.stringify(range.lower)
+            && JSON.stringify(range.lower) === JSON.stringify(range.upper));
+          const scan = (range: KeyRange, keys: boolean) => {
+            const rows = entries(range).map(([key, value]) => keys ? JSON.parse(key) : value);
+            harness.counts.enumerations += 1; harness.counts.rows += rows.length;
+            harness.onEnumeration?.(keys, rows.length, false);
+            return read(rows);
+          };
+          return { getAll: (range: KeyRange) => scan(range, false), getAllKeys: (range: KeyRange) => scan(range, true) };
+        },
         get: (key: unknown) => { harness.counts.gets += 1; return read(draft.get(JSON.stringify(key))); },
         put: (value: unknown, key: unknown) => {
           harness.counts.puts += 1;

@@ -67,6 +67,8 @@ Existing tabs keep engine records in the same IndexedDB database. Ordinary opens
 
 The engine records watcher closes gracefully for the planned version 3, letting admitted transactions finish before the next connection opens. Version 2 is left to the WebKit release probe while the database is at version 1. The watcher does not request any version upgrade.
 
+An unversioned open initializes the compound request index on a newly created database. With the index present, list-specific reads query the exact owner and collection in one readonly transaction, verify the primary owner and request identity, and keep the historic kind order. Existing databases without the index keep the compatible path. The native index updates in the same transaction for old and new writers; no application-side mirror or backfill is required after a version change creates the index.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility readers are not templates for new features. `readOwnerList` and `readOwnerDocument` live in `frontend/app/services/ownerListRead.client.ts`.

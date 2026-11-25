@@ -1,6 +1,7 @@
 import { request, seedRequest } from '@test-utils/checkpointFixtures';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
+import { COLLECTION_COMMIT_INDEX } from '../collectionCommitIndex';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { commitRowKey } from '../retention.client';
 import { installStorageHarness } from './storageHarness';
@@ -66,4 +67,45 @@ it('uses the native key kind for classification and refuses an unreadable stored
   await expect(store.listForCollection!('owner', selected)).rejects.toThrow('Stored request identity changed');
   h.rows.delete(JSON.stringify(['request', 'owner', 'unreadable', 1]));
   expect(await store.listForCollection!('owner', selected)).toEqual([legacy]);
+});
+
+
+const indexedCommitHarness = () => installStorageHarness({
+  [COLLECTION_COMMIT_INDEX]: value => {
+    const row = value as Partial<CommitRequest>;
+    return row?.owner && row.baseline?.resource?.collection ? [row.owner, row.baseline.resource.collection] : undefined;
+  },
+});
+
+it('reads only indexed keys and values on new and repeated opens, with a live legacy-writer update', async () => {
+  const storage = indexedCommitHarness();
+  const store = createIndexedDbCommitStore();
+  const study = localRequest('visible-study');
+  const newLegacyStudy = localRequest('written-by-another-version');
+  const otherOwner = { ...localRequest('others-study'), owner: 'other-owner' };
+  seedRequest(storage, study);
+  seedRequest(storage, otherOwner);
+  for (let i = 0; i < 1000; i++) seedRequest(storage, localRequest('unrelated-' + i, 'groups'));
+
+  const counts = { keys: 0, values: 0 };
+  storage.onEnumeration = (keys, size) => { counts[keys ? 'keys' : 'values'] += size; };
+  expect(await store.listForCollection!('owner', selected)).toEqual([study]);
+  expect(counts).toEqual({ keys: 1, values: 1 });
+
+  const revised = { ...study, revision: 1 };
+  seedRequest(storage, revised);
+  seedRequest(storage, newLegacyStudy);
+  counts.keys = counts.values = 0;
+  expect(await store.listForCollection!('owner', selected)).toEqual([revised, newLegacyStudy]);
+  expect(counts).toEqual({ keys: 2, values: 2 });
+});
+
+it('ignores an unrelated primary owner even when a corrupt indexed row claims the selected owner', async () => {
+  const storage = indexedCommitHarness();
+  const store = createIndexedDbCommitStore();
+  const study = localRequest('visible-study');
+  seedRequest(storage, study);
+  const corrupt = localRequest('foreign-study');
+  storage.rows.set(JSON.stringify(commitRowKey({ ...corrupt, owner: 'other-owner' })), corrupt);
+  expect(await store.listForCollection!('owner', selected)).toEqual([study]);
 });

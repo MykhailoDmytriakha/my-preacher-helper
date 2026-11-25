@@ -3,6 +3,8 @@
 import { watchedStore } from '@/utils/deviceStorage';
 import { createStorageTransaction, type StorageRead, type StorageTransaction } from '@/utils/storageTransaction';
 
+import { initializeCollectionCommitIndex } from './collectionCommitIndex';
+
 export type { StorageRead, StorageTransaction } from '@/utils/storageTransaction';
 
 export const engineOwnerRange = (kind: string, owner: string, ...path: string[]): IDBKeyRange => {
@@ -13,7 +15,7 @@ export const engineOwnerRange = (kind: string, owner: string, ...path: string[])
 /** Shared transactions make checkpoint/recovery references atomic with request retention. */
 export function createEngineStorageTransaction(): StorageTransaction {
   let database: ReturnType<typeof watchedStore> | undefined;
-  return createStorageTransaction(() => database ??= watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state'));
+  return createStorageTransaction(() => database ??= watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state', initializeCollectionCommitIndex));
 }
 
 /** A stale recovery read must retry before it can create a dangling durable reference. */

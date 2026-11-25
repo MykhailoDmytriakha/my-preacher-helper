@@ -275,7 +275,7 @@ describe('every database the app waits on is watched', () => {
   ])('%s (%s) opens %s as %s', async (path, factory, database, label) => {
     const source = jest.requireActual<typeof import('fs')>('fs').readFileSync(require.resolve(path), 'utf8');
     expect(source).toContain(`watchedStore('${database}'`);
-    expect(source).toContain(`'${label}')`);
+    expect(source).toMatch(new RegExp(`'${label}'[,)]`));
     expect(source).not.toMatch(/\bcreateStore\(/);
     expect(typeof (await import(path))[factory]).toBe('function');
   });

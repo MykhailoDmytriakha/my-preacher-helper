@@ -1,5 +1,6 @@
 'use client';
 
+import { COLLECTION_COMMIT_INDEX } from './collectionCommitIndex';
 import { COMMIT_ROW_KINDS } from './retention.client';
 import { engineOwnerRange } from './storage.client';
 
@@ -8,7 +9,7 @@ import type { StorageRead } from './storage.client';
 import type { StorageTransaction } from '@/utils/storageTransaction';
 
 type CollectionsByKey = ReadonlyMap<string, string>;
-type CollectionRead = { rows: CommitRequest[]; collections: CollectionsByKey };
+type CollectionRead = { rows: CommitRequest[]; collections?: CollectionsByKey };
 
 function collectionOf(owner: string, key: IDBValidKey, request: CommitRequest | undefined): string {
   const collection = request?.baseline?.resource?.collection;
@@ -19,27 +20,52 @@ function collectionOf(owner: string, key: IDBValidKey, request: CommitRequest | 
   return collection;
 }
 
+function readRowsWithKeys(source: Pick<IDBObjectStore, 'getAll' | 'getAllKeys'>, range: IDBKeyRange, read: StorageRead,
+  done: (keys: IDBValidKey[], rows: CommitRequest[]) => void): void {
+  let keys: IDBValidKey[] | undefined, rows: CommitRequest[] | undefined;
+  const finish = () => {
+    if (!keys || !rows) return;
+    if (keys.length !== rows.length) throw new Error('Stored requests do not match their keys');
+    done(keys, rows);
+  };
+  read(source.getAllKeys(range), result => { keys = result; finish(); });
+  read(source.getAll(range), result => { rows = result; finish(); });
+}
+
+function readIndexedRows(index: IDBIndex, read: StorageRead, owner: string, collection: string,
+  done: (result: CollectionRead) => void): void {
+  const scope = [owner, collection];
+  readRowsWithKeys(index, IDBKeyRange.bound(scope, scope), read, (keys, rows) => {
+    // Index duplicates are returned by primary key. Group the recognized kinds in the same
+    // order the unindexed reader used. Other records sharing these fields are not requests.
+    const kinds = new Map<string, CommitRequest[]>(COMMIT_ROW_KINDS.map(kind => [kind, []]));
+    rows.forEach((request, position) => {
+      const key = keys[position];
+      if (!Array.isArray(key) || key[1] !== owner || typeof key[0] !== 'string') return;
+      const batch = kinds.get(key[0]);
+      if (!batch) return;
+      if (collectionOf(owner, key, request) !== collection) throw new Error('Stored request identity changed');
+      batch.push(request);
+    });
+    done({ rows: [...kinds.values()].flat() });
+  });
+}
+
 function readColdRows(store: IDBObjectStore, read: StorageRead, owner: string, collection: string,
   done: (result: CollectionRead) => void): void {
   const batches: CommitRequest[][] = [];
   const collections = new Map<string, string>();
   let remaining = COMMIT_ROW_KINDS.length;
   COMMIT_ROW_KINDS.forEach((kind, index) => {
-    const range = engineOwnerRange(kind, owner);
-    let keys: IDBValidKey[] | undefined, rows: CommitRequest[] | undefined;
-    const pair = () => {
-      if (!keys || !rows) return;
-      if (keys.length !== rows.length) throw new Error('Stored requests do not match their keys');
+    readRowsWithKeys(store, engineOwnerRange(kind, owner), read, (keys, rows) => {
       batches[index] = rows.filter((request, position) => {
-        const key = keys![position];
+        const key = keys[position];
         const scope = collectionOf(owner, key, request);
         collections.set(JSON.stringify(key), scope);
         return scope === collection;
       });
       if (!--remaining) done({ rows: batches.flat(), collections });
-    };
-    read(store.getAllKeys(range), result => { keys = result; pair(); });
-    read(store.getAll(range), result => { rows = result; pair(); });
+    });
   });
 }
 
@@ -80,10 +106,12 @@ export function createCollectionCommitReads(transaction: StorageTransaction) {
   return async (owner: string, collection: string): Promise<CommitRequest[]> => {
     const known = previous?.owner === owner ? previous.collections : undefined;
     const current = await transaction<CollectionRead>('readonly', (store, read, done) => {
-      if (known) readMatchingRows(store, read, owner, collection, known, done);
+      if (store.indexNames?.contains(COLLECTION_COMMIT_INDEX)) {
+        readIndexedRows(store.index(COLLECTION_COMMIT_INDEX), read, owner, collection, done);
+      } else if (known) readMatchingRows(store, read, owner, collection, known, done);
       else readColdRows(store, read, owner, collection, done);
     });
-    previous = { owner, collections: current.collections };
+    previous = current.collections ? { owner, collections: current.collections } : undefined;
     return current.rows;
   };
 }

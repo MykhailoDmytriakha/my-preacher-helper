@@ -1,4 +1,4 @@
-import { createStore, type UseStore } from 'idb-keyval';
+import { createStore, promisifyRequest, type UseStore } from 'idb-keyval';
 
 /**
  * DEVICE STORAGE THAT STOPS ANSWERING (BUG-20260927-engine-open-hangs-on-silent-device-storage).
@@ -269,6 +269,24 @@ function askForRelease(label: string, name: string): void {
   setTimeout(end, RELEASE_WORKER_LIFETIME_MS);
 }
 
+type StoreInitializer = (store: IDBObjectStore) => void;
+
+function createInitializedStore(databaseName: string, storeName: string, initialize: StoreInitializer): UseStore {
+  let current: Promise<IDBDatabase> | undefined;
+  return (mode, callback) => {
+    if (!current) {
+      // Open without a requested version. The initializer runs only for a newly created
+      // database, so this cannot wait on a version change from a tab on an older build.
+      const request = indexedDB.open(databaseName);
+      request.onupgradeneeded = () => initialize(request.result.createObjectStore(storeName));
+      const opening = current = promisifyRequest(request);
+      const release = () => { if (current === opening) current = undefined; };
+      void opening.then(database => { database.onclose = release; }, release);
+    }
+    return current.then(database => callback(database.transaction(storeName, mode).objectStore(storeName)));
+  };
+}
+
 /**
  * A CONNECTION THE BROWSER CLOSED IS OPENED AGAIN.
  *
@@ -280,10 +298,13 @@ function askForRelease(label: string, name: string): void {
  * callback ran — nothing started — so it is repeated once on a fresh connection. A call whose callback
  * ran is never repeated: its transaction may have done work.
  */
-export function reconnectingStore(databaseName: string, storeName: string, upgradeVersion?: number): UseStore {
+export function reconnectingStore(databaseName: string, storeName: string,
+  { upgradeVersion, initialize }: { upgradeVersion?: number; initialize?: StoreInitializer } = {}): UseStore {
   let store: UseStore | undefined;
   const prepared = upgradeVersion === undefined ? undefined : new WeakSet<IDBDatabase>();
-  const connect = () => createStore(databaseName, storeName);
+  const connect = () => initialize && typeof indexedDB !== 'undefined' && typeof indexedDB.open === 'function'
+    ? createInitializedStore(databaseName, storeName, initialize)
+    : createStore(databaseName, storeName);
   return async (mode, callback) => {
     const used = (store ??= connect());
     let started = false;
@@ -316,9 +337,11 @@ export function reconnectingStore(databaseName: string, storeName: string, upgra
 const ENGINE_STATE_INDEX_VERSION = 3;
 
 /** The same store `idb-keyval` would create, reopened when the browser closes it, with every call watched under `label`. */
-export function watchedStore(databaseName: string, storeName: string, label: string): UseStore {
+export function watchedStore(databaseName: string, storeName: string, label: string, initialize?: StoreInitializer): UseStore {
   if ((ENGINE_STORAGE as readonly string[]).includes(label)) engineDatabases.set(label, databaseName);
-  const store = reconnectingStore(databaseName, storeName, label === RECORDS ? ENGINE_STATE_INDEX_VERSION : undefined);
+  const store = reconnectingStore(databaseName, storeName, {
+    upgradeVersion: label === RECORDS ? ENGINE_STATE_INDEX_VERSION : undefined, initialize,
+  });
   return (mode, callback) => trackStorage(label, store(mode, callback));
 }
 
