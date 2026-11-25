@@ -546,7 +546,7 @@ it.each(['local', 'stored', 'failed-local', 'newer-stored'] as const)('reopens a
         expect.objectContaining({ code: 'sermon-outline-review' }),
       ]);
       expect(h.server.metadata?.revision).toBe(3);
-      const wire = h.transport.send.mock.calls[0][0];
+      const [wire] = jest.mocked(h.transport.send).mock.calls[0];
       expect(wire).toMatchObject({ kind: 'update', resource,
         changes: expect.arrayContaining([expect.objectContaining({ path: ['outline'] })]) });
     }
