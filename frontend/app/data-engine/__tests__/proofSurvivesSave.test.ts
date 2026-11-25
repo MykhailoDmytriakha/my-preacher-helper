@@ -1393,7 +1393,7 @@ const recoveredTitles = [
   { collection: 'studyNotes', key: 'studyNoteTitleDraft', action: 'studyNoteTitleAction', fields: { type: 'note', content: 'A note.' } },
 ] as const;
 
-it.each(recoveredTitles.flatMap(target => ['foreign generation', 'future revision'].map(damage => ({ ...target, damage }))))(
+it.each(recoveredTitles.flatMap(target => ['foreign generation', 'future revision', 'different title'].map(damage => ({ ...target, damage }))))(
   'offers both $collection titles when the stored opening names a $damage', async ({ collection, key, action, fields, damage }) => {
     const db = installWorldFirestore(() => T + 1000);
     const resource = { collection, id: 'title-with-incompatible-opening' };
@@ -1407,7 +1407,11 @@ it.each(recoveredTitles.flatMap(target => ['foreign generation', 'future revisio
     const proof = checkpoint[key]!;
     expect(proof.action.observedRevision).toBe(1);
     if (damage === 'foreign generation') proof.generation = 'another-generation';
-    else proof.action.observedRevision = 101;
+    else if (damage === 'future revision') proof.action.observedRevision = 101;
+    else {
+      const earlierTitle = 'Earlier title from the same draft';
+      proof.action.after = typeof proof.action.after === 'string' ? earlierTitle : { exists: true, value: earlierTitle };
+    }
 
     const tabletTitle = 'Temporary title on the tablet';
     const tablet = (operationId: string, before: DocumentData, after: DocumentData, observedRevision: number) => processCommand('owner', {

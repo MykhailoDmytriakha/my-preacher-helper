@@ -10730,3 +10730,11 @@ The six original title regressions failed before the fix. Follow-up regressions 
 Hidden Chrome with isolated Auth and Firestore used saved IndexedDB drafts and the real command endpoint. At 1280 px the group kept its draft title with one title-only command. At 390 px the council kept the saved title without sending a command. At 390 px the note refreshed its comparison when a newer title arrived during the first choice, then kept the newer title without sending a command. All three were reopened, and the screenshots were inspected. Evidence is in `artifacts/semantic-scalar-opening-20261125/`.
 
 After an authorized rollout, use disposable records to confirm ordinary title edits and independent note text across reloads. Use the emulator fixture to repeat the deliberately inconsistent legacy snapshots and receipt ordering.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Compare a draft whose proof describes different words
+
+Groups → group, Heart matters → Brothers' council, and Studies → note. A field proof could be from the right generation and revision yet describe an earlier value. Saving ignored that proof and fell through to an ordinary update. Recovery and Save now check that the record describes the exact draft value. When the words differ, recovery keeps the real draft and shows the current saved version for an explicit choice.
+
+Three new regressions failed on the former code through the native storage adapter and the command queue. All nine opening cases passed, along with 3,960 tests in 239 related suites. TypeScript, changed-file ESLint, the production-mode build and independent review passed. Hidden Chrome on isolated Auth and Firestore checked the version choices, a newer saved title during the note choice, and reopening all three records. The screenshots were inspected and the stand released its ports. Evidence is in `artifacts/detached-autosave-proof-20261125/`.
+
+After authorized rollout, confirm ordinary edits and reload on disposable group, council and note records. Use the emulator fixture for intentionally inconsistent saved records.

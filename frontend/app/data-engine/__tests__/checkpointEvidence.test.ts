@@ -24,6 +24,7 @@ const noteTypeAction = { ...noteContentAction, before: { exists: true, value: 'n
 const row = { ...observation, rowId: 'row', rowCreatedAt: '2026-11-12' };
 const fieldDraft = { generation: 'g', action: observation };
 const optionalDraft = { generation: 'g', action: optionalObservation };
+const groupStatusDraft = { generation: 'g', action: { ...observation, before: 'draft', after: 'active', time: null } };
 const rowDrafts = { row: { generation: 'g', action: row } };
 const church = { id: 'first-church', name: 'First church' };
 const cityObservation = { ...row, scope: church };
@@ -57,7 +58,7 @@ const guardedScratch = { sermonId: 'sermon', generation: 'g', observedRevision: 
   target: { kind: 'scratch', id: 'sketch', createdAt: '2026-11-12' }, text: 'Original' };
 const evidence = {
   guardedScratchText: guardedScratch,
-  groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
+  groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   studyNoteContentDraft: { generation: 'g', action: noteContentAction },
   planCellDrafts: { point: { generation: 'g', observedRevision: 1, opening: 'Original', text: 'Later' } },
@@ -190,6 +191,11 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
       church: key === 'preachDateChurchDrafts' ? churchObservation.after : { ...church, city: row.after } };
     source.checkpoint.confirmed.value = { ...source.checkpoint.confirmed.value, preachDates: [date] };
     source.checkpoint.draft = { ...source.checkpoint.draft, preachDates: [next] };
+  }
+  if (key === 'groupDescriptionDraft') source.checkpoint.draft = { ...source.checkpoint.draft, description: optionalObservation.after.value };
+  if (key === 'groupStatusDraft') {
+    source.checkpoint.confirmed.value = { ...source.checkpoint.confirmed.value, status: groupStatusDraft.action.before };
+    source.checkpoint.draft = { ...source.checkpoint.draft, status: groupStatusDraft.action.after };
   }
   if (key === 'groupTextReview') source.checkpoint.pending.request = { generation: 1, value: source.checkpoint.draft };
   if (key.startsWith('groupBlock') || key.startsWith('groupStep')) {
@@ -381,7 +387,12 @@ describe('the dropped-proof tripwire', () => {
   const slot = globalThis as unknown as Record<symbol, unknown>;
   const unreadable = (key: 'groupTitleDraft' | 'councilTitleDraft' | 'groupStatusDraft' | 'councilLifecycleDraft') => {
     const source = titleRecord();
-    return { ...source, checkpoint: { ...source.checkpoint, [key]: { ...fieldDraft, action: { ...observation, time: { earliestMs: 1, latestMs: 200_000 } } } } };
+    const proof = key === 'groupStatusDraft' ? groupStatusDraft : fieldDraft;
+    if (key === 'groupStatusDraft') {
+      source.checkpoint.confirmed.value = { ...source.checkpoint.confirmed.value, status: proof.action.before };
+      source.checkpoint.draft = { ...source.checkpoint.draft, status: proof.action.after };
+    }
+    return { ...source, checkpoint: { ...source.checkpoint, [key]: { ...proof, action: { ...proof.action, time: { earliestMs: 1, latestMs: 200_000 } } } } };
   };
 
   it('says each dropped field name on the console at most once per page session, names only', () => {
@@ -410,12 +421,11 @@ describe('the dropped-proof tripwire', () => {
       slot[REPORTER] = undefined;
       const said = validateRecoveryRecord(unreadable('councilLifecycleDraft'), 'owner', 'editor');
       expect(error).toHaveBeenCalledTimes(1);
-      for (const record of [reported, said]) {
-        expect(record.checkpoint.draft).toEqual({ userId: 'owner', title: 'Later' });
-        if (record === reported) expect(record.checkpoint.groupStatusDraft?.action.time).toBeNull();
-        else expect(record.checkpoint).not.toHaveProperty('groupStatusDraft');
-        expect(record.checkpoint).not.toHaveProperty('councilLifecycleDraft');
-      }
+      expect(reported.checkpoint.draft).toEqual({ userId: 'owner', title: 'Later', status: 'active' });
+      expect(reported.checkpoint.groupStatusDraft?.action.time).toBeNull();
+      expect(said.checkpoint.draft).toEqual({ userId: 'owner', title: 'Later' });
+      expect(said.checkpoint).not.toHaveProperty('groupStatusDraft');
+      for (const record of [reported, said]) expect(record.checkpoint).not.toHaveProperty('councilLifecycleDraft');
     } finally { error.mockRestore(); slot[REPORTER] = installed; }
   });
 

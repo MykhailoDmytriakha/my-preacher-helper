@@ -976,14 +976,13 @@ function matchesAutosaveOpening(staged: AutosaveFieldDraft, metadata: ResourceSn
     && staged.action.observedRevision <= metadata.revision);
 }
 
-/** A valid disk shape does not make another generation or a future revision an opening. */
-export function holdIncompatibleAutosaveOpenings(checkpoint: SessionCheckpoint): void {
+/** A recovered proof must belong to both this opening and the exact words in the draft. */
+export function holdIncompatibleAutosaveProofs(checkpoint: SessionCheckpoint): void {
   const { resource, metadata } = checkpoint.confirmed;
   if (!checkpoint.draft || !metadata || metadata.deleted) return;
   const held = new Set(checkpoint.unreadableScalarProof);
   for (const target of autosaveFieldTargets(resource.collection)) {
-    const staged = checkpoint[target.draft];
-    if (!staged || matchesAutosaveOpening(staged, metadata)) continue;
+    if (!checkpoint[target.draft] || autosaveDraftAction(checkpoint, target)) continue;
     delete checkpoint[target.draft];
     held.add(target.field);
   }
