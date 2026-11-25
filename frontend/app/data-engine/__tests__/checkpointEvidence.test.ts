@@ -102,7 +102,7 @@ const pendingEvidence = {
   groupBlockContentActions: [row], groupStepNotesActions: [row], groupBlockStatusActions: [row], groupStepDurationActions: [row], thoughtLockActions: [row], thoughtTextActions: [row], thoughtPlacementActions: [row],
   outlinePointPlacement: outlineRetry, outlineTitleActions: [row], preachDateNotesActions: [row], groupFlowStepPlacement: groupPlacement,
   preachDateAudienceActions: [row], preachDateCityActions: [cityObservation], preachDateChurchActions: [churchObservation],
-  councilTopicPlacement: councilPlacement, commentPlaceAction, commentKindAction,
+  councilTopicPlacement: councilPlacement, commentPlaceAction, commentKindAction, amendedScratchAppend: 'conflict', scratchTextConflict: { id: 'note', createdAt: 'date', words: 'Typed words' },
 } satisfies Record<PendingEvidenceKey, unknown>;
 // Group title and status are causal: an unclocked autosave carries `time: null` (documentFieldAction.ts:637).
 const unclockedGroupActions: Array<[PendingEvidenceKey, unknown]> = [

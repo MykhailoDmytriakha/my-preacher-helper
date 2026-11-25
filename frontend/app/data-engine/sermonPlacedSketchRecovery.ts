@@ -3,7 +3,7 @@ import { placeOfNode, scratchAfterOutlineChange, scratchNoteAt } from '@/utils/s
 import { protectedSermonRecoveryKind } from './editorIdentity';
 import { equalValues, object } from './fieldValues';
 import { guardedScratchWords } from './sermonGuardedScratchText';
-import { restoreSketchFrame, sketchRows, withSketchRows } from './sermonScratchFrame';
+import { appendedSketches, restoreSketchFrame, sameScratchNoteWords, sketchRows, withSketchRows } from './sermonScratchFrame';
 import { sermonScratchRemovalDraft } from './sermonScratchRemovalRecovery';
 
 import type { EditorRecord } from './controller';
@@ -14,13 +14,6 @@ import type { ScratchNote, SermonOutline } from '@/models/models';
 const SKETCH_TEXT_COLLISION = 'recovered-sketch-text';
 const SKETCH_ID_COLLISION = 'recovered-sketch-id';
 const outline = (value: DocumentData) => value.outline as unknown as SermonOutline | undefined;
-
-function appendedSketches(before: DocumentData, after: DocumentData) {
-  const opening = sketchRows(before), result = sketchRows(after);
-  if (!opening || !result || result.length <= opening.length
-    || !equalValues(result.slice(0, opening.length), opening)) return;
-  return result.slice(opening.length);
-}
 
 export function capturedPlacedSketch(before: DocumentData, after: DocumentData): ScratchNote | undefined {
   const [note, extra] = appendedSketches(before, after) ?? [];
@@ -58,7 +51,7 @@ export function observePlacedSketchConflicts(checkpoint: SessionCheckpoint, snap
   const byId = new Map(current.map(note => [note.id, note]));
   return notes.flatMap(note => {
     const stored = byId.get(note.id);
-    if (!stored || equalValues(stored, note)) return [];
+    if (!stored || sameScratchNoteWords(stored, note)) return [];
     return [{ path: ['scratch', 'id:' + note.id], base: { exists: false },
       mine: { exists: true, value: note as unknown as Json }, theirs: { exists: true, value: stored as unknown as Json },
       code: stored.createdAt === note.createdAt ? SKETCH_TEXT_COLLISION : SKETCH_ID_COLLISION }];
@@ -109,13 +102,16 @@ function projectSketches(opening: DocumentData, notes: readonly ScratchNote[], s
   // The original append is satisfied by a later version of that same note. A reopened draft may contain later typing.
   for (const note of placed) {
     const current = byId.get(note.id);
-    if (current && (!retainNewerStoredText || current.createdAt !== note.createdAt) && !equalValues(current, note)) return;
+    if (!current || sameScratchNoteWords(current, note)) continue;
+    if (!retainNewerStoredText || current.createdAt !== note.createdAt) return;
   }
   const additions = placed.filter(note => !byId.has(note.id));
   return additions.length ? { ...saved, scratch: [...current, ...additions] as unknown as Json } : saved;
 }
 
-export function placedSketchRecovery(source: SessionCheckpoint, target: ResourceSnapshot, notes: readonly ScratchNote[]) {
+export function placedSketchRecovery(
+  source: SessionCheckpoint, target: ResourceSnapshot, notes: readonly ScratchNote[], authored: 'addition' | 'amended',
+) {
   const { confirmed } = source;
   if (!confirmed.value || !target.value) return;
   const originals = sketchRows(confirmed.value);
@@ -125,7 +121,7 @@ export function placedSketchRecovery(source: SessionCheckpoint, target: Resource
     confirmed, draft: withSketchRows(confirmed.value, [...originals, ...notes]),
     editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
   };
-  const rebased = projectSketches(confirmed.value, notes, target.value, true);
+  const rebased = projectSketches(confirmed.value, notes, target.value, authored === 'addition');
   const conflicts = rebased ? [] : observePlacedSketchConflicts(append, target);
   if (!rebased && !conflicts.length) return;
   const continuation = rebased === target.value ? undefined : rebased
@@ -156,7 +152,7 @@ export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord) {
     const text = sermonScratchRemovalDraft(checkpoint);
     return text === undefined ? undefined : { titleKey: 'scratch.card.delete' as const, text: text.slice(0, 500) };
   }
-  if (kind === 'sermon-placed-sketch') {
+  if (kind === 'sermon-placed-sketch' || kind === 'sermon-amended-sketch') {
     const notes = pureSketchAppend(checkpoint);
     if (notes) return { titleKey: 'scratch.card.recoveryAdd' as const, text: notes.map(note => note.text).join('\n').slice(0, 500) };
   }

@@ -65,6 +65,7 @@ import { readPlacedSketchComparison, rebaseRecoveredPlacedSketches } from './ser
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { changedPreparationChecks } from './sermonPreparationCheckRecovery';
+import { exactAmendedScratchAppend } from './sermonScratchFrame';
 import { pendingScratchRemoval, recoveredScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { changedSermonTextFields, readSermonTextDraftComparison } from './sermonTextRecovery';
 import { recoveredThoughtLock, reviewUnavailableThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
@@ -1416,7 +1417,8 @@ export class DataEngine {
     const current = visible.flatMap(source => {
       const { record } = source;
       const protection = protectedSermonRecoveryKind(record.editorId);
-      if (!manualChoicesOnly || (protection !== 'sermon-scratch-removal' && protection !== 'sermon-scratch-text')
+      if (!manualChoicesOnly || (protection !== 'sermon-scratch-removal' && protection !== 'sermon-scratch-text'
+        && protection !== 'sermon-amended-sketch')
         || !Object.keys(record.checkpoint.pending).some(id => ['acknowledged', 'cancelled'].includes(this.commitRecords.get(id)?.state ?? ''))) return [source];
       // Another editor may already have answered this request. Until closed-checkpoint
       // maintenance retires the old row, its stale version must not ask the question again.
@@ -1866,7 +1868,7 @@ export class DataEngine {
             const protection = protectedSermonRecoveryKind(reconciled!.editorId);
             const recoveredPlacement = protection === 'sermon-thought-placement' && Object.keys(checkpoint.thoughtPlacementDrafts ?? {}).length;
             const recoveredLock = protection === 'sermon-thought-lock' && Object.keys(checkpoint.thoughtLockDrafts ?? {}).length;
-            const recoveredSketches = protection === 'sermon-placed-sketch';
+            const recoveredSketches = protection === 'sermon-placed-sketch' || protection === 'sermon-amended-sketch';
             if (!review && !recoveredPlacement && !recoveredLock && !recoveredSketches) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);
@@ -1916,7 +1918,17 @@ export class DataEngine {
       this.recovering.delete(editorId);
       const creating = forked.checkpoint.confirmed.value === null && forked.checkpoint.confirmed.metadata === null;
       presence.add((forked.recoverySources ?? []).map(source => source.id));
-      return await this.open(frozen, editorId, creating, options, 0, (forked.recoverySources ?? []).map(source => source.id));
+      const opened = await this.open(frozen, editorId, creating, options, 0, (forked.recoverySources ?? []).map(source => source.id));
+      if (protection === 'sermon-amended-sketch') {
+        const { confirmed, draft, conflicts, pending, dirty } = opened.getState().checkpoint;
+        if (dirty && !conflicts.length && !Object.keys(pending).length && exactAmendedScratchAppend(confirmed.value, draft)) {
+          // The explicit recovery click owns this append. Capture it before
+          // handing the editor back for further typing or independent actions.
+          try { await opened.save(); active(); }
+          catch (error) { opened.dispose(); throw error; }
+        }
+      }
+      return opened;
     } finally {
       presence?.releaseAfter(forking ?? Promise.resolve());
       if (onAbort) options?.signal?.removeEventListener('abort', onAbort);
@@ -3615,7 +3627,8 @@ export class DataEngine {
           && equalValues(resolved.confirmed, checkpoint.remoteCandidate)) {
           await controller.save({ ...resolved, scratchRemovalValue: scratchRemoval.proposed });
           this.assertCurrent(owner, generation);
-        } else if ((checkpoint.guardedScratchText && resolved.guardedScratchText && resolved.dirty && !guardedScratchTextReview(resolved))
+        } else if ((resolved.guardedScratchText && resolved.dirty && !guardedScratchTextReview(resolved)
+          && (checkpoint.guardedScratchText || readPlacedSketchComparison(checkpoint)))
           || affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || (unresolvedThoughtLock(checkpoint) && resolved.thoughtLockDrafts) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }

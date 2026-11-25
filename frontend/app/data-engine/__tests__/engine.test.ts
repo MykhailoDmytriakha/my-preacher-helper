@@ -2591,7 +2591,7 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
-  it.each(['append-edit', 'edit-append', 'append-remove', 'remove-edit', 'same-new-note', 'unproved-row'] as const)(
+  it.each(['append-edit', 'edit-append', 'append-remove', 'remove-edit', 'unproved-row'] as const)(
     'separates independently captured scratch actions after a refused point (%s)', async mode => {
       const s = setup({ online: false, nativeChoice: true });
       const ref = { collection: 'sermons', id: 'mixed-scratch-after-point' };
@@ -2635,7 +2635,7 @@ describe('DataEngine composition', () => {
         if (mode === 'remove-edit') await remove();
         else await append();
         if (mode === 'append-remove') await remove();
-        else if (mode !== 'edit-append') await edit(mode === 'same-new-note' ? added : edited);
+        else if (mode !== 'edit-append') await edit(edited);
         const queue = await s.commits.list('owner');
         const middle = queue.find(request => request.predecessor === root.id)!;
         expect(middle).toBeDefined();
@@ -2654,7 +2654,7 @@ describe('DataEngine composition', () => {
         await s.engine.retry();
         const held = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
         const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'mixed-point'), held.id);
-        if (mode === 'same-new-note' || mode === 'unproved-row') {
+        if (mode === 'unproved-row') {
           await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
           expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
           expect(s.transport.send).toHaveBeenCalledTimes(1);
@@ -2704,6 +2704,206 @@ describe('DataEngine composition', () => {
             newerNeighbor, ...(modeHasAppend ? [added] : [])]);
         }
         expect(s.transport.send).toHaveBeenCalledTimes(4);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    });
+
+  it.each(['missing', 'competing-mine', 'competing-stored', 'replacement', 'late-competing', 'same-words', 'two-edits',
+    'delivery-replaced', 'delivery-replaced-observed', 'delivery-replaced-with-typing', 'delivery-same-birth', 'delivery-same-words', 'delivery-first-neighbor', 'delivery-following-text'] as const)(
+    'recovers a new sketch with its later captured words after a refused point (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'amended-scratch-after-point' };
+      const key = keyOf('owner', ref);
+      const place = { section: 'main', pointId: 'body', subPointId: null } as const;
+      const neighbor = scratchNoteAt(place, { id: 'neighbor', createdAt: '2026-11-09T00:00:00.000Z', text: 'Opening neighbor' });
+      const added = { ...neighbor, id: 'new', text: 'Initially captured new sketch' };
+      const originalWords = 'The corrected words from the same phone';
+      const finalWords = mode === 'two-edits' ? 'Final words after a second explicit correction' : originalWords;
+      const existing = { id: added.id, createdAt: added.createdAt, section: 'conclusion' as const,
+        text: mode === 'same-words' || mode === 'delivery-same-words' ? finalWords : 'The words saved on the desktop' };
+      const stored = mode === 'replacement' || mode.startsWith('delivery-replaced') ? { ...existing, createdAt: '2026-11-25T00:00:00.000Z' } : existing;
+      const neighborLatest = { ...neighbor, text: 'Neighbor from the latest saved sermon' };
+      const before = { id: 'point', title: '', children: [] };
+      const after = { ...before, title: 'Retained point' };
+      const scratch = (...notes: unknown[]) => notes as DocumentData[];
+      const body = { id: 'body', text: 'Body' };
+      const duringDelivery = mode.startsWith('delivery-');
+      const firstNeighbor = mode === 'delivery-first-neighbor';
+      const followingText = mode === 'delivery-following-text';
+      const opening: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', thoughts: [],
+        outline: { introduction: [], main: [body], conclusion: [] }, ...(firstNeighbor ? {} : { scratch: scratch(neighbor) }), preparation: { exegeticalPlan: [] } };
+      const confirmed: ResourceSnapshot = { ...initial(), resource: ref, value: opening };
+      const hasStored = !duringDelivery && !['missing', 'two-edits', 'late-competing'].includes(mode);
+      const latest: ResourceSnapshot = { ...confirmed, metadata: { ...confirmed.metadata!, revision: 2, operationId: 'other-device' },
+        value: { ...opening, outline: { introduction: [], main: [], conclusion: [body] },
+          ...(firstNeighbor ? {} : { scratch: scratch(neighborLatest, ...(hasStored ? [stored] : [])) }) } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'amended-source');
+      s.server.set(key, confirmed);
+      s.cache.set(key, confirmed);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...opening, preparation: { exegeticalPlan: [before] } });
+        await editor.save();
+        const [root] = await s.commits.list('owner');
+        await editor.commit(draft => ({ ...draft!, scratch: scratch(...(firstNeighbor ? [] : [neighbor]), added) }));
+        const capture = async (then: string, now: string) => {
+          const pending = (await s.commits.list('owner')).map(request => request.id);
+          await editor.commit(draft => ({ ...draft!, scratch: scratch(...(firstNeighbor ? [] : [neighbor]), { ...added, text: now }) }),
+            { kind: 'sermon-note-text', opening: { sermonId: ref.id, generation: 'generation', pending, observedRevision: 1,
+              target: { kind: 'scratch', id: added.id, createdAt: added.createdAt }, text: then } });
+        };
+        await capture(added.text, originalWords);
+        if (mode === 'two-edits') await capture(originalWords, finalWords);
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [after] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: before.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === root.id
+          ? { kind: 'refused', operationId: root.id, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const refused = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'amended-point'), refused.id);
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const compared = point.getState().checkpoint;
+        expect(compared.conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, compared);
+        await point.save();
+        await s.engine.retry();
+        expect(s.server.get(key)?.value).toMatchObject({ preparation: { exegeticalPlan: [after] } });
+        expect(s.server.get(key)?.value?.scratch).toEqual(latest.value?.scratch);
+        const choices = await s.engine.listRecoveryChoices(ref, true);
+        if (mode === 'same-words') {
+          expect(choices).toEqual([]);
+          expect(s.transport.send).toHaveBeenCalledTimes(2);
+          return;
+        }
+        expect(choices).toHaveLength(1);
+        if (mode === 'late-competing') {
+          const saved = s.server.get(key)!;
+          s.server.set(key, { ...saved, value: { ...saved.value, scratch: scratch(neighborLatest, stored) },
+            metadata: { ...saved.metadata!, revision: saved.metadata!.revision + 1, operationId: 'late-other-device' } });
+        }
+        if (duringDelivery) s.engine.setOnline(false);
+        const recover = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'amended-sketch'), choices[0].id);
+        const state = recover.getState().checkpoint;
+        if (duringDelivery) {
+          expect(state.conflicts).toEqual([]);
+          const typed = { ...neighbor, id: 'later-private-sketch', text: 'The separate words typed after recovery' };
+          if (mode === 'delivery-replaced-with-typing') {
+            const current = recover.getState().checkpoint.draft!;
+            await recover.edit({ ...current, scratch: scratch(...(current.scratch as DocumentData[]), typed) });
+            const protectedWrite = (await s.commits.list('owner')).find(request => request.amendedScratchAppend);
+            expect(protectedWrite?.amendedScratchAppend).toBe(true);
+            expect(protectedWrite?.value?.scratch).not.toContainEqual(typed);
+          } else await recover.save();
+          const saved = s.server.get(key)!;
+          if (followingText) {
+            const [append] = (await s.commits.list('owner')).filter(request => request.amendedScratchAppend);
+            const laterWords = 'Another correction written offline after recovery';
+            await recover.commit(draft => ({ ...draft!, scratch: (draft!.scratch as DocumentData[]).map(row =>
+              row.id === added.id ? { ...row, text: laterWords } : row) }),
+            { kind: 'sermon-note-text', opening: { sermonId: ref.id, generation: 'generation', pending: [append.id],
+              target: { kind: 'scratch', id: added.id, createdAt: added.createdAt }, text: finalWords, observedRevision: 2 } });
+            const matched = { ...stored, text: finalWords };
+            const moved = { ...saved, value: { ...saved.value, scratch: scratch(neighborLatest, matched) },
+              metadata: { ...saved.metadata!, revision: saved.metadata!.revision + 1, operationId: 'same-birth-moved' } };
+            const replacement = { ...stored, createdAt: '2026-11-25T00:00:00.000Z' };
+            const replaced = { ...moved, value: { ...moved.value, scratch: scratch(neighborLatest, replacement) },
+              metadata: { ...moved.metadata, revision: moved.metadata.revision + 2, operationId: 'different-birth-after-ack' } };
+            s.server.set(key, moved);
+            const transport = jest.mocked(s.transport.send), deliver = transport.getMockImplementation()!;
+            transport.mockImplementation(async command => {
+              if (command.operationId !== append.id && command.kind === 'update' && command.changes.some(change => change.path[0] === 'scratch')) {
+                s.server.set(key, replaced);
+              }
+              return deliver(command);
+            });
+            s.engine.setOnline(true);
+            await s.engine.retry();
+            const review = recover.getState().checkpoint;
+            expect(review.conflicts).toMatchObject([{ path: ['scratch', 'id:new'] }]);
+            await expect(recover.keepLocal(undefined, review)).rejects.toMatchObject({ code: 'decision-changed' });
+            await recover.acceptRemote(undefined, review);
+            expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, replacement]);
+            return;
+          }
+          const observed = { ...saved, value: { ...saved.value, scratch: scratch(neighborLatest, ...(firstNeighbor ? [] : [stored])) },
+            metadata: { ...saved.metadata!, revision: saved.metadata!.revision + 1, operationId: 'arrived-during-delivery' } };
+          s.server.set(key, observed);
+          if (mode === 'delivery-replaced-observed') {
+            const transport = jest.mocked(s.transport.send);
+            const deliver = transport.getMockImplementation()!;
+            transport.mockImplementationOnce(async command => {
+              const result = await deliver(command);
+              const newer = { ...observed, value: { ...observed.value, title: 'A later unrelated edit' },
+                metadata: { ...observed.metadata, revision: observed.metadata.revision + 1, operationId: 'observation-before-receipt' } };
+              s.server.set(key, newer);
+              s.next(newer);
+              await drainMicrotasks();
+              return result;
+            });
+          }
+          s.engine.setOnline(true);
+          await s.engine.retry();
+          const conflict = recover.getState().checkpoint;
+          if (firstNeighbor || mode === 'delivery-same-words') {
+            const projected = firstNeighbor ? { ...added, section: 'conclusion', text: finalWords } : stored;
+            expect(conflict.conflicts).toEqual([]);
+            expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, projected]);
+            expect(s.transport.send).toHaveBeenCalledTimes(3);
+          } else {
+            if (mode !== 'delivery-replaced-observed') expect(conflict.conflicts).toMatchObject([{ path: ['scratch', 'id:new'] }]);
+            if (mode.startsWith('delivery-replaced')) {
+              await expect(recover.keepLocal(undefined, conflict)).rejects.toMatchObject({ code: 'decision-changed' });
+              await recover.acceptRemote(undefined, conflict);
+              expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, stored]);
+              if (mode === 'delivery-replaced-with-typing') {
+                const copies = await s.engine.listRecoveryChoices(ref, true);
+                expect(copies).toHaveLength(1);
+                const laterCopy = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'later-private-sketch'), copies[0].id);
+                expect(laterCopy.getState().checkpoint.draft?.scratch).toEqual([neighborLatest, stored, typed]);
+                return;
+              }
+            } else {
+              await recover.keepLocal(undefined, conflict);
+              await s.engine.retry();
+              expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, { ...stored, text: finalWords }]);
+              const noteKey = JSON.stringify(['scratch', added.id, added.createdAt]);
+              expect(jest.mocked(s.transport.send).mock.calls.at(-1)?.[0]).toMatchObject({
+                sermonTextOpenings: { [noteKey]: observed.metadata.revision },
+              });
+            }
+          }
+        } else if (mode === 'missing' || mode === 'two-edits') {
+          const projected = { ...added, section: 'conclusion', text: finalWords };
+          expect(state.draft?.scratch).toEqual([neighborLatest, projected]);
+          expect(state.conflicts).toEqual([]);
+          await recover.save();
+          await s.engine.retry();
+          expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, projected]);
+          expect(s.transport.send).toHaveBeenCalledTimes(3);
+        } else {
+          expect(state.conflicts).toMatchObject([{ path: ['scratch', 'id:new'], mine: { value: { text: finalWords } },
+            theirs: { value: { text: stored.text } } }]);
+          expect(s.transport.send).toHaveBeenCalledTimes(2);
+          if (mode === 'competing-mine') {
+            await recover.keepLocal(undefined, state);
+            await recover.save();
+            await s.engine.retry();
+            expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, { ...stored, text: finalWords }]);
+            expect(s.transport.send).toHaveBeenCalledTimes(3);
+          } else {
+            if (mode === 'replacement') await expect(recover.keepLocal(undefined, state)).rejects.toMatchObject({ code: 'decision-changed' });
+            await recover.acceptRemote(undefined, state);
+            expect(s.server.get(key)?.value?.scratch).toEqual([neighborLatest, stored]);
+            expect(s.transport.send).toHaveBeenCalledTimes(2);
+          }
+        }
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     });

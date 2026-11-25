@@ -1,6 +1,6 @@
 'use client';
 
-import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_SCRATCH_REMOVAL_CHOICE_ROW, SERMON_SCRATCH_TEXT_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
+import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_AMENDED_SKETCH_CHOICE_ROW, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_SCRATCH_REMOVAL_CHOICE_ROW, SERMON_SCRATCH_TEXT_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
 import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './fieldValues';
 import { examineRecoveryCheckpoints, recoveryCheckpointId, recoveryCheckpointEditorId, unreadableCheckpointDraft, validateRecoveryRecord } from './recovery.client';
@@ -40,7 +40,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
       engineOwnerRange(SERMON_CHURCH_CHOICE_ROW, owner), engineOwnerRange(SERMON_PREPARATION_CHECK_CHOICE_ROW, owner),
       engineOwnerRange(SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, owner), engineOwnerRange(SERMON_THOUGHT_REMOVAL_CHOICE_ROW, owner),
       engineOwnerRange(SERMON_THOUGHT_LOCK_CHOICE_ROW, owner), engineOwnerRange(SERMON_PLACED_SKETCH_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_SCRATCH_REMOVAL_CHOICE_ROW, owner), engineOwnerRange(SERMON_SCRATCH_TEXT_CHOICE_ROW, owner)];
+      engineOwnerRange(SERMON_AMENDED_SKETCH_CHOICE_ROW, owner), engineOwnerRange(SERMON_SCRATCH_REMOVAL_CHOICE_ROW, owner), engineOwnerRange(SERMON_SCRATCH_TEXT_CHOICE_ROW, owner)];
     let remaining = ranges.length;
     for (const range of ranges) {
       let physical: IDBValidKey[] | undefined, values: unknown[] | undefined;

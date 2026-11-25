@@ -95,6 +95,30 @@ it('keeps an answered request referenced by a protected sketch copy through the 
   expect((await checkpoints.read('owner', editorId))?.checkpoint.draft?.content).toBe('remaining new words');
 });
 
+it('keeps an amended sketch and its pending append in versioned native storage', async () => {
+  const editorId = protectSermonRecoveryEditor('amended-sketch-fork', 'sermon-amended-sketch');
+  const confirmed: ResourceSnapshot = { ...snapshot, resource: { collection: 'sermons', id: 'sermon' },
+    value: { userId: 'owner', title: 'Sermon', scratch: [] } };
+  const draft = { ...confirmed.value, scratch: [{ id: 'new', createdAt: '2026-11-25T00:00:00.000Z', text: 'Corrected words' }] };
+  const captured = { ...request('amended', editorId), amendedScratchAppend: true as const,
+    baseline: confirmed, working: confirmed, intended: draft, value: draft };
+  const session = new DataSession(confirmed);
+  session.edit(draft);
+  session.applyCommit(captured);
+  const checkpoints = createIndexedDbCheckpoints(), commits = createIndexedDbCommitStore();
+  await commits.create(captured);
+  await checkpoints.put({ ...record('unused', editorId), checkpoint: session.checkpoint() });
+  await sweep();
+
+  expect(checkpointKey('owner', editorId)).toEqual(['sermon-amended-sketch-choice-checkpoint', 'owner', editorId]);
+  expect(commitRowKey(captured)).toEqual(['sermon-amended-sketch-request', 'owner', editorId, captured.editGeneration]);
+  expect(storage.rows.has(JSON.stringify(['checkpoint', 'owner', editorId]))).toBe(false);
+  expect(storage.rows.has(JSON.stringify(['request', 'owner', editorId, captured.editGeneration]))).toBe(false);
+  const [reopened] = await createIndexedDbCheckpoints().listManualChoiceCopies!('owner', confirmed.resource);
+  expect(reopened.record.checkpoint.pending[captured.id]).toMatchObject({ amendedScratchAppend: 'captured', value: draft });
+  expect(await createIndexedDbCommitStore().list('owner')).toMatchObject([{ id: captured.id, amendedScratchAppend: true }]);
+});
+
 it('does not report a late checkpoint completion as durable before its native outcome', async () => {
   const checkpoints = createIndexedDbCheckpoints(); let durable = false;
   storage.holdCompletionAfterCommit = (_rows, mode) => mode === 'readwrite';

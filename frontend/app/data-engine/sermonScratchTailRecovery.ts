@@ -16,8 +16,8 @@ function capturedScratchAction(confirmed: ResourceSnapshot, previous: CommitRequ
   const before = previous.value, after = request.value;
   if (!before || !after) return;
   if (request.sermonNoteText) {
-    const observed = capturedGuardedScratchOpening(confirmed, before, request, previous.id);
-    return observed && { kind: 'text' as const, observed };
+    const captured = capturedGuardedScratchOpening(confirmed, before, request, previous.id);
+    return captured && { kind: 'text' as const, ...captured };
   }
   if (sameSketchFrame(before, after)) return { kind: 'unchanged' as const };
 
@@ -31,7 +31,7 @@ function captureIndependentScratchActions(
   confirmed: ResourceSnapshot, opening: DocumentData, originals: readonly ScratchNote[], chain: readonly CommitRequest[],
 ) {
   const originalById = new Map(originals.map(note => [note.id, note]));
-  const appended: ScratchNote[] = [];
+  const appended = new Map<string, { note: ScratchNote; requestId: string; amended: boolean }>();
   const removed: ScratchNote[] = [];
   const structuralRows = new Set<string>();
   const textOpenings = new Map<string, ScratchOpening>();
@@ -42,12 +42,19 @@ function captureIndependentScratchActions(
     if (!action) return;
     if (action.kind === 'unchanged') continue;
     if (action.kind === 'text') {
-      const { observed } = action;
+      const observed = action.opening;
       const id = observed.target.id;
-      if (structuralRows.has(id)) return;
-      if (!textOpenings.has(id)) {
-        if (readSermonNoteText(opening, observed.target)?.text !== observed.text) return;
-        textOpenings.set(id, observed);
+      const addition = appended.get(id);
+      if (addition) {
+        if (addition.note.createdAt !== observed.target.createdAt || !observed.pending.includes(addition.requestId)) return;
+        addition.note = { ...addition.note, text: action.words };
+        addition.amended = true;
+      } else {
+        if (structuralRows.has(id)) return;
+        if (!textOpenings.has(id)) {
+          if (readSermonNoteText(opening, observed.target)?.text !== observed.text) return;
+          textOpenings.set(id, observed);
+        }
       }
       textActions.add(request.id);
       continue;
@@ -57,13 +64,13 @@ function captureIndependentScratchActions(
     if (action.kind === 'removal') {
       if (!confirmed.metadata || !equalValues(note, originalById.get(note.id))) return;
       removed.push(note);
-    } else appended.push(note);
+    } else appended.set(note.id, { note, requestId: request.id, amended: false });
     structuralRows.add(note.id);
   }
   if (structuralRows.size || textOpenings.size) return { appended, removed, textOpenings, textActions };
 }
 
-/** Separate saved scratch actions only when every change is proven and their rows are independent. */
+/** Keep edits of an unsent addition together, and separate actions whose rows are independent. */
 export function recoverableScratchTail(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
   const { confirmed, draft } = source, target = projected.confirmed;
   const opening = confirmed.value, first = chain[0]?.value, last = chain.at(-1)?.value, saved = target.value;
@@ -74,11 +81,23 @@ export function recoverableScratchTail(source: SessionCheckpoint, projected: Ses
   const captures = captureIndependentScratchActions(confirmed, opening, originals, chain);
   if (!captures) return;
   const { appended, removed, textOpenings, textActions } = captures;
-  const placement = appended.length ? placedSketchRecovery(source, target, appended) : undefined;
-  if (appended.length && !placement) return;
+  const additions = [...appended.values()];
+  const unchanged = additions.filter(addition => !addition.amended).map(addition => addition.note);
+  const placement = unchanged.length ? placedSketchRecovery(source, target, unchanged, 'addition') : undefined;
+  if (unchanged.length && !placement) return;
 
+  const editedCopies = [];
+  for (const { note, amended } of additions) {
+    if (!amended) continue;
+    const placed = placedSketchRecovery(source, target, [note], 'amended');
+    if (!placed) return;
+    if (placed.continuation) editedCopies.push({
+      key: 'amended-sketch:' + note.id, recoveryKind: 'sermon-amended-sketch' as const, continuation: placed.continuation,
+    });
+  }
   const copies = [
     ...(placement?.continuation ? [{ key: 'placed-sketches', recoveryKind: 'sermon-placed-sketch' as const, continuation: placement.continuation }] : []),
+    ...editedCopies,
     ...scratchRemovalRecoveryCopies(source, target, removed),
     ...scratchTextRecoveryCopies(source, target, last, textOpenings.values()),
   ];

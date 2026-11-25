@@ -39,7 +39,7 @@ import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clear
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from './sermonFieldChoice';
-import { capturedGuardedScratchTextPath, guardedScratchTextReview, projectGuardedScratchText } from './sermonGuardedScratchText';
+import { capturedGuardedScratchTextPath, guardedScratchTextReview, preparedRecoveredScratchText, projectGuardedScratchText, reviewedPlacedSketchOpening } from './sermonGuardedScratchText';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { isPlacedSketchConflict, observePlacedSketchConflicts, resolvePlacedSketchComparison } from './sermonPlacedSketchRecovery';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
@@ -107,7 +107,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   sermonChurchRecovery?: SermonChurchRecovery;
   sermonTextRetry?: import('./sermonTextRecovery').SermonTextRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; amendedScratchAppend?: 'captured' | 'conflict'; scratchTextConflict?: { id: string; createdAt: string; words: string }; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -607,9 +607,14 @@ export class DataSession {
     if (this.state.guardedScratchText && request.sermonNoteText
       && equalValues(this.state.guardedScratchText.target, request.sermonNoteText.target)) delete this.state.guardedScratchText;
     const newScopedSave = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove
-      || request.scratchRemoval || request.scratchTextRecovery)
+      || request.scratchRemoval || request.scratchTextRecovery || request.amendedScratchAppend)
       && (!this.state.pending[request.id] || capturedTemplateRetry);
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
+    if (request.amendedScratchAppend) {
+      this.state.pending[request.id].amendedScratchAppend = request.state === 'conflict' ? 'conflict' : 'captured';
+    }
+    const scratchText = request.state === 'conflict' && preparedRecoveredScratchText(request);
+    if (scratchText) this.state.pending[request.id].scratchTextConflict = scratchText;
     if (newScopedSave && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
       // The scoped request can leave later typing for its own generation.
       this.state.editGeneration = this.reserveEditGeneration();
@@ -1241,7 +1246,10 @@ export class DataSession {
       && !this.state.remoteCandidate && !this.state.conflicts.length) return;
     const mySketches = resolvePlacedSketchComparison(this.state, 'local');
     if (mySketches) {
+      const observed = this.state.remoteCandidate;
       this.finishChoiceAgainstRemote(mySketches);
+      const opening = observed && reviewedPlacedSketchOpening(observed, mySketches);
+      if (opening) this.state.guardedScratchText = opening;
       return;
     }
     assertLegacyCommentLocalChoice(this.state);

@@ -1,8 +1,9 @@
 import { matchesSermonNoteOpening, readSermonNoteText, withSermonNoteText } from '@/utils/sermonNoteText';
 
+import { protectedSermonRecoveryKind } from './editorIdentity';
 import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
-import { sameSketchFrame, sketchRows } from './sermonScratchFrame';
+import { exactAmendedScratchAppend, sameSketchFrame, sketchRows } from './sermonScratchFrame';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -22,13 +23,14 @@ function isScratchOpening(opening?: SermonNoteOpening): opening is ScratchOpenin
 /** Prove the captured text operation against its immediate predecessor and original document. */
 export function capturedGuardedScratchOpening(
   confirmed: ResourceSnapshot, before: DocumentData, request: CommitRequest, predecessor: string,
-): ScratchOpening | undefined {
+) {
   const observed = request.sermonNoteText, after = request.value;
   if (!after || !isScratchOpening(observed) || request.sequence !== 0 || !matchesSermonNoteOpening(confirmed, observed)
     || !observed.pending.includes(predecessor) || observed.text !== changedWords(before, observed)) return;
   const words = changedWords(after, observed);
-  const exact = typeof words === 'string' && words !== observed.text && withSermonNoteText(before, observed.target, words);
-  if (exact && sameSketchFrame(exact, after)) return observed;
+  if (typeof words !== 'string' || words === observed.text) return;
+  const exact = withSermonNoteText(before, observed.target, words);
+  if (exact && sameSketchFrame(exact, after)) return { opening: observed, words };
 }
 
 export function scratchTextRecoveryCopies(
@@ -75,10 +77,42 @@ function exactScratchText(before: DocumentData, after: DocumentData) {
   if (equalValues(withSermonNoteText(before, field, edit.text), after)) return { field, words: edit.text };
 }
 
+/** A successor's prepared command uses the location in its predecessor's acknowledgement. */
+export function preparedRecoveredScratchText(request: CommitRequest) {
+  const { sermonNoteText, command } = request;
+  if (!isScratchOpening(sermonNoteText) || command?.kind !== 'update'
+    || !(request.scratchTextRecovery || protectedSermonRecoveryKind(request.editorId) === 'sermon-amended-sketch')) return;
+  const [change, extra] = command.changes;
+  if (extra || !change || !equalValues(change.path, ['scratch']) || !change.before.exists || !change.after.exists) return;
+  const exact = exactScratchText({ scratch: change.before.value! }, { scratch: change.after.value! });
+  if (exact && equalValues(exact.field, sermonNoteText.target)) {
+    return { id: exact.field.id, createdAt: exact.field.createdAt, words: exact.words };
+  }
+}
+
 export function capturedGuardedScratchTextPath(request: CommitRequest): string[] | undefined {
-  if (!request.scratchTextRecovery || !request.value || !request.baseline.value) return;
-  const captured = exactScratchText(request.baseline.value, request.value);
+  const { value, baseline } = request;
+  if (request.amendedScratchAppend) {
+    const note = exactAmendedScratchAppend(baseline.value, value);
+    if (note) return ['scratch', 'id:' + note.id];
+  }
+  const prepared = preparedRecoveredScratchText(request);
+  if (prepared) return ['scratch', 'id:' + prepared.id, 'text'];
+  if (!request.scratchTextRecovery || !value || !baseline.value) return;
+  const captured = exactScratchText(baseline.value, value);
   if (captured) return ['scratch', 'id:' + captured.field.id, 'text'];
+}
+
+function guardedOpening(target: ResourceSnapshot, field: ScratchOpening['target'], stored: string): ScratchOpening {
+  return { sermonId: target.resource.id, target: field, text: stored, pending: [],
+    generation: target.metadata?.generation ?? null, observedRevision: target.metadata?.revision ?? null };
+}
+
+/** A click on a single placed-sketch conflict owns the observed words, never its saved location. */
+export function reviewedPlacedSketchOpening(target: ResourceSnapshot, draft: DocumentData): ScratchOpening | undefined {
+  const captured = target.value && exactScratchText(target.value, draft);
+  const stored = captured && readSermonNoteText(target.value, captured.field)?.text;
+  if (captured && typeof stored === 'string') return guardedOpening(target, captured.field, stored);
 }
 
 export function blocksIndependentActionDuringScratchRecovery(checkpoint: SessionCheckpoint, action?: EditorCommitAction): boolean {
@@ -95,23 +129,27 @@ export function guardedScratchTextSubmission(checkpoint: SessionCheckpoint): Doc
 export function pendingGuardedScratchTextReview(checkpoint: SessionCheckpoint) {
   const [request] = Object.entries(checkpoint.pending).sort(([, left], [, right]) => left.generation - right.generation);
   const { confirmed, remoteCandidate: target, conflicts } = checkpoint;
-  if (!request?.[1].value || !confirmed.value || !target || confirmed.resource.collection !== 'sermons'
-    || !conflicts.some(({ path }) => path[0] === 'scratch')) return;
-  const captured = exactScratchText(confirmed.value, request[1].value);
+  if (!request?.[1].value || !confirmed.value || !target || confirmed.resource.collection !== 'sermons') return;
+  // A newer observation can supersede the conflict response's details. Its
+  // terminal request still owns the question, using the current saved copy.
+  const append = request[1].amendedScratchAppend === 'conflict' && exactAmendedScratchAppend(confirmed.value, request[1].value);
+  const reviewed = request[1].scratchTextConflict;
+  const recorded = reviewed ?? (append ? { id: append.id, createdAt: append.createdAt, words: append.text } : undefined);
+  const captured = recorded ? { field: { kind: 'scratch' as const, id: recorded.id, createdAt: recorded.createdAt }, words: recorded.words }
+    : exactScratchText(confirmed.value, request[1].value);
   if (!captured) return;
   const { field, words } = captured;
   const row = 'id:' + field.id;
-  if (!conflicts.some(({ path }) => path[0] === 'scratch' && path[1] === row && (path.length === 2 || path[2] === 'text'))) return;
+  if (!recorded && !conflicts.some(({ path }) => path[0] === 'scratch' && path[1] === row && (path.length === 2 || path[2] === 'text'))) return;
   const sameGeneration = target.metadata?.generation === confirmed.metadata?.generation && !target.metadata?.deleted;
   const stored = sameGeneration ? readSermonNoteText(target.value, field)?.text : undefined;
   const proposed = typeof stored === 'string' ? withSermonNoteText(target.value, field, words) : undefined;
-  if (stored === words) return;
-  const opening: ScratchOpening | undefined = proposed && typeof stored === 'string' ? {
-    sermonId: confirmed.resource.id, target: field, text: stored, pending: [],
-    generation: target.metadata?.generation ?? null, observedRevision: target.metadata?.revision ?? null,
-  } : undefined;
-  return { requestId: request[0], mine: words, stored, keepMineDisabled: !proposed, proposed, opening,
-    identity: JSON.stringify([request[0], target.metadata, field, words, stored ?? null, checkpoint.editGeneration]) };
+  if (stored === words && !recorded) return;
+  const opening = proposed && typeof stored === 'string' ? guardedOpening(target, field, stored) : undefined;
+  const displayed = stored ?? (recorded && sameGeneration && target.value
+    ? sketchRows(target.value)?.find(note => note.id === field.id)?.text : undefined);
+  return { requestId: request[0], mine: words, stored: displayed, keepMineDisabled: !proposed || stored === words, proposed, opening,
+    identity: JSON.stringify([request[0], target.metadata, field, words, displayed ?? null, checkpoint.editGeneration]) };
 }
 
 export function guardedScratchTextReview(checkpoint: SessionCheckpoint) {

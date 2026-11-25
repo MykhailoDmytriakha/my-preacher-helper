@@ -1,6 +1,6 @@
 'use client';
 
-import { isRetirableOrdinaryEditor, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
+import { isRetirableOrdinaryEditor, protectedSermonRecoveryKind, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
 import { awaitingManualReceipt, type ManualScopeRecord } from './manualScope';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
@@ -8,11 +8,12 @@ import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 
 export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request',
-  'analysis-reshape-request', 'ordered-delete-request', 'sermon-note-text-request', 'sermon-scratch-removal-request', 'sermon-scratch-text-recovery-request'] as const;
+  'analysis-reshape-request', 'ordered-delete-request', 'sermon-note-text-request', 'sermon-scratch-removal-request', 'sermon-scratch-text-recovery-request', 'sermon-amended-sketch-request'] as const;
 
 type CommitRow = Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic' | 'deleteAfter' | 'sermonNoteText' | 'scratchRemoval' | 'scratchTextRecovery'>;
 function commitRowKind(request: CommitRow): typeof COMMIT_ROW_KINDS[number] {
-  // A bundle that cannot review a recovered sketch deletion must not adopt or retry its terminal answer.
+  // Older bundles must not adopt a sketch request whose receipt they cannot review.
+  if (protectedSermonRecoveryKind(request.editorId) === 'sermon-amended-sketch') return 'sermon-amended-sketch-request';
   if (request.scratchTextRecovery) return 'sermon-scratch-text-recovery-request';
   if (request.scratchRemoval) return 'sermon-scratch-removal-request';
   if (request.sermonNoteText) return 'sermon-note-text-request';

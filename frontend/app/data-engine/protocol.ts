@@ -25,6 +25,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { isSeriesReorderTrace } from './seriesReorder';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { planSubpointTransferConflicts, preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
+import { sameScratchNoteWords } from './sermonScratchFrame';
 import { isSermonTextRoot } from './sermonTextOpenings';
 import { serviceOrderStepField } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -623,6 +624,17 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  if (!base.exists && path[0] === 'scratch') {
+    // Missing scratch lists have no rows. An already written row with the exact
+    // intended words keeps its stored placement, regardless of where it first opened.
+    if (path.length === 1 && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
+      const merged = mergeArrayFields({ exists: true, value: [] }, mine, theirs, path);
+      if (merged) return merged;
+    }
+    if (path.length === 2 && path[1].startsWith('id:') && sameScratchNoteWords(theirs.value, mine.value)) {
+      return { value: theirs, conflicts: [] };
+    }
+  }
   if (path.length === 1 && (path[0] === 'structure' || path[0] === 'outline')) {
     const outline = mergeOutlineContent(base, mine, theirs, path, mergeFields);
     if (outline) return outline;

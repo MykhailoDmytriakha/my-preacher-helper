@@ -27,7 +27,7 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
 import { prepareAtomicSeriesCommand, prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
-import { areDifferentTabManualParents, readManualScopeIdentity, sharesEditorOpening } from './editorIdentity';
+import { areDifferentTabManualParents, protectedSermonRecoveryKind, readManualScopeIdentity, sharesEditorOpening } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { readField, writeField } from './fieldValues';
@@ -52,6 +52,7 @@ import { validSermonChurchRecovery } from './sermonChurchRecovery';
 import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { validPreparationCheckRetry } from './sermonPreparationCheckRecovery';
+import { exactAmendedScratchAppend } from './sermonScratchFrame';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
 import { capturedSermonTextRetry, sermonTextRetryMatches } from './sermonTextRecovery';
 import { hasNewerServiceOrderInputOpening, selectServiceOrderInputSave, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
@@ -184,6 +185,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonNoteText?: SermonNoteOpening;
   scratchRemoval?: true;
   scratchTextRecovery?: true;
+  amendedScratchAppend?: true;
   sermonTextOpenings?: SermonTextOpenings;
   sermonTextPredecessorRevision?: number;
   sermonTextContinuation?: SermonTextOpenings;
@@ -344,6 +346,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
     || !equalValues(current.sermonNoteText ?? null, incoming.sermonNoteText ?? null)
     || current.scratchTextRecovery !== incoming.scratchTextRecovery
+    || current.amendedScratchAppend !== incoming.amendedScratchAppend
     || !equalValues(current.sermonTextOpenings ?? null, incoming.sermonTextOpenings ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.homileticTitleActions ?? null, incoming.homileticTitleActions ?? null)
@@ -1075,6 +1078,8 @@ export class CommitQueue {
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(frozenOptions?.scratchRemoval && { scratchRemoval: true as const }),
       ...((intent.guardedScratchText || frozenOptions?.scratchTextRecovery) && { scratchTextRecovery: true as const }),
+      ...(!editorAction && protectedSermonRecoveryKind(editorId) === 'sermon-amended-sketch' && exactAmendedScratchAppend(baseline.value, value)
+        && { amendedScratchAppend: true as const }),
       ...(planCellOpenings || editorAction?.kind === 'sermon-plan-text' ? {
         sermonTextOpenings: { ...(editorAction?.kind === 'sermon-plan-text' && Object.fromEntries(
           Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision]))), ...planCellOpenings },

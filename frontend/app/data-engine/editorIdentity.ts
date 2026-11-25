@@ -51,6 +51,7 @@ const protectedSermonRecoveries = {
   'sermon-scratch-text': { choice: 'sermon-scratch-text-choice-recovery', fork: ':sermon-scratch-text-recovery' },
   'sermon-scratch-removal': { choice: 'sermon-scratch-removal-choice-recovery', fork: ':sermon-scratch-removal-recovery' },
   'sermon-placed-sketch': { choice: 'sermon-placed-sketch-choice-recovery', fork: ':sermon-placed-sketch-recovery' },
+  'sermon-amended-sketch': { choice: 'sermon-amended-sketch-choice-recovery', fork: ':sermon-amended-sketch-recovery' },
   'sermon-thought-lock': { choice: 'sermon-thought-lock-choice-recovery', fork: ':sermon-thought-lock-recovery' },
   'sermon-thought-removal': { choice: 'sermon-thought-removal-choice-recovery', fork: ':sermon-thought-removal-recovery' },
   'sermon-thought-placement': { choice: 'sermon-thought-placement-choice-recovery', fork: ':sermon-thought-placement-recovery' },
