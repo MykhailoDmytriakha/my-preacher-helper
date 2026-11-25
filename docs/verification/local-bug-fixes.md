@@ -10738,3 +10738,11 @@ Groups → group, Heart matters → Brothers' council, and Studies → note. A f
 Three new regressions failed on the former code through the native storage adapter and the command queue. All nine opening cases passed, along with 3,960 tests in 239 related suites. TypeScript, changed-file ESLint, the production-mode build and independent review passed. Hidden Chrome on isolated Auth and Firestore checked the version choices, a newer saved title during the note choice, and reopening all three records. The screenshots were inspected and the stand released its ports. Evidence is in `artifacts/detached-autosave-proof-20261125/`.
 
 After authorized rollout, confirm ordinary edits and reload on disposable group, council and note records. Use the emulator fixture for intentionally inconsistent saved records.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Keep later field edits after an earlier cancellation
+
+Studies → note. Cancelling a queued body Save could remove a separately authored title when the cache happened to contain the same words. A later title could also repeat exactly what an earlier title Save carried. The cancellation now settles its exact captured work. Cache agreement preserves the later draft until an authoritative read, and an independent type edit retains its original observation. A device-local edit generation distinguishes separately authored fields even when their clock observations are equal. Transferring a valid field to a recovery copy preserves that generation.
+
+Six cases failed before their corresponding corrections. Two further tests caught proof loss when carrying the field to a separate recovery copy or back to a projected editor. The related Jest profile passed 3,971 tests in 239 suites. TypeScript, changed-file ESLint, production-mode build and independent review passed. Two hidden Chrome scenarios used isolated Auth and Firestore. Each sent one title-only command and kept the original body after reload. The screenshots were inspected and all stand ports closed. Evidence is in `artifacts/held-field-cancellation-20261125/`.
+
+After authorized rollout, verify later fields on disposable notes after deciding an earlier draft. Use the emulator for intentionally inconsistent cached checkpoints and a controlled delay while the earlier Save registers.

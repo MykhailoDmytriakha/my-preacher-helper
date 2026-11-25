@@ -62,7 +62,8 @@ const outlinePlacement = z.object({ generation: id.nullable(), before: outlineWi
 });
 const fieldAction = z.object({ observedRevision, time: actionTime, predecessorOperationId: id.optional() });
 const textAction = fieldAction.extend({ before: z.string(), after: z.string() });
-const groupFieldDraft = z.object({ generation: id, action: textAction });
+const autosaveDraft = z.object({ generation: id, editGeneration: observedRevision.optional() });
+const groupFieldDraft = autosaveDraft.extend({ action: textAction });
 const rowAction = fieldAction.extend({ rowId: z.string().min(1), rowCreatedAt: z.string(), unseenRevision: observedRevision.optional() });
 function rowValues<T extends z.ZodTypeAny>(value: T) {
   return rowAction.extend({ before: value, after: value });
@@ -77,7 +78,7 @@ const nullableTitleAction = rowValues(z.string().nullable());
 const preachDateCityAction = nullableTitleAction.extend({ scope: z.object({ id: z.string(), name: z.string() }) });
 const preachDateChurchAction = rowValues(z.object({ id: z.string(), name: z.string(), city: z.string().optional() }));
 const fieldValueAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
-const fieldValueDraft = z.object({ generation: id, action: fieldValueAction });
+const fieldValueDraft = autosaveDraft.extend({ action: fieldValueAction });
 const commentKindObservation = fieldValueAction.extend({ reference: fieldSchema });
 const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
@@ -217,8 +218,8 @@ const recordSchema = z.object({
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: fieldValueDraft.optional(),
     studyNoteContentDraft: fieldValueDraft.optional(), studyNoteTitleDraft: fieldValueDraft.optional(), studyNoteTypeDraft: fieldValueDraft.optional(),
-    commentKindDraft: z.object({ generation: id, action: commentKindObservation }).optional(),
-    commentPlaceDraft: z.object({ generation: id, action: commentPlaceObservation }).optional(),
+    commentKindDraft: autosaveDraft.extend({ action: commentKindObservation }).optional(),
+    commentPlaceDraft: autosaveDraft.extend({ action: commentPlaceObservation }).optional(),
     councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: fieldValueDraft.optional(),
     councilLifecycleDraft: fieldValueDraft.optional(), councilTopicTitleDrafts: rowDrafts(titleAction).optional(),
     councilTopicSummaryDrafts: rowDrafts(nullableTitleAction).optional(),

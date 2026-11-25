@@ -823,7 +823,12 @@ export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['
   | { field: 'service-order-input'; input: import('./serviceOrderInput').ServiceOrderInput };
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue> & { reference?: FieldValue; paragraph?: FieldValue };
-export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
+export type AutosaveFieldDraft = {
+  generation: string;
+  action: AutosaveFieldAction;
+  /** Identifies the local edit even when two observations have no distinct clock time. */
+  editGeneration?: number;
+};
 type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation; groupDescriptionAction?: DocumentFieldObservation<FieldValue> };
 type StudyNoteFieldActions = {
   studyNoteContentAction?: DocumentFieldObservation<FieldValue>;
@@ -958,16 +963,25 @@ export function groupStatusOutsideChoice(source: SessionCheckpoint, requestId: s
     || conflicts.some(({ path }) => !path.length || path[0] === 'status')
     || !action || !isGroupStatus(action.before) || !isGroupStatus(action.after)
     || submitted.value?.status !== action.after || draft?.status !== action.after
-    || (groupStatusDraft && submitted.generation < source.editGeneration && !sameAutosaveCapture(groupStatusDraft.action, action))) return undefined;
+    || (groupStatusDraft && submitted.generation < source.editGeneration && !submittedCoversAutosaveDraft(submitted, GROUP_STATUS, groupStatusDraft))) return undefined;
   return { generation: metadata.generation, action };
 }
 
 export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,
   keep: (path: readonly string[]) => boolean): void {
   for (const field of autosaveFieldTargets(target.confirmed.resource.collection)) {
-    if (!source[field.draft] || !keep([field.field])) continue;
-    target[field.draft] = source[field.draft];
-    if (!autosaveDraftAction(target, field)) delete target[field.draft];
+    const staged = source[field.draft];
+    if (!staged || !keep([field.field])) continue;
+    if (staged.editGeneration !== undefined && staged.editGeneration > source.editGeneration) continue;
+    // A retained editor can start below the edit generation of the words it is carrying.
+    const editGeneration = Math.max(target.editGeneration, staged.editGeneration ?? 0);
+    const projected = { ...target, [field.draft]: staged, editGeneration };
+    if (!autosaveDraftAction(projected, field)) {
+      delete target[field.draft];
+      continue;
+    }
+    target[field.draft] = staged;
+    target.editGeneration = editGeneration;
   }
 }
 
@@ -1006,18 +1020,26 @@ export function matchingHeldAutosaveFields(checkpoint: SessionCheckpoint, stored
 function autosaveDraftAction(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
   const staged = checkpoint[target.draft];
   if (!staged || !matchesAutosaveOpening(staged, checkpoint.confirmed.metadata)
+    || (staged.editGeneration !== undefined && staged.editGeneration > checkpoint.editGeneration)
     || !equalValues(staged.action.after, autosaveFieldValue(checkpoint.draft, target))) return undefined;
   return staged.action;
 }
 
-export function sameAutosaveCapture(left: AutosaveFieldAction | undefined, right: AutosaveFieldAction | undefined): boolean {
+function sameAutosaveCapture(left: AutosaveFieldAction | undefined, right: AutosaveFieldAction | undefined): boolean {
   return Boolean(left && right && equalValues(left.before, right.before) && equalValues(left.after, right.after)
     && equalValues(left.time, right.time) && equalValues(left.reference, right.reference) && equalValues(left.paragraph, right.paragraph) && left.observedRevision === right.observedRevision);
 }
 
+export function submittedCoversAutosaveDraft(submitted: SessionCheckpoint['pending'][string],
+  target: AutosaveFieldTarget, draft: AutosaveFieldDraft | undefined): boolean {
+  return Boolean(draft && (draft.editGeneration === undefined || draft.editGeneration <= submitted.generation)
+    && sameAutosaveCapture(submitted[target.action], draft.action));
+}
+
 function uncapturedAutosaveField(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
   const action = autosaveDraftAction(checkpoint, target);
-  return action && !Object.values(checkpoint.pending).some(request => sameAutosaveCapture(request[target.action], action)) ? action : undefined;
+  const staged = checkpoint[target.draft];
+  return action && !Object.values(checkpoint.pending).some(request => submittedCoversAutosaveDraft(request, target, staged)) ? action : undefined;
 }
 
 export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
@@ -1077,6 +1099,25 @@ export function hasUncapturedAutosaveField(checkpoint: SessionCheckpoint): boole
   return autosaveFieldTargets(checkpoint.confirmed.resource.collection).some(target => Boolean(uncapturedAutosaveField(checkpoint, target)));
 }
 
+/** A cancelled Save owns its captured fields, even when newer typing returned to the same words. */
+export function cancelledAutosaveProjection(checkpoint: SessionCheckpoint, submitted: SessionCheckpoint['pending'][string]) {
+  let ancestor = submitted.value;
+  const laterFields = new Set<string>();
+  if (!ancestor || !checkpoint.confirmed.value || checkpoint.editGeneration <= submitted.generation) return { ancestor, laterFields };
+  for (const target of autosaveFieldTargets(checkpoint.confirmed.resource.collection)) {
+    const action = autosaveDraftAction(checkpoint, target);
+    const later = action && !submittedCoversAutosaveDraft(submitted, target, checkpoint[target.draft]);
+    if (later) laterFields.add(target.field);
+    if (!later && !checkpoint.unreadableScalarProof?.includes(target.field)) continue;
+    const stored = autosaveFieldValue(checkpoint.confirmed.value, target);
+    if (stored === undefined || !equalValues(autosaveFieldValue(ancestor, target), autosaveFieldValue(checkpoint.draft, target))) continue;
+    // A document diff would read the later return as unchanged from the cancelled Save.
+    ancestor = target.action === 'commentPlaceAction' ? withCommentPlace(ancestor, observedValue(stored))
+      : withDocumentFieldValue(ancestor, target.field, observedValue(stored));
+  }
+  return { ancestor, laterFields };
+}
+
 /** A later local edit may be staged while its own predecessor is still being captured. */
 export function adoptAcknowledgedStudyNoteFields(checkpoint: SessionCheckpoint, submitted: StudyNoteFieldActions,
   accepted: ResourceSnapshot, operationId: string): void {
@@ -1091,15 +1132,16 @@ export function adoptAcknowledgedStudyNoteFields(checkpoint: SessionCheckpoint, 
 function adoptAcknowledgedStudyNoteField(checkpoint: SessionCheckpoint, target: StudyNoteDraftField,
   submitted: DocumentFieldObservation<FieldValue>, accepted: ResourceSnapshot, metadata: NonNullable<ResourceSnapshot['metadata']>): void {
   const action = uncapturedAutosaveField(checkpoint, target);
+  const staged = checkpoint[target.draft];
   const opening = autosaveFieldValue(accepted.value, target);
   if (!action || !acceptsAutosaveField(opening, target) || !equalValues(opening, submitted.after)
-    || metadata.generation !== checkpoint[target.draft]?.generation
+    || metadata.generation !== staged?.generation
     || !(equalValues(action.before, submitted.before) || equalValues(action.before, opening))) return;
   if (equalValues(opening, action.after)) {
     delete checkpoint[target.draft];
     return;
   }
-  checkpoint[target.draft] = { generation: metadata.generation, action: {
+  checkpoint[target.draft] = { ...staged, action: {
     before: opening, after: action.after, observedRevision: metadata.revision, time: action.time,
   } };
 }

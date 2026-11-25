@@ -12,7 +12,7 @@ import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
-import { adoptAcknowledgedStudyNoteFields, autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasHeldAutosaveFields, hasUncapturedAutosaveField, matchingHeldAutosaveFields, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { adoptAcknowledgedStudyNoteFields, autosaveAcknowledgementAncestor, autosaveFieldTargets, cancelledAutosaveProjection, carryAutosaveFieldDrafts, GROUP_TIMED_FIELDS, hasHeldAutosaveFields, hasUncapturedAutosaveField, matchingHeldAutosaveFields, retireObservedAutosaveFields, stageAutosaveField, submittedCoversAutosaveDraft } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
@@ -328,8 +328,9 @@ export class DataSession {
     }
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
       if (canceledBody !== undefined && target.field === 'content') continue;
+      const previous = this.state[target.draft];
       const draft = stageAutosaveField(this.state, value, shown, target, autosaveStamp);
-      if (draft) this.state[target.draft] = draft;
+      if (draft) this.state[target.draft] = draft === previous ? draft : { ...draft, editGeneration: generation };
       else delete this.state[target.draft];
     }
     stageRowFields(this.state, value, shown, autosaveStamp && ('rowId' in autosaveStamp || 'rowIds' in autosaveStamp) ? autosaveStamp : undefined);
@@ -558,8 +559,12 @@ export class DataSession {
       if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {
         // Nothing of this editor's is in flight any more, so a conflict it held answers nothing: decided
         // work settles fully; work swept along by a choice about another draft stays an ordinary draft.
-        if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held.value, Boolean(request.placementChoiceStored));
+        if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held, Boolean(request.placementChoiceStored));
         else this.state.conflicts = [];
+      }
+      if (held) {
+        this.settleHeldScalarsAfterDelivery(this.state.remoteCandidate ?? this.state.confirmed);
+        this.state.dirty ||= hasHeldAutosaveFields(this.state);
       }
       this.refreshUnreadableComparisons();
       return true;
@@ -747,8 +752,7 @@ export class DataSession {
     if (!this.matches(result.snapshot)) return;
     delete this.state.pending[result.operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
-      const action = submitted[target.action];
-      if (sameAutosaveCapture(action, this.state[target.draft]?.action)) delete this.state[target.draft];
+      if (submittedCoversAutosaveDraft(submitted, target, this.state[target.draft])) delete this.state[target.draft];
     }
     acknowledgeRowFields(this.state, submitted);
     let accepted = this.isOlder(result.snapshot) ? this.state.confirmed : result.snapshot;
@@ -809,11 +813,7 @@ export class DataSession {
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
     this.state.conflicts = copy(preservePlanCellComparisons(this.state, rebased.conflicts));
     this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
-    // A newer candidate can substitute for the receipt only with server evidence of its own.
-    if (equalValues(accepted, result.snapshot) || equalValues(accepted, this.observedWhileAwaitingHeldFields)) {
-      this.retireMatchingHeldScalars(accepted);
-    }
-    if (!Object.keys(this.state.pending).length) this.observedWhileAwaitingHeldFields = undefined;
+    this.settleHeldScalarsAfterDelivery(accepted, result.snapshot);
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasHeldAutosaveFields(this.state)
       || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     this.refreshUnreadableComparisons();
@@ -839,6 +839,14 @@ export class DataSession {
     if (!projected) return false;
     this.state = copy(projected);
     return true;
+  }
+
+  private settleHeldScalarsAfterDelivery(projected: ResourceSnapshot, receipt?: ResourceSnapshot): void {
+    if (Object.keys(this.state.pending).length) return;
+    const observed = this.observedWhileAwaitingHeldFields;
+    this.observedWhileAwaitingHeldFields = undefined;
+    // A projected copy can settle the field only if this device heard that exact version from the server.
+    if (equalValues(projected, receipt) || equalValues(projected, observed)) this.retireMatchingHeldScalars(projected);
   }
 
   private retireMatchingHeldScalars(snapshot: ResourceSnapshot): boolean {
@@ -932,12 +940,18 @@ export class DataSession {
    * belonged to the decided request. The same rule runs for mounted editors and for recovery's
    * projection of closed ones, so one cannot settle while the other keeps waiting.
    */
-  private settleDecided(decided: DocumentData | null, placementChoice = false): void {
-    const source = placementChoice ? this.checkpoint() : undefined;
+  private settleDecided(submitted: SessionCheckpoint['pending'][string], placementChoice = false): void {
+    const anchored = placementChoice ? this.checkpoint() : undefined;
     if (this.state.remoteCandidate) this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.remoteCandidate = null;
+    const { ancestor, laterFields } = cancelledAutosaveProjection(this.state, submitted);
+    const source = laterFields.size && !anchored ? this.checkpoint() : undefined;
     // Retire only the submitted value the person decided about; later unsent sibling words stay.
-    this.dropRefused(decided, source);
+    this.dropRefused(ancestor, anchored);
+    if (source) {
+      carryAutosaveFieldDrafts(source, this.state, path => laterFields.has(path[0]));
+      this.state.dirty ||= hasUncapturedAutosaveField(this.state);
+    }
   }
 
   /**

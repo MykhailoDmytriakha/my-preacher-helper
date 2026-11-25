@@ -15,6 +15,7 @@ import { GROUP_BLOCK_STATUS_POLICY } from '../groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowTitleAction';
 import { GROUP_STEP_DURATION_POLICY } from '../groupStepDurationAction';
 import { readGroupFlowFieldConflict } from '../groupTextReview';
+import { retainedAnchoredPlacementDraft } from '../manualChoice';
 import { diffFields } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { readSermonConflict } from '../rowConflictDetails';
@@ -1545,4 +1546,140 @@ it.each(['receipt', 'listener', 'cache', 'cache only field'] as const)(
   expect(restored.checkpoint()).toMatchObject({ confirmed: saved, draft, dirty: true, conflicts: [] });
   expect(restored.checkpoint().studyNoteTypeDraft).toEqual(typeProof);
   expect(restored.checkpoint().unreadableScalarProof).toEqual(cacheOnly ? ['title'] : undefined);
+});
+
+it.each([
+  ['cache', false], ['server', false], ['cache', true], ['server', true],
+] as const)('settles a held note title after cancelling an earlier body save using %s evidence (other edit: %s)', async (source, sibling) => {
+  const db = installWorldFirestore(() => T + 1000);
+  const resource = { collection: 'studyNotes', id: 'title-after-cancelled-save' };
+  const value = { userId: 'owner', title: 'Opening title', content: 'Original body', type: 'note' };
+  const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+  const opening = { resource, value, metadata };
+  const phone = new DataSession(opening);
+  const submitted = { ...value, content: 'Cancelled body edit' };
+  phone.edit(submitted, undefined, { field: 'content', time: null });
+  const capture = phone.checkpoint();
+  const queued: CommitRequest = { id: 'earlier', owner: 'owner', editorId: 'old-editor', editGeneration: capture.editGeneration,
+    baseline: opening, working: opening, value: submitted, intended: submitted, predecessor: null,
+    revision: 0, initialized: false, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
+    ...uncapturedAutosaveFields(capture, opening, undefined, []),
+  };
+  phone.applyCommit(queued);
+  const privateTitle = 'Private title entered after Save';
+  const privateDraft = { ...submitted, title: privateTitle };
+  phone.edit(privateDraft, undefined, { field: 'title', time: null });
+  if (sibling) phone.edit({ ...privateDraft, type: 'question' }, undefined, { field: 'type', time: null });
+  const checkpoint = phone.checkpoint();
+  checkpoint.studyNoteTitleDraft!.action.observedRevision = 99;
+  const old = { owner: 'owner', editorId: queued.editorId, checkpoint, prepared: null, unfinalized: [] };
+  const restored = DataSession.restore((await throughDeviceStorage(old, queued)).checkpoint);
+  const matching = { ...opening, value: { ...value, title: privateTitle }, metadata: { ...metadata, revision: 2 } };
+  restored.observe(matching, { source });
+  expect(restored.checkpoint()).toMatchObject({ pending: { earlier: expect.anything() }, unreadableScalarProof: ['title'] });
+
+  restored.applyCommit({ ...queued, state: 'cancelled', cancelledByChoice: true });
+
+  const afterCancel = restored.checkpoint();
+  expect(afterCancel).toMatchObject({ pending: {}, dirty: source === 'cache' || sibling, conflicts: [],
+    draft: { title: privateTitle, content: value.content } });
+  expect(afterCancel.unreadableScalarProof).toEqual(source === 'cache' ? ['title'] : undefined);
+  if (sibling) {
+    expect(afterCancel.draft?.type).toBe('question');
+    expect(afterCancel.studyNoteTypeDraft).toEqual(checkpoint.studyNoteTypeDraft);
+  }
+  const newer = { ...opening, value: { ...value, title: 'Later title saved on tablet' }, metadata: { ...metadata, revision: 3 } };
+  db.documents.set(resource.collection + '/' + resource.id, { ...newer.value, _dataEngine: newer.metadata });
+  if (source === 'cache') {
+    const reopened = DataSession.restore((await throughDeviceStorage({ ...old, checkpoint: afterCancel })).checkpoint);
+    reopened.observe(newer, { source: 'server' });
+    expect(reopened.checkpoint()).toMatchObject({ conflicts: [{ path: ['title'], code: 'unreadable-scalar-proof',
+      mine: { value: privateTitle }, theirs: { value: newer.value.title },
+    }], draft: { title: privateTitle, content: value.content } });
+    expect(await save(reopened.checkpoint())).toMatchObject({ code: 'resolve-version-first', commands: [] });
+  } else {
+    restored.observe(newer, { source: 'server' });
+    expect(restored.checkpoint()).toMatchObject({
+      draft: { ...newer.value, ...(sibling && { type: 'question' }) }, dirty: sibling, conflicts: [],
+    });
+  }
+});
+
+it.each(['captured only', 'captured with sibling edit', 'later readable', 'later unclocked', 'later unreadable'] as const)(
+  'applies an earlier cancellation without cancelling a same-title return (%s)', async version => {
+    const resource = { collection: 'studyNotes', id: 'title-return-after-cancel' };
+    const value = { userId: 'owner', title: 'Originally saved', content: 'Original body', type: 'note' };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const opening = { resource, value, metadata };
+    const phone = new DataSession(opening);
+    const title = 'Title to keep';
+    const kept = version.startsWith('later');
+    const sibling = version === 'captured with sibling edit';
+    const time = (offset: number) => version === 'later unclocked' ? null : { earliestMs: T + offset, latestMs: T + offset + 1 };
+    const submitted = { ...value, title };
+    phone.edit(submitted, undefined, { field: 'title', time: time(0) });
+    const capture = phone.checkpoint();
+    const queued: CommitRequest = { id: 'earlier', owner: 'owner', editorId: 'old-editor', editGeneration: capture.editGeneration,
+      baseline: opening, working: opening, value: submitted, intended: submitted, predecessor: null,
+      revision: 0, initialized: false, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
+      ...uncapturedAutosaveFields(capture, opening, undefined, []),
+    };
+    if (kept) {
+      phone.edit({ ...value, title: 'Intervening edit' }, undefined, { field: 'title', time: time(20) });
+    }
+    phone.applyCommit(queued);
+    if (kept) {
+      phone.edit(submitted, undefined, { field: 'title', time: time(40) });
+    }
+    if (sibling) phone.edit({ ...submitted, type: 'question' }, undefined, { field: 'type', time: null });
+    const checkpoint = phone.checkpoint();
+    const later = checkpoint.studyNoteTitleDraft;
+    if (kept) expect(later?.action.time).toEqual(time(40));
+    if (version === 'later unreadable') checkpoint.studyNoteTitleDraft!.action.observedRevision = 99;
+    const old = { owner: 'owner', editorId: queued.editorId, checkpoint, prepared: null, unfinalized: [] };
+    const restored = DataSession.restore((await throughDeviceStorage(old, queued)).checkpoint);
+    const current = { ...opening, metadata: { ...metadata, revision: 2 } };
+    restored.observe(current, { source: 'server' });
+
+    restored.applyCommit({ ...queued, state: 'cancelled', cancelledByChoice: true });
+
+    const afterCancel = restored.checkpoint();
+    expect(afterCancel).toMatchObject({ confirmed: current, pending: {}, dirty: kept || sibling,
+      draft: { title: kept ? title : value.title, type: sibling ? 'question' : value.type } });
+    if (sibling) expect(afterCancel.studyNoteTypeDraft).toEqual(checkpoint.studyNoteTypeDraft);
+    if (version === 'later unreadable') {
+      expect(afterCancel).toMatchObject({ unreadableScalarProof: ['title'], conflicts: [{
+        path: ['title'], mine: { value: title }, theirs: { value: value.title }, code: 'unreadable-scalar-proof',
+      }] });
+    } else {
+      expect(afterCancel.conflicts).toEqual([]);
+      expect(afterCancel.studyNoteTitleDraft).toEqual(kept ? later : undefined);
+    }
+  });
+
+it.each(['separate recovery', 'same editor'] as const)('preserves a newer scalar proof when transferring placement work (%s)', async target => {
+  const resource = { collection: 'groups', id: 'later-modelled-group' };
+  const base = { userId: 'owner', title: 'Opening title', status: 'draft', description: 'Opening description', flow: [], templates: [] };
+  const opening = { resource, value: base, metadata: { protocol: 1 as const, generation: 'g', revision: 1, deleted: false } };
+  const phone = new DataSession(opening);
+  phone.edit({ ...base, description: 'Updated description' }, undefined, { field: 'description', time: null });
+  const draft = { ...base, description: 'Updated description', title: 'Later title' };
+  phone.edit(draft, undefined, { field: 'title', time: null });
+  const source = phone.checkpoint();
+  expect(source.groupTitleDraft?.editGeneration).toBeGreaterThan(1);
+  const accepted = { ...opening, metadata: { ...opening.metadata, revision: 2 } };
+  let projected;
+  if (target === 'separate recovery') {
+    const retained = retainedAnchoredPlacementDraft('owner', 'phone-editor', 'placement-save', 'during-choice', source, accepted, base, draft);
+    projected = (await throughDeviceStorage(retained)).checkpoint;
+  } else {
+    const editor = new DataSession(accepted);
+    expect(editor.retainAnchoredPlacementChoiceEdits(source, base, draft)).toBe(true);
+    projected = editor.checkpoint();
+  }
+  expect(projected.draft).toEqual(draft);
+  expect(projected.groupTitleDraft).toEqual(source.groupTitleDraft);
+  expect(uncapturedAutosaveFields(projected, accepted, undefined, [])).toMatchObject({
+    groupTitleAction: { before: base.title, after: draft.title, observedRevision: 1 },
+  });
 });
