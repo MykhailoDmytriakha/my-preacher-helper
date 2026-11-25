@@ -10687,3 +10687,16 @@ Two new cases failed before the fix. Forty-three focused cases pass, covering bo
 Hidden Chrome with isolated Auth and Firestore started from a captured queue with one original placement observation and one missing one. At 1280 px the user kept their order and sent one placement update for both thoughts. At 390 px the user kept the saved order and sent no placement update. Both versions displayed the updated words in the correct order and survived reload. The neighbor and separately saved point stayed intact. The screenshots were visually checked. Evidence is in `artifacts/exegetical-thought-placement-mixed-proof-20261125/`.
 
 After authorized rollout, use a disposable sermon to move two thoughts to the same point. Reopen Preparation and Structure and check their ordering and the neighboring thought. Use the emulator for the captured refusal and deliberately missing chronology.
+
+
+## BUG-20261114-editor-drops-unshown-markdown-on-edit · Preserve images and HTML comments in the editor document
+
+Studies → open a note → Edit. The shared Markdown editor previously could not represent an image or comment, so the first visible edit sent a body without it. The existing Markdown schema now retains their contents as inert nodes. The editor keeps its existing presentation and the reading view receives normal Markdown or safe, equivalent HTML. The fix is shared by the note's owned editing session and buffered plan, comment and group editors.
+
+Backspace at a hidden boundary and replacement of visible selected prose preserve hidden content. Trusted document replacements and history keep their existing behavior. Images retain address, alt and title through reopen, including escaped punctuation and entity text. The editor does not create an active image address when preparing its view or serializing clipboard HTML. Tables use their existing HTML output when a multiline attachment cannot fit in a pipe row.
+
+Ten initial red cases used actual note saves with original and incoming markup. Seven further red cases covered selected prose replacement, image attributes and preserving an adjacent formatting mark. Fifty-four focused tests pass. The shared editor, note and export profile passed 508 tests across 44 suites. TypeScript, production-mode build and changed-file ESLint passed. Independent review checked the paragraph boundary, selection, history, serialization context, and inert image path.
+
+Hidden Chrome with isolated Auth and Firestore opened a note at 1280 px and received a newer saved note during editing at 390 px. Both cases retained the image, comments, table and new paragraph text after saving and reopening. The narrow case also replaced selected text across an inline comment. Browser request capture recorded zero requests for the fixture image while editing. The editor screenshots were visually checked. Evidence is in `artifacts/markdown-image-comment-preservation-20261125/`.
+
+Unsupported elements beyond these image and comment forms, such as a raw details block, remain tracked. The owner discussion about their edit presentation remains in SYNC-20261114-unshown-markdown. After authorized rollout, verify with a disposable note containing an image and comments, edit ordinary prose, reopen the note and confirm the image in reading view and the saved comments in the source.

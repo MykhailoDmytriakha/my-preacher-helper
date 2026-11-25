@@ -6,6 +6,7 @@ import { MarkdownSourcePaste } from '@/utils/markdownPaste';
 
 import { MarkdownCodeBlock } from './markdownCodeBlock';
 import { MarkdownListItem } from './markdownListItem';
+import { MarkdownBlockComment, MarkdownImage, MarkdownInlineComment, MarkdownNonTextBoundaries } from './markdownNonText';
 import { MarkdownRangeEnter } from './markdownRangeEnter';
 import { MarkdownTable } from './markdownTable';
 
@@ -16,6 +17,10 @@ export function richMarkdownExtensions() {
         StarterKit.configure({ codeBlock: false, listItem: false }),
         MarkdownCodeBlock,
         MarkdownListItem,
+        MarkdownImage,
+        MarkdownBlockComment,
+        MarkdownInlineComment,
+        MarkdownNonTextBoundaries,
         MarkdownRangeEnter,
         TableKit.configure({ table: false }),
         MarkdownTable,

@@ -1,6 +1,6 @@
-import { getHTMLFromFragment } from '@tiptap/core';
 import { Table } from '@tiptap/extension-table';
-import { Fragment } from '@tiptap/pm/model';
+
+import { serializeMarkdownHtmlTable } from './markdownNonText';
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
@@ -24,7 +24,8 @@ function canWritePipeTable(table: ProseMirrorNode): boolean {
         supported = false;
       }
       cell.descendants(child => {
-        if (child.type.name === 'hardBreak' || child.text?.includes('\n')) supported = false;
+        if (child.type.name === 'hardBreak' || child.text?.includes('\n')
+          || Object.values(child.attrs).some(value => typeof value === 'string' && /[\r\n]/.test(value))) supported = false;
       });
     });
   });
@@ -39,7 +40,7 @@ export const MarkdownTable = Table.extend({
       markdown: {
         serialize(state: TableMarkdownWriter, table: ProseMirrorNode) {
           if (!canWritePipeTable(table)) {
-            state.write(getHTMLFromFragment(Fragment.from(table), table.type.schema));
+            state.write(serializeMarkdownHtmlTable(table));
             state.closeBlock(table);
             return;
           }

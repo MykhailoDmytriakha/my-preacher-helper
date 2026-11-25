@@ -74,11 +74,12 @@ it('makes append its own undoable step, keeps selection and scroll, and emits no
 });
 
 it('preserves raw unsupported source on append until a real editor emission', () => {
-  const { result } = renderHook(() => useEditorOwnedText('Original\n\n<!-- Hidden -->'));
+  const unsupported = 'Original\n\n<details open><summary>Extra</summary><p>Details</p></details>';
+  const { result } = renderHook(() => useEditorOwnedText(unsupported));
   render(<RichMarkdownEditor ownedBy={result.current.ownedBy} />);
   act(() => result.current.append('Voice'));
-  expect(result.current.live()).toBe('Original\n\n<!-- Hidden -->\n\nVoice');
-  expect(markdown()).not.toContain('Hidden');
+  expect(result.current.live()).toBe(unsupported + '\n\nVoice');
+  expect(markdown()).not.toContain('<details');
 });
 
 it('keeps the new registration after a late destroy of the previous editor', () => {
