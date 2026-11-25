@@ -1,3 +1,5 @@
+import { isPreparationTextField, preparationTextPaths } from '@/utils/preparationFieldValues';
+
 import { ACCOUNT_PREFERENCE_TARGETS } from './accountPreference';
 
 import type { SessionCheckpoint } from './session';
@@ -15,8 +17,13 @@ export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean 
 
 /** Preference proof names use the same nested paths as their saved values. */
 export function unreadableScalarPath(collection: string, field: string): string[] {
+  if (collection === 'sermons' && isPreparationTextField(field)) return [...preparationTextPaths[field]];
   const preference = collection === 'users' && ACCOUNT_PREFERENCE_TARGETS.find(target => target.field === field);
   return preference ? [...preference.path] : [field];
+}
+
+export function hasUnreadablePreparationText(checkpoint: SessionCheckpoint): boolean {
+  return checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.unreadableScalarProof?.some(isPreparationTextField) === true;
 }
 
 type ServicePositionProof = Pick<SessionCheckpoint, 'confirmed' | 'pending' | 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry'

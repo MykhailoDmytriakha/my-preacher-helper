@@ -69,6 +69,8 @@ const evidence = {
   serviceOrderInputs: { '["step","body"]': { field: 'body', stepId: 'step', before: 'Original', value: 'Later',
     version: { generation: 'g', observedRevision: 1 }, time } },
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
+  preparationTextRetry: { field: 'authorIntent', generation: 'g', action: { before: { exists: true, value: 'Original' },
+    after: { exists: true, value: 'Later' }, observedRevision: 1, time } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
   preachDateAudienceDrafts: rowDrafts, preachDateCityDrafts: { row: { generation: 'g', action: cityObservation } },
   preachDateChurchDrafts: { row: { generation: 'g', action: churchObservation } },
@@ -124,6 +126,11 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
+  if (key === 'preparationTextRetry') {
+    source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    source.checkpoint.confirmed.value = { userId: 'owner', preparation: { authorIntent: 'Original' } };
+    source.checkpoint.draft = { ...source.checkpoint.confirmed.value, preparation: { authorIntent: 'Later' } };
+  }
   if (key === 'councilTopicPlacementRetry') source.checkpoint.confirmed.resource = { collection: 'councils', id: 'council' };
   if (key === 'serviceOrderInputs') {
     source.checkpoint.confirmed.resource = { collection: 'serviceOrders', id: 'order' };

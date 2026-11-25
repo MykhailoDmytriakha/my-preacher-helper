@@ -52,6 +52,7 @@ import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRo
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
+import { readPreparationTextComparison, retryForPreparationTextChoice, separateRefusedPreparationText } from './sermonPreparationRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -66,6 +67,7 @@ import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './s
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
+import { hasUnreadablePreparationText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -823,6 +825,9 @@ export class EditorController {
       const preview = DataSession.restore(checkpoint);
       if (this.prepared) preview.release(this.prepared.operationId);
       preview.keepLocal(undefined, choiceTime, undefined, titles);
+      const preparation = !selection && !correction && hasUnreadablePreparationText(checkpoint)
+        && readPreparationTextComparison(checkpoint);
+      const preparationRetry = preparation && retryForPreparationTextChoice(preview.checkpoint(), preparation, choiceTime ?? null);
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.assertCurrent();
@@ -834,6 +839,7 @@ export class EditorController {
       this.pendingCaptures.retire(captures);
       const preference = !selection && !correction ? readAccountPreferenceComparison(this.session.checkpoint()) : undefined;
       this.session.keepLocal(undefined, choiceTime, undefined, titles);
+      if (preparationRetry) this.session.retainPreparationTextRetry(preparationRetry);
       if (preference) this.session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
@@ -1405,18 +1411,26 @@ export class EditorController {
           const checkpoint = retained.checkpoint();
           const hasTail = refusedPoint.scope.length > 1;
           const pointOnly = !hasTail || canRebaseRefusedPointTail(captured.value, decided.draft, checkpoint);
-          const separate = pointOnly ? undefined : separateRefusedPointTitle(decided, checkpoint, refusedPoint.scope);
+          const point = pointOnly ? undefined : separateRefusedPointTitle(decided, checkpoint, refusedPoint.scope);
+          const text = pointOnly || point ? undefined : separateRefusedPreparationText(decided, checkpoint, refusedPoint.scope);
+          const separate = point ? { ...point, key: point.id }
+            : text && { ...text, key: 'preparation:' + text.field };
           const covered = new Set(decided.unreadableExegeticalProofs?.map(address => address.nodeId));
-          if (separate) covered.add(separate.id);
-          const otherSavedWork = refusedPoint.scope.slice(1).some(request => request.sermonNoteText || hasTimedAncestor({ ...request,
-            exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !covered.has(action.nodeId)),
-          }));
+          if (point) covered.add(point.id);
+          const otherSavedWork = refusedPoint.scope.slice(1).some(request => {
+            const textActions = request.sermonPreparationTextActions && Object.entries(request.sermonPreparationTextActions)
+              .filter(([field]) => field !== text?.field);
+            return request.sermonNoteText || hasTimedAncestor({ ...request,
+              exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !covered.has(action.nodeId)),
+              sermonPreparationTextActions: textActions?.length ? Object.fromEntries(textActions) : undefined,
+            });
+          });
           if ((!pointOnly && !separate) || otherSavedWork || hasTail && decided.exegeticalPointDrafts?.some(action => !covered.has(action.nodeId))) {
             throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
           }
           projected = { ...record, checkpoint: separate?.checkpoint ?? checkpoint, completedCommits: [...completed] };
           if (!separate) return projected;
-          const independent: EditorRecord = { owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, separate.id),
+          const independent: EditorRecord = { owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, separate.key),
             checkpoint: separate.continuation, prepared: null, unfinalized: [], autoSaveOnResume: false };
           return { editorRecords: [projected, independent], manualRecoveries: [] };
         }

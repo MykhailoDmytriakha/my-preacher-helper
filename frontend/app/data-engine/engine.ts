@@ -60,6 +60,7 @@ import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataPr
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
+import { readPreparationTextComparison } from './sermonPreparationRecovery';
 import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
 import { projectServiceOrderInput, readServiceOrderInputValue, serviceOrderInputKey, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { includesServiceOrderReserve, matchesServiceOrderReserve, SERVICE_ORDER_INPUT_SLOT, ServiceOrderInputReserve, type ServiceOrderReserveStorage } from './serviceOrderInputReserve';
@@ -69,6 +70,7 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { redeliveryDelay } from './unanswered';
+import { hasUnreadablePreparationText } from './unreadableDraftProof';
 
 
 import type { ActionTime } from './actionClock';
@@ -1835,7 +1837,7 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasPrivateSermonPointMove(checkpoint)
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadablePreparationText(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             if (!review) return reconciled;
@@ -2991,7 +2993,11 @@ export class DataEngine {
         if (compared && !equalValues(current, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
-        if ((current.unreadableExegeticalProofs?.length && !Object.keys(current.pending).length)
+        const preparationReview = hasUnreadablePreparationText(current) && !Object.keys(current.pending).length;
+        if (preparationReview && (!compared || !readPreparationTextComparison(current))) {
+          throw Object.assign(new Error('Read both versions of the preparation text before choosing'), { code: 'decision-changed' });
+        }
+        if (((current.unreadableExegeticalProofs?.length || preparationReview) && !Object.keys(current.pending).length)
           || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
@@ -3514,7 +3520,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadablePreparationText(checkpoint) && resolved.preparationTextRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

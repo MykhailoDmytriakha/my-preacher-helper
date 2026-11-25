@@ -987,6 +987,8 @@ describe('DataEngine composition', () => {
     { saves: 3, side: 'stored' },
     { saves: 2, side: 'competing-intent' },
     { saves: 2, side: 'unverified-intent' },
+    { saves: 2, side: 'captured-intent-proof' },
+    { saves: 2, side: 'amended-intent' },
     { saves: 2, side: 'captured-point-proof' },
     { saves: 2, side: 'unverified-other-point' },
   ] as const)('reviews the later unreadable point after retiring a refusal ($saves saves, $side)', async ({ saves, side }) => {
@@ -998,8 +1000,14 @@ describe('DataEngine composition', () => {
       preparation: { exegeticalPlan: nodes, authorIntent } });
     const opening = { ...initial(), resource: ref, value: value([sibling]) };
     const otherPointEdit = side === 'captured-point-proof' || side === 'unverified-other-point';
+    const amendedIntent = side === 'amended-intent';
+    const capturedIntent = side === 'captured-intent-proof' || amendedIntent;
+    const unknownIntent = side === 'competing-intent' || side === 'unverified-intent';
+    const preparationEdit = capturedIntent || unknownIntent;
+    const savedIntent = side === 'competing-intent' ? 'Author words on the other device' : 'Another field';
+    const actionTime = { earliestMs: 3000, latestMs: 3010 };
     const newNeighbor = otherPointEdit ? sibling : { ...sibling, title: 'Newer neighbor' };
-    const stored = { ...opening, value: value([newNeighbor], side === 'competing-intent' ? 'Author words on the other device' : undefined),
+    const stored = { ...opening, value: value([newNeighbor], savedIntent),
       metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop' } };
     s.cache.set(keyOf('owner', ref), opening);
     s.server.set(keyOf('owner', ref), opening);
@@ -1010,9 +1018,19 @@ describe('DataEngine composition', () => {
       await editor.edit(queued);
       await editor.save();
       let authorIntent = 'Another field';
-      const independentIntent = side === 'competing-intent' || side === 'unverified-intent' || otherPointEdit;
+      const independentIntent = preparationEdit || otherPointEdit;
       for (let index = 1; index < saves; index += 1) {
         if (independentIntent && !otherPointEdit) authorIntent = 'Independent words from Save ' + (index + 1);
+        if (capturedIntent) {
+          const words = authorIntent;
+          await editor.commit(() => value([sibling, point], words), { kind: 'document-metadata', time: actionTime });
+          const captured = (await s.commits.list('owner')).at(-1);
+          expect(captured?.sermonPreparationTextActions).toEqual({
+            authorIntent: { before: { exists: true, value: 'Another field' }, after: { exists: true, value: words },
+              observedRevision: 1, time: actionTime },
+          });
+          continue;
+        }
         if (side === 'captured-point-proof') {
           await editor.edit(value([{ ...sibling, title: 'Existing point edited offline' }, point], authorIntent),
             undefined, { field: 'exegetical-point', nodeId: sibling.id, intent: 'title', time: { earliestMs: 3000, latestMs: 3010 } });
@@ -1046,16 +1064,7 @@ describe('DataEngine composition', () => {
       expect(source).toBeDefined();
       const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source!.id);
       const openingReview = reopened.getState().checkpoint;
-      if (independentIntent && !otherPointEdit) {
-        await expect(reopened.acceptRemote(undefined, openingReview)).rejects.toMatchObject({ code: 'other-changes-first' });
-        expect(reopened.getState().checkpoint.pending).toEqual(openingReview.pending);
-        expect(reopened.getState().checkpoint.draft).toEqual(openingReview.draft);
-        expect(s.transport.send).toHaveBeenCalledTimes(1);
-        const tail = (await s.commits.list('owner')).find(request => request.predecessor);
-        expect(tail?.state).toBe('queued');
-        return;
-      }
-      if (side === 'captured-point-proof') {
+      if (side === 'captured-point-proof' || capturedIntent) {
         // An interrupted split must leave both original requests available for retry.
         s.storage!.writeFailureFor = key => Array.isArray(key) && key[0] === 'checkpoint'
           && String(key[2]).startsWith('["manual-choice-recovery",');
@@ -1070,7 +1079,9 @@ describe('DataEngine composition', () => {
       const reviewed = reopened.getState().checkpoint;
       expect(reviewed.pending).toEqual({});
       expect(reviewed.conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:added']]);
-      expect(reviewed.draft?.preparation).toMatchObject({ authorIntent, exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
+      const reviewedIntent = preparationEdit ? savedIntent : authorIntent;
+      expect(reviewed.draft?.preparation).toMatchObject({ authorIntent: reviewedIntent,
+        exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
       expect(s.transport.send).toHaveBeenCalledTimes(1);
       if (otherPointEdit) {
         expect(reviewed.draft?.preparation).toMatchObject({ exegeticalPlan: expect.arrayContaining([sibling]) });
@@ -1088,7 +1099,57 @@ describe('DataEngine composition', () => {
       await s.engine.retry();
       const accepted = s.server.get(keyOf('owner', ref));
       const settled = keepNewest ? [newNeighbor, { ...point, title: 'Written after Save' }] : [newNeighbor];
-      expect(accepted?.value?.preparation).toEqual(value(settled, authorIntent).preparation);
+      expect(accepted?.value?.preparation).toEqual(value(settled, reviewedIntent).preparation);
+      if (preparationEdit) {
+        const choices = await s.engine.listRecoveryChoices(ref, true);
+        expect(choices).toHaveLength(1);
+        expect(choices[0].record.checkpoint.draft?.preparation).toMatchObject({ authorIntent, exegeticalPlan: [sibling] });
+        const continuation = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'independent-intent'), choices[0].id);
+        if (amendedIntent) {
+          authorIntent = 'Prepared text amended after recovery';
+          await continuation.edit(value([sibling], authorIntent));
+        }
+        if (unknownIntent || amendedIntent) {
+          const comparison = continuation.getState().checkpoint;
+          expect(comparison.conflicts).toMatchObject([{ path: ['preparation', 'authorIntent'],
+            mine: { value: authorIntent }, theirs: { value: savedIntent } }]);
+          await expect(continuation.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          if (side === 'competing-intent') {
+            await continuation.acceptRemote(undefined, comparison);
+            await s.engine.retry();
+            expect(s.transport.send).toHaveBeenCalledTimes(1);
+            expect(s.server.get(keyOf('owner', ref))?.value?.preparation).toEqual(value(settled, savedIntent).preparation);
+          } else {
+            const advanced = { ...accepted!, metadata: { ...accepted!.metadata!, revision: 3, operationId: 'next-desktop' } };
+            s.server.set(keyOf('owner', ref), advanced);
+            const choiceTime = { earliestMs: 6000, latestMs: 6010 };
+            await expect(continuation.keepLocal(undefined, comparison, choiceTime)).rejects.toMatchObject({ code: 'decision-changed' });
+            expect(s.transport.send).toHaveBeenCalledTimes(1);
+            await continuation.keepLocal(undefined, continuation.getState().checkpoint, choiceTime);
+            await s.engine.retry();
+            expect(jest.mocked(s.transport.send).mock.calls[1]?.[0]).toMatchObject({
+              sermonPreparationTextActions: { authorIntent: { observedRevision: 3, time: choiceTime } },
+            });
+            expect(s.server.get(keyOf('owner', ref))?.value?.preparation).toEqual(value(settled, authorIntent).preparation);
+          }
+        } else {
+          await continuation.save();
+          await s.engine.retry();
+          const writes = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+          expect(writes).toHaveLength(2);
+          expect(writes[1]).toMatchObject({
+            sermonPreparationTextActions: {
+              authorIntent: { observedRevision: 1, time: actionTime },
+            },
+          });
+          expect(writes[1]).toMatchObject({ kind: 'update', changes: [{ path: ['preparation'],
+            before: { value: value([sibling], reviewedIntent).preparation },
+            after: { value: value([sibling], authorIntent).preparation } }] });
+          expect(s.server.get(keyOf('owner', ref))?.value?.preparation).toEqual(value(settled, authorIntent).preparation);
+        }
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      }
       if (otherPointEdit) {
         const [copy] = await s.engine.listRecoveryChoices(ref, true);
         const continuation = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'independent-point'), copy.id);

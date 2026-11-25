@@ -714,6 +714,14 @@ function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: Com
   return { before, after, time, observedRevision: baseline.metadata!.revision, ...(predecessorOperationId && { predecessorOperationId }) };
 }
 
+export function capturePreparationTextField(baseline: ResourceSnapshot, draft: DocumentData | null, field: PreparationTextField,
+  captured: ActionTime | null): DocumentFieldObservation<FieldValue> | undefined {
+  if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;
+  const target = PREPARATION_TEXT_TARGETS.find(item => item.field === field);
+  const time = captured === null ? null : boundedActionTime(captured);
+  return target && time !== undefined ? captureStoredMetadataField(baseline, undefined, draft, target, time, []) : undefined;
+}
+
 export function capturePreparationConfirmation(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, capture: { field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }, records: readonly CommitRequest[]): PreparationConfirmationObservations | undefined {
   if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;

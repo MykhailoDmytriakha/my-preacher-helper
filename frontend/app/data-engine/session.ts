@@ -93,6 +93,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: AccountPreferenceRetry;
+  preparationTextRetry?: import('./sermonPreparationRecovery').PreparationTextRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
@@ -277,6 +278,13 @@ export class DataSession {
     const planActions = stageExegeticalPoint(this.state, value, shown, autosaveStamp?.field === 'exegetical-point' ? autosaveStamp : undefined);
     if (planActions) this.state.exegeticalPointDrafts = planActions;
     else delete this.state.exegeticalPointDrafts;
+    const retry = this.state.preparationTextRetry;
+    if (retry && (!value || !equalValues(readField(value, unreadableScalarPath('sermons', retry.field)), retry.action.after))) {
+      delete this.state.preparationTextRetry;
+      if (value && !equalValues(readField(value, unreadableScalarPath('sermons', retry.field)), retry.action.before)) {
+        this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), retry.field])];
+      }
+    }
     this.replaceDraft(value);
     this.state.editGeneration = generation;
     this.state.dirty = hasSermonOutlineReview(this.state)
@@ -526,6 +534,10 @@ export class DataSession {
     if (this.state.groupMeetingReview && request.editGeneration === this.state.editGeneration
       && (request.meetingDateAction || request.groupMeetingFieldActions) && equalValues(this.state.draft, request.value)) {
       delete this.state.groupMeetingReview;
+    }
+    const preparationRetry = this.state.preparationTextRetry;
+    if (preparationRetry && equalValues(request.sermonPreparationTextActions?.[preparationRetry.field], preparationRetry.action)) {
+      delete this.state.preparationTextRetry;
     }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && accountPreferenceRetryFields(preferenceRetry).every(field =>
@@ -1246,6 +1258,10 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  retainPreparationTextRetry(retry: SessionCheckpoint['preparationTextRetry']): void {
+    if (retry) this.state.preparationTextRetry = copy(retry);
+  }
+
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
     this.state.accountPreferenceRetry = { field, time };
   }
@@ -1273,6 +1289,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.preparationTextRetry;
     delete this.state.accountPreferenceRetry;
     delete this.state.serviceOrderPlacementComparison;
     delete this.state.serviceOrderStepPlacementRetry;

@@ -27,9 +27,13 @@ export const preparationTextPaths = {
 } as const;
 export type PreparationTextField = keyof typeof preparationTextPaths;
 
+export function isPreparationTextField(field: unknown): field is PreparationTextField {
+  return typeof field === 'string' && Object.hasOwn(preparationTextPaths, field);
+}
+
 export function preparationTextField(path: readonly string[]): PreparationTextField | undefined {
-  const field = path.at(-1) as PreparationTextField;
-  if (!Object.hasOwn(preparationTextPaths, field)) return undefined;
+  const field = path.at(-1);
+  if (!isPreparationTextField(field)) return undefined;
   const target = preparationTextPaths[field];
   return target.length === path.length && target.every((part, index) => part === path[index]) ? field : undefined;
 }

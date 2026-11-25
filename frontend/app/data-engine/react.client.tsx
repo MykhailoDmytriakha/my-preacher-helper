@@ -67,6 +67,7 @@ import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncil
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
 import { readSermonOutlineReview as sermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
+import { readPreparationTextComparison } from './sermonPreparationRecovery';
 import { isReturnedServiceOrderInput as returnedServiceInput, readServiceOrderInputComparison as compareSavedServiceInput, readServiceOrderInputValue as readSavedServiceOrderInput, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
@@ -397,6 +398,8 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
   return checkpoint.dirty && !isOnlySubmittedCopy(record, () => true)
     && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
 }
+
+export { preparationTextDraftPreview } from './sermonPreparationRecovery';
 
 export function exegeticalDraftTitlePreview(record: EditorRecord): string {
   const { draft, confirmed } = record.checkpoint;
@@ -1694,7 +1697,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
-        || readSermonSettingComparison(compared)
+        || readSermonSettingComparison(compared) || readPreparationTextComparison(compared)
         || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
+import { isPreparationTextField, type PreparationTextField } from '@/utils/preparationFieldValues';
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
@@ -19,6 +20,7 @@ import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
 import { readRootPointOrder, retainedRootOrderChanged } from './sermonPointMoveRecovery';
+import { changedPreparationTextFields, preparationRetryMatches } from './sermonPreparationRecovery';
 import { serviceOrderInputSchema } from './serviceOrderInputCodec';
 import { placementSteps, retainedStepOrderChanged } from './serviceOrderStepPlacement';
 import { DataSession, hasUnreadableDraftProof } from './session';
@@ -179,6 +181,8 @@ const recordSchema = z.object({
       z.object({ field: accountPreferenceField, time: actionTime }).strict(),
       z.object({ fields: accountPreferenceFields, time: actionTime }).strict(),
     ]).optional(),
+    preparationTextRetry: z.object({ field: z.custom<PreparationTextField>(isPreparationTextField), generation: id,
+      action: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime }).strict() }).strict().optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
       decisions: z.array(privateFieldDecision) }).optional(),
     groupMeetingReview: z.object({ generation: id, rowId: z.string().min(1), rowCreatedAt: z.string().min(1),
@@ -477,12 +481,19 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
             && !equalValues(readField(opening, path), readField(draft, path)))) fields.push(field);
         }
       }
+      if (collection === 'sermons' && isFields(confirmed)) {
+        const opening = isFields(confirmed.value) ? confirmed.value as DocumentData : null;
+        const draft = isFields(checkpoint.draft) ? checkpoint.draft as DocumentData : null;
+        const lostRetry = dropped.includes('preparationTextRetry') && checkpoint.preparationTextRetry === undefined;
+        fields.push(...held.filter(isPreparationTextField));
+        if (lostRetry && opening && draft) fields.push(...changedPreparationTextFields(opening, draft));
+      }
       if (collection === 'serviceOrders' && isFields(confirmed)) {
         const { retry, review } = recoverRankRetry(checkpoint, confirmed, held);
         if (retry !== checkpoint.serviceOrderPlacementRetry) checkpoint = { ...checkpoint, serviceOrderPlacementRetry: retry };
         if (review) fields.push('rank');
       }
-      if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
+      if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? [...new Set(fields)] : undefined };
     }
     const rawExegeticalProofs = value.checkpoint.exegeticalPointDrafts;
     const checkPointProofs = collection === 'sermons' && rawExegeticalProofs !== undefined;
@@ -597,7 +608,15 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
     ...decision, row: decision.row ? document(decision.row)! : undefined,
     linkedSteps: decision.linkedSteps?.map(step => document(step)!),
   })) };
-  const checkpoint = { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  const checkpoint: SessionCheckpoint = { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  const retry = checkpoint.preparationTextRetry;
+  if (retry && !preparationRetryMatches(checkpoint, retry)) {
+    delete checkpoint.preparationTextRetry;
+    if (ref.collection === 'sermons' && checkpoint.confirmed.value && checkpoint.draft) {
+      const changed = changedPreparationTextFields(checkpoint.confirmed.value, checkpoint.draft);
+      if (changed.length) checkpoint.unreadableScalarProof = [...new Set([...(checkpoint.unreadableScalarProof ?? []), ...changed])];
+    }
+  }
   return clone({ ...record, retainedManualChoice, prepared,
     checkpoint: hasUnreadableDraftProof(checkpoint) ? DataSession.restore(checkpoint).checkpoint() : checkpoint });
 }
