@@ -891,8 +891,11 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
     && !equalValues(oldValue, autosaveFieldValue(checkpoint.confirmed.value, target)) ? staged.action : undefined;
   const tip = Object.values(checkpoint.pending).reduce<SessionCheckpoint['pending'][string] | undefined>((latest, item) =>
     !latest || item.generation > latest.generation ? item : latest, undefined);
-  const pending = tip && equalValues(autosaveFieldValue(tip.value, target), oldValue) ? tip : undefined;
-  const before = prior && !pending ? prior.before : pending ? oldValue : autosaveFieldValue(visible.draft ?? checkpoint.draft, target) ?? oldValue;
+  const displayed = autosaveFieldValue(visible.draft ?? checkpoint.draft, target) ?? oldValue;
+  // A pending save can carry phone text the editor is still holding out of view.
+  const pending = tip && equalValues(autosaveFieldValue(tip.value, target), oldValue)
+    && (target.field !== 'content' || equalValues(displayed, oldValue)) ? tip : undefined;
+  const before = prior && !pending ? prior.before : pending ? oldValue : displayed;
   if (!acceptsAutosaveField(before, target) || equalValues(before, nextValue)) return undefined;
   const observedRevision = prior?.observedRevision ?? pending?.[target.action]?.observedRevision ?? visible.confirmed.metadata!.revision;
   const reference = target.field === 'paragraph'

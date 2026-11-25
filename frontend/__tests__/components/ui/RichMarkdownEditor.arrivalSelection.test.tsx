@@ -197,3 +197,26 @@ it('keeps an arriving adjacent table out of reach of an in-flight Backspace', as
   expect(position(editor).anchorOffset).toBe(4);
   expect(onChange).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['cell', '| First | Second |\n| --- | --- |\n| Keep my place | Old neighbor |'],
+  ['list item', '- Old neighbor\n- Keep my place\n- Final item'],
+])('shows an independent change in the same %s container before the next keystroke', (_case, structure) => {
+  const before = 'Intro.\n\n' + structure + '\n\nTail.';
+  const arrived = before.replace('Old neighbor', 'Updated words from the phone');
+  const onChange = jest.fn(), onHoldText = jest.fn();
+  const view = render(<RichMarkdownEditor value={before} onChange={onChange} onHoldText={onHoldText} />);
+  const editor = mountedEditor(view.container);
+  selectText(editor, 'Keep my place', 7, 5);
+  const previous = position(editor);
+
+  view.rerender(<RichMarkdownEditor value={arrived} onChange={onChange} onHoldText={onHoldText} />);
+
+  expect(position(editor)).toEqual(previous);
+  expect(markdown(editor)).toContain('Updated words from the phone');
+  act(() => { editor.view.dispatch(editor.state.tr.insertText('our')); });
+  expect(onHoldText).not.toHaveBeenCalled();
+  expect(onChange).toHaveBeenCalledWith(expect.stringContaining('Keep our place'));
+  act(() => { expect(editor.commands.undo()).toBe(true); });
+  expect(markdown(editor)).toContain('Updated words from the phone');
+});

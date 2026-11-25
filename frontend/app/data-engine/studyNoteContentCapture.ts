@@ -54,6 +54,20 @@ export function captureStudyNoteContent(baseline: ResourceSnapshot, draft: Docum
     ...(previous && { predecessorOperationId: previous.id }), ...(capture?.reviewed && { reviewed: true }) };
 }
 
+/** Only an unsubmitted body gesture can be canceled by returning to its old display. */
+export function canceledStudyNoteBody(checkpoint: SessionCheckpoint, proposed: DocumentData | null): string | undefined {
+  const { confirmed, studyNoteContentDraft: edit } = checkpoint;
+  const saved = confirmed.value?.content;
+  if (confirmed.resource.collection !== 'studyNotes' || !edit || !isStudyNoteBodyDocument(confirmed.value)
+    || !proposed || !isStudyNoteBodyDocument(proposed) || typeof saved !== 'string' || !confirmed.metadata || confirmed.metadata.deleted
+    || edit.generation !== confirmed.metadata.generation
+    || !equalValues(edit.action.before, readField(proposed, ['content']))
+    || !equalValues(edit.action.after, readField(checkpoint.draft ?? {}, ['content']))
+    || proposed.content === saved || checkpoint.draft?.content === saved
+    || Object.values(checkpoint.pending).some(request => request.studyNoteContentAction || request.value?.content !== saved)) return undefined;
+  return saved;
+}
+
 /** A confirmed copy may arrive before the editor displays it. Keep the actual opening of the edit. */
 export function unseenStudyNoteField(checkpoint: SessionCheckpoint, value: DocumentData | null,
   shown: ShownCopy | undefined, field: StudyNoteTimedField): { snapshot: ResourceSnapshot; conflict: ConflictDetail | null } | undefined {

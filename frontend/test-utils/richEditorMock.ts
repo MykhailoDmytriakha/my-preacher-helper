@@ -7,7 +7,7 @@ export function createRichEditorMock() {
         schema,
         options: {},
         state: EditorState.create({ schema }),
-        view: { dispatch: jest.fn(), composing: false, hasFocus: jest.fn().mockReturnValue(false) },
+        view: { dom: document.createElement('div'), dispatch: jest.fn(), composing: false, hasFocus: jest.fn().mockReturnValue(false) },
         on: jest.fn(),
         off: jest.fn(),
         chain: jest.fn().mockReturnThis(),

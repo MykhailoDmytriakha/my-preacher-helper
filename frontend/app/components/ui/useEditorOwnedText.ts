@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 export interface OwnedTextDocument {
   install(value: string): void;
   /** False means the editor reports an active composition. */
-  append(value: string): boolean | void;
+  append(value: string, block: string): boolean | void;
   waitForComposition?(): Promise<void>;
   replace(value: string): void;
 }
@@ -13,7 +13,7 @@ export interface OwnedTextDocument {
 /** The editor joins this owner during construction, before any input can reach it. */
 export interface EditorTextOwner {
   live(): string;
-  emit(value: string): void;
+  emit(value: string, displayedOpening?: string): void;
   /** A native input event is still completing its ordinary observer turn. */
   nativeInput?(): void;
   register(document: OwnedTextDocument): () => void;
@@ -39,15 +39,15 @@ export function useEditorOwnedText(initial: string, onEdit?: OwnedTextEdit) {
     current.current = value;
     setText(value);
   }, []);
-  const edit = useCallback((value: string, notify = authored.current) => {
-    const opening = current.current;
-    if (value === opening) return;
+  const edit = useCallback((value: string, notify = authored.current, displayedOpening?: string) => {
+    const opening = displayedOpening ?? current.current;
+    if (value === opening || value === current.current) return;
     publish(value);
     notify?.(value, opening);
   }, [publish]);
   const ownedBy = useMemo<EditorTextOwner>(() => ({
     live,
-    emit: edit,
+    emit: (value, opening) => edit(value, authored.current, opening),
     nativeInput,
     register: instance => {
       document.current = instance;
@@ -63,7 +63,7 @@ export function useEditorOwnedText(initial: string, onEdit?: OwnedTextEdit) {
     const apply = () => {
       // Recompute after native input has emitted; retain unsupported raw source otherwise.
       const value = current.current ? `${current.current}\n\n${block}` : block;
-      if (document.current?.append(value) === false) return false;
+      if (document.current?.append(value, block) === false) return false;
       edit(value, onAppend);
       return true;
     };

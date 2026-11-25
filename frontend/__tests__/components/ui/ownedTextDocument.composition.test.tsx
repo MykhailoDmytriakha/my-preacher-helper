@@ -89,3 +89,14 @@ it('applies a fresh transcript synchronously when the editor is already idle aft
     expect(result.current.live()).toBe('Original\n\nVoice');
   });
 });
+
+it('installs an arrival on silent IME idle without another key or change of focus', async () => {
+  const result = mountEditor();
+  const composing = jest.spyOn(mockEditor.view, 'composing', 'get').mockReturnValue(true);
+  await act(async () => { result.current.follow('Original\n\nFrom the phone'); });
+  expect(mockEditor.state.doc.textContent).toBe('Original');
+
+  composing.mockReturnValue(false);
+  await act(async () => { await jest.advanceTimersByTimeAsync(5000); });
+  expect(mockEditor.state.doc.textContent).toBe('OriginalFrom the phone');
+});

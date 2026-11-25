@@ -116,8 +116,10 @@ function OwnedMarkdownEditor({
             const unregister = ownedBy.register(ownedDocument.current);
             editor.on('destroy', unregister);
         },
-        onUpdate: ({ editor }) => {
-            ownedBy.emit(readMarkdown(editor));
+        onUpdate: ({ editor, transaction }) => {
+            const value = readMarkdown(editor);
+            const edit = ownedDocument.current?.captureEdit(value, transaction);
+            ownedBy.emit(edit?.value ?? value, edit?.opening);
         },
     });
 
@@ -132,7 +134,8 @@ function OwnedMarkdownEditor({
     }
 
     return (
-        <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
+        <div data-rich-markdown-editor onBlur={() => ownedDocument.current?.retryArrival()}
+            className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
             <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} end={toolbarEnd} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
@@ -261,6 +264,7 @@ function BufferedMarkdownEditor({
     } | null>(null);
     const [choice, setChoice] = useState<string | null>(null);
     const editorContainer = useRef<HTMLDivElement>(null);
+    const surfaceRef = useRef<HTMLDivElement>(null);
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
     const canEdit = editable && choice === null;
     // Observed text is applied by the guarded mirror below. Reconfiguring the editor for each
@@ -388,11 +392,12 @@ function BufferedMarkdownEditor({
                 if (adoptForeign(editor, deferred.target, true)) deferredArrival.current = null;
             });
         };
+        const surface = surfaceRef.current;
         editor.on('selectionUpdate', retryArrival);
-        editor.on('blur', retryArrival);
+        surface?.addEventListener('focusout', retryArrival);
         return () => {
             editor.off('selectionUpdate', retryArrival);
-            editor.off('blur', retryArrival);
+            surface?.removeEventListener('focusout', retryArrival);
             if (deferredArrival.current?.editor === editor) deferredArrival.current = null;
         };
     }, [adoptForeign, editor, getPending]);
@@ -464,7 +469,7 @@ function BufferedMarkdownEditor({
     };
 
     return (
-        <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
+        <div ref={surfaceRef} data-rich-markdown-editor className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
             <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!canEdit} end={toolbarEnd} />
             <div ref={editorContainer} className="flex-1 cursor-text flex flex-col">
                 <EditorContent

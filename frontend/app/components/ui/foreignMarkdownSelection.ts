@@ -77,6 +77,40 @@ export function mapForeignMarkdownSelection(selection: Selection, target: Docume
     return undefined;
 }
 
+/** Patch independent text inside the same list or table, keeping the native
+ * selection away from replacements and from editing keys that join blocks. */
+export function patchUnselectedStructure(
+    tr: Transaction, selection: Selection, position: number, previous: DocumentNode, incoming: DocumentNode,
+): boolean {
+    if (!(selection instanceof TextSelection)
+        || !['table', 'bulletList', 'orderedList'].includes(previous.type.name)
+        || position >= selection.from || position + previous.nodeSize <= selection.to
+        || selection.$from.parentOffset === 0 || selection.$to.parentOffset === selection.$to.parent.content.size) return false;
+
+    return patchTextblocks(tr, selection, position, previous, incoming);
+}
+
+function patchTextblocks(
+    tr: Transaction, selection: Selection, position: number, previous: DocumentNode, incoming: DocumentNode,
+): boolean {
+    if (previous.eq(incoming)) return true;
+    if (!previous.sameMarkup(incoming) || previous.isLeaf || previous.isAtom) return false;
+    if (previous.isTextblock) {
+        const end = position + previous.nodeSize;
+        if (position <= selection.to && end >= selection.from) return false;
+        tr.replaceWith(position + 1, end - 1, incoming.content);
+        return true;
+    }
+    if (previous.childCount !== incoming.childCount) return false;
+    let offset = position + previous.nodeSize - 1;
+    for (let index = previous.childCount - 1; index >= 0; index--) {
+        const child = previous.child(index);
+        offset -= child.nodeSize;
+        if (!patchTextblocks(tr, selection, offset, child, incoming.child(index))) return false;
+    }
+    return true;
+}
+
 interface TopLevelAnchor {
     original: number;
     target: number;

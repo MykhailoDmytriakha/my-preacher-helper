@@ -55,7 +55,7 @@ import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrde
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
-import { unseenStudyNoteField } from './studyNoteContentCapture';
+import { canceledStudyNoteBody, unseenStudyNoteField } from './studyNoteContentCapture';
 import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegacyStudyNote, reviseLegacyCommentConflicts, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
@@ -301,12 +301,18 @@ export class DataSession {
     }
     if (autosaveStamp?.field === 'service-order-input') stageServiceOrderInput(this.state, value, autosaveStamp.input);
     const field = autosaveStamp?.field;
+    const canceledBody = field === 'content' ? canceledStudyNoteBody(this.state, value) : undefined;
+    if (value && canceledBody !== undefined) {
+      value = { ...value, content: canceledBody };
+      delete this.state.studyNoteContentDraft;
+      this.state.conflicts = this.state.conflicts.filter(({ path }) => !equalValues(path, ['content']));
+    }
     const previousConflicts = this.state.conflicts;
     if (this.state.confirmed.resource.collection === 'studyNotes' && previousConflicts.length) {
       this.state.conflicts = reviseLegacyCommentConflicts(this.state, value);
       if (!this.state.conflicts.length && equalValues(this.state.remoteCandidate, this.state.confirmed)) this.state.remoteCandidate = null;
     }
-    const unseen = field === 'content' || field === 'title' || field === 'type'
+    const unseen = canceledBody === undefined && (field === 'content' || field === 'title' || field === 'type')
       ? unseenStudyNoteField(this.state, value, shown, field) : undefined;
     if (unseen) {
       const other = this.state.conflicts.filter(({ path }) => path.length !== 1 || path[0] !== field);
@@ -315,6 +321,7 @@ export class DataSession {
         ? copy(unseen.snapshot) : null;
     }
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
+      if (canceledBody !== undefined && target.field === 'content') continue;
       const draft = stageAutosaveField(this.state, value, shown, target, autosaveStamp);
       if (draft) this.state[target.draft] = draft;
       else delete this.state[target.draft];
@@ -352,9 +359,9 @@ export class DataSession {
       || !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
       || Boolean(this.state.serviceOrderPlacementRetry || this.state.serviceOrderStepPlacementRetry || this.state.outlinePointPlacementRetry);
     const waiting = this.state.remoteCandidate;
-    if (field === 'content' && waiting?.value && waiting.resource.collection === 'studyNotes' && isOrdinaryStudyNote(value)
-      && waiting.metadata?.generation === this.state.confirmed.metadata?.generation
-      && !this.state.dirty && !this.state.conflicts.length && !Object.keys(this.state.pending).length) {
+    if (field === 'content' && waiting?.value && waiting.resource.collection === 'studyNotes'
+      && (canceledBody !== undefined || (isOrdinaryStudyNote(value) && !this.state.dirty && !this.state.conflicts.length))
+      && waiting.metadata?.generation === this.state.confirmed.metadata?.generation && !Object.keys(this.state.pending).length) {
       // Undo removed all unsent edits. The saved copy already waiting in this session can now be shown.
       this.observe(waiting, { source: 'cache' });
     }

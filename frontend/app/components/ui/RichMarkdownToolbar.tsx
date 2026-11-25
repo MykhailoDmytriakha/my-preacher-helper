@@ -206,7 +206,9 @@ function ToolbarButton({ onClick, isActive, disabled = false, children, ariaLabe
     return (
         <button
             type="button"
+            onMouseDown={event => { if (event.button === 0) event.preventDefault(); }}
             onClick={onClick}
+            data-rich-markdown-format
             disabled={disabled}
             aria-label={ariaLabel}
             title={ariaLabel}

@@ -1,10 +1,11 @@
-import { closeHistory } from '@tiptap/pm/history';
-import { Selection, TextSelection } from '@tiptap/pm/state';
+import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
+import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 
 import { applyForeignContent, canonicalForeignTarget } from './foreignContent';
 
 import type { OwnedTextDocument } from './useEditorOwnedText';
 import type { Editor } from '@tiptap/core';
+import type { Node as DocumentNode } from '@tiptap/pm/model';
 
 /** The same own replacement is used by owned and legacy editors. */
 export function replaceOwnContent(editor: Editor, value: string): void {
@@ -13,12 +14,39 @@ export function replaceOwnContent(editor: Editor, value: string): void {
     .setContent(value, { emitUpdate: false }).run();
 }
 
-/** Composition is witnessed by the editor; accepted appends install the exact published parse. */
+interface PendingArrival {
+  value: string;
+  /** Exact displayed-to-canonical pairs from appends performed during this hold. */
+  appendHistory?: Map<string, string>;
+}
+
+/** Composition and displayed edit openings are witnessed by the editor. */
 export function ownedTextDocument(editor: Editor) {
   // The installed Android view ends an idle composition after five seconds without
   // a DOM compositionend. This timer only rechecks its public state; it never ends
   // a composition or treats elapsed time as proof that native input was admitted.
   const compositionCheckMs = 5000;
+  const { markdown } = editor.storage as unknown as {
+    markdown: { getMarkdown(): string; serializer: { serialize(doc: DocumentNode): string } };
+  };
+  let deferred: PendingArrival | undefined;
+  const install = (value: string, protectPlace = true) => {
+    const pending = deferred?.value === value ? deferred : { value };
+    if (protectPlace && editor.view.composing) {
+      deferred = pending;
+      recheck();
+    } else {
+      deferred = applyForeignContent(editor, value, protectPlace).deferred ? pending : undefined;
+    }
+  };
+  const retryArrival = () => {
+    const arrival = deferred;
+    if (arrival === undefined) return;
+    queueMicrotask(() => {
+      if (!editor.isDestroyed && deferred === arrival) install(arrival.value);
+    });
+  };
+  editor.on('selectionUpdate', retryArrival);
   let retry: ReturnType<typeof setTimeout> | undefined;
   let ended: ReturnType<typeof setTimeout> | undefined;
   const waiting = new Set<{ resolve: () => void; reject: (error: Error) => void }>();
@@ -31,7 +59,8 @@ export function ownedTextDocument(editor: Editor) {
       waiting.clear();
       clearTimeout(retry);
       retry = undefined;
-    } else if (waiting.size && retry === undefined) {
+      retryArrival();
+    } else if ((waiting.size || deferred !== undefined) && retry === undefined) {
       retry = setTimeout(() => { retry = undefined; recheck(); }, compositionCheckMs);
     }
   };
@@ -44,6 +73,7 @@ export function ownedTextDocument(editor: Editor) {
   editor.on('destroy', () => {
     clearTimeout(retry);
     clearTimeout(ended);
+    deferred = undefined;
     // Tiptap emits destroy before destroying its view.
     for (const waiter of waiting) waiter.reject(new Error('The note editor closed before text could be appended'));
     waiting.clear();
@@ -59,11 +89,38 @@ export function ownedTextDocument(editor: Editor) {
       waiting.add({ resolve, reject });
       recheck();
     }),
-    install: (value: string) => { applyForeignContent(editor, value); },
-    append: (value: string) => {
-      const { view, state } = editor;
-      if (view.composing) return false;
-      const target = canonicalForeignTarget(editor, value);
+    install,
+    retryArrival,
+    captureEdit: (value: string, transaction: Transaction): { value: string; opening?: string } => {
+      if (!deferred) return { value };
+      const opening = markdown.serializer.serialize(transaction.before);
+      const history = deferred.appendHistory;
+      const canonicalOpening = history?.get(opening);
+      if (isHistoryTransaction(transaction) && canonicalOpening === deferred.value) {
+        const restored = history?.get(value);
+        if (restored !== undefined) {
+          deferred.value = restored;
+          return { value: restored, opening: canonicalOpening };
+        }
+      }
+      // Give the session the text the user actually saw before this edit.
+      if (opening !== value) deferred = undefined;
+      return { value, opening };
+    },
+    append: (value: string, block: string) => {
+      if (editor.view.composing) return false;
+      const { state } = editor;
+      let displayedValue = value;
+      const pending = deferred;
+      if (pending) {
+        // Publish the append against the confirmed text. Keep drawing the held
+        // editing place, and append the same words to that view.
+        const shown = markdown.getMarkdown();
+        displayedValue = shown ? `${shown}\n\n${block}` : block;
+        pending.appendHistory ??= new Map();
+        pending.appendHistory.set(shown, pending.value);
+      }
+      const target = canonicalForeignTarget(editor, displayedValue);
       const from = state.doc.content.findDiffStart(target.content);
       if (from !== null) {
         const end = state.doc.content.findDiffEnd(target.content)!;
@@ -83,8 +140,19 @@ export function ownedTextDocument(editor: Editor) {
         tr.setStoredMarks(state.storedMarks);
         editor.view.dispatch(tr);
       }
+      if (pending) {
+        pending.appendHistory?.set(markdown.getMarkdown(), value);
+        pending.value = value;
+      }
       return true;
     },
-    replace: (value: string) => { replaceOwnContent(editor, value); },
-  } satisfies OwnedTextDocument & { compositionEnd(): void };
+    replace: (value: string) => {
+      if (deferred) install(deferred.value, false);
+      replaceOwnContent(editor, value);
+    },
+  } satisfies OwnedTextDocument & {
+    compositionEnd(): void;
+    retryArrival(): void;
+    captureEdit(value: string, transaction: Transaction): { value: string; opening?: string };
+  };
 }

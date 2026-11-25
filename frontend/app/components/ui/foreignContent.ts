@@ -5,7 +5,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { alignSequences, type DifferenceRun } from '@/utils/alignSequences';
 
 import { retireHistory } from './foreignHistory';
-import { adoptOutsideMarkdownSelection, mapForeignMarkdownSelection } from './foreignMarkdownSelection';
+import { adoptOutsideMarkdownSelection, mapForeignMarkdownSelection, patchUnselectedStructure } from './foreignMarkdownSelection';
 
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -39,17 +39,15 @@ function topLevel(doc: PMNode) {
   return { nodes, offsets };
 }
 
-function touchesEditingPlace(selection: Selection, runs: readonly DifferenceRun[]): boolean {
+function touchesEditingPlace(selection: Selection, { oldFrom, oldTo }: DifferenceRun): boolean {
   const { $from, $to } = selection;
   const first = $from.index(0);
   const last = $to.index(0) - Number($to.depth === 0 && !selection.empty);
-  return runs.some(({ oldFrom, oldTo }) => (
-    // A mapped offset inside a replaced block can still point into arriving words.
-    (oldFrom <= last && oldTo > first)
+  // A mapped offset inside a replaced block can still point into arriving words.
+  return (oldFrom <= last && oldTo > first)
     // Backspace and Delete at a block edge reach adjacent content.
     || ($from.parentOffset === 0 && oldTo === first)
-    || ($to.parentOffset === $to.parent.content.size && oldFrom === last + 1)
-  ));
+    || ($to.parentOffset === $to.parent.content.size && oldFrom === last + 1);
 }
 
 function distantCaret(state: EditorState, tr: Transaction, runs: readonly DifferenceRun[]): Selection | undefined {
@@ -80,6 +78,14 @@ function deferArrival(editor: Editor, state: EditorState, target: PMNode): { fal
   return { fallback: false, deferred: true };
 }
 
+function hasEditingFocus(editor: Editor): boolean {
+  if (editor.view.hasFocus()) return true;
+  const selector = '[data-rich-markdown-editor]';
+  const surface = editor.view.dom.closest(selector);
+  const active = editor.view.dom.ownerDocument.activeElement;
+  return Boolean(surface && active?.closest('[data-rich-markdown-format]') && active.closest(selector) === surface);
+}
+
 /** One quiet adoption path for both focused and background editors. Own edits use setContent. */
 export function applyForeignContent(editor: Editor, value: string, protectPlace = false): { fallback: boolean; deferred?: true } {
   const state = editor.state;
@@ -87,17 +93,25 @@ export function applyForeignContent(editor: Editor, value: string, protectPlace 
   const target = state.applyTransaction(replacement).state.doc;
   const old = topLevel(state.doc), next = topLevel(target);
   const runs = alignSequences(old.nodes, next.nodes, (a, b) => a.eq(b));
-  const protect = protectPlace && editor.isEditable && editor.view.hasFocus();
+  const protect = protectPlace && editor.isEditable && hasEditingFocus(editor);
   const expected = protect ? mapForeignMarkdownSelection(state.selection, target) : undefined;
 
-  if (protect && (!expected || touchesEditingPlace(state.selection, runs))) {
-    return deferArrival(editor, state, target);
-  }
+  if (protect && !expected) return deferArrival(editor, state, target);
 
   const tr = foreignTransaction(state.tr);
+  let patchedStructure = false;
   for (let i = runs.length - 1; i >= 0; i--) {
     const run = runs[i];
-    tr.replaceWith(old.offsets[run.oldFrom], old.offsets[run.oldTo], next.nodes.slice(run.newFrom, run.newTo));
+    const from = old.offsets[run.oldFrom];
+    if (protect && touchesEditingPlace(state.selection, run)) {
+      if (run.oldTo !== run.oldFrom + 1 || run.newTo !== run.newFrom + 1
+        || !patchUnselectedStructure(tr, state.selection, from, old.nodes[run.oldFrom], next.nodes[run.newFrom])) {
+        return deferArrival(editor, state, target);
+      }
+      patchedStructure = true;
+    } else {
+      tr.replaceWith(from, old.offsets[run.oldTo], next.nodes.slice(run.newFrom, run.newTo));
+    }
   }
   const mapped = protect ? mapForeignMarkdownSelection(state.selection, tr.doc) : distantCaret(state, tr, runs);
   if (mapped) {
@@ -109,6 +123,8 @@ export function applyForeignContent(editor: Editor, value: string, protectPlace 
       return { fallback: false };
     }
   }
+
+  if (patchedStructure) return deferArrival(editor, state, target);
 
   if (expected) {
     const full = mapForeignMarkdownSelection(state.selection, replacement.doc);

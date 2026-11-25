@@ -49,7 +49,7 @@ it('unregisters only its own instance even when an old instance dies late', () =
   releaseOld();
   act(() => { result.current.follow('Arrival'); result.current.append('Voice'); });
   expect(current.install).toHaveBeenCalledWith('Arrival');
-  expect(current.append).toHaveBeenCalledWith('Arrival\n\nVoice');
+  expect(current.append).toHaveBeenCalledWith('Arrival\n\nVoice', 'Voice');
   expect(old.install).not.toHaveBeenCalled();
   releaseCurrent();
   act(() => result.current.replace('Reading'));

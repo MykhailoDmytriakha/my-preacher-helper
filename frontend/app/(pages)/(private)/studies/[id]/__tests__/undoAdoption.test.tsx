@@ -1,6 +1,5 @@
 import { writeForeignEvidence } from '@test-utils/foreignContentEvidence';
 import * as foreignContent from '@/components/ui/foreignContent';
-import { baseTyping } from '@test-utils/foreignSelection';
 import { stand, start, md, stored, settle, phoneSave } from '@test-utils/noteOrdering';
 import { act } from '@testing-library/react';
 
@@ -118,14 +117,25 @@ it('B31 ACCEPTED LIMITATION: an arrival retires saved own typing through real no
 });
 
 it('C12 preserves the production table shape through foreign adoption, later typing and note autosave', async () => {
-  await openNote('| A | B |\n| --- | --- |\n| abcdef | Keep |', true);
+  const opening = '| A | B |\n| --- | --- |\n| abcdef | Keep |';
+  await openNote(opening, true);
   const editor = stand.editor;
-  act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
+  let active = 0, neighbor = 0;
+  editor.state.doc.descendants((node, position) => {
+    if (node.text === 'abcdef') active = position + 3;
+    if (node.text === 'Keep') neighbor = position + 2;
+  });
+  act(() => { editor.commands.setTextSelection(active); editor.view.focus(); });
   await settle(1600); await settle(2000);
   const remote = '| A | B |\n| --- | --- |\n| abef | Keep |';
   await phoneSave(remote);
   expect(editor.view.dom.querySelectorAll('table')).toHaveLength(1);
+  expect(md().trim()).toBe(opening);
+  expect(await stored()).toBe(remote);
+  await act(async () => { editor.commands.setTextSelection(neighbor); });
   expect(md().trim()).toBe(remote);
+  expect(editor.state.selection.$head.parent.textContent).toBe('Keep');
+  expect(editor.state.selection.$head.parentOffset).toBe(2);
   act(() => { expect(editor.commands.undo()).toBe(false); expect(editor.commands.redo()).toBe(false); });
   act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' Own.'); });
   await settle(1600); await settle(2000);
@@ -167,14 +177,13 @@ it('keeps the note caret at its words through a far arrival and autosave', async
 });
 
 
-it('stores the production result after an adjacent arrival in note autosave', async () => {
+it('saves the next key at the note caret after a safe adjacent arrival', async () => {
   const initial = 'First words\n\nLast words\n\nTail';
   await openNote(initial);
   const editor = stand.editor;
   const arrivalPath = jest.spyOn(foreignContent, 'applyForeignContent');
   act(() => { editor.commands.setTextSelection(4); editor.view.focus(); });
   const arrived = initial.replace('Last words', 'PHONEARRIVAL sacred words\n\nLast words');
-  const expected = baseTyping(editor, arrived);
   await phoneSave(arrived);
   expect(stand.editor).toBe(editor);
 
@@ -183,12 +192,12 @@ it('stores the production result after an adjacent arrival in note autosave', as
   const paths = arrivalPath.mock.results.map(result => result.value);
   arrivalPath.mockRestore();
   writeForeignEvidence('caller-note-adjacent', paths);
-  expect(paths.every(result => result.fallback)).toBe(true);
-  expect(editor.state.doc.toJSON()).toEqual(expected.document);
-  expect(editor.state.selection.toJSON()).toEqual(expected.selection);
+  expect(paths).toEqual([{ fallback: false }]);
+  expect(md()).toBe(arrived);
+  expect(editor.state.selection.head).toBe(4);
   act(() => { editor.commands.insertContent('X'); });
   await settle(1600); await settle(2000);
-  expect(md()).toBe(expected.typed);
+  expect(md()).toBe(arrived.replace('First words', 'FirXst words'));
   expect(await stored()).toBe(md());
 
   expect(stand.notices).toEqual([]);

@@ -1,8 +1,9 @@
 import type { Editor } from '@tiptap/core';
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { waitForMountedEditor } from '@test-utils/richMarkdownHistory';
 
 const markdown = 'Lead words\n\n| Person | Words |\n| --- | --- |\n| Paul | Grace |\n\nTail words';
 
@@ -118,4 +119,26 @@ describe('RichMarkdownEditor native click before selectionchange', () => {
     expect(fixture.editor.getJSON()).toEqual(original);
     expect(fixture.onChange).not.toHaveBeenCalled();
   });
+});
+
+it('keeps the selected words when focus moves to the formatting toolbar during an arrival', async () => {
+  const opening = 'Opening words.\n\nKeep my place.\n\nTail words.';
+  const arrived = opening.replace('Keep my place.', 'Words from the phone.');
+  const onHoldText = jest.fn();
+  const view = render(<RichMarkdownEditor value={opening} onChange={jest.fn()} onHoldText={onHoldText} />);
+  const editor = await waitForMountedEditor(view.container);
+  const at = editor.state.doc.firstChild!.nodeSize + 1;
+  act(() => {
+    editor.commands.setTextSelection({ from: at, to: at + 'Keep my place.'.length });
+    editor.view.focus();
+  });
+  const before = editor.state.selection.toJSON();
+  view.rerender(<RichMarkdownEditor value={arrived} onChange={jest.fn()} onHoldText={onHoldText} />);
+
+  const bold = screen.getByRole('button', { name: 'richText.bold' });
+  await act(async () => { bold.focus(); });
+  expect(editor.state.selection.toJSON()).toEqual(before);
+  expect(editor.getText()).toContain('Keep my place.');
+  fireEvent.click(bold);
+  expect(onHoldText).toHaveBeenCalledWith(opening.replace('Keep my place.', '**Keep my place.**'));
 });

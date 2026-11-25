@@ -127,7 +127,8 @@ export function EngineCommentWindow({ target, place, context, bible, placeOf, on
       restoringText.current = null;
       replace(observed);
     } else follow(observed);
-  }, [shown?.content, creating, ready, follow, replace]);
+  // An edit returned to its opening can resolve back to the same confirmed content.
+  }, [shown?.content, checkpoint?.editGeneration, creating, ready, follow, replace]);
   const title = useBufferedText(shown?.title ?? '', (value, opening) =>
     stage(live => ({ ...live, title: value }),
       { action: { kind: 'study-note-field', field: 'title', opening: opening ?? shown?.title ?? '' } }));
