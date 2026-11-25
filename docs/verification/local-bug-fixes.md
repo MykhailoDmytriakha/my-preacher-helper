@@ -10484,3 +10484,14 @@ An intact observation retains the original revision and time. If it is unreadabl
 The old browser run reproduced the blocked decision. On the fixed build, hidden Chrome with local Auth and Firestore exercised readable proof and a named calendar church at 1,280 px, and both choices for unreadable proof at 390 px. The point, dates and selected church persisted after reload. The engine, server, providers and sermon hooks profile passed 4,308 tests in 183 suites. TypeScript and scoped ESLint passed, with 93 lint warnings. Independent review found no blocking issue. Evidence is in the local case at `artifacts/exegetical-church-refused-20261125/`.
 
 After authorized deployment, check on a disposable sermon that selecting a church can fill the unspecified church on its scheduled entry and that a church explicitly entered in the calendar survives. Use the emulator to reproduce refused requests and unreadable device evidence. Explicit appointment changes and queues whose field scope cannot be proved remain open.
+
+
+## BUG-20261113-unreadable-proof-does-not-ask · Verify that date forms save separately from a refused point
+
+Sermons → Preparation → Exegetical Plan. The planned date can be edited from its chip under the title or in Edit Sermon. Both paths use a scoped form. When the form opens while the point Save is still pending, the date request has no predecessor from the point. It keeps its own action time when it changes an existing date. The legacy POST endpoint rejects writes, so the current date controls use the same queue contract.
+
+The four engine regressions pass on the existing product code. They cover adding a calendar entry, clearing a planned day, assigning a day to an undated entry and rescheduling in Edit Sermon. The date reaches the server while the point is refused. The later choice about the point sends only its preparation update. The latest note on the date remains. Clearing the day retains the entry and its identity.
+
+Hidden Chrome on isolated Auth and Firestore exercised the date chip, Edit, clearing the day, Save and reopening. The fixture held the earlier point command to allow the real date form to save before the refusal. After reopening, the point comparison showed the exact later words. Keeping the point left the undated entry and its note intact. This is verification of the existing form behavior. Captures that combine actions without a matching source remain protected and stay open in the tracker. Evidence is in the local case at `artifacts/exegetical-date-refused-20261125/`.
+
+After authorized deployment, use a disposable sermon to check that clearing a planned day leaves the entry available to edit and preserves the date note across reload. Keep the deliberately refused point and unreadable device history in the emulator.

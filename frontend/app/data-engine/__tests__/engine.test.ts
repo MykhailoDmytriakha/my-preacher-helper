@@ -1,3 +1,5 @@
+import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
+import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
 
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
@@ -20,7 +22,7 @@ import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
-import type { SermonOutline } from '@/models/models';
+import type { PreachDate, SermonOutline } from '@/models/models';
 import type { DocumentData, EngineTransport, JournalEntry, JournalStore, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -1520,6 +1522,89 @@ describe('DataEngine composition', () => {
           preachDates: fillsDate ? [{ ...savedRow, church: phone }, other] : storedDates,
         });
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each(['calendar-add', 'calendar-clear', 'metadata-assign', 'metadata-reschedule'] as const)(
+    'keeps a date form Save separate from a refused exegetical point Save (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'date-form-and-point' };
+      const key = keyOf('owner', ref);
+      const church = { id: 'north', name: 'North Church' };
+      const row = { id: 'planned', createdAt: '2026-11-08T00:00:00.000Z', status: 'planned',
+        date: mode === 'metadata-assign' ? '' : '2026-12-14', church, notes: 'Opening note' } satisfies PreachDate;
+      const other = { ...row, id: 'other', date: '2026-12-20', notes: 'Other note' } satisfies PreachDate;
+      const newRow = { ...row, id: 'new-date', createdAt: '2026-11-09T00:00:00.000Z', date: '2026-12-18' } satisfies PreachDate;
+      const point = { id: 'point', title: '', children: [] };
+      const newest = { ...point, title: 'Newest local point title' };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', church, isPreached: false,
+        thoughts: [], preparation: { exegeticalPlan: [] }, preachDates: [{ ...row }, { ...other }] };
+      const opening: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const latest = { ...opening, value: { ...value, preachDates: [{ ...row, notes: 'Latest calendar note' }, { ...other }] },
+        metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-note' } };
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'opening');
+      s.server.set(key, opening);
+      s.cache.set(key, opening);
+
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [point] } });
+        await editor.save();
+        const pointId = (await s.commits.list('owner'))[0].id;
+        if (mode === 'calendar-add') {
+          const form = editor.form('preach-date:add:new', PREACH_DATE_SELECTION);
+          await form.begin();
+          await form.update(current => preparePreachDate(current, { kind: 'add' }, newRow));
+          await form.save();
+        } else if (mode === 'calendar-clear') {
+          const form = editor.form('preach-date:edit:planned', PREACH_DATE_SELECTION);
+          await form.begin();
+          await form.update(current => patchPreachDate(current, row.id, { date: '' }));
+          await form.save(undefined, { rowId: row.id, time });
+        } else {
+          const form = editor.form('sermon-metadata', SERMON_METADATA_SELECTION);
+          await form.begin();
+          await form.update(current => sermonMetadataPatch(current, { plannedDate: newRow.date }, row.id, newRow.createdAt, 'Unspecified', row));
+          await form.save(undefined, { documentMetadata: { time, dateAction: { rowId: row.id, time, after: newRow.date } } });
+        }
+        const formRequest = (await s.commits.list('owner')).find(request => request.id !== pointId);
+        expect(formRequest).toMatchObject({ predecessor: null, value: { preparation: value.preparation } });
+        const proposed: string = mode === 'calendar-clear' ? '' : newRow.date;
+        if (mode !== 'calendar-add') expect(formRequest?.preachDateAction).toMatchObject({
+          rowId: row.id, before: row.date, after: proposed, time, observedRevision: 1,
+        });
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [newest] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint,
+          unreadableExegeticalProofs: [{ nodeId: point.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true }] } });
+        editor.dispose();
+        s.server.set(key, latest);
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === pointId
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.engine.setOnline(true);
+        await s.engine.retry();
+
+        const savedDates = mode === 'calendar-add'
+          ? [{ ...row, notes: 'Latest calendar note' }, other, newRow]
+          : [{ ...row, notes: 'Latest calendar note', date: proposed }, other];
+        expect(s.server.get(key)?.value).toMatchObject({ preparation: value.preparation, preachDates: savedDates });
+        const sources = await s.engine.listRecoverable(ref);
+        const source = sources.find(candidate => candidate.answer === 'refused');
+        expect(source).toBeDefined();
+        const recovered = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'reopened'), source!.id);
+        const refused = recovered.getState().checkpoint;
+        await recovered.acceptRemote(undefined, refused);
+        const comparison = recovered.getState().checkpoint;
+        expect(comparison.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await recovered.keepLocal(undefined, comparison);
+        await recovered.save();
+        await s.engine.retry();
+        expect(s.server.get(key)?.value).toMatchObject({ preparation: { exegeticalPlan: [newest] }, preachDates: savedDates });
+        expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.kind === 'update' && command.changes.map(({ path }) => path[0])))
+          .toEqual([['preparation'], ['preachDates'], ['preparation']]);
       } finally { s.engine.dispose(); }
     },
   );
