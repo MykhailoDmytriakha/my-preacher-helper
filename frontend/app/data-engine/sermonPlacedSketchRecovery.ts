@@ -2,6 +2,7 @@ import { placeOfNode, scratchAfterOutlineChange, scratchNoteAt } from '@/utils/s
 
 import { protectedSermonRecoveryKind } from './editorIdentity';
 import { equalValues, object } from './fieldValues';
+import { guardedScratchWords } from './sermonGuardedScratchText';
 import { restoreSketchFrame, sameSketchFrame, sketchRows } from './sermonScratchFrame';
 import { sermonScratchRemovalDraft } from './sermonScratchRemovalRecovery';
 
@@ -155,8 +156,12 @@ export function rebaseRecoveredPlacedSketches(checkpoint: SessionCheckpoint, sav
   return { ...checkpoint, confirmed: saved, draft: rebased, dirty: rebased !== saved.value, conflicts: [], remoteCandidate: null };
 }
 
-export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord): { kind: 'append' | 'removal'; text: string } | undefined {
+export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord): { kind: 'append' | 'removal' | 'text'; text: string } | undefined {
   const kind = protectedSermonRecoveryKind(editorId);
+  if (kind === 'sermon-scratch-text') {
+    const text = guardedScratchWords(checkpoint);
+    return text === undefined ? undefined : { kind: 'text', text: text.slice(0, 500) };
+  }
   if (kind === 'sermon-scratch-removal') {
     const text = sermonScratchRemovalDraft(checkpoint);
     return text === undefined ? undefined : { kind: 'removal', text: text.slice(0, 500) };

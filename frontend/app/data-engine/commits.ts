@@ -183,6 +183,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sourceNoteLink?: SourceNoteLinkCapture;
   sermonNoteText?: SermonNoteOpening;
   scratchRemoval?: true;
+  scratchTextRecovery?: true;
   sermonTextOpenings?: SermonTextOpenings;
   sermonTextPredecessorRevision?: number;
   sermonTextContinuation?: SermonTextOpenings;
@@ -342,6 +343,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
     || !equalValues(current.sermonNoteText ?? null, incoming.sermonNoteText ?? null)
+    || current.scratchTextRecovery !== incoming.scratchTextRecovery
     || !equalValues(current.sermonTextOpenings ?? null, incoming.sermonTextOpenings ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.homileticTitleActions ?? null, incoming.homileticTitleActions ?? null)
@@ -432,7 +434,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
   return { knownIds: new Set(records.map(record => record.id)), groups, next: 1 };
 }
 
-type CommitSaveOptions = { scratchRemoval?: true; noteContent?: StudyNoteContentCapture | null; commentCompanions?: CommentCompanionProofs; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+type CommitSaveOptions = { scratchTextRecovery?: true; scratchRemoval?: true; noteContent?: StudyNoteContentCapture | null; commentCompanions?: CommentCompanionProofs; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   pendingRemoval?: PendingRemovalOpening;
   seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
@@ -815,11 +817,11 @@ export class CommitQueue {
 
   /** Build from the exact chosen copy after retiring its answered predecessors. */
   choiceReplacement(editorId: string, intent: SessionCheckpoint,
-    options: { scratchRemoval?: true; action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
+    options: { scratchTextRecovery?: true; scratchRemoval?: true; action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
     if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
-    const { action, predecessor, commentTextOpening, noteContent, commentCompanions, scratchRemoval } = options;
+    const { action, predecessor, commentTextOpening, noteContent, commentCompanions, scratchRemoval, scratchTextRecovery } = options;
     const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, {
-      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions, scratchRemoval,
+      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions, scratchRemoval, scratchTextRecovery,
     });
     return replacement && { ...replacement, ...commentCompanions, ...(commentTextOpening && { commentTextOpening }) };
   }
@@ -829,7 +831,8 @@ export class CommitQueue {
     const outlineMove = frozenOptions?.action ? frozenOptions.action.kind === 'outline-point-placement' ? frozenOptions.action.move : undefined
       : intent.outlinePointPlacementRetry;
     const accountRetry = intent.accountPreferenceRetry;
-    const editorAction = frozenOptions?.action ?? (intent.sourceNoteLinkRetry
+    const editorAction = intent.guardedScratchText ? { kind: 'sermon-note-text', opening: intent.guardedScratchText } as const
+      : frozenOptions?.action ?? (intent.sourceNoteLinkRetry
       ? { kind: 'sermon-source-note-links', selection: intent.sourceNoteLinkRetry } as const
       : accountRetry
       ? { kind: 'account-preference', fields: accountPreferenceRetryFields(accountRetry), time: accountRetry.time } as const
@@ -1071,6 +1074,7 @@ export class CommitQueue {
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(frozenOptions?.scratchRemoval && { scratchRemoval: true as const }),
+      ...((intent.guardedScratchText || frozenOptions?.scratchTextRecovery) && { scratchTextRecovery: true as const }),
       ...(planCellOpenings || editorAction?.kind === 'sermon-plan-text' ? {
         sermonTextOpenings: { ...(editorAction?.kind === 'sermon-plan-text' && Object.fromEntries(
           Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision]))), ...planCellOpenings },

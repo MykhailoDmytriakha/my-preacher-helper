@@ -18,6 +18,7 @@ export const SERMON_NOTE_CHOICE_ROW = 'sermon-note-choice-checkpoint';
 export const SERMON_HEADER_CHOICE_ROW = 'sermon-header-choice-checkpoint';
 export const SERMON_CHURCH_CHOICE_ROW = 'sermon-church-choice-checkpoint';
 export const SERMON_PREPARATION_CHECK_CHOICE_ROW = 'sermon-preparation-check-choice-checkpoint';
+export const SERMON_SCRATCH_TEXT_CHOICE_ROW = 'sermon-scratch-text-choice-checkpoint';
 export const SERMON_SCRATCH_REMOVAL_CHOICE_ROW = 'sermon-scratch-removal-choice-checkpoint';
 export const SERMON_PLACED_SKETCH_CHOICE_ROW = 'sermon-placed-sketch-choice-checkpoint';
 export const SERMON_THOUGHT_LOCK_CHOICE_ROW = 'sermon-thought-lock-choice-checkpoint';
@@ -27,6 +28,7 @@ const protectedSermonRows = { 'sermon-header': SERMON_HEADER_CHOICE_ROW, 'sermon
   'sermon-preparation-check': SERMON_PREPARATION_CHECK_CHOICE_ROW, 'sermon-thought-placement': SERMON_THOUGHT_PLACEMENT_CHOICE_ROW,
   'sermon-placed-sketch': SERMON_PLACED_SKETCH_CHOICE_ROW,
   'sermon-scratch-removal': SERMON_SCRATCH_REMOVAL_CHOICE_ROW,
+  'sermon-scratch-text': SERMON_SCRATCH_TEXT_CHOICE_ROW,
   'sermon-thought-removal': SERMON_THOUGHT_REMOVAL_CHOICE_ROW, 'sermon-thought-lock': SERMON_THOUGHT_LOCK_CHOICE_ROW } as const;
 export const checkpointKey = (owner: string, editorId: string): IDBValidKey => {
   const protection = protectedSermonRecoveryKind(editorId);
@@ -40,7 +42,7 @@ const placedSketchCheckpointReference = (owner: string, editorId: string): IDBVa
 
 function hasSketchReference(editorId: string): boolean {
   const kind = protectedSermonRecoveryKind(editorId);
-  return kind === 'sermon-placed-sketch' || kind === 'sermon-scratch-removal';
+  return kind === 'sermon-placed-sketch' || kind === 'sermon-scratch-removal' || kind === 'sermon-scratch-text';
 }
 
 export function deleteCheckpointRecord(store: IDBObjectStore, owner: string, editorId: string): void {

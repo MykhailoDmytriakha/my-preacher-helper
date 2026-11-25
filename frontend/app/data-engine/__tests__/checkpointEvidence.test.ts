@@ -53,7 +53,10 @@ const commentPlaceAction = { before: { exists: true, value: commentReference },
 type PlacementRetryKey = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry' | 'outlinePointPlacementRetry';
 type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs' | 'unreadableExegeticalProofs'
   | 'unreadableServiceOrderStepPlacement' | 'unreadableOutlinePointPlacement' | 'reviewedSermonOutlineOrder' | PlacementRetryKey>;
+const guardedScratch = { sermonId: 'sermon', generation: 'g', observedRevision: 1, pending: [],
+  target: { kind: 'scratch', id: 'sketch', createdAt: '2026-11-12' }, text: 'Original' };
 const evidence = {
+  guardedScratchText: guardedScratch,
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   studyNoteContentDraft: { generation: 'g', action: noteContentAction },
@@ -106,6 +109,14 @@ const unclockedGroupActions: Array<[PendingEvidenceKey, unknown]> = [
   ['groupTitleAction', { ...observation, time: null }], ['groupStatusAction', { ...observation, before: 'draft', after: 'active', time: null }],
 ];
 
+it('keeps a damaged guarded scratch opening out of writable recovery', () => {
+  const source = titleRecord();
+  source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+  const unverified = { ...source.checkpoint, guardedScratchText: { ...guardedScratch, observedRevision: 'unreadable' } };
+  expect(() => validateRecoveryRecord({ ...source, checkpoint: unverified }, 'owner', source.editorId))
+    .toThrow('Guarded scratch text opening is unreadable');
+});
+
 function titleRecord(editorId = 'editor'): EditorRecord {
   const initial = { resource: { collection: 'groups', id: 'group' }, value: { userId: 'owner', title: 'Original' },
     metadata: { protocol: 1 as const, generation: 'g', revision: 1, deleted: false } };
@@ -132,6 +143,12 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
+  if (key === 'guardedScratchText') {
+    source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    const note = { id: 'sketch', createdAt: '2026-11-12', text: 'Original' };
+    source.checkpoint.confirmed.value = { userId: 'owner', scratch: [note] };
+    source.checkpoint.draft = { userId: 'owner', scratch: [{ ...note, text: 'Later' }] };
+  }
   if (key === 'sermonChurchRecovery') {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     source.checkpoint.draft = { ...source.checkpoint.confirmed.value, church };

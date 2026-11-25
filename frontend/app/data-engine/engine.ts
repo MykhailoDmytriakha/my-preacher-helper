@@ -59,6 +59,7 @@ import { canSaveSeparateFromRefusedPoint } from './refusedPointManualForm';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
+import { blocksIndependentActionDuringScratchRecovery, guardedScratchTextReview } from './sermonGuardedScratchText';
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { readPlacedSketchComparison, rebaseRecoveredPlacedSketches } from './sermonPlacedSketchRecovery';
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
@@ -1414,7 +1415,8 @@ export class DataEngine {
     const visible = choices.filter(({ id, record }) => !claimed.has(key(id, record.recoveryVersion)));
     const current = visible.flatMap(source => {
       const { record } = source;
-      if (!manualChoicesOnly || protectedSermonRecoveryKind(record.editorId) !== 'sermon-scratch-removal'
+      const protection = protectedSermonRecoveryKind(record.editorId);
+      if (!manualChoicesOnly || (protection !== 'sermon-scratch-removal' && protection !== 'sermon-scratch-text')
         || !Object.keys(record.checkpoint.pending).some(id => ['acknowledged', 'cancelled'].includes(this.commitRecords.get(id)?.state ?? ''))) return [source];
       // Another editor may already have answered this request. Until closed-checkpoint
       // maintenance retires the old row, its stale version must not ask the question again.
@@ -1858,7 +1860,7 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || unresolvedThoughtRemoval(checkpoint) || unresolvedScratchRemoval(checkpoint) || unresolvedThoughtLock(checkpoint) || hasPrivateSermonPointMove(checkpoint)
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || unresolvedThoughtRemoval(checkpoint) || unresolvedScratchRemoval(checkpoint) || checkpoint.guardedScratchText || unresolvedThoughtLock(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             const protection = protectedSermonRecoveryKind(reconciled!.editorId);
@@ -1888,7 +1890,7 @@ export class DataEngine {
             const session = DataSession.restore(available);
             session.observe(fresh, { source: 'server' });
             const next = { ...reconciled!, checkpoint: session.checkpoint() };
-            if (record && (protection === 'sermon-thought-lock' || protection === 'sermon-scratch-removal') && !isRecoverableCheckpoint(next)) {
+            if (record && (protection === 'sermon-thought-lock' || protection === 'sermon-scratch-removal' || protection === 'sermon-scratch-text') && !isRecoverableCheckpoint(next)) {
               await store.settleClosed?.(uid, [{ stored: record, settled: next }]);
               active();
             }
@@ -3002,6 +3004,9 @@ export class DataEngine {
         // CaptureContinuations retries earlier attempts before the exact Save.
         const move = captured?.kind === 'outline-point-placement' || captured?.kind === 'group-flow-step-placement'
           || captured?.kind === 'council-topic-placement' ? captured : undefined;
+        if (blocksIndependentActionDuringScratchRecovery(checkpoint, captured)) {
+          throw Object.assign(new Error('Finish the recovered sketch before saving another field'), { code: 'resolve-version-first' });
+        }
         if (move) void controller.save(checkpoint).catch(() => undefined);
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
         const keepOnClose = move || (captured?.kind === 'sermon-plan-text' ? captured : undefined);
@@ -3070,7 +3075,7 @@ export class DataEngine {
         if (thoughtLock && (!compared || !current.remoteCandidate || recoveredThoughtLock(current, current.remoteCandidate)?.settled !== false)) {
           throw Object.assign(new Error('Read both versions of the thought lock before choosing'), { code: 'decision-changed' });
         }
-        const sketchReview = readPlacedSketchComparison(current);
+        const sketchReview = guardedScratchTextReview(current) ?? readPlacedSketchComparison(current);
         if (sketchReview && (!compared || (choice === 'local' && sketchReview.keepMineDisabled))) {
           throw Object.assign(new Error('Read the current scratch note before choosing'), { code: 'decision-changed' });
         }
@@ -3610,7 +3615,8 @@ export class DataEngine {
           && equalValues(resolved.confirmed, checkpoint.remoteCandidate)) {
           await controller.save({ ...resolved, scratchRemovalValue: scratchRemoval.proposed });
           this.assertCurrent(owner, generation);
-        } else if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || (unresolvedThoughtLock(checkpoint) && resolved.thoughtLockDrafts) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        } else if ((checkpoint.guardedScratchText && resolved.guardedScratchText && resolved.dirty && !guardedScratchTextReview(resolved))
+          || affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || (unresolvedThoughtLock(checkpoint) && resolved.thoughtLockDrafts) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

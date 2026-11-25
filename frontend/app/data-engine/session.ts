@@ -39,6 +39,7 @@ import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clear
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from './sermonFieldChoice';
+import { capturedGuardedScratchTextPath, guardedScratchTextReview, projectGuardedScratchText } from './sermonGuardedScratchText';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { isPlacedSketchConflict, observePlacedSketchConflicts, resolvePlacedSketchComparison } from './sermonPlacedSketchRecovery';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
@@ -72,7 +73,7 @@ import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave
 import type { PlanCellDraft, PlanCellOpening } from './sermonPlanCellSession';
 import type { SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import type { CommandResult, ConflictDetail, CouncilTopicPlacementCapture, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
-import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
+import type { OutlineTitleOpening, SermonNoteOpening } from '@/utils/sermonNoteText';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -80,6 +81,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   dirty: boolean;
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
+  guardedScratchText?: SermonNoteOpening;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   planCellDrafts?: Record<string, PlanCellDraft>;
   serviceOrderInputs?: Record<string, import('./serviceOrderInput').ServiceOrderInput>;
@@ -181,8 +183,10 @@ export class DataSession {
 
   private refreshUnreadableComparisons(): void {
     const { unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, confirmed, draft, pending } = this.state;
-    if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
+    if (Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
+    if (this.state.guardedScratchText) this.refreshGuardedScratchText(target);
+    if (!hasUnreadableDraftProof(this.state)) return;
     const preparationCheck = privatePreparationCheck(this.state, target);
     if (preparationCheck?.sameValue) {
       this.state.remoteCandidate = copy(target);
@@ -600,8 +604,10 @@ export class DataSession {
       request.accountPreferenceActions?.[field] && equalValues(request.accountPreferenceActions[field]?.time, preferenceRetry.time))) {
       delete this.state.accountPreferenceRetry;
     }
+    if (this.state.guardedScratchText && request.sermonNoteText
+      && equalValues(this.state.guardedScratchText.target, request.sermonNoteText.target)) delete this.state.guardedScratchText;
     const newScopedSave = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove
-      || request.scratchRemoval)
+      || request.scratchRemoval || request.scratchTextRecovery)
       && (!this.state.pending[request.id] || capturedTemplateRetry);
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (newScopedSave && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
@@ -609,10 +615,11 @@ export class DataSession {
       this.state.editGeneration = this.reserveEditGeneration();
     }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) {
-      const removalPath = capturedScratchRemovalPath(request);
-      const otherConflicts = removalPath ? this.state.conflicts.filter(({ path }) => !equalValues(path, removalPath)) : [];
+      const scratchPath = capturedScratchRemovalPath(request) ?? capturedGuardedScratchTextPath(request);
+      const otherConflicts = scratchPath ? this.state.conflicts.filter(({ path }) =>
+        !equalValues(path, scratchPath) && !equalValues(path, scratchPath.slice(0, 2))) : [];
       this.accept(request.result, request.atomic?.kind === 'analysis-reshape', request);
-      // This narrow acknowledgement or refusal cannot answer a different question already in the editor.
+      // A scoped scratch answer cannot resolve another question already in the editor.
       if (otherConflicts.length) {
         const paths = this.state.conflicts.map(conflict => conflict.path);
         this.state.conflicts.push(...otherConflicts.filter(conflict => !paths.some(path => equalValues(path, conflict.path))));
@@ -795,6 +802,13 @@ export class DataSession {
       || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 
+  private refreshGuardedScratchText(target: ResourceSnapshot): boolean {
+    const projected = this.state.guardedScratchText && projectGuardedScratchText(this.state, target);
+    if (!projected) return false;
+    this.state = copy(projected);
+    return true;
+  }
+
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
@@ -805,6 +819,7 @@ export class DataSession {
       const candidate = this.state.remoteCandidate;
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
+      if (!awaiting && this.refreshGuardedScratchText(snapshot)) return;
       const outlineReview = refreshSermonOutlineReview(this.state, snapshot);
       if (outlineReview) {
         this.state.remoteCandidate = copy(snapshot);
@@ -915,6 +930,12 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (!Object.keys(this.state.pending).length && guardedScratchTextReview(this.state) && this.state.remoteCandidate) {
+      const projected = projectGuardedScratchText(this.state, this.state.remoteCandidate, side);
+      if (!projected) throw Object.assign(new Error('The shown sketch changed'), { code: 'decision-changed' });
+      this.state = { ...copy(projected), editGeneration: this.reserveEditGeneration() };
+      return true;
+    }
     if (unresolvedScratchRemoval(this.state) && !Object.keys(this.state.pending).length) {
       const target = this.state.remoteCandidate;
       if (!target || !this.finishScratchRemoval(target, side)) {

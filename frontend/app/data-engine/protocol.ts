@@ -713,6 +713,10 @@ const WHOLE_VALUES: readonly (readonly string[])[] = [['analysis']];
 function mergedWhole(path: readonly string[], base: Json | undefined, mine: Json | undefined, theirs: Json | undefined): boolean {
   // The selected provider and model form a single choice, even for an older queued write.
   if (path.length === 1 && (path[0] === 'church' || isModelPreferenceField(path[0]))) return true;
+  if (path[0] === 'scratch' && path.length === 2 && path[1].startsWith('id:')
+    && object(base) && object(mine) && object(theirs)) {
+    return base.createdAt !== mine.createdAt || base.createdAt !== theirs.createdAt;
+  }
   if (path[0] === 'preachDates' && path[1]?.startsWith('id:') && object(base) && object(mine) && object(theirs)) {
     // An edit of the original row cannot be carried onto a replacement using the same ID.
     if (path.length === 2) return base.createdAt !== mine.createdAt || base.createdAt !== theirs.createdAt;

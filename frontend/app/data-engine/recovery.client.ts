@@ -12,7 +12,7 @@ import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
 import { isCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
 import { autosaveFieldTargets } from './documentFieldAction';
-import { readManualScopeIdentity } from './editorIdentity';
+import { isSermonChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { readField } from './fieldValues';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -122,7 +122,7 @@ const sourceNoteLinkCapture = z.object({
       prior: z.object({ before: z.boolean(), observedRevision: observedRevision.nullable(), time: actionTime }).optional() })).min(1) }),
 });
 const sermonNoteOpening = z.object({
-  sermonId: id, generation: id.nullable(), legacyBirth: z.string().min(1).optional(), pending: z.array(id), text: z.string().nullable(),
+  sermonId: id, generation: id.nullable(), legacyBirth: z.string().min(1).optional(), pending: z.array(id), text: z.string().nullable(), observedRevision: observedRevision.nullable().optional(),
   target: z.union([
     z.object({ kind: z.literal('scratch'), id, createdAt: z.string().min(1) }),
     z.object({ kind: z.enum(['point', 'subpoint']), id }),
@@ -174,6 +174,7 @@ const recordSchema = z.object({
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts', 'thoughtRemoval', 'scratchRemoval']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
+    guardedScratchText: sermonNoteOpening.optional(),
     planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string(), unverified: z.literal(true).optional() }).and(z.union([
       z.object({ generation: id, observedRevision: observedRevision.positive() }),
       z.object({ generation: z.null(), observedRevision: z.null(), legacyBirth: z.string().optional() }),
@@ -437,6 +438,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const dropped: string[] = [];
   let checked = value;
   if (isFields(value) && isFields(value.checkpoint)) {
+    const guarded = value.checkpoint.guardedScratchText;
+    if (guarded !== undefined && !accepts(sermonNoteOpening, guarded)) {
+      // Dropping this opening would authorize an ordinary Save with the wrong text revision.
+      throw new Error('Guarded scratch text opening is unreadable');
+    }
     let checkpoint = withoutInvalidProof(value.checkpoint, checkpointEvidence, '', dropped);
     if (checkpoint.privateFieldReview === undefined && accepts(checkpointEvidence.privateFieldReview, checkpoint.privateGroupTextReview)
       && checkpoint.privateGroupTextReview !== undefined) {
@@ -584,6 +590,12 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   if (record.planCellAlternative && (ref.collection !== 'sermons' || record.autoSaveOnResume !== false || record.prepared !== null
     || record.unfinalized.length || Object.keys(record.checkpoint.pending).length
     || Object.keys(record.checkpoint.planCellDrafts ?? {}).length !== 1)) throw new Error('Plan cell alternative identity mismatch');
+  const guarded = record.checkpoint.guardedScratchText;
+  if (!guarded && record.checkpoint.dirty && isSermonChoiceRecoveryIdentity(editorId, 'sermon-scratch-text')) {
+    throw new Error('Guarded scratch text opening is missing');
+  }
+  if (guarded && (ref.collection !== 'sermons' || guarded.sermonId !== ref.id || guarded.target.kind !== 'scratch'
+    || typeof guarded.text !== 'string')) throw new Error('Guarded scratch text checkpoint identity mismatch');
   const note = record.retainedManualChoice?.sermonNoteText;
   if (note && (ref.collection !== 'sermons' || note.sermonId !== ref.id)) throw new Error('Sermon note checkpoint identity mismatch');
   const sourceLinks = [record.checkpoint.sourceNoteLinkRetry, record.retainedManualChoice?.sourceNoteLinks];

@@ -2,6 +2,7 @@ import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
 import { churchFieldWords, pendingScratchRemoval, pendingThoughtRemoval, readPlacedSketchComparison, readSermonConflict, recoveredScratchRemoval, recoveredThoughtLock, recoveredThoughtRemoval } from '@/data-engine/react.client';
+import { guardedScratchTextReview } from '@/data-engine/sermonGuardedScratchText';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -12,6 +13,9 @@ import type { Json } from '@/data-engine/types';
 import type { TFunction } from 'i18next';
 
 export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string, apply?: ApplyOutlineReview): TextComparison | undefined {
+  const guarded = guardedScratchTextReview(checkpoint);
+  if (guarded) return { ...guarded, title: t('scratch.card.label'), valueKind: 'field', scopedChoice: true,
+    stored: guarded.stored ?? t('dataSync.emptyField') };
   const sketch = readPlacedSketchComparison(checkpoint);
   if (sketch) return { ...sketch, title: t('scratch.card.label'), valueKind: 'field', scopedChoice: true };
   const scratchRemoval = pendingScratchRemoval(checkpoint) ?? (checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length

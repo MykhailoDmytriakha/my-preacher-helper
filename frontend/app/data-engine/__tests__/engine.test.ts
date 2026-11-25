@@ -21,6 +21,7 @@ import { readThoughtPlacementComparison } from '../rowConflictDetails';
 import { orderRowDetails } from '../rowDetailOrder.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY } from '../thoughtLockAction';
 import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from '../sermonFieldChoice';
+import { compareReturnedSermonText, metadataAfterSermonText } from '../sermonTextOrder.server';
 import { sermonThoughtPlacementDraft } from '../sermonThoughtPlacementRecovery';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
@@ -2418,6 +2419,177 @@ describe('DataEngine composition', () => {
       } finally { s.engine.dispose(); }
     },
   );
+
+  it.each(['restore', 'competing-mine', 'competing-saved', 'already-stored', 'replaced', 'unknown-version', 'two-edits', 'delivery-replaced', 'delivery-competing', 'sibling-added', 'sibling-conflict', 'explicit-sibling', 'returned-text', 'mixed'] as const)(
+    'opens the point review with a later guarded scratch text save (%s)', async mode => {
+    const s = setup({ online: false, nativeChoice: true });
+    const ref = { collection: 'sermons', id: 'scratch-text-after-point' };
+    const key = keyOf('owner', ref);
+    const note = { id: 'sketch', createdAt: '2026-11-09T00:00:00.000Z', text: 'Opening words', section: 'main', outlinePointId: 'body' };
+    const first = { id: 'point', title: '', children: [] };
+    const ownWords = 'Guarded later sketch words';
+    const finalWords = mode === 'two-edits' ? 'Final words typed on the phone' : ownWords;
+    const deliveryRace = mode === 'delivery-replaced' || mode === 'delivery-competing';
+    const otherNote = { ...note, id: 'neighbor', text: 'Opening neighboring note' };
+    const newestNeighbor = { ...otherNote, text: 'The newer neighboring note' };
+    const additional = { ...otherNote, id: 'additional', text: 'Words added during recovery' };
+    const serverWords = mode === 'already-stored' ? ownWords
+      : mode === 'competing-mine' || mode === 'competing-saved' || mode === 'sibling-conflict' ? 'Competing newer words' : note.text;
+    const currentNote = { ...note, text: serverWords, section: 'conclusion',
+      ...(mode === 'replaced' && { createdAt: '2026-11-25T00:00:00.000Z' }) };
+    const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', thoughts: [],
+      outline: { introduction: [], main: [{ id: 'body', text: 'Body' }], conclusion: [] },
+      preparation: { exegeticalPlan: [] }, scratch: [note, otherNote] };
+    const confirmed: ResourceSnapshot = { ...initial(), resource: ref, value };
+    const latest: ResourceSnapshot = { ...confirmed, metadata: { ...confirmed.metadata!, revision: 2, operationId: 'desktop' },
+      value: { ...value, title: 'Newer sermon title', outline: { introduction: [], main: [], conclusion: [{ id: 'body', text: 'Body' }] },
+        scratch: [currentNote, newestNeighbor] } };
+    const editorId = editorIdentity('phone', ref, 'sermon', 'source');
+    s.server.set(key, confirmed); s.cache.set(key, confirmed);
+    try {
+      const editor = await s.engine.openEditor(ref, editorId);
+      await editor.edit({ ...value, preparation: { exegeticalPlan: [first] } });
+      await editor.save();
+      const [root] = await s.commits.list('owner');
+      await editor.commit(draft => ({ ...draft!, scratch: [{ ...note, text: ownWords }, mode === 'mixed' ? { ...otherNote, text: 'Unproved neighboring change' } : otherNote] }),
+        { kind: 'sermon-note-text', opening: { sermonId: ref.id, generation: 'generation', pending: [root.id], observedRevision: mode === 'unknown-version' ? null : 1,
+          target: { kind: 'scratch', id: note.id, createdAt: note.createdAt }, text: note.text } });
+      const child = (await s.commits.list('owner')).find(item => item.id !== root.id)!;
+      expect(child).toMatchObject({ predecessor: root.id, sermonNoteText: { target: { kind: 'scratch', id: note.id }, text: note.text } });
+      if (mode === 'two-edits') await editor.commit(draft => ({ ...draft!, scratch: [{ ...note, text: finalWords }, otherNote] }),
+        { kind: 'sermon-note-text', opening: { sermonId: ref.id, generation: 'generation', pending: [root.id, child.id], observedRevision: 1,
+          target: { kind: 'scratch', id: note.id, createdAt: note.createdAt }, text: ownWords } });
+      await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [{ ...first, title: 'Later point words' }] } });
+      const record = (await s.checkpoints.read('owner', editorId))!;
+      await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+        { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+      ] } });
+      editor.dispose();
+      const send = jest.mocked(s.transport.send).getMockImplementation()!;
+      jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === root.id
+        ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+      s.server.set(key, latest);
+      s.engine.setOnline(true);
+      await s.engine.retry();
+      const held = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+      const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point-choice'), held.id);
+      if (mode === 'mixed') {
+        await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+        return;
+      }
+      await point.acceptRemote(undefined, point.getState().checkpoint);
+      const comparedPoint = point.getState().checkpoint;
+      expect(comparedPoint.conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+      await point.keepLocal(undefined, comparedPoint);
+      await point.save();
+      await s.engine.retry();
+      const choices = await s.engine.listRecoveryChoices(ref, true);
+      expect(choices).toHaveLength(mode === 'already-stored' ? 0 : 1);
+      const willWrite = !['already-stored', 'replaced', 'competing-saved', 'unknown-version', 'delivery-replaced', 'returned-text'].includes(mode);
+      const racedNote = mode === 'delivery-replaced' ? { ...currentNote, createdAt: '2026-11-25T00:00:00.000Z' }
+        : { ...currentNote, text: 'Words changed after sending' };
+      if (choices.length) {
+        const opened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'scratch-choice'), choices[0].id);
+        if (mode === 'explicit-sibling') {
+          const before = opened.getState().checkpoint;
+          await expect(async () => opened.commit(draft => ({ ...draft!, scratch: [{ ...currentNote, text: finalWords }, { ...newestNeighbor, text: 'Different action' }] }),
+            { kind: 'sermon-note-text', opening: { sermonId: ref.id, generation: 'generation', pending: [], observedRevision: 3,
+              target: { kind: 'scratch', id: newestNeighbor.id, createdAt: newestNeighbor.createdAt }, text: newestNeighbor.text } }))
+            .rejects.toMatchObject({ code: 'resolve-version-first' });
+          expect(opened.getState().checkpoint).toEqual(before);
+        }
+        if (mode === 'sibling-added' || mode === 'sibling-conflict') {
+          const draft = opened.getState().checkpoint.draft!;
+          const scratch = draft.scratch as DocumentData[];
+          const staged = mode === 'sibling-added' ? [...scratch, additional]
+            : scratch.map(note => note.id === otherNote.id ? { ...note, text: 'Other typed words' } : note);
+          await opened.edit({ ...draft, scratch: staged });
+        }
+        const shown = opened.getState().checkpoint;
+        if (mode === 'restore' || mode === 'two-edits' || deliveryRace || mode === 'sibling-added' || mode === 'explicit-sibling' || mode === 'returned-text') {
+          expect(shown.draft?.scratch).toEqual([{ ...currentNote, text: finalWords }, newestNeighbor, ...(mode === 'sibling-added' ? [additional] : [])]);
+          if (deliveryRace) jest.mocked(s.transport.send).mockImplementationOnce(command => {
+            const stored = s.server.get(key)!;
+            s.server.set(key, { ...stored, metadata: { ...stored.metadata!, revision: 4, operationId: 'desktop-race' },
+              value: { ...stored.value, scratch: [racedNote, newestNeighbor] } });
+            return send(command);
+          });
+          if (mode === 'returned-text') {
+            const away: ResourceSnapshot = { ...latest, value: { ...latest.value, scratch: [{ ...currentNote, text: 'Words previously saved and undone' }, newestNeighbor] } };
+            const returned = s.server.get(key)!;
+            const afterAway = metadataAfterSermonText(away, confirmed, undefined, []);
+            const history = metadataAfterSermonText(returned, away, afterAway, []);
+            jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+              const conflicts = compareReturnedSermonText(command, returned, history, new Set());
+              expect(conflicts).toMatchObject([{ path: ['scratch', 'id:sketch', 'text'], theirs: { value: note.text } }]);
+              return { kind: 'conflict', operationId: command.operationId, snapshot: returned, conflicts };
+            });
+          }
+          await opened.save();
+          if (mode === 'returned-text') {
+            await s.engine.retry();
+            const compared = opened.getState().checkpoint;
+            expect(compared.conflicts).toMatchObject([{ path: ['scratch', 'id:sketch', 'text'] }]);
+            await opened.acceptRemote(undefined, compared);
+          }
+          if (deliveryRace) {
+            await s.engine.retry();
+            const late = opened.getState().checkpoint;
+            expect(Object.keys(late.pending)).toHaveLength(1);
+            expect(s.server.get(key)?.value?.scratch).toEqual([racedNote, newestNeighbor]);
+            if (mode === 'delivery-replaced') {
+              await expect(opened.keepLocal(undefined, late)).rejects.toMatchObject({ code: 'decision-changed' });
+              await opened.acceptRemote(undefined, late);
+            } else {
+              await opened.keepLocal(undefined, late);
+              const replay = (await s.commits.list('owner')).find(command => command.id === 'operation-5');
+              if (replay) expect(commitRowKey(replay)).toEqual(['sermon-scratch-text-recovery-request', 'owner', replay.editorId, replay.editGeneration]);
+            }
+          }
+          if (mode === 'sibling-added') {
+            await s.engine.retry();
+            expect(s.server.get(key)?.value?.scratch).toEqual([{ ...currentNote, text: finalWords }, newestNeighbor]);
+            expect(opened.getState().checkpoint.draft?.scratch).toEqual([{ ...currentNote, text: finalWords }, newestNeighbor, additional]);
+            await opened.save();
+          }
+        } else {
+          expect(shown.conflicts).toMatchObject([{ path: ['scratch', 'id:sketch', 'text'], mine: { value: finalWords },
+            theirs: mode === 'replaced' ? { exists: false } : { value: serverWords } }]);
+          expect(s.transport.send).toHaveBeenCalledTimes(2);
+          await expect(opened.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          if (mode === 'competing-mine' || mode === 'sibling-conflict') {
+            await opened.keepLocal(undefined, shown);
+            if (mode === 'sibling-conflict') {
+              await s.engine.retry();
+              expect(s.server.get(key)?.value?.scratch).toEqual([{ ...currentNote, text: finalWords }, newestNeighbor]);
+              const later = opened.getState().checkpoint;
+              expect(later.conflicts).toMatchObject([{ path: ['scratch', 'id:neighbor', 'text'] }]);
+              await opened.acceptRemote(undefined, later);
+            }
+          } else {
+            if (mode === 'replaced') await expect(opened.keepLocal(undefined, shown)).rejects.toMatchObject({ code: 'decision-changed' });
+            await opened.acceptRemote(undefined, shown);
+          }
+        }
+        await s.engine.retry();
+      }
+      expect(s.server.get(key)?.value).toMatchObject({ title: 'Newer sermon title',
+        scratch: [{ ...(deliveryRace ? racedNote : currentNote), text: willWrite ? finalWords : serverWords }, newestNeighbor,
+          ...(mode === 'sibling-added' ? [additional] : [])] });
+      expect(s.transport.send).toHaveBeenCalledTimes(mode === 'delivery-competing' || mode === 'sibling-added' ? 4
+        : willWrite || mode === 'delivery-replaced' || mode === 'returned-text' ? 3 : 2);
+      if (willWrite) {
+        const noteKey = JSON.stringify(['scratch', note.id, note.createdAt]);
+        const sent = jest.mocked(s.transport.send).mock.calls;
+        expect((mode === 'sibling-added' ? sent[2] : sent.at(-1))?.[0]).toMatchObject({
+          kind: 'update', sermonTextOpenings: { [noteKey]: mode === 'delivery-competing' ? 4 : (mode === 'competing-mine' || mode === 'sibling-conflict') ? 3 : 1 },
+          changes: [expect.objectContaining({ path: ['scratch'] })],
+        });
+      }
+      expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
 
   it.each(['while-queued', 'after-refusal', 'same-field', 'mixed-refusal'] as const)(
     'isolates the thought form from the earlier point Save (%s)', async timing => {

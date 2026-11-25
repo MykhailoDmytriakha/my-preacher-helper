@@ -52,6 +52,7 @@ import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConfli
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
+import { blocksIndependentActionDuringScratchRecovery, guardedScratchTextReview, guardedScratchTextSubmission, pendingGuardedScratchTextReview } from './sermonGuardedScratchText';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
 import { pendingScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
@@ -552,12 +553,16 @@ export class EditorController {
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
+    if (blocksIndependentActionDuringScratchRecovery(intent, capturedAction)) return Promise.reject(Object.assign(
+      new Error('Finish the recovered sketch before saving another field'), { code: 'resolve-version-first' }));
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
-    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent) || unresolvedScratchRemoval(intent) || unresolvedThoughtLock(intent)) return Promise.reject(Object.assign(
+    if (guardedScratchTextReview(intent) || hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent) || unresolvedScratchRemoval(intent) || unresolvedThoughtLock(intent)) return Promise.reject(Object.assign(
       new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, scratchRemovalValue, ...captured } = intent;
-    // Keep later words in the native checkpoint while the command owns just the confirmed removal.
-    const submission = scratchRemovalValue ? { ...captured, draft: scratchRemovalValue, conflicts: [], remoteCandidate: null } : captured;
+    // The command owns only the reviewed scratch operation. The native checkpoint retains later edits.
+    const scopedScratch = scratchRemovalValue ?? guardedScratchTextSubmission(captured);
+    if (captured.guardedScratchText && !scopedScratch) return Promise.reject(Object.assign(new Error('The saved sketch changed'), { code: 'decision-changed' }));
+    const submission = scopedScratch ? { ...captured, draft: scopedScratch, conflicts: [], remoteCandidate: null } : captured;
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
     const capture = async (captureComplete: () => void) => {
@@ -575,7 +580,7 @@ export class EditorController {
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
         const options = { ...captureSaveOptions(submission, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint,
-          ...(capturedAction && { action: capturedAction }), ...(scratchRemovalValue && { scratchRemoval: true as const }), noteContent: capturedContent, planCellSaveIds, serviceOrderInput, serviceOrderComparison };
+          ...(capturedAction && !captured.guardedScratchText && { action: capturedAction }), ...(scratchRemovalValue && { scratchRemoval: true as const }), noteContent: capturedContent, planCellSaveIds, serviceOrderInput, serviceOrderComparison };
         const saved = async () => {
           const capture = onCaptured ? await this.options.commits!.saveWithReceipt(this.options.editorId, submission, options) : null;
           const request = capture ? capture.request : await this.options.commits!.save(this.options.editorId, submission, options);
@@ -1452,9 +1457,20 @@ export class EditorController {
               source!, session.checkpoint().confirmed, tail.base, tail.value);
           }
         };
+        const scratchText = !selection && !correction ? pendingGuardedScratchTextReview(source) : undefined;
         const scratchRemoval = !selection && !correction ? pendingScratchRemoval(source) : undefined;
         const rowRemoval = scratchRemoval ?? (!selection && !correction ? pendingThoughtRemoval(source) : undefined);
-        if (rowRemoval) {
+        if (scratchText) {
+          if (!expected || !ordinary || ordinary.first.id !== scratchText.requestId || !source.remoteCandidate
+            || !equalValues(decided.remoteCandidate, source.remoteCandidate) || (choice === 'local' && !scratchText.proposed)) {
+            throw Object.assign(new Error('The compared sketch text changed'), { code: 'decision-changed' });
+          }
+          anchoredChoice = scratchText.requestId;
+          session.acceptRemote();
+          if (choice === 'local' && scratchText.proposed) session.edit(scratchText.proposed);
+          const latest = ordinary.scope.filter(request => source!.pending[request.id]).at(-1);
+          preservePlacementTail(anchoredChoice, latest && anchoredPlacementChoiceTail(source, latest.id), true);
+        } else if (rowRemoval) {
           if (!expected || !ordinary || ordinary.first.id !== rowRemoval.requestId || !source.remoteCandidate
             || !equalValues(decided.remoteCandidate, source.remoteCandidate)
             || (choice === 'local' && rowRemoval.settled)) {
@@ -1673,6 +1689,13 @@ export class EditorController {
         const serviceChoiceIntent = (checkpoint: SessionCheckpoint) => serviceInput
           ? { ...checkpoint, draft: projectServiceOrderInput(checkpoint.confirmed.value, serviceInput) } : checkpoint;
         const replacements: CommitRequest[] = [];
+        if (scratchText?.opening && choice === 'local') {
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(),
+            { scratchTextRecovery: true, action: { kind: 'sermon-note-text', opening: scratchText.opening } });
+          if (!replacement) throw Object.assign(new Error('The sketch edit could not be captured'), { code: 'decision-changed' });
+          session.applyCommit(replacement);
+          replacements.push(replacement);
+        }
         if (rowRemoval && choice === 'local') {
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(),
             scratchRemoval ? { scratchRemoval: true } : {});
