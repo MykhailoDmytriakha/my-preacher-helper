@@ -20,6 +20,8 @@ import { equalValues, getResourcePolicy, isValidIdentifier, matchesOutlinePointP
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
+import { isSermonChurchFill, type SermonChurchFill } from './sermonChurchFill';
+import { validSermonChurchRecovery } from './sermonChurchRecovery';
 import { readRootPointOrder, retainedRootOrderChanged } from './sermonPointMoveRecovery';
 import { changedSermonTextFields, sermonTextRetryMatches } from './sermonTextRecovery';
 import { serviceOrderInputSchema } from './serviceOrderInputCodec';
@@ -182,6 +184,10 @@ const recordSchema = z.object({
       z.object({ field: accountPreferenceField, time: actionTime }).strict(),
       z.object({ fields: accountPreferenceFields, time: actionTime }).strict(),
     ]).optional(),
+    sermonChurchRecovery: z.object({ generation: id,
+      observation: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime, reviewed: z.literal(true).optional() }).strict().optional(),
+      fill: z.custom<SermonChurchFill>(isSermonChurchFill).optional(),
+    }).strict().optional(),
     sermonTextRetry: z.object({ field: z.custom<SermonTextRecoveryField>(isSermonTextRecoveryField), generation: id,
       action: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime, reviewed: z.literal(true).optional() }).strict() }).strict().optional(),
     preparationTextRetry: z.object({ field: z.custom<PreparationTextField>(isPreparationTextField), generation: id,
@@ -487,7 +493,8 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (collection === 'sermons' && isFields(confirmed)) {
         const opening = isFields(confirmed.value) ? confirmed.value as DocumentData : null;
         const draft = isFields(checkpoint.draft) ? checkpoint.draft as DocumentData : null;
-        fields.push(...held.filter(isSermonTextRecoveryField));
+        fields.push(...held.filter(field => field === 'church' || isSermonTextRecoveryField(field)));
+        if (dropped.includes('sermonChurchRecovery')) fields.push('church');
         if (dropped.includes('sermonTextRetry') || dropped.includes('preparationTextRetry')) {
           const { sermonTextRetry: _invalid, preparationTextRetry: _legacy, ...rest } = checkpoint;
           checkpoint = rest;
@@ -617,6 +624,14 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   const { preparationTextRetry: legacyRetry, ...decoded } = record.checkpoint;
   const competingRetries = decoded.sermonTextRetry && legacyRetry && !equalValues(decoded.sermonTextRetry, legacyRetry);
   const checkpoint: SessionCheckpoint = { ...decoded, draft: ownedDocument(decoded.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  const church = checkpoint.sermonChurchRecovery;
+  if (church && !validSermonChurchRecovery(checkpoint, church)) {
+    delete checkpoint.sermonChurchRecovery;
+    if (ref.collection === 'sermons') checkpoint.unreadableScalarProof = [...new Set([...(checkpoint.unreadableScalarProof ?? []), 'church'])];
+  } else if (church && !church.observation && checkpoint.confirmed.value && checkpoint.draft
+    && !equalValues(readField(checkpoint.confirmed.value, ['church']), readField(checkpoint.draft, ['church']))) {
+    checkpoint.unreadableScalarProof = [...new Set([...(checkpoint.unreadableScalarProof ?? []), 'church'])];
+  }
   const retry = checkpoint.sermonTextRetry ?? legacyRetry;
   if (retry && !competingRetries && sermonTextRetryMatches(checkpoint, retry)) checkpoint.sermonTextRetry = retry;
   else if (retry) {

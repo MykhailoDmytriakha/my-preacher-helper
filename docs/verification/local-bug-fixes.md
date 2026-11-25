@@ -10473,3 +10473,14 @@ The replay uses the existing title and Bible reference commands. Taking the save
 Four engine regressions were red at the original refusal. The storage tests then exposed the older preparation format change and an unprotected descendant. The completed checks cover original and missing proof for both fields, restore after closing a comparison, scope on the wire, and earlier-format read/write. Hidden Chrome used local Auth and Firestore at 390 and 1,280 px, checked both decisions for the Bible reference, and reloaded while deciding. Evidence is in the local case at `artifacts/exegetical-header-refused-20261125/`.
 
 After authorized deployment, use a disposable sermon to check that a recovered title or Bible reference leaves its independently chosen point intact after reloading. Use an emulator for a refused queue or an earlier application build. Other field types and ambiguous scopes remain open.
+
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover the sermon church and its inferred calendar fill
+
+Sermons → Preparation → Exegetical Plan. The earlier build blocked the point comparison when a later Save in the same refused queue selected a church. The engine now recovers that choice separately. It also retains the inferred fill if the form had filled the unspecified church on one existing scheduled entry. The calendar row must still have the same identity and creation time. A church independently named in the calendar and changes to the date or its note are preserved. Deleted or replaced entries stay as currently saved.
+
+An intact observation retains the original revision and time. If it is unreadable, the person sees their church and the current saved church, plus the calendar effect when it applies. Using the saved version resolves the copy locally. The private choice uses the displayed revision and a fresh time. Church recovery records and their descendants have their own storage range, which prevents an earlier build from opening and submitting them without these checks.
+
+The old browser run reproduced the blocked decision. On the fixed build, hidden Chrome with local Auth and Firestore exercised readable proof and a named calendar church at 1,280 px, and both choices for unreadable proof at 390 px. The point, dates and selected church persisted after reload. The engine, server, providers and sermon hooks profile passed 4,308 tests in 183 suites. TypeScript and scoped ESLint passed, with 93 lint warnings. Independent review found no blocking issue. Evidence is in the local case at `artifacts/exegetical-church-refused-20261125/`.
+
+After authorized deployment, check on a disposable sermon that selecting a church can fill the unspecified church on its scheduled entry and that a church explicitly entered in the calendar survives. Use the emulator to reproduce refused requests and unreadable device evidence. Explicit appointment changes and queues whose field scope cannot be proved remain open.

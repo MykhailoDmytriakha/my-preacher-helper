@@ -12,6 +12,7 @@ import { equalValues, object } from './fieldValues';
 import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
+import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { readSermonConflictField, readSermonPreparationConfirmation } from './sermonFieldChoice';
 import { readPlanCellText } from './sermonPlanCellSession';
 import { isPlanCellPath } from './sermonTextOpenings';
@@ -204,6 +205,8 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
       identity: JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]),
       mine: mine || undefined, stored: stored || undefined };
   }
+  const church = readRecoveredSermonChurch(checkpoint);
+  if (church) return { kind: 'recovered-sermon-church' as const, ...church };
   const recoveredText = readSermonTextDraftComparison(checkpoint);
   if (recoveredText) return { kind: 'recovered-sermon-text' as const, ...recoveredText };
   const mine = readSermonConflictField(draft, path);

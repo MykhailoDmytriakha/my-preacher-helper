@@ -1,7 +1,7 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, sermonTextDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, sermonChurchDraft, sermonTextDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { useTranslation } from '@locales/useTranslation';
@@ -126,7 +126,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
           && record.checkpoint.unreadableExegeticalProofs?.some(proof => proof.pendingAddition);
         if (readOutlineTitleComparison(record.checkpoint) || readOutlineNoteConflict(record.checkpoint) || readSermonOutlineReview(record.checkpoint)
           || !isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
-        const recoveredText = sermonTextDraft(record.checkpoint);
+        const recoveredText = sermonChurchDraft(record.checkpoint) ?? sermonTextDraft(record.checkpoint);
         const pointTitle = exegeticalRecoveryOpeningTitle(record);
         const title = recoveredText ? fieldLabel(t, recoveredText.field)
           : pointTitle !== undefined ? [t('dataSync.exegeticalPointTitle'), pointTitle].filter(Boolean).join(' · ')

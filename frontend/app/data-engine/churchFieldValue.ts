@@ -9,3 +9,7 @@ export const isChurchValue = (value: unknown): value is ChurchValue => object(va
   && (!own(value, 'city') || short(value.city)) && Object.keys(value).every(key => ['id', 'name', 'city'].includes(key));
 
 export const isSermonChurch = (field: FieldValue): boolean => !field.exists || isChurchValue(field.value);
+
+export function churchFieldWords(value: unknown): string | undefined {
+  return isChurchValue(value) ? [value.name, value.city].filter(Boolean).join(', ') : undefined;
+}

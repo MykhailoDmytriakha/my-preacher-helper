@@ -30,7 +30,7 @@ import { prepareAtomicSeriesCommand, prepareDomainCommand, requiredDomainTargets
 import { areDifferentTabManualParents, readManualScopeIdentity, sharesEditorOpening } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
-import { writeField } from './fieldValues';
+import { readField, writeField } from './fieldValues';
 import { captureFirstGroupMeetingChange } from './groupFirstMeeting';
 import { matchingGroupFlowCopySources, matchingGroupFlowRetirements } from './groupFlowTopology';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
@@ -48,6 +48,7 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
+import { validSermonChurchRecovery } from './sermonChurchRecovery';
 import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
@@ -977,6 +978,11 @@ export class CommitQueue {
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
     const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
       ? editorAction.time : frozenOptions?.documentMetadataTime;
+    const churchRecovery = intent.sermonChurchRecovery;
+    if (churchRecovery && (!validSermonChurchRecovery(intent, churchRecovery)
+      || (!churchRecovery.observation && !equalValues(readField(baseline.value ?? {}, ['church']), readField(intent.draft ?? {}, ['church']))))) {
+      throw Object.assign(new Error('The recovered church changed'), { code: 'decision-changed' });
+    }
     const textRetry = intent.sermonTextRetry;
     if (textRetry && !sermonTextRetryMatches(intent, textRetry)) {
       throw Object.assign(new Error('The recovered sermon text changed'), { code: 'decision-changed' });
@@ -1043,6 +1049,7 @@ export class CommitQueue {
       ...prayerStatus,
       ...(prayerTextActions && { prayerTextActions }),
       ...metadataFields,
+      ...(churchRecovery && { sermonChurchAction: churchRecovery.observation, sermonChurchFill: churchRecovery.fill }),
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
       ...(homileticTitleActions && { homileticTitleActions }),

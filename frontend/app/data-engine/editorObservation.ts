@@ -20,7 +20,7 @@ function comparable(checkpoint: SessionCheckpoint, incoming: ResourceSnapshot): 
     && confirmed.metadata.generation === incoming.metadata.generation && confirmed.metadata.revision < incoming.metadata.revision
     && !checkpoint.conflicts.length && !checkpoint.privateFieldReview && !checkpoint.groupTextReview && !checkpoint.groupMeetingReview
     && !checkpoint.unreadableScalarProof?.length && !checkpoint.unreadableRowProofs?.length && !checkpoint.unreadableExegeticalProofs?.length
-    && !checkpoint.exegeticalPointDrafts && !checkpoint.sermonTextRetry && !checkpoint.accountPreferenceRetry && !checkpoint.sourceNoteLinkRetry
+    && !checkpoint.exegeticalPointDrafts && !checkpoint.sermonChurchRecovery && !checkpoint.sermonTextRetry && !checkpoint.accountPreferenceRetry && !checkpoint.sourceNoteLinkRetry
     && !checkpoint.serviceOrderPlacementRetry && !checkpoint.serviceOrderStepPlacementRetry && !checkpoint.serviceOrderPlacementComparison
     && !checkpoint.outlinePointPlacementRetry && !checkpoint.groupFlowStepPlacementRetry && !checkpoint.councilTopicPlacementRetry);
 }

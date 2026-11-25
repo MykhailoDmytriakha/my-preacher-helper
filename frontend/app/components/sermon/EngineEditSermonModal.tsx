@@ -7,7 +7,7 @@ import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isChurchValue, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { churchFieldWords, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -62,7 +62,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     ? form.borrowedRecoveryIds[0] : undefined;
   const versions = form.comparison;
   const comparisonField = versions?.kind === 'returned-sermon-title' ? 'title' : versions?.kind === 'sermon-church' ? 'church' : 'verse';
-  const churchWords = (value: unknown) => isChurchValue(value) ? [value.name, value.city].filter(Boolean).join(', ') : unspecifiedChurch;
+  const churchWords = (value: unknown) => churchFieldWords(value) ?? unspecifiedChurch;
   const mine = comparisonField === 'church' ? churchWords(versions?.mine.church) : versions?.mine[comparisonField];
   const stored = comparisonField === 'church' ? churchWords(versions?.stored.value?.church) : versions?.stored.value?.[comparisonField];
   const comparisonLabel = { title: 'addSermon.titleLabel', verse: 'addSermon.verseLabel', church: 'calendar.church' } as const;

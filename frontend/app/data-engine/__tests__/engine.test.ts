@@ -1415,6 +1415,115 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
+  it.each(['proven', 'own', 'saved', 'named-date', 'removed-date', 'replaced-date', 'same-church', 'missing-fill', 'date-action'] as const)(
+    'recovers a sermon church with its inferred calendar fill after a refused point Save (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'church-after-point-refusal' };
+      const original = { id: 'opening', name: 'Opening church', city: 'Opening city' };
+      const phone = { id: 'phone', name: 'Church chosen on the phone', city: 'Phone city' };
+      const desktop = { id: 'desktop', name: 'Church chosen on the desktop', city: 'Desktop city' };
+      const named = { id: 'calendar', name: 'Church named on the date', city: 'Calendar city' };
+      const unspecified = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+      const row = { id: 'planned', date: '2026-12-14', status: 'planned', church: unspecified, notes: 'Opening note', createdAt: '2026-11-08' };
+      const savedRow = { ...row, notes: 'The latest calendar note', church: mode === 'named-date' ? named : unspecified,
+        ...(mode === 'replaced-date' && { createdAt: '2026-11-24' }),
+      };
+      const fill = { rowId: row.id, rowCreatedAt: row.createdAt, church: phone };
+      const other = { ...row, id: 'other', date: '2026-12-20', church: named };
+      const storedDates = mode === 'removed-date' ? [other] : [savedRow, other];
+      const added = { id: 'point', title: '', children: [] };
+      const newest = { ...added, title: 'Newest local point title' };
+      const openingValue = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', church: original,
+        thoughts: [], preparation: { exegeticalPlan: [] }, preachDates: [row, other] };
+      const opening = { ...initial(), resource: ref, value: openingValue };
+      const storedChurch = mode === 'proven' ? original : mode === 'same-church' ? phone : desktop;
+      const latest = { ...opening, value: { ...openingValue, church: storedChurch, preachDates: storedDates },
+        metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop' } };
+      const actionTime = { earliestMs: 3000, latestMs: 3010 };
+      const choiceTime = { earliestMs: 5000, latestMs: 5010 };
+      const editorId = editorIdentity('phone', ref, 'core', 'first');
+      s.server.set(keyOf('owner', ref), opening);
+      s.cache.set(keyOf('owner', ref), opening);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        const first = { ...openingValue, preparation: { exegeticalPlan: [added] } };
+        await editor.edit(first);
+        await editor.save();
+        const later = { ...first, church: phone, preachDates: [
+          { ...row, church: phone, ...(mode === 'date-action' && { date: '2026-12-16' }) }, other,
+        ] };
+        await editor.commit(() => later, { kind: 'document-metadata', time: actionTime });
+        const request = (await s.commits.list('owner')).at(-1)!;
+        expect(request).toMatchObject({ sermonChurchAction: { before: { exists: true, value: original },
+          after: { exists: true, value: phone }, observedRevision: 1, time: actionTime }, sermonChurchFill: fill });
+        if (mode !== 'proven') {
+          // An older Save can have retained just the inferred date witness.
+          s.storage!.rows.set(JSON.stringify(commitRowKey(request)), { ...request,
+            sermonChurchAction: undefined, ...(mode === 'missing-fill' && { sermonChurchFill: undefined }),
+          });
+        }
+        await editor.edit({ ...later, preparation: { exegeticalPlan: [newest] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint,
+          unreadableExegeticalProofs: [{ nodeId: added.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true }] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+          kind: 'refused', operationId: command.operationId, code: 'decision-changed',
+        }));
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        s.server.set(keyOf('owner', ref), latest);
+        const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'point'), source.id);
+        const before = point.getState().checkpoint;
+        if (mode === 'missing-fill' || mode === 'date-action') {
+          await expect(point.acceptRemote(undefined, before)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(point.getState().checkpoint.pending).toEqual(before.pending);
+          expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await point.acceptRemote(undefined, before);
+        const primary = point.getState().checkpoint;
+        expect(primary.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        expect(primary.draft).toMatchObject({ church: latest.value.church, preachDates: storedDates });
+        const choices = await s.engine.listRecoveryChoices(ref, true);
+        expect(choices).toHaveLength(1);
+        expect(choices[0].record.checkpoint.draft).toMatchObject({ church: phone, preachDates: [{ ...row, church: phone }, other] });
+
+        jest.mocked(s.transport.send).mockImplementation(send);
+        await point.keepLocal(undefined, primary);
+        await point.save();
+        await s.engine.retry();
+        const choice = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'church'), choices[0].id);
+        if (mode === 'proven') await choice.save();
+        else {
+          const compared = choice.getState().checkpoint;
+          expect(compared.conflicts).toMatchObject([{ path: ['church'], mine: { value: phone }, theirs: { value: storedChurch } }]);
+          await expect(choice.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          if (mode === 'saved') await choice.acceptRemote(undefined, compared);
+          else await choice.keepLocal(undefined, compared, choiceTime);
+        }
+        await s.engine.retry();
+        const commands = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+        expect(commands).toHaveLength(mode === 'saved' ? 2 : 3);
+        if (mode !== 'saved' && mode !== 'same-church') expect(commands[2]).toMatchObject({ sermonChurchAction: {
+          observedRevision: mode === 'proven' ? 1 : 3, time: mode === 'proven' ? actionTime : choiceTime,
+        } });
+        if (mode === 'same-church') expect(commands[2]).not.toHaveProperty('sermonChurchAction');
+        const fillsDate = mode === 'own' || mode === 'proven' || mode === 'same-church';
+        if (fillsDate) expect(commands[2]).toMatchObject({ sermonChurchFill: fill });
+        else if (mode !== 'saved') expect(commands[2]).not.toHaveProperty('sermonChurchFill');
+        expect(s.server.get(keyOf('owner', ref))?.value).toMatchObject({
+          church: mode === 'saved' ? desktop : phone, preparation: { exegeticalPlan: [newest] },
+          preachDates: fillsDate ? [{ ...savedRow, church: phone }, other] : storedDates,
+        });
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
   it('keeps local conflict fields on explicit choice without sending until save is requested', async () => {
     const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'mine' }); await editor.save();

@@ -1,7 +1,7 @@
 import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
-import { readSermonConflict } from '@/data-engine/react.client';
+import { churchFieldWords, readSermonConflict } from '@/data-engine/react.client';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -30,6 +30,12 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   }
   if (kind === 'verse') {
     return { identity, title: t('addSermon.verseLabel'), mine: comparison.mine, stored: comparison.stored, scopedChoice: true };
+  }
+  if (kind === 'recovered-sermon-church') {
+    const words = (value: unknown) => churchFieldWords(value) ?? t('calendar.unspecifiedChurch');
+    return { identity, valueKind: 'field', title: fieldLabel(t, 'church'),
+      mine: words(comparison.mine.value), stored: words(comparison.stored.value), scopedChoice: true,
+      ...(comparison.fillsPlannedEntry && { description: t('dataSync.churchChoiceFillsPlannedEntry') }) };
   }
   if (kind === 'recovered-sermon-text') {
     const text = (value: unknown) => typeof value === 'string' && value ? value : t('dataSync.emptyField');

@@ -2,7 +2,7 @@
 
 import { isPreparationTextField } from '@/utils/preparationFieldValues';
 
-import { isSermonHeaderRecoveryEditor, SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
+import { protectedSermonRecoveryKind, SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './protocol';
 import { isRecoverableCheckpoint, recoveryCheckpointEditorId, validateRecoveryRecord } from './recovery.client';
 import { recoveryOrigins } from './recoverySource';
@@ -16,8 +16,11 @@ import type { EditorRecord, SettledCheckpoint } from './controller';
 // A version that cannot restore a reminder's opening must not offer to apply its retained draft.
 export const SERMON_NOTE_CHOICE_ROW = 'sermon-note-choice-checkpoint';
 export const SERMON_HEADER_CHOICE_ROW = 'sermon-header-choice-checkpoint';
+export const SERMON_CHURCH_CHOICE_ROW = 'sermon-church-choice-checkpoint';
+const protectedSermonRows = { 'sermon-header': SERMON_HEADER_CHOICE_ROW, 'sermon-church': SERMON_CHURCH_CHOICE_ROW } as const;
 export const checkpointKey = (owner: string, editorId: string): IDBValidKey => {
-  const kind = isSermonHeaderRecoveryEditor(editorId) ? SERMON_HEADER_CHOICE_ROW
+  const protection = protectedSermonRecoveryKind(editorId);
+  const kind = protection ? protectedSermonRows[protection]
     : editorId.startsWith(SERMON_NOTE_CHOICE_RECOVERY_PREFIX) ? SERMON_NOTE_CHOICE_ROW : 'checkpoint';
   return [kind, owner, editorId];
 };

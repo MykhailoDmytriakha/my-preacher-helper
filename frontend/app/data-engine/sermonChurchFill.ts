@@ -18,7 +18,7 @@ function sameRow(row: DocumentData | undefined, fill: SermonChurchFill): row is 
   return Boolean(row && row.createdAt === fill.rowCreatedAt);
 }
 
-function validFill(fill: unknown): fill is SermonChurchFill {
+export function isSermonChurchFill(fill: unknown): fill is SermonChurchFill {
   return object(fill) && boundedRowId(fill.rowId) && typeof fill.rowCreatedAt === 'string' && fill.rowCreatedAt.length > 0 && isChurchValue(fill.church) && !isUnspecifiedChurch(fill.church);
 }
 
@@ -35,10 +35,18 @@ export function captureSermonChurchFill(before: Json | undefined, after: Json | 
   return candidates.length === 1 ? candidates[0] : undefined;
 }
 
+/** Fill only the originally addressed existing date while its own church remains unspecified. */
+export function fillExistingSermonDate(rows: Json | undefined, fill: SermonChurchFill): Json | undefined {
+  if (!Array.isArray(rows) || !isSermonChurchFill(fill)) return;
+  const opening = findRow(rows, fill.rowId);
+  if (!sameRow(opening, fill) || !isChurchValue(opening.church) || !isUnspecifiedChurch(opening.church)) return;
+  return rows.map(row => row === opening ? { ...opening, church: fill.church } : row);
+}
+
 /** Re-evaluate an inferred church without rewriting authored date details or another date. */
 export function rebaseSermonChurchFill(before: Json | undefined, after: Json | undefined, live: Json | undefined,
   acceptedChurch: FieldValue, fill: unknown): Json | undefined {
-  if (!validFill(fill) || !Array.isArray(after)) return after;
+  if (!isSermonChurchFill(fill) || !Array.isArray(after)) return after;
   const requestedChurch = { exists: true, value: fill.church };
   const opening = findRow(before, fill.rowId), draft = findRow(after, fill.rowId);
   if (!sameRow(draft, fill) || !equalValues(draft.church, requestedChurch.value)) return after;

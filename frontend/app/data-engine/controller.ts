@@ -68,7 +68,7 @@ import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './s
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
-import { hasUnreadableSermonText } from './unreadableDraftProof';
+import { hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -740,6 +740,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
+        if (hasUnreadableSermonChurch(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -797,6 +798,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
+        if (hasUnreadableSermonChurch(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;

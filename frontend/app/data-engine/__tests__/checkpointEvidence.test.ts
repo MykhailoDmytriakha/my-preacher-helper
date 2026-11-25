@@ -69,6 +69,9 @@ const evidence = {
   serviceOrderInputs: { '["step","body"]': { field: 'body', stepId: 'step', before: 'Original', value: 'Later',
     version: { generation: 'g', observedRevision: 1 }, time } },
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
+  sermonChurchRecovery: { generation: 'g', observation: {
+    before: { exists: false }, after: { exists: true, value: church }, observedRevision: 1, time,
+  } },
   sermonTextRetry: { field: 'authorIntent', generation: 'g', action: { before: { exists: true, value: 'Original' },
     after: { exists: true, value: 'Later' }, observedRevision: 1, time } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
@@ -126,6 +129,11 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
+  if (key === 'sermonChurchRecovery') {
+    source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+    source.checkpoint.draft = { ...source.checkpoint.confirmed.value, church };
+    source.checkpoint.draft.title = 'Original';
+  }
   if (key === 'sermonTextRetry') {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     source.checkpoint.confirmed.value = { userId: 'owner', preparation: { authorIntent: 'Original' } };

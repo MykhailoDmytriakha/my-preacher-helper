@@ -232,6 +232,7 @@
     "groupRowRemovedLocally": "This block or step was removed on this device.",
     "unverifiedPlanCellTitle": "Choose which text to keep",
     "unverifiedPlanCellDescription": "We could not confirm which saved version you started from. Compare your text with the saved version.",
+    "churchChoiceFillsPlannedEntry": "Keeping your version also fills in the church on the linked calendar entry.",
     "fieldVersionChanged": "This field has another version saved from your other device. Compare the versions above and choose which to keep.",
     "noteFieldsChanged": "Other versions of these fields were saved from your other device. Compare the versions above and choose which to keep.",
     "referenceComparisonUnavailable": "The versions have changed. Your draft is kept on this device while the app checks what can be compared.",

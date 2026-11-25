@@ -44,31 +44,42 @@ export function editorSlot(editorId: string): string | null {
 
 const MANUAL_CHOICE_RECOVERY = 'manual-choice-recovery';
 const SERMON_NOTE_CHOICE_RECOVERY = 'sermon-note-choice-recovery';
-const SERMON_HEADER_CHOICE_RECOVERY = 'sermon-header-choice-recovery';
-const SERMON_HEADER_RECOVERY_FORK = ':sermon-header-recovery';
-const SERMON_HEADER_CHOICE_PREFIX = JSON.stringify([SERMON_HEADER_CHOICE_RECOVERY]).slice(0, -1) + ',';
-export const SERMON_NOTE_CHOICE_RECOVERY_PREFIX = JSON.stringify([SERMON_NOTE_CHOICE_RECOVERY]).slice(0, -1) + ',';
-export const MANUAL_CHOICE_RECOVERY_PREFIX = JSON.stringify([MANUAL_CHOICE_RECOVERY]).slice(0, -1) + ',';
+const protectedSermonRecoveries = {
+  'sermon-header': { choice: 'sermon-header-choice-recovery', fork: ':sermon-header-recovery' },
+  'sermon-church': { choice: 'sermon-church-choice-recovery', fork: ':sermon-church-recovery' },
+} as const;
+type ProtectedSermonRecoveryKind = keyof typeof protectedSermonRecoveries;
+const protectedKinds = Object.keys(protectedSermonRecoveries) as ProtectedSermonRecoveryKind[];
+const choicePrefix = (choice: string) => JSON.stringify([choice]).slice(0, -1) + ',';
+export const SERMON_NOTE_CHOICE_RECOVERY_PREFIX = choicePrefix(SERMON_NOTE_CHOICE_RECOVERY);
+export const MANUAL_CHOICE_RECOVERY_PREFIX = choicePrefix(MANUAL_CHOICE_RECOVERY);
 
-export function manualChoiceRecoveryIdentity(chosenId: string, laterId: string, kind?: 'sermon-note' | 'sermon-header'): string {
+export function manualChoiceRecoveryIdentity(chosenId: string, laterId: string, kind?: 'sermon-note' | ProtectedSermonRecoveryKind): string {
   const name = kind === 'sermon-note' ? SERMON_NOTE_CHOICE_RECOVERY
-    : kind === 'sermon-header' ? SERMON_HEADER_CHOICE_RECOVERY : MANUAL_CHOICE_RECOVERY;
+    : kind ? protectedSermonRecoveries[kind].choice : MANUAL_CHOICE_RECOVERY;
   return JSON.stringify([name, chosenId, laterId]);
 }
 
-export function isSermonHeaderRecoveryEditor(editorId: string): boolean {
-  return editorId.startsWith(SERMON_HEADER_CHOICE_PREFIX) || editorId.endsWith(SERMON_HEADER_RECOVERY_FORK);
+export function protectedSermonRecoveryKind(editorId: string): ProtectedSermonRecoveryKind | undefined {
+  return protectedKinds.find(kind => {
+    const protection = protectedSermonRecoveries[kind];
+    return editorId.endsWith(protection.fork) || editorId.startsWith(choicePrefix(protection.choice));
+  });
 }
 
-export function sermonHeaderRecoveryEditorIdentity(editorId: string): string {
-  return editorId.endsWith(SERMON_HEADER_RECOVERY_FORK) ? editorId : editorId + SERMON_HEADER_RECOVERY_FORK;
+export function protectSermonRecoveryEditor(editorId: string, kind: ProtectedSermonRecoveryKind): string {
+  const suffix = protectedSermonRecoveries[kind].fork;
+  return editorId.endsWith(suffix) ? editorId : editorId + suffix;
 }
 
 export function isManualChoiceRecoveryIdentity(editorId: string): boolean {
-  if (editorId.endsWith(SERMON_HEADER_RECOVERY_FORK)) return true;
+  const kind = protectedSermonRecoveryKind(editorId);
+  if (kind && editorId.endsWith(protectedSermonRecoveries[kind].fork)) return true;
   try {
     const parts: unknown = JSON.parse(editorId);
-    return Array.isArray(parts) && parts.length === 3 && (parts[0] === MANUAL_CHOICE_RECOVERY || parts[0] === SERMON_NOTE_CHOICE_RECOVERY || parts[0] === SERMON_HEADER_CHOICE_RECOVERY)
+    return Array.isArray(parts) && parts.length === 3
+      && (parts[0] === MANUAL_CHOICE_RECOVERY || parts[0] === SERMON_NOTE_CHOICE_RECOVERY
+        || (kind !== undefined && parts[0] === protectedSermonRecoveries[kind].choice))
       && parts.slice(1).every(part => typeof part === 'string' && part.length > 0);
   } catch {
     return false;
@@ -78,14 +89,16 @@ export function isManualChoiceRecoveryIdentity(editorId: string): boolean {
 const RECOVERY_SUFFIX = ':recovery:';
 
 export function recoveryEditorIdentity(editorId: string, suffix: string): string {
-  const headerRecovery = isSermonHeaderRecoveryEditor(editorId);
-  const root = headerRecovery ? openingEditorId(editorId) : editorId;
+  const kind = protectedSermonRecoveryKind(editorId);
+  const root = kind ? openingEditorId(editorId) : editorId;
   const fork = `${root}${RECOVERY_SUFFIX}${suffix}`;
-  return headerRecovery ? sermonHeaderRecoveryEditorIdentity(fork) : fork;
+  return kind ? protectSermonRecoveryEditor(fork, kind) : fork;
 }
 
 function openingEditorId(editorId: string): string {
-  const base = editorId.endsWith(SERMON_HEADER_RECOVERY_FORK) ? editorId.slice(0, -SERMON_HEADER_RECOVERY_FORK.length) : editorId;
+  const protection = protectedSermonRecoveryKind(editorId);
+  const suffix = protection ? protectedSermonRecoveries[protection].fork : undefined;
+  const base = suffix && editorId.endsWith(suffix) ? editorId.slice(0, -suffix.length) : editorId;
   const split = base.lastIndexOf(RECOVERY_SUFFIX);
   return split > 0 && /^[a-z0-9-]+$/i.test(base.slice(split + RECOVERY_SUFFIX.length)) ? base.slice(0, split) : base;
 }

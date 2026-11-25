@@ -22,6 +22,10 @@ export function unreadableScalarPath(collection: string, field: string): string[
   return preference ? [...preference.path] : [field];
 }
 
+export function hasUnreadableSermonChurch(checkpoint: SessionCheckpoint): boolean {
+  return checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.unreadableScalarProof?.includes('church') === true;
+}
+
 export function hasUnreadableSermonText(checkpoint: SessionCheckpoint): boolean {
   return checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.unreadableScalarProof?.some(isSermonTextRecoveryField) === true;
 }

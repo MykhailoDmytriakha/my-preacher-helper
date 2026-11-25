@@ -736,6 +736,13 @@ export function captureSermonRecoveryText(baseline: ResourceSnapshot, draft: Doc
     : captureSermonField(baseline, undefined, draft, target, time, []);
 }
 
+export function captureSermonRecoveryChurch(baseline: ResourceSnapshot, draft: DocumentData | null,
+  captured: ActionTime | null): SermonChurchObservation | undefined {
+  if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;
+  const time = captured === null ? null : boundedActionTime(captured);
+  return time === undefined ? undefined : captureStoredMetadataField(baseline, undefined, draft, SERMON_CHURCH, time, []);
+}
+
 export function capturePreparationConfirmation(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, capture: { field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }, records: readonly CommitRequest[]): PreparationConfirmationObservations | undefined {
   if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;

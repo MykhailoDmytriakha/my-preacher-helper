@@ -64,6 +64,7 @@ import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
 import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readOutlineNoteConflict as outlineNoteConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
+import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
 import { readSermonOutlineReview as sermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
@@ -191,6 +192,7 @@ export function validTagIntents(...args: Parameters<typeof validDocumentTagInten
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
+export { churchFieldWords } from './churchFieldValue';
 export function seriesTextChoiceFields(...args: Parameters<typeof seriesChoice>) { return seriesChoice(...args); }
 export function prayerTextEditAction(...args: Parameters<typeof capturePrayerTextEdit>) { return capturePrayerTextEdit(...args); }
 export function readServiceOrderTitleConflict(...args: Parameters<typeof serviceOrderTitleConflict>) { return serviceOrderTitleConflict(...args); }
@@ -399,6 +401,7 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
     && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
 }
 
+export { sermonChurchDraft } from './sermonChurchRecovery';
 export { sermonTextDraft } from './sermonTextRecovery';
 
 export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {
@@ -1707,7 +1710,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
-        || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared)
+        || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared) || readRecoveredSermonChurch(compared)
         || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))

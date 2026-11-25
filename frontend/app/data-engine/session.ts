@@ -37,6 +37,7 @@ import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, me
 import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
+import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
@@ -51,7 +52,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
+import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField, AccountPreferenceResolution, AccountPreferenceRetry } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -94,6 +95,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: AccountPreferenceRetry;
+  sermonChurchRecovery?: SermonChurchRecovery;
   sermonTextRetry?: import('./sermonTextRecovery').SermonTextRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
@@ -284,6 +286,13 @@ export class DataSession {
       delete this.state.sermonTextRetry;
       if (value && !equalValues(readField(value, unreadableScalarPath('sermons', retry.field)), retry.action.before)) {
         this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), retry.field])];
+      }
+    }
+    const churchRecovery = this.state.sermonChurchRecovery;
+    if (churchRecovery && !validSermonChurchRecovery({ ...this.state, draft: value }, churchRecovery)) {
+      delete this.state.sermonChurchRecovery;
+      if (value && !equalValues(value, this.state.confirmed.value)) {
+        this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), 'church'])];
       }
     }
     this.replaceDraft(value);
@@ -536,6 +545,9 @@ export class DataSession {
       && (request.meetingDateAction || request.groupMeetingFieldActions) && equalValues(this.state.draft, request.value)) {
       delete this.state.groupMeetingReview;
     }
+    const churchRecovery = this.state.sermonChurchRecovery;
+    if (churchRecovery && equalValues(request.sermonChurchAction, churchRecovery.observation)
+      && equalValues(request.sermonChurchFill, churchRecovery.fill)) delete this.state.sermonChurchRecovery;
     const textRetry = this.state.sermonTextRetry;
     if (textRetry && equalValues(observedSermonText(request, textRetry.field), textRetry.action)) {
       delete this.state.sermonTextRetry;
@@ -829,6 +841,18 @@ export class DataSession {
   }
 
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (hasUnreadableSermonChurch(this.state) && !Object.keys(this.state.pending).length) {
+      const compared = readRecoveredSermonChurch(this.state);
+      if (!compared || !this.state.remoteCandidate) {
+        throw Object.assign(new Error('Read both versions of the church before choosing'), { code: 'decision-changed' });
+      }
+      const selected = chooseRecoveredSermonChurch(this.state.remoteCandidate, compared, side, time);
+      this.finishChoiceAgainstRemote(selected.draft);
+      const remaining = this.state.unreadableScalarProof?.filter(field => field !== 'church');
+      this.state.unreadableScalarProof = remaining?.length ? remaining : undefined;
+      this.state.sermonChurchRecovery = selected.recovery;
+      return true;
+    }
     const review = readPrivateDocumentReview(this.state);
     const next = review?.remaining[0];
     if (!review || !next) return false;
@@ -1290,6 +1314,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.sermonChurchRecovery;
     delete this.state.sermonTextRetry;
     delete this.state.accountPreferenceRetry;
     delete this.state.serviceOrderPlacementComparison;

@@ -24,7 +24,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonHeaderRecoveryEditor, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity, sermonHeaderRecoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -56,6 +56,7 @@ import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointEditorId, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
+import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
@@ -70,7 +71,7 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { redeliveryDelay } from './unanswered';
-import { hasUnreadableSermonText } from './unreadableDraftProof';
+import { hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
 
 
 import type { ActionTime } from './actionClock';
@@ -1402,7 +1403,7 @@ export class DataEngine {
     const outlineOrigins = new Set(choices.filter(({ record }) => hasSermonOutlineReview(record.checkpoint))
       .map(({ id, record }) => key(id, record.recoveryVersion)));
     const claimed = new Set(choices.flatMap(({ record }) => (record.recoveryOrigins ?? []).map(({ id, version }) => key(id, version))
-      .filter(origin => resource?.collection === 'serviceOrders' || isSermonHeaderRecoveryEditor(record.editorId) || outlineOrigins.has(origin))));
+      .filter(origin => resource?.collection === 'serviceOrders' || protectedSermonRecoveryKind(record.editorId) || outlineOrigins.has(origin))));
     return this.recoveryChoices(owner, generation, 'checkpoint', choices.filter(({ id, record }) =>
       !claimed.has(key(id, record.recoveryVersion))), record => record.id);
   }
@@ -1802,7 +1803,8 @@ export class DataEngine {
     active();
     if (!editorId) throw new Error('An editor identity is required');
     const sourceEditorId = recoveryCheckpointEditorId(owner, sourceId);
-    if (sourceEditorId && isSermonHeaderRecoveryEditor(sourceEditorId)) editorId = sermonHeaderRecoveryEditorIdentity(editorId);
+    const protection = sourceEditorId ? protectedSermonRecoveryKind(sourceEditorId) : undefined;
+    if (protection) editorId = protectSermonRecoveryEditor(editorId, protection);
     if (this.editors.has(editorId) || this.recovering.has(editorId)) throw new Error('This editor identity is already open');
     const reservation = {};
     this.recovering.set(editorId, reservation);
@@ -1840,7 +1842,7 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasPrivateSermonPointMove(checkpoint)
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             if (!review) return reconciled;
@@ -2180,15 +2182,18 @@ export class DataEngine {
     }
     const checkpoint = session.checkpoint();
     if (!checkpoint.dirty) return null;
-    const headerRecovery = isSermonHeaderRecoveryEditor(editorId);
-    if (headerRecovery && checkpoint.draft) {
+    const protection = protectedSermonRecoveryKind(editorId);
+    if (protection === 'sermon-header' && checkpoint.draft) {
       const fields = changedSermonTextFields(confirmed.value, checkpoint.draft).filter(field => field === 'title' || field === 'verse');
       if (fields.length) checkpoint.unreadableScalarProof = fields;
+    } else if (protection === 'sermon-church' && checkpoint.draft
+      && !equalValues(readField(confirmed.value, ['church']), readField(checkpoint.draft, ['church']))) {
+      checkpoint.unreadableScalarProof = ['church'];
     }
     return this.persistDraftAlternative({
       owner, editorId, checkpoint, prepared: null, unfinalized: [],
       ...(typeof alternative !== 'function' && { planCellAlternative: true }),
-      ...((headerRecovery || typeof alternative !== 'function') && { autoSaveOnResume: false }),
+      ...((protection || typeof alternative !== 'function') && { autoSaveOnResume: false }),
     }, { verify, reuse });
   }
 
@@ -3006,7 +3011,11 @@ export class DataEngine {
         if (sermonTextReview && (!compared || !readSermonTextDraftComparison(current))) {
           throw Object.assign(new Error('Read both versions of the sermon text before choosing'), { code: 'decision-changed' });
         }
-        if (((current.unreadableExegeticalProofs?.length || sermonTextReview) && !Object.keys(current.pending).length)
+        const churchReview = hasUnreadableSermonChurch(current) && !Object.keys(current.pending).length;
+        if (churchReview && (!compared || !readRecoveredSermonChurch(current))) {
+          throw Object.assign(new Error('Read both versions of the church before choosing'), { code: 'decision-changed' });
+        }
+        if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview) && !Object.keys(current.pending).length)
           || (compared && (frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
@@ -3529,7 +3538,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime, titles);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }
