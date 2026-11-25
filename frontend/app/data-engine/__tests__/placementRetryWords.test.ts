@@ -664,3 +664,71 @@ it.each(['step', 'outline'] as const)('%s delivers sibling words separately when
     expect(settled).toMatchObject({ pending: {}, conflicts: [], dirty: false, draft: { title: words } });
   } finally { h.stop(); }
 });
+
+it.each([false, true])('rank sends its captured words after the preceding acknowledgement, neighbor temporarily absent=%s', async missing => {
+  const h = fixture('rank');
+  try {
+    h.session.edit({ ...h.value, title: 'Predecessor title' });
+    const predecessor = await h.save();
+    h.stage();
+    editWords(h);
+    const move = await h.save();
+    expect(move?.predecessor).toBe(predecessor?.id);
+    const cardKey = 'serviceOrders/doc', neighborKey = 'serviceOrders/neighbor';
+    const neighbor = h.db.documents.get(neighborKey)!;
+    h.onSend(() => {
+      if (!h.commands.length) {
+        const card = h.db.documents.get(cardKey)!;
+        h.db.documents.set(cardKey, { ...card, summary: 'Independent service summary' });
+        if (missing) h.db.documents.delete(neighborKey);
+      } else if (h.commands.length === 1 && missing) {
+        h.db.documents.set(neighborKey, neighbor);
+      }
+    });
+
+    await h.drain();
+
+    expect(wire(h)).toEqual([['title'], ['rank'], ['title']]);
+    expect(h.commands[1]).toHaveProperty('serviceOrderPlacement.destination.previous.id', 'neighbor');
+    expect(h.commands[2]).not.toHaveProperty('serviceOrderPlacement');
+    expect(await h.server()).toMatchObject({ rank: 1003, title: words, summary: 'Independent service summary' });
+    expect(h.session.checkpoint()).toMatchObject({
+      pending: {}, conflicts: [], dirty: false, draft: { rank: 1003, title: words, summary: 'Independent service summary' },
+    });
+  } finally { h.stop(); }
+});
+
+it.each(['rank', 'step', 'outline'] as const)('%s retains both titles when the preceding acknowledgement carries a competing title', async family => {
+  const h = fixture(family);
+  const earlier: DocumentData = family === 'outline' ? { verse: 'John 3:16' } : { summary: 'Predecessor summary' };
+  try {
+    h.session.edit({ ...h.value, ...earlier });
+    const predecessor = await h.save();
+    h.stage();
+    editWords(h);
+    const move = await h.save();
+    expect(move?.predecessor).toBe(predecessor?.id);
+    const key = h.snapshot.resource.collection + '/doc';
+    h.onSend(() => {
+      if (!h.commands.length) h.db.documents.set(key, { ...h.db.documents.get(key)!, title: 'Title saved on the other device' });
+    });
+
+    await h.drain();
+
+    expect(wire(h)).toEqual([Object.keys(earlier)]);
+    const saved = await h.server();
+    expect(saved).toMatchObject({ ...earlier, title: 'Title saved on the other device' });
+    expect(order(family, saved)).toEqual(order(family, h.value));
+    const kept = h.session.checkpoint();
+    expect(order(family, kept.draft)).toEqual(order(family, h.movedDraft));
+    expect(kept).toMatchObject({
+      draft: { title: words },
+      conflicts: [{
+        path: ['title'],
+        base: { exists: true, value: 'Opening' },
+        mine: { exists: true, value: words },
+        theirs: { exists: true, value: 'Title saved on the other device' },
+      }],
+    });
+  } finally { h.stop(); }
+});
