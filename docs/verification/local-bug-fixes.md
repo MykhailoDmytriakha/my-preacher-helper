@@ -10648,3 +10648,16 @@ Three new cases failed before the fix. Five pass, covering both capture orders, 
 Hidden Chrome at 1280 and 390 px used isolated local Auth and Firestore. The fixture started with a refused request already in IndexedDB. After resolving the point, the page listed “Thought lock state” and “Thought removal” separately. Apply both saved one additional update per action. Keeping both saved choices sent only the point update. The independent thought, both placement fields and the point survived reload. The four comparison screenshots were visually checked. The qualified run used the established harness with the service worker API disabled. The first run's service worker error is retained separately. Evidence is in `artifacts/exegetical-thought-lock-and-removal-20261125/`.
 
 After authorized rollout, use a disposable sermon: lock one thought, delete another, reopen Preparation and Structure, and confirm the remaining thought's lock, text and placement. Use the emulator to check the intentionally refused and mixed queue.
+
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover a removal after a lock on the same thought
+
+Sermons → Preparation → Exegetical Plan. The editor captured a lock, then an explicit removal of the same thought, while an earlier point Save was still pending. The refusal of that point blocked its review because removal previously required the whole opening row to match the original copy, before the already captured lock.
+
+Recovery starts at the confirmed thought frame and verifies every transition in durable predecessor order. Once the exact removal follows the proved lock of that same thought, the engine keeps the removal as the remaining action. The removal comparison still shows the current saved text and requires a choice. If the original thought is already absent or a new thought shares its ID, recovery settles the obsolete action. An unproved intermediate edit holds the original draft. Separate actions on different thoughts continue to get separate drafts.
+
+Four new regressions failed before the change. Ten related cases pass, including both removal choices, an earlier lock reversal, an already absent thought, a replacement with the same ID, and an unproved edit before removal. The broader engine and sermon profile passed 6,073 tests across 320 suites. Changed-file ESLint reported zero errors and 12 warnings. TypeScript and the production-mode build passed from working sources over `ef71f8584`. Independent review traced the exact transitions, the row identity and the fresh comparison.
+
+Hidden Chrome with isolated Auth and Firestore started from a refused queue saved in IndexedDB. At 390 px the person kept the saved thought; at 1280 px the person removed it. Both reopened with the expected text, sibling, placement and saved point. The removal was the only thought action offered, and browser request capture proved zero lock commands. The comparison screenshots were visually checked. Evidence is in `artifacts/exegetical-thought-removal-after-lock-20261125/`.
+
+After authorized rollout, use a disposable sermon to lock a thought and then explicitly delete it. Reopen Preparation and Structure and verify the remaining thought and point. Use the emulator for the deliberately refused queue, replacement and stale decision cases.

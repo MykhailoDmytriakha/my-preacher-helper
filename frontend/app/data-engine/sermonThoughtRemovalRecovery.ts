@@ -21,7 +21,7 @@ function thoughtRows(value: DocumentData) {
 const removeThought = (value: DocumentData, id: string) =>
   deleteSermonThought(value as unknown as Sermon, id) as unknown as DocumentData;
 
-function removedThought(before: DocumentData, after: DocumentData) {
+export function capturedThoughtRemoval(before: DocumentData, after: DocumentData) {
   const rows = thoughtRows(before), next = thoughtRows(after);
   if (!rows || !next) return;
   const missing = [...rows.entries()].filter(([id]) => !next.has(id));
@@ -29,12 +29,6 @@ function removedThought(before: DocumentData, after: DocumentData) {
   const [[rowId, row]] = missing;
   if (typeof row.date !== 'string' || typeof row.text !== 'string') return;
   return { rowId, row, birth: row.date, text: row.text, proposed: removeThought(before, rowId) };
-}
-
-/** An old request can prove the removed row by its complete, unchanged opening. */
-export function capturedThoughtRemoval(opening: DocumentData, before: DocumentData, after: DocumentData) {
-  const removal = removedThought(before, after);
-  if (removal && equalValues(removal.row, thoughtRows(opening)?.get(removal.rowId))) return removal;
 }
 
 export function thoughtRemovalRecoveryCopies(source: SessionCheckpoint, target: ResourceSnapshot, removed: ReadonlyMap<string, string>) {
@@ -62,13 +56,13 @@ function removalOpening(checkpoint: SessionCheckpoint) {
   if (other || address?.field !== 'thoughtRemoval' || !unresolvedThoughtRemoval(checkpoint)
     || checkpoint.unreadableScalarProof?.length || checkpoint.unreadableExegeticalProofs?.length
     || !confirmed.value || !draft || confirmed.metadata?.deleted || confirmed.metadata?.generation !== address.generation) return;
-  const removal = removedThought(confirmed.value, draft);
+  const removal = capturedThoughtRemoval(confirmed.value, draft);
   if (!removal || removal.rowId !== address.rowId || removal.birth !== address.birth
     || !equalValues(draft, removal.proposed)) return;
   return removal;
 }
 
-function removalAgainstStored(checkpoint: SessionCheckpoint, opening: ReturnType<typeof removedThought>, target: ResourceSnapshot) {
+function removalAgainstStored(checkpoint: SessionCheckpoint, opening: ReturnType<typeof capturedThoughtRemoval>, target: ResourceSnapshot) {
   if (!opening || !target.metadata || target.metadata.deleted || !target.value
     || target.resource.collection !== checkpoint.confirmed.resource.collection || target.resource.id !== checkpoint.confirmed.resource.id) return;
   const identity = JSON.stringify([opening.rowId, opening.birth, target.metadata.generation, target.metadata.revision, checkpoint.editGeneration]);
@@ -105,7 +99,7 @@ export function pendingThoughtRemoval(checkpoint: SessionCheckpoint) {
     || !conflicts.some(({ path }) => ['thoughts', 'structure', 'thoughtsBySection'].includes(path[0]))) return;
   const [requestId, captured] = request;
   const value = captured.value!;
-  const removal = removedThought(confirmed.value, value);
+  const removal = capturedThoughtRemoval(confirmed.value, value);
   if (!removal || !equalValues(removal.proposed, value)) return;
   const comparison = removalAgainstStored(checkpoint, removal, remoteCandidate);
   return comparison && { ...comparison, requestId };

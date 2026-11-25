@@ -21,13 +21,15 @@ export function recoverableThoughtLockAndRemovalTail(source: SessionCheckpoint, 
   for (let index = 1; index < chain.length; index += 1) {
     const request = chain[index], before = chain[index - 1].value, after = request.value;
     if (!before || !after || request.baseline.metadata?.generation !== metadata.generation) return;
-    const removal = capturedThoughtRemoval(opening, before, after);
-    if (removal) {
-      if (locks.has(removal.rowId)) return;
-      removed.set(removal.rowId, removal.birth);
-    }
+    const removal = capturedThoughtRemoval(before, after);
     const changes = capturedThoughtLocks(removal?.proposed ?? before, after, request.thoughtLockActions);
     if (!changes || changes.some(change => removed.has(change.rowId))) return;
+    if (removal) {
+      // Earlier transitions proved every change to this thought and its identity.
+      // The later explicit removal is the only remaining intent for this row.
+      locks.delete(removal.rowId);
+      removed.set(removal.rowId, removal.birth);
+    }
     for (const change of changes) locks.set(change.rowId, change);
   }
   if (!removed.size && !locks.size) return;

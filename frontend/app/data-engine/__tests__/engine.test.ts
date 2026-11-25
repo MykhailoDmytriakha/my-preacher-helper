@@ -1953,15 +1953,21 @@ describe('DataEngine composition', () => {
     },
   );
 
-  it.each(['lock-then-remove', 'remove-then-lock', 'same-save', 'same-row', 'unproved-neighbor'] as const)(
-    'recovers a thought lock and an independent removal after a refused point (%s)', async mode => {
+  it.each(['lock-then-remove', 'remove-then-lock', 'same-save', 'same-row-remove', 'same-row-keep',
+    'same-row-reversal', 'same-row-replaced', 'same-row-absent', 'same-row-unproved-edit', 'unproved-neighbor'] as const)(
+    'recovers thought locks and removals after a refused point (%s)', async mode => {
       const s = setup({ online: false, nativeChoice: true });
       const ref = { collection: 'sermons', id: 'thought-lock-and-removal-after-point' };
       const key = keyOf('owner', ref);
       const locked = { id: 'locked', date: '2026-11-09T00:00:00.000Z', text: 'Opening thought to pin', tags: [] };
       const removed = { ...locked, id: 'removed', text: 'Opening thought to delete' };
       const neighbor = { ...locked, id: 'neighbor', text: 'An independent neighbor' };
-      const newest = { ...locked, text: 'Latest words of the pinned thought' };
+      const sameThought = mode.startsWith('same-row-');
+      const gone = mode === 'same-row-absent';
+      const replaced = mode === 'same-row-replaced';
+      const blocked = mode === 'unproved-neighbor' || mode === 'same-row-unproved-edit';
+      const newest = { ...locked, text: 'Latest words of the pinned thought',
+        ...(replaced && { date: '2026-11-20T00:00:00.000Z' }) };
       const newestRemoved = { ...removed, text: 'Latest words of the thought to remove' };
       const newestNeighbor = { ...neighbor, text: 'Later words of the neighbor' };
       const rows = [locked, removed, neighbor];
@@ -1971,12 +1977,13 @@ describe('DataEngine composition', () => {
       const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
         preparation: { exegeticalPlan: [] }, thoughts: rows, structure, thoughtsBySection: structure };
       const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const stored: DocumentData = { ...value, thoughts: [newest, newestRemoved, newestNeighbor] };
       const latest = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
-        value: { ...value, thoughts: [newest, newestRemoved, newestNeighbor] } };
+        value: gone ? deleteSermonThought(stored as unknown as Sermon, locked.id) as unknown as DocumentData : stored };
       const editorId = editorIdentity('phone', ref, 'sermon', 'first');
       const time = { earliestMs: 3000, latestMs: 3010 };
       const remove = (document: DocumentData) => deleteSermonThought(document as unknown as Sermon,
-        mode === 'same-row' ? locked.id : removed.id) as unknown as DocumentData;
+        sameThought ? locked.id : removed.id) as unknown as DocumentData;
       s.server.set(key, original);
       s.cache.set(key, original);
       try {
@@ -1985,19 +1992,21 @@ describe('DataEngine composition', () => {
         await editor.save();
         const [root] = await s.commits.list('owner');
         const combined = mode === 'same-save' || mode === 'unproved-neighbor';
-        const pin = async () => {
+        const pin = async (checked = true) => {
           const shown = editor.getState().checkpoint;
           const pinned = { ...shown.draft!, thoughts: (shown.draft!.thoughts as typeof rows).map(row =>
-            row.id === locked.id ? { ...row, isLocked: true }
+            row.id === locked.id ? { ...row, isLocked: checked,
+              ...(mode === 'same-row-unproved-edit' && { text: 'Unproved edit of the later removed thought' }) }
               : mode === 'unproved-neighbor' && row.id === neighbor.id ? { ...row, text: 'Unproved edit outside both actions' } : row) };
           await editor.edit(combined ? remove(pinned) : pinned, shown, { field: 'thought-lock', rowIds: [locked.id], time });
           await editor.save();
         };
         if (mode === 'remove-then-lock') await editor.commit(current => remove(current!));
         await pin();
-        if (mode === 'lock-then-remove' || mode === 'same-row') await editor.commit(current => remove(current!));
+        if (mode === 'same-row-reversal') await pin(false);
+        if (mode === 'lock-then-remove' || sameThought) await editor.commit(current => remove(current!));
         const queued = await s.commits.list('owner');
-        expect(queued).toHaveLength(combined ? 2 : 3);
+        expect(queued).toHaveLength(mode === 'same-row-reversal' ? 4 : combined ? 2 : 3);
         expect(queued.some(request => request.thoughtLockActions?.some(action => action.rowId === locked.id && action.after))).toBe(true);
         await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
         const record = (await s.checkpoints.read('owner', editorId))!;
@@ -2021,8 +2030,10 @@ describe('DataEngine composition', () => {
         await s.engine.retry();
         const source = (await s.engine.listRecoverable(ref)).find(copy => copy.answer === 'refused')!;
         const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
-        if (mode === 'same-row' || mode === 'unproved-neighbor') {
-          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+        if (blocked) {
+          const before = point.getState().checkpoint;
+          await expect(point.acceptRemote(undefined, before)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(point.getState().checkpoint).toEqual(before);
           expect(s.transport.send).toHaveBeenCalledTimes(1);
           return;
         }
@@ -2034,9 +2045,30 @@ describe('DataEngine composition', () => {
         await s.engine.retry();
         expect(s.server.get(key)?.value?.thoughts).toEqual(latest.value.thoughts);
         const copies = await s.engine.listRecoveryChoices(ref, true);
-        expect(copies).toHaveLength(2);
+        expect(copies).toHaveLength(gone || replaced ? 0 : sameThought ? 1 : 2);
         const open = (scope: string) => s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', scope),
           copies.find(copy => copy.id.includes(scope))!.id);
+        if (sameThought) {
+          const takeDeletion = mode === 'same-row-remove' || mode === 'same-row-reversal';
+          if (!gone && !replaced) {
+            const removal = await open('sermon-thought-removal');
+            const review = removal.getState().checkpoint;
+            expect(review.conflicts).toMatchObject([{ path: ['thoughts', 'id:locked'], theirs: { value: newest } }]);
+            if (takeDeletion) await removal.keepLocal(undefined, review);
+            else await removal.acceptRemote(undefined, review);
+            removal.dispose();
+          }
+          await s.engine.retry();
+          const expected = takeDeletion ? remove(latest.value) : latest.value;
+          expect(s.server.get(key)?.value).toMatchObject({ thoughts: expected.thoughts, structure: expected.structure,
+            thoughtsBySection: expected.thoughtsBySection, preparation: { exegeticalPlan: [later] } });
+          expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command)).not.toContainEqual(expect.objectContaining({
+            thoughtLockActions: expect.any(Array),
+          }));
+          expect(s.transport.send).toHaveBeenCalledTimes(takeDeletion ? 3 : 2);
+          expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+          return;
+        }
         const recoverRemoval = async () => {
           const removal = await open('sermon-thought-removal');
           const review = removal.getState().checkpoint;
