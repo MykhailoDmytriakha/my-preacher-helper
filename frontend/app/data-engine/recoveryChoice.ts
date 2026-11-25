@@ -22,6 +22,8 @@ export function recoveryChoiceFingerprint(records: readonly EditorRecord[]): str
     serviceOrderPlacementRetry: checkpoint.serviceOrderPlacementRetry,
     serviceOrderStepPlacementRetry: checkpoint.serviceOrderStepPlacementRetry,
     unreadableServiceOrderStepPlacement: checkpoint.unreadableServiceOrderStepPlacement,
+    outlinePointPlacementRetry: checkpoint.outlinePointPlacementRetry,
+    unreadableOutlinePointPlacement: checkpoint.unreadableOutlinePointPlacement,
     unreadableScalarProof: checkpoint.unreadableScalarProof,
     unreadableRowProofs: checkpoint.unreadableRowProofs,
     unreadableExegeticalProofs: checkpoint.unreadableExegeticalProofs,

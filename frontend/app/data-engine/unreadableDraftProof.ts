@@ -6,10 +6,11 @@ import type { SessionCheckpoint } from './session';
 export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
 export const UNREADABLE_ROW_PROOF = 'unreadable-row-proof';
 export const UNREADABLE_STEP_POSITION = 'unreadable-step-position';
+export const UNREADABLE_OUTLINE_POINT_POSITION = 'unreadable-outline-point-position';
 
 export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
   return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length
-    || checkpoint.unreadableServiceOrderStepPlacement);
+    || checkpoint.unreadableServiceOrderStepPlacement || checkpoint.unreadableOutlinePointPlacement);
 }
 
 /** Preference proof names use the same nested paths as their saved values. */

@@ -3,6 +3,7 @@ import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 import { editorSlot, isDocumentEditorSlot, isRetirableOrdinaryEditor } from './editorIdentity';
 import { mergeUnsentObservation } from './editorObservation';
 import { equalValues } from './fieldValues';
+import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { readServiceOrderInputValue, type ServiceOrderInput } from './serviceOrderInput';
 import { SERVICE_ORDER_INPUT_SLOT } from './serviceOrderInputReserve';
 import { hasUnreadableDraftProof } from './session';
@@ -44,7 +45,7 @@ function safeAutosaveSource(record: EditorRecord): boolean {
   const hasOpening = confirmed.value && confirmed.metadata && !confirmed.metadata.deleted;
   return Boolean(draft && (hasOpening || reservedNoteCreation(record))
     && !record.prepared && !record.unfinalized.length && !record.retainedManualChoice && !record.recoveryOrigins?.length
-    && !conflicts.length && !hasUnreadableDraftProof(record.checkpoint));
+    && !conflicts.length && !hasUnreadableDraftProof(record.checkpoint) && !hasPrivateSermonPointMove(record.checkpoint));
 }
 
 /** Several alternatives on one device still belong to that person; startup cannot pick one. */

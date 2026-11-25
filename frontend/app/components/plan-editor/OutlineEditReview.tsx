@@ -4,6 +4,7 @@ import { createContext, useContext, type ContextType, type PropsWithChildren } f
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { readSermonPointMoveRecovery } from '@/data-engine/sermonPointMoveRecovery';
 import { SECTION_KEYS } from '@/utils/outlineDnd';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';
@@ -29,9 +30,11 @@ function useSavedOutlineChoices(document: OutlineDocument, enabled: boolean) {
       const title = readOutlineTitleComparison(source.record.checkpoint);
       const note = readOutlineNoteConflict(source.record.checkpoint);
       const outline = readSermonOutlineReview(source.record.checkpoint);
-      if (!title && !note && !outline) return [];
-      return [{ id: source.id, title: t(title ? 'legacyRecovery.field.title' : note ? 'planEditor.note.label' : 'planEditor.title'),
-        preview: title?.mine ?? note?.mine ?? outlineWords(outline?.mine ?? null, t), wholeOutline: Boolean(outline),
+      const move = readSermonPointMoveRecovery(source.record.checkpoint);
+      if (!title && !note && !outline && !move) return [];
+      return [{ id: source.id, title: t(title ? 'legacyRecovery.field.title' : note ? 'planEditor.note.label'
+        : move ? 'planEditor.recoveredPointPosition' : 'planEditor.title'),
+        preview: title?.mine ?? note?.mine ?? outlineWords(outline?.mine ?? move?.mine ?? null, t), wholeOutline: Boolean(outline || move),
         discard: () => document.discardRecovery(source) }];
     }),
     recover: document.recover,
@@ -71,7 +74,7 @@ export function useHasActiveOutlineEditReview() {
   const context = useContext(ReviewContext);
   const checkpoint = context?.document.state?.checkpoint;
   return Boolean(context?.enabled && checkpoint
-    && (readSermonOutlineReview(checkpoint) || readOutlineNoteConflict(checkpoint) || waitsToReview(context)));
+    && (readSermonOutlineReview(checkpoint) || readSermonPointMoveRecovery(checkpoint) || readOutlineNoteConflict(checkpoint) || waitsToReview(context)));
 }
 
 /** The plan editor opens over the workspace and gives the same document's active question a place inside it. */
@@ -88,17 +91,25 @@ export function OutlineEditReview({ includeActive, includeActiveOutline = includ
   const checkpoint = document.state?.checkpoint;
   const outline = includeActiveOutline && checkpoint ? readSermonOutlineReview(checkpoint) : undefined;
   const note = includeActive && checkpoint ? readOutlineNoteConflict(checkpoint) : undefined;
+  const move = includeActiveOutline && checkpoint ? readSermonPointMoveRecovery(checkpoint) : undefined;
   const comparison = outline ? {
     identity: outline.identity, title: t('planEditor.title'), valueKind: 'field' as const, scopedChoice: true as const,
     description: outline.requiresWholeChoice ? t('planEditor.wholeStructureDescription') : undefined,
     mine: outlineWords(outline.mine, t), stored: outlineWords(outline.stored, t),
     keepMineDisabled: !outline.canKeep,
     ...(outline.requiresWholeChoice && { actions: { local: t('planEditor.useWholeLocalStructure'), stored: t('dataSync.useStoredVersion') } }),
+  } : move ? {
+    identity: move.identity, title: t('planEditor.recoveredPointPosition'), valueKind: 'field' as const, scopedChoice: true as const,
+    description: t(move.canSave ? 'planEditor.pointMoveReady' : 'planEditor.pointMoveNeedsReview'),
+    mine: outlineWords(move.mine, t), stored: outlineWords(move.stored, t),
+    keepMineDisabled: !move.canSave,
+    actions: { local: t('planEditor.savePointPosition'), stored: t('planEditor.keepStoredPointOrder') },
   } : note ? {
     identity: note.identity, title: t('planEditor.note.label'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: note.mine ?? t('dataSync.emptyField'), stored: note.stored ?? t('dataSync.emptyField'),
   } : includeActive && checkpoint ? outlineTitleComparison(checkpoint, t) : undefined;
-  const status = outline && document.status ? { ...document.status, phase: 'conflict' as const, canKeepLocal: true, canAcceptRemote: true } : document.status;
+  const status = (outline || move) && document.status ? { ...document.status, phase: 'conflict' as const,
+    canKeepLocal: outline ? true : Boolean(move?.canUseStored), canAcceptRemote: outline ? true : Boolean(move?.canUseStored) } : document.status;
   const choices = document.status?.phase === 'saved' ? saved.choices : [];
   if (!comparison && !choices.length && !saved.error) {
     if (includeActiveOutline && waitsToReview(context)) {

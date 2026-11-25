@@ -290,6 +290,79 @@ it('reviewing the step order leaves an independently captured card position for 
   } finally { h.stop(); }
 });
 
+it.each(['intact', 'damaged', 'older checkpoint'] as const)('reopens a sermon point move with %s evidence and keeps its new words', async mode => {
+  const h = fixture('outline', true);
+  try {
+    h.stage();
+    const draft = h.session.checkpoint().draft!;
+    const outline = draft.outline as unknown as SermonOutline;
+    h.session.edit({ ...draft, title: words, outline: { ...outline,
+      main: outline.main.map(point => point.id === 'a' ? { ...point, text: 'Revised point words' } : point),
+    } as unknown as DocumentData });
+    const checkpoint = h.session.checkpoint();
+    const retry = checkpoint.outlinePointPlacementRetry!;
+    const raw = { ...checkpoint, outlinePointPlacementRetry: mode === 'older checkpoint' ? undefined
+      : mode === 'damaged' ? { ...retry, placement: { ...retry.placement, time: 'unreadable' } } : retry };
+    const store = createIndexedDbCheckpoints();
+    await store.put({ owner: 'owner', editorId: 'closed', checkpoint: raw as SessionCheckpoint, prepared: null, unfinalized: [] });
+    const restored = DataSession.restore((await store.read('owner', 'closed'))!.checkpoint);
+    expect(restored.checkpoint().draft).toMatchObject({ title: words, outline: { main: expect.arrayContaining([
+      expect.objectContaining({ id: 'a', text: 'Revised point words' }),
+    ]) } });
+    if (mode === 'intact') {
+      expect(restored.checkpoint().outlinePointPlacementRetry).toEqual(retry);
+    } else {
+      expect(restored.checkpoint().conflicts).toContainEqual(expect.objectContaining({ path: ['outline', 'position'] }));
+      await expect(h.queue.save('closed', restored.checkpoint())).rejects.toMatchObject({ code: 'resolve-version-first' });
+      expect(() => restored.keepLocal()).toThrow();
+      expect(h.commands).toEqual([]);
+      restored.acceptRemote();
+    }
+    await h.queue.save('closed', restored.checkpoint());
+    await h.drain();
+    if (mode === 'intact') {
+      expect(h.commands[0]).toMatchObject({ outlinePointPlacement: retry.placement });
+      expect(wire(h)).toEqual([['outline'], expect.arrayContaining(['title', 'outline'])]);
+    } else expect(wire(h)).toEqual([expect.arrayContaining(['title', 'outline'])]);
+    expect(await h.server()).toMatchObject({ title: words, outline: { main: (mode === 'intact' ? [points[1], points[0], points[2]] : points)
+      .map(point => point.id === 'a' ? { ...point, text: 'Revised point words' } : point) } });
+    if (mode === 'damaged') takeDroppedProof('outlinePointPlacementRetry');
+  } finally { h.stop(); }
+});
+
+it('reopening an already approved whole-outline change does not ask for its order again', async () => {
+  const h = fixture('outline', true);
+  try {
+    const before = h.value.outline as unknown as SermonOutline;
+    const moved = { ...before, main: [before.main[1], before.main[0], before.main[2]] };
+    expect(h.session.retainSermonOutlineReview({ base: before, mine: moved, stored: before })).toBe(true);
+    h.session.chooseSermonOutlineReview('local');
+    const store = createIndexedDbCheckpoints();
+    await store.put({ owner: 'owner', editorId: 'closed', checkpoint: h.session.checkpoint(),
+      autoSaveOnResume: true, prepared: null, unfinalized: [] });
+    const restored = (await store.read('owner', 'closed'))!.checkpoint;
+    expect(restored.conflicts).toEqual([]);
+    expect(restored.unreadableOutlinePointPlacement).toBeUndefined();
+    const later = { ...moved, main: [moved.main[2], moved.main[0], moved.main[1]] };
+    await store.put({ owner: 'owner', editorId: 'later', prepared: null, unfinalized: [],
+      checkpoint: { ...restored, draft: { ...restored.draft, outline: later as unknown as DocumentData } } });
+    const changed = (await store.read('owner', 'later'))!.checkpoint;
+    expect(changed.reviewedSermonOutlineOrder).toBeUndefined();
+    expect(changed.conflicts).toContainEqual(expect.objectContaining({ path: ['outline', 'position'] }));
+    if (h.action.kind !== 'outline-point-placement') throw new Error('Expected a point move');
+    const laterMove = { ...h.action.move, placement: { ...h.action.move.placement, time: { earliestMs: T, latestMs: T + 2 } } };
+    await store.put({ owner: 'owner', editorId: 'same-order', prepared: null, unfinalized: [],
+      checkpoint: { ...restored, outlinePointPlacementRetry: laterMove } });
+    const repeated = (await store.read('owner', 'same-order'))!.checkpoint;
+    expect(repeated.outlinePointPlacementRetry).toEqual(laterMove);
+    expect(repeated.reviewedSermonOutlineOrder).toBeUndefined();
+    await h.queue.save('closed', restored);
+    await h.drain();
+    expect(wire(h)).toEqual([['outline']]);
+    expect((await h.server())?.outline).toMatchObject(moved);
+  } finally { h.stop(); }
+});
+
 it('does not let a choice about the displayed rank settle a newer position', () => {
   const h = fixture('rank');
   try {

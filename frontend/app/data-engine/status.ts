@@ -2,6 +2,7 @@ import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopi
 import { canRemovePendingCreation, hasForeignPendingSnapshot, pendingRemovalOpening } from './deletionOrdering';
 import { compatibleObservation } from './editorObservation';
 import { sameManualSelection } from './manualScope';
+import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { hasUnreadableDraftProof } from './session';
 import { shownDeliveryState } from './unanswered';
 import { waitsForServiceOrderPosition } from './unreadableDraftProof';
@@ -134,7 +135,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
     ...(phase === 'refused' && state.result?.kind === 'refused' && { refusalCode: state.result.code }),
     hasForeignChange: foreign,
-    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !hasUnreadableDraftProof(checkpoint) && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
+    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !hasUnreadableDraftProof(checkpoint) && !hasPrivateSermonPointMove(checkpoint) && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && !checkpoint.confirmed.metadata?.deleted
       && ((pendingIds.length === 0 && checkpoint.confirmed.value !== null)
         || (!refused && (canRemovePendingCreation(state) || Boolean(pendingRemovalOpening(state))))),
@@ -143,7 +144,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canAcceptRemote: !state.actionResolutionRequired && (foreign
       || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
       || (phase === 'refused' && !state.manualWork)) && settled,
-    canKeepLocal: !waitsForServiceOrderPosition(checkpoint) && !(state.result?.kind === 'refused' && ['group-step-placement-needs-review', 'council-topic-placement-needs-review', 'template-point-placement-needs-review'].includes(state.result.code))
+    canKeepLocal: !checkpoint.unreadableOutlinePointPlacement && !waitsForServiceOrderPosition(checkpoint) && !(state.result?.kind === 'refused' && ['group-step-placement-needs-review', 'council-topic-placement-needs-review', 'template-point-placement-needs-review'].includes(state.result.code))
       && !councilTopicRefusalCode(state.result) && !councilTopicConflictCode(checkpoint.conflicts) && !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }
@@ -157,7 +158,7 @@ function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], fo
     if (delivery.some(entry => shownDeliveryState(entry) === next)) phase = next;
   }
   if (foreign) phase = deletedCandidate ? 'deleted' : 'remoteChanged';
-  if (checkpoint.conflicts.length || state.result?.kind === 'conflict') phase = 'conflict';
+  if (checkpoint.conflicts.length || state.result?.kind === 'conflict' || hasPrivateSermonPointMove(checkpoint)) phase = 'conflict';
   if (state.result?.kind === 'refused') phase = 'refused';
   if (checkpoint.confirmed.metadata?.deleted && !checkpoint.dirty && !pendingCount) phase = 'deleted';
   if (!state.durable) phase = state.error ? 'localFailure' : 'savingLocally';

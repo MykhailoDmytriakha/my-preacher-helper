@@ -23,6 +23,7 @@ import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { useThoughtTagComparison } from '@/components/thought/useThoughtTagComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { hasPrivateSermonPointMove } from '@/data-engine/sermonPointMoveRecovery';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
@@ -175,7 +176,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
           <ThoughtPlacementHistory key={'placement:' + generation} owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
             disabled={!canChangeThoughtHistory} outline={sermon.outline} onRestore={outline.writer.setThoughtPlacement} />
         </>}
-        syncStatus={document.readOnly ? null : <DataSyncStatus
+        syncStatus={document.readOnly || (checkpoint && hasPrivateSermonPointMove(checkpoint)) ? null : <DataSyncStatus
           subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
           comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}
           onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}

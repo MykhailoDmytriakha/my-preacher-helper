@@ -59,6 +59,7 @@ import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReo
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, readPlanCellText, type PlanCellAlternative, type PlanCellOpening } from './sermonPlanCellSession';
+import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
 import { projectServiceOrderInput, readServiceOrderInputValue, serviceOrderInputKey, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { includesServiceOrderReserve, matchesServiceOrderReserve, SERVICE_ORDER_INPUT_SLOT, ServiceOrderInputReserve, type ServiceOrderReserveStorage } from './serviceOrderInputReserve';
@@ -1833,7 +1834,7 @@ export class DataEngine {
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
-              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length
+              : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             if (!review) return reconciled;
@@ -3293,7 +3294,7 @@ export class DataEngine {
     const { checkpoint } = state;
     const pending = Object.entries(checkpoint.pending);
     const unqueued = pending.every(([, request]) => request.generation < checkpoint.editGeneration);
-    const waitsForPerson = checkpoint.conflicts.length > 0 || hasUnreadableDraftProof(checkpoint)
+    const waitsForPerson = checkpoint.conflicts.length > 0 || hasUnreadableDraftProof(checkpoint) || hasPrivateSermonPointMove(checkpoint)
       || state.result?.kind === 'conflict' || state.result?.kind === 'refused'
       || Boolean(checkpoint.confirmed.metadata?.deleted)
       || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null);
@@ -3476,7 +3477,9 @@ export class DataEngine {
       } else if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected, titles);
         const resolved = controller.getState().checkpoint;
-        if ((preference || meeting || finalPrivateFieldChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        const pointMove = hasPrivateSermonPointMove(checkpoint);
+        const pointWordsCanSave = pointMove && !resolved.conflicts.length && !hasUnreadableDraftProof(resolved);
+        if ((!pointMove || pointWordsCanSave) && (pointWordsCanSave || preference || meeting || finalPrivateFieldChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }

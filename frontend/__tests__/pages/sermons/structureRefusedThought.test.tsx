@@ -6,8 +6,12 @@ import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import SermonOutline from '@/components/sermon/SermonOutline';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { EditorController } from '@/data-engine/controller';
-import { applyCommand } from '@/data-engine/protocol';
+import { editorIdentity } from '@/data-engine/editorIdentity';
+import { planOutlinePointPlacement } from '@/data-engine/outlinePointPlacement.server';
+import { replaceResourceOutline } from '@/data-engine/outlinePlacementResource';
+import { advanceResourceSnapshot, applyCommand } from '@/data-engine/protocol';
 import { DataDocumentProvider, DataEngineProvider, useDataDocument } from '@/data-engine/react.client';
+import { DataSession } from '@/data-engine/session';
 import { UNANSWERED_SAID_AFTER_ATTEMPTS } from '@/data-engine/unanswered';
 import { sortItemsWithAI } from '@/services/sortAI.service';
 import { documentEngineHarness } from '@test-utils/documentEngineHarness';
@@ -745,4 +749,57 @@ it.each([
     view.unmount();
     oldBackup.mockRestore();
   }
+});
+
+
+it.each(['unknown', 'intact'] as const)('reopens the %s point move on the actual sermon structure screen', async mode => {
+  const a = { id: 'first-point', text: 'Original heading' }, b = { id: 'second-point', text: 'Another heading' };
+  const before = { introduction: [a], main: [b], conclusion: [] };
+  const moved = { introduction: [], main: [b, { ...a, text: 'Heading typed after the move' }], conclusion: [] };
+  const value = { userId: 'owner', title: 'Test sermon', verse: '', date: '2026-11-07', thoughts: [], structure, outline: before };
+  const snapshot = { resource, value, metadata: { protocol: 1 as const, generation: 'g1', revision: 2, deleted: false } };
+  const h = documentEngineHarness(snapshot, { apply: (command, current) => {
+    if (command.kind !== 'update' || !command.outlinePointPlacement || !current.value) return applyCommand(command, current);
+    const planned = planOutlinePointPlacement(command, current, 'outline', current.value);
+    if ('conflict' in planned) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [planned.conflict] };
+    const moved = replaceResourceOutline('sermons', current.value, planned.outline);
+    return { kind: 'acknowledged', operationId: command.operationId,
+      snapshot: advanceResourceSnapshot(current, moved, command.operationId, ['outline']) };
+  } });
+  const session = new DataSession(snapshot);
+  const next = { ...value, outline: moved };
+  if (mode === 'intact') session.stageOutlinePointPlacementRetry({
+    generation: 'g1', before: { introduction: [{ id: a.id }], main: [{ id: b.id }], conclusion: [] },
+    after: { introduction: [], main: [{ id: b.id }, { id: a.id }], conclusion: [] },
+    placement: { pointId: a.id, opening: { section: 'introduction', previous: null, next: null },
+      destination: { section: 'main', previous: b.id, next: null }, observedRevision: 2, time: null },
+  }, next);
+  else session.edit(next);
+  await h.checkpoints.put({ owner: 'owner', editorId: editorIdentity('previous-tab', resource, 'default', 'outline-move'),
+    checkpoint: session.checkpoint(), prepared: null, unfinalized: [], autoSaveOnResume: true });
+  jest.mocked(createBrowserDataEngine).mockImplementation(() => h.createBrowser({ withCollections: true }));
+  render(<TestProviders><DataEngineProvider><StructurePage /></DataEngineProvider></TestProviders>);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'dataSync.reviewSavedChange' }));
+  const comparison = within(await screen.findByRole('region', { name: 'dataSync.versionComparison' }));
+  const keep = await comparison.findByRole('button', { name: 'planEditor.savePointPosition' });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+  expect(h.transport.send).not.toHaveBeenCalled();
+  if (mode === 'intact') {
+    expect(keep).toBeEnabled();
+    fireEvent.click(keep);
+  } else {
+    expect(keep).toBeDisabled();
+    fireEvent.click(comparison.getByRole('button', { name: 'planEditor.keepStoredPointOrder' }));
+    const question = within(await screen.findByRole('dialog', { name: 'dataSync.confirmStoredField.title' }));
+    fireEvent.click(question.getByRole('button', { name: /dataSync.confirmStoredField.confirm|dataSync.useStoredVersion/ }));
+  }
+  const expected = mode === 'intact' ? moved : { ...before, introduction: [{ ...a, text: 'Heading typed after the move' }] };
+  await waitFor(() => expect(h.server.value?.outline).toMatchObject(expected));
+  const commands = jest.mocked(h.transport.send).mock.calls.map(([command]) => command);
+  if (mode === 'intact') {
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({ outlinePointPlacement: { pointId: a.id, destination: { section: 'main', previous: b.id } } });
+  } else expect(commands).toHaveLength(1);
+  expect(commands.at(-1)).not.toHaveProperty('outlinePointPlacement');
 });

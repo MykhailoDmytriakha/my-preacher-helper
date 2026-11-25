@@ -1,4 +1,4 @@
-import { hasOutlinePointOrder, SECTION_KEYS } from '@/utils/outlineDnd';
+import { hasOutlinePointOrder, SECTION_KEYS, type OutlinePointOrder } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
@@ -39,6 +39,7 @@ import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
+import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -48,7 +49,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
+import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -86,6 +87,8 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
   unreadableServiceOrderStepPlacement?: true;
   outlinePointPlacementRetry?: OutlinePointPlacementCapture;
+  unreadableOutlinePointPlacement?: true;
+  reviewedSermonOutlineOrder?: { generation: string | null; observedRevision: number; before: OutlinePointOrder; after: OutlinePointOrder };
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
@@ -168,7 +171,8 @@ export class DataSession {
     const { unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, confirmed, draft, pending } = this.state;
     if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
-    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION;
+    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION
+      || conflict.code === UNREADABLE_OUTLINE_POINT_POSITION;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
       const path = unreadableScalarPath(confirmed.resource.collection, field);
@@ -192,7 +196,9 @@ export class DataSession {
         code: UNREADABLE_EXEGETICAL_PROOF }, ...pointConflicts] : pointConflicts;
     const step = this.state.unreadableServiceOrderStepPlacement && unreadableStepPosition(confirmed.value, draft, target.value);
     if (!step) delete this.state.unreadableServiceOrderStepPlacement;
-    const questions = [...scalars, ...rows, ...points, ...(step ? [step] : [])];
+    const outlinePosition = this.state.unreadableOutlinePointPlacement && unreadableOutlinePointPosition(confirmed.value, draft, target.value);
+    if (!outlinePosition) delete this.state.unreadableOutlinePointPlacement;
+    const questions = [...scalars, ...rows, ...points, ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
@@ -388,6 +394,11 @@ export class DataSession {
     this.state.remoteCandidate = chosen.conflicts.length ? copy(chosen.confirmed) : null;
     this.state.conflicts = copy(chosen.conflicts);
     this.edit(chosen.draft);
+    const before = readRootPointOrder(chosen.confirmed.value?.outline), after = readRootPointOrder(chosen.draft?.outline);
+    if (side === 'local' && before && after && retainedRootOrderChanged(before, after)) {
+      this.state.reviewedSermonOutlineOrder = { generation: chosen.confirmed.metadata?.generation ?? null,
+        observedRevision: chosen.confirmed.metadata?.revision ?? 0, before, after };
+    }
   }
 
   editOutlineTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
@@ -903,6 +914,21 @@ export class DataSession {
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
+    const storedPosition = storedSermonPointOrderChoice(this.state, atChoice);
+    if (storedPosition) {
+      const source = this.checkpoint();
+      this.state.confirmed = copy(storedPosition.target);
+      this.replaceDraft(storedPosition.draft);
+      this.state.conflicts = copy(storedPosition.conflicts);
+      this.state.remoteCandidate = storedPosition.conflicts.length ? copy(storedPosition.target) : null;
+      this.state.editGeneration = this.reserveEditGeneration();
+      this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
+      delete this.state.outlinePointPlacementRetry;
+      delete this.state.unreadableOutlinePointPlacement;
+      this.retainUnreviewedAutosaveActions(source, [{ path: ['outline', 'position'] }]);
+      this.refreshUnreadableComparisons();
+      return;
+    }
     if (this.acceptStoredUnreadableFields(atChoice) || !this.state.remoteCandidate) return;
     if (this.state.conflicts.some(conflict => conflict.code === UNREADABLE_EXEGETICAL_PROOF)) {
       if (this.state.unreadableExegeticalProofs?.some(address => unreadableExegeticalChoice(this.state, address))) {
@@ -970,7 +996,11 @@ export class DataSession {
     if (waitsForServiceOrderPosition(this.state) || hasTwoPrivateServiceOrderMoves(this.state)) {
       throw Object.assign(new Error('Choose the service order position again'), { code: 'decision-changed' });
     }
-    if (privateServiceOrderPosition(this.state) && !this.state.remoteCandidate && !this.state.conflicts.length) return;
+    if (this.state.unreadableOutlinePointPlacement) {
+      throw Object.assign(new Error('Choose the outline point position again'), { code: 'decision-changed' });
+    }
+    if ((privateServiceOrderPosition(this.state) || hasPrivateSermonPointMove(this.state))
+      && !this.state.remoteCandidate && !this.state.conflicts.length) return;
     assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {
@@ -1151,6 +1181,7 @@ export class DataSession {
 
   stageOutlinePointPlacementRetry(move: OutlinePointPlacementCapture, draft: DocumentData): void {
     this.edit(draft);
+    delete this.state.reviewedSermonOutlineOrder;
     this.state.outlinePointPlacementRetry = copy(move);
     this.state.dirty = true;
   }
@@ -1206,6 +1237,8 @@ export class DataSession {
       const field = outlinePlacementField(this.state.confirmed.resource.collection);
       if (!field || !hasOutlinePointOrder(value?.[field], outlineMove.after)) delete this.state.outlinePointPlacementRetry;
     }
+    const reviewed = this.state.reviewedSermonOutlineOrder;
+    if (reviewed && !hasOutlinePointOrder(value?.outline, reviewed.after)) delete this.state.reviewedSermonOutlineOrder;
     this.state.draft = copy(value);
     retainPlanCellDrafts(this.state, value);
   }
@@ -1217,6 +1250,7 @@ export class DataSession {
     delete this.state.unreadableServiceOrderStepPlacement;
     delete this.state.serviceOrderPlacementRetry;
     delete this.state.outlinePointPlacementRetry;
+    delete this.state.unreadableOutlinePointPlacement;
     delete this.state.groupFlowStepPlacementRetry;
     delete this.state.councilTopicPlacementRetry;
     delete this.state.sourceNoteLinkRetry;

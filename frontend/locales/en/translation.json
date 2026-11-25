@@ -2727,6 +2727,11 @@
       "current": "Current position",
       "more": "More earlier positions"
     },
+    "recoveredPointPosition": "Point position",
+    "savePointPosition": "Save point position",
+    "keepStoredPointOrder": "Keep saved structure order",
+    "pointMoveReady": "This move is saved on this device. You can save the position or keep the saved order.",
+    "pointMoveNeedsReview": "We couldn't restore this point's move. Keep the saved order, then move the point again. Your text is kept.",
     "outlineReviewWaiting": "The structure comparison is saved on this device. It will be available after the earlier save is settled.",
     "wholeStructureDescription": "For this saved edit, choose between two complete structures. Review the saved structure before replacing it with yours.",
     "useWholeLocalStructure": "Use my entire structure",

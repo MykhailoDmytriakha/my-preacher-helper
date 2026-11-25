@@ -1,6 +1,6 @@
 import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
-import { outlinePointGap, SECTION_KEYS, type OutlinePointGap, type OutlineSubpointGap } from '@/utils/outlineDnd';
+import { outlinePointGap, SECTION_KEYS, type OutlinePointGap, type OutlinePointOrder, type OutlineSubpointGap } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { repeatedWordsPath } from '@/utils/preparationFieldValues';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
@@ -38,7 +38,7 @@ export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisResha
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
-  FieldValue, Json, OutlineSubpointMove, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap, StudyNoteReferenceAlias,
+  FieldValue, Json, OutlinePointPlacement, OutlineSubpointMove, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap, StudyNoteReferenceAlias,
 } from './types';
 import type { ScriptureReference } from '@/models/models';
 
@@ -259,6 +259,12 @@ export function validOutlineSubpointMove(value: unknown, allowUnchanged = false)
   return gap(value.opening) && gap(value.destination) && (allowUnchanged || !equalValues(value.opening, value.destination));
 }
 
+export function matchesOutlinePointPlacement(before: OutlinePointOrder, after: OutlinePointOrder, move: OutlinePointPlacement): boolean {
+  const id = move.pointId;
+  return equalValues(move.opening, outlinePointGap(before, id)) && equalValues(move.destination, outlinePointGap(after, id))
+    && SECTION_KEYS.every(section => equalValues(before[section].filter(point => point.id !== id), after[section].filter(point => point.id !== id)));
+}
+
 function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
   const move: unknown = command.outlinePointPlacement;
   const change = command.changes[0];
@@ -270,7 +276,6 @@ function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'updat
     || (move.predecessorOperationId !== undefined && (!isValidIdentifier(move.predecessorOperationId)
       || !command.dependsOn.includes(move.predecessorOperationId)))
     || !validOutlinePointGap(move.opening, move.pointId) || !validOutlinePointGap(move.destination, move.pointId)) return false;
-  const id = move.pointId;
   const compact = (value: unknown) => {
     if (!object(value) || Object.keys(value).length !== SECTION_KEYS.length) return undefined;
     const rows = SECTION_KEYS.map(section => value[section]);
@@ -281,9 +286,7 @@ function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'updat
     return new Set(ids).size === ids.length ? outline : undefined;
   };
   const before = compact(change.before.value), after = compact(change.after.value);
-  return Boolean(before && after && equalValues(move.opening, outlinePointGap(before, id))
-    && equalValues(move.destination, outlinePointGap(after, id))
-    && SECTION_KEYS.every(section => equalValues(before[section].filter(point => point.id !== id), after[section].filter(point => point.id !== id))));
+  return Boolean(before && after && matchesOutlinePointPlacement(before, after, move as OutlinePointPlacement));
 }
 
 export function validServiceOrderPlacementGap(value: unknown, movedId: string): value is ServiceOrderPlacementGap {

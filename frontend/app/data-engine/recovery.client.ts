@@ -14,10 +14,11 @@ import { readManualScopeIdentity } from './editorIdentity';
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { readField } from './fieldValues';
 import { outlinePlacementField } from './outlinePlacementResource';
-import { equalValues, getResourcePolicy, isValidIdentifier, validServiceOrderPlacementGap, validServiceOrderStepGap, validateCommand } from './protocol';
+import { equalValues, getResourcePolicy, isValidIdentifier, matchesOutlinePointPlacement, validServiceOrderPlacementGap, validServiceOrderStepGap, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
+import { readRootPointOrder, retainedRootOrderChanged } from './sermonPointMoveRecovery';
 import { serviceOrderInputSchema } from './serviceOrderInputCodec';
 import { placementSteps, retainedStepOrderChanged } from './serviceOrderStepPlacement';
 import { DataSession, hasUnreadableDraftProof } from './session';
@@ -186,6 +187,8 @@ const recordSchema = z.object({
     serviceOrderStepPlacementRetry: stepRetry.optional(),
     unreadableServiceOrderStepPlacement: z.literal(true).optional(),
     outlinePointPlacementRetry: outlinePlacement.optional(),
+    unreadableOutlinePointPlacement: z.literal(true).optional(),
+    reviewedSermonOutlineOrder: z.object({ generation: id.nullable(), observedRevision, before: outlineWitness, after: outlineWitness }).optional(),
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: fieldValueDraft.optional(),
@@ -389,6 +392,25 @@ function recoverStepRetry(checkpoint: Fields, confirmed: Fields) {
   return { retry: undefined, review: review ? true as const : undefined };
 }
 
+function recoverSermonPointRetry(checkpoint: Fields, confirmed: Fields, hadRetry: boolean) {
+  const opening = isFields(confirmed.value) && readRootPointOrder(confirmed.value.outline);
+  const draft = isFields(checkpoint.draft) && readRootPointOrder(checkpoint.draft.outline);
+  if (!opening || !draft) return { retry: undefined, review: undefined, reviewed: undefined };
+  const submitted = readRootPointOrder(submittedCheckpointValue(checkpoint)?.outline) ?? opening;
+  const retry = checkpoint.outlinePointPlacementRetry as z.infer<typeof outlinePlacement> | undefined;
+  const reviewed = checkpoint.reviewedSermonOutlineOrder as SessionCheckpoint['reviewedSermonOutlineOrder'];
+  const metadata = isFields(confirmed.metadata) ? confirmed.metadata : undefined;
+  if (!hadRetry && reviewed && reviewed.generation === (metadata?.generation ?? null) && !metadata?.deleted
+    && reviewed.observedRevision <= Number(metadata?.revision ?? 0)
+    && equalValues(reviewed.before, opening) && equalValues(reviewed.after, draft)) return { retry: undefined, review: undefined, reviewed };
+  if (retry && retry.generation === (metadata?.generation ?? null) && !metadata?.deleted
+    && retry.placement.observedRevision <= Number(metadata?.revision ?? 0)
+    && equalValues(retry.before, submitted) && equalValues(retry.after, draft)
+    && matchesOutlinePointPlacement(retry.before, retry.after, retry.placement)) return { retry, review: undefined, reviewed: undefined };
+  const review = checkpoint.unreadableOutlinePointPlacement === true || retainedRootOrderChanged(submitted, draft);
+  return { retry: undefined, review: review ? true as const : undefined, reviewed: undefined };
+}
+
 /** Validate recovered disk data before it can enter a controller or another account. */
 export function validateRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
   const dropped: string[] = [];
@@ -399,14 +421,7 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       && checkpoint.privateGroupTextReview !== undefined) {
       checkpoint = { ...checkpoint, privateFieldReview: checkpoint.privateGroupTextReview };
     }
-    // Template retries capture the selected gesture separately from any later title typing.
-    // Sermon retries still share a document draft and must not become durable move instructions.
     const confirmed = checkpoint.confirmed;
-    if (checkpoint.outlinePointPlacementRetry !== undefined
-      && (!isFields(confirmed) || !isFields(confirmed.resource) || confirmed.resource.collection !== 'planTemplates')) {
-      const { outlinePointPlacementRetry: _retry, ...draft } = checkpoint;
-      checkpoint = draft;
-    }
 
     if (isFields(checkpoint.pending)) {
       const pending = checkpoint.pending;
@@ -415,6 +430,18 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (Object.keys(kept).some(operationId => kept[operationId] !== pending[operationId])) checkpoint = { ...checkpoint, pending: kept };
     }
     const collection = isFields(confirmed) && isFields(confirmed.resource) && confirmed.resource.collection;
+    if (collection === 'sermons' && isFields(confirmed)) {
+      const { retry, review, reviewed } = recoverSermonPointRetry(checkpoint, confirmed,
+        value.checkpoint.outlinePointPlacementRetry !== undefined);
+      if (retry !== checkpoint.outlinePointPlacementRetry || review !== checkpoint.unreadableOutlinePointPlacement
+        || reviewed !== checkpoint.reviewedSermonOutlineOrder) {
+        checkpoint = { ...checkpoint, outlinePointPlacementRetry: retry, unreadableOutlinePointPlacement: review, reviewedSermonOutlineOrder: reviewed };
+      }
+    } else if ((collection !== 'planTemplates' && checkpoint.outlinePointPlacementRetry !== undefined)
+      || checkpoint.unreadableOutlinePointPlacement !== undefined || checkpoint.reviewedSermonOutlineOrder !== undefined) {
+      const { outlinePointPlacementRetry: retry, unreadableOutlinePointPlacement: _held, reviewedSermonOutlineOrder: _reviewed, ...rest } = checkpoint;
+      checkpoint = collection === 'planTemplates' ? { ...rest, outlinePointPlacementRetry: retry } : rest;
+    }
     if (collection === 'serviceOrders' && isFields(confirmed)) {
       const { retry, review } = recoverStepRetry(checkpoint, confirmed);
       if (retry !== checkpoint.serviceOrderStepPlacementRetry || review !== checkpoint.unreadableServiceOrderStepPlacement) {
