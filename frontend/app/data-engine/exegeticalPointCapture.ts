@@ -231,67 +231,62 @@ function titleOnDocument(data: DocumentData, id: string, version: ExegeticalPoin
   return preparation && writeField(data, ['preparation'], preparation);
 }
 
-function sameExegeticalPoint(first: ExegeticalPointVersion, second: ExegeticalPointVersion): boolean {
-  return equalValues([first.point, first.ancestors], [second.point, second.ancestors]);
+function sameExegeticalTitle(first: ExegeticalPointVersion, second: ExegeticalPointVersion): boolean {
+  return equalValues([first.point.title, first.ancestors], [second.point.title, second.ancestors]);
 }
 
-/** Recover a separately captured title over its own opening, outside the choice about the refused point. */
-export function separateRefusedPointTitle(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
+export function recoverablePointTitlesAfterRefusal(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
   const { confirmed, draft } = source;
-  const saved = projected.confirmed.value;
+  const metadata = confirmed.metadata;
+  const openingValue = confirmed.value;
   const before = source.pending[chain[0]?.id]?.value;
-  const opening = exegeticalPlan(confirmed.value?.preparation);
+  const opening = exegeticalPlan(openingValue?.preparation);
   const submitted = exegeticalPlan(before?.preparation);
   const local = exegeticalPlan(draft?.preparation);
-  const live = exegeticalPlan(saved?.preparation);
-  if (!confirmed.metadata || !confirmed.value || !before || !draft || !projected.draft || !opening || !submitted || !local || !live) return undefined;
+  const live = exegeticalPlan(projected.confirmed.value?.preparation);
+  const saves = chain.map(request => exegeticalPlan(request.value?.preparation));
+  if (!metadata || !openingValue || !opening || !submitted || !local || !live) return [];
+
   const comparedIds = new Set(projected.unreadableExegeticalProofs?.map(address => address.nodeId));
-  const others = [...opening.points.entries.keys()].filter(id => !comparedIds.has(id)
-    && changedExegeticalPoint(submitted, local, id) === 'title');
-  if (others.length !== 1) return undefined;
-  const [id] = others;
-  const original = exegeticalPointVersion(opening, id);
-  const start = exegeticalPointVersion(submitted, id);
-  const mine = exegeticalPointVersion(local, id);
-  const stored = exegeticalPointVersion(live, id);
-  if (!original || !start || !mine || !stored || !sameExegeticalPoint(original, start)) return undefined;
+  return [...opening.points.entries.keys()].filter(id => !comparedIds.has(id)).flatMap(id => {
+    const start = exegeticalPointVersion(submitted, id);
+    const mine = exegeticalPointVersion(local, id);
+    if (!start || !mine || typeof mine.point.title !== 'string' || mine.point.title === start.point.title) return [];
+    const original = exegeticalPointVersion(opening, id);
+    const stored = exegeticalPointVersion(live, id);
+    if (!original || !stored || !sameExegeticalTitle(original, start) || !equalValues(original.ancestors, mine.ancestors)) return [];
 
-  const latest = exegeticalPlan(chain.at(-1)?.value?.preparation);
-  const captured = latest && exegeticalPointVersion(latest, id);
-  if (!captured || !sameExegeticalPoint(mine, captured)) return undefined;
-  const pointDraft = titleOnDocument(confirmed.value, id, mine);
-  const cleanBefore = titleOnDocument(before, id, stored);
-  const cleanLocal = titleOnDocument(draft, id, stored);
-  const cleanDraft = titleOnDocument(projected.draft, id, stored);
-  if (!pointDraft || !cleanBefore || !cleanLocal || !cleanDraft) return undefined;
-  const checkpoint = { ...projected, draft: cleanDraft };
-  if (!canRebaseRefusedPointTail(cleanBefore, cleanLocal, checkpoint)) return undefined;
+    // An ancestor can have its own title edit while a child's title changes separately.
+    // Every Save must still contain the same addressed point before we recover its text.
+    const titles = saves.map(plan => {
+      const item = plan && exegeticalPointVersion(plan, id);
+      return item && equalValues(item.ancestors, original.ancestors) ? item.point.title : undefined;
+    });
+    if (titles.some(title => typeof title !== 'string') || titles.at(-1) !== mine.point.title) return [];
+    const lastEdit = chain[titles.findLastIndex((title, index) => index > 0 && title !== titles[index - 1])];
+    const pointDraft = titleOnDocument(openingValue, id, mine);
+    if (!pointDraft || !lastEdit) return [];
 
-  const lastEdit = chain.findLast((request, index) => {
-    if (!index) return false;
-    const previous = exegeticalPlan(chain[index - 1].value?.preparation);
-    const next = exegeticalPlan(request.value?.preparation);
-    return previous && next && changedExegeticalPoint(previous, next, id) === 'title';
+    const address = { nodeId: id, kind: 'title' as const, generation: metadata.generation, ancestors: original.ancestors };
+    const capturedStamp = lastEdit.exegeticalPlanActions?.find(action => action.nodeId === id);
+    const staged = source.exegeticalPointDrafts?.find(action => action.nodeId === id);
+    const stamp = staged ?? capturedStamp;
+    const openingRevision = lastEdit.baseline.metadata?.revision;
+    const capturedOpening = exegeticalPlan(lastEdit.baseline.value?.preparation);
+    const capturedPoint = capturedOpening && exegeticalPointVersion(capturedOpening, id);
+    const time = stamp?.time === null ? null : stamp && boundedActionTime(stamp.time);
+    const proof = stamp?.kind === 'title' && stamp.observedRevision === openingRevision && openingRevision === metadata.revision
+      && !stamp.predecessorOperationId && time !== undefined && capturedPoint && sameExegeticalTitle(original, capturedPoint)
+      && (!staged || staged.generation === address.generation && matchesResult(local, staged))
+      ? { ...address, observedRevision: stamp.observedRevision, title: mine.point.title as string, time } : undefined;
+    if (stamp && !proof) return [];
+
+    const continuation: SessionCheckpoint = {
+      confirmed, draft: pointDraft, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
+      ...(proof ? { exegeticalPointDrafts: [proof] } : { unreadableExegeticalProofs: [address] }),
+    };
+    return [{ id, continuation, restoreStored: (document: DocumentData) => titleOnDocument(document, id, stored) }];
   });
-  if (!lastEdit) return undefined;
-  const address = { nodeId: id, kind: 'title' as const, generation: confirmed.metadata.generation, ancestors: original.ancestors };
-  const capturedStamp = lastEdit.exegeticalPlanActions?.find(action => action.nodeId === id);
-  const staged = source.exegeticalPointDrafts?.find(action => action.nodeId === id);
-  const stamp = staged ?? capturedStamp;
-  const openingRevision = lastEdit.baseline.metadata?.revision;
-  const capturedOpening = exegeticalPlan(lastEdit.baseline.value?.preparation);
-  const capturedPoint = capturedOpening && exegeticalPointVersion(capturedOpening, id);
-  const time = stamp?.time === null ? null : stamp && boundedActionTime(stamp.time);
-  const proof = stamp?.kind === 'title' && stamp.observedRevision === openingRevision && openingRevision === confirmed.metadata.revision
-    && !stamp.predecessorOperationId && time !== undefined && capturedPoint && sameExegeticalPoint(original, capturedPoint)
-    && (!staged || staged.generation === address.generation && matchesResult(local, staged))
-    ? { ...address, observedRevision: stamp.observedRevision, title: mine.point.title as string, time } : undefined;
-  if (stamp && !proof) return undefined;
-  const continuation: SessionCheckpoint = {
-    confirmed, draft: pointDraft, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
-    ...(proof ? { exegeticalPointDrafts: [proof] } : { unreadableExegeticalProofs: [address] }),
-  };
-  return { id, checkpoint, continuation };
 }
 
 export function readUnreadableExegeticalChoice(checkpoint: SessionCheckpoint, nodeId: string) {

@@ -399,7 +399,17 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
     && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
 }
 
-export { preparationTextDraftPreview } from './sermonPreparationRecovery';
+export { preparationTextDraft } from './sermonPreparationRecovery';
+
+export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {
+  if (!isManualChoiceRecoveryIdentity(record.editorId)) return;
+  const { checkpoint } = record;
+  const titles = checkpoint.exegeticalPointDrafts ?? checkpoint.unreadableExegeticalProofs;
+  if (titles?.length !== 1 || titles[0].kind !== 'title') return;
+  const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
+  const title = opening?.points.entries.get(titles[0].nodeId)?.fields.title;
+  return typeof title === 'string' ? title : undefined;
+}
 
 export function exegeticalDraftTitlePreview(record: EditorRecord): string {
   const { draft, confirmed } = record.checkpoint;

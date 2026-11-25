@@ -1,8 +1,7 @@
 import { isPreparationTextField, preparationTextField, preparationTextPaths, type PreparationTextField } from '@/utils/preparationFieldValues';
 
 import { capturePreparationTextField, type DocumentFieldObservation } from './documentFieldAction';
-import { canRebaseRefusedPointTail } from './exegeticalPointCapture';
-import { equalValues, readField, writeField } from './fieldValues';
+import { equalValues, object, readField, writeField } from './fieldValues';
 import { hasUnreadablePreparationText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
@@ -27,49 +26,63 @@ export function preparationRetryMatches(checkpoint: Pick<SessionCheckpoint, 'con
   return equalValues(capturePreparationTextRetry(checkpoint, retry.field, retry.action.time), retry);
 }
 
-/** Move one independently submitted preparation field out of the refused point's comparison. */
-export function separateRefusedPreparationText(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
+function restoreStoredPreparationField(document: DocumentData, saved: DocumentData, path: readonly string[]): DocumentData {
+  const stored = readField(saved, path);
+  let result = writeField(document, path, stored);
+  if (stored.exists || !readField(document, path).exists) return result;
+  // Only remove a container made empty by clearing this field when there is no saved container.
+  for (let length = path.length - 1; length > 0; length -= 1) {
+    const parent = path.slice(0, length);
+    const { value } = readField(result, parent);
+    if (!object(value) || Object.keys(value).length || readField(saved, parent).exists) break;
+    result = writeField(result, parent, { exists: false });
+  }
+  return result;
+}
+
+export function recoverablePreparationTextAfterRefusal(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
   const { confirmed, draft } = source;
+  const openingValue = confirmed.value;
+  const metadata = confirmed.metadata;
   const before = source.pending[chain[0]?.id]?.value;
   const saved = projected.confirmed.value;
   const submitted = chain.at(-1)?.value;
-  if (!confirmed.metadata || confirmed.metadata.generation !== projected.confirmed.metadata?.generation
-    || !confirmed.value || !before || !draft || !saved || !submitted || !projected.draft) return;
-  const fields = changedPreparationTextFields(before, draft);
-  if (fields.length !== 1) return;
-  const [field] = fields, path = preparationTextPaths[field];
-  const opening = readField(confirmed.value, path);
-  const mine = readField(draft, path);
-  if ((opening.exists && typeof opening.value !== 'string') || (mine.exists && typeof mine.value !== 'string')
-    || !equalValues(opening, readField(before, path)) || !equalValues(mine, readField(submitted, path))) return;
-  const stored = readField(saved, path);
-  if (stored.exists && typeof stored.value !== 'string') return;
+  if (!metadata || metadata.generation !== projected.confirmed.metadata?.generation
+    || !openingValue || !before || !draft || !saved || !submitted) return [];
 
-  const checkpoint = { ...projected, draft: writeField(projected.draft, path, stored) };
-  if (!canRebaseRefusedPointTail(writeField(before, path, stored), writeField(draft, path, stored), checkpoint)) return;
-  const lastEdit = chain.findLast((request, index) => {
-    const previous = index && chain[index - 1].value;
-    return previous && request.value && !equalValues(readField(previous, path), readField(request.value, path));
+  return changedPreparationTextFields(before, draft).flatMap(field => {
+    const path = preparationTextPaths[field];
+    const opening = readField(openingValue, path);
+    const mine = readField(draft, path);
+    const stored = readField(saved, path);
+    if ((opening.exists && typeof opening.value !== 'string') || (mine.exists && typeof mine.value !== 'string')
+      || (stored.exists && typeof stored.value !== 'string')
+      || !equalValues(opening, readField(before, path)) || !equalValues(mine, readField(submitted, path))) return [];
+
+    const lastEdit = chain.findLast((request, index) => {
+      const previous = index && chain[index - 1].value;
+      return previous && request.value && !equalValues(readField(previous, path), readField(request.value, path));
+    });
+    if (!lastEdit || lastEdit.baseline.metadata?.generation !== metadata.generation) return [];
+    const matchingOpening = lastEdit.baseline.value && lastEdit.baseline.metadata.revision === metadata.revision
+      && equalValues(readField(lastEdit.baseline.value, path), opening);
+    const action = matchingOpening ? lastEdit.sermonPreparationTextActions?.[field] : undefined;
+    const continuation: SessionCheckpoint = {
+      confirmed, draft: writeField(openingValue, path, mine), editGeneration: source.editGeneration,
+      dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
+    };
+    const retry = action && { field, generation: metadata.generation, action };
+    if (retry && preparationRetryMatches(continuation, retry)) continuation.preparationTextRetry = retry;
+    else continuation.unreadableScalarProof = [field];
+    return [{ field, continuation, restoreStored: (document: DocumentData) => restoreStoredPreparationField(document, saved, path) }];
   });
-  if (!lastEdit || lastEdit.baseline.metadata?.generation !== confirmed.metadata.generation) return;
-  const matchingOpening = lastEdit.baseline.value && lastEdit.baseline.metadata.revision === confirmed.metadata.revision
-    && equalValues(readField(lastEdit.baseline.value, path), opening);
-  const action = matchingOpening ? lastEdit.sermonPreparationTextActions?.[field] : undefined;
-  const continuation: SessionCheckpoint = {
-    confirmed, draft: writeField(confirmed.value, path, mine), editGeneration: source.editGeneration,
-    dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
-  };
-  const retry = action && { field, generation: confirmed.metadata.generation, action };
-  if (retry && preparationRetryMatches(continuation, retry)) continuation.preparationTextRetry = retry;
-  else continuation.unreadableScalarProof = [field];
-  return { field, checkpoint, continuation };
 }
 
-export function preparationTextDraftPreview(checkpoint: SessionCheckpoint): string | undefined {
+export function preparationTextDraft(checkpoint: SessionCheckpoint) {
   const field = checkpoint.preparationTextRetry?.field ?? checkpoint.unreadableScalarProof?.find(isPreparationTextField);
   if (!field || !checkpoint.draft || checkpoint.confirmed.resource.collection !== 'sermons') return undefined;
   const { value } = readField(checkpoint.draft, preparationTextPaths[field]);
-  return typeof value === 'string' ? value.slice(0, 500) : '';
+  return { field, preview: typeof value === 'string' ? value.slice(0, 500) : '' };
 }
 
 export function readPreparationTextComparison(checkpoint: SessionCheckpoint) {

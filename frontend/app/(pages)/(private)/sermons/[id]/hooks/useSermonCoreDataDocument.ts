@@ -1,8 +1,9 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { exegeticalDraftTitlePreview, isWorkspaceRecoveryCopy, preparationTextDraftPreview, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, preparationTextDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
+import { fieldLabel } from '@/utils/storedFieldLabel';
 import { useTranslation } from '@locales/useTranslation';
 
 import { useSermonPreparationFields } from './useSermonPreparationFields';
@@ -106,7 +107,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   const recovery = useRecoveryDiscovery({
     identity: document.recoveryIdentity,
     enabled: recoveryReady,
-    version: JSON.stringify([borrowed, recoveringHeader, canOfferCoreDraft, document.status?.phase, document.confirmed?.metadata?.revision]),
+    version: JSON.stringify([borrowed, recoveringHeader, canOfferCoreDraft, language, document.status?.phase, document.confirmed?.metadata?.revision]),
     list: async () => {
       const preserved = canOfferCoreDraft || canOfferAfterRefusal ? document.listRecoverable() : document.listRecoverable({ manualChoiceCopies: 'only' });
       const forms = recoveringHeader ? Object.values(headerForms).map(async form => {
@@ -125,9 +126,14 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
           && record.checkpoint.unreadableExegeticalProofs?.some(proof => proof.pendingAddition);
         if (readOutlineTitleComparison(record.checkpoint) || readOutlineNoteConflict(record.checkpoint) || readSermonOutlineReview(record.checkpoint)
           || !isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
+        const preparation = preparationTextDraft(record.checkpoint);
+        const pointTitle = exegeticalRecoveryOpeningTitle(record);
+        const title = preparation ? fieldLabel(t, preparation.field)
+          : pointTitle !== undefined ? [t('dataSync.exegeticalPointTitle'), pointTitle].filter(Boolean).join(' · ')
+            : String(draft?.title ?? confirmed.value?.title ?? sermonId ?? '');
         const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '')
-          : preparationTextDraftPreview(record.checkpoint) ?? exegeticalDraftTitlePreview(record);
-        return [{ id, title: String(draft?.title ?? confirmed.value?.title ?? sermonId ?? ''), preview,
+          : preparation?.preview ?? exegeticalDraftTitlePreview(record);
+        return [{ id, title, preview,
           discard: () => document.discardRecovery(source) }];
       })];
     },

@@ -1175,6 +1175,138 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
+  it.each(['separate', 'nested', 'uncovered'] as const)('recovers several independent preparation edits after a refused point Save (%s)', async scope => {
+    const s = setup({ online: false, nativeChoice: true });
+    const ref = { collection: 'sermons', id: 'mixed-preparation-refusal' };
+    const first = { id: 'preparation:authorIntent', title: 'Opening first point', children: [] };
+    const second = { id: 'other-point', title: 'Opening second point', children: [] };
+    const added = { id: 'new-point', title: '', children: [] };
+    const newest = { ...added, title: 'Newest title for the new point' };
+    const plan = (parent: typeof first, child: typeof second, extra?: typeof added) => [
+      ...(scope === 'nested' ? [{ ...parent, children: [child] }] : [parent, child]),
+      ...(extra ? [extra] : []),
+    ];
+    const firstEdit = { ...first, title: 'First point edited on phone' };
+    const secondEdit = { ...second, title: 'Second point edited on phone' };
+    const savedSecond = { ...second, title: 'Second point edited on desktop' };
+    const openingWords = 'Opening author words', authorWords = 'Author words edited on phone';
+    const openingValue = { userId: 'owner', title: 'Sermon', thoughts: [], preparation: {
+      authorIntent: openingWords, exegeticalPlan: plan(first, second),
+    } };
+    const opening = { ...initial(), resource: ref, value: openingValue };
+    const saved = { ...opening, value: { ...openingValue, preparation: {
+      ...openingValue.preparation, exegeticalPlan: plan(first, savedSecond),
+    } }, metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop' } };
+    const authorTime = { earliestMs: 3000, latestMs: 3010 };
+    const pointTime = { earliestMs: 4000, latestMs: 4010 };
+    const editorId = editorIdentity('phone', ref, 'core', 'earlier');
+    s.cache.set(keyOf('owner', ref), opening);
+    s.server.set(keyOf('owner', ref), opening);
+
+    try {
+      const editor = await s.engine.openEditor(ref, editorId);
+      const firstSave = { ...openingValue, preparation: { ...openingValue.preparation, exegeticalPlan: plan(first, second, added) } };
+      await editor.edit(firstSave);
+      await editor.save();
+      await editor.commit(() => ({ ...firstSave, preparation: { ...firstSave.preparation, authorIntent: authorWords } }),
+        { kind: 'document-metadata', time: authorTime });
+      await editor.edit({ ...firstSave, preparation: { ...firstSave.preparation, authorIntent: authorWords,
+        exegeticalPlan: plan(firstEdit, second, added) } }, undefined,
+      { field: 'exegetical-point', nodeId: first.id, intent: 'title', time: pointTime });
+      await editor.save();
+      const latestSave = { ...firstSave, ...(scope === 'uncovered' && { title: 'Unrelated sermon header' }), preparation: {
+        authorIntent: authorWords, exegeticalPlan: plan(firstEdit, secondEdit, added), textContext: { contextNotes: 'Local context without a readable observation' },
+      } };
+      await editor.edit(latestSave);
+      await editor.save();
+      await editor.edit({ ...latestSave, preparation: { ...latestSave.preparation, exegeticalPlan: plan(firstEdit, secondEdit, newest) } });
+      const record = (await s.checkpoints.read('owner', editorId))!;
+      await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, exegeticalPointDrafts: undefined,
+        unreadableExegeticalProofs: [{ nodeId: added.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true }] } });
+      editor.dispose();
+      const send = jest.mocked(s.transport.send).getMockImplementation()!;
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+        kind: 'refused', operationId: command.operationId, code: 'decision-changed',
+      }));
+      s.engine.setOnline(true);
+      await s.engine.retry();
+      s.server.set(keyOf('owner', ref), saved);
+
+      const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+      expect(source).toBeDefined();
+      const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source.id);
+      const shown = reopened.getState().checkpoint;
+      if (scope === 'uncovered') {
+        await expect(reopened.acceptRemote(undefined, shown)).rejects.toMatchObject({ code: 'other-changes-first' });
+        expect(reopened.getState().checkpoint.pending).toEqual(shown.pending);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+        expect(s.transport.send).toHaveBeenCalledTimes(1);
+        return;
+      }
+      s.storage!.writeFailureFor = key => Array.isArray(key) && key[0] === 'checkpoint' && String(key[2]).includes(second.id);
+      try {
+        await expect(reopened.acceptRemote(undefined, shown)).rejects.toThrow();
+      } finally { s.storage!.writeFailureFor = undefined; }
+      expect(reopened.getState().checkpoint.pending).toEqual(shown.pending);
+      expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+
+      await reopened.acceptRemote(undefined, shown);
+      const primary = reopened.getState().checkpoint;
+      expect(primary.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:' + added.id]]);
+      expect(primary.draft?.preparation).toEqual({ authorIntent: openingWords, exegeticalPlan: plan(first, savedSecond, newest) });
+      const copies = await s.engine.listRecoveryChoices(ref, true);
+      expect(new Set(copies.map(({ id }) => id)).size).toBe(4);
+      const find = (match: (checkpoint: EditorRecord['checkpoint']) => boolean) => {
+        const item = copies.find(({ record: copy }) => match(copy.checkpoint));
+        expect(item).toBeDefined();
+        return item!.id;
+      };
+      const authorId = find(cp => cp.preparationTextRetry?.field === 'authorIntent');
+      const contextId = find(cp => cp.unreadableScalarProof?.includes('contextNotes') === true);
+      const firstId = find(cp => cp.exegeticalPointDrafts?.[0].nodeId === first.id);
+      const secondId = find(cp => cp.unreadableExegeticalProofs?.[0].nodeId === second.id);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+
+      jest.mocked(s.transport.send).mockImplementation(send);
+      await reopened.keepLocal(undefined, primary);
+      await reopened.save();
+      await s.engine.retry();
+      const recover = (slot: string, id: string) => s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', slot), id);
+      const context = await recover('context', contextId);
+      const contextChoice = context.getState().checkpoint;
+      expect(contextChoice.conflicts).toMatchObject([{ path: ['preparation', 'textContext', 'contextNotes'], theirs: { exists: false } }]);
+      const secondPoint = await recover('second', secondId);
+      const secondChoice = secondPoint.getState().checkpoint;
+      expect(secondChoice.unreadableExegeticalProofs).toMatchObject([{ ancestors: scope === 'nested' ? [first.id] : [] }]);
+      expect(secondChoice.conflicts).toMatchObject([{ path: ['preparation', 'exegeticalPlan', 'id:' + second.id],
+        mine: { value: { title: secondEdit.title } }, theirs: { value: { title: savedSecond.title } } }]);
+      await secondPoint.acceptRemote(undefined, secondChoice);
+      expect(s.transport.send).toHaveBeenCalledTimes(2);
+
+      const author = await recover('author', authorId);
+      await author.save();
+      await s.engine.retry();
+      const firstPoint = await recover('first', firstId);
+      await firstPoint.save();
+      await s.engine.retry();
+      const contextTime = { earliestMs: 6000, latestMs: 6010 };
+      await expect(context.keepLocal(undefined, contextChoice, contextTime)).rejects.toMatchObject({ code: 'decision-changed' });
+      await context.keepLocal(undefined, context.getState().checkpoint, contextTime);
+      await s.engine.retry();
+
+      const commands = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+      expect(commands).toHaveLength(5);
+      expect(commands[2]).toMatchObject({ sermonPreparationTextActions: { authorIntent: { observedRevision: 1, time: authorTime } } });
+      expect(commands[3]).toMatchObject({ exegeticalPlanActions: [{ nodeId: first.id, observedRevision: 1, time: pointTime }] });
+      expect(commands[4]).toMatchObject({ sermonPreparationTextActions: { contextNotes: { time: contextTime } } });
+      expect(s.server.get(keyOf('owner', ref))?.value?.preparation).toEqual({
+        authorIntent: authorWords, exegeticalPlan: plan(firstEdit, savedSecond, newest),
+        textContext: { contextNotes: 'Local context without a readable observation' },
+      });
+      expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
+
   it('keeps local conflict fields on explicit choice without sending until save is requested', async () => {
     const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'mine' }); await editor.save();

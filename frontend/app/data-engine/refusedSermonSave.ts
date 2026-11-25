@@ -1,0 +1,47 @@
+import { hasTimedAncestor } from './commits';
+import { canRebaseRefusedPointTail, recoverablePointTitlesAfterRefusal } from './exegeticalPointCapture';
+import { recoverablePreparationTextAfterRefusal } from './sermonPreparationRecovery';
+
+import type { CommitRequest } from './commits';
+import type { SessionCheckpoint } from './session';
+import type { DocumentData } from './types';
+
+const pointActionKey = (nodeId: string, kind: string) => JSON.stringify([nodeId, kind]);
+
+/** Detach independently captured fields only when the rest of the queue belongs to the point being reviewed. */
+export function separateRefusedSermonTail(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
+  const before = source.pending[chain[0]?.id]?.value;
+  if (!before || !source.draft || !projected.draft
+    || source.confirmed.metadata?.generation !== projected.confirmed.metadata?.generation) return;
+
+  const titles = recoverablePointTitlesAfterRefusal(source, projected, chain);
+  const texts = recoverablePreparationTextAfterRefusal(source, projected, chain);
+  const copies = [
+    ...titles.map(({ id, ...copy }) => ({ key: 'point:' + id, ...copy })),
+    ...texts.map(({ field, ...copy }) => ({ key: 'preparation:' + field, ...copy })),
+  ];
+  const restoreStoredFields = (document: DocumentData) => copies.reduce<DocumentData | undefined>(
+    (value, copy) => value && copy.restoreStored(value), document);
+  const draft = restoreStoredFields(projected.draft);
+  const neutralBefore = restoreStoredFields(before);
+  const neutralDraft = restoreStoredFields(source.draft);
+  if (!draft || !neutralBefore || !neutralDraft) return;
+  const checkpoint = { ...projected, draft };
+  if (!canRebaseRefusedPointTail(neutralBefore, neutralDraft, checkpoint)) return;
+
+  const pointActions = new Set([
+    ...(source.unreadableExegeticalProofs ?? []).map(({ nodeId, kind }) => pointActionKey(nodeId, kind)),
+    ...titles.map(({ id }) => pointActionKey(id, 'title')),
+  ]);
+  const textFields = new Set<string>(texts.map(({ field }) => field));
+  // A command may contain another timed action even when its final words equal the opening.
+  const hasOtherCapturedWork = chain.slice(1).some(request => {
+    const textActions = Object.entries(request.sermonPreparationTextActions ?? {}).filter(([field]) => !textFields.has(field));
+    return request.sermonNoteText || hasTimedAncestor({ ...request,
+      exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointActions.has(pointActionKey(action.nodeId, action.kind))),
+      sermonPreparationTextActions: textActions.length ? Object.fromEntries(textActions) : undefined,
+    });
+  });
+  if (hasOtherCapturedWork || source.exegeticalPointDrafts?.some(action => !pointActions.has(pointActionKey(action.nodeId, action.kind)))) return;
+  return { checkpoint, copies };
+}

@@ -10453,3 +10453,13 @@ With a readable captured observation, the separate Saved draft submits its origi
 The engine tests cover interrupted storage, both choices, a changed draft, and wire evidence. Hidden Chrome exercised the previous build at 1280 px and the corrected build at 1280 and 390 px on isolated Auth and Firestore. The point and the selected preparation text kept their final values after reload. Evidence is in the local case at `artifacts/exegetical-preparation-refusal-20261124/`.
 
 After an authorized deployment, use a disposable sermon to check that Author's intent and an independent point title survive a reload. Reproduce refused requests, damaged device proof and a rollback to an earlier bundle in an emulator. Keep combined independent edits and changes with ambiguous scope open in the tracker.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Separate several preparation edits
+
+Sermons → Preparation → Exegetical Plan. In one device queue, a refused Save added a point, and later Saves changed Author's intent, Context notes, an existing point and its nested child. The previous build kept the queue intact and blocked the new-point comparison. The corrected engine projects the original choice and the four independently recoverable drafts in the same IndexedDB transaction. The chooser identifies each field or point by name.
+
+The desktop's child title survives the explicit choice to keep it without a new update. The restored author text and parent title keep their initial observed revision and action time. The previously absent context field opens its own comparison. Keeping the draft context sends one update with a fresh action time and the selected point title remains present. Reloading after all decisions shows no duplicate recovery.
+
+The regression tests cover sibling and nested point titles, a field added under an absent optional container, a point ID that could collide with a preparation field label, a late write failure in the multi-record projection, and an unrelated sermon title that leaves the complete queue unresolved. The engine, server, providers and sermon hooks profile passed 4,293 tests in 183 suites. TypeScript and scoped ESLint passed. Independent review found no blocking issues. Chrome exercised the starting build and the corrected flow at 390 and 1,280 px on isolated Auth and Firestore. Evidence is in the local case at `artifacts/exegetical-several-refused-20261125/`.
+
+After authorized deployment, use a disposable sermon to confirm the distinct draft labels and the persistence of the chosen text after reload. Use the emulator for refused and malformed device history. Other action types and records with unprovable scope remain open.

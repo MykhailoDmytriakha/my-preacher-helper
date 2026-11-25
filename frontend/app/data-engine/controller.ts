@@ -8,7 +8,7 @@ import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreatio
 import { CaptureContinuations } from './captureContinuations';
 import { keepUncontestedCommentFields } from './commentKindChoice';
 import { commentCompanionProofs, commentPlaceChoiceOpening, commentPlaceTextChange, commentPlaceTextTail, commentTextChoiceBasis, keepUncontestedCommentPlace, keepUncontestedCommentText, readCommentPlaceComparison, readReturnedCommentText } from './commentPlaceChoice';
-import { assertCommitCapture, hasTimedAncestor } from './commits';
+import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { isCouncilHeaderComparison } from './councilFieldAction';
 import { readCouncilSummaryChoice, writeCouncilSummaryChoice } from './councilPrivateFields';
@@ -26,7 +26,7 @@ import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
-import { canRebaseRefusedPointTail, hasLaterPendingExegeticalTitle, separateRefusedPointTitle } from './exegeticalPointCapture';
+import { hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { isOrderedGroupFlowText } from './groupFlowTitleAction';
@@ -47,12 +47,13 @@ import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceF
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { separateRefusedSermonTail } from './refusedSermonSave';
 import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConflictDetails';
 import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget, withQueuedRowFieldProofs } from './rowFieldAutosave';
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
-import { readPreparationTextComparison, retryForPreparationTextChoice, separateRefusedPreparationText } from './sermonPreparationRecovery';
+import { readPreparationTextComparison, retryForPreparationTextChoice } from './sermonPreparationRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -1409,30 +1410,16 @@ export class EditorController {
           const retirement = retired.find(request => request.id === rootId)!;
           retained.applyCommit(retirement);
           const checkpoint = retained.checkpoint();
-          const hasTail = refusedPoint.scope.length > 1;
-          const pointOnly = !hasTail || canRebaseRefusedPointTail(captured.value, decided.draft, checkpoint);
-          const point = pointOnly ? undefined : separateRefusedPointTitle(decided, checkpoint, refusedPoint.scope);
-          const text = pointOnly || point ? undefined : separateRefusedPreparationText(decided, checkpoint, refusedPoint.scope);
-          const separate = point ? { ...point, key: point.id }
-            : text && { ...text, key: 'preparation:' + text.field };
-          const covered = new Set(decided.unreadableExegeticalProofs?.map(address => address.nodeId));
-          if (point) covered.add(point.id);
-          const otherSavedWork = refusedPoint.scope.slice(1).some(request => {
-            const textActions = request.sermonPreparationTextActions && Object.entries(request.sermonPreparationTextActions)
-              .filter(([field]) => field !== text?.field);
-            return request.sermonNoteText || hasTimedAncestor({ ...request,
-              exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !covered.has(action.nodeId)),
-              sermonPreparationTextActions: textActions?.length ? Object.fromEntries(textActions) : undefined,
-            });
-          });
-          if ((!pointOnly && !separate) || otherSavedWork || hasTail && decided.exegeticalPointDrafts?.some(action => !covered.has(action.nodeId))) {
-            throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
-          }
-          projected = { ...record, checkpoint: separate?.checkpoint ?? checkpoint, completedCommits: [...completed] };
-          if (!separate) return projected;
-          const independent: EditorRecord = { owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, separate.key),
-            checkpoint: separate.continuation, prepared: null, unfinalized: [], autoSaveOnResume: false };
-          return { editorRecords: [projected, independent], manualRecoveries: [] };
+          const separated = refusedPoint.scope.length > 1
+            ? separateRefusedSermonTail(decided, checkpoint, refusedPoint.scope) : { checkpoint, copies: [] };
+          if (!separated) throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
+          projected = { ...record, checkpoint: separated.checkpoint, completedCommits: [...completed] };
+          if (!separated.copies.length) return projected;
+          const copies = separated.copies.map(({ key, continuation }): EditorRecord => ({
+            owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, key),
+            checkpoint: continuation, prepared: null, unfinalized: [], autoSaveOnResume: false,
+          }));
+          return { editorRecords: [projected, ...copies], manualRecoveries: [] };
         }
         const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
           && source!.pending[request.id] && request.serviceOrderStepPlacement);
