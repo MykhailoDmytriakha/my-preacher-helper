@@ -865,7 +865,7 @@ export function useDocumentActions() {
             if (exactField) publishStoredBody?.(checkpoint.confirmed);
             if (Object.keys(checkpoint.pending).length) continue;
             if (exactField && hasPrivateServiceOrderPosition(record.checkpoint)) {
-              if (checkpoint.dirty && !checkpoint.conflicts.length) await editor.save();
+              if (checkpoint.dirty && !checkpoint.conflicts.length && !hasPrivateServiceOrderPosition(checkpoint)) await editor.save();
               continue;
             }
             if (checkpoint.dirty && exactField && (readReturnedCommentText(record.checkpoint) || documentTagComparison(record.checkpoint) || studyNoteReferenceComparison(record.checkpoint) || studyNoteFieldsComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || commentPlaceComparison(record.checkpoint) || ['body', 'title', 'scriptureRefs'].includes(serviceStepConflict(record.checkpoint)?.field ?? '')

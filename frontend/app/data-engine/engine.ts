@@ -1834,7 +1834,8 @@ export class DataEngine {
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
               : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length
-                : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
+                : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
+                  || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
             if (!review) return reconciled;
             // The observer may still be showing a cached opening when the recovery controls become clickable.
             const fresh = await this.readWriteTarget(frozen).catch(() => null);

@@ -1134,7 +1134,7 @@ describe.each(['rank', 'step', 'outline'] as const)('a recovered %s placement re
     expect(outcome.kind).toBe('acknowledged');
     const sentPaths = outcome.commands.flatMap(command => (command.changes as Array<{ path: string[] }>).map(change => change.path[0]));
     const hasRowWords = family !== 'rank';
-    const sentPlacement = !undo && (family === 'rank' || !reload);
+    const sentPlacement = !undo && (family !== 'outline' || !reload);
     const placementActions = outcome.commands.filter(command => command.serviceOrderPlacement || command.serviceOrderStepPlacement || command.outlinePointPlacement);
     expect(placementActions).toHaveLength(Number(sentPlacement));
     if (sentPlacement && hasRowWords) expect(JSON.stringify(placementActions[0].changes)).not.toContain(words);

@@ -58,6 +58,7 @@ import { SOURCE_NOTE_FIELD, sourceNoteLinkChange, validSourceNoteLinkAction } fr
 import { matchesSourceNoteOpening, sourceNoteCommandCopies, sourceNoteQueueCapture, type SourceNoteLinkCapture } from './sourceNoteLinkCapture';
 import { captureStudyNoteContent, type StudyNoteContentObservation } from './studyNoteContentCapture';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
+import { hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof } from './unreadableDraftProof';
 
 import type { AccountPreferenceObservations } from './accountPreference';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
@@ -835,7 +836,9 @@ export class CommitQueue {
         : intent.outlinePointPlacementRetry ? { kind: 'outline-point-placement', move: intent.outlinePointPlacementRetry } as const
           : intent.groupFlowStepPlacementRetry ? { kind: 'group-flow-step-placement', move: intent.groupFlowStepPlacementRetry } as const
             : intent.councilTopicPlacementRetry ? { kind: 'council-topic-placement', move: intent.councilTopicPlacementRetry } as const : undefined);
-    if (intent.conflicts.length || intent.unreadableScalarProof?.length || intent.unreadableRowProofs?.length || intent.unreadableExegeticalProofs?.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
+    if (intent.conflicts.length || hasUnreadableDraftProof(intent) || (!frozenOptions?.action && hasTwoPrivateServiceOrderMoves(intent))) {
+      throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
+    }
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title }
         : editorAction?.kind === 'service-order-step-body' ? { field: 'body' as const, change: editorAction.body }

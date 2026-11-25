@@ -52,7 +52,7 @@ const commentPlaceAction = { before: { exists: true, value: commentReference },
   paragraph: { exists: false }, observedRevision: 1, time };
 type PlacementRetryKey = 'serviceOrderPlacementRetry' | 'serviceOrderStepPlacementRetry' | 'outlinePointPlacementRetry';
 type EvidenceKey = Exclude<keyof SessionCheckpoint, 'confirmed' | 'draft' | 'dirty' | 'editGeneration' | 'remoteCandidate' | 'conflicts' | 'pending' | 'unreadableScalarProof' | 'unreadableRowProofs' | 'unreadableExegeticalProofs'
-  | PlacementRetryKey>;
+  | 'unreadableServiceOrderStepPlacement' | PlacementRetryKey>;
 const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft: { generation: 'g', action: { ...observation, time: null } }, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,

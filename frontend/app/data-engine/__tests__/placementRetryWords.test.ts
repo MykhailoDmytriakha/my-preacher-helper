@@ -213,6 +213,83 @@ it.each(['intact', 'intact with a missing neighbor', 'damaged', 'older checkpoin
   } finally { h.stop(); }
 });
 
+it.each(['intact', 'damaged', 'older checkpoint'] as const)('reopens an unsaved step move with %s evidence and keeps independent words', async mode => {
+  const h = fixture('step', true);
+  try {
+    h.stage();
+    const draft = h.session.checkpoint().draft!;
+    h.session.edit({ ...draft, title: words, steps: (draft.steps as Row[]).map(step =>
+      step.id === 'a' ? { ...step, title: 'New step title' } : step) });
+    const checkpoint = h.session.checkpoint();
+    const retry = checkpoint.serviceOrderStepPlacementRetry!;
+    const raw = { ...checkpoint, serviceOrderStepPlacementRetry: mode === 'older checkpoint' ? undefined
+      : mode === 'damaged' ? { ...retry, placement: { ...retry.placement, time: 'unreadable' } } : retry };
+    const store = createIndexedDbCheckpoints();
+    await store.put({ owner: 'owner', editorId: 'closed', checkpoint: raw as SessionCheckpoint, prepared: null, unfinalized: [] });
+    const restored = DataSession.restore((await store.read('owner', 'closed'))!.checkpoint);
+    expect(restored.checkpoint().draft).toMatchObject({ title: words, steps: expect.arrayContaining([{ ...points[0], title: 'New step title' }]) });
+    if (mode === 'intact') {
+      expect(restored.checkpoint().serviceOrderStepPlacementRetry).toEqual(retry);
+    } else {
+      expect(restored.checkpoint().conflicts).toContainEqual(expect.objectContaining({ path: ['steps', 'position'] }));
+      await expect(h.queue.save('closed', restored.checkpoint())).rejects.toMatchObject({ code: 'resolve-version-first' });
+      expect(() => restored.keepLocal()).toThrow();
+      expect(h.commands).toEqual([]);
+      restored.acceptRemote();
+    }
+    await h.queue.save('closed', restored.checkpoint());
+    await h.drain();
+    if (mode === 'intact') {
+      expect(h.commands[0]).toMatchObject({ serviceOrderStepPlacement: retry.placement });
+      expect(wire(h)).toEqual([['steps'], expect.arrayContaining(['title', 'steps'])]);
+    } else expect(wire(h)).toEqual([expect.arrayContaining(['title', 'steps'])]);
+    expect(await h.server()).toMatchObject({
+      title: words, steps: (mode === 'intact' ? [points[1], points[0], points[2]] : points)
+        .map(step => step.id === 'a' ? { ...step, title: 'New step title' } : step),
+    });
+    if (mode === 'damaged') takeDroppedProof('serviceOrderStepPlacementRetry');
+  } finally { h.stop(); }
+});
+
+it('keeping saved step positions preserves independently added and removed steps', async () => {
+  const h = fixture('step', true);
+  try {
+    h.stage();
+    const checkpoint = h.session.checkpoint();
+    const added = { id: 'added', title: 'Added step', text: 'Independent text', type: 'custom', subPoints: [] };
+    const moved = { ...points[1], title: 'Edited step title' };
+    const store = createIndexedDbCheckpoints();
+    await store.put({ owner: 'owner', editorId: 'closed',
+      checkpoint: { ...checkpoint, draft: { ...checkpoint.draft, steps: [moved, added, points[0]] },
+        serviceOrderStepPlacementRetry: undefined }, prepared: null, unfinalized: [] });
+    const restored = DataSession.restore((await store.read('owner', 'closed'))!.checkpoint);
+    expect(restored.checkpoint().conflicts).toContainEqual(expect.objectContaining({ path: ['steps', 'position'] }));
+    restored.acceptRemote();
+    expect(restored.checkpoint().draft?.steps).toEqual([points[0], added, moved]);
+    await h.queue.save('closed', restored.checkpoint());
+    await h.drain();
+    expect(wire(h)).toEqual([['steps']]);
+    expect((await h.server())?.steps).toEqual([points[0], added, moved]);
+  } finally { h.stop(); }
+});
+
+it('reviewing the step order leaves an independently captured card position for its own decision', async () => {
+  const h = fixture('step', true);
+  try {
+    h.stage();
+    h.session.stageServiceOrderPlacementRetry({ generation: 'g', before: { exists: true, value: 1 }, rank: 4,
+      placement: { observedRevision: 1, time: null, opening: { previous: null, next: { id: 'neighbor', generation: 'g' } },
+        destination: { previous: { id: 'neighbor', generation: 'g' }, next: null } } });
+    const checkpoint = h.session.checkpoint();
+    await expect(h.queue.save('closed', checkpoint)).rejects.toMatchObject({ code: 'resolve-version-first' });
+    const restored = DataSession.restore({ ...checkpoint, serviceOrderStepPlacementRetry: undefined, unreadableServiceOrderStepPlacement: true });
+    restored.acceptRemote();
+    expect(restored.checkpoint()).toMatchObject({ draft: { rank: 4, steps: points }, serviceOrderPlacementRetry: checkpoint.serviceOrderPlacementRetry });
+    expect(restored.checkpoint().serviceOrderStepPlacementRetry).toBeUndefined();
+    expect(h.commands).toEqual([]);
+  } finally { h.stop(); }
+});
+
 it('does not let a choice about the displayed rank settle a newer position', () => {
   const h = fixture('rank');
   try {

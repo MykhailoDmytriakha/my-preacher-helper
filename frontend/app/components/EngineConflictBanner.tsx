@@ -13,7 +13,7 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { readServiceOrderTitleConflict, captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, previewReviewedListChoice, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readDocumentTextComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForOutlineParentReview, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
-import { hasPrivateServiceOrderPosition, waitsForServiceOrderPosition } from '@/data-engine/unreadableDraftProof';
+import { hasPrivateServiceOrderPosition, hasTwoPrivateServiceOrderMoves, privateServiceOrderPosition, waitsForServiceOrderPosition } from '@/data-engine/unreadableDraftProof';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -628,14 +628,19 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
         </div>
       </div>);
     }
-    const needsReview = waitsForServiceOrderPosition(checkpoint) || Boolean(checkpoint.remoteCandidate) || checkpoint.conflicts.length > 0;
+    const step = privateServiceOrderPosition(checkpoint) === 'step';
+    const needsReview = waitsForServiceOrderPosition(checkpoint) || hasTwoPrivateServiceOrderMoves(checkpoint)
+      || Boolean(checkpoint.remoteCandidate) || checkpoint.conflicts.length > 0;
+    const explanation = step
+      ? needsReview ? 'serviceOrders.placementHistory.stepMoveNeedsReview' : 'serviceOrders.placementHistory.stepMoveReady'
+      : needsReview ? 'serviceOrders.placementHistory.moveNeedsReview' : 'serviceOrders.placementHistory.moveReady';
     const title = checkpoint.confirmed.value?.title;
     return notice(<div role="status" className={NOTICE_BOX}>
-      <p className={NOTICE_TITLE}>{t('serviceOrders.placementHistory.position')}{typeof title === 'string' && ` · ${title}`}</p>
-      <p className={NOTICE_BODY}>{t(needsReview ? 'serviceOrders.placementHistory.moveNeedsReview' : 'serviceOrders.placementHistory.moveReady')}</p>
+      <p className={NOTICE_TITLE}>{t(step ? 'serviceOrders.stepPosition' : 'serviceOrders.placementHistory.position')}{typeof title === 'string' && ` · ${title}`}</p>
+      <p className={NOTICE_BODY}>{t(explanation)}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {!needsReview && <button type="button" disabled={busy} className={PRIMARY_BUTTON} onClick={() => { void settle('mine', browser, entry, true); }}>{t('serviceOrders.placementHistory.savePosition')}</button>}
-        <button type="button" disabled={busy} className={needsReview ? PRIMARY_BUTTON : SECONDARY_BUTTON} onClick={() => { void settle('theirs', browser, entry, true); }}>{t('serviceOrders.placementHistory.keepSavedPosition')}</button>
+        {!needsReview && <button type="button" disabled={busy} className={PRIMARY_BUTTON} onClick={() => { void settle('mine', browser, entry, true); }}>{t(step ? 'serviceOrders.placementHistory.saveStepPosition' : 'serviceOrders.placementHistory.savePosition')}</button>}
+        <button type="button" disabled={busy} className={needsReview ? PRIMARY_BUTTON : SECONDARY_BUTTON} onClick={() => { void settle('theirs', browser, entry, true); }}>{t(step ? 'serviceOrders.placementHistory.keepSavedStepOrder' : 'serviceOrders.placementHistory.keepSavedPosition')}</button>
       </div>
     </div>);
   }

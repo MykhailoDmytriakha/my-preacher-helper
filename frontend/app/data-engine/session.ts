@@ -40,7 +40,7 @@ import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
-import { placementSteps, returnedPlacementAnchors } from './serviceOrderStepPlacement';
+import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
 import { unseenStudyNoteField } from './studyNoteContentCapture';
@@ -48,7 +48,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, hasPrivateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
+import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -84,6 +84,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
+  unreadableServiceOrderStepPlacement?: true;
   outlinePointPlacementRetry?: OutlinePointPlacementCapture;
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
@@ -93,7 +94,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-export { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
+export { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, hasUnreadableDraftProof } from './unreadableDraftProof';
 const unreadablePointPlanPath = ['preparation', 'exegeticalPlan'];
 
 function returnedPlacementAncestor(request: CommitRequest, base: DocumentData, prior: DocumentData | null, draft: DocumentData,
@@ -115,10 +116,6 @@ function returnedPlacementAncestor(request: CommitRequest, base: DocumentData, p
   const returned = returnedPlacementAnchors(all(shown), all(proposed), all(stored), [previous, next]);
   const rows = placementSteps(opening[section]);
   return returned.length && rows ? { ...base, [field]: { ...opening, [section]: rows.filter(row => !returned.includes(row.id)) } } : base;
-}
-
-export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
-  return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length);
 }
 
 /** An active earlier Save owns its words even if the dependent whole action is discarded. */
@@ -171,7 +168,7 @@ export class DataSession {
     const { unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, confirmed, draft, pending } = this.state;
     if (!hasUnreadableDraftProof(this.state) || Object.keys(pending).length) return;
     const target = this.state.remoteCandidate ?? confirmed;
-    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF;
+    const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
       const path = unreadableScalarPath(confirmed.resource.collection, field);
@@ -193,7 +190,9 @@ export class DataSession {
       ? [{ path: unreadablePointPlanPath, base: readField(confirmed.value ?? {}, unreadablePointPlanPath),
         mine: readField(draft ?? {}, unreadablePointPlanPath), theirs: readField(target.value ?? {}, unreadablePointPlanPath),
         code: UNREADABLE_EXEGETICAL_PROOF }, ...pointConflicts] : pointConflicts;
-    const questions = [...scalars, ...rows, ...points];
+    const step = this.state.unreadableServiceOrderStepPlacement && unreadableStepPosition(confirmed.value, draft, target.value);
+    if (!step) delete this.state.unreadableServiceOrderStepPlacement;
+    const questions = [...scalars, ...rows, ...points, ...(step ? [step] : [])];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
@@ -838,25 +837,33 @@ export class DataSession {
   /** A choice about a private unreadable edit owns only its displayed fields. */
   private acceptStoredUnreadableFields(atChoice: DocumentData | null | undefined): boolean {
     const { confirmed, remoteCandidate, draft, unreadableScalarProof, unreadableRowProofs, unreadableExegeticalProofs, conflicts } = this.state;
-    const rankChoice = hasPrivateServiceOrderPosition(this.state);
-    const target = remoteCandidate ?? (rankChoice ? confirmed : null);
+    const placement = privateServiceOrderPosition(this.state);
+    const target = remoteCandidate ?? (placement ? confirmed : null);
     if (!confirmed.value || !target?.value || !draft || confirmed.metadata?.generation !== target.metadata?.generation) {
-      if (rankChoice) throw Object.assign(new Error('The service order changed before this choice'), { code: 'decision-changed' });
+      if (placement) throw Object.assign(new Error('The service order changed before this choice'), { code: 'decision-changed' });
       return false;
     }
-    if (!rankChoice && (!hasUnreadableDraftProof(this.state) || !conflicts.length
+    if (!placement && (!hasUnreadableDraftProof(this.state) || !conflicts.length
       || conflicts.some(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF && conflict.code !== UNREADABLE_EXEGETICAL_PROOF))) return false;
     const source = this.checkpoint();
     const shown = atChoice ?? draft;
-    if (rankChoice && !equalValues(readField(draft, ['rank']), readField(shown, ['rank']))) {
+    if (placement === 'rank' && !equalValues(readField(draft, ['rank']), readField(shown, ['rank']))) {
       throw Object.assign(new Error('The service order position changed before this choice'), { code: 'decision-changed' });
     }
-    const scalars = (rankChoice ? ['rank'] : unreadableScalarProof ?? []).reduce((value, field) => {
+    let reordered = draft;
+    if (placement === 'step') {
+      const before = placementSteps(confirmed.value.steps), current = placementSteps(draft.steps), displayed = placementSteps(shown.steps);
+      if (!before || !current || !displayed || !equalValues(current.map(row => row.id), displayed.map(row => row.id))) {
+        throw Object.assign(new Error('The service steps changed before this choice'), { code: 'decision-changed' });
+      }
+      reordered = { ...draft, steps: keepSavedStepPositions(before, current) };
+    }
+    const scalars = (placement === 'step' ? [] : placement === 'rank' ? ['rank'] : unreadableScalarProof ?? []).reduce((value, field) => {
       const path = unreadableScalarPath(confirmed.resource.collection, field);
       if (!equalValues(readField(value, path), readField(shown, path))) return value;
       const opening = readField(confirmed.value!, path);
       return field === 'heldAt' ? withCouncilLifecycle(value, opening) : writeField(value, path, opening);
-    }, draft);
+    }, reordered);
     const reduced = (unreadableRowProofs ?? []).reduce((value, address) => {
       const current = unreadableRowChoice(this.state, address);
       const reviewed = unreadableRowChoice({ ...this.state, draft: shown }, address);
@@ -879,12 +886,16 @@ export class DataSession {
     this.state.remoteCandidate = result.conflicts.length ? copy(target) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
     this.state.editGeneration = this.reserveEditGeneration();
-    if (rankChoice) delete this.state.serviceOrderPlacementRetry;
-    delete this.state.unreadableScalarProof;
+    if (placement === 'rank') delete this.state.serviceOrderPlacementRetry;
+    if (placement === 'step') {
+      delete this.state.serviceOrderStepPlacementRetry;
+      delete this.state.unreadableServiceOrderStepPlacement;
+    } else delete this.state.unreadableScalarProof;
     delete this.state.unreadableRowProofs;
     this.state.unreadableExegeticalProofs = remainingPoints.length ? remainingPoints : undefined;
     carryAnchoredDraftChronology(source, this.state, conflicts);
-    this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+    this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state)
+      || Boolean(privateServiceOrderPosition(this.state));
     this.refreshUnreadableComparisons();
     return true;
   }
@@ -956,10 +967,10 @@ export class DataSession {
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
-    if (this.state.serviceOrderPlacementRetry && !this.state.remoteCandidate && !this.state.conflicts.length) return;
-    if (waitsForServiceOrderPosition(this.state)) {
+    if (waitsForServiceOrderPosition(this.state) || hasTwoPrivateServiceOrderMoves(this.state)) {
       throw Object.assign(new Error('Choose the service order position again'), { code: 'decision-changed' });
     }
+    if (privateServiceOrderPosition(this.state) && !this.state.remoteCandidate && !this.state.conflicts.length) return;
     assertLegacyCommentLocalChoice(this.state);
     const referenceChoice = chooseStudyNoteReferences(this.state, 'local');
     if (referenceChoice) {
@@ -1203,6 +1214,7 @@ export class DataSession {
     delete this.state.accountPreferenceRetry;
     delete this.state.serviceOrderPlacementComparison;
     delete this.state.serviceOrderStepPlacementRetry;
+    delete this.state.unreadableServiceOrderStepPlacement;
     delete this.state.serviceOrderPlacementRetry;
     delete this.state.outlinePointPlacementRetry;
     delete this.state.groupFlowStepPlacementRetry;

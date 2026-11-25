@@ -93,3 +93,42 @@ it.each(['deleted', 'replaced'] as const)('keeps words copyable without applying
     expect(h.server).toEqual(current);
   } finally { view.unmount(); }
 });
+
+
+it.each(['unknown destination', 'exact destination'] as const)('reopens a step move with %s on the service screen', async mode => {
+  const rows = ['a', 'b', 'c'].map(id => ({ id, title: 'Step ' + id, type: 'custom' }));
+  const snapshot = { ...baseline, value: { ...baseline.value, steps: rows } };
+  const h = documentEngineHarness(snapshot);
+  const original = new DataSession(snapshot);
+  const reordered = [rows[1], rows[0], rows[2]];
+  if (mode === 'exact destination') original.stageServiceOrderStepPlacementRetry({ generation: 'generation', shownIds: ['a', 'b', 'c'],
+    placement: { stepId: 'a', opening: { previous: null, next: 'b' }, destination: { previous: 'b', next: 'c' }, observedRevision: 2, time: null } },
+    reordered);
+  original.edit({ ...snapshot.value, title: 'Independent service title', steps: reordered.map(row =>
+    row.id === 'a' ? { ...row, title: 'Edited step title' } : row) });
+  await h.checkpoints.put({
+    owner: 'owner', editorId: editorIdentity('previous-tab', resource, 'action', 'step'),
+    checkpoint: original.checkpoint(), prepared: null, unfinalized: [],
+  });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const view = render(<DataEngineProvider><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+  try {
+    const saved = await screen.findByRole('button', { name: 'serviceOrders.placementHistory.keepSavedStepOrder' });
+    const move = screen.queryByRole('button', { name: 'serviceOrders.placementHistory.saveStepPosition' });
+    expect(screen.getByText(/serviceOrders.stepPosition/)).toBeInTheDocument();
+    expect(h.transport.send).not.toHaveBeenCalled();
+    if (mode === 'exact destination') expect(move).toBeInTheDocument();
+    else expect(move).not.toBeInTheDocument();
+    await userEvent.click(mode === 'exact destination' ? move! : saved);
+    await act(async () => { await settleEngine(); });
+    const expected = mode === 'exact destination' ? reordered : rows;
+    await waitFor(() => expect(h.server.value).toMatchObject({ title: 'Independent service title',
+      steps: expected.map(row => row.id === 'a' ? { ...row, title: 'Edited step title' } : row) }));
+    const commands = jest.mocked(h.transport.send).mock.calls.map(([command]) => command);
+    if (mode === 'exact destination') {
+      expect(commands).toHaveLength(2);
+      expect(commands[0]).toMatchObject({ serviceOrderStepPlacement: { stepId: 'a', destination: { previous: 'b', next: 'c' } } });
+    } else expect(commands).toHaveLength(1);
+    expect(commands.at(-1)).not.toHaveProperty('serviceOrderStepPlacement');
+  } finally { view.unmount(); }
+});
