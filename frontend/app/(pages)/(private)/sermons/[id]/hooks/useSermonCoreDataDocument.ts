@@ -135,7 +135,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
         const sketch = sermonSketchRecovery(record);
         const locked = sermonThoughtLockDraft(record.checkpoint);
         const title = locked ? t('structure.thoughtLockState')
-          : sketch ? t(sketch.kind === 'removal' ? 'scratch.card.delete' : 'scratch.card.label')
+          : sketch ? t(sketch.titleKey)
           : removal !== undefined ? t('dataSync.thoughtRemovalTitle')
           : placement !== undefined ? t('structure.thoughtPlacementTitle')
           : recoveredField ? fieldLabel(t, recoveredField)

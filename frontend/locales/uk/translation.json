@@ -3355,6 +3355,8 @@
       "cancel": "Скасувати",
       "placedIn": "У розділі {{section}}",
       "label": "Начерк",
+      "recoveryAdd": "Новий начерк",
+      "recoveryEdit": "Редагування начерку",
       "placeholder": "Запишіть начерк…",
       "add": "начерк",
       "placeInto": "Покласти в…",

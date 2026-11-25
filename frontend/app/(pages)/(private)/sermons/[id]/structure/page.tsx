@@ -138,7 +138,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
       if (lock) return { id: source.id, title: t('structure.thoughtLockState'), preview: lock.text + ' · ' + lockText(lock.checked),
         discard: () => document.discardRecovery(source) };
       const sketch = sermonSketchRecovery(source.record);
-      if (sketch) return { id: source.id, title: t(sketch.kind === 'removal' ? 'scratch.card.delete' : 'scratch.card.label'), preview: sketch.text,
+      if (sketch) return { id: source.id, title: t(sketch.titleKey), preview: sketch.text,
         discard: () => document.discardRecovery(source) };
       const removal = sermonThoughtRemovalDraft(source.record.checkpoint);
       if (removal !== undefined) return { id: source.id, title: t('dataSync.thoughtRemovalTitle'), preview: removal,

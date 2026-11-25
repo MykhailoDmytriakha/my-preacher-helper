@@ -3,10 +3,9 @@ import { placeOfNode, scratchAfterOutlineChange, scratchNoteAt } from '@/utils/s
 import { protectedSermonRecoveryKind } from './editorIdentity';
 import { equalValues, object } from './fieldValues';
 import { guardedScratchWords } from './sermonGuardedScratchText';
-import { restoreSketchFrame, sameSketchFrame, sketchRows } from './sermonScratchFrame';
+import { restoreSketchFrame, sketchRows, withSketchRows } from './sermonScratchFrame';
 import { sermonScratchRemovalDraft } from './sermonScratchRemovalRecovery';
 
-import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, Json, ResourceSnapshot } from './types';
@@ -23,7 +22,7 @@ function appendedSketches(before: DocumentData, after: DocumentData) {
   return result.slice(opening.length);
 }
 
-function capturedSketch(before: DocumentData, after: DocumentData): ScratchNote | undefined {
+export function capturedPlacedSketch(before: DocumentData, after: DocumentData): ScratchNote | undefined {
   const [note, extra] = appendedSketches(before, after) ?? [];
   if (!note?.outlinePointId || extra || note.text !== note.text.trim() || !note.text) return;
   const target = note.subPointId ? { kind: 'subpoint' as const, id: note.subPointId }
@@ -116,32 +115,23 @@ function projectSketches(opening: DocumentData, notes: readonly ScratchNote[], s
   return additions.length ? { ...saved, scratch: [...current, ...additions] as unknown as Json } : saved;
 }
 
-/** Only an exact tail of authored appends can be separated from the previous point's refusal. */
-export function recoverablePlacedSketches(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
-  const { confirmed, draft } = source;
-  const first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  if (!confirmed.value || !draft || !first || !last || !saved || !sameSketchFrame(confirmed.value, first) || !sameSketchFrame(last, draft)) return;
-  const notes: ScratchNote[] = [];
-  for (let index = 1; index < chain.length; index += 1) {
-    const before = chain[index - 1].value, after = chain[index].value;
-    if (!before || !after) return;
-    if (sameSketchFrame(before, after)) continue;
-    const note = capturedSketch(before, after);
-    if (!note) return;
-    notes.push(note);
-  }
-  if (!notes.length) return;
+export function placedSketchRecovery(source: SessionCheckpoint, target: ResourceSnapshot, notes: readonly ScratchNote[]) {
+  const { confirmed } = source;
+  if (!confirmed.value || !target.value) return;
+  const originals = sketchRows(confirmed.value);
+  if (!originals) return;
+
   const append: SessionCheckpoint = {
-    confirmed, draft: { ...confirmed.value, scratch: [...sketchRows(confirmed.value)!, ...notes] as unknown as Json },
+    confirmed, draft: withSketchRows(confirmed.value, [...originals, ...notes]),
     editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
   };
-  const rebased = projectSketches(confirmed.value, notes, saved, true);
-  const conflicts = rebased ? [] : observePlacedSketchConflicts(append, projected.confirmed);
+  const rebased = projectSketches(confirmed.value, notes, target.value, true);
+  const conflicts = rebased ? [] : observePlacedSketchConflicts(append, target);
   if (!rebased && !conflicts.length) return;
-  const continuation = rebased === saved ? undefined : rebased
-    ? { ...append, confirmed: projected.confirmed, draft: rebased }
-    : { ...append, conflicts, remoteCandidate: projected.confirmed };
-  return { continuation, restoreStored: (value: DocumentData) => restoreSketchFrame(value, saved) };
+  const continuation = rebased === target.value ? undefined : rebased
+    ? { ...append, confirmed: target, draft: rebased }
+    : { ...append, conflicts, remoteCandidate: target };
+  return { continuation };
 }
 
 /** Reproject only an append onto a fresh opening just before restoring its saved copy. */
@@ -156,18 +146,18 @@ export function rebaseRecoveredPlacedSketches(checkpoint: SessionCheckpoint, sav
   return { ...checkpoint, confirmed: saved, draft: rebased, dirty: rebased !== saved.value, conflicts: [], remoteCandidate: null };
 }
 
-export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord): { kind: 'append' | 'removal' | 'text'; text: string } | undefined {
+export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord) {
   const kind = protectedSermonRecoveryKind(editorId);
   if (kind === 'sermon-scratch-text') {
     const text = guardedScratchWords(checkpoint);
-    return text === undefined ? undefined : { kind: 'text', text: text.slice(0, 500) };
+    return text === undefined ? undefined : { titleKey: 'scratch.card.recoveryEdit' as const, text: text.slice(0, 500) };
   }
   if (kind === 'sermon-scratch-removal') {
     const text = sermonScratchRemovalDraft(checkpoint);
-    return text === undefined ? undefined : { kind: 'removal', text: text.slice(0, 500) };
+    return text === undefined ? undefined : { titleKey: 'scratch.card.delete' as const, text: text.slice(0, 500) };
   }
   if (kind === 'sermon-placed-sketch') {
     const notes = pureSketchAppend(checkpoint);
-    if (notes) return { kind: 'append', text: notes.map(note => note.text).join('\n').slice(0, 500) };
+    if (notes) return { titleKey: 'scratch.card.recoveryAdd' as const, text: notes.map(note => note.text).join('\n').slice(0, 500) };
   }
 }

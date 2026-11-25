@@ -2,7 +2,7 @@ import { matchesSermonNoteOpening, readSermonNoteText, withSermonNoteText } from
 
 import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
-import { restoreSketchFrame, sameSketchFrame, sketchRows } from './sermonScratchFrame';
+import { sameSketchFrame, sketchRows } from './sermonScratchFrame';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -12,50 +12,38 @@ import type { SermonNoteOpening } from '@/utils/sermonNoteText';
 const REVIEW = 'guarded-scratch-text';
 export const isGuardedScratchTextConflict = (conflict: ConflictDetail) => conflict.code === REVIEW;
 
-type ScratchOpening = SermonNoteOpening & { target: Extract<SermonNoteOpening['target'], { kind: 'scratch' }> };
+export type ScratchOpening = SermonNoteOpening & { target: Extract<SermonNoteOpening['target'], { kind: 'scratch' }> };
 const changedWords = (copy: DocumentData | null, opening: ScratchOpening) => readSermonNoteText(copy, opening.target)?.text;
 
 function isScratchOpening(opening?: SermonNoteOpening): opening is ScratchOpening {
   return opening?.target.kind === 'scratch' && typeof opening.text === 'string';
 }
 
-/** Read each actual text command against its immutable earlier draft. */
-export function recoverableGuardedScratchText(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
-  const { confirmed, draft } = source;
-  const opening = confirmed.value, first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  if (!opening || !first || !last || !saved || !draft || !sketchRows(opening) || !sketchRows(saved)
-    || !sameSketchFrame(opening, first) || !sameSketchFrame(last, draft)) return;
+/** Prove the captured text operation against its immediate predecessor and original document. */
+export function capturedGuardedScratchOpening(
+  confirmed: ResourceSnapshot, before: DocumentData, request: CommitRequest, predecessor: string,
+): ScratchOpening | undefined {
+  const observed = request.sermonNoteText, after = request.value;
+  if (!after || !isScratchOpening(observed) || request.sequence !== 0 || !matchesSermonNoteOpening(confirmed, observed)
+    || !observed.pending.includes(predecessor) || observed.text !== changedWords(before, observed)) return;
+  const words = changedWords(after, observed);
+  const exact = typeof words === 'string' && words !== observed.text && withSermonNoteText(before, observed.target, words);
+  if (exact && sameSketchFrame(exact, after)) return observed;
+}
 
-  const actions = new Set<string>();
-  const notes = new Map<string, ScratchOpening>();
-  for (let index = 1; index < chain.length; index += 1) {
-    const before = chain[index - 1].value, request = chain[index], after = request.value, observed = request.sermonNoteText;
-    if (!before || !after) return;
-    if (!observed && sameSketchFrame(before, after)) continue;
-    if (!isScratchOpening(observed) || request.sequence !== 0 || !matchesSermonNoteOpening(confirmed, observed)
-      || !observed.pending.includes(chain[index - 1].id) || observed.text !== changedWords(before, observed)) return;
-    const words = changedWords(after, observed);
-    const exact = typeof words === 'string' && words !== observed.text && withSermonNoteText(before, observed.target, words);
-    if (!exact || !sameSketchFrame(exact, after)) return;
-    const key = JSON.stringify(observed.target);
-    if (!notes.has(key)) {
-      if (changedWords(opening, observed) !== observed.text) return;
-      notes.set(key, { ...observed, pending: [] });
-    }
-    actions.add(request.id);
-  }
-  if (!notes.size) return;
-
-  const copies = [...notes].flatMap(([key, observed]) => {
+export function scratchTextRecoveryCopies(
+  source: SessionCheckpoint, target: ResourceSnapshot, last: DocumentData, openings: Iterable<ScratchOpening>,
+) {
+  const { confirmed } = source;
+  return Array.from(openings).flatMap(observed => {
     const words = changedWords(last, observed);
-    if (typeof words !== 'string' || words === changedWords(saved, observed)) return [];
-    const next = withSermonNoteText(opening, observed.target, words);
-    return next ? [{ key: 'scratch-text:' + key, recoveryKind: 'sermon-scratch-text' as const, continuation: {
-      confirmed, draft: next, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: projected.confirmed,
-      guardedScratchText: observed,
+    if (typeof words !== 'string' || words === changedWords(target.value, observed)) return [];
+    const next = withSermonNoteText(confirmed.value, observed.target, words);
+    return next ? [{ key: 'scratch-text:' + JSON.stringify(observed.target), recoveryKind: 'sermon-scratch-text' as const, continuation: {
+      confirmed, draft: next, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: target,
+      guardedScratchText: { ...observed, pending: [] },
     } satisfies SessionCheckpoint }] : [];
   });
-  return { actions, copies, restoreStored: (value: DocumentData) => restoreSketchFrame(value, saved) };
 }
 
 export function guardedScratchWords(checkpoint: SessionCheckpoint): string | undefined {

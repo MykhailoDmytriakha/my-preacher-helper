@@ -3355,6 +3355,8 @@
       "cancel": "Отмена",
       "placedIn": "В разделе {{section}}",
       "label": "Набросок",
+      "recoveryAdd": "Новый набросок",
+      "recoveryEdit": "Правка наброска",
       "placeholder": "Запишите набросок…",
       "add": "набросок",
       "placeInto": "Положить в…",

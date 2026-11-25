@@ -3308,6 +3308,8 @@
       "cancel": "Cancel",
       "placedIn": "In {{section}}",
       "label": "Scratch note",
+      "recoveryAdd": "New scratch note",
+      "recoveryEdit": "Scratch note edit",
       "placeholder": "Write a scratch note…",
       "add": "scratch note",
       "placeInto": "Place into…",

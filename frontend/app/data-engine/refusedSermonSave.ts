@@ -4,10 +4,8 @@ import { hasTimedAncestor } from './commits';
 import { canRebaseRefusedPointTail, recoverablePointTitlesAfterRefusal } from './exegeticalPointCapture';
 import { equalValues } from './fieldValues';
 import { recoverableSermonChurchAfterRefusal } from './sermonChurchRecovery';
-import { recoverableGuardedScratchText } from './sermonGuardedScratchText';
-import { recoverablePlacedSketches } from './sermonPlacedSketchRecovery';
 import { recoverablePreparationChecks } from './sermonPreparationCheckRecovery';
-import { recoverableScratchRemovals } from './sermonScratchRemovalRecovery';
+import { recoverableScratchTail } from './sermonScratchTailRecovery';
 import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
 import { recoverableThoughtLocks } from './sermonThoughtLockRecovery';
 import { recoverableThoughtPlacements } from './sermonThoughtPlacementRecovery';
@@ -29,14 +27,11 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const texts = recoverableSermonTextAfterRefusal(source, projected, chain);
   const church = recoverableSermonChurchAfterRefusal(source, projected, chain);
   const checks = recoverablePreparationChecks(source, projected, chain);
-  const scratchText = recoverableGuardedScratchText(source, projected, chain);
-  const sketches = scratchText ? undefined : recoverablePlacedSketches(source, projected, chain);
-  const sketchRemovals = scratchText || sketches ? undefined : recoverableScratchRemovals(source, projected, chain);
+  const scratch = recoverableScratchTail(source, projected, chain);
   const placements = recoverableThoughtPlacements(source, projected, chain);
   const removals = placements ? undefined : recoverableThoughtRemovals(source, projected, chain);
   const locks = placements || removals ? undefined : recoverableThoughtLocks(source, projected, chain);
   const scopes = [
-    ...(sketches ? [{ key: 'placed-sketches', recoveryKind: 'sermon-placed-sketch' as const, ...sketches }] : []),
     ...(church ? [{ key: 'church', recoveryKind: 'sermon-church' as const, ...church }] : []),
     ...checks.map(({ field, ...scope }) => ({ key: field, recoveryKind: 'sermon-preparation-check' as const, ...scope })),
     ...titles.map(({ id, ...copy }) => ({ key: 'point:' + id, recoveryKind: undefined, ...copy })),
@@ -46,7 +41,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   ];
   const restoreStoredFields = (document: DocumentData) => {
     const afterThoughts = (placements || removals || locks)?.restoreStored(document) ?? document;
-    const afterSketches = (scratchText || sketchRemovals)?.restoreStored(afterThoughts) ?? afterThoughts;
+    const afterSketches = scratch?.restoreStored(afterThoughts) ?? afterThoughts;
     return scopes.reduce<DocumentData | undefined>((value, copy) => value && copy.restoreStored(value), afterSketches);
   };
   const draft = restoreStoredFields(projected.draft);
@@ -66,7 +61,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const hasOtherCapturedWork = chain.slice(1).some(request => {
     const textActions = Object.entries(request.sermonPreparationTextActions ?? {}).filter(([field]) => !textFields.has(field));
     const checkActions = Object.entries(request.sermonPreparationCheckActions ?? {}).filter(([field]) => !checkFields.has(field));
-    return (request.sermonNoteText && !scratchText?.actions.has(request.id)) || (request.sermonChurchFill && !equalValues(request.sermonChurchFill, church?.fill)) || hasTimedAncestor({ ...request,
+    return (request.sermonNoteText && !scratch?.textActions.has(request.id)) || (request.sermonChurchFill && !equalValues(request.sermonChurchFill, church?.fill)) || hasTimedAncestor({ ...request,
       exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointActions.has(pointActionKey(action.nodeId, action.kind))),
       sermonPreparationTextActions: textActions.length ? Object.fromEntries(textActions) : undefined,
       thoughtLockActions: locks ? undefined : request.thoughtLockActions,
@@ -81,5 +76,5 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const copies = scopes.flatMap(scope => scope.continuation ? [{ ...scope, continuation: scope.continuation }] : []);
   return { checkpoint, copies: [...copies, ...(placements ? [{
     key: 'thought-placement', continuation: placements.continuation, recoveryKind: 'sermon-thought-placement' as const,
-  }] : []), ...(removals?.copies ?? []), ...(locks?.copies ?? []), ...(sketchRemovals?.copies ?? []), ...(scratchText?.copies ?? [])] };
+  }] : []), ...(removals?.copies ?? []), ...(locks?.copies ?? []), ...(scratch?.copies ?? [])] };
 }

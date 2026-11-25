@@ -78,7 +78,7 @@ export function PlanModeStatus({ document, recovery }: { document: SermonDocumen
     onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
     recoveryChoices={recovery.canRecover ? recovery.choices.flatMap(source => {
       const sketch = sermonSketchRecovery(source.record);
-      return !sketch ? [] : [{ id: source.id, title: t(sketch.kind === 'removal' ? 'scratch.card.delete' : 'scratch.card.label'), preview: sketch.text,
+      return !sketch ? [] : [{ id: source.id, title: t(sketch.titleKey), preview: sketch.text,
         discard: () => document.discardRecovery(source) }];
     }) : []}
     onRecover={id => {

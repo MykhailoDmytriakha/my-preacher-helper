@@ -1,6 +1,6 @@
 import { equalValues } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
-import { restoreSketchFrame, sameSketchFrame, sketchRows, withSketchRows } from './sermonScratchFrame';
+import { sketchRows, withSketchRows } from './sermonScratchFrame';
 import { UNREADABLE_ROW_PROOF } from './unreadableDraftProof';
 
 import type { CommitRequest } from './commits';
@@ -8,7 +8,7 @@ import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, Json, ResourceSnapshot } from './types';
 import type { ScratchNote } from '@/models/models';
 
-function removedSketch(before: DocumentData, after: DocumentData) {
+export function capturedScratchRemoval(before: DocumentData, after: DocumentData) {
   const opening = sketchRows(before), remaining = sketchRows(after);
   if (!opening || !remaining || opening.length !== remaining.length + 1) return;
   const ids = new Set(remaining.map(note => note.id));
@@ -17,27 +17,14 @@ function removedSketch(before: DocumentData, after: DocumentData) {
   if (note && kept && equalValues(kept, remaining)) return { note, proposed: withSketchRows(before, kept) };
 }
 
-/** A queued deletion proves the previous row and the exact one-row change, but carries no action time. */
-export function recoverableScratchRemovals(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
-  const { confirmed, draft } = source;
+/** A queued deletion proves the previous row, but carries no action time. */
+export function scratchRemovalRecoveryCopies(source: SessionCheckpoint, target: ResourceSnapshot, removed: readonly ScratchNote[]) {
+  const { confirmed } = source;
   const { value: opening, metadata } = confirmed;
-  const first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  if (!metadata || !opening || !draft || !first || !last || !saved || !sameSketchFrame(opening, first) || !sameSketchFrame(last, draft)) return;
-  const originals = sketchRows(opening), stored = sketchRows(saved);
-  if (!originals || !stored) return;
+  const originals = opening && sketchRows(opening), stored = target.value && sketchRows(target.value);
+  if (!metadata || !opening || !originals || !stored) return [];
 
-  const removed: ScratchNote[] = [];
-  for (let index = 1; index < chain.length; index += 1) {
-    const before = chain[index - 1].value, after = chain[index].value;
-    if (!before || !after) return;
-    if (sameSketchFrame(before, after)) continue;
-    const removal = removedSketch(before, after);
-    if (!removal || !equalValues(removal.note, originals.find(note => note.id === removal.note.id))) return;
-    removed.push(removal.note);
-  }
-  if (!removed.length) return;
-
-  const copies = removed.flatMap(note => {
+  return removed.flatMap(note => {
     if (!stored.some(row => row.id === note.id && row.createdAt === note.createdAt)) return [];
     return [{
       key: 'scratch-removal:' + note.id, recoveryKind: 'sermon-scratch-removal' as const,
@@ -48,7 +35,6 @@ export function recoverableScratchRemovals(source: SessionCheckpoint, projected:
       } satisfies SessionCheckpoint,
     }];
   });
-  return { copies, restoreStored: (value: DocumentData) => restoreSketchFrame(value, saved) };
 }
 
 export function unresolvedScratchRemoval(checkpoint: SessionCheckpoint): boolean {
@@ -68,7 +54,7 @@ function removalOpening(checkpoint: SessionCheckpoint) {
   return { note, proposed: withSketchRows(confirmed.value, original.filter(item => item.id !== address.rowId)) };
 }
 
-function removalAgainstStored(checkpoint: SessionCheckpoint, removal: ReturnType<typeof removedSketch>, target: ResourceSnapshot) {
+function removalAgainstStored(checkpoint: SessionCheckpoint, removal: ReturnType<typeof capturedScratchRemoval>, target: ResourceSnapshot) {
   if (!removal || !target.metadata || !equalValues(target.resource, checkpoint.confirmed.resource)) return;
   const { note } = removal;
   const identity = JSON.stringify([note.id, note.createdAt, target.metadata.generation, target.metadata.revision, checkpoint.editGeneration]);
@@ -105,7 +91,7 @@ export function recoveredScratchRemoval(checkpoint: SessionCheckpoint, target: R
 /** A late delivery conflict must be reviewed again against that exact submitted removal. */
 export function capturedScratchRemovalPath(request: CommitRequest): string[] | undefined {
   if (!request.scratchRemoval || !request.baseline.value || !request.value) return;
-  const removal = removedSketch(request.baseline.value, request.value);
+  const removal = capturedScratchRemoval(request.baseline.value, request.value);
   if (removal && equalValues(removal.proposed, request.value)) return ['scratch', 'id:' + removal.note.id];
 }
 
@@ -115,7 +101,7 @@ export function pendingScratchRemoval(checkpoint: SessionCheckpoint) {
   if (!request?.[1].value || !confirmed.value || !remoteCandidate || confirmed.resource.collection !== 'sermons'
     || !conflicts.some(({ path }) => path[0] === 'scratch')) return;
   const [requestId, { value }] = request;
-  const removal = removedSketch(confirmed.value, value!);
+  const removal = capturedScratchRemoval(confirmed.value, value!);
   if (!removal || !equalValues(removal.proposed, value)) return;
   const comparison = removalAgainstStored(checkpoint, removal, remoteCandidate);
   return comparison && { ...comparison, requestId };
