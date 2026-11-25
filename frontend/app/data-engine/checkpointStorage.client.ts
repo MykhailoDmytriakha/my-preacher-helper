@@ -1,6 +1,8 @@
 'use client';
 
-import { SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
+import { isPreparationTextField } from '@/utils/preparationFieldValues';
+
+import { isSermonHeaderRecoveryEditor, SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './protocol';
 import { isRecoverableCheckpoint, recoveryCheckpointEditorId, validateRecoveryRecord } from './recovery.client';
 import { recoveryOrigins } from './recoverySource';
@@ -13,8 +15,19 @@ import type { EditorRecord, SettledCheckpoint } from './controller';
 
 // A version that cannot restore a reminder's opening must not offer to apply its retained draft.
 export const SERMON_NOTE_CHOICE_ROW = 'sermon-note-choice-checkpoint';
-export const checkpointKey = (owner: string, editorId: string): IDBValidKey =>
-  [editorId.startsWith(SERMON_NOTE_CHOICE_RECOVERY_PREFIX) ? SERMON_NOTE_CHOICE_ROW : 'checkpoint', owner, editorId];
+export const SERMON_HEADER_CHOICE_ROW = 'sermon-header-choice-checkpoint';
+export const checkpointKey = (owner: string, editorId: string): IDBValidKey => {
+  const kind = isSermonHeaderRecoveryEditor(editorId) ? SERMON_HEADER_CHOICE_ROW
+    : editorId.startsWith(SERMON_NOTE_CHOICE_RECOVERY_PREFIX) ? SERMON_NOTE_CHOICE_ROW : 'checkpoint';
+  return [kind, owner, editorId];
+};
+
+function deviceCheckpointRecord(record: EditorRecord) {
+  const { sermonTextRetry, ...checkpoint } = record.checkpoint;
+  // Preserve the field name already understood by older readers of preparation drafts.
+  return sermonTextRetry && isPreparationTextField(sermonTextRetry.field)
+    ? { ...record, checkpoint: { ...checkpoint, preparationTextRetry: sermonTextRetry } } : record;
+}
 
 /** Reuse the same validation and retention rules inside an existing native transaction. */
 export function writeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record: EditorRecord,
@@ -107,7 +120,7 @@ function placeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record:
     if (creating && current !== undefined) throw new Error('Recovery target already exists');
     validateCommitReferences(store, read, record.owner, checkpointCommitReferences(frozen), () => {
       const keeps = isRecoverableCheckpoint(frozen);
-      if (keeps) store.put(version(frozen), checkpointKey(record.owner, record.editorId));
+      if (keeps) store.put(deviceCheckpointRecord(version(frozen)), checkpointKey(record.owner, record.editorId));
       else store.delete(checkpointKey(record.owner, record.editorId));
       for (const id of frozen.completedCommits ?? []) store.delete(commitProjectionKey(record.owner, id));
       retireRecoveryVersions(store, read, keeps ? [] : recoveryOrigins(frozen.recoveryOrigins), id => {

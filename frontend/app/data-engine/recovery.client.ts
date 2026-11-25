@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { isPreparationTextField, type PreparationTextField } from '@/utils/preparationFieldValues';
+import { isSermonTextRecoveryField, SERMON_TEXT_RECOVERY_FIELDS, type SermonTextRecoveryField } from '@/utils/sermonTextRecoveryFields';
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accountPreference';
@@ -20,7 +21,7 @@ import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
 import { readRootPointOrder, retainedRootOrderChanged } from './sermonPointMoveRecovery';
-import { changedPreparationTextFields, preparationRetryMatches } from './sermonPreparationRecovery';
+import { changedSermonTextFields, sermonTextRetryMatches } from './sermonTextRecovery';
 import { serviceOrderInputSchema } from './serviceOrderInputCodec';
 import { placementSteps, retainedStepOrderChanged } from './serviceOrderStepPlacement';
 import { DataSession, hasUnreadableDraftProof } from './session';
@@ -164,7 +165,7 @@ const recordSchema = z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(checkpointConflict).default([]),
-    unreadableScalarProof: z.array(z.string()).min(1).max(ACCOUNT_PREFERENCE_TARGETS.length).optional(),
+    unreadableScalarProof: z.array(z.string()).min(1).max(Math.max(ACCOUNT_PREFERENCE_TARGETS.length, SERMON_TEXT_RECOVERY_FIELDS.length)).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
@@ -181,6 +182,8 @@ const recordSchema = z.object({
       z.object({ field: accountPreferenceField, time: actionTime }).strict(),
       z.object({ fields: accountPreferenceFields, time: actionTime }).strict(),
     ]).optional(),
+    sermonTextRetry: z.object({ field: z.custom<SermonTextRecoveryField>(isSermonTextRecoveryField), generation: id,
+      action: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime, reviewed: z.literal(true).optional() }).strict() }).strict().optional(),
     preparationTextRetry: z.object({ field: z.custom<PreparationTextField>(isPreparationTextField), generation: id,
       action: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime }).strict() }).strict().optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
@@ -217,7 +220,7 @@ const recordSchema = z.object({
     preachDateAudienceDrafts: rowDrafts(nullableTitleAction).optional(), preachDateCityDrafts: rowDrafts(preachDateCityAction).optional(),
     preachDateChurchDrafts: rowDrafts(preachDateChurchAction).optional(),
     pending: z.record(id, z.object(pendingShape)),
-  } satisfies Record<keyof SessionCheckpoint, z.ZodTypeAny>),
+  } satisfies Record<keyof SessionCheckpoint | 'preparationTextRetry', z.ZodTypeAny>),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -484,9 +487,12 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       if (collection === 'sermons' && isFields(confirmed)) {
         const opening = isFields(confirmed.value) ? confirmed.value as DocumentData : null;
         const draft = isFields(checkpoint.draft) ? checkpoint.draft as DocumentData : null;
-        const lostRetry = dropped.includes('preparationTextRetry') && checkpoint.preparationTextRetry === undefined;
-        fields.push(...held.filter(isPreparationTextField));
-        if (lostRetry && opening && draft) fields.push(...changedPreparationTextFields(opening, draft));
+        fields.push(...held.filter(isSermonTextRecoveryField));
+        if (dropped.includes('sermonTextRetry') || dropped.includes('preparationTextRetry')) {
+          const { sermonTextRetry: _invalid, preparationTextRetry: _legacy, ...rest } = checkpoint;
+          checkpoint = rest;
+          if (opening && draft) fields.push(...changedSermonTextFields(opening, draft));
+        }
       }
       if (collection === 'serviceOrders' && isFields(confirmed)) {
         const { retry, review } = recoverRankRetry(checkpoint, confirmed, held);
@@ -608,12 +614,15 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
     ...decision, row: decision.row ? document(decision.row)! : undefined,
     linkedSteps: decision.linkedSteps?.map(step => document(step)!),
   })) };
-  const checkpoint: SessionCheckpoint = { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
-  const retry = checkpoint.preparationTextRetry;
-  if (retry && !preparationRetryMatches(checkpoint, retry)) {
-    delete checkpoint.preparationTextRetry;
+  const { preparationTextRetry: legacyRetry, ...decoded } = record.checkpoint;
+  const competingRetries = decoded.sermonTextRetry && legacyRetry && !equalValues(decoded.sermonTextRetry, legacyRetry);
+  const checkpoint: SessionCheckpoint = { ...decoded, draft: ownedDocument(decoded.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  const retry = checkpoint.sermonTextRetry ?? legacyRetry;
+  if (retry && !competingRetries && sermonTextRetryMatches(checkpoint, retry)) checkpoint.sermonTextRetry = retry;
+  else if (retry) {
+    delete checkpoint.sermonTextRetry;
     if (ref.collection === 'sermons' && checkpoint.confirmed.value && checkpoint.draft) {
-      const changed = changedPreparationTextFields(checkpoint.confirmed.value, checkpoint.draft);
+      const changed = changedSermonTextFields(checkpoint.confirmed.value, checkpoint.draft);
       if (changed.length) checkpoint.unreadableScalarProof = [...new Set([...(checkpoint.unreadableScalarProof ?? []), ...changed])];
     }
   }

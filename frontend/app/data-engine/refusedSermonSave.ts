@@ -1,6 +1,8 @@
+import { isPreparationTextField } from '@/utils/preparationFieldValues';
+
 import { hasTimedAncestor } from './commits';
 import { canRebaseRefusedPointTail, recoverablePointTitlesAfterRefusal } from './exegeticalPointCapture';
-import { recoverablePreparationTextAfterRefusal } from './sermonPreparationRecovery';
+import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -15,10 +17,12 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
     || source.confirmed.metadata?.generation !== projected.confirmed.metadata?.generation) return;
 
   const titles = recoverablePointTitlesAfterRefusal(source, projected, chain);
-  const texts = recoverablePreparationTextAfterRefusal(source, projected, chain);
+  const texts = recoverableSermonTextAfterRefusal(source, projected, chain);
   const copies = [
-    ...titles.map(({ id, ...copy }) => ({ key: 'point:' + id, ...copy })),
-    ...texts.map(({ field, ...copy }) => ({ key: 'preparation:' + field, ...copy })),
+    ...titles.map(({ id, ...copy }) => ({ key: 'point:' + id, recoveryKind: undefined, ...copy })),
+    ...texts.map(({ field, ...copy }) => isPreparationTextField(field)
+      ? { key: 'preparation:' + field, recoveryKind: undefined, ...copy }
+      : { key: field, recoveryKind: 'sermon-header' as const, ...copy }),
   ];
   const restoreStoredFields = (document: DocumentData) => copies.reduce<DocumentData | undefined>(
     (value, copy) => value && copy.restoreStored(value), document);
@@ -40,6 +44,8 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
     return request.sermonNoteText || hasTimedAncestor({ ...request,
       exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointActions.has(pointActionKey(action.nodeId, action.kind))),
       sermonPreparationTextActions: textActions.length ? Object.fromEntries(textActions) : undefined,
+      sermonTitleAction: textFields.has('title') ? undefined : request.sermonTitleAction,
+      sermonVerseAction: textFields.has('verse') ? undefined : request.sermonVerseAction,
     });
   });
   if (hasOtherCapturedWork || source.exegeticalPointDrafts?.some(action => !pointActions.has(pointActionKey(action.nodeId, action.kind)))) return;

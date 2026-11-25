@@ -1,7 +1,7 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, preparationTextDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { exegeticalDraftTitlePreview, exegeticalRecoveryOpeningTitle, isWorkspaceRecoveryCopy, sermonTextDraft, readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { useTranslation } from '@locales/useTranslation';
@@ -126,13 +126,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
           && record.checkpoint.unreadableExegeticalProofs?.some(proof => proof.pendingAddition);
         if (readOutlineTitleComparison(record.checkpoint) || readOutlineNoteConflict(record.checkpoint) || readSermonOutlineReview(record.checkpoint)
           || !isWorkspaceRecoveryCopy(record, canOfferCoreDraft || laterPointTitle ? [SERMON_WORKSPACE_SLOT, CORE_SLOT] : [])) return [];
-        const preparation = preparationTextDraft(record.checkpoint);
+        const recoveredText = sermonTextDraft(record.checkpoint);
         const pointTitle = exegeticalRecoveryOpeningTitle(record);
-        const title = preparation ? fieldLabel(t, preparation.field)
+        const title = recoveredText ? fieldLabel(t, recoveredText.field)
           : pointTitle !== undefined ? [t('dataSync.exegeticalPointTitle'), pointTitle].filter(Boolean).join(' · ')
             : String(draft?.title ?? confirmed.value?.title ?? sermonId ?? '');
         const preview = draft?.verse !== confirmed.value?.verse ? String(draft?.verse ?? '')
-          : preparation?.preview ?? exegeticalDraftTitlePreview(record);
+          : recoveredText?.preview ?? exegeticalDraftTitlePreview(record);
         return [{ id, title, preview,
           discard: () => document.discardRecovery(source) }];
       })];

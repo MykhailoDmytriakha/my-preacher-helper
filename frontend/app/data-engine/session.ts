@@ -41,6 +41,7 @@ import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
+import { observedSermonText } from './sermonTextRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -93,7 +94,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   councilTopicPlacementRetry?: CouncilTopicPlacementCapture;
   accountPreferenceRetry?: AccountPreferenceRetry;
-  preparationTextRetry?: import('./sermonPreparationRecovery').PreparationTextRetry;
+  sermonTextRetry?: import('./sermonTextRecovery').SermonTextRetry;
   sourceNoteLinkRetry?: SourceNoteLinkCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture; councilTopicPlacement?: CouncilTopicPlacementCapture; commentPlaceAction?: CommentPlaceObservation } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
@@ -278,9 +279,9 @@ export class DataSession {
     const planActions = stageExegeticalPoint(this.state, value, shown, autosaveStamp?.field === 'exegetical-point' ? autosaveStamp : undefined);
     if (planActions) this.state.exegeticalPointDrafts = planActions;
     else delete this.state.exegeticalPointDrafts;
-    const retry = this.state.preparationTextRetry;
+    const retry = this.state.sermonTextRetry;
     if (retry && (!value || !equalValues(readField(value, unreadableScalarPath('sermons', retry.field)), retry.action.after))) {
-      delete this.state.preparationTextRetry;
+      delete this.state.sermonTextRetry;
       if (value && !equalValues(readField(value, unreadableScalarPath('sermons', retry.field)), retry.action.before)) {
         this.state.unreadableScalarProof = [...new Set([...(this.state.unreadableScalarProof ?? []), retry.field])];
       }
@@ -535,9 +536,9 @@ export class DataSession {
       && (request.meetingDateAction || request.groupMeetingFieldActions) && equalValues(this.state.draft, request.value)) {
       delete this.state.groupMeetingReview;
     }
-    const preparationRetry = this.state.preparationTextRetry;
-    if (preparationRetry && equalValues(request.sermonPreparationTextActions?.[preparationRetry.field], preparationRetry.action)) {
-      delete this.state.preparationTextRetry;
+    const textRetry = this.state.sermonTextRetry;
+    if (textRetry && equalValues(observedSermonText(request, textRetry.field), textRetry.action)) {
+      delete this.state.sermonTextRetry;
     }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && accountPreferenceRetryFields(preferenceRetry).every(field =>
@@ -1258,8 +1259,8 @@ export class DataSession {
     this.state.dirty = true;
   }
 
-  retainPreparationTextRetry(retry: SessionCheckpoint['preparationTextRetry']): void {
-    if (retry) this.state.preparationTextRetry = copy(retry);
+  retainSermonTextRetry(retry: SessionCheckpoint['sermonTextRetry']): void {
+    if (retry) this.state.sermonTextRetry = copy(retry);
   }
 
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
@@ -1289,7 +1290,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
-    delete this.state.preparationTextRetry;
+    delete this.state.sermonTextRetry;
     delete this.state.accountPreferenceRetry;
     delete this.state.serviceOrderPlacementComparison;
     delete this.state.serviceOrderStepPlacementRetry;

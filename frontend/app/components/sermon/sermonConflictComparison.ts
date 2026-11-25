@@ -31,7 +31,7 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
   if (kind === 'verse') {
     return { identity, title: t('addSermon.verseLabel'), mine: comparison.mine, stored: comparison.stored, scopedChoice: true };
   }
-  if (kind === 'preparation-text') {
+  if (kind === 'recovered-sermon-text') {
     const text = (value: unknown) => typeof value === 'string' && value ? value : t('dataSync.emptyField');
     return { identity, valueKind: 'field', title: fieldLabel(t, comparison.field),
       mine: text(comparison.mine.value), stored: text(comparison.stored.value), scopedChoice: true };

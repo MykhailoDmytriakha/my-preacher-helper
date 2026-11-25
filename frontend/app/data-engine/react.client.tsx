@@ -67,7 +67,7 @@ import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncil
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
 import { readSermonOutlineReview as sermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
-import { readPreparationTextComparison } from './sermonPreparationRecovery';
+import { readSermonTextDraftComparison } from './sermonTextRecovery';
 import { isReturnedServiceOrderInput as returnedServiceInput, readServiceOrderInputComparison as compareSavedServiceInput, readServiceOrderInputValue as readSavedServiceOrderInput, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
@@ -399,7 +399,7 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
     && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
 }
 
-export { preparationTextDraft } from './sermonPreparationRecovery';
+export { sermonTextDraft } from './sermonTextRecovery';
 
 export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {
   if (!isManualChoiceRecoveryIdentity(record.editorId)) return;
@@ -1707,7 +1707,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
-        || readSermonSettingComparison(compared) || readPreparationTextComparison(compared)
+        || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared)
         || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))

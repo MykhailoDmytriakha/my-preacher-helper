@@ -50,8 +50,8 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanCellOpenings, reservePrivatePlanCells, selectPlanCellSave } from './sermonPlanCellSession';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
-import { preparationRetryMatches } from './sermonPreparationRecovery';
 import { committedSermonText, selectSermonTextOpenings, sermonTextKey, type CommittedSermonText, type SermonTextOpenings } from './sermonTextOpenings';
+import { capturedSermonTextRetry, sermonTextRetryMatches } from './sermonTextRecovery';
 import { hasNewerServiceOrderInputOpening, selectServiceOrderInputSave, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_BODY_POLICY, SERVICE_ORDER_STEP_BODY_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, SERVICE_ORDER_STEP_SCRIPTURE_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepBodyActions, type ServiceOrderStepScriptureActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { placementSteps } from './serviceOrderStepPlacement';
@@ -977,17 +977,17 @@ export class CommitQueue {
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
     const metadataTime = editorAction?.kind === 'account-preference' || editorAction?.kind === 'document-metadata'
       ? editorAction.time : frozenOptions?.documentMetadataTime;
-    const preparationRetry = intent.preparationTextRetry;
-    if (preparationRetry && !preparationRetryMatches(intent, preparationRetry)) {
-      throw Object.assign(new Error('The recovered preparation text changed'), { code: 'decision-changed' });
+    const textRetry = intent.sermonTextRetry;
+    if (textRetry && !sermonTextRetryMatches(intent, textRetry)) {
+      throw Object.assign(new Error('The recovered sermon text changed'), { code: 'decision-changed' });
     }
     const capturedMetadata = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
       headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined);
-    const metadataFields = preparationRetry ? { ...capturedMetadata, sermonPreparationTextActions: {
-      ...('sermonPreparationTextActions' in capturedMetadata && capturedMetadata.sermonPreparationTextActions),
-      [preparationRetry.field]: preparationRetry.action,
-    } } : capturedMetadata;
+    const metadataFields = textRetry
+      ? { ...capturedMetadata, ...capturedSermonTextRetry(textRetry,
+        'sermonPreparationTextActions' in capturedMetadata ? capturedMetadata.sermonPreparationTextActions : undefined) }
+      : capturedMetadata;
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
     const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);

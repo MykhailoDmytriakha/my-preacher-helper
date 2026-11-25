@@ -14,8 +14,8 @@ import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 import { readSermonConflictField, readSermonPreparationConfirmation } from './sermonFieldChoice';
 import { readPlanCellText } from './sermonPlanCellSession';
-import { readPreparationTextComparison } from './sermonPreparationRecovery';
 import { isPlanCellPath } from './sermonTextOpenings';
+import { readSermonTextDraftComparison } from './sermonTextRecovery';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_SCRIPTURE_LIST, serviceOrderStepField } from './serviceOrderStepAction';
 import { readServiceStepTextChoice } from './serviceOrderStepChoice';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
@@ -204,8 +204,8 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
       identity: JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]),
       mine: mine || undefined, stored: stored || undefined };
   }
-  const preparation = readPreparationTextComparison(checkpoint);
-  if (preparation) return { kind: 'preparation-text' as const, ...preparation };
+  const recoveredText = readSermonTextDraftComparison(checkpoint);
+  if (recoveredText) return { kind: 'recovered-sermon-text' as const, ...recoveredText };
   const mine = readSermonConflictField(draft, path);
   const stored = readSermonConflictField(remoteCandidate.value, path);
   const identity = JSON.stringify([path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);

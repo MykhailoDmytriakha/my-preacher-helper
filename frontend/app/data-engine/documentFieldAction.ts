@@ -26,6 +26,7 @@ import type { SeriesFieldObservation, SeriesFieldReview, SeriesFieldTarget } fro
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 import type { Church, Group, Sermon } from '@/models/models';
+import type { SermonTextRecoveryField } from '@/utils/sermonTextRecoveryFields';
 
 export const SERMON_METADATA_SETTLED = 'sermon-metadata-settled';
 export const SERMON_METADATA_QUEUED = 'sermon-metadata-queued';
@@ -714,12 +715,25 @@ function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: Com
   return { before, after, time, observedRevision: baseline.metadata!.revision, ...(predecessorOperationId && { predecessorOperationId }) };
 }
 
-export function capturePreparationTextField(baseline: ResourceSnapshot, draft: DocumentData | null, field: PreparationTextField,
-  captured: ActionTime | null): DocumentFieldObservation<FieldValue> | undefined {
+function sermonRecoveryTextTarget(field: SermonTextRecoveryField) {
+  if (field === 'title') return SERMON_TITLE;
+  if (field === 'verse') return SERMON_VERSE;
+  return PREPARATION_TEXT_TARGETS.find(item => item.field === field);
+}
+
+export function acceptsSermonRecoveryText(value: FieldValue, field: SermonTextRecoveryField): boolean {
+  const target = sermonRecoveryTextTarget(field);
+  return target !== undefined && acceptsDocumentField(value, target);
+}
+
+export function captureSermonRecoveryText(baseline: ResourceSnapshot, draft: DocumentData | null, field: SermonTextRecoveryField,
+  captured: ActionTime | null): DocumentFieldObservation<string | FieldValue> | undefined {
   if (baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return;
-  const target = PREPARATION_TEXT_TARGETS.find(item => item.field === field);
+  const target = sermonRecoveryTextTarget(field);
   const time = captured === null ? null : boundedActionTime(captured);
-  return target && time !== undefined ? captureStoredMetadataField(baseline, undefined, draft, target, time, []) : undefined;
+  if (!target || time === undefined) return;
+  return target.action === 'sermonPreparationTextActions' ? captureStoredMetadataField(baseline, undefined, draft, target, time, [])
+    : captureSermonField(baseline, undefined, draft, target, time, []);
 }
 
 export function capturePreparationConfirmation(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,

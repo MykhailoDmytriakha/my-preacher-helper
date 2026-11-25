@@ -69,7 +69,7 @@ const evidence = {
   serviceOrderInputs: { '["step","body"]': { field: 'body', stepId: 'step', before: 'Original', value: 'Later',
     version: { generation: 'g', observedRevision: 1 }, time } },
   serviceOrderPlacementComparison: { mine: gap, saved: null, available: false, step: { id: 'step', title: 'Step' } },
-  preparationTextRetry: { field: 'authorIntent', generation: 'g', action: { before: { exists: true, value: 'Original' },
+  sermonTextRetry: { field: 'authorIntent', generation: 'g', action: { before: { exists: true, value: 'Original' },
     after: { exists: true, value: 'Later' }, observedRevision: 1, time } },
   accountPreferenceRetry: { field: 'language', time: null }, outlineTitleDrafts: rowDrafts, preachDateNotesDrafts: rowDrafts,
   preachDateAudienceDrafts: rowDrafts, preachDateCityDrafts: { row: { generation: 'g', action: cityObservation } },
@@ -126,7 +126,7 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
 
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
-  if (key === 'preparationTextRetry') {
+  if (key === 'sermonTextRetry') {
     source.checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
     source.checkpoint.confirmed.value = { userId: 'owner', preparation: { authorIntent: 'Original' } };
     source.checkpoint.draft = { ...source.checkpoint.confirmed.value, preparation: { authorIntent: 'Later' } };
@@ -185,6 +185,26 @@ it('keeps service input and its observed revision when its clock cannot be trust
     expect(checkpoint.draft).toEqual(source.checkpoint.draft);
   }
   takeDroppedProof('serviceOrderInputs');
+});
+
+it('reads and rewrites an earlier preparation text proof using the same on-device key', async () => {
+  const harness = installStorageHarness();
+  const store = createIndexedDbCheckpoints();
+  const original = titleRecord();
+  const { checkpoint } = original;
+  checkpoint.confirmed.resource = { collection: 'sermons', id: 'sermon' };
+  checkpoint.confirmed.value = { userId: 'owner', preparation: { authorIntent: 'Original' } };
+  checkpoint.draft = { ...checkpoint.confirmed.value, preparation: { authorIntent: 'Later' } };
+  const key = JSON.stringify(['checkpoint', original.owner, original.editorId]);
+  const proof = evidence.sermonTextRetry;
+  harness.rows.set(key, { ...original, checkpoint: { ...checkpoint, preparationTextRetry: proof } });
+
+  const opened = (await store.read(original.owner, original.editorId))!;
+  expect(opened.checkpoint.sermonTextRetry).toEqual(proof);
+  await store.put(opened);
+  expect(harness.rows.get(key)).toMatchObject({ checkpoint: { preparationTextRetry: proof } });
+  expect(harness.rows.get(key)).not.toHaveProperty('checkpoint.sermonTextRetry');
+  expect((await store.read(original.owner, original.editorId))?.checkpoint.sermonTextRetry).toEqual(proof);
 });
 
 it.each(Object.entries(placementRetries))('does not keep %s through native write, read, discovery or fork, as before, and says nothing', async (key, value) => {

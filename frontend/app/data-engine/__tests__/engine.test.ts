@@ -1214,7 +1214,7 @@ describe('DataEngine composition', () => {
         exegeticalPlan: plan(firstEdit, second, added) } }, undefined,
       { field: 'exegetical-point', nodeId: first.id, intent: 'title', time: pointTime });
       await editor.save();
-      const latestSave = { ...firstSave, ...(scope === 'uncovered' && { title: 'Unrelated sermon header' }), preparation: {
+      const latestSave = { ...firstSave, ...(scope === 'uncovered' && { isPreached: true }), preparation: {
         authorIntent: authorWords, exegeticalPlan: plan(firstEdit, secondEdit, added), textContext: { contextNotes: 'Local context without a readable observation' },
       } };
       await editor.edit(latestSave);
@@ -1261,7 +1261,7 @@ describe('DataEngine composition', () => {
         expect(item).toBeDefined();
         return item!.id;
       };
-      const authorId = find(cp => cp.preparationTextRetry?.field === 'authorIntent');
+      const authorId = find(cp => cp.sermonTextRetry?.field === 'authorIntent');
       const contextId = find(cp => cp.unreadableScalarProof?.includes('contextNotes') === true);
       const firstId = find(cp => cp.exegeticalPointDrafts?.[0].nodeId === first.id);
       const secondId = find(cp => cp.unreadableExegeticalProofs?.[0].nodeId === second.id);
@@ -1304,6 +1304,114 @@ describe('DataEngine composition', () => {
         textContext: { contextNotes: 'Local context without a readable observation' },
       });
       expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
+
+  it.each([
+    ['title', true], ['verse', true], ['title', false], ['verse', false],
+  ] as const)('recovers an independent sermon %s after a refused point Save (proof: %s)', async (field, hasProof) => {
+    const s = setup({ online: false, nativeChoice: true });
+    const ref = { collection: 'sermons', id: 'header-after-refusal' };
+    const openingWords = { title: 'Opening sermon title', verse: 'John 3:16' };
+    const storedWords = hasProof ? openingWords[field] : { title: 'Title on the desktop', verse: 'Luke 4:18' }[field];
+    const privateWords = { title: 'Title written on the phone', verse: 'John 3:17' }[field];
+    const sibling = { id: 'sibling', title: 'Opening existing point', children: [] };
+    const point = { id: 'added', title: '', children: [] };
+    const newest = { ...point, title: 'Title written after Save' };
+    const openingValue = { userId: 'owner', ...openingWords, thoughts: [], preparation: { exegeticalPlan: [sibling] } };
+    const opening = { ...initial(), resource: ref, value: openingValue };
+    const stored = { ...opening,
+      value: { ...openingValue, [field]: storedWords, preparation: { exegeticalPlan: [{ ...sibling, title: 'Saved existing point' }] } },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'newer-desktop' },
+    };
+    const actionTime = { earliestMs: 3000, latestMs: 3010 };
+    const editorId = editorIdentity('phone', ref, 'core', 'earlier');
+    const action = field === 'title' ? 'sermonTitleAction' : 'sermonVerseAction';
+    s.cache.set(keyOf('owner', ref), opening);
+    s.server.set(keyOf('owner', ref), opening);
+
+    try {
+      const editor = await s.engine.openEditor(ref, editorId);
+      const submitted = { ...openingValue, preparation: { exegeticalPlan: [sibling, point] } };
+      await editor.edit(submitted);
+      await editor.save();
+      const later = { ...submitted, [field]: privateWords };
+      if (hasProof) {
+        await editor.commit(() => later, { kind: 'document-metadata', time: actionTime });
+        expect((await s.commits.list('owner')).at(-1)?.[action]).toMatchObject({ before: openingWords[field],
+          after: privateWords, observedRevision: 1, time: actionTime });
+      } else {
+        await editor.edit(later);
+        await editor.save();
+      }
+      await editor.edit({ ...later, preparation: { exegeticalPlan: [sibling, newest] } });
+      const record = (await s.checkpoints.read('owner', editorId))!;
+      await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint,
+        unreadableExegeticalProofs: [{ nodeId: point.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true }] } });
+      editor.dispose();
+      const send = jest.mocked(s.transport.send).getMockImplementation()!;
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+        kind: 'refused', operationId: command.operationId, code: 'decision-changed',
+      }));
+      s.engine.setOnline(true);
+      await s.engine.retry();
+      s.server.set(keyOf('owner', ref), stored);
+
+      const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+      const editorAfter = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source.id);
+      await editorAfter.acceptRemote(undefined, editorAfter.getState().checkpoint);
+      const primary = editorAfter.getState().checkpoint;
+      expect(primary.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:added']]);
+      expect(primary.draft?.[field]).toBe(storedWords);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      const choices = await s.engine.listRecoveryChoices(ref, true);
+      expect(choices).toHaveLength(1);
+      expect(choices[0].record.checkpoint.draft).toMatchObject({ [field]: privateWords, preparation: openingValue.preparation });
+
+      jest.mocked(s.transport.send).mockImplementation(send);
+      await editorAfter.keepLocal(undefined, primary);
+      await editorAfter.save();
+      await s.engine.retry();
+      let header = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'header'), choices[0].id);
+      // An older bundle only scans the ordinary and reminder checkpoint ranges.
+      const headerRows = [...s.storage!.rows.keys()].map(key => JSON.parse(key)).filter(key => key[0] === 'sermon-header-choice-checkpoint');
+      expect(headerRows).toHaveLength(2);
+      expect(headerRows).toContainEqual(['sermon-header-choice-checkpoint', 'owner', choices[0].record.editorId]);
+      let alternativeId: string | undefined;
+      if (field === 'title' && hasProof) {
+        const alternative = (await header.holdDraftAlternative(value => ({ ...value, title: 'Further title kept on the phone' })))!;
+        expect(s.storage!.rows.has(JSON.stringify(['sermon-header-choice-checkpoint', 'owner', alternative.record.editorId]))).toBe(true);
+        expect((await s.engine.listRecoveryChoices(ref, true)).map(({ id }) => id)).toContain(alternative.id);
+        expect(alternative.record.checkpoint.unreadableScalarProof).toEqual(['title']);
+        alternativeId = alternative.id;
+      }
+      if (field === 'verse' && !hasProof) {
+        header.dispose();
+        const closed = await s.engine.listRecoveryChoices(ref, true);
+        expect(closed).toHaveLength(1);
+        expect(closed[0].id).not.toBe(choices[0].id);
+        header = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'header-after-close'), closed[0].id);
+      }
+      const useOwn = hasProof || field === 'title';
+      const choiceTime = { earliestMs: 6000, latestMs: 6010 };
+      if (hasProof) await header.save();
+      else {
+        const compared = header.getState().checkpoint;
+        expect(compared.conflicts).toMatchObject([{ path: [field], mine: { value: privateWords }, theirs: { value: storedWords } }]);
+        await expect(header.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+        expect(s.transport.send).toHaveBeenCalledTimes(2);
+        if (useOwn) await header.keepLocal(undefined, compared, choiceTime);
+        else await header.acceptRemote(undefined, compared);
+      }
+      await s.engine.retry();
+      const commands = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+      expect(commands).toHaveLength(useOwn ? 3 : 2);
+      if (useOwn) expect(commands[2]).toMatchObject({ [action]: {
+        observedRevision: hasProof ? 1 : 3, time: hasProof ? actionTime : choiceTime,
+      } });
+      expect(s.server.get(keyOf('owner', ref))?.value).toMatchObject({ [field]: useOwn ? privateWords : storedWords,
+        preparation: { exegeticalPlan: [{ ...sibling, title: 'Saved existing point' }, newest] } });
+      expect((await s.engine.listRecoveryChoices(ref, true)).map(({ id }) => id)).toEqual(alternativeId ? [alternativeId] : []);
     } finally { s.engine.dispose(); }
   });
 

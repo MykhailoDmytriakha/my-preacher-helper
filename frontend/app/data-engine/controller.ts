@@ -53,7 +53,7 @@ import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRo
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
-import { readPreparationTextComparison, retryForPreparationTextChoice } from './sermonPreparationRecovery';
+import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
 import { isReturnedServiceOrderInput, projectServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { keepUncontestedServiceStepScripture, keepUncontestedServiceStepText, readServiceStepTextChoice, reviewedServiceStepScriptureRows, serviceStepScriptureChoice, serviceStepScriptureConflict, serviceStepTextRetry } from './serviceOrderStepChoice';
@@ -68,7 +68,7 @@ import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './s
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
-import { hasUnreadablePreparationText } from './unreadableDraftProof';
+import { hasUnreadableSermonText } from './unreadableDraftProof';
 
 import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -826,9 +826,9 @@ export class EditorController {
       const preview = DataSession.restore(checkpoint);
       if (this.prepared) preview.release(this.prepared.operationId);
       preview.keepLocal(undefined, choiceTime, undefined, titles);
-      const preparation = !selection && !correction && hasUnreadablePreparationText(checkpoint)
-        && readPreparationTextComparison(checkpoint);
-      const preparationRetry = preparation && retryForPreparationTextChoice(preview.checkpoint(), preparation, choiceTime ?? null);
+      const sermonText = !selection && !correction && hasUnreadableSermonText(checkpoint)
+        && readSermonTextDraftComparison(checkpoint);
+      const textRetry = sermonText && retryForSermonTextChoice(preview.checkpoint(), sermonText, choiceTime ?? null);
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.assertCurrent();
@@ -840,7 +840,7 @@ export class EditorController {
       this.pendingCaptures.retire(captures);
       const preference = !selection && !correction ? readAccountPreferenceComparison(this.session.checkpoint()) : undefined;
       this.session.keepLocal(undefined, choiceTime, undefined, titles);
-      if (preparationRetry) this.session.retainPreparationTextRetry(preparationRetry);
+      if (textRetry) this.session.retainSermonTextRetry(textRetry);
       if (preference) this.session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
@@ -1415,8 +1415,8 @@ export class EditorController {
           if (!separated) throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
           projected = { ...record, checkpoint: separated.checkpoint, completedCommits: [...completed] };
           if (!separated.copies.length) return projected;
-          const copies = separated.copies.map(({ key, continuation }): EditorRecord => ({
-            owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, key),
+          const copies = separated.copies.map(({ key, continuation, recoveryKind }): EditorRecord => ({
+            owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, key, recoveryKind),
             checkpoint: continuation, prepared: null, unfinalized: [], autoSaveOnResume: false,
           }));
           return { editorRecords: [projected, ...copies], manualRecoveries: [] };
