@@ -2,7 +2,7 @@ import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isSermonPlanMode, sermonPlacedSketchDraft, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { isSermonPlanMode, sermonSketchRecovery, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { liveNodeIds } from '@/utils/planText';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -23,7 +23,7 @@ export function usePlanRecovery(document: SermonDocument, outline: Sermon['outli
     enabled: Boolean(document.recoveryIdentity) && !document.loading,
     version: JSON.stringify([document.confirmed?.metadata?.generation, document.confirmed?.metadata?.revision, canRecover]),
     list: async () => (await document.listRecoverable()).filter(source =>
-      source.record.checkpoint.planCellDrafts || sermonPlacedSketchDraft(source.record) !== undefined),
+      source.record.checkpoint.planCellDrafts || sermonSketchRecovery(source.record) !== undefined),
     recover: document.recover,
   });
   const orphaned: PlanOrphanCell[] = [];
@@ -77,8 +77,8 @@ export function PlanModeStatus({ document, recovery }: { document: SermonDocumen
     comparison={comparison} onKeepLocal={keepLocal}
     onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
     recoveryChoices={recovery.canRecover ? recovery.choices.flatMap(source => {
-      const preview = sermonPlacedSketchDraft(source.record);
-      return preview === undefined ? [] : [{ id: source.id, title: t('scratch.card.label'), preview,
+      const sketch = sermonSketchRecovery(source.record);
+      return !sketch ? [] : [{ id: source.id, title: t(sketch.kind === 'removal' ? 'scratch.card.delete' : 'scratch.card.label'), preview: sketch.text,
         discard: () => document.discardRecovery(source) }];
     }) : []}
     onRecover={id => {

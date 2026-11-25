@@ -1,6 +1,8 @@
 /** @jest-environment node */
 import { DeviceWorld, sermonRef, sermonValue } from '@test-utils/deviceWorld';
 
+import { COMMIT_ROW_KINDS } from '../../retention.client';
+
 describe('S7: Old work on other documents should not multiply the work of one keystroke', () => {
   let world: DeviceWorld;
   afterEach(() => world?.dispose());
@@ -22,10 +24,10 @@ describe('S7: Old work on other documents should not multiply the work of one ke
     expect(typing).toEqual({ transactions: 1, getAll: 0, rowsReturned: 0 });
     if (size) {
       // GAP: Opening a list also scans the owner's historical request payloads outside the displayed document.
-      // IDEAL: expect(opening).toEqual({ transactions: 3, getAll: 8, rowsReturned: 1 });
-      expect(opening).toEqual({ transactions: 3, getAll: 8, rowsReturned: size + 1 });
+      // IDEAL: expect(opening).toEqual({ transactions: 3, getAll: COMMIT_ROW_KINDS.length + 1, rowsReturned: 1 });
+      expect(opening).toEqual({ transactions: 3, getAll: COMMIT_ROW_KINDS.length + 1, rowsReturned: size + 1 });
     } else {
-      expect(opening).toEqual({ transactions: 3, getAll: 8, rowsReturned: 1 });
+      expect(opening).toEqual({ transactions: 3, getAll: COMMIT_ROW_KINDS.length + 1, rowsReturned: 1 });
     }
   });
 });

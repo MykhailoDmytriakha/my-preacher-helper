@@ -44,6 +44,7 @@ import { isPlacedSketchConflict, observePlacedSketchConflicts, resolvePlacedSket
 import { acceptPlanCellComparison, adoptFirstPlanCellVersion, preservePlanCellComparisons, projectStoredPlanCellChoice, reservePrivatePlanCells, retainPlanCellDrafts, reviewObservedPlanCells, stagePlanCell } from './sermonPlanCellSession';
 import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged, storedSermonPointOrderChoice, unreadableOutlinePointPosition } from './sermonPointMoveRecovery';
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
+import { capturedScratchRemovalPath, projectRecoveredScratchRemoval, recoveredScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { observedSermonText } from './sermonTextRecovery';
 import { recoveredThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
@@ -189,8 +190,10 @@ export class DataSession {
       delete this.state.unreadableScalarProof;
       return;
     }
-    const removal = recoveredThoughtRemoval(this.state, target);
-    if (removal?.settled || recoveredThoughtLock(this.state, target)?.settled) {
+    const scratchRemoval = recoveredScratchRemoval(this.state, target);
+    if (scratchRemoval?.settled && this.finishScratchRemoval(target, 'remote')) return;
+    const removal = recoveredThoughtRemoval(this.state, target) ?? scratchRemoval;
+    if ((removal?.settled && !scratchRemoval) || recoveredThoughtLock(this.state, target)?.settled) {
       this.state.remoteCandidate = copy(target);
       this.finishChoiceAgainstRemote(target.value);
       delete this.state.unreadableRowProofs;
@@ -230,7 +233,7 @@ export class DataSession {
     if (!step) delete this.state.unreadableServiceOrderStepPlacement;
     const outlinePosition = this.state.unreadableOutlinePointPlacement && unreadableOutlinePointPosition(confirmed.value, draft, target.value);
     if (!outlinePosition) delete this.state.unreadableOutlinePointPlacement;
-    const questions = [...scalars, ...rows, ...points, ...(removal ? [removal.conflict] : []), ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
+    const questions = [...scalars, ...rows, ...points, ...(removal?.settled === false ? [removal.conflict] : []), ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
     if (questions.length) {
@@ -246,7 +249,7 @@ export class DataSession {
       if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
       delete this.state.privateFieldReview;
       delete this.state.unreadableScalarProof;
-      if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state)) delete this.state.unreadableRowProofs;
+      if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state) && !unresolvedScratchRemoval(this.state)) delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
     }
   }
@@ -597,15 +600,24 @@ export class DataSession {
       request.accountPreferenceActions?.[field] && equalValues(request.accountPreferenceActions[field]?.time, preferenceRetry.time))) {
       delete this.state.accountPreferenceRetry;
     }
-    const newRowMove = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove)
+    const newScopedSave = (request.groupFlowStepPlacement || request.councilTopicPlacement || templateMove
+      || request.scratchRemoval)
       && (!this.state.pending[request.id] || capturedTemplateRetry);
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
-    if (newRowMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
-      // The exact move took only the position. Save the additional typing in its own generation.
+    if (newScopedSave && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
+      // The scoped request can leave later typing for its own generation.
       this.state.editGeneration = this.reserveEditGeneration();
     }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) {
+      const removalPath = capturedScratchRemovalPath(request);
+      const otherConflicts = removalPath ? this.state.conflicts.filter(({ path }) => !equalValues(path, removalPath)) : [];
       this.accept(request.result, request.atomic?.kind === 'analysis-reshape', request);
+      // This narrow acknowledgement or refusal cannot answer a different question already in the editor.
+      if (otherConflicts.length) {
+        const paths = this.state.conflicts.map(conflict => conflict.path);
+        this.state.conflicts.push(...otherConflicts.filter(conflict => !paths.some(path => equalValues(path, conflict.path))));
+        if (!this.state.remoteCandidate) this.state.remoteCandidate = copy(this.state.confirmed);
+      }
     }
     return request.state === 'acknowledged';
   }
@@ -889,7 +901,27 @@ export class DataSession {
     }
   }
 
+  private finishScratchRemoval(target: ResourceSnapshot, side: 'local' | 'remote'): boolean {
+    const chosen = projectRecoveredScratchRemoval(this.state, target, side);
+    if (!chosen) return false;
+    this.state.remoteCandidate = copy(target);
+    this.finishChoiceAgainstRemote(chosen.value);
+    if (chosen.conflicts.length) {
+      this.state.remoteCandidate = copy(target);
+      this.state.conflicts = copy(chosen.conflicts);
+    }
+    delete this.state.unreadableRowProofs;
+    return true;
+  }
+
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
+    if (unresolvedScratchRemoval(this.state) && !Object.keys(this.state.pending).length) {
+      const target = this.state.remoteCandidate;
+      if (!target || !this.finishScratchRemoval(target, side)) {
+        throw Object.assign(new Error('The compared scratch note changed'), { code: 'decision-changed' });
+      }
+      return true;
+    }
     if (unresolvedThoughtLock(this.state) && !Object.keys(this.state.pending).length) {
       const target = this.state.remoteCandidate;
       const lock = target && recoveredThoughtLock(this.state, target);
@@ -913,7 +945,7 @@ export class DataSession {
       const target = this.state.remoteCandidate;
       const removal = target && recoveredThoughtRemoval(this.state, target);
       if (!target || !removal || removal.settled) {
-        throw Object.assign(new Error('The compared thought removal has changed'), { code: 'decision-changed' });
+        throw Object.assign(new Error('The compared removal has changed'), { code: 'decision-changed' });
       }
       this.finishChoiceAgainstRemote(side === 'local' ? removal.proposed : target.value);
       delete this.state.unreadableRowProofs;

@@ -53,6 +53,7 @@ import { carryOrderedPreachDateFields, hasAutosaveRowFieldCaptures, isAutosaveRo
 import { isReturnedSeriesField } from './seriesFieldAction';
 import { keepUncontestedSermonFields, readSermonSettingComparison } from './sermonFieldChoice';
 import { planCellOpening, readPlanCellText, removedConflictingPlanCells, settledPlanCellView, type PlanCellDraft, type PlanCellOpening } from './sermonPlanCellSession';
+import { pendingScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { readSermonTextDraftComparison, retryForSermonTextChoice } from './sermonTextRecovery';
 import { unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
@@ -542,7 +543,7 @@ export class EditorController {
     return this.enqueue(() => this.persist()).then(() => draft);
   }
 
-  save(capturedIntent?: SessionCheckpoint & { planCellSaveIds?: readonly string[]; serviceOrderInput?: ServiceOrderInput; serviceOrderComparison?: ServiceOrderInputComparison }, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
+  save(capturedIntent?: SessionCheckpoint & { planCellSaveIds?: readonly string[]; serviceOrderInput?: ServiceOrderInput; serviceOrderComparison?: ServiceOrderInputComparison; scratchRemovalValue?: DocumentData }, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
     action?: EditorCommitAction, pendingRemoval?: PendingRemovalOpening, noteContent?: StudyNoteContentCapture | null): Promise<void> {
     this.assertCurrent();
     const capturedAction = action && JSON.parse(JSON.stringify(action)) as EditorCommitAction;
@@ -552,9 +553,11 @@ export class EditorController {
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
-    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent) || unresolvedThoughtLock(intent)) return Promise.reject(Object.assign(
+    if (hasUnreadablePreparationCheck(intent) || unresolvedThoughtPlacement(intent) || unresolvedThoughtRemoval(intent) || unresolvedScratchRemoval(intent) || unresolvedThoughtLock(intent)) return Promise.reject(Object.assign(
       new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
-    const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, ...captured } = intent;
+    const { planCellSaveIds, serviceOrderInput, serviceOrderComparison, scratchRemovalValue, ...captured } = intent;
+    // Keep later words in the native checkpoint while the command owns just the confirmed removal.
+    const submission = scratchRemovalValue ? { ...captured, draft: scratchRemovalValue, conflicts: [], remoteCandidate: null } : captured;
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
     const capture = async (captureComplete: () => void) => {
@@ -571,11 +574,11 @@ export class EditorController {
           if (session.applyCommit(request) && !completed.includes(request.id)) completed.push(request.id);
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
-        const options = { ...captureSaveOptions(captured, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint,
-          ...(capturedAction && { action: capturedAction }), noteContent: capturedContent, planCellSaveIds, serviceOrderInput, serviceOrderComparison };
+        const options = { ...captureSaveOptions(submission, pending, captureScope, pendingRemoval), checkpoint: projectCheckpoint,
+          ...(capturedAction && { action: capturedAction }), ...(scratchRemovalValue && { scratchRemoval: true as const }), noteContent: capturedContent, planCellSaveIds, serviceOrderInput, serviceOrderComparison };
         const saved = async () => {
-          const capture = onCaptured ? await this.options.commits!.saveWithReceipt(this.options.editorId, captured, options) : null;
-          const request = capture ? capture.request : await this.options.commits!.save(this.options.editorId, captured, options);
+          const capture = onCaptured ? await this.options.commits!.saveWithReceipt(this.options.editorId, submission, options) : null;
+          const request = capture ? capture.request : await this.options.commits!.save(this.options.editorId, submission, options);
           return { capture, request };
         };
         const { capture, request } = await saved().catch(error => {
@@ -590,7 +593,7 @@ export class EditorController {
       }
       if (onCaptured) throw new Error('Write receipts require the commit queue');
       if (!this.prepared) {
-        const intended = captured;
+        const intended = submission;
         const resources = intended.dirty && !intended.conflicts.length && !Object.keys(intended.pending).length
           ? requiredDomainTargets(intended.confirmed, intended.draft) : [];
         if (resources.length && !this.options.readConfirmed) throw new Error('Confirmed target reads are unavailable');
@@ -746,7 +749,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !this.prepared && this.session.choosePrivateFields('remote', null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before) || unresolvedScratchRemoval(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -804,7 +807,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       if (expected && !selection && !correction && !this.prepared && this.session.choosePrivateFields('local', choiceTime ?? null)) {
-        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before)) this.pendingCaptures.retire(captures);
+        if (hasUnreadableSermonChurch(before) || hasUnreadablePreparationCheck(before) || unresolvedThoughtPlacement(before) || unresolvedThoughtRemoval(before) || unresolvedScratchRemoval(before)) this.pendingCaptures.retire(captures);
         this.result = null;
         await this.persist();
         return;
@@ -1449,16 +1452,17 @@ export class EditorController {
               source!, session.checkpoint().confirmed, tail.base, tail.value);
           }
         };
-        const thoughtRemoval = !selection && !correction ? pendingThoughtRemoval(source) : undefined;
-        if (thoughtRemoval) {
-          if (!expected || !ordinary || ordinary.first.id !== thoughtRemoval.requestId || !source.remoteCandidate
+        const scratchRemoval = !selection && !correction ? pendingScratchRemoval(source) : undefined;
+        const rowRemoval = scratchRemoval ?? (!selection && !correction ? pendingThoughtRemoval(source) : undefined);
+        if (rowRemoval) {
+          if (!expected || !ordinary || ordinary.first.id !== rowRemoval.requestId || !source.remoteCandidate
             || !equalValues(decided.remoteCandidate, source.remoteCandidate)
-            || (choice === 'local' && thoughtRemoval.settled)) {
-            throw Object.assign(new Error('The compared thought removal has changed'), { code: 'decision-changed' });
+            || (choice === 'local' && rowRemoval.settled)) {
+            throw Object.assign(new Error('The compared removal has changed'), { code: 'decision-changed' });
           }
-          anchoredChoice = thoughtRemoval.requestId;
+          anchoredChoice = rowRemoval.requestId;
           session.acceptRemote();
-          if (choice === 'local' && !thoughtRemoval.settled) session.edit(thoughtRemoval.proposed);
+          if (choice === 'local' && !rowRemoval.settled) session.edit(rowRemoval.proposed);
           const latest = ordinary.scope.filter(request => source!.pending[request.id]).at(-1);
           preservePlacementTail(anchoredChoice, latest && anchoredPlacementChoiceTail(source, latest.id), true);
         } else if (ordinary && savedOrder) {
@@ -1669,9 +1673,10 @@ export class EditorController {
         const serviceChoiceIntent = (checkpoint: SessionCheckpoint) => serviceInput
           ? { ...checkpoint, draft: projectServiceOrderInput(checkpoint.confirmed.value, serviceInput) } : checkpoint;
         const replacements: CommitRequest[] = [];
-        if (thoughtRemoval && choice === 'local') {
-          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {});
-          if (!replacement) throw Object.assign(new Error('The thought removal could not be captured'), { code: 'decision-changed' });
+        if (rowRemoval && choice === 'local') {
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(),
+            scratchRemoval ? { scratchRemoval: true } : {});
+          if (!replacement) throw Object.assign(new Error('The removal could not be captured'), { code: 'decision-changed' });
           session.applyCommit(replacement);
           replacements.push(replacement);
         }

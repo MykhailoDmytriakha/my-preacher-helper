@@ -12,7 +12,7 @@ import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
 import { placeOfNode, scratchNoteAt } from '@/utils/scratchPlacement';
-import { readOutlineTitleText, withOutlineTitleText } from '@/utils/sermonNoteText';
+import { readOutlineTitleText, sermonNoteChanged, withOutlineTitleText } from '@/utils/sermonNoteText';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
@@ -51,6 +51,12 @@ const THOUGHT_FIELDS: (keyof ThoughtFieldPatch)[] = ['text', 'tags', 'date', 'ou
 const asSermon = (value: DocumentData): Sermon => ({ ...value, thoughts: (value.thoughts ?? []) } as unknown as Sermon);
 const asDocument = (sermon: Sermon): DocumentData => deepCleanUndefined(sermon) as unknown as DocumentData;
 const unavailable = () => new Error('The sermon is not available for editing');
+
+function shownSketch(sermon: Sermon, opening: Parameters<NonNullable<StructureWriter['deleteSketch']>>[0]) {
+  const note = sermon.scratch?.find(item => item.id === opening.id && item.createdAt === opening.createdAt);
+  if (note && note.text !== opening.text) throw sermonNoteChanged();
+  return note;
+}
 
 const changesLocation = (before: Thought | null, after: Thought) => before !== null
   && ((before.outlinePointId ?? null) !== (after.outlinePointId ?? null) || (before.subPointId ?? null) !== (after.subPointId ?? null));
@@ -190,12 +196,16 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
         return { next: { ...current, scratch: [...(current.scratch ?? []), scratchNoteAt(place, note)] }, result: undefined };
       });
     },
-    editSketch: (noteId, text) => edit(current => ({
-      next: { ...current, scratch: (current.scratch ?? []).map(note => note.id === noteId ? { ...note, text } : note) }, result: undefined,
-    })),
-    deleteSketch: noteId => edit(current => ({
-      next: { ...current, scratch: (current.scratch ?? []).filter(note => note.id !== noteId) }, result: undefined,
-    })),
+    editSketch: (shown, text) => edit(current => {
+      const live = shownSketch(current, shown);
+      const next = live ? { ...current, scratch: current.scratch!.map(note => note === live ? { ...note, text } : note) } : current;
+      return { next, result: undefined };
+    }),
+    deleteSketch: shown => edit(current => {
+      const live = shownSketch(current, shown);
+      const next = live ? { ...current, scratch: current.scratch!.filter(note => note !== live) } : current;
+      return { next, result: undefined };
+    }),
     captureSketchEdit: captureSermonNoteText
       && (note => captureSermonNoteText({ kind: 'scratch', id: note.id, createdAt: note.createdAt }, note.text)),
     updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence, pointMove) => {

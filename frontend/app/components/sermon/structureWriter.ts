@@ -34,8 +34,8 @@ export interface StructureWriter {
    * the node's old one-line `note`. Editing is bound to what the person saw through `captureSketchEdit`.
    */
   addSketch?(target: OutlineNoteTarget, text: string): Promise<unknown>;
-  editSketch?(noteId: string, text: string): Promise<unknown>;
-  deleteSketch?(noteId: string): Promise<unknown>;
+  editSketch?(shown: Pick<ScratchNote, 'id' | 'createdAt' | 'text'>, text: string): Promise<unknown>;
+  deleteSketch?(shown: Pick<ScratchNote, 'id' | 'createdAt' | 'text'>): Promise<unknown>;
   captureSketchEdit?(note: ScratchNote): SaveSermonNoteText;
   outlineTitleVersion?(opening: OutlineTitleOpening): OutlineTitleVersion | undefined;
   outlinePlacementVersion?(shown?: SermonOutline): OutlinePlacementVersion | undefined;

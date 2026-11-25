@@ -171,7 +171,7 @@ const recordSchema = z.object({
     unreadableScalarProof: z.array(z.string()).min(1).max(Math.max(ACCOUNT_PREFERENCE_TARGETS.length, SERMON_TEXT_RECOVERY_FIELDS.length)).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
-      'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts', 'thoughtRemoval']),
+      'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts', 'thoughtRemoval', 'scratchRemoval']),
       rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string(), unverified: z.literal(true).optional() }).and(z.union([

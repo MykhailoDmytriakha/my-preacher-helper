@@ -182,6 +182,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   tagMembershipActions?: TagMembershipAction[];
   sourceNoteLink?: SourceNoteLinkCapture;
   sermonNoteText?: SermonNoteOpening;
+  scratchRemoval?: true;
   sermonTextOpenings?: SermonTextOpenings;
   sermonTextPredecessorRevision?: number;
   sermonTextContinuation?: SermonTextOpenings;
@@ -431,7 +432,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
   return { knownIds: new Set(records.map(record => record.id)), groups, next: 1 };
 }
 
-type CommitSaveOptions = { noteContent?: StudyNoteContentCapture | null; commentCompanions?: CommentCompanionProofs; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+type CommitSaveOptions = { scratchRemoval?: true; noteContent?: StudyNoteContentCapture | null; commentCompanions?: CommentCompanionProofs; predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   pendingRemoval?: PendingRemovalOpening;
   seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
@@ -814,11 +815,11 @@ export class CommitQueue {
 
   /** Build from the exact chosen copy after retiring its answered predecessors. */
   choiceReplacement(editorId: string, intent: SessionCheckpoint,
-    options: { action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
+    options: { scratchRemoval?: true; action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
     if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
-    const { action, predecessor, commentTextOpening, noteContent, commentCompanions } = options;
+    const { action, predecessor, commentTextOpening, noteContent, commentCompanions, scratchRemoval } = options;
     const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, {
-      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions,
+      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions, scratchRemoval,
     });
     return replacement && { ...replacement, ...commentCompanions, ...(commentTextOpening && { commentTextOpening }) };
   }
@@ -1069,6 +1070,7 @@ export class CommitQueue {
       ...(studyNoteReferenceEvidence?.shownChange && { studyNoteReferenceChange: clone(studyNoteReferenceEvidence.shownChange) }),
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
+      ...(frozenOptions?.scratchRemoval && { scratchRemoval: true as const }),
       ...(planCellOpenings || editorAction?.kind === 'sermon-plan-text' ? {
         sermonTextOpenings: { ...(editorAction?.kind === 'sermon-plan-text' && Object.fromEntries(
           Object.entries(editorAction.openings).map(([id, revision]) => [sermonTextKey('planText', id), revision]))), ...planCellOpenings },

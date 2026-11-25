@@ -402,11 +402,12 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
 }
 
 export { sermonChurchDraft } from './sermonChurchRecovery';
-export { readPlacedSketchComparison, sermonPlacedSketchDraft } from './sermonPlacedSketchRecovery';
+export { readPlacedSketchComparison, sermonSketchRecovery } from './sermonPlacedSketchRecovery';
 export { sermonPreparationCheckDraft } from './sermonPreparationCheckRecovery';
 export { recoveredThoughtLock, sermonThoughtLockDraft } from './sermonThoughtLockRecovery';
 export { sermonThoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
 export { pendingThoughtRemoval, recoveredThoughtRemoval, sermonThoughtRemovalDraft } from './sermonThoughtRemovalRecovery';
+export { pendingScratchRemoval, recoveredScratchRemoval } from './sermonScratchRemovalRecovery';
 export { sermonTextDraft } from './sermonTextRecovery';
 
 export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {

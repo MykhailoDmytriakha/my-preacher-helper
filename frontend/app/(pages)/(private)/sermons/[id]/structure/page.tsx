@@ -22,7 +22,7 @@ import { SortableItemPreview } from "@/components/SortableItem";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { useThoughtTagComparison } from '@/components/thought/useThoughtTagComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, sermonPlacedSketchDraft, sermonThoughtLockDraft, sermonThoughtRemovalDraft, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, sermonSketchRecovery, sermonThoughtLockDraft, sermonThoughtRemovalDraft, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hasPrivateSermonPointMove } from '@/data-engine/sermonPointMoveRecovery';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
@@ -137,8 +137,8 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
       const lock = sermonThoughtLockDraft(source.record.checkpoint);
       if (lock) return { id: source.id, title: t('structure.thoughtLockState'), preview: lock.text + ' · ' + lockText(lock.checked),
         discard: () => document.discardRecovery(source) };
-      const sketch = sermonPlacedSketchDraft(source.record);
-      if (sketch !== undefined) return { id: source.id, title: t('scratch.card.label'), preview: sketch,
+      const sketch = sermonSketchRecovery(source.record);
+      if (sketch) return { id: source.id, title: t(sketch.kind === 'removal' ? 'scratch.card.delete' : 'scratch.card.label'), preview: sketch.text,
         discard: () => document.discardRecovery(source) };
       const removal = sermonThoughtRemovalDraft(source.record.checkpoint);
       if (removal !== undefined) return { id: source.id, title: t('dataSync.thoughtRemovalTitle'), preview: removal,

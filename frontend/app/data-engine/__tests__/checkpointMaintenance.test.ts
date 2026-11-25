@@ -8,7 +8,7 @@ import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { DataEngineRuntime } from '../runtime';
 import { forkCheckpoint, recoveryCheckpointId } from '../recovery.client';
-import { collectCommitRows, commitProjectionKey, commitRowKey, commitSnapshotKey, createCommitCollectionWindow } from '../retention.client';
+import { COMMIT_ROW_KINDS, collectCommitRows, commitProjectionKey, commitRowKey, commitSnapshotKey, createCommitCollectionWindow } from '../retention.client';
 import { DataSession } from '../session';
 import { createEngineStorageTransaction } from '../storage.client';
 import { installStorageHarness } from './storageHarness';
@@ -32,8 +32,8 @@ it('persists letters while a maintenance window is held, restarts, then collects
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
   storage.resetCounts(); await sweep();
   expect(storage.counts.transactions).toBe(1);
-  // Seven request ranges, checkpoints, manual records, references and the new-editor watermark keys.
-  expect(storage.counts.enumerations).toBe(11);
+  // Request ranges, checkpoints, manual records, references and the new-editor watermark keys.
+  expect(storage.counts.enumerations).toBe(COMMIT_ROW_KINDS.length + 4);
   expect(hasRequest(saved)).toBe(false);
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
   await finish();

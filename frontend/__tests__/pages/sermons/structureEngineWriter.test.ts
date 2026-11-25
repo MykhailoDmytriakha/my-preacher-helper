@@ -22,6 +22,16 @@ const base = () => ({
 }) as unknown as DocumentData;
 
 describe('structure writes on an engine document', () => {
+  it('does not clear same-ID sketch words that changed after the note was shown', async () => {
+    const shown = { id: 'scratch', createdAt: '2026-11-09T00:00:00.000Z', text: 'Words when editing started' };
+    const newer = { ...shown, text: 'Words saved while the field was still open' };
+    const { state, writer } = draft({ ...base(), scratch: [newer] });
+    await expect(writer.deleteSketch!(shown)).rejects.toMatchObject({ code: 'decision-changed' });
+    expect(state.current?.scratch).toEqual([newer]);
+    await writer.deleteSketch!(newer);
+    expect(state.current?.scratch).toEqual([]);
+  });
+
   it('keeps a move made in another tab while laying this screen\'s own move over the current copy', async () => {
     const { state, writer } = draft(base());
     const opened = structure({ introduction: ['a'], main: ['b'] });

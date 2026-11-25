@@ -6,6 +6,7 @@ import { equalValues } from './fieldValues';
 import { recoverableSermonChurchAfterRefusal } from './sermonChurchRecovery';
 import { recoverablePlacedSketches } from './sermonPlacedSketchRecovery';
 import { recoverablePreparationChecks } from './sermonPreparationCheckRecovery';
+import { recoverableScratchRemovals } from './sermonScratchRemovalRecovery';
 import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
 import { recoverableThoughtLocks } from './sermonThoughtLockRecovery';
 import { recoverableThoughtPlacements } from './sermonThoughtPlacementRecovery';
@@ -28,6 +29,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const church = recoverableSermonChurchAfterRefusal(source, projected, chain);
   const checks = recoverablePreparationChecks(source, projected, chain);
   const sketches = recoverablePlacedSketches(source, projected, chain);
+  const sketchRemovals = sketches ? undefined : recoverableScratchRemovals(source, projected, chain);
   const placements = recoverableThoughtPlacements(source, projected, chain);
   const removals = placements ? undefined : recoverableThoughtRemovals(source, projected, chain);
   const locks = placements || removals ? undefined : recoverableThoughtLocks(source, projected, chain);
@@ -40,8 +42,11 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
       ? { key: 'preparation:' + field, recoveryKind: undefined, ...copy }
       : { key: field, recoveryKind: 'sermon-header' as const, ...copy }),
   ];
-  const restoreStoredFields = (document: DocumentData) => scopes.reduce<DocumentData | undefined>(
-    (value, copy) => value && copy.restoreStored(value), (placements || removals || locks)?.restoreStored(document) ?? document);
+  const restoreStoredFields = (document: DocumentData) => {
+    const afterThoughts = (placements || removals || locks)?.restoreStored(document) ?? document;
+    const afterSketches = sketchRemovals?.restoreStored(afterThoughts) ?? afterThoughts;
+    return scopes.reduce<DocumentData | undefined>((value, copy) => value && copy.restoreStored(value), afterSketches);
+  };
   const draft = restoreStoredFields(projected.draft);
   const neutralBefore = restoreStoredFields(before);
   const neutralDraft = restoreStoredFields(source.draft);
@@ -74,5 +79,5 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const copies = scopes.flatMap(scope => scope.continuation ? [{ ...scope, continuation: scope.continuation }] : []);
   return { checkpoint, copies: [...copies, ...(placements ? [{
     key: 'thought-placement', continuation: placements.continuation, recoveryKind: 'sermon-thought-placement' as const,
-  }] : []), ...(removals?.copies ?? []), ...(locks?.copies ?? [])] };
+  }] : []), ...(removals?.copies ?? []), ...(locks?.copies ?? []), ...(sketchRemovals?.copies ?? [])] };
 }

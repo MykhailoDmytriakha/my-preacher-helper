@@ -62,11 +62,11 @@ export function NodeSketches({ node, outlineNote, isReadOnly = false, indentClas
       {notes.map((note) => (
         <div key={note.id} data-testid={`node-sketch-${note.id}`}>
           <PointNote note={note.text} isReadOnly={!canWrite} indentClass={indentClass} addRevealClass={addRevealClass} labels={labels}
-            onChange={(text) => { void (text ? writer.editSketch?.(note.id, text) : writer.deleteSketch?.(note.id))?.catch(() => undefined); }}
+            onChange={(text) => { void (text ? writer.editSketch?.(note, text) : writer.deleteSketch?.(note))?.catch(() => undefined); }}
             captureSave={writer.captureSketchEdit && (() => {
               const save = writer.captureSketchEdit!(note);
               // A cleared note is deleted, not left as an empty piece (the guarded text write keeps words only).
-              return (text) => (text ? save(text) : writer.deleteSketch?.(note.id).then(() => undefined));
+              return (text) => (text ? save(text) : writer.deleteSketch?.(note).then(() => undefined));
             })} />
         </div>
       ))}

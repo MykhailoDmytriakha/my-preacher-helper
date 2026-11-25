@@ -2245,6 +2245,180 @@ describe('DataEngine composition', () => {
     },
   );
 
+  it.each(['remove', 'keep-saved', 'already-absent', 'replaced', 'late-replaced', 'stale-choice', 'delivery-conflict', 'delivery-replaced', 'reopen-and-retry', 'typed-before-choice', 'typed-and-remove', 'sibling-conflict', 'multiple', 'mixed'] as const)(
+    'isolates deletion of an existing sketch after a refused point (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'sketch-deletion-after-point' };
+      const key = keyOf('owner', ref);
+      const first = { id: 'point', title: '', children: [] };
+      const later = { ...first, title: 'Full latest words of the point' };
+      const place = { section: 'main', pointId: 'body', subPointId: null } as const;
+      const originalText = 'Original words of the target sketch';
+      const target = scratchNoteAt(place, { id: 'target', text: originalText, createdAt: '2026-11-09T00:00:00.000Z' });
+      const neighbor = { ...target, id: 'neighbor', text: 'Original words of the neighbor' };
+      const third = { ...target, id: 'third', text: 'An unrelated third sketch' };
+      const fourth = { ...target, id: 'fourth', text: 'Words added while reviewing the deletion' };
+      const newerTarget = { ...target, text: 'New words written on the desktop' };
+      const replacement = { ...newerTarget, createdAt: '2026-11-24T00:00:00.000Z' };
+      const newestTarget = { ...newerTarget, text: 'Typed after the comparison opened' };
+      const newerNeighbor = { ...neighbor, text: 'The newest words of the neighboring sketch' };
+      const scratch = (...notes: unknown[]) => notes as DocumentData[];
+      const opening: DocumentData = { userId: 'owner', title: 'Opening sermon title', verse: 'John 3:16', thoughts: [],
+        outline: { introduction: [], main: [{ id: 'body', text: 'Body' }], conclusion: [] },
+        preparation: { exegeticalPlan: [] }, scratch: scratch(target, neighbor, third) };
+      const initialSermon: ResourceSnapshot = { ...initial(), resource: ref, value: opening };
+      const savedTarget = mode === 'replaced' ? replacement : newerTarget;
+      const storedScratch = mode === 'already-absent' ? [newerNeighbor, third] : [savedTarget, newerNeighbor, third];
+      const latest: ResourceSnapshot = { ...initialSermon, metadata: { ...initialSermon.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...opening, title: 'Newest sermon title', scratch: scratch(...storedScratch) } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'source');
+      s.server.set(key, initialSermon);
+      s.cache.set(key, initialSermon);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...opening, preparation: { exegeticalPlan: [first] } });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        await editor.commit(draft => ({ ...draft!, scratch: scratch(mode === 'mixed' ? { ...neighbor, text: 'Separate words' } : neighbor, third) }));
+        if (mode === 'multiple') await editor.commit(draft => ({ ...draft!, scratch: scratch(neighbor) }));
+        expect((await s.commits.list('owner')).find(command => command.id !== earlier.id)?.predecessor).toBe(earlier.id);
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === earlier.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+
+        const held = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), held.id);
+        if (mode === 'mixed') {
+          await expect(point.acceptRemote(undefined, point.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+          return;
+        }
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const comparison = point.getState().checkpoint;
+        expect(comparison.conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, comparison);
+        await point.save();
+        await s.engine.retry();
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        const settled = mode === 'already-absent' || mode === 'replaced';
+        expect(copies).toHaveLength(settled ? 0 : mode === 'multiple' ? 2 : 1);
+        const advance = (note: typeof target) => {
+          const current = s.server.get(key)!;
+          s.server.set(key, { ...current, value: { ...current.value, scratch: scratch(note, newerNeighbor, third) },
+            metadata: { ...current.metadata!, revision: current.metadata!.revision + 1, operationId: 'later-desktop' } });
+        };
+        if (mode === 'late-replaced') advance(replacement);
+        if (copies.length) {
+          const recover = s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'removal'), copies.find(copy =>
+            copy.record.checkpoint.unreadableRowProofs?.some(proof => proof.rowId === target.id))!.id);
+          if (mode === 'late-replaced') {
+            await expect(recover).rejects.toMatchObject({ code: 'draft-done' });
+          } else {
+            const removal = await recover;
+            const typed = mode === 'typed-before-choice' || mode === 'typed-and-remove' || mode === 'sibling-conflict';
+            if (typed) {
+              await expect(removal.commit(draft => ({ ...draft!, scratch: mode === 'sibling-conflict'
+                ? scratch(third) : scratch(neighbor, third, fourth) })))
+                .rejects.toMatchObject({ code: 'resolve-version-first' });
+            }
+            const shown = removal.getState();
+            expect(shown.checkpoint.conflicts).toMatchObject([{ path: ['scratch', 'id:target'],
+              mine: { exists: false }, theirs: { exists: true, value: newerTarget } }]);
+            expect(describeSync(shown, removal.getObservation(), removal.getDelivery())).toMatchObject({
+              ...(!typed && { phase: 'conflict' }), canSave: false,
+            });
+            await expect(removal.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+            expect(s.transport.send).toHaveBeenCalledTimes(2);
+            if (mode === 'keep-saved') await removal.acceptRemote(undefined, shown.checkpoint);
+            else if (mode === 'typed-before-choice') {
+              await removal.acceptRemote(undefined, shown.checkpoint);
+              expect(removal.getState().checkpoint.draft?.scratch).toEqual([newerTarget, newerNeighbor, third, fourth]);
+              await removal.save();
+            } else if (mode === 'typed-and-remove') {
+              await removal.keepLocal(undefined, shown.checkpoint);
+              await s.engine.retry();
+              expect(s.server.get(key)?.value?.scratch).toEqual([newerNeighbor, third]);
+              expect(removal.getState().checkpoint.draft?.scratch).toEqual([newerNeighbor, third, fourth]);
+              await removal.save();
+            } else if (mode === 'sibling-conflict') {
+              await removal.keepLocal(undefined, shown.checkpoint);
+              await s.engine.retry();
+              expect(s.server.get(key)?.value?.scratch).toEqual([newerNeighbor, third]);
+              const after = removal.getState().checkpoint;
+              expect(after.conflicts).toMatchObject([{ path: ['scratch', 'id:neighbor'] }]);
+              await removal.acceptRemote(undefined, after);
+            } else if (mode === 'stale-choice') {
+              advance(newestTarget);
+              await expect(removal.keepLocal(undefined, shown.checkpoint)).rejects.toMatchObject({ code: 'decision-changed' });
+              expect(removal.getState().checkpoint.conflicts[0].theirs.value).toEqual(newestTarget);
+              expect(s.transport.send).toHaveBeenCalledTimes(2);
+              await removal.acceptRemote(undefined, removal.getState().checkpoint);
+            } else if (mode === 'delivery-conflict' || mode === 'delivery-replaced' || mode === 'reopen-and-retry') {
+              jest.mocked(s.transport.send).mockImplementationOnce(command => {
+                advance(mode === 'delivery-replaced' ? replacement : newestTarget);
+                return send(command);
+              });
+              await removal.keepLocal(undefined, shown.checkpoint);
+              await s.engine.retry();
+              const heldDeletion = removal.getState().checkpoint;
+              const [submittedRemoval] = Object.keys(heldDeletion.pending);
+              expect(Object.keys(heldDeletion.pending)).toHaveLength(1);
+              const storedRequest = (await s.commits.list('owner')).find(command => command.id === submittedRemoval)!;
+              expect(storedRequest.scratchRemoval).toBe(true);
+              expect(commitRowKey(storedRequest)).toEqual(['sermon-scratch-removal-request', 'owner', storedRequest.editorId, storedRequest.editGeneration]);
+              expect(s.storage!.rows.get(JSON.stringify(['identity', 'owner', submittedRemoval]))).toEqual(commitRowKey(storedRequest));
+              expect(heldDeletion.conflicts[0].theirs.value).toEqual(mode === 'delivery-replaced' ? replacement : newestTarget);
+              if (mode === 'delivery-conflict') await removal.keepLocal(undefined, heldDeletion);
+              else if (mode === 'reopen-and-retry') {
+                removal.dispose();
+                const normal = await s.engine.openEditor(ref, editorIdentity('phone', ref, 'sermon', 'normal'));
+                const shownAgain = normal.getState().checkpoint;
+                expect(Object.keys(shownAgain.pending)).toEqual([submittedRemoval]);
+                jest.mocked(s.transport.send).mockImplementationOnce(command => {
+                  advance(replacement);
+                  return send(command);
+                });
+                await normal.keepLocal(undefined, shownAgain);
+                await s.engine.retry();
+                const secondConflict = normal.getState().checkpoint;
+                const [retriedId] = Object.keys(secondConflict.pending);
+                const retried = (await s.commits.list('owner')).find(command => command.id === retriedId)!;
+                expect(retried.editorId).toBe(editorIdentity('phone', ref, 'sermon', 'normal'));
+                expect(commitRowKey(retried)).toEqual(['sermon-scratch-removal-request', 'owner', retried.editorId, retried.editGeneration]);
+                await normal.acceptRemote(undefined, secondConflict);
+              } else {
+                await expect(removal.keepLocal(undefined, heldDeletion)).rejects.toMatchObject({ code: 'decision-changed' });
+                await removal.acceptRemote(undefined, heldDeletion);
+              }
+            } else await removal.keepLocal(undefined, shown.checkpoint);
+            await s.engine.retry();
+          }
+        }
+        const sentDeletion = mode === 'remove' || mode === 'multiple' || mode === 'delivery-conflict' || mode === 'sibling-conflict';
+        const surviving = sentDeletion ? [newerNeighbor, third]
+          : mode === 'late-replaced' || mode === 'delivery-replaced' || mode === 'reopen-and-retry' ? [replacement, newerNeighbor, third]
+          : mode === 'stale-choice' ? [newestTarget, newerNeighbor, third]
+            : mode === 'typed-before-choice' ? [newerTarget, newerNeighbor, third, fourth]
+              : mode === 'typed-and-remove' ? [newerNeighbor, third, fourth] : storedScratch;
+        expect(s.server.get(key)?.value).toMatchObject({ title: 'Newest sermon title', scratch: surviving,
+          preparation: { exegeticalPlan: [later] } });
+        expect(s.transport.send).toHaveBeenCalledTimes(mode === 'delivery-conflict' || mode === 'typed-and-remove' || mode === 'reopen-and-retry' ? 4
+          : sentDeletion || mode === 'delivery-replaced' || mode === 'typed-before-choice' ? 3 : 2);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toHaveLength(mode === 'multiple' ? 1 : 0);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
   it.each(['while-queued', 'after-refusal', 'same-field', 'mixed-refusal'] as const)(
     'isolates the thought form from the earlier point Save (%s)', async timing => {
       const s = setup({ online: false, nativeChoice: true });

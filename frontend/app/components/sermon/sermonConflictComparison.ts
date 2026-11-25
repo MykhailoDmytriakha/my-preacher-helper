@@ -1,7 +1,7 @@
 import { preachDateComparison } from '@/components/calendar/preachDateForm';
 import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
-import { churchFieldWords, pendingThoughtRemoval, readPlacedSketchComparison, readSermonConflict, recoveredThoughtLock, recoveredThoughtRemoval } from '@/data-engine/react.client';
+import { churchFieldWords, pendingScratchRemoval, pendingThoughtRemoval, readPlacedSketchComparison, readSermonConflict, recoveredScratchRemoval, recoveredThoughtLock, recoveredThoughtRemoval } from '@/data-engine/react.client';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -14,6 +14,14 @@ import type { TFunction } from 'i18next';
 export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string, apply?: ApplyOutlineReview): TextComparison | undefined {
   const sketch = readPlacedSketchComparison(checkpoint);
   if (sketch) return { ...sketch, title: t('scratch.card.label'), valueKind: 'field', scopedChoice: true };
+  const scratchRemoval = pendingScratchRemoval(checkpoint) ?? (checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length
+    ? recoveredScratchRemoval(checkpoint, checkpoint.remoteCandidate) : undefined);
+  if (scratchRemoval) {
+    return { identity: scratchRemoval.identity, title: t('scratch.card.deleteConfirmTitle'), valueKind: 'field', scopedChoice: true,
+      mine: t('scratch.card.delete') + '\n' + scratchRemoval.opening,
+      stored: scratchRemoval.settled ? t('dataSync.emptyField') : scratchRemoval.stored,
+      keepMineDisabled: scratchRemoval.settled, actions: { local: t('scratch.card.delete'), stored: t('dataSync.useStoredVersion') } };
+  }
   const lock = checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length
     ? recoveredThoughtLock(checkpoint, checkpoint.remoteCandidate) : undefined;
   if (lock?.settled === false) {

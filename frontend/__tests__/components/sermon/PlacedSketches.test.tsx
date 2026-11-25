@@ -63,6 +63,6 @@ describe('NodeSketches', () => {
     await user.click(piece.getByRole('button', { name: 'scratch.node.delete' }));
     expect(writer.deleteSketch).not.toHaveBeenCalled();
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /delete/i }));
-    expect(writer.deleteSketch).toHaveBeenCalledWith('b');
+    expect(writer.deleteSketch).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', createdAt: expect.any(String) }));
   });
 });

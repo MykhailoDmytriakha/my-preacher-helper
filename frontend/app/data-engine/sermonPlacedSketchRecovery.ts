@@ -1,7 +1,9 @@
 import { placeOfNode, scratchAfterOutlineChange, scratchNoteAt } from '@/utils/scratchPlacement';
 
 import { protectedSermonRecoveryKind } from './editorIdentity';
-import { equalValues, object, readField, restoreStoredField } from './fieldValues';
+import { equalValues, object } from './fieldValues';
+import { restoreSketchFrame, sameSketchFrame, sketchRows } from './sermonScratchFrame';
+import { sermonScratchRemovalDraft } from './sermonScratchRemovalRecovery';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
@@ -11,18 +13,7 @@ import type { ScratchNote, SermonOutline } from '@/models/models';
 
 const SKETCH_TEXT_COLLISION = 'recovered-sketch-text';
 const SKETCH_ID_COLLISION = 'recovered-sketch-id';
-const scratchPath = ['scratch'] as const;
 const outline = (value: DocumentData) => value.outline as unknown as SermonOutline | undefined;
-
-function sketchRows(value: DocumentData): readonly ScratchNote[] | undefined {
-  const field = readField(value, scratchPath);
-  if (!field.exists) return [];
-  const rows = field.value;
-  if (!Array.isArray(rows) || !rows.every(row => object(row) && typeof row.id === 'string' && row.id
-    && typeof row.text === 'string' && typeof row.createdAt === 'string' && row.createdAt)
-    || new Set(rows.map(row => (row as DocumentData).id)).size !== rows.length) return;
-  return rows as unknown as ScratchNote[];
-}
 
 function appendedSketches(before: DocumentData, after: DocumentData) {
   const opening = sketchRows(before), result = sketchRows(after);
@@ -43,7 +34,7 @@ function capturedSketch(before: DocumentData, after: DocumentData): ScratchNote 
 function pureSketchAppend(checkpoint: SessionCheckpoint) {
   const { confirmed, draft } = checkpoint;
   if (confirmed.resource.collection !== 'sermons' || !confirmed.value || !draft
-    || !equalValues(restoreStoredField(draft, confirmed.value, scratchPath), confirmed.value)) return;
+    || !equalValues(restoreSketchFrame(draft, confirmed.value), confirmed.value)) return;
   return appendedSketches(confirmed.value, draft);
 }
 
@@ -128,14 +119,12 @@ function projectSketches(opening: DocumentData, notes: readonly ScratchNote[], s
 export function recoverablePlacedSketches(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
   const { confirmed, draft } = source;
   const first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  const sameScratch = (left: DocumentData, right: DocumentData) =>
-    equalValues(readField(left, scratchPath), readField(right, scratchPath));
-  if (!confirmed.value || !draft || !first || !last || !saved || !sameScratch(confirmed.value, first) || !sameScratch(last, draft)) return;
+  if (!confirmed.value || !draft || !first || !last || !saved || !sameSketchFrame(confirmed.value, first) || !sameSketchFrame(last, draft)) return;
   const notes: ScratchNote[] = [];
   for (let index = 1; index < chain.length; index += 1) {
     const before = chain[index - 1].value, after = chain[index].value;
     if (!before || !after) return;
-    if (sameScratch(before, after)) continue;
+    if (sameSketchFrame(before, after)) continue;
     const note = capturedSketch(before, after);
     if (!note) return;
     notes.push(note);
@@ -151,7 +140,7 @@ export function recoverablePlacedSketches(source: SessionCheckpoint, projected: 
   const continuation = rebased === saved ? undefined : rebased
     ? { ...append, confirmed: projected.confirmed, draft: rebased }
     : { ...append, conflicts, remoteCandidate: projected.confirmed };
-  return { continuation, restoreStored: (value: DocumentData) => restoreStoredField(value, saved, scratchPath) };
+  return { continuation, restoreStored: (value: DocumentData) => restoreSketchFrame(value, saved) };
 }
 
 /** Reproject only an append onto a fresh opening just before restoring its saved copy. */
@@ -166,8 +155,14 @@ export function rebaseRecoveredPlacedSketches(checkpoint: SessionCheckpoint, sav
   return { ...checkpoint, confirmed: saved, draft: rebased, dirty: rebased !== saved.value, conflicts: [], remoteCandidate: null };
 }
 
-export function sermonPlacedSketchDraft({ editorId, checkpoint }: EditorRecord): string | undefined {
-  if (protectedSermonRecoveryKind(editorId) === 'sermon-placed-sketch') {
-    return pureSketchAppend(checkpoint)?.map(note => note.text).join('\n').slice(0, 500);
+export function sermonSketchRecovery({ editorId, checkpoint }: EditorRecord): { kind: 'append' | 'removal'; text: string } | undefined {
+  const kind = protectedSermonRecoveryKind(editorId);
+  if (kind === 'sermon-scratch-removal') {
+    const text = sermonScratchRemovalDraft(checkpoint);
+    return text === undefined ? undefined : { kind: 'removal', text: text.slice(0, 500) };
+  }
+  if (kind === 'sermon-placed-sketch') {
+    const notes = pureSketchAppend(checkpoint);
+    if (notes) return { kind: 'append', text: notes.map(note => note.text).join('\n').slice(0, 500) };
   }
 }
