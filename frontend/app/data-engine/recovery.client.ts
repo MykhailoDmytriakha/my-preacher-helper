@@ -11,7 +11,7 @@ import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField } from './accou
 import { boundedActionTime } from './actionClock';
 import { orderActionProjections } from './atomicCommits';
 import { isCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
-import { autosaveFieldTargets } from './documentFieldAction';
+import { autosaveFieldTargets, holdIncompatibleAutosaveOpenings } from './documentFieldAction';
 import { isSermonChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { readField } from './fieldValues';
@@ -645,6 +645,7 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   const { preparationTextRetry: legacyRetry, ...decoded } = record.checkpoint;
   const competingRetries = decoded.sermonTextRetry && legacyRetry && !equalValues(decoded.sermonTextRetry, legacyRetry);
   const checkpoint: SessionCheckpoint = { ...decoded, draft: ownedDocument(decoded.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  holdIncompatibleAutosaveOpenings(checkpoint);
   const church = checkpoint.sermonChurchRecovery;
   if (church && !validSermonChurchRecovery(checkpoint, church)) {
     delete checkpoint.sermonChurchRecovery;

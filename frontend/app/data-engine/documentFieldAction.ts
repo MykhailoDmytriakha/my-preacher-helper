@@ -971,11 +971,42 @@ export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: Sess
   }
 }
 
+function matchesAutosaveOpening(staged: AutosaveFieldDraft, metadata: ResourceSnapshot['metadata']): boolean {
+  return Boolean(metadata && !metadata.deleted && staged.generation === metadata.generation
+    && staged.action.observedRevision <= metadata.revision);
+}
+
+/** A valid disk shape does not make another generation or a future revision an opening. */
+export function holdIncompatibleAutosaveOpenings(checkpoint: SessionCheckpoint): void {
+  const { resource, metadata } = checkpoint.confirmed;
+  if (!checkpoint.draft || !metadata || metadata.deleted) return;
+  const held = new Set(checkpoint.unreadableScalarProof);
+  for (const target of autosaveFieldTargets(resource.collection)) {
+    const staged = checkpoint[target.draft];
+    if (!staged || matchesAutosaveOpening(staged, metadata)) continue;
+    delete checkpoint[target.draft];
+    held.add(target.field);
+  }
+  if (held.size) checkpoint.unreadableScalarProof = [...held];
+}
+
+export function hasHeldAutosaveFields(checkpoint: SessionCheckpoint): boolean {
+  const held = checkpoint.unreadableScalarProof;
+  return Boolean(held?.length && autosaveFieldTargets(checkpoint.confirmed.resource.collection)
+    .some(target => held.includes(target.field)));
+}
+
+export function matchingHeldAutosaveFields(checkpoint: SessionCheckpoint, stored: DocumentData): string[] {
+  return autosaveFieldTargets(checkpoint.confirmed.resource.collection).filter(target => {
+    if (!checkpoint.unreadableScalarProof?.includes(target.field)) return false;
+    const local = autosaveFieldValue(checkpoint.draft, target);
+    return local !== undefined && equalValues(local, autosaveFieldValue(stored, target));
+  }).map(target => target.field);
+}
+
 function autosaveDraftAction(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
   const staged = checkpoint[target.draft];
-  const metadata = checkpoint.confirmed.metadata;
-  if (!staged || !metadata || metadata.deleted || staged.generation !== metadata.generation
-    || staged.action.observedRevision > metadata.revision
+  if (!staged || !matchesAutosaveOpening(staged, checkpoint.confirmed.metadata)
     || !equalValues(staged.action.after, autosaveFieldValue(checkpoint.draft, target))) return undefined;
   return staged.action;
 }

@@ -22,7 +22,7 @@ import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { readCouncilSummaryChoice } from './councilPrivateFields';
 import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
+import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, hasHeldAutosaveFields, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
 import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
@@ -1860,11 +1860,12 @@ export class DataEngine {
             const reconciled = record && reconcileRecoveryRecord(record, requests);
             const checkpoint = reconciled?.checkpoint;
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
-            const review = ['groups', 'councils', 'users'].includes(frozen.collection)
+            const heldAutosaveField = hasHeldAutosaveFields(checkpoint);
+            const review = heldAutosaveField || (['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length || checkpoint.privateFieldReview?.groupCopySources?.length
               : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || unresolvedThoughtRemoval(checkpoint) || unresolvedScratchRemoval(checkpoint) || checkpoint.guardedScratchText || unresolvedThoughtLock(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
-                  || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);
+                  || Object.keys(checkpoint.serviceOrderInputs ?? {}).length));
             const protection = protectedSermonRecoveryKind(reconciled!.editorId);
             const recoveredPlacement = protection === 'sermon-thought-placement' && Object.keys(checkpoint.thoughtPlacementDrafts ?? {}).length;
             const recoveredLock = protection === 'sermon-thought-lock' && Object.keys(checkpoint.thoughtLockDrafts ?? {}).length;
@@ -1885,14 +1886,15 @@ export class DataEngine {
               }
               return next;
             }
-            if (equalValues(observed, fresh)) return reconciled;
+            if (equalValues(observed, fresh) && !heldAutosaveField) return reconciled;
             const available = recoveredPlacement ? reviewUnavailableThoughtPlacements(checkpoint, fresh)
               : recoveredLock ? reviewUnavailableThoughtLock(checkpoint, fresh) : checkpoint;
             if (!review && !recoveredSketches && available === checkpoint) return reconciled;
             const session = DataSession.restore(available);
             session.observe(fresh, { source: 'server' });
             const next = { ...reconciled!, checkpoint: session.checkpoint() };
-            if (record && (protection === 'sermon-thought-lock' || protection === 'sermon-scratch-removal' || protection === 'sermon-scratch-text') && !isRecoverableCheckpoint(next)) {
+            if (record && (heldAutosaveField || protection === 'sermon-thought-lock'
+              || protection === 'sermon-scratch-removal' || protection === 'sermon-scratch-text') && !isRecoverableCheckpoint(next)) {
               await store.settleClosed?.(uid, [{ stored: record, settled: next }]);
               active();
             }
@@ -3098,8 +3100,12 @@ export class DataEngine {
         if ((heldRemoval || removal) && (!compared || !removal || (choice === 'local' && removal.settled))) {
           throw Object.assign(new Error('Read the current row before choosing its removal'), { code: 'decision-changed' });
         }
+        const heldAutosaveField = hasHeldAutosaveFields(current) && !Object.keys(current.pending).length;
+        if (heldAutosaveField && !compared) {
+          throw Object.assign(new Error('Read both versions of the field before choosing'), { code: 'decision-changed' });
+        }
         if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement || heldRemoval || thoughtLock) && !Object.keys(current.pending).length) || removal
-          || (compared && (sketchReview || frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
+          || (compared && (heldAutosaveField || sketchReview || frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
           const shown = current.remoteCandidate ?? current.confirmed;

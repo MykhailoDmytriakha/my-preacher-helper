@@ -4015,3 +4015,54 @@ it.each([false, true])('keeps a refused capability until its explicit replacemen
     expect(s.transport.send).not.toHaveBeenCalled();
   } finally { s.engine.dispose(); }
 });
+
+const heldTitleCases = [
+  { collection: 'studyNotes', proof: 'studyNoteTitleDraft', value: { type: 'note', content: 'Note body' } },
+  { collection: 'groups', proof: 'groupTitleDraft', value: { status: 'draft' } },
+  { collection: 'councils', proof: 'councilTitleDraft', value: { status: 'preparing', topics: [] as DocumentData[] } },
+] as const;
+
+it.each(heldTitleCases.flatMap(target => ['equal', 'changed'].map(kind => ({ ...target, kind }))))(
+  'checks the saved $collection title before recovering a draft with incompatible proof ($kind)', async ({ collection, proof, value, kind }) => {
+  const s = setup({ nativeChoice: true });
+  const resource = { collection, id: 'held-title' };
+  const opening = { ...initial(), resource, value: { ...initial().value, ...value } };
+  const mine = 'Private note title';
+  const sourceId = editorIdentity('old-device', resource, 'document', 'source');
+  const observed = (title: string, revision: number) => ({ ...opening, value: { ...opening.value, title },
+    metadata: { ...opening.metadata!, revision } });
+  const phone = new DataSession(opening);
+  phone.edit({ ...opening.value, title: mine }, undefined, { field: 'title', time: null });
+  const checkpoint = phone.checkpoint();
+  checkpoint[proof]!.action.observedRevision = 101;
+  await s.checkpoints.put({ owner: 'owner', editorId: sourceId, checkpoint, prepared: null, unfinalized: [] });
+  const first = observed(kind === 'equal' ? mine : 'Saved elsewhere', 3);
+  s.server.set(keyOf('owner', resource), first);
+  let editor: Awaited<ReturnType<DataEngine['recoverEditor']>> | undefined;
+  try {
+    const choices = await s.engine.listRecoveryChoices(resource);
+    expect(choices).toHaveLength(1);
+    const recovery = s.engine.recoverEditor(resource, editorIdentity('active-device', resource, 'document', 'recover'), choices[0].id);
+    if (kind === 'equal') {
+      await expect(recovery).rejects.toMatchObject({ code: 'draft-done' });
+      expect(await s.checkpoints.read('owner', sourceId)).toBeUndefined();
+      expect(await s.engine.listRecoveryChoices(resource)).toEqual([]);
+    } else {
+      editor = await recovery;
+      const shown = editor.getState().checkpoint;
+      expect(shown).toMatchObject({ remoteCandidate: first, conflicts: [{ path: ['title'],
+        mine: { value: mine }, theirs: { value: first.value.title },
+      }] });
+      const latest = observed('Changed after the screen opened', 4);
+      s.server.set(keyOf('owner', resource), latest);
+      await expect(editor.acceptRemote(undefined, shown)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(editor.getState().checkpoint).toMatchObject({ draft: { title: mine }, remoteCandidate: latest, conflicts: [{
+        path: ['title'], theirs: { value: latest.value.title },
+      }] });
+    }
+    expect(s.transport.send).not.toHaveBeenCalled();
+  } finally {
+    editor?.close();
+    s.engine.dispose();
+  }
+});

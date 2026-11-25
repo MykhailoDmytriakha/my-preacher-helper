@@ -12,7 +12,7 @@ import { readCommentPlaceComparison } from './commentPlaceChoice';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
-import { adoptAcknowledgedStudyNoteFields, autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasUncapturedAutosaveField, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { adoptAcknowledgedStudyNoteFields, autosaveAcknowledgementAncestor, autosaveFieldTargets, GROUP_TIMED_FIELDS, hasHeldAutosaveFields, hasUncapturedAutosaveField, matchingHeldAutosaveFields, retireObservedAutosaveFields, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
@@ -169,6 +169,7 @@ export function deletedUnder(live: SessionCheckpoint, shown: ShownCopy): boolean
 export class DataSession {
   private state: SessionCheckpoint;
   private reservedEditGeneration = 0;
+  private observedWhileAwaitingHeldFields?: ResourceSnapshot;
 
   constructor(snapshot: ResourceSnapshot) {
     this.state = { confirmed: copy(snapshot), draft: copy(snapshot.value), dirty: false, editGeneration: 0, remoteCandidate: null, conflicts: [], pending: {} };
@@ -214,7 +215,10 @@ export class DataSession {
     const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION
       || conflict.code === UNREADABLE_OUTLINE_POINT_POSITION;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
+    const autosaveScalars = new Set<string>(autosaveFieldTargets(confirmed.resource.collection).map(target => target.field));
+    const agreeing = new Set(target.value ? matchingHeldAutosaveFields(this.state, target.value) : []);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
+      if (agreeing.has(field)) return [];
       const path = unreadableScalarPath(confirmed.resource.collection, field);
       const base = readField(confirmed.value ?? {}, path), mine = readField(draft ?? {}, path), theirs = readField(target.value ?? {}, path);
       return equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_SCALAR_PROOF }];
@@ -260,7 +264,9 @@ export class DataSession {
         if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
         delete this.state.privateFieldReview;
       }
-      delete this.state.unreadableScalarProof;
+      // Agreement with a checkpoint on disk cannot retire a recovered action.
+      const stillHeld = this.state.dirty ? unreadableScalarProof?.filter(field => autosaveScalars.has(field)) : undefined;
+      this.state.unreadableScalarProof = stillHeld?.length ? stillHeld : undefined;
       if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state) && !unresolvedScratchRemoval(this.state)) delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
     }
@@ -803,7 +809,13 @@ export class DataSession {
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
     this.state.conflicts = copy(preservePlanCellComparisons(this.state, rebased.conflicts));
     this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
-    this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+    // A newer candidate can substitute for the receipt only with server evidence of its own.
+    if (equalValues(accepted, result.snapshot) || equalValues(accepted, this.observedWhileAwaitingHeldFields)) {
+      this.retireMatchingHeldScalars(accepted);
+    }
+    if (!Object.keys(this.state.pending).length) this.observedWhileAwaitingHeldFields = undefined;
+    this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasHeldAutosaveFields(this.state)
+      || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     this.refreshUnreadableComparisons();
   }
 
@@ -829,13 +841,40 @@ export class DataSession {
     return true;
   }
 
+  private retireMatchingHeldScalars(snapshot: ResourceSnapshot): boolean {
+    const { confirmed, remoteCandidate, pending, unreadableScalarProof } = this.state;
+    const latest = remoteCandidate?.metadata ?? confirmed.metadata;
+    if (!unreadableScalarProof?.length || Object.keys(pending).length || !snapshot.value
+      || !latest || snapshot.metadata?.generation !== latest.generation || snapshot.metadata.revision < latest.revision) return false;
+    const agreed = matchingHeldAutosaveFields(this.state, snapshot.value);
+    if (!agreed.length) return false;
+    const remaining = unreadableScalarProof.filter(field => !agreed.includes(field));
+    this.state.unreadableScalarProof = remaining.length ? remaining : undefined;
+    this.state.conflicts = this.state.conflicts.filter(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF
+      || !agreed.some(field => equalValues(conflict.path, unreadableScalarPath(confirmed.resource.collection, field))));
+    return true;
+  }
+
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
     if (source === 'cache' && snapshot.value === null && !snapshot.metadata?.deleted) return;
-    if (equalValues(snapshot, this.state.confirmed)) return;
+    if (source === 'server' && hasHeldAutosaveFields(this.state) && Object.keys(this.state.pending).length
+      && canReplaceSnapshot(this.observedWhileAwaitingHeldFields, snapshot)) {
+      this.observedWhileAwaitingHeldFields = copy(snapshot);
+    }
+    const retiredScalars = source === 'server' && this.retireMatchingHeldScalars(snapshot);
+    if (equalValues(snapshot, this.state.confirmed)) {
+      if (retiredScalars && !this.state.conflicts.length && !hasUnreadableDraftProof(this.state)
+        && equalValues(this.state.draft, snapshot.value) && !hasUncapturedAutosaveField(this.state) && !hasUncapturedAutosaveRowField(this.state)
+        && !this.state.groupFlowStepPlacementRetry && !this.state.councilTopicPlacementRetry) {
+        this.state.dirty = false;
+        if (equalValues(this.state.remoteCandidate, snapshot)) this.state.remoteCandidate = null;
+      }
+      return;
+    }
     const awaiting = Object.keys(this.state.pending).length > 0;
-    if (this.state.dirty || awaiting) {
+    if (this.state.dirty || awaiting || hasUnreadableDraftProof(this.state)) {
       const candidate = this.state.remoteCandidate;
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
@@ -1316,7 +1355,8 @@ export class DataSession {
       return choice;
     });
     const independentPointProofs = pointChoices.length ? this.state.exegeticalPointDrafts : undefined;
-    const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
+    const carryFieldProofs = candidate && (['groups', 'councils'].includes(candidate.resource.collection)
+      || (reviewingUnreadableProof && candidate.resource.collection === 'studyNotes')) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
@@ -1395,7 +1435,7 @@ export class DataSession {
       this.state.exegeticalPointDrafts = stageExegeticalPoint({ ...this.state, exegeticalPointDrafts: independentPointProofs },
         this.state.draft, undefined, undefined);
     }
-    if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
+    if (carryFieldProofs) carryAnchoredDraftChronology(carryFieldProofs, this.state, this.state.conflicts);
     if (candidate) {
       acceptPlanCellComparison(this.state);
       this.retainOutlineTitleActions(titleSource);
