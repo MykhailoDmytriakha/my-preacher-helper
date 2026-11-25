@@ -277,6 +277,21 @@
       "confirm": "Remove point",
       "keep": "Keep reviewing"
     },
+    "groupCopy": {
+      "title": "Copied steps ({{count}})",
+      "draftStep": "Draft step {{position}}",
+      "description": "Keep the copied steps in a new block, or leave them out of the group.",
+      "sourcePresent": "The original block is present in the saved group.",
+      "sourceRemoved": "The original block was removed from the saved group.",
+      "keep": "Keep copied steps",
+      "skip": "Leave copied steps out",
+      "discard": {
+        "title": "Leave these copies out?",
+        "description": "The copied steps shown here will be left out. Your other choices are kept.",
+        "confirm": "Leave copies out",
+        "keep": "Keep reviewing"
+      }
+    },
     "confirmStoredGroupRowRemoval": {
       "title": "Keep this block or step removed?",
       "description": "This removes the row, including the changes shown here. Other choices and unrelated edits are kept.",

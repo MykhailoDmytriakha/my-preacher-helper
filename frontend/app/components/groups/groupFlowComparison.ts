@@ -42,9 +42,21 @@ export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined
   const owned = answers.filter(answer => answer.owner === value?.userId && answer.resource.collection === resource.collection
     && answer.resource.id === resource.id && answer.operationIds.includes(operationId));
   // A common answer with queued descendants must use the document choice, which retains those saves.
-  const privateFields = Boolean((checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length) && !Object.keys(checkpoint.pending).length);
+  const privateFields = Boolean((checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
+    || checkpoint.privateFieldReview?.groupCopySources?.length) && !Object.keys(checkpoint.pending).length);
   if (!privateFields && (!owned.length || owned.some(answer => answer.operationIds.length !== 1 || answer.laterSaves?.length))) return undefined;
   const { field, mine, stored, identity } = comparison;
+  if (field === 'copiedSteps') {
+    const steps = comparison.steps.map(step => [
+      t('dataSync.groupCopy.draftStep', { position: String(step.order) }), step.instanceTitle,
+      typeof step.durationMin === 'number' ? groupFlowFieldText(t, 'duration', step.durationMin) : undefined, step.instanceNotes,
+    ].filter(value => typeof value === 'string' && value.trim()).join(' · '));
+    const title = t('dataSync.groupCopy.title', { count: String(steps.length) });
+    return { identity, title: comparison.rowTitle + ' · ' + title, mine: [comparison.blockWords, ...steps].join('\n'),
+      stored: t(comparison.sourcePresent ? 'dataSync.groupCopy.sourcePresent' : 'dataSync.groupCopy.sourceRemoved'),
+      description: t('dataSync.groupCopy.description'), valueKind: 'field', scopedChoice: true,
+      actions: { local: t('dataSync.groupCopy.keep'), stored: t('dataSync.groupCopy.skip'), confirmStored: 'dataSync.groupCopy.discard' } };
+  }
   if (field === 'complete') return { identity, mine: '', stored: '', completeReview: true };
   const removedBy = 'removedBy' in comparison ? comparison.removedBy : undefined;
   const label = t(fields[field]);

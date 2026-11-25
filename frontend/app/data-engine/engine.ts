@@ -1861,7 +1861,7 @@ export class DataEngine {
             const checkpoint = reconciled?.checkpoint;
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
             const review = ['groups', 'councils', 'users'].includes(frozen.collection)
-              ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
+              ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length || checkpoint.privateFieldReview?.groupCopySources?.length
               : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length || hasUnreadableSermonText(checkpoint) || hasUnreadableSermonChurch(checkpoint) || hasUnreadablePreparationCheck(checkpoint) || unresolvedThoughtPlacement(checkpoint) || unresolvedThoughtRemoval(checkpoint) || unresolvedScratchRemoval(checkpoint) || checkpoint.guardedScratchText || unresolvedThoughtLock(checkpoint) || hasPrivateSermonPointMove(checkpoint)
                 : frozen.collection === 'serviceOrders' && (checkpoint.unreadableScalarProof?.length || checkpoint.unreadableServiceOrderStepPlacement
                   || Object.keys(checkpoint.serviceOrderInputs ?? {}).length);

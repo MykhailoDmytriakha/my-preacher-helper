@@ -15,6 +15,7 @@ export type PrivateFieldDecision = {
   stored: PrivateValue;
   side: 'local' | 'remote';
   removedBy?: 'local' | 'remote';
+  witness?: string;
 };
 export type FieldSelection = Pick<PrivateFieldDecision, 'path' | 'side'>;
 export type PrivateField = Omit<PrivateFieldDecision, 'side' | 'birth'> & { birth?: string };
@@ -25,7 +26,7 @@ export function isUnreadableField(conflict: ConflictDetail): boolean {
 
 export function privateFieldDecision(field: PrivateField, side: PrivateFieldDecision['side']): PrivateFieldDecision {
   return { path: field.path, birth: field.birth ?? null, mine: field.mine, stored: field.stored, side,
-    ...(field.removedBy && { removedBy: field.removedBy }) };
+    ...(field.removedBy && { removedBy: field.removedBy }), ...(field.witness && { witness: field.witness }) };
 }
 
 export function privateFieldsForPaths<Field extends PrivateField>(
@@ -43,11 +44,12 @@ export function readPrivateFieldReview<Field extends PrivateField>(
   checkpoint: SessionCheckpoint,
   readFields: (conflicts: readonly ConflictDetail[], merged: DocumentData) => (Field | undefined)[],
   merge = mergeDocumentFields,
+  hasScopedFields = false,
 ) {
   const { confirmed, draft, remoteCandidate, conflicts, pending, privateFieldReview } = checkpoint;
   if (!confirmed.value || !draft || !remoteCandidate?.value || !confirmed.metadata
     || confirmed.metadata.generation !== remoteCandidate.metadata?.generation || Object.keys(pending).length
-    || !conflicts.some(isUnreadableField) || conflicts.some(conflict => conflict.code && !isUnreadableField(conflict))) return undefined;
+    || (!hasScopedFields && !conflicts.some(isUnreadableField)) || conflicts.some(conflict => conflict.code && !isUnreadableField(conflict))) return undefined;
   const merged = merge(confirmed.value, draft, remoteCandidate.value);
   if (!merged.value.exists) return undefined;
   const fields = readFields([...conflicts, ...merged.conflicts], merged.value.value as DocumentData);

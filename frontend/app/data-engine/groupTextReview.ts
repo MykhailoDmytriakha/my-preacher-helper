@@ -4,7 +4,8 @@ import { groupStatusOutsideChoice } from './documentFieldAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_CONTENT_POLICY, GROUP_BLOCK_TITLE_POLICY, GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED, GROUP_STEP_NOTES_POLICY, GROUP_STEP_TITLE_POLICY, isOrderedGroupFlowText } from './groupFlowTitleAction';
-import { groupFlowCopySources, groupPlacementSteps } from './groupFlowTopology';
+import { GROUP_FLOW_COPY_CONTENT_MISSING, groupPlacementSteps } from './groupFlowTopology';
+import { privateGroupCopyFields, projectPrivateGroupCopies, type PrivateGroupCopy } from './groupPrivateCopyReview';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { privateFieldsForPaths, readPrivateFieldReview } from './privateFieldReview';
@@ -66,6 +67,11 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, remoteCandidate } = checkpoint;
   const review = readPrivateGroupTextReview(checkpoint) ?? readGroupTextReview(checkpoint);
   const next = review?.remaining[0];
+  if (next?.field === 'copiedSteps') {
+    return { field: next.field, mine: next.mine, stored: next.stored, rowTitle: next.template.title,
+      blockWords: next.blockWords, steps: next.steps, sourcePresent: next.storedTemplate?.createdAt === next.birth,
+      identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata, checkpoint.privateFieldReview, next.path, next.witness]) };
+  }
   if (next) {
     const { field, mine, stored, path } = next;
     const row = 'row' in next ? next.row : 'id' in next
@@ -296,14 +302,19 @@ function onlyRetiredStep(checkpoint: SessionCheckpoint, field: RemovedGroupText)
   if (openingSteps?.length === 1) return field.linkedSteps?.find(step => step.id === openingSteps[0].id);
 }
 
-function privateGroupFields(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[], merged: DocumentData) {
-  const removed = conflicts.flatMap(conflict => removedText(checkpoint, conflict) ?? []);
+function privateGroupFields(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[], merged: DocumentData,
+  copies: readonly PrivateGroupCopy[]) {
+  const copyAt = (path: string[]) => path[0] === 'templates' && copies.find(copy => path[1] === copy.path[1]
+    && (equalValues(path, copy.path) || copy.storedTemplate?.createdAt !== copy.birth));
+  const removed = conflicts.flatMap(conflict => copyAt(conflict.path) ? [] : removedText(checkpoint, conflict) ?? []);
   const parents = removed.flatMap(field => removedParentOfLocalStep(checkpoint, field, merged) ?? []);
   const scopes = [...new Map([...parents, ...removed].map(field => [JSON.stringify(field.path), field])).values()];
   const onRow = (path: string[], row: RemovedGroupText) => equalValues(path.slice(0, 2), row.path);
   const linkedTo = (path: string[], row: RemovedGroupText) =>
     path[0] === 'flow' && row.linkedSteps?.some(step => path[1] === 'id:' + step.id);
   return privateFieldsForPaths(conflicts, path => {
+    const copy = copyAt(path);
+    if (copy) return copy;
     const field = scopes.find(row => onRow(path, row));
     if (!field) return textAt(checkpoint, path);
     const side = field.removedBy === 'local' ? 'stored' : 'mine';
@@ -313,25 +324,31 @@ function privateGroupFields(checkpoint: SessionCheckpoint, conflicts: readonly C
     const words = only ? [only.instanceTitle, only.instanceNotes].filter((word): word is string => typeof word === 'string' && Boolean(word))
       : linked.flatMap(item => item[side] ?? []);
     return { ...field, linkedSteps, ...(words.length && { [side]: [field[side], ...words].filter(value => value !== null).join('\n') }) };
-  }, path => scopes.find(row => linkedTo(path, row))?.path ?? scopes.find(row => onRow(path, row))?.path ?? path);
-}
-
-export function hasUnreviewedGroupCopy(checkpoint: SessionCheckpoint): boolean {
-  const { confirmed, draft, remoteCandidate, unreadableScalarProof, unreadableRowProofs, pending } = checkpoint;
-  if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft || !remoteCandidate?.value
-    || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation || Object.keys(pending).length
-    || !(unreadableScalarProof?.length || unreadableRowProofs?.length)) return false;
-  // A newly copied step is not the original removed row. Neither side of a
-  // field comparison is authority to publish or abandon that copy.
-  const savedTemplates = remoteCandidate.value.templates;
-  return groupFlowCopySources(confirmed.value, draft).some(({ id }) => typeof id === 'string' && !findGroupRow(savedTemplates, id));
+  }, path => {
+    const copy = copyAt(path);
+    return copy ? copy.path : scopes.find(row => linkedTo(path, row))?.path ?? scopes.find(row => onRow(path, row))?.path ?? path;
+  });
 }
 
 export function readPrivateGroupTextReview(checkpoint: SessionCheckpoint) {
-  if (checkpoint.confirmed.resource.collection !== 'groups' || hasUnreviewedGroupCopy(checkpoint)) return undefined;
-  const review = readPrivateFieldReview(checkpoint,
-    (conflicts, merged) => privateGroupFields(checkpoint, conflicts, merged), mergeGroupFlowRebase);
-  return review && { ...review, settled: [] };
+  if (checkpoint.confirmed.resource.collection !== 'groups') return undefined;
+  const copies = privateGroupCopyFields(checkpoint);
+  if (!copies) return undefined;
+  const conflicts = checkpoint.conflicts.map(conflict => conflict.code === GROUP_FLOW_COPY_CONTENT_MISSING
+    && copies.some(copy => equalValues(copy.path.slice(0, 2), conflict.path)) ? { ...conflict, code: undefined } : conflict);
+  const review = readPrivateFieldReview({ ...checkpoint, conflicts }, (conflicts, merged) => {
+    const fields = privateGroupFields(checkpoint, conflicts, merged, copies);
+    return [...fields.filter(field => field?.field !== 'copiedSteps'), ...copies];
+  }, mergeGroupFlowRebase, copies.length > 0);
+  return review && { ...review, settled: [], groupCopySources: copies.map(copy => copy.template.id) };
+}
+
+export function projectPrivateGroupFields(review: NonNullable<ReturnType<typeof readPrivateGroupTextReview>>,
+  decisions: readonly FieldSelection[]): DocumentData | undefined {
+  const fields = review.fields.filter(field => field.field !== 'copiedSteps');
+  const value = projectGroupTextDecisions({ ...review, fields }, decisions);
+  if (!value) return;
+  return projectPrivateGroupCopies(value, review.fields.filter(field => field.field === 'copiedSteps'), decisions);
 }
 
 export function readGroupTextReview(source: SessionCheckpoint) {

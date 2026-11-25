@@ -34,7 +34,7 @@ function newSharedTemplateIds(before: unknown, after: unknown): Set<string> {
 }
 
 /** Keep only the shown templates referenced by newly copied steps. */
-export function groupFlowCopySources(before: DocumentData, after: DocumentData): DocumentData[] {
+export function groupFlowCopySources(before: DocumentData, after: DocumentData) {
   const copied = newSharedTemplateIds(before.flow, after.flow);
   return placementSteps(before.templates)?.filter(template =>
     copied.has(template.id) && typeof template.createdAt === 'string') ?? [];

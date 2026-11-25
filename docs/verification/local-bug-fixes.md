@@ -10624,3 +10624,16 @@ Thirteen focused cases pass, including a checkpoint reopen between decisions, bo
 Hidden Chrome on isolated Auth and Firestore opened a group with a prepared device checkpoint containing a bad name observation. The 1280 px case kept the remote removal and the new name. Two 390 px cases kept the saved step when the other device had changed only the step notes or only the block body. The first choice sent no command. The final choice sent one update for the name. Each case reopened with the expected blocks, steps and neighbor. Evidence is in `artifacts/group-title-and-removed-flow-row-20261125/`.
 
 After authorized rollout, use a disposable group and verify that an ordinary step removal leaves other steps usable, that the group can still be renamed, and that the accepted step order persists after reopening. Deliberately unreadable local records and conflicting copies use the emulator.
+
+
+## BUG-20261113-unreadable-proof-does-not-ask · Review copies of a step whose original block was removed
+
+Groups → open a group → Saved draft. If the last saved group no longer has an original block, its newly copied draft steps now get their own question. The comparison shows each copy's draft position, title, minutes and notes, plus the draft block's words. Choosing to keep the copies puts them in a new block. Leaving them out preserves the other choices and the rest of the saved group.
+
+The copy review survives closing the editor and returning a separately edited name to its saved value, even before a first choice. If the same original block comes back with a different name, its own name comparison still applies to that original. Changes to a shown copy invalidate the earlier answer. If the group itself is deleted, the existing explicit acceptance can finish the review. An outdated confirmation or a pending delivery preserves the draft.
+
+Original tests failed before the fix. The recovery suite passed 145 tests and the related Jest profile passed 4,992 tests across 220 suites. Ten translation tests passed. Scoped ESLint reported zero errors and 52 warnings. TypeScript and the production-mode build passed on the working source over `bc5557435`. Independent review reproduced the name undo, original block return and whole-group deletion, including stale acceptance and pending delivery.
+
+Hidden Chrome used local Auth and Firestore and seeded the prior device checkpoint in IndexedDB. At 1280 px the screen showed and saved two copies. At 390 px the discard confirmation removed only the one copy. No command was sent after choosing just the name. Each final choice produced one update. The original deletion, independent neighboring block and step, and results after reopening were checked against the emulator. Both screenshots and the discard dialog were visually inspected. Evidence is in `artifacts/group-private-flow-copies-20261125/`.
+
+After authorized rollout, duplicate an ordinary step in a disposable group and reopen it to check the copies and neighboring steps. Keep the delayed and intentionally unreadable draft scenarios on the emulator.

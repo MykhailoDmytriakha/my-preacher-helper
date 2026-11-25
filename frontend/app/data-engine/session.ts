@@ -23,8 +23,8 @@ import { mergeExegeticalPointChoice, stageExegeticalPoint, UNREADABLE_EXEGETICAL
 import { object, readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
+import { groupCopySourceIdsForReview, hasHeldGroupCopies, hasUnreviewedGroupCopy } from './groupPrivateCopyReview';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
-import { hasUnreviewedGroupCopy } from './groupTextReview';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
@@ -91,7 +91,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   unreadableScalarProof?: string[];
   unreadableRowProofs?: UnreadableRowProof[];
   unreadableExegeticalProofs?: UnreadableExegeticalProof[];
-  privateFieldReview?: { revision: number; decisions: PrivateFieldDecision[] };
+  privateFieldReview?: { revision: number; decisions: PrivateFieldDecision[]; groupCopySources?: string[] };
   groupMeetingReview?: GroupMeetingReview;
   groupTextReview?: { requestId: string; revision: number; decisions: GroupTextDecision[]; separateDraft?: true };
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
@@ -241,8 +241,13 @@ export class DataSession {
     const questions = [...scalars, ...rows, ...points, ...(removal?.settled === false ? [removal.conflict] : []), ...(step ? [step] : []), ...(outlinePosition ? [outlinePosition] : [])];
     const other = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
     this.state.conflicts = [...other, ...questions.filter(question => !other.some(conflict => equalValues(conflict.path, question.path)))];
+    if (questions.length) this.state.remoteCandidate = copy(target);
+    const groupCopySources = groupCopySourceIdsForReview(this.state);
+    if (groupCopySources.length && target.metadata) {
+      this.state.privateFieldReview = { revision: target.metadata.revision, decisions: [], ...this.state.privateFieldReview,
+        groupCopySources };
+    }
     if (questions.length) {
-      this.state.remoteCandidate = copy(target);
       this.state.dirty = true;
       const settings = readAccountPreferenceReview(this.state);
       if (settings?.kind === 'choices' && !settings.fields.length) {
@@ -251,8 +256,10 @@ export class DataSession {
         delete this.state.unreadableScalarProof;
       }
     } else {
-      if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
-      delete this.state.privateFieldReview;
+      if (!hasHeldGroupCopies(this.state)) {
+        if (hadQuestion && !other.length && equalValues(target, confirmed)) this.state.remoteCandidate = null;
+        delete this.state.privateFieldReview;
+      }
       delete this.state.unreadableScalarProof;
       if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state) && !unresolvedScratchRemoval(this.state)) delete this.state.unreadableRowProofs;
       delete this.state.unreadableExegeticalProofs;
@@ -1037,7 +1044,8 @@ export class DataSession {
     }
     const decisions = [...review.decisions, privateFieldDecision(next, side)];
     if (review.remaining.length > 1) {
-      this.state.privateFieldReview = { revision: review.revision, decisions };
+      this.state.privateFieldReview = { revision: review.revision, decisions,
+        ...('groupCopySources' in review && review.groupCopySources.length && { groupCopySources: review.groupCopySources }) };
       this.state.editGeneration = this.reserveEditGeneration();
       return true;
     }
@@ -1154,8 +1162,20 @@ export class DataSession {
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(atChoice?: DocumentData | null): void {
-    this.assertNoUnreviewedGroupCopy();
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
+    const { confirmed, remoteCandidate, privateFieldReview, draft } = this.state;
+    if (privateFieldReview?.groupCopySources?.length && remoteCandidate
+      && (!remoteCandidate.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation)) {
+      if (atChoice !== undefined && !equalValues(draft, atChoice)) {
+        throw Object.assign(new Error('The shown group draft changed'), { code: 'decision-changed' });
+      }
+      this.finishChoiceAgainstRemote(remoteCandidate.value);
+      delete this.state.privateFieldReview;
+      delete this.state.unreadableScalarProof;
+      delete this.state.unreadableRowProofs;
+      return;
+    }
+    this.assertNoUnreviewedGroupCopy();
     const storedPosition = storedSermonPointOrderChoice(this.state, atChoice);
     if (storedPosition) {
       const source = this.checkpoint();

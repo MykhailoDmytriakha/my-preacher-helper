@@ -148,6 +148,7 @@ const groupTextDecision = z.object({
 });
 
 const privateFieldDecision = groupTextDecision.omit({ row: true, linkedSteps: true }).extend({
+  witness: z.string().min(1).optional(),
   mine: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
   stored: z.union([z.string(), z.number(), z.null(), z.custom<CouncilOutcome>(isCouncilOutcome)]),
 });
@@ -198,7 +199,7 @@ const recordSchema = z.object({
     preparationTextRetry: z.object({ field: z.custom<PreparationTextField>(isPreparationTextField), generation: id,
       action: z.object({ before: fieldSchema, after: fieldSchema, observedRevision, time: actionTime }).strict() }).strict().optional(),
     privateFieldReview: z.object({ revision: z.number().int().safe().nonnegative(),
-      decisions: z.array(privateFieldDecision) }).optional(),
+      decisions: z.array(privateFieldDecision), groupCopySources: z.array(id).optional() }).optional(),
     groupMeetingReview: z.object({ generation: id, rowId: z.string().min(1), rowCreatedAt: z.string().min(1),
       fields: z.object({ location: nullableTitleAction.optional(), audience: nullableTitleAction.optional() }).optional(),
       date: rowValues(z.string()).omit({ rowCreatedAt: true }).optional(),

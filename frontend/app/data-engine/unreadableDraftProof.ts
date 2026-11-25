@@ -13,7 +13,7 @@ export const UNREADABLE_OUTLINE_POINT_POSITION = 'unreadable-outline-point-posit
 
 export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
   return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length
-    || checkpoint.unreadableServiceOrderStepPlacement || checkpoint.unreadableOutlinePointPlacement);
+    || checkpoint.unreadableServiceOrderStepPlacement || checkpoint.unreadableOutlinePointPlacement || checkpoint.privateFieldReview?.groupCopySources?.length);
 }
 
 /** Preference proof names use the same nested paths as their saved values. */

@@ -1,6 +1,7 @@
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { canRemovePendingCreation, hasForeignPendingSnapshot, pendingRemovalOpening } from './deletionOrdering';
 import { compatibleObservation } from './editorObservation';
+import { readPrivateGroupTextReview } from './groupTextReview';
 import { sameManualSelection } from './manualScope';
 import { hasPlacedSketchIdCollision } from './sermonPlacedSketchRecovery';
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
@@ -130,7 +131,9 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   const terminal = delivery.length > 0 && delivery.every(entry => entry.state === 'conflict' || entry.state === 'refused');
   const settled = pendingIds.length === 0 || (state.savedIntentReplaceable ?? terminal);
   const deletedCandidate = foreign && candidate?.value === null;
-  const phase = deliveryPhase(state, delivery, foreign, deletedCandidate, pendingIds.length);
+  const groupCopyReview = Boolean(checkpoint.privateFieldReview?.groupCopySources?.length
+    && readPrivateGroupTextReview(checkpoint)?.remaining.length);
+  const phase = deliveryPhase(state, delivery, foreign, deletedCandidate, pendingIds.length, groupCopyReview);
   return {
     deleting: checkpoint.draft === null && checkpoint.confirmed.value !== null,
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
@@ -142,7 +145,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
         || (!refused && (canRemovePendingCreation(state) || Boolean(pendingRemovalOpening(state))))),
     // A refusal has no other version to take, but "use the server's version" still means dropping
     // this device's refused change — without it a refused screen draft had no way back.
-    canAcceptRemote: !state.actionResolutionRequired && (foreign
+    canAcceptRemote: !state.actionResolutionRequired && (groupCopyReview || foreign
       || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
       || (phase === 'refused' && !state.manualWork)) && settled,
     canKeepLocal: !hasPlacedSketchIdCollision(checkpoint.conflicts) && !checkpoint.unreadableOutlinePointPlacement && !waitsForServiceOrderPosition(checkpoint) && !(state.result?.kind === 'refused' && ['group-step-placement-needs-review', 'council-topic-placement-needs-review', 'template-point-placement-needs-review'].includes(state.result.code))
@@ -150,7 +153,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   };
 }
 
-function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], foreign: boolean, deletedCandidate: boolean, pendingCount: number): SyncPhase {
+function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], foreign: boolean, deletedCandidate: boolean, pendingCount: number, groupCopyReview: boolean): SyncPhase {
   const { checkpoint } = state;
   let phase: SyncPhase = 'saved';
   if (checkpoint.dirty) phase = 'draft';
@@ -159,7 +162,7 @@ function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], fo
     if (delivery.some(entry => shownDeliveryState(entry) === next)) phase = next;
   }
   if (foreign) phase = deletedCandidate ? 'deleted' : 'remoteChanged';
-  if (checkpoint.conflicts.length || state.result?.kind === 'conflict' || hasPrivateSermonPointMove(checkpoint)) phase = 'conflict';
+  if (checkpoint.conflicts.length || groupCopyReview || state.result?.kind === 'conflict' || hasPrivateSermonPointMove(checkpoint)) phase = 'conflict';
   if (state.result?.kind === 'refused') phase = 'refused';
   if (checkpoint.confirmed.metadata?.deleted && !checkpoint.dirty && !pendingCount) phase = 'deleted';
   if (!state.durable) phase = state.error ? 'localFailure' : 'savingLocally';
