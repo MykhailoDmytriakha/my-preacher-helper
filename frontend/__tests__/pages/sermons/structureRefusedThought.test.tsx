@@ -5,6 +5,7 @@ import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import SermonOutline from '@/components/sermon/SermonOutline';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { EditorController } from '@/data-engine/controller';
 import { applyCommand } from '@/data-engine/protocol';
 import { DataDocumentProvider, DataEngineProvider, useDataDocument } from '@/data-engine/react.client';
 import { UNANSWERED_SAID_AFTER_ATTEMPTS } from '@/data-engine/unanswered';
@@ -465,6 +466,8 @@ it.each(['local', 'stored', 'failed-local', 'newer-stored'] as const)('reopens a
     if (key.includes(':conflict%3AoutlineConflict:')) throw new DOMException('Legacy comparison storage refused', 'QuotaExceededError');
     write.call(this, key, value);
   });
+  const retain = jest.spyOn(EditorController.prototype, 'retainSermonOutlineReview');
+  const choose = jest.spyOn(EditorController.prototype, 'chooseSermonOutlineReview');
   let serverOutline = before;
   const editor = (open: boolean) => <TestProviders><DataEngineProvider>{open ? <DataDocumentProvider resource={resource}>
     <EngineStructureWriterProvider sermonId={resource.id}>
@@ -492,6 +495,11 @@ it.each(['local', 'stored', 'failed-local', 'newer-stored'] as const)('reopens a
     await modal.findByText(/freshness.conflictTitle|dataSync.versionComparison/);
     expect(h.server.value?.outline).toEqual(saved);
     expect(h.transport.send).not.toHaveBeenCalled();
+    expect(retain).toHaveBeenCalledTimes(1);
+    expect(retain.mock.results[0].value).toBeInstanceOf(Promise);
+    const retainedCopy = await h.checkpoints.listRecoverable('owner', resource);
+    expect(retainedCopy.some(copy => copy.record.checkpoint.conflicts.some(conflict =>
+      conflict.code === 'sermon-outline-review'))).toBe(true);
 
     let comparison = within(await reopen());
     expect(comparison.getByLabelText('dataSync.storedVersion')).toHaveTextContent(saved.main[0].text);
@@ -532,6 +540,15 @@ it.each(['local', 'stored', 'failed-local', 'newer-stored'] as const)('reopens a
       fireEvent.click(comparison.getByRole('button', { name: 'dataSync.useLocalVersion' }));
       await waitFor(() => expect(h.server.value?.outline).toEqual({ ...before, main: [saved.main[1]] }));
       expect(h.transport.send).toHaveBeenCalledTimes(1);
+      const localChoices = choose.mock.calls.filter(([which]) => which === 'local');
+      expect(localChoices).toHaveLength(side === 'failed-local' ? 2 : 1);
+      expect(localChoices.at(-1)?.[1].checkpoint.conflicts).toEqual([
+        expect.objectContaining({ code: 'sermon-outline-review' }),
+      ]);
+      expect(h.server.metadata?.revision).toBe(3);
+      const [wire] = jest.mocked(h.transport.send).mock.calls[0];
+      expect(wire).toMatchObject({ kind: 'update', resource,
+        changes: expect.arrayContaining([expect.objectContaining({ path: ['outline'] })]) });
     }
     expect(h.server.value?.title).toBe('Latest sermon title');
     await waitFor(async () => {
@@ -542,6 +559,8 @@ it.each(['local', 'stored', 'failed-local', 'newer-stored'] as const)('reopens a
   } finally {
     view.unmount();
     guard.mockRestore();
+    retain.mockRestore();
+    choose.mockRestore();
   }
 });
 

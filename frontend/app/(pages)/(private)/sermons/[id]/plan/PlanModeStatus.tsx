@@ -15,7 +15,6 @@ import type { Sermon } from '@/models/models';
 type SermonDocument = ReturnType<typeof useDataDocument>;
 
 export function usePlanRecovery(document: SermonDocument, outline: Sermon['outline']) {
-  const { t } = useTranslation();
   const live = liveNodeIds(outline);
   const phase = document.status?.phase;
   const canRecover = !document.readOnly && Boolean(document.state?.durable && phase === 'saved');
@@ -27,26 +26,35 @@ export function usePlanRecovery(document: SermonDocument, outline: Sermon['outli
     recover: document.recover,
   });
   const orphaned: PlanOrphanCell[] = [];
-  const choices = recovery.choices.flatMap(source => {
+  const offers = recovery.choices.flatMap(source => {
     const cells = Object.entries(source.record.checkpoint.planCellDrafts ?? {});
     const [first] = cells;
     if (!first) return [];
     const [nodeId, cell] = first;
-    const discard = () => document.discardRecovery(source);
+    const discard = async () => {
+      try { await document.discardRecovery(source); }
+      finally { await recovery.refresh(); }
+    };
     if (source.record.planCellAlternative && cells.length === 1 && !live.has(nodeId)) {
       orphaned.push({ id: nodeId, text: cell.text, copyKey: JSON.stringify([source.id, source.record.recoveryVersion]),
-        discard: () => recovery.discard(discard) });
+        discard });
       return [];
     }
-    return [{ id: source.id, title: t('legacyRecovery.field.planText'),
-      preview: cells.map(([, copy]) => copy.text).join('\n\n'), discard }];
+    const version = source.record.recoveryVersion;
+    return [{ id: JSON.stringify([source.id, version]),
+      cells: Object.fromEntries(cells.map(([id, copy]) => [id, copy.text])),
+      restore: async () => {
+        await document.recover(source.id, source.discardRecord ?? source.record);
+        await recovery.refresh();
+      },
+      discard }];
   });
   const retainOrphan = async (nodeId: string, text: string) => {
     if (!await document.retainPlanCellAlternative(nodeId, text)) return false;
     await recovery.refresh();
     return true;
   };
-  return { ...recovery, canRecover, choices, orphaned, retainOrphan };
+  return { ...recovery, canRecover, offers, orphaned, retainOrphan };
 }
 
 export type PlanRecovery = ReturnType<typeof usePlanRecovery>;
@@ -67,8 +75,7 @@ export function PlanModeStatus({ document, recovery }: { document: SermonDocumen
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     comparison={comparison} onKeepLocal={keepLocal}
     onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
-    recoveryChoices={recovery.canRecover ? recovery.choices : []} recoveryLoading={recovery.loading}
-    recoveryError={recovery.canRecover ? recovery.error : null} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} /></div>;
+    recoveryLoading={recovery.loading} recoveryError={recovery.canRecover ? recovery.error : null} /></div>;
 }
 
 export function PlanModeHistory({ document, sermonId }: { document: SermonDocument; sermonId: string }) {

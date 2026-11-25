@@ -45,7 +45,7 @@ import { copyFormattedFromElement } from "./copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "./OrphanedPlanText";
 import { PlanCellDocument } from "./PlanCellEditor";
 import { showDirtyPlanCells, showPlanCellDrafts } from './planDraftCheckpoint';
-import { PlanDraftRecoveryBar, recoveredCells } from "./PlanDraftRecoveryBar";
+import { PlanDraftRecoveryOffers } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
 import { PlanModeHistory, PlanModeStatus, usePlanRecovery, type PlanRecovery } from './PlanModeStatus';
@@ -237,7 +237,9 @@ function PlanPageContent({ source, recovery, readOnly = false, wayIn }: {
     frozen: readOnly,
     backupAuthority: source.document,
   });
-  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([sermon?.userId, sermonId]), Boolean(planDraft.recovered));
+  const draftSubject = JSON.stringify([sermon?.userId, sermonId]);
+  const hasDraftOffer = Boolean(planDraft.recovered) || (recovery.canRecover && recovery.offers.length > 0);
+  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(draftSubject, hasDraftOffer);
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const discardPlanCells = useCallback((nodeIds: string[]) => {
     const dropped = new Set(nodeIds);
@@ -1085,28 +1087,14 @@ function PlanPageContent({ source, recovery, readOnly = false, wayIn }: {
 
       {orphanArea}
       {!readOnly && <PlanPointResultPanel results={recoveredResults} generating={generatingIds}
-        outline={outlineLookup} applyDisabled={Boolean(planDraft.recovered)} t={t}
+        outline={outlineLookup} applyDisabled={hasDraftOffer} t={t}
         recover={recoverPointResult} apply={applyPointResult} discard={discardPointResult} />}
 
       {/* On a copy for reading the recovered text waits in storage: restoring it would mark
           cells unsaved that cannot be saved, and discarding it would lose the only copy. */}
-      {planDraft.recovered && !readOnly && (
-        <PlanDraftRecoveryBar
-          subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies, generatedContent)}
-          onChoose={planDraft.selectCopy}
-          restoreDisabled={Object.keys(planDraft.recovered).some((nodeId) => generatingIds[nodeId])}
-          onRestore={async () => {
-            const selected = planDraft.selectedCopies;
-            const shown = recoveredCells(planDraft.recovered ?? {}, sermon, planDraft.copies, selected, generatedContent);
-            const before = Object.fromEntries(shown.map(cell => [cell.id, cell.current]));
-            if (!await restorePlanCells(planDraft.recovered ?? {}, before)) return;
-            planDraft.accept(selected);
-            answerDraftQuestion();
-          }}
-          onDiscard={() => { planDraft.discard(); answerDraftQuestion(); }}
-        />
-      )}
+      {!readOnly && <PlanDraftRecoveryOffers recovery={recovery} legacy={planDraft} sermon={sermon}
+        working={generatedContent} subject={draftSubject} busy={id => Boolean(generatingIds[id])}
+        restoreLegacy={restorePlanCells} answered={answerDraftQuestion} />}
 
       {/* EVERYTHING THE DOOR WOULD HAVE SAID, SAID BESIDE THE PLAN INSTEAD.
           Once there is text, the warning screen steps aside — but the findings must not go

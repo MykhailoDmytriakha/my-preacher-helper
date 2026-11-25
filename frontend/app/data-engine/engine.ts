@@ -10,7 +10,7 @@ import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnaly
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
 import { isAnchoredPlacementRefusal } from './anchoredRowPlacement';
-import { originalAutosaveStillApplies, pendingAutosaveReceipts, recoverableAutosaves } from './automaticDraftResume';
+import { originalAutosaveStillApplies, pendingAutosaveReceipts, PendingStartupAutosave, recoverableAutosaves, serviceInputWithUnchangedOpening, serviceOrderAutosaveSource } from './automaticDraftResume';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
 import { isCommentCreationCopy, isNewCommentEditor } from './commentEditorScope';
@@ -28,7 +28,7 @@ import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, 
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
-import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, PendingMeetingResume, readyMeetingAutosave } from './groupMeetingAutosave';
+import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
@@ -211,6 +211,7 @@ export interface ManagedEditor {
 export interface EditorOpenOptions {
   signal?: AbortSignal;
   autoSaveOnResume?: boolean;
+  shownRecovery?: EditorRecord;
 }
 
 interface EditorEntry {
@@ -319,6 +320,7 @@ export class DataEngine {
   private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
   private settling: { owner: string; generation: number; operation: Promise<void> } | null = null;
   private resumingAutosaves: StartupDraftRecovery | null = null;
+  private readonly serviceOrderEditorsOpenedHere = new Set<string>();
   private manualForms = new Map<string, ManualFormEntry>();
   private membershipForms = new Map<string, MembershipScope>();
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
@@ -377,6 +379,7 @@ export class DataEngine {
       entry, writeback: previous ? this.keepRetiringEditor(previous, previousGeneration, editorId, entry) : undefined,
     }));
     this.editors.clear();
+    this.serviceOrderEditorsOpenedHere.clear();
     this.owner = owner;
     this.generation += 1;
     for (const { entry, writeback } of retiringEditors) this.close(entry, writeback);
@@ -1305,12 +1308,14 @@ export class DataEngine {
   }
 
   /** Import only a closed writer's exact reserve. A live writer still owns its in-flight checkpoint. */
-  private async importServiceOrderReserves(owner: string, generation: number, resource: ResourceRef, store: CheckpointRecoveryStore): Promise<void> {
+  private async importServiceOrderReserves(owner: string, generation: number, resource: ResourceRef, store: CheckpointRecoveryStore,
+    starting = false): Promise<void> {
     const reserves = this.options.serviceOrderReserveStorage?.list(owner, resource.id);
     if (!reserves?.length) return;
     const known = await this.knownSnapshot(owner, generation, resource);
     for (const source of reserves) {
       const { editorId, token, payload } = source;
+      if (starting && this.serviceOrderEditorsOpenedHere.has(editorId)) continue;
       const held = await this.recoveryPresence.held(owner, 'checkpoint', recoveryCheckpointId(owner, editorId));
       this.assertCurrent(owner, generation);
       if (held === true || this.editors.has(editorId)) continue;
@@ -1814,7 +1819,12 @@ export class DataEngine {
           return version;
         } } : {}),
         read: async (uid, id) => {
-          const record = await store.read(uid, id); active(); storedSource = record;
+          const record = await store.read(uid, id); active();
+          const shown = options?.shownRecovery;
+          if (shown && !(shown.recoveryVersion ? record?.recoveryVersion === shown.recoveryVersion : equalValues(record, shown))) {
+            throw Object.assign(new Error('The displayed draft changed'), { code: 'decision-changed' });
+          }
+          storedSource = record;
           const requests = await this.commits.list(); active();
           const retained = record?.retainedManualChoice;
           if (!retained) {
@@ -1926,7 +1936,8 @@ export class DataEngine {
           active(); this.reportFailure(error); return [];
         }) ?? [] : [];
       active();
-      if (!copies.length && !meetingDrafts.length) { state.waiting.clear(); return; }
+      const reserveIds = new Set(this.options.serviceOrderReserveStorage?.listServices(owner).map(source => source.id));
+      if (!copies.length && !meetingDrafts.length && !reserveIds.size) { state.waiting.clear(); return; }
       const requests = await this.commits.list();
       active();
       requests.forEach(request => this.rememberCommit(request));
@@ -1957,6 +1968,7 @@ export class DataEngine {
         state.attempts.set(id, 2);
         if (originalAutosaveStillApplies(record, fresh)) await this.captureResumedAutosave(owner, generation, id, record, store.pinRecovery!);
       }
+      await this.resumeServiceOrderAutosaves(owner, generation, state, copies, requests, reserveIds, store.pinRecovery!);
       if (meetingDrafts.length && manualStore?.pinRecovery) {
         await this.resumeGroupMeetingAutosaves(owner, generation, state, meetingDrafts, requests, manualStore);
       }
@@ -1965,6 +1977,64 @@ export class DataEngine {
     state.operation = operation;
     this.resumingAutosaves = state;
     return operation;
+  }
+
+  private async resumeServiceOrderAutosaves(owner: string, generation: number, scan: StartupDraftRecovery,
+    copies: readonly RecoveryCheckpoint[], requests: readonly CommitRequest[], reserveIds: ReadonlySet<string>,
+    pin: NonNullable<CheckpointRecoveryStore['pinRecovery']>): Promise<void> {
+    const active = () => this.assertCurrent(owner, generation);
+    if (reserveIds.size) {
+      const store = this.recoveryStore();
+      for (const id of reserveIds) {
+        const resource = { collection: 'serviceOrders', id };
+        await this.importServiceOrderReserves(owner, generation, resource, store, true).catch(error => {
+          active(); this.reportFailure(error, resource);
+        });
+      }
+      copies = await store.listRecoverable(owner);
+      active();
+    }
+
+    // Startup only adopts work left by a preceding app run. A writer opened by this
+    // run already has its own autosave and leaving rules, even if it just closed.
+    const previousWriter = (record: EditorRecord) => !this.serviceOrderEditorsOpenedHere.has(record.editorId) && serviceOrderAutosaveSource(record);
+    const serviceCopies = copies.filter(({ record }) => previousWriter(record));
+    for (const request of requests) {
+      if ((request.state === 'queued' || request.state === 'prepared') && !scan.recheckedReceipts.has(request.id)
+        && serviceCopies.some(({ record }) => sameResource(record.checkpoint.confirmed.resource, request.baseline.resource))) {
+        scan.waiting.add(request.id);
+      }
+    }
+    for (const { id, record } of recoverableAutosaves(copies, requests, previousWriter)) {
+      const stamp = JSON.stringify([id, record.checkpoint.editGeneration]);
+      const attempts = scan.attempts.get(stamp) ?? 0;
+      if (attempts >= 2 || this.editors.has(record.editorId) || await this.recoveryPresence.held(owner, 'checkpoint', id) !== false) continue;
+      active();
+      if (!this.canSend()) { scan.retryRead = true; return; }
+      const { resource } = record.checkpoint.confirmed;
+      let fresh: ResourceSnapshot | null;
+      try { fresh = await this.readWriteTarget(resource); }
+      catch (error) {
+        active();
+        if ((error as { code?: unknown } | null)?.code === 'resource-exhausted') { scan.retryRead = false; return; }
+        scan.attempts.set(stamp, attempts + 1);
+        scan.retryRead ||= attempts === 0;
+        continue;
+      }
+      active();
+      if (!fresh) { scan.retryRead = true; continue; }
+      scan.attempts.set(stamp, 2);
+      const input = serviceInputWithUnchangedOpening(record, fresh);
+      if (!input) continue;
+      try {
+        const request = await this.captureResumedAutosave(owner, generation, id, record, pin, input);
+        if (request) scan.waiting.add(request.id);
+      } catch (error) {
+        active();
+        if (!(error instanceof PendingStartupAutosave)) throw error;
+        await this.waitForStartupAutosaveReceipts(owner, generation, scan, stamp, error);
+      }
+    }
   }
 
   private async resumeGroupMeetingAutosaves(owner: string, generation: number, scan: StartupDraftRecovery,
@@ -2039,40 +2109,50 @@ export class DataEngine {
       try { await scope.save(); }
       catch (error) {
         if (!this.current(owner, generation)) return;
-        if (error instanceof PendingMeetingResume) {
+        if (error instanceof PendingStartupAutosave) {
           // A command admitted during the fresh read can defer exactly this source again.
-          scan.attempts.delete(scopeId);
-          for (const id of error.receipts) if (!scan.recheckedReceipts.has(id)) scan.waiting.add(id);
-          (await this.commits.list()).forEach(request => { if (this.current(owner, generation)) this.rememberCommit(request); });
-          active();
+          await this.waitForStartupAutosaveReceipts(owner, generation, scan, scopeId, error);
         } else if ((error as { code?: unknown } | null)?.code !== 'commit-changed') this.reportFailure(error, resource);
       } finally { scope.dispose(); }
     }
   }
 
+  private async waitForStartupAutosaveReceipts(owner: string, generation: number, scan: StartupDraftRecovery,
+    stamp: string, error: PendingStartupAutosave): Promise<void> {
+    scan.attempts.delete(stamp);
+    for (const id of error.receipts) if (!scan.recheckedReceipts.has(id)) scan.waiting.add(id);
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    requests.forEach(request => this.rememberCommit(request));
+  }
+
   private async captureResumedAutosave(owner: string, generation: number, id: string, source: EditorRecord,
-    pin: NonNullable<CheckpointRecoveryStore['pinRecovery']>): Promise<void> {
-    if (await this.recoveryPresence.held(owner, 'checkpoint', id) !== false) return;
+    pin: NonNullable<CheckpointRecoveryStore['pinRecovery']>, input?: ServiceOrderInput): Promise<CommitRequest | null> {
+    if (await this.recoveryPresence.held(owner, 'checkpoint', id) !== false) return null;
     this.assertCurrent(owner, generation);
     const version = await pin(source);
     this.assertCurrent(owner, generation);
-    if (!version || !this.canSend()) return;
     const { editorId } = source;
+    if (!version || !this.canSend() || (input && this.serviceOrderEditorsOpenedHere.has(editorId))) return null;
+    const intent = input ? DataSession.restore(source.checkpoint).pinFieldSave() : source.checkpoint;
     try {
-      await this.commits.save(editorId, source.checkpoint, {
+      return await this.commits.save(editorId, intent, {
         resumeVersion: version,
+        ...(input && { serviceOrderInput: input, predecessorId: null }),
         checkpoint: request => {
           this.assertCurrent(owner, generation);
-          const session = DataSession.restore(source.checkpoint);
+          const session = DataSession.restore(intent);
           const completed = session.applyCommit(request) ? [request.id] : [];
           return { ...source, checkpoint: session.checkpoint(), completedCommits: [...(source.completedCommits ?? []), ...completed] };
         },
       });
     } catch (error) {
+      if (error instanceof PendingStartupAutosave) throw error;
       // A reopened tab or another startup can consume this exact version first.
       if (this.current(owner, generation) && (error as { code?: unknown } | null)?.code !== 'commit-changed') {
         this.reportFailure(error, source.checkpoint.confirmed.resource);
       }
+      return null;
     }
   }
 
@@ -2399,12 +2479,13 @@ export class DataEngine {
     if (this.editors.has(editorId) || this.recovering.has(editorId)) throw new Error('This editor identity is already open');
     const generation = this.generation;
     const frozen = copy(resource);
+    const serviceInput = frozen.collection === 'serviceOrders' && isDocumentEditorSlot(editorId, frozen, SERVICE_ORDER_INPUT_SLOT);
+    if (serviceInput) this.serviceOrderEditorsOpenedHere.add(editorId);
     const entry: EditorEntry = {
       autoSaveOnResume: options?.autoSaveOnResume,
       planCellEmergency: frozen.collection === 'sermons' && this.options.planCellEmergencyStorage
         ? new PlanCellEmergency(owner, editorId, this.options.planCellEmergencyStorage) : undefined,
-      serviceOrderInputReserve: this.options.serviceOrderReserveStorage
-        && isDocumentEditorSlot(editorId, frozen, SERVICE_ORDER_INPUT_SLOT) && frozen.collection === 'serviceOrders'
+      serviceOrderInputReserve: this.options.serviceOrderReserveStorage && serviceInput
         ? new ServiceOrderInputReserve(owner, frozen.id, editorId, this.options.serviceOrderReserveStorage) : undefined,
       presence: this.recoveryPresence.hold(owner, 'checkpoint', [recoveryCheckpointId(owner, editorId), ...recoverySourceIds]),
       initializing: null,

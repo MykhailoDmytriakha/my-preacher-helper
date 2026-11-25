@@ -17,6 +17,7 @@ import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDataDocument } from '@/data-engine/react.client';
 import { planCellOpening } from '@/data-engine/sermonPlanCellSession';
+import { DataSession } from '@/data-engine/session';
 import { enqueueWrite, listOutbox, removeFromOutbox } from '@/services/writeOutbox.client';
 import { draftKey, listDraftKeys, readDraft, saveDraft } from '@/utils/durableDraft';
 
@@ -481,31 +482,106 @@ it('leaves the existing offline Save in its queue when leaving the plan', async 
   }
 });
 
-it('stages a selected legacy plan copy before retiring it and offers the engine copy on reopening', async () => {
+it.each([
+  { legacyTwin: false, restore: true }, { legacyTwin: true, restore: true }, { legacyTwin: true, restore: false },
+])('shows the exact recovered plan words once after reopening, legacy twin=$legacyTwin restore=$restore', async ({ legacyTwin, restore }) => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Stored words.' });
+  const words = 'Words from the previous plan editing session.';
   const previous = draftKey('user-1', 'sermon-1', 'plan:p1', 'previous-editor');
-  saveDraft(previous, 'Words from the old device copy.');
-  const view = await render();
+  saveDraft(previous, words);
+  const view = await render({ held: async () => false, hold: () => () => undefined });
   const storage = harness.checkpoints;
   const resource = { collection: 'sermons', id: 'sermon-1' };
   fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
   await waitFor(async () => {
     const copies = await storage.listRecoverable('user-1', resource);
-    expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === 'Words from the old device copy.')).toBe(true);
+    expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === words)).toBe(true);
     expect(readDraft(previous)).toBeNull();
   });
   expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
   view.unmount();
 
-  rtlRender(page(queryClient()));
-  const recover = await screen.findByRole('button', { name: 'dataSync.recover' });
-  const copies = screen.getByRole('combobox', { name: 'dataSync.recoveryLabel' });
-  await userEvent.selectOptions(copies, within(copies).getAllByRole<HTMLOptionElement>('option')[1]);
-  await userEvent.click(recover);
-  await screen.findByText('Words from the old device copy.');
-  expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
-  expect(screen.getByTitle('plan.save')).toBeEnabled();
+  const twin = draftKey('user-1', 'sermon-1', 'plan:p1', 'older-build');
+  if (legacyTwin) saveDraft(twin, words);
+  const reopened = rtlRender(page(queryClient()));
+  try {
+    await screen.findByText(words);
+    await act(settleEngine);
+    const title = screen.getByText('plan.draftRecoveryTitle');
+    const offer = within(title.closest('[role="status"]') as HTMLElement);
+    expect(offer.getByText(words)).toBeInTheDocument();
+    expect(offer.getByText('Stored words.')).toBeInTheDocument();
+    expect(screen.getAllByText(words)).toHaveLength(1);
+    expect(offer.getByRole('button', { name: 'plan.draftRecoveryDiscard' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'dataSync.recover' })).not.toBeInTheDocument();
+
+    if (restore) {
+      await userEvent.click(offer.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+      await waitFor(() => expect(screen.getByTitle('plan.save')).toBeEnabled());
+      expect(screen.getByText(words)).toBeInTheDocument();
+    } else {
+      await userEvent.click(offer.getByRole('button', { name: 'plan.draftRecoveryDiscard' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+      await waitFor(async () => {
+        expect(screen.queryByText(words)).not.toBeInTheDocument();
+        const copies = await storage.listRecoverable('user-1', resource);
+        expect(copies.some(({ record }) => record.checkpoint.planCellDrafts?.p1?.text === words)).toBe(false);
+      });
+    }
+    expect(harness.server.value?.planText).toEqual({ p1: 'Stored words.' });
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    expect(readDraft(twin)).toBeNull();
+  } finally {
+    reopened.unmount();
+    localStorage.clear();
+  }
+});
+
+it.each([
+  { action: 'restore', versioned: true }, { action: 'discard', versioned: true }, { action: 'restore', versioned: false },
+])('shows a fresh plan offer if the displayed copy changes before $action, versioned=$versioned', async ({ action, versioned }) => {
+  mockSermon = sermon({ p1: 'Stored words.' });
+  const shown = 'The previously shown plan draft.';
+  const fresh = 'The draft changed before I decided.';
+  const previous = draftKey('user-1', 'sermon-1', 'plan:p1', 'previous-editor');
+  saveDraft(previous, shown);
+  const view = await render({ held: async () => false, hold: () => () => undefined });
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  const storage = harness.checkpoints;
+  await userEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
+  await waitFor(() => expect(readDraft(previous)).toBeNull());
+  view.unmount();
+
+  const [{ record: original }] = await storage.listRecoverable('user-1', resource);
+  if (!versioned) {
+    const key = JSON.stringify(['checkpoint', original.owner, original.editorId]);
+    harness.storage.rows.set(key, { ...original, recoveryVersion: undefined });
+  }
+  const reopened = rtlRender(page(queryClient()));
+  try {
+    await screen.findByText(shown);
+    if (action === 'discard') {
+      await userEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryDiscard' }));
+    }
+    const [{ record }] = await storage.listRecoverable('user-1', resource);
+    const session = DataSession.restore(record.checkpoint);
+    session.editPlanCell(planCellOpening(record.checkpoint, 'p1', shown)!, fresh);
+    await storage.put({ ...record, checkpoint: session.checkpoint() });
+
+    await userEvent.click(screen.getByRole('button', {
+      name: action === 'restore' ? 'plan.draftRecoveryRestore' : 'common.discardText.confirm',
+    }));
+    const words = await screen.findByText(fresh);
+    const banner = within(words.closest('[role="status"]') as HTMLElement);
+    expect(banner.getByText('plan.draftRecoveryTitle')).toBeInTheDocument();
+    expect(banner.queryByText(shown)).not.toBeInTheDocument();
+    expect(screen.queryByTitle('plan.save')).not.toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally {
+    reopened.unmount();
+    localStorage.clear();
+  }
 });
 
 it.each([

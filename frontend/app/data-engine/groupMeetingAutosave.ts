@@ -49,7 +49,3 @@ export function readyMeetingAutosave(record: ManualScopeRecord, previous = recor
   return meetings.every(row => typeof row?.id === 'string' && typeof row.date === 'string')
     && canSaveGroupMeeting(meetings, Array.isArray(before.value) ? before.value as unknown as GroupMeetingDate[] : []);
 }
-
-export class PendingMeetingResume extends Error {
-  constructor(readonly receipts: readonly string[]) { super('Wait for the earlier group delivery before resuming'); }
-}

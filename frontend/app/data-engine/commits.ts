@@ -243,7 +243,7 @@ export interface CommitStore {
    * leaves the sweep of retained rows to the next pass, so a page being left writes only what it must keep.
    */
   createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
-    options?: { deferRetention?: true; resumeVersion?: string }): Promise<CommitRequest>;
+    options?: { deferRetention?: true; resumeVersion?: string; resumedServiceInput?: ServiceOrderInput }): Promise<CommitRequest>;
   /** Exact replacement capture and refused-source retirement share one native transaction. */
   createWithMeetingResume?(request: CommitRequest, sourceVersion: string): Promise<CommitRequest>;
   createWithTransfer?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
@@ -723,7 +723,7 @@ export class CommitQueue {
     }
     const capture = async (record: CommitRequest): Promise<CaptureTransferResult> => frozenOptions?.transfer
       ? this.options.store.createWithTransfer!(record, frozenOptions.checkpoint!, frozenOptions.transfer.sources)
-      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention, frozenOptions?.resumeVersion, frozenOptions?.resumeMeetingVersion), retired: [] };
+      : { request: await this.captureRequest(record, frozenOptions?.checkpoint, frozenOptions?.deferRetention, frozenOptions?.resumeVersion, frozenOptions?.resumeMeetingVersion, frozenOptions?.serviceOrderInput), retired: [] };
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
@@ -1066,7 +1066,7 @@ export class CommitQueue {
   }
 
   private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord,
-    deferRetention?: true, resumeVersion?: string, resumeMeetingVersion?: string): Promise<CommitRequest> {
+    deferRetention?: true, resumeVersion?: string, resumeMeetingVersion?: string, serviceOrderInput?: ServiceOrderInput): Promise<CommitRequest> {
     if (resumeMeetingVersion) {
       const resume = this.options.store.createWithMeetingResume;
       if (!resume || checkpoint || resumeVersion) throw new Error('Meeting recovery requires its exact stage capture');
@@ -1074,7 +1074,7 @@ export class CommitQueue {
     }
     if (checkpoint && this.options.store.createWithCheckpoint) {
       return this.options.store.createWithCheckpoint(record, checkpoint,
-        ...(deferRetention || resumeVersion ? [{ deferRetention, resumeVersion }] : []));
+        ...(deferRetention || resumeVersion ? [{ deferRetention, resumeVersion, resumedServiceInput: resumeVersion ? serviceOrderInput : undefined }] : []));
     }
     if (resumeVersion) throw new Error('Automatic draft recovery requires exact checkpoint capture');
     // Custom document-only ports project afterward, without native atomicity.

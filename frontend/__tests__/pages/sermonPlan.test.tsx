@@ -963,9 +963,12 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
 
     renderWithQueryClient(<SermonPlanPage />);
-    await screen.findByTestId('plan-introduction-left-section');
+    // Both generations start from words already visible to the person, not the
+    // transient empty opening before the saved plan reaches these cells.
+    await screen.findByText('Generated Intro Content');
+    await screen.findByText('Generated Main Content');
 
-    const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
+    const generateButtons = screen.getAllByTitle('Regenerate');
     fireEvent.click(generateButtons[0]);
 
     await waitFor(() => {

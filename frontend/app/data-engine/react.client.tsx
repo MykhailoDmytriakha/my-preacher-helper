@@ -1217,6 +1217,7 @@ interface OpenEditor {
 interface RecoveryRequest {
   base: object;
   sourceId: string;
+  shownRecovery?: EditorRecord;
   editorId: string;
   resolve: () => void;
   reject: (error: Error) => void;
@@ -1264,7 +1265,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     const editorId = recovery?.editorId ?? browser.editorId(ref, slot);
     const cancellation = new AbortController();
     setError(null);
-    const editorOptions = { signal: cancellation.signal, autoSaveOnResume: autoSaveRef.current };
+    const editorOptions = { signal: cancellation.signal, autoSaveOnResume: autoSaveRef.current,
+      ...(recovery?.shownRecovery && { shownRecovery: recovery.shownRecovery }) };
     const sourceId = recovery?.sourceId ?? recoverySourceId;
     const opening = sourceId ? browser.engine.recoverEditor(ref, editorId, sourceId, editorOptions) : create
       ? browser.engine.createEditor(ref, editorId, editorOptions)
@@ -1286,6 +1288,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     }).catch(failure => {
       recovery?.reject(failure);
       if (!active) return;
+      if (recovery?.shownRecovery && (failure as { code?: unknown } | null)?.code === 'decision-changed') {
+        setSelection(null);
+        return;
+      }
       // An ordinary opening remains pending while the tab cannot read. Once it can, try again.
       // Recovering a draft is the person's action and still reports its own refusal.
       if (!sourceId && needsConnection(failure)) {
@@ -1379,12 +1385,12 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     cancelScheduledSave();
     return run(editor => editor.save());
   }, [run, cancelScheduledSave]);
-  const recover = useCallback((sourceId: string): Promise<void> => {
+  const recover = useCallback((sourceId: string, shownRecovery?: EditorRecord): Promise<void> => {
     if (!isCurrent() || !browser || !owner || !collection || !id) return Promise.reject(new Error(EDITOR_CHANGED));
     cancelScheduledSave();
     return new Promise((resolve, reject) => {
       requestedRecovery.current?.reject(aborted());
-      const request = { base, sourceId, editorId: recoveryEditorIdentity(browser.editorId({ collection, id }, slot), newClientId()), resolve, reject };
+      const request = { base, sourceId, shownRecovery, editorId: recoveryEditorIdentity(browser.editorId({ collection, id }, slot), newClientId()), resolve, reject };
       requestedRecovery.current = request;
       setSelection(request);
     });
@@ -1727,7 +1733,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
           if (isCurrent()) setError(failure);
           throw failure;
         }
-      } else if (recovery) await recover(recovery.sourceId);
+      } else if (recovery) await recover(recovery.sourceId, recovery.shownRecovery);
       else setAttempt(value => value + 1);
     },
   };
