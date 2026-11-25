@@ -55,6 +55,7 @@ import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointEditorId, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { canSaveSeparateFromRefusedPoint } from './refusedPointManualForm';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { readRecoveredSermonChurch } from './sermonChurchRecovery';
 import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
@@ -134,7 +135,7 @@ export interface DataEngineOptions {
 }
 
 export interface ManagedManualForm {
-  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true; documentChoiceRequired?: true; requestedRecovery?: true }) | null;
+  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true; documentChoiceRequired?: true; independentOfParentAnswer?: true; requestedRecovery?: true }) | null;
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
@@ -3624,9 +3625,12 @@ export class DataEngine {
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
     const intent = (request: CommitRequest): ManualSavedIntent => ({ id: request.id, owner: request.owner, resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor });
     const capture = (): ManualCapture => { active(); return this.captureManual(parent, owner, selection); };
+    const independentOfParentAnswer = (stage: ReturnType<ManualScope['getState']> | undefined, checkpoint: SessionCheckpoint) =>
+      Boolean(stage && !stage.choiceRequired && canSaveSeparateFromRefusedPoint(stage.record, checkpoint, this.commitRecords));
     const hasFailedDelivery = () => {
       const checkpoint = parent.controller!.getState().checkpoint;
-      return Boolean(this.answerForOpenIntent(owner, resource, Object.keys(checkpoint.pending)));
+      return Boolean(this.answerForOpenIntent(owner, resource, Object.keys(checkpoint.pending))
+        && !independentOfParentAnswer(state.scope?.getState(), checkpoint));
     };
     const execute = (action: () => Promise<unknown>): Promise<void> => {
       active();
@@ -3893,6 +3897,7 @@ export class DataEngine {
         const pendingIds = Object.keys(checkpoint.pending);
         const documentChoiceRequired = !exact && hasBranchedOrdinaryAnswer(pendingIds, this.requestsForChoice(owner, pendingIds));
         return { ...form, ...(exact ? { exactChoice: true as const } : {}),
+          ...(!exact && independentOfParentAnswer(form, checkpoint) && { independentOfParentAnswer: true as const }),
           ...(form.record.active && requestedRecovery?.scope === state.scope && requestedRecovery.generation === form.record.generation
             && { requestedRecovery: true as const }),
           ...(documentChoiceRequired ? { documentChoiceRequired: true as const } : {}),

@@ -1,7 +1,7 @@
 import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
-import { deleteSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
+import { addSermonThought, deleteSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
 
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
@@ -23,7 +23,7 @@ import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from 
 import { sermonThoughtPlacementDraft } from '../sermonThoughtPlacementRecovery';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
-import { describeSync } from '../status';
+import { describeManualSync, describeSync } from '../status';
 import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
@@ -2083,6 +2083,89 @@ describe('DataEngine composition', () => {
         if (changed) expect(writes).toEqual(expect.arrayContaining(ids.map(rowId => expect.objectContaining({
           rowId, time: known ? time : clickTime, observedRevision: known ? 1 : 3,
         }))));
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each(['while-queued', 'after-refusal', 'same-field', 'mixed-refusal'] as const)(
+    'isolates the thought form from the earlier point Save (%s)', async timing => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-form-after-point' };
+      const key = keyOf('owner', ref);
+      const first = { id: 'point', title: '', children: [] };
+      const later = { ...first, title: 'Full latest words of the point' };
+      const thought = { id: 'added', date: '2026-11-09T00:00:00.000Z', text: 'New thought for the conclusion', tags: [] };
+      const existing = { id: 'existing', date: thought.date, text: 'Existing thought', tags: [] };
+      const structure = { introduction: [], main: [existing.id], conclusion: [], ambiguous: [] };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
+        preparation: { exegeticalPlan: [] }, thoughts: [existing], structure, thoughtsBySection: structure };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const latest: ResourceSnapshot = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, title: 'Newer sermon title' } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'first');
+      const independent = timing === 'after-refusal' || timing === 'while-queued';
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [first] },
+          ...(timing === 'mixed-refusal' && { thoughts: [{ ...existing, text: 'Mixed private edit' }] }) });
+        await editor.save();
+        const [earlier] = await s.commits.list('owner');
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === earlier.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' } : send(command));
+        s.server.set(key, latest);
+        if (timing !== 'while-queued') {
+          s.engine.setOnline(true);
+          await s.engine.retry();
+          expect((await s.commits.list('owner'))[0]).toMatchObject({ id: earlier.id, state: 'refused' });
+        }
+        const form = timing === 'same-field' ? editor.form('point-field', [['preparation', 'exegeticalPlan']])
+          : editor.form('thought-create:' + thought.id, [['thoughts'], ['structure'], ['thoughtsBySection']]);
+        await form.begin();
+        await form.update(current => timing === 'same-field' ? { ...current, preparation: { exegeticalPlan: [later] } }
+          : addSermonThought(current as unknown as Sermon, thought, 'conclusion') as unknown as DocumentData);
+        const editorState = editor.getState();
+        const parent = describeSync(editorState, editor.getObservation(), editor.getDelivery());
+        if (timing !== 'while-queued') expect(parent.phase).toBe('refused');
+        const formStatus = describeManualSync(form.getState(), editorState, parent, null);
+        expect(formStatus?.canSave).toBe(independent);
+        if (!independent) {
+          await expect(form.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+          expect(form.getState()?.dirty).toBe(true);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await form.save();
+        const creation = (await s.commits.list('owner')).find(command => command.id !== earlier.id);
+        if (creation) expect(creation.predecessor).toBeNull();
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        expect(s.server.get(key)?.value?.thoughts).toMatchObject([thought, existing]);
+        expect(s.server.get(key)?.value?.structure).toMatchObject({ conclusion: [thought.id], main: [existing.id] });
+        const held = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), held.id);
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const compared = point.getState().checkpoint;
+        expect(compared.conflicts.map(({ path }) => path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, compared);
+        await point.save();
+        await s.engine.retry();
+        expect(s.server.get(key)?.value).toMatchObject({ title: 'Newer sermon title', thoughts: [thought, existing],
+          preparation: { exegeticalPlan: [later] } });
+        expect(s.transport.send).toHaveBeenCalledTimes(3);
+        const calls = jest.mocked(s.transport.send).mock.calls.map(([command]) => command.kind === 'update' ? command.changes.map(change => change.path[0]) : []);
+        expect(calls[1]).toEqual(expect.arrayContaining(['thoughts']));
+        expect(calls[1]).not.toContain('preparation');
+        expect(calls[2]).not.toContain('thoughts');
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     },

@@ -49,7 +49,7 @@ export interface SyncStatus {
 }
 
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
-export function describeManualSync(form: (ReturnType<ManualScope['getState']> & { exactChoice?: true; documentChoiceRequired?: true; comparison?: { outlineParent?: { titles: readonly unknown[] } } }) | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
+export function describeManualSync(form: (ReturnType<ManualScope['getState']> & { exactChoice?: true; documentChoiceRequired?: true; independentOfParentAnswer?: true; comparison?: { outlineParent?: { titles: readonly unknown[] } } }) | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
   // A form resolves only its own fields, so dropping a refused change of the whole document is not its
   // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
   // from elsewhere is still offered, as it always was.
@@ -67,11 +67,11 @@ export function describeManualSync(form: (ReturnType<ManualScope['getState']> & 
   if (form.choiceRequired) return describeManualChoice(form, editor, parent, error, presence);
   // Explicit Keep local may include durable corrections to a known failed command.
   // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
-  if (form.dirty && form.durable && ['conflict', 'refused'].includes(parent.phase)) {
+  if (!form.independentOfParentAnswer && form.dirty && form.durable && ['conflict', 'refused'].includes(parent.phase)) {
     return { ...parent, canSave: false, canRemove: false, canAcceptRemote: false };
   }
   // A pristine reopened form must not hide delivery or terminal recovery behind its pinned copy.
-  if (!form.captureFailed && !form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
+  if (!form.independentOfParentAnswer && !form.captureFailed && !form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
     return { ...parent, canSave: false, canRemove: false };
   }
   const { snapshot: observed, deleted } = manualObservation(form, editor, presence);
