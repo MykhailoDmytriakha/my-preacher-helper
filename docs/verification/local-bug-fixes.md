@@ -10661,3 +10661,16 @@ Four new regressions failed before the change. Ten related cases pass, including
 Hidden Chrome with isolated Auth and Firestore started from a refused queue saved in IndexedDB. At 390 px the person kept the saved thought; at 1280 px the person removed it. Both reopened with the expected text, sibling, placement and saved point. The removal was the only thought action offered, and browser request capture proved zero lock commands. The comparison screenshots were visually checked. Evidence is in `artifacts/exegetical-thought-removal-after-lock-20261125/`.
 
 After authorized rollout, use a disposable sermon to lock a thought and then explicitly delete it. Reopen Preparation and Structure and verify the remaining thought and point. Use the emulator for the deliberately refused queue, replacement and stale decision cases.
+
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover placement with later removal or lock
+
+Sermons → Preparation → Exegetical Plan. A refused point blocked review when its later captured Saves moved one thought and removed or locked another. The engine now reads all three kinds of action from the same sequence of captured Saves. Each transition must match the canonical thought operations. Before separating the copies, the engine also reconstructs the whole final order with the surviving placements, removals and locks. A later removal of the moved thought supersedes its earlier placement and is checked against the freshest saved copy before the person decides.
+
+A separate placement keeps its original timestamp and revision when available. Otherwise one directly reproducible move shows a fresh comparison. The old structure case where two moves of one thought cannot be reproduced by the direct final move stays held as an original queue. An undocumented text change also stays held. A replacement thought with the same ID is protected by the existing creation identity check.
+
+Seven new cases failed before the fix. A separate test reproduced the legacy ordering boundary found in independent review. Forty focused tests pass, including both capture and decision orders, a combined request, lock alongside placement, both removal decisions for the previously moved thought, and a same-ID replacement. The broader engine and sermon profile passed 6,082 tests across 320 suites. Changed-file ESLint reported zero errors and 13 warnings. TypeScript and production-mode build passed from the working source over `8e7405cfb`.
+
+Hidden Chrome with isolated Auth and Firestore started from a refused queue saved in IndexedDB. At 1280 px the person deleted one thought and moved another, in that order. At 390 px the person kept both saved versions in reverse order. A second 390 px run removed the moved thought and showed only the removal decision. All three reopened with the expected text, structure, sibling and point. Request capture checked command scopes. The comparison screenshots were visually checked. Evidence is in `artifacts/exegetical-thought-placement-mixed-20261125/`.
+
+After authorized rollout, use a disposable sermon to move one thought and delete another. Reopen Preparation and Structure and check the moved thought's text, position and neighbors. Use the emulator for refused queues, historical ordering and replacement controls.

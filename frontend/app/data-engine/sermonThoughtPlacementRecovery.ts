@@ -3,7 +3,7 @@ import { patchSermonThought } from '@/utils/sermonThoughtEdits';
 import { isActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 import { existingRowField, existingRowFields } from './rowFieldAction';
-import { copySermonThoughtFrame, sermonThoughtFrame as frame } from './sermonThoughtRecoveryFrame';
+import { sermonThoughtFrame } from './sermonThoughtRecoveryFrame';
 import { isThoughtLocation, thoughtOutlineDestinations, THOUGHT_PLACEMENT_POLICY, type ThoughtLocation } from './thoughtPlacementAction';
 
 import type { CommitRequest } from './commits';
@@ -14,7 +14,7 @@ import type { Sermon } from '@/models/models';
 const { birth } = THOUGHT_PLACEMENT_POLICY;
 const target = THOUGHT_PLACEMENT_POLICY.target('outlineLocation');
 type PlacementAction = NonNullable<CommitRequest['thoughtPlacementActions']>[number];
-type Move = { id: string; birth: string; location: ThoughtLocation; action?: PlacementAction };
+export type CapturedThoughtMove = { id: string; birth: string; location: ThoughtLocation; action?: PlacementAction };
 
 function requireThoughtRows(value: unknown): boolean {
   return Array.isArray(value) && value.every(row => object(row) && typeof row.id === 'string'
@@ -33,7 +33,7 @@ export function projectRecoveredThoughtPlacement(value: DocumentData, id: string
   return patchSermonThought(value as unknown as Sermon, id, location) as unknown as DocumentData;
 }
 
-function actualMove(before: DocumentData, after: DocumentData, request: CommitRequest): Move | undefined {
+export function capturedThoughtMove(before: DocumentData, after: DocumentData, request: CommitRequest) {
   const oldLocations = existingRowFields(before.thoughts, target);
   const changes = [...existingRowFields(after.thoughts, target)].filter(([id, location]) => !equalValues(oldLocations.get(id), location));
   if (changes.length !== 1 || (request.thoughtPlacementActions && request.thoughtPlacementActions.length !== 1)) return;
@@ -41,41 +41,38 @@ function actualMove(before: DocumentData, after: DocumentData, request: CommitRe
   if (!location) return;
   const createdAt = existingRowField(before.thoughts, id, birth);
   const proposed = createdAt && projectRecoveredThoughtPlacement(before, id, createdAt, location);
-  if (!proposed || !equalValues(frame(proposed), frame(after))) return;
+  if (!proposed) return;
   const action = request.thoughtPlacementActions?.[0];
   if (action && action.rowId !== id) return;
   const proof = action && action.rowCreatedAt === createdAt && equalValues(action.before, oldLocations.get(id))
     && equalValues(action.after, location) && (action.time === null || isActionTime(action.time)) ? action : undefined;
-  return { id, birth: createdAt, location, action: proof };
+  return { move: { id, birth: createdAt, location, action: proof } satisfies CapturedThoughtMove, proposed };
 }
 
-export function recoverableThoughtPlacements(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
-  const { confirmed, draft } = source;
+export function thoughtPlacementRecoveryCopy(source: SessionCheckpoint, orderedMoves: readonly CapturedThoughtMove[]) {
+  const { confirmed } = source;
   const { value: opening, metadata } = confirmed;
-  const first = chain[0]?.value, last = chain.at(-1)?.value, saved = projected.confirmed.value;
-  if (!metadata || !opening || !draft || !first || !last || !saved || !equalValues(frame(opening), frame(first))
-    || !equalValues(frame(last), frame(draft))) return;
-  const moves = new Map<string, Move>();
-  for (let index = 1; index < chain.length; index += 1) {
-    const request = chain[index], before = chain[index - 1].value, after = request.value;
-    if (!before || !after) return;
-    if (equalValues(frame(before), frame(after)) && !request.thoughtPlacementActions?.length) continue;
-    const move = actualMove(before, after, request);
-    if (!move) return;
+  if (!opening || !metadata || !orderedMoves.length) return;
+  let draft = opening;
+  const moves = new Map<string, CapturedThoughtMove>();
+  for (const move of orderedMoves) {
+    const next = projectRecoveredThoughtPlacement(draft, move.id, move.birth, move.location);
+    if (!next) return;
+    draft = next;
     moves.set(move.id, move);
   }
-  if (!moves.size) return;
-
   const continuation: SessionCheckpoint = {
-    confirmed, draft: copySermonThoughtFrame(opening, last), editGeneration: source.editGeneration,
-    dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
+    confirmed, draft, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
   };
   const proofs: NonNullable<SessionCheckpoint['thoughtPlacementDrafts']> = {};
   for (const [id, move] of moves) {
     const original = readLocation(opening, id);
-    const next = projectRecoveredThoughtPlacement(opening, id, move.birth, move.location);
-    if (!next || !original || equalValues(original, move.location)
-      || (moves.size === 1 && !equalValues(frame(next), frame(last)))) return;
+    if (!original || equalValues(original, move.location)) return;
+    if (moves.size === 1) {
+      // A single recovered choice must reproduce the final move directly from its opening.
+      const direct = projectRecoveredThoughtPlacement(opening, id, move.birth, move.location);
+      if (!direct || !equalValues(sermonThoughtFrame(direct), sermonThoughtFrame(draft))) return;
+    }
     const action = move.action;
     if (action?.observedRevision === metadata.revision && !action.predecessorOperationId && equalValues(action.before, original)) {
       proofs[id] = { generation: metadata.generation, action };
@@ -86,7 +83,7 @@ export function recoverableThoughtPlacements(source: SessionCheckpoint, projecte
     }
   }
   if (Object.keys(proofs).length) continuation.thoughtPlacementDrafts = proofs;
-  return { continuation, restoreStored: (document: DocumentData) => copySermonThoughtFrame(document, saved) };
+  return { key: 'thought-placement', recoveryKind: 'sermon-thought-placement' as const, continuation };
 }
 
 /** Keep a captured move out of delivery if the freshly read thought or destination is gone. */

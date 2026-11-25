@@ -12,7 +12,7 @@ const target = THOUGHT_LOCK_POLICY.target('isLocked');
 const { birth } = THOUGHT_LOCK_POLICY;
 const lockAt = (value: DocumentData, id: string) => existingRowField(value.thoughts, id, target);
 const bornAt = (value: DocumentData, id: string) => existingRowField(value.thoughts, id, birth);
-function withLock(value: DocumentData, id: string, checked: boolean): DocumentData {
+export function projectThoughtLock(value: DocumentData, id: string, checked: boolean): DocumentData {
   const thoughts = replaceExistingRowField(value.thoughts, id, checked, target);
   return thoughts === undefined ? value : { ...value, thoughts };
 }
@@ -33,7 +33,7 @@ export function capturedThoughtLocks(before: DocumentData, after: DocumentData, 
     const evidence = proof && proof.rowCreatedAt === created && proof.before === previous && proof.after === checked
       && (proof.time === null || isActionTime(proof.time)) ? proof : undefined;
     changes.push({ rowId, birth: created, checked, evidence });
-    projected = withLock(projected, rowId, checked);
+    projected = projectThoughtLock(projected, rowId, checked);
   }
   if (!equalValues(sermonThoughtFrame(projected), sermonThoughtFrame(after))
     || new Set(actions.map(({ rowId }) => rowId)).size !== actions.length
@@ -55,7 +55,7 @@ export function thoughtLockRecoveryCopies(source: SessionCheckpoint, target: Res
     // A reversal may equal the old opening. Preserve the last choice against the newer value.
     const compared = !proved && checked === original;
     const continuation: SessionCheckpoint = {
-      confirmed: compared ? target : confirmed, draft: withLock(compared ? saved : opening, rowId, checked),
+      confirmed: compared ? target : confirmed, draft: projectThoughtLock(compared ? saved : opening, rowId, checked),
       dirty: true, editGeneration: source.editGeneration, remoteCandidate: null, conflicts: [], pending: {},
       ...(proved ? { thoughtLockDrafts: { [rowId]: { generation: metadata.generation, action } } }
         : { unreadableRowProofs: [{ field: 'thoughtLockDrafts', rowId, birth, generation: metadata.generation }] }),
@@ -78,7 +78,7 @@ export function recoveredThoughtLock(checkpoint: SessionCheckpoint, saved: Resou
   const { rowId, birth } = address;
   const checked = lockAt(draft, rowId);
   if (checked === undefined || bornAt(confirmed.value, rowId) !== birth || bornAt(draft, rowId) !== birth
-    || !equalValues(withLock(confirmed.value, rowId, checked), draft)) return;
+    || !equalValues(projectThoughtLock(confirmed.value, rowId, checked), draft)) return;
   const before = { rowId, checked };
   if (saved.metadata?.generation !== address.generation) return { ...before, settled: true as const };
   if (!Array.isArray(saved.value.thoughts)) return;
@@ -91,7 +91,7 @@ export function recoveredThoughtLock(checkpoint: SessionCheckpoint, saved: Resou
   const stored = lockAt(saved.value, rowId);
   if (stored === undefined) return;
   if (stored === checked) return { ...before, settled: true as const };
-  return { ...before, stored, settled: false as const, text: row.text, proposed: withLock(saved.value, rowId, checked) };
+  return { ...before, stored, settled: false as const, text: row.text, proposed: projectThoughtLock(saved.value, rowId, checked) };
 }
 
 export function reviewUnavailableThoughtLock(checkpoint: SessionCheckpoint, saved: ResourceSnapshot): SessionCheckpoint {

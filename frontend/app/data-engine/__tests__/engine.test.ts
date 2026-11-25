@@ -1675,15 +1675,17 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
-  it.each(['modal-text-and-tags', 'direct-move', 'multiple-moves', 'mixed-proof-group', 'compare-own', 'compare-saved', 'removed-destination', 'removed-thought', 'known-removed-destination', 'known-removed-thought', 'unrelated-edit'] as const)(
+  it.each(['modal-text-and-tags', 'direct-move', 'multiple-moves', 'mixed-proof-group', 'compare-own', 'compare-saved', 'removed-destination', 'removed-thought', 'known-removed-destination', 'known-removed-thought', 'unrelated-edit', 'legacy-order'] as const)(
     'keeps the thought action available when an earlier new point Save is refused (%s)', async mode => {
       const s = setup({ online: false, nativeChoice: true });
       const ref = { collection: 'sermons', id: 'thought-action-after-point' };
       const key = keyOf('owner', ref);
       const row = { id: 'thought', date: '2026-11-10T00:00:00.000Z', text: 'Opening thought', tags: [],
         outlinePointId: 'body', subPointId: null };
-      const sibling = { ...row, id: 'sibling', text: 'Sibling idea' };
-      const structure = { introduction: [], main: [row.id, sibling.id], conclusion: [], ambiguous: [] };
+      const legacyOrder = mode === 'legacy-order';
+      const firstDestination = legacyOrder ? 'closing' : 'intro';
+      const sibling = { ...row, id: 'sibling', text: 'Sibling idea', outlinePointId: legacyOrder ? 'intro' : 'body' };
+      const structure = { introduction: [], main: legacyOrder ? [row.id] : [row.id, sibling.id], conclusion: [], ambiguous: [] };
       const outline = { introduction: [{ id: 'intro', text: 'Introduction' }], main: [{ id: 'body', text: 'Body' }], conclusion: [{ id: 'closing', text: 'Closing' }] };
       const newPoint = { id: 'point', title: '', children: [] };
       const laterPoint = { ...newPoint, title: 'Full latest words of the new point' };
@@ -1722,7 +1724,7 @@ describe('DataEngine composition', () => {
             { documentMetadata: { time, thoughtTextId: row.id, thoughtTagId: row.id } });
         } else {
           await editor.commit(current => {
-            const moved = patch(current!, { outlinePointId: 'intro', subPointId: null });
+            const moved = patch(current!, { outlinePointId: firstDestination, subPointId: null });
             return mode === 'unrelated-edit'
               ? patchSermonThought(moved as unknown as Sermon, sibling.id, { text: 'Private sibling text' }) as unknown as DocumentData : moved;
           },
@@ -1732,13 +1734,18 @@ describe('DataEngine composition', () => {
         if (isMove) {
           expect(later).toMatchObject({ predecessor: earlier.id, thoughtPlacementActions: [{
             rowId: row.id, rowCreatedAt: row.date, before: { outlinePointId: 'body', subPointId: null },
-            after: { outlinePointId: 'intro', subPointId: null }, time, observedRevision: 1,
+            after: { outlinePointId: firstDestination, subPointId: null }, time, observedRevision: 1,
           }] });
         } else {
           expect(later).toMatchObject({ predecessor: null, value: { preparation: value.preparation },
             thoughtTextActions: [{ rowId: row.id, after: 'Edited thought' }],
             thoughtTagActions: [{ rowId: row.id, tag: 'Follow up', after: true }],
           });
+        }
+        if (legacyOrder) {
+          await editor.commit(current => patch(current!, { outlinePointId: 'intro', subPointId: null }),
+            { kind: 'thought-placement', rowId: row.id, time: { earliestMs: 4000, latestMs: 4010 }, shown: editor.getState().checkpoint });
+          expect(editor.getState().checkpoint.draft?.structure).toMatchObject({ introduction: [sibling.id, row.id] });
         }
         if (multiple) {
           const siblingTime = { earliestMs: 4000, latestMs: 4010 };
@@ -1765,6 +1772,13 @@ describe('DataEngine composition', () => {
         await s.engine.retry();
         const source = (await s.engine.listRecoverable(ref)).find(candidate => candidate.answer === 'refused')!;
         const pointEditor = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), source.id);
+        if (legacyOrder) {
+          const before = pointEditor.getState().checkpoint;
+          await expect(pointEditor.acceptRemote(undefined, before)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(pointEditor.getState().checkpoint).toEqual(before);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
         if (mode === 'unrelated-edit' || mode === 'mixed-proof-group') {
           await expect(pointEditor.acceptRemote(undefined, pointEditor.getState().checkpoint)).rejects.toMatchObject({ code: 'other-changes-first' });
           expect(pointEditor.getState().checkpoint.draft?.thoughts).toMatchObject([{ id: row.id, outlinePointId: 'intro' }, mode === 'mixed-proof-group' ? { id: sibling.id, outlinePointId: 'intro' } : { id: sibling.id, text: 'Private sibling text' }]);
@@ -1816,6 +1830,134 @@ describe('DataEngine composition', () => {
           structure: expectedStructure, thoughtsBySection: expectedStructure,
         });
         expect(s.transport.send).toHaveBeenCalledTimes(!isMove || keepMove ? 3 : 2);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      } finally { s.engine.dispose(); }
+    },
+  );
+
+  it.each(['move-then-remove', 'remove-then-move', 'same-save', 'remove-moved-thought', 'keep-moved-thought',
+    'replaced-moved-thought', 'move-and-lock', 'unproved-text'] as const)(
+    'recovers placement and later thought actions after a refused point (%s)', async mode => {
+      const s = setup({ online: false, nativeChoice: true });
+      const ref = { collection: 'sermons', id: 'thought-placement-and-removal-after-point' };
+      const key = keyOf('owner', ref);
+      const moved = { id: 'moved', date: '2026-11-09T00:00:00.000Z', text: 'Opening words of the moved thought',
+        tags: [], outlinePointId: 'body', subPointId: null };
+      const removed = { ...moved, id: 'removed', text: 'Opening words of the thought to remove' };
+      const neighbor = { ...moved, id: 'neighbor', text: 'Neighbor' };
+      const sameThought = ['remove-moved-thought', 'keep-moved-thought', 'replaced-moved-thought'].includes(mode);
+      const replaced = mode === 'replaced-moved-thought';
+      const locked = mode === 'move-and-lock';
+      const removing = sameThought ? moved : removed;
+      const newest = { ...moved, text: 'Current moved thought text', ...(replaced && { date: '2026-11-20T00:00:00.000Z' }) };
+      const newestRemoved = { ...removed, text: 'Current words of the thought to remove' };
+      const newestNeighbor = { ...neighbor, text: 'New words of the neighbor' };
+      const rows = [moved, removed, neighbor];
+      const structure = { introduction: [], main: rows.map(({ id }) => id), conclusion: [], ambiguous: [] };
+      const outline = { introduction: [{ id: 'intro', text: 'Introduction' }], main: [{ id: 'body', text: 'Body' }], conclusion: [] };
+      const first = { id: 'point', title: '', children: [] }, later = { ...first, title: 'Full point words' };
+      const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 3:16', outline, structure, thoughtsBySection: structure,
+        preparation: { exegeticalPlan: [] }, thoughts: rows };
+      const original: ResourceSnapshot = { ...initial(), resource: ref, value };
+      const latest: ResourceSnapshot = { ...original, metadata: { ...original.metadata!, revision: 2, operationId: 'desktop' },
+        value: { ...value, thoughts: [newest, newestRemoved, newestNeighbor] } };
+      const editorId = editorIdentity('phone', ref, 'sermon', 'source');
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      const remove = (data: DocumentData) => deleteSermonThought(data as unknown as Sermon, removing.id) as unknown as DocumentData;
+      const place = (data: DocumentData) => patchSermonThought(data as unknown as Sermon, moved.id,
+        { outlinePointId: 'intro', subPointId: null }) as unknown as DocumentData;
+      s.server.set(key, original);
+      s.cache.set(key, original);
+      try {
+        const editor = await s.engine.openEditor(ref, editorId);
+        await editor.edit({ ...value, preparation: { exegeticalPlan: [first] } });
+        await editor.save();
+        const [root] = await s.commits.list('owner');
+        if (mode === 'remove-then-move') await editor.commit(current => remove(current!));
+        await editor.commit(current => {
+          const placed = place(mode === 'same-save' ? remove(current!) : current!);
+          return mode === 'unproved-text' ? patchSermonThought(placed as unknown as Sermon, neighbor.id,
+            { text: 'Private unproved words' }) as unknown as DocumentData : placed;
+        }, { kind: 'thought-placement', rowId: moved.id, time, shown: editor.getState().checkpoint });
+        if (mode === 'move-then-remove' || sameThought || mode === 'unproved-text') await editor.commit(current => remove(current!));
+        if (locked) {
+          const shown = editor.getState().checkpoint;
+          await editor.edit({ ...shown.draft!, thoughts: (shown.draft!.thoughts as typeof rows).map(row =>
+            row.id === removed.id ? { ...row, isLocked: true } : row) }, shown,
+          { field: 'thought-lock', rowIds: [removed.id], time: { earliestMs: 4000, latestMs: 4010 } });
+          await editor.save();
+        }
+        const queue = await s.commits.list('owner');
+        expect(queue).toHaveLength(mode === 'same-save' ? 2 : 3);
+        expect(queue.some(request => request.thoughtPlacementActions?.some(action => action.rowId === moved.id))).toBe(true);
+        await editor.edit({ ...editor.getState().checkpoint.draft!, preparation: { exegeticalPlan: [later] } });
+        const record = (await s.checkpoints.read('owner', editorId))!;
+        await s.checkpoints.put({ ...record, checkpoint: { ...record.checkpoint, unreadableExegeticalProofs: [
+          { nodeId: first.id, kind: 'title', generation: 'generation', ancestors: [], pendingAddition: true },
+        ] } });
+        editor.dispose();
+        const send = jest.mocked(s.transport.send).getMockImplementation()!;
+        jest.mocked(s.transport.send).mockImplementation(async command => command.operationId === root.id
+          ? { kind: 'refused', operationId: command.operationId, code: 'decision-changed' }
+          : command.kind === 'update' && command.thoughtLockActions?.length ? send(alignThoughtLockRepresentation(command, s.server.get(key)!)) : send(command));
+        s.server.set(key, latest);
+        s.engine.setOnline(true);
+        await s.engine.retry();
+        const held = (await s.engine.listRecoverable(ref)).find(copy => copy.answer === 'refused')!;
+        const point = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', 'point'), held.id);
+        if (mode === 'unproved-text') {
+          const before = point.getState().checkpoint;
+          await expect(point.acceptRemote(undefined, before)).rejects.toMatchObject({ code: 'other-changes-first' });
+          expect(point.getState().checkpoint).toEqual(before);
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await point.acceptRemote(undefined, point.getState().checkpoint);
+        const compared = point.getState().checkpoint;
+        expect(compared.conflicts.map(issue => issue.path)).toEqual([['preparation', 'exegeticalPlan', 'id:point']]);
+        await point.keepLocal(undefined, compared);
+        await point.save();
+        await s.engine.retry();
+        expect(s.server.get(key)?.value?.thoughts).toEqual(latest.value!.thoughts);
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        expect(copies).toHaveLength(replaced ? 0 : sameThought ? 1 : 2);
+        const open = (scope: string) => s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'sermon', scope),
+          copies.find(copy => copy.id.includes(scope))!.id);
+        const recoverRemoval = async () => {
+          const deletion = await open('sermon-thought-removal');
+          const shown = deletion.getState().checkpoint;
+          expect(shown.conflicts).toMatchObject([{ path: ['thoughts', 'id:' + removing.id], theirs: { value: sameThought ? newest : newestRemoved } }]);
+          if (mode === 'keep-moved-thought') await deletion.acceptRemote(undefined, shown);
+          else await deletion.keepLocal(undefined, shown);
+          deletion.dispose();
+        };
+        const removeFirst = mode === 'remove-then-move';
+        if (removeFirst) await recoverRemoval();
+        if (!sameThought) {
+          const move = await open('sermon-thought-placement');
+          await move.save();
+          await s.engine.retry();
+          move.dispose();
+          expect(s.server.get(key)?.value?.thoughts).toMatchObject([{ id: moved.id, outlinePointId: 'intro', text: newest.text },
+            ...(removeFirst ? [] : [newestRemoved]), newestNeighbor]);
+        }
+        if (!removeFirst && !replaced && !locked) await recoverRemoval();
+        if (locked) {
+          const lock = await open('sermon-thought-lock');
+          await lock.save();
+          lock.dispose();
+        }
+        await s.engine.retry();
+        const saved = latest.value!;
+        const expected = sameThought ? (replaced || mode === 'keep-moved-thought' ? saved : remove(saved))
+          : locked ? place(saved) : remove(place(saved));
+        expect(s.server.get(key)?.value).toMatchObject({
+          thoughts: locked ? [{ ...newest, outlinePointId: 'intro' }, { ...newestRemoved, isLocked: true }, newestNeighbor] : expected.thoughts,
+          structure: expected.structure, thoughtsBySection: expected.thoughtsBySection, preparation: { exegeticalPlan: [later] },
+        });
+        const moves = jest.mocked(s.transport.send).mock.calls.flatMap(([command]) => command.kind === 'update' ? command.thoughtPlacementActions ?? [] : []);
+        expect(moves).toEqual(sameThought ? [] : [expect.objectContaining({ rowId: moved.id, observedRevision: 1, time })]);
+        expect(s.transport.send).toHaveBeenCalledTimes(replaced || mode === 'keep-moved-thought' ? 2 : sameThought ? 3 : 4);
         expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
       } finally { s.engine.dispose(); }
     },

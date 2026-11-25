@@ -7,8 +7,7 @@ import { recoverableSermonChurchAfterRefusal } from './sermonChurchRecovery';
 import { recoverablePreparationChecks } from './sermonPreparationCheckRecovery';
 import { recoverableScratchTail } from './sermonScratchTailRecovery';
 import { recoverableSermonTextAfterRefusal } from './sermonTextRecovery';
-import { recoverableThoughtPlacements } from './sermonThoughtPlacementRecovery';
-import { recoverableThoughtLockAndRemovalTail } from './sermonThoughtTailRecovery';
+import { recoverableThoughtTail } from './sermonThoughtTailRecovery';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -27,8 +26,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   const church = recoverableSermonChurchAfterRefusal(source, projected, chain);
   const checks = recoverablePreparationChecks(source, projected, chain);
   const scratch = recoverableScratchTail(source, projected, chain);
-  const placements = recoverableThoughtPlacements(source, projected, chain);
-  const thoughtEdits = placements ? undefined : recoverableThoughtLockAndRemovalTail(source, projected, chain);
+  const thoughtEdits = recoverableThoughtTail(source, projected, chain);
   const scopes = [
     ...(church ? [{ key: 'church', recoveryKind: 'sermon-church' as const, ...church }] : []),
     ...checks.map(({ field, ...scope }) => ({ key: field, recoveryKind: 'sermon-preparation-check' as const, ...scope })),
@@ -38,7 +36,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
       : { key: field, recoveryKind: 'sermon-header' as const, ...copy }),
   ];
   const restoreStoredFields = (document: DocumentData) => {
-    const afterThoughts = (placements ?? thoughtEdits)?.restoreStored(document) ?? document;
+    const afterThoughts = thoughtEdits?.restoreStored(document) ?? document;
     const afterSketches = scratch?.restoreStored(afterThoughts) ?? afterThoughts;
     return scopes.reduce<DocumentData | undefined>((value, copy) => value && copy.restoreStored(value), afterSketches);
   };
@@ -63,7 +61,7 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
       exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointActions.has(pointActionKey(action.nodeId, action.kind))),
       sermonPreparationTextActions: textActions.length ? Object.fromEntries(textActions) : undefined,
       thoughtLockActions: thoughtEdits ? undefined : request.thoughtLockActions,
-      thoughtPlacementActions: placements ? undefined : request.thoughtPlacementActions,
+      thoughtPlacementActions: thoughtEdits ? undefined : request.thoughtPlacementActions,
       sermonPreparationCheckActions: checkActions.length ? Object.fromEntries(checkActions) : undefined,
       sermonChurchAction: church ? undefined : request.sermonChurchAction,
       sermonTitleAction: textFields.has('title') ? undefined : request.sermonTitleAction,
@@ -72,7 +70,5 @@ export function separateRefusedSermonTail(source: SessionCheckpoint, projected: 
   });
   if (hasOtherCapturedWork || source.exegeticalPointDrafts?.some(action => !pointActions.has(pointActionKey(action.nodeId, action.kind)))) return;
   const copies = scopes.flatMap(scope => scope.continuation ? [{ ...scope, continuation: scope.continuation }] : []);
-  return { checkpoint, copies: [...copies, ...(placements ? [{
-    key: 'thought-placement', continuation: placements.continuation, recoveryKind: 'sermon-thought-placement' as const,
-  }] : []), ...(thoughtEdits?.copies ?? []), ...(scratch?.copies ?? [])] };
+  return { checkpoint, copies: [...copies, ...(thoughtEdits?.copies ?? []), ...(scratch?.copies ?? [])] };
 }

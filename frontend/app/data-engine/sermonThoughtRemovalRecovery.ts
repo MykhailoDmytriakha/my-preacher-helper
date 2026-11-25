@@ -18,7 +18,7 @@ function thoughtRows(value: DocumentData) {
   return indexed;
 }
 
-const removeThought = (value: DocumentData, id: string) =>
+export const projectThoughtRemoval = (value: DocumentData, id: string) =>
   deleteSermonThought(value as unknown as Sermon, id) as unknown as DocumentData;
 
 export function capturedThoughtRemoval(before: DocumentData, after: DocumentData) {
@@ -28,7 +28,7 @@ export function capturedThoughtRemoval(before: DocumentData, after: DocumentData
   if (missing.length !== 1) return;
   const [[rowId, row]] = missing;
   if (typeof row.date !== 'string' || typeof row.text !== 'string') return;
-  return { rowId, row, birth: row.date, text: row.text, proposed: removeThought(before, rowId) };
+  return { rowId, row, birth: row.date, text: row.text, proposed: projectThoughtRemoval(before, rowId) };
 }
 
 export function thoughtRemovalRecoveryCopies(source: SessionCheckpoint, target: ResourceSnapshot, removed: ReadonlyMap<string, string>) {
@@ -38,7 +38,7 @@ export function thoughtRemovalRecoveryCopies(source: SessionCheckpoint, target: 
   if (!metadata || !opening || !current) return;
   return [...removed].flatMap(([rowId, birth]) => current.get(rowId)?.date !== birth ? [] : [{
     key: 'thought-removal:' + rowId, recoveryKind: 'sermon-thought-removal' as const,
-    continuation: { confirmed, draft: removeThought(opening, rowId), editGeneration: source.editGeneration,
+    continuation: { confirmed, draft: projectThoughtRemoval(opening, rowId), editGeneration: source.editGeneration,
       dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
       unreadableRowProofs: [{ field: 'thoughtRemoval', rowId, birth, generation: metadata.generation }],
     } satisfies SessionCheckpoint,
@@ -82,7 +82,7 @@ function removalAgainstStored(checkpoint: SessionCheckpoint, opening: ReturnType
     theirs: { exists: true, value: row }, code: UNREADABLE_ROW_PROOF,
   };
   return { opening: opening.text, stored: row.text, settled: false as const, conflict,
-    proposed: removeThought(target.value, opening.rowId),
+    proposed: projectThoughtRemoval(target.value, opening.rowId),
     identity,
   };
 }
