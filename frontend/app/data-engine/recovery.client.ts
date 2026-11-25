@@ -11,6 +11,7 @@ import { isCouncilOutcome, type CouncilOutcome } from './councilOutcomeAction';
 import { autosaveFieldTargets } from './documentFieldAction';
 import { readManualScopeIdentity } from './editorIdentity';
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
+import { readField } from './fieldValues';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
@@ -148,7 +149,7 @@ const recordSchema = z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(checkpointConflict).default([]),
-    unreadableScalarProof: z.array(z.string()).min(1).max(5).optional(),
+    unreadableScalarProof: z.array(z.string()).min(1).max(ACCOUNT_PREFERENCE_TARGETS.length).optional(),
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts']),
@@ -356,8 +357,20 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
     const collection = isFields(confirmed) && isFields(confirmed.resource) && confirmed.resource.collection;
     if (dropped.length || checkpoint.unreadableScalarProof !== undefined) {
       const held = Array.isArray(checkpoint.unreadableScalarProof) ? checkpoint.unreadableScalarProof : [];
-      const fields = typeof collection === 'string' ? autosaveFieldTargets(collection).filter(target => held.includes(target.field)
+      const fields: string[] = typeof collection === 'string' ? autosaveFieldTargets(collection).filter(target => held.includes(target.field)
         || (dropped.includes(target.draft) && checkpoint[target.draft] === undefined)).map(target => target.field) : [];
+      if (collection === 'users') {
+        const lostRetry = dropped.includes('accountPreferenceRetry') && checkpoint.accountPreferenceRetry === undefined;
+        const retry = value.checkpoint.accountPreferenceRetry;
+        const namedField = isFields(retry) && accountPreferenceField.safeParse(retry.field).success ? retry.field : undefined;
+        const opening = isFields(confirmed) && isFields(confirmed.value) ? confirmed.value as DocumentData : null;
+        const draft = isFields(checkpoint.draft) ? checkpoint.draft as DocumentData : null;
+        for (const { field, path } of ACCOUNT_PREFERENCE_TARGETS) {
+          // When the retry cannot identify its field, keep every possible pending preference under review.
+          if (held.includes(field) || (lostRetry && (!namedField || field === namedField) && opening && draft
+            && !equalValues(readField(opening, path), readField(draft, path)))) fields.push(field);
+        }
+      }
       if (fields.length || checkpoint.unreadableScalarProof !== undefined) checkpoint = { ...checkpoint, unreadableScalarProof: fields.length ? fields : undefined };
     }
     const rawExegeticalProofs = value.checkpoint.exegeticalPointDrafts;

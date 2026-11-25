@@ -813,7 +813,9 @@ export class EditorController {
       this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
       this.pendingCaptures.retire(captures);
+      const preference = !selection && !correction ? readAccountPreferenceComparison(this.session.checkpoint()) : undefined;
       this.session.keepLocal(undefined, choiceTime, undefined, titles);
+      if (preference) this.session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
         const current = this.session.checkpoint();

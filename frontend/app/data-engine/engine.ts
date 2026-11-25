@@ -1831,7 +1831,7 @@ export class DataEngine {
             const reconciled = record && reconcileRecoveryRecord(record, requests);
             const checkpoint = reconciled?.checkpoint;
             if (!checkpoint || Object.keys(checkpoint.pending).length) return reconciled;
-            const review = ['groups', 'councils'].includes(frozen.collection)
+            const review = ['groups', 'councils', 'users'].includes(frozen.collection)
               ? checkpoint.unreadableRowProofs?.length || checkpoint.unreadableScalarProof?.length
               : frozen.collection === 'sermons' ? checkpoint.unreadableExegeticalProofs?.length
                 : frozen.collection === 'serviceOrders' && Object.keys(checkpoint.serviceOrderInputs ?? {}).length;

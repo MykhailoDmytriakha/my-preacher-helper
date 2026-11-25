@@ -48,7 +48,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF } from './unreadableDraftProof';
+import { UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, unreadableScalarPath } from './unreadableDraftProof';
 
 import type { AccountPreferenceField } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -174,7 +174,7 @@ export class DataSession {
     const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
-      const path = [field];
+      const path = unreadableScalarPath(confirmed.resource.collection, field);
       const base = readField(confirmed.value ?? {}, path), mine = readField(draft ?? {}, path), theirs = readField(target.value ?? {}, path);
       return equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_SCALAR_PROOF }];
     });
@@ -844,7 +844,7 @@ export class DataSession {
     const source = this.checkpoint();
     const shown = atChoice ?? draft;
     const scalars = (unreadableScalarProof ?? []).reduce((value, field) => {
-      const path = [field];
+      const path = unreadableScalarPath(confirmed.resource.collection, field);
       if (!equalValues(readField(value, path), readField(shown, path))) return value;
       const opening = readField(confirmed.value!, path);
       return field === 'heldAt' ? withCouncilLifecycle(value, opening) : writeField(value, path, opening);
@@ -1013,8 +1013,9 @@ export class DataSession {
         : withRows && chosenRefs !== undefined ? { ...withRows, scriptureRefs: chosenRefs } : withRows;
       const reviewedScalars = reviewingUnreadableProof && explicit && this.state.draft
         ? this.state.unreadableScalarProof?.reduce((value, field) => {
-          const local = readField(this.state.draft!, [field]);
-          return field === 'heldAt' ? withCouncilLifecycle(value, local) : writeField(value, [field], local);
+          const path = unreadableScalarPath(candidate.resource.collection, field);
+          const local = readField(this.state.draft!, path);
+          return field === 'heldAt' ? withCouncilLifecycle(value, local) : writeField(value, path, local);
         }, explicit) : undefined;
       const withScalars = reviewedScalars ?? explicit;
       const withReviewedRows = reviewingRows && withScalars ? this.state.unreadableRowProofs?.reduce((value, address) => {

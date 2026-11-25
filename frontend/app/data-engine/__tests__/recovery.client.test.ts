@@ -1,3 +1,4 @@
+import { readAccountPreferenceComparison } from '../accountPreference';
 import { EditorController, type CheckpointRecoveryStore, type EditorRecord } from '../controller';
 import { uncapturedAutosaveFields } from '../documentFieldAction';
 import { captureExegeticalPointActions } from '../exegeticalPointCapture';
@@ -162,6 +163,55 @@ describe('Explicit checkpoint recovery', () => {
     expect(unreadable.checkpoint.accountPreferenceRetry).toBeUndefined();
     expect(unreadable.checkpoint.draft).toEqual(source.checkpoint.draft);
     takeDroppedProof('accountPreferenceRetry');
+  });
+
+  it.each(['bad-clock', 'bad-field', 'bad-field-with-two-changes'] as const)('recovers a settings choice with %s without sending an unguarded write', async damage => {
+    const source = record();
+    const ref = { collection: 'users', id: 'owner' };
+    const opening = { language: 'en', reading: { crossReferences: { mode: 'main', show: true } } };
+    const draft = { ...opening, language: damage === 'bad-field-with-two-changes' ? 'uk' : 'en',
+      reading: { crossReferences: { mode: 'all', show: true } } };
+    const metadata = { protocol: 1 as const, generation: 'settings-gen', revision: 8, deleted: false };
+    const raw = { ...source, checkpoint: { ...source.checkpoint,
+      confirmed: { resource: ref, value: opening, metadata }, draft,
+      accountPreferenceRetry: damage === 'bad-clock'
+        ? { field: 'reading.crossReferences.mode', time: { earliestMs: 2000, latestMs: 1000 } }
+        : { field: 'reading.unknownField', time: null },
+    } };
+
+    const { checkpoint } = validateRecoveryRecord(raw, 'owner', 'source');
+    expect(checkpoint.draft).toEqual(draft);
+    takeDroppedProof('accountPreferenceRetry');
+    expect(checkpoint.accountPreferenceRetry).toBeUndefined();
+    if (damage === 'bad-field-with-two-changes') {
+      expect(checkpoint.conflicts.map(({ path }) => path)).toEqual([['language'], ['reading', 'crossReferences', 'mode']]);
+    } else {
+      expect(readAccountPreferenceComparison(checkpoint)).toMatchObject({
+        field: 'reading.crossReferences.mode', mine: 'all', stored: 'main',
+      });
+    }
+    const session = DataSession.restore(checkpoint);
+    expect(session.prepare('unreviewed', 'owner')).toBeNull();
+    session.acceptRemote();
+    expect(session.checkpoint()).toMatchObject({ draft: opening, dirty: false, conflicts: [] });
+
+    if (damage === 'bad-field-with-two-changes') return;
+    const { store } = storeWith({ ...source, checkpoint });
+    const transport: EngineTransport = { read: jest.fn(), send: jest.fn() };
+    const runtime = new DataEngineRuntime({ transport, journal: { list: async () => [], put: jest.fn(), remove: jest.fn() } });
+    runtime.setOwner('owner');
+    const editor = await EditorController.open({ owner: 'owner', editorId: 'source', snapshot: checkpoint.confirmed,
+      store, runtime, operationId: () => 'recovered-settings', isCurrentOwner: owner => owner === 'owner' });
+    try {
+      const time = { earliestMs: 3000, latestMs: 3010 };
+      await editor.keepLocal(undefined, undefined, editor.captureRecoveryChoice(), time);
+      expect(editor.getState().checkpoint).toMatchObject({ draft, conflicts: [],
+        accountPreferenceRetry: { field: 'reading.crossReferences.mode', time } });
+      expect(transport.send).not.toHaveBeenCalled();
+    } finally {
+      editor.dispose();
+      runtime.setOwner(null);
+    }
   });
 
   it('validates complete checkpoints including conflicts, pending values and command owner binding', () => {
