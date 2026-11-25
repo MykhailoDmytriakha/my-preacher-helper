@@ -25,8 +25,8 @@ import { groupStatusOutsideChoice, withQueuedGroupScalarProofs, withSubmittedSca
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { keepUncontestedDocumentText, manualSeriesTextChoiceFields, readDocumentTextChoice, retryPrayerTextChoice } from './documentTextChoice';
 import { requiredDomainTargets } from './domainPolicy';
-import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
-import { canRebaseRefusedPointTail, hasLaterPendingExegeticalTitle } from './exegeticalPointCapture';
+import { areDifferentTabManualParents, editorSlot, manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
+import { canRebaseRefusedPointTail, hasLaterPendingExegeticalTitle, separateRefusedPointTitle } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { isOrderedGroupFlowText } from './groupFlowTitleAction';
@@ -1255,14 +1255,6 @@ export class EditorController {
       && hasLaterPendingExegeticalTitle(shown.checkpoint, planTail.id) ? ordinary : undefined;
     let savedPlan: ResourceSnapshot | undefined;
     if (refusedPoint) {
-      // A later Save can share this decision only if its ordered fields belong to the point being reviewed.
-      const pointIds = new Set((shown.checkpoint.unreadableExegeticalProofs ?? []).map(address => address.nodeId));
-      const later = refusedPoint.scope.slice(1);
-      if (later.length && (later.some(request => request.sermonNoteText || hasTimedAncestor({ ...request,
-        exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !pointIds.has(action.nodeId)),
-      })) || shown.checkpoint.exegeticalPointDrafts?.some(action => !pointIds.has(action.nodeId)))) {
-        throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
-      }
       const live = await this.options.readWriteTarget?.(shown.checkpoint.confirmed.resource);
       this.assertCurrent();
       if (!live?.value || !canReplaceSnapshot(shown.checkpoint.remoteCandidate ?? shown.checkpoint.confirmed, live)) {
@@ -1411,11 +1403,22 @@ export class EditorController {
           const retirement = retired.find(request => request.id === rootId)!;
           retained.applyCommit(retirement);
           const checkpoint = retained.checkpoint();
-          if (refusedPoint.scope.length > 1 && !canRebaseRefusedPointTail(captured.value, decided.draft, checkpoint)) {
+          const hasTail = refusedPoint.scope.length > 1;
+          const pointOnly = !hasTail || canRebaseRefusedPointTail(captured.value, decided.draft, checkpoint);
+          const separate = pointOnly ? undefined : separateRefusedPointTitle(decided, checkpoint, refusedPoint.scope);
+          const covered = new Set(decided.unreadableExegeticalProofs?.map(address => address.nodeId));
+          if (separate) covered.add(separate.id);
+          const otherSavedWork = refusedPoint.scope.slice(1).some(request => request.sermonNoteText || hasTimedAncestor({ ...request,
+            exegeticalPlanActions: request.exegeticalPlanActions?.filter(action => !covered.has(action.nodeId)),
+          }));
+          if ((!pointOnly && !separate) || otherSavedWork || hasTail && decided.exegeticalPointDrafts?.some(action => !covered.has(action.nodeId))) {
             throw Object.assign(new Error('The later saved work needs its own review'), { code: 'other-changes-first' });
           }
-          projected = { ...record, checkpoint, completedCommits: [...completed] };
-          return projected;
+          projected = { ...record, checkpoint: separate?.checkpoint ?? checkpoint, completedCommits: [...completed] };
+          if (!separate) return projected;
+          const independent: EditorRecord = { owner: record.owner, editorId: manualChoiceRecoveryIdentity(rootId, separate.id),
+            checkpoint: separate.continuation, prepared: null, unfinalized: [], autoSaveOnResume: false };
+          return { editorRecords: [projected, independent], manualRecoveries: [] };
         }
         const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
           && source!.pending[request.id] && request.serviceOrderStepPlacement);

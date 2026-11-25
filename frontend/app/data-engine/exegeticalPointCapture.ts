@@ -225,6 +225,75 @@ export function canRebaseRefusedPointTail(before: DocumentData | null, draft: Do
   return !merged.conflicts.length && equalValues(merged.value.value, saved) && equalValues(projectedTail, saved);
 }
 
+function titleOnDocument(data: DocumentData, id: string, version: ExegeticalPointVersion): DocumentData | undefined {
+  const plan = exegeticalPlan(data.preparation);
+  const preparation = plan && projectExegeticalPoint(data.preparation, plan, id, version.ancestors, version, 'title');
+  return preparation && writeField(data, ['preparation'], preparation);
+}
+
+function sameExegeticalPoint(first: ExegeticalPointVersion, second: ExegeticalPointVersion): boolean {
+  return equalValues([first.point, first.ancestors], [second.point, second.ancestors]);
+}
+
+/** Recover a separately captured title over its own opening, outside the choice about the refused point. */
+export function separateRefusedPointTitle(source: SessionCheckpoint, projected: SessionCheckpoint, chain: readonly CommitRequest[]) {
+  const { confirmed, draft } = source;
+  const saved = projected.confirmed.value;
+  const before = source.pending[chain[0]?.id]?.value;
+  const opening = exegeticalPlan(confirmed.value?.preparation);
+  const submitted = exegeticalPlan(before?.preparation);
+  const local = exegeticalPlan(draft?.preparation);
+  const live = exegeticalPlan(saved?.preparation);
+  if (!confirmed.metadata || !confirmed.value || !before || !draft || !projected.draft || !opening || !submitted || !local || !live) return undefined;
+  const comparedIds = new Set(projected.unreadableExegeticalProofs?.map(address => address.nodeId));
+  const others = [...opening.points.entries.keys()].filter(id => !comparedIds.has(id)
+    && changedExegeticalPoint(submitted, local, id) === 'title');
+  if (others.length !== 1) return undefined;
+  const [id] = others;
+  const original = exegeticalPointVersion(opening, id);
+  const start = exegeticalPointVersion(submitted, id);
+  const mine = exegeticalPointVersion(local, id);
+  const stored = exegeticalPointVersion(live, id);
+  if (!original || !start || !mine || !stored || !sameExegeticalPoint(original, start)) return undefined;
+
+  const latest = exegeticalPlan(chain.at(-1)?.value?.preparation);
+  const captured = latest && exegeticalPointVersion(latest, id);
+  if (!captured || !sameExegeticalPoint(mine, captured)) return undefined;
+  const pointDraft = titleOnDocument(confirmed.value, id, mine);
+  const cleanBefore = titleOnDocument(before, id, stored);
+  const cleanLocal = titleOnDocument(draft, id, stored);
+  const cleanDraft = titleOnDocument(projected.draft, id, stored);
+  if (!pointDraft || !cleanBefore || !cleanLocal || !cleanDraft) return undefined;
+  const checkpoint = { ...projected, draft: cleanDraft };
+  if (!canRebaseRefusedPointTail(cleanBefore, cleanLocal, checkpoint)) return undefined;
+
+  const lastEdit = chain.findLast((request, index) => {
+    if (!index) return false;
+    const previous = exegeticalPlan(chain[index - 1].value?.preparation);
+    const next = exegeticalPlan(request.value?.preparation);
+    return previous && next && changedExegeticalPoint(previous, next, id) === 'title';
+  });
+  if (!lastEdit) return undefined;
+  const address = { nodeId: id, kind: 'title' as const, generation: confirmed.metadata.generation, ancestors: original.ancestors };
+  const capturedStamp = lastEdit.exegeticalPlanActions?.find(action => action.nodeId === id);
+  const staged = source.exegeticalPointDrafts?.find(action => action.nodeId === id);
+  const stamp = staged ?? capturedStamp;
+  const openingRevision = lastEdit.baseline.metadata?.revision;
+  const capturedOpening = exegeticalPlan(lastEdit.baseline.value?.preparation);
+  const capturedPoint = capturedOpening && exegeticalPointVersion(capturedOpening, id);
+  const time = stamp?.time === null ? null : stamp && boundedActionTime(stamp.time);
+  const proof = stamp?.kind === 'title' && stamp.observedRevision === openingRevision && openingRevision === confirmed.metadata.revision
+    && !stamp.predecessorOperationId && time !== undefined && capturedPoint && sameExegeticalPoint(original, capturedPoint)
+    && (!staged || staged.generation === address.generation && matchesResult(local, staged))
+    ? { ...address, observedRevision: stamp.observedRevision, title: mine.point.title as string, time } : undefined;
+  if (stamp && !proof) return undefined;
+  const continuation: SessionCheckpoint = {
+    confirmed, draft: pointDraft, editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null,
+    ...(proof ? { exegeticalPointDrafts: [proof] } : { unreadableExegeticalProofs: [address] }),
+  };
+  return { id, checkpoint, continuation };
+}
+
 export function readUnreadableExegeticalChoice(checkpoint: SessionCheckpoint, nodeId: string) {
   for (const address of checkpoint.unreadableExegeticalProofs ?? []) {
     const choice = unreadableExegeticalChoice(checkpoint, address);

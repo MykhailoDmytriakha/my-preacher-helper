@@ -1046,15 +1046,25 @@ describe('DataEngine composition', () => {
       expect(source).toBeDefined();
       const reopened = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'review'), source!.id);
       const openingReview = reopened.getState().checkpoint;
-      if (independentIntent) {
+      if (independentIntent && !otherPointEdit) {
         await expect(reopened.acceptRemote(undefined, openingReview)).rejects.toMatchObject({ code: 'other-changes-first' });
         expect(reopened.getState().checkpoint.pending).toEqual(openingReview.pending);
         expect(reopened.getState().checkpoint.draft).toEqual(openingReview.draft);
         expect(s.transport.send).toHaveBeenCalledTimes(1);
         const tail = (await s.commits.list('owner')).find(request => request.predecessor);
         expect(tail?.state).toBe('queued');
-        if (side === 'captured-point-proof') expect(tail?.exegeticalPlanActions).toMatchObject([{ nodeId: sibling.id, observedRevision: 1, time: { earliestMs: 3000, latestMs: 3010 } }]);
         return;
+      }
+      if (side === 'captured-point-proof') {
+        // An interrupted split must leave both original requests available for retry.
+        s.storage!.writeFailureFor = key => Array.isArray(key) && key[0] === 'checkpoint'
+          && String(key[2]).startsWith('["manual-choice-recovery",');
+        try {
+          await expect(reopened.acceptRemote(undefined, openingReview)).rejects.toThrow();
+        } finally { s.storage!.writeFailureFor = undefined; }
+        expect(reopened.getState().checkpoint.pending).toEqual(openingReview.pending);
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+        expect(s.transport.send).toHaveBeenCalledTimes(1);
       }
       await reopened.acceptRemote(undefined, saves > 1 ? openingReview : undefined);
       const reviewed = reopened.getState().checkpoint;
@@ -1062,14 +1072,45 @@ describe('DataEngine composition', () => {
       expect(reviewed.conflicts.map(conflict => conflict.path)).toEqual([['preparation', 'exegeticalPlan', 'id:added']]);
       expect(reviewed.draft?.preparation).toMatchObject({ authorIntent, exegeticalPlan: expect.arrayContaining([{ ...point, title: 'Written after Save' }]) });
       expect(s.transport.send).toHaveBeenCalledTimes(1);
-      if (side === 'mine') await reopened.keepLocal(undefined, reviewed);
+      if (otherPointEdit) {
+        expect(reviewed.draft?.preparation).toMatchObject({ exegeticalPlan: expect.arrayContaining([sibling]) });
+        const copies = await s.engine.listRecoveryChoices(ref, true);
+        expect(copies).toHaveLength(1);
+        expect(copies[0].record.checkpoint.draft?.preparation).toMatchObject({ exegeticalPlan: [existing] });
+        if (side === 'captured-point-proof') expect(copies[0].record.checkpoint.exegeticalPointDrafts).toMatchObject(
+          [{ nodeId: sibling.id, observedRevision: 1, time: { earliestMs: 3000, latestMs: 3010 } }]);
+      }
+      const keepNewest = side === 'mine' || side === 'captured-point-proof';
+      if (keepNewest) await reopened.keepLocal(undefined, reviewed);
       else await reopened.acceptRemote(undefined, reviewed);
       jest.mocked(s.transport.send).mockImplementation(send);
       await reopened.save();
       await s.engine.retry();
       const accepted = s.server.get(keyOf('owner', ref));
-      const settled = side === 'mine' ? [newNeighbor, { ...point, title: 'Written after Save' }] : [newNeighbor];
+      const settled = keepNewest ? [newNeighbor, { ...point, title: 'Written after Save' }] : [newNeighbor];
       expect(accepted?.value?.preparation).toEqual(value(settled, authorIntent).preparation);
+      if (otherPointEdit) {
+        const [copy] = await s.engine.listRecoveryChoices(ref, true);
+        const continuation = await s.engine.recoverEditor(ref, editorIdentity('phone', ref, 'core', 'independent-point'), copy.id);
+        if (side === 'captured-point-proof') {
+          await continuation.save();
+          await s.engine.retry();
+          const writes = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+          expect(writes).toHaveLength(3);
+          expect(writes[2]).toMatchObject({ exegeticalPlanActions: [
+            { nodeId: sibling.id, observedRevision: 1, time: { earliestMs: 3000, latestMs: 3010 } },
+          ] });
+          expect(s.server.get(keyOf('owner', ref))?.value?.preparation).toEqual(value([existing, settled[1]], authorIntent).preparation);
+        } else {
+          const other = continuation.getState().checkpoint;
+          expect(other.conflicts).toMatchObject([{ path: ['preparation', 'exegeticalPlan', 'id:sibling'],
+            mine: { value: { title: 'Existing point edited offline' } }, theirs: { value: { title: sibling.title } } }]);
+          await continuation.acceptRemote(undefined, other);
+          await s.engine.retry();
+          expect(s.transport.send).toHaveBeenCalledTimes(1);
+        }
+        expect(await s.engine.listRecoveryChoices(ref, true)).toEqual([]);
+      }
     } finally { s.engine.dispose(); }
   });
 
