@@ -47,6 +47,49 @@ describe('manual form scope', () => {
     expect(restored.getState().dirty).toBe(false);
   });
 
+  it('opens the first meeting form over a recovered description without adopting a view-only empty list', async () => {
+    const base = { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], description: 'Stored words' };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' }, value: base });
+    test.captured.checkpoint.draft = { ...base, description: 'Recovered words', meetingDates: [] };
+    test.captured.checkpoint.dirty = true;
+    const scope = ManualScope.begin(test.options);
+    expect(scope.getState()).toMatchObject({ dirty: false, record: { stage: [{ exists: false }], baseline: { value: base } } });
+    expect(scope.getState().value).not.toHaveProperty('meetingDates');
+    expect(test.save).not.toHaveBeenCalled();
+
+    const meeting = { id: 'first', date: '2026-12-24', createdAt: '2026-11-25' };
+    await scope.update(value => ({ ...value, meetingDates: [meeting] }));
+    await scope.save();
+    expect(test.save).toHaveBeenCalledTimes(1);
+    expect(test.save.mock.calls[0][1].draft).toMatchObject({ description: 'Stored words', meetingDates: [meeting] });
+  });
+
+  it('still refuses a meeting form if the document editor owns a changed meeting list', () => {
+    const meeting = { id: 'first', date: '2026-12-24', createdAt: '2026-11-25' };
+    const base = { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [] };
+    const changes: [DocumentData, DocumentData][] = [
+      [base, { ...base, meetingDates: [meeting] }],
+      [{ ...base, meetingDates: [meeting] }, { ...base, meetingDates: [] }],
+    ];
+    for (const [before, after] of changes) {
+      const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' }, value: before });
+      test.captured.checkpoint.draft = after;
+      expect(() => ManualScope.begin(test.options)).toThrow('An unsaved editor already owns a selected field');
+      expect(test.save).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does not treat undo of a captured first meeting as a view-only empty list', () => {
+    const base = { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [] };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' }, value: base });
+    const meeting = { id: 'first', date: '', createdAt: '2026-11-25' };
+    test.captured.checkpoint.pending.first = { generation: 1, value: { ...base, meetingDates: [meeting] } };
+    test.captured.checkpoint.draft = { ...base, meetingDates: [] };
+    test.captured.checkpoint.editGeneration = 2;
+    test.captured.checkpoint.dirty = true;
+    expect(() => ManualScope.begin(test.options)).toThrow('An unsaved editor already owns a selected field');
+  });
+
   it('recognizes a meeting correction as durable when no field-action evidence is available', async () => {
     const meeting = { id: 'meeting', date: '2026-12-13', location: 'Hall', createdAt: '2026-11-08' };
     const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },

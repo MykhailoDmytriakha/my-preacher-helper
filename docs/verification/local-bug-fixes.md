@@ -10746,3 +10746,13 @@ Studies → note. Cancelling a queued body Save could remove a separately author
 Six cases failed before their corresponding corrections. Two further tests caught proof loss when carrying the field to a separate recovery copy or back to a projected editor. The related Jest profile passed 3,971 tests in 239 suites. TypeScript, changed-file ESLint, production-mode build and independent review passed. Two hidden Chrome scenarios used isolated Auth and Firestore. Each sent one title-only command and kept the original body after reload. The screenshots were inspected and all stand ports closed. Evidence is in `artifacts/held-field-cancellation-20261125/`.
 
 After authorized rollout, verify later fields on disposable notes after deciding an earlier draft. Use the emulator for intentionally inconsistent cached checkpoints and a controlled delay while the earlier Save registers.
+
+## BUG-20261120-group-legacy-description-recovery-meeting-field-warning · Open the first meeting form after description recovery
+
+Groups → group. The editor displayed an omitted meeting list as empty. Editing the description copied that default into the document draft, and the first meeting form interpreted it as a field already owned by another editor. The group writer retains the omitted field. Recovery removes this display default from an unsubmitted legacy draft, and the form opens against the original stored selection. It still protects real meeting changes, including undo of a first meeting that remains queued.
+
+Three tests reproduced the old behavior before the fix. One additional regression guards the genuine pending undo identified by independent review. The related profile passed 4,215 tests in 235 suites. TypeScript, changed-file ESLint and the production build passed.
+
+Hidden Chrome on isolated Auth and Firestore reproduced the extra warning on the previous revision. The fixed revision showed only the actual description decision. The first command changed the description alone and kept the meeting list absent. A separate location edit created the first meeting with an empty date. Both fields persisted on reload. Visual evidence, command paths, and standby cleanup are in `artifacts/legacy-group-meeting-warning-20261125/`.
+
+After an authorized rollout, repeat on disposable group data with a legacy draft, confirm the description choice, and add the location of an undated first meeting.

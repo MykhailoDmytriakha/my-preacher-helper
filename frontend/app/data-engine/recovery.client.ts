@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
+import { isEmptyGroupMeetingDefault } from '@/utils/groupMeeting';
 import { isPreparationConfirmation, isPreparationTextField, type PreparationConfirmation, type PreparationTextField } from '@/utils/preparationFieldValues';
 import { isSermonTextRecoveryField, SERMON_TEXT_RECOVERY_FIELDS, type SermonTextRecoveryField } from '@/utils/sermonTextRecoveryFields';
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
@@ -646,6 +647,13 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   const { preparationTextRetry: legacyRetry, ...decoded } = record.checkpoint;
   const competingRetries = decoded.sermonTextRetry && legacyRetry && !equalValues(decoded.sermonTextRetry, legacyRetry);
   const checkpoint: SessionCheckpoint = { ...decoded, draft: ownedDocument(decoded.draft, createIntent), pending, conflicts, groupTextReview: groupReview };
+  // Old group editors could stage their view's empty default alongside unrelated words.
+  if (ref.collection === 'groups' && checkpoint.confirmed.value && checkpoint.draft
+    && isEmptyGroupMeetingDefault(checkpoint.confirmed.value.meetingDates, checkpoint.draft.meetingDates)
+    && !prepared && !record.unfinalized.length && !Object.keys(pending).length && !retainedManualChoice
+    && !checkpoint.groupMeetingReview && !conflicts.some(({ path }) => path[0] === 'meetingDates')) {
+    delete checkpoint.draft.meetingDates;
+  }
   holdIncompatibleAutosaveProofs(checkpoint);
   const church = checkpoint.sermonChurchRecovery;
   if (church && !validSermonChurchRecovery(checkpoint, church)) {

@@ -1,3 +1,5 @@
+import { isEmptyGroupMeetingDefault } from '@/utils/groupMeeting';
+
 import { CaptureContinuations } from './captureContinuations';
 import { datedRowTarget, stagedMeetingDate, stageMeetingDate } from './datedRowAction';
 import { groupMeetingForm, normalizeGroupMeetingDraft, readyMeetingAutosave } from './groupMeetingAutosave';
@@ -610,8 +612,12 @@ function captureRecord(options: ScopeOptions, generation: number): ManualScopeRe
     const baseline = captured.checkpoint.confirmed;
     const predecessor = selectPredecessor(options, captured);
     const ancestor = validateAncestor(baseline, predecessor, options);
-    const stage = options.selection.map(path => readSelection(captured.checkpoint.draft, path));
-    if (stage.some((value, index) => !equalValues(value, readSelection(ancestor, options.selection[index])))) {
+    const stage = options.selection.map(path => readSelection(ancestor, path));
+    const shown = options.selection.map(path => readSelection(captured.checkpoint.draft, path));
+    const emptyMeetingDefault = groupMeetingForm(options.resource, options.selection)
+      && isEmptyGroupMeetingDefault(stage[0].value, shown[0].value)
+      && !Object.values(captured.checkpoint.pending).some(({ value }) => Array.isArray(value?.meetingDates) && value.meetingDates.length > 0);
+    if (!emptyMeetingDefault && !equalValues(shown, stage)) {
       throw new Error('An unsaved editor already owns a selected field');
     }
     return { kind: 'manual', version: 1, owner: options.owner, resource: copy(options.resource), scopeId: options.scopeId,

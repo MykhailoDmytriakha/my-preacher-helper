@@ -50,3 +50,16 @@ it('refuses editing a deleted document rather than resurrecting it', async () =>
   expect(result.current.group).toBeNull();
   await expect(result.current.updateGroupDetail({ title: 'Return' })).rejects.toThrow('not available'); expect(read()).toBeNull();
 });
+it('leaves a legacy group without meeting dates unchanged when editing its description', async () => {
+  const { meetingDates: _dates, ...legacy } = stored();
+  const { result, read } = setup(legacy);
+  expect(result.current.group?.meetingDates).toEqual([]);
+  await act(async () => { await result.current.updateGroupDetail({ description: 'New description' }); });
+  expect(read()).toMatchObject({ description: 'New description' });
+  expect(read()).not.toHaveProperty('meetingDates');
+  await act(async () => {
+    await result.current.addMeetingDate({ id: 'first', date: '2026-12-24' });
+    await result.current.removeMeetingDate('first');
+  });
+  expect(read()?.meetingDates).toEqual([]);
+});

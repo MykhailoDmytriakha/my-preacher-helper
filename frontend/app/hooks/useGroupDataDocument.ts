@@ -7,6 +7,7 @@ import { captureGroupStepPlacement, projectCapturedGroupStep, useDataDocument, u
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateGroup, normalizeStoredGroupFlow } from '@/utils/groupDocument';
+import { isEmptyGroupMeetingDefault } from '@/utils/groupMeeting';
 
 import type { DocumentUpdateOptions } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
@@ -36,7 +37,8 @@ export function useGroupDataDocument(groupId: string) {
       throw new Error('Group identity and membership are not editable fields');
     }
     const { id: _id, ...value } = next;
-    return deepCleanUndefined({ ...value, flow: normalizeStoredGroupFlow(value.flow),
+    const meetingDates = isEmptyGroupMeetingDefault(current.meetingDates, value.meetingDates) ? undefined : value.meetingDates;
+    return deepCleanUndefined({ ...value, meetingDates, flow: normalizeStoredGroupFlow(value.flow),
       updatedAt: new Date().toISOString() }) as unknown as DocumentData;
   }, [groupId]);
   const update = useCallback(async (mutate: (current: Group) => Group, options?: DocumentUpdateOptions) => {

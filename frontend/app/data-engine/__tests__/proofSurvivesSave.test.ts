@@ -1683,3 +1683,25 @@ it.each(['separate recovery', 'same editor'] as const)('preserves a newer scalar
     groupTitleAction: { before: base.title, after: draft.title, observedRevision: 1 },
   });
 });
+
+it.each(['view default', 'after captured meeting'] as const)('recovers empty legacy group meeting lists as %s', async kind => {
+  const resource = { collection: 'groups', id: 'legacy-meeting-list' };
+  const value = { userId: 'owner', title: 'Legacy group', description: 'Opening description', status: 'draft', templates: [], flow: [] };
+  const confirmed = { resource, value, metadata: { protocol: 1 as const, generation: 'g', revision: 1, deleted: false } };
+  const session = new DataSession(confirmed);
+  let request: CommitRequest | undefined;
+  if (kind === 'after captured meeting') {
+    const submitted = { ...value, meetingDates: [{ id: 'meeting', date: '', createdAt: '2026-11-25' }] };
+    session.edit(submitted);
+    request = { id: 'first-meeting', owner: 'owner', editorId: 'legacy-group', editGeneration: session.checkpoint().editGeneration,
+      baseline: confirmed, working: confirmed, value: submitted, intended: submitted, predecessor: null, revision: 0,
+      initialized: false, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+    session.applyCommit(request);
+  }
+  session.edit({ ...value, description: 'Private description', meetingDates: [] });
+  const recovered = (await throughDeviceStorage({ owner: 'owner', editorId: 'legacy-group', checkpoint: session.checkpoint(),
+    prepared: null, unfinalized: [] }, request)).checkpoint;
+  expect(recovered.draft?.description).toBe('Private description');
+  if (kind === 'view default') expect(recovered.draft).not.toHaveProperty('meetingDates');
+  else expect(recovered.draft?.meetingDates).toEqual([]);
+});

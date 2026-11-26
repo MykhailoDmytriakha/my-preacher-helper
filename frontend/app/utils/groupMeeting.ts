@@ -12,6 +12,11 @@ export function groupMeetingDay(value: string): string | null {
 export const isOrderedMeetingFieldValue = (value: unknown): value is string | null =>
   value === null || (typeof value === 'string' && value.length <= 1024);
 
+/** The editor renders a missing meeting list as empty without authoring a change. */
+export function isEmptyGroupMeetingDefault(opening: unknown, displayed: unknown): boolean {
+  return opening === undefined && Array.isArray(displayed) && displayed.length === 0;
+}
+
 /** An empty date means an undated meeting; unfinished typing is not a scheduled day. */
 export const isReadyGroupMeetingDate = (date: string) => date.trim() === '' || isDateOnlyKey(date.trim());
 
