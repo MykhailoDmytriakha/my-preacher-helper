@@ -167,11 +167,23 @@ export function PickerWindow({ open, onClose, anchorRef, align, width, wide, tal
 /** A button that a hold fills from the bottom: half a second, then lifting does the long action (`useLongPress`). */
 const HOLDABLE = 'relative overflow-hidden select-none touch-manipulation [-webkit-touch-callout:none]';
 
-/** The fill of a held button and its text above it, white once the fill has risen past it; a book of a part fills in its part's colour. */
-function HoldFill({ state, fill = 'bg-indigo-600' }: { state: LongPressState; fill?: string }) {
-  return <span aria-hidden="true" className={`absolute inset-x-0 bottom-0 ${fill} ${state === 'idle' ? 'h-0' : 'h-full transition-[height] duration-500 ease-linear'}`} />;
+type HoldFillProps = { state: LongPressState; label: string | number; fill?: string };
+
+/** Clip the fill and its white label together so the label changes color exactly at the fill edge. */
+function HoldFill({ state, label, fill = 'bg-indigo-600' }: HoldFillProps) {
+  return (
+    <>
+      <span className="relative">{label}</span>
+      <span
+        aria-hidden="true"
+        data-label={label}
+        className={`pointer-events-none absolute inset-0 grid place-items-center [padding:inherit] text-white after:content-[attr(data-label)] ${fill} ${state === 'idle'
+          ? '[clip-path:inset(100%_0_0)]'
+          : '[clip-path:inset(0)] transition-[clip-path] duration-500 ease-linear'}`}
+      />
+    </>
+  );
 }
-const heldText = (state: LongPressState) => (state === 'idle' ? 'relative' : 'relative text-white transition-colors delay-200');
 
 const TILE_CURRENT = 'border-indigo-400 bg-indigo-600 text-white';
 const TILE_OTHER = 'border-gray-200 bg-gray-50 text-gray-800 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-800 dark:border-gray-700/80 dark:bg-gray-950 dark:text-gray-100 dark:hover:border-indigo-400 dark:hover:bg-indigo-950 dark:hover:text-indigo-100';
@@ -207,8 +219,7 @@ function NumberTile({ number, label, current, autoFocus, wide, onPick, onHold, o
       onKeyUp={onPoint ? () => onPoint(number) : undefined}
       className={tileClasses(number, current, wide)}
     >
-      <HoldFill state={state} />
-      <span className={heldText(state)}>{number}</span>
+      <HoldFill state={state} label={number} />
     </button>
   );
 }
@@ -496,8 +507,7 @@ function BookChip({ id, name, tone, current, autoFocus, wide, onPick, onHold }: 
           ? BOOK_PART_TONES[tone].chip
           : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
     >
-      <HoldFill state={state} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
-      <span className={heldText(state)}>{name}</span>
+      <HoldFill state={state} label={name} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
     </button>
   );
 }
@@ -702,8 +712,7 @@ export function BookOnList({ bookId, bible, locale, wide, tone = null, here, onO
             ? BOOK_PART_TONES[tone].chip
             : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'}`}
       >
-        <HoldFill state={state} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
-        <span className={heldText(state)}>{getLocalizedBookName(bookId, locale)}</span>
+        <HoldFill state={state} label={getLocalizedBookName(bookId, locale)} fill={tone !== null ? BOOK_PART_TONES[tone].fill : undefined} />
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="start" width={open && wide ? gridWindowWidth(columns) : undefined} wide={wide} label={t(stepLabel(chapter))}>
         {open && <PickerPlaceSteps

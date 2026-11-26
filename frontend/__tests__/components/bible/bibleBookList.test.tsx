@@ -165,7 +165,9 @@ describe('BibleBookList', () => {
     const philemon = screen.getByRole('button', { name: 'Philemon' });
     // A hold rises in the part's colour too.
     fireEvent(philemon, Object.defineProperties(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 10, clientY: 10, button: 0 }), { pointerType: { value: 'touch' }, pointerId: { value: 1 } }));
-    expect(philemon.querySelector('span[aria-hidden="true"]')).toHaveClass(BOOK_PART_TONES[1].fill, 'h-full');
+    const fill = philemon.querySelector('span[aria-hidden="true"]');
+    expect(fill).toHaveClass(BOOK_PART_TONES[1].fill, 'transition-[clip-path]');
+    expect(screen.getByRole('button', { name: 'Philemon' })).toBe(philemon);
     fireEvent(philemon, Object.defineProperties(new MouseEvent('pointercancel', { bubbles: true, cancelable: true }), { pointerType: { value: 'touch' }, pointerId: { value: 1 } }));
     await userEvent.click(philemon);
     expect(philemon).toHaveClass(...BOOK_PART_TONES[1].selected.split(' '));
