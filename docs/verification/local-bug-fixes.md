@@ -10756,3 +10756,11 @@ Three tests reproduced the old behavior before the fix. One additional regressio
 Hidden Chrome on isolated Auth and Firestore reproduced the extra warning on the previous revision. The fixed revision showed only the actual description decision. The first command changed the description alone and kept the meeting list absent. A separate location edit created the first meeting with an empty date. Both fields persisted on reload. Visual evidence, command paths, and standby cleanup are in `artifacts/legacy-group-meeting-warning-20261125/`.
 
 After an authorized rollout, repeat on disposable group data with a legacy draft, confirm the description choice, and add the location of an undated first meeting.
+
+## BUG-20261117-scripture-list-split-by-emphasis · Preserve Scripture lists through Markdown emphasis
+
+A Markdown paragraph split the opening reference from the list at an emphasis node. The shared Markdown transform now parses adjacent inline text together and projects each reference back into its original formatting, keeping one reader control for each place. Physical lines, blocks, existing links, and code retain their boundaries. Formatted plan copies retain inline styling when reader controls are removed.
+
+The original Markdown render failed the list regressions, including the Russian example. The final 44 related suites passed 905 tests. Changed-file ESLint, TypeScript, the production build and independent review passed. Hidden Chrome on local Auth and Firestore confirmed the defect on the old note page, then opened Proverbs 3:11–12 and 9:8–9 from the fixed note and returned to it. The visual check covered list links, emphasis, and both verse ranges. Screenshots and stand shutdown are recorded in `artifacts/scripture-list-emphasis-20261125/`.
+
+After an authorized rollout, open a disposable Study note containing `**Притч. 1:23**; 3:11–12; 9:8–9`. Open the latter two places and check the displayed ranges. Under an ordinary hyperlink or across a physical line break, check that bare numbers remain text. In a disposable sermon plan, copy a reference with partial emphasis and verify the copied formatting in a rich text editor.

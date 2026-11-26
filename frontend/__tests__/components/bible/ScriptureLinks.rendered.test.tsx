@@ -39,6 +39,72 @@ describe('ScriptureLinks — a reference in text is a link where a screen opens 
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Romans', chapter: 12, fromVerse: 1, toVerse: 2 }));
   });
 
+  it.each([
+    ['bold', '**Притч. 1:23**; 3:11–12; 9:8–9', 'strong'],
+    ['italic', '*Притч. 1:23*; 3:11–12; 9:8–9', 'em'],
+    ['nested', '***Притч. 1:23***; 3:11–12; 9:8–9', 'em strong'],
+    ['plain inline HTML', '<span>Притч. 1:23</span>; 3:11–12; 9:8–9', 'span'],
+  ])('keeps a scripture list connected across a %s opening', (_style, markdown, formatting) => {
+    const onOpen = jest.fn();
+    render(<ScriptureLinks onOpen={onOpen} writtenIn="ru"><MarkdownDisplay content={markdown} /></ScriptureLinks>);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Притч. 1:23', '3:11–12', '9:8–9']);
+    expect(buttons[0].closest(formatting)).toHaveTextContent('Притч. 1:23');
+    expect(buttons[0].closest('p')?.textContent).toBe('Притч. 1:23; 3:11–12; 9:8–9');
+    fireEvent.click(buttons[1]);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'rst', book: 'Proverbs', chapter: 3, fromVerse: 11, toVerse: 12 }));
+  });
+
+  it('keeps one control per place when markup falls inside the reference or its separator', () => {
+    const onOpen = jest.fn();
+    const content = 'Притч. **1:23; 3:11**–12; *9:8–9*';
+    render(<ScriptureLinks onOpen={onOpen} writtenIn="ru"><MarkdownDisplay content={content} searchQuery="3:11" /></ScriptureLinks>);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Притч. 1:23', '3:11–12', '9:8–9']);
+    expect(buttons[1].querySelector('strong mark')).toHaveTextContent('3:11');
+    expect(buttons[0].closest('p')?.textContent).toBe('Притч. 1:23; 3:11–12; 9:8–9');
+    fireEvent.click(buttons[1]);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ bible: 'rst', book: 'Proverbs', chapter: 3, fromVerse: 11, toVerse: 12 }));
+  });
+
+  it('keeps empty emphasis inside the same scripture control', () => {
+    const content = 'Притч. <em><strong></strong></em>1:23; 3:11–12';
+    render(<ScriptureLinks onOpen={jest.fn()} writtenIn="ru"><MarkdownDisplay content={content} /></ScriptureLinks>);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Притч. 1:23', '3:11–12']);
+    expect(buttons[0].querySelector('em strong')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['a paragraph', '\n\n'],
+    ['a soft line break', '\n'],
+    ['a hard line break', '  \n'],
+    ['an authored link', ' [Иов 2:1](https://example.com)'],
+    ['inline code', ' `Иов 2:1`'],
+  ])('does not continue a scripture list across %s', (_boundary, separator) => {
+    render(
+      <ScriptureLinks onOpen={jest.fn()} writtenIn="ru">
+        <MarkdownDisplay content={`**Притч. 1:23**${separator}; 3:11–12. **Рим 8:28**; *12:1–2*.`} />
+      </ScriptureLinks>,
+    );
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Притч. 1:23', 'Рим 8:28', '12:1–2']);
+  });
+
+  it.each([['LF', '\n'], ['CR', '\r'], ['CRLF', '\r\n']])('respects %s line breaks without treating a prose count as a reference', (_ending, newline) => {
+    const content = [
+      `**Притч.**${newline}1:23; 3:11–12. Рим 8:28.`,
+      `Даниил 3${newline}года учился.`,
+      `**Притч. 1:23**;${newline}3:11–12.`,
+    ].join(newline + newline);
+    render(<ScriptureLinks onOpen={jest.fn()} writtenIn="ru"><MarkdownDisplay content={content} /></ScriptureLinks>);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Рим 8:28', 'Притч. 1:23']);
+  });
+
+  it('uses the same emphasis-aware lists in sermon plans', () => {
+    render(<ScriptureLinks onOpen={jest.fn()} writtenIn="ru"><PlanMarkdown markdown={'## Reading\n\n**Притч. 1:23**; *3:11–12*.'} /></ScriptureLinks>);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Притч. 1:23', '3:11–12']);
+  });
+
   // Codex's review, 2026-10-21: a note opened from the search "24:26" lost the light on its match once the match became a link.
   it('keeps a search match lit inside a reference link', () => {
     render(<ScriptureLinks onOpen={jest.fn()}><MarkdownDisplay content="Призыв: не выходите (Мф 24:26)." searchQuery="24:26" /></ScriptureLinks>);

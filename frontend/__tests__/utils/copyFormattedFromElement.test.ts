@@ -81,6 +81,26 @@ it('copies reference links as their words and leaves the page as it was', async 
   }
 });
 
+it('keeps inline formatting when removing a scripture control from a formatted copy', async () => {
+  const write = jest.fn().mockResolvedValue(undefined);
+  const item = jest.fn();
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+  Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: item });
+  const source = document.createElement('div');
+  source.innerHTML = '<p><button data-scripture-link=""><strong>Proverbs 1:23</strong></button>; <button data-scripture-link=""><em>3:11</em>–12</button>.</p>';
+  const original = source.innerHTML;
+  try {
+    await expect(copyFormattedFromElement(source)).resolves.toBe(true);
+    const html = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(item.mock.calls[0][0]['text/html'] as Blob);
+    });
+    expect(html).toBe('<p><strong>Proverbs 1:23</strong>; <em>3:11</em>–12.</p>');
+    expect(source.innerHTML).toBe(original);
+  } finally { Reflect.deleteProperty(window, 'ClipboardItem'); }
+});
+
 it('copies a reference as its words, without the Bible mark beside it', async () => {
   const write = jest.fn().mockResolvedValue(undefined);
   const item = jest.fn();

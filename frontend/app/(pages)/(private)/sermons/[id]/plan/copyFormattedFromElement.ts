@@ -2,15 +2,12 @@ import { SCRIPTURE_BIBLE_MARK, SCRIPTURE_LINK_MARK } from '@/components/bible/Sc
 import { copyTextWithSelection } from '@/utils/clipboard';
 import { debugLog } from "@/utils/debugMode";
 
-/**
- * The plan's markup with its reference links back as their words and without the Bible marks beside
- * them: a document gets the text as written, not buttons and badges.
- */
+/** Keep authored formatting within references while removing their reader controls and Bible badges. */
 function withReferencesAsWords(element: HTMLElement): string {
   if (!element.querySelector(`[${SCRIPTURE_LINK_MARK}], [${SCRIPTURE_BIBLE_MARK}]`)) return element.innerHTML ?? '';
   const copy = element.cloneNode(true) as HTMLElement;
   copy.querySelectorAll(`[${SCRIPTURE_BIBLE_MARK}]`).forEach((mark) => mark.remove());
-  copy.querySelectorAll(`[${SCRIPTURE_LINK_MARK}]`).forEach((link) => link.replaceWith(document.createTextNode(link.textContent ?? '')));
+  copy.querySelectorAll(`[${SCRIPTURE_LINK_MARK}]`).forEach((link) => link.replaceWith(...Array.from(link.childNodes)));
   return copy.innerHTML;
 }
 

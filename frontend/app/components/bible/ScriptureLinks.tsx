@@ -10,7 +10,6 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { SheetReference } from './verseSheetGeometry';
 import type { BibleId } from '@/utils/bibles';
-import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
 
 /**
  * A REFERENCE IN TEXT IS A LINK — "Прочитайте Рим 12:1–2", "Быт. 6:13", "1 Фес. 1:9-10" in a block's
@@ -21,7 +20,7 @@ import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
  * note, a shared page or a PDF is untouched.
  */
 
-const SCRIPTURE_LINK_BASE_CLASSES = 'rounded font-semibold underline underline-offset-4 transition';
+const SCRIPTURE_LINK_BASE_CLASSES = 'rounded font-semibold underline underline-offset-4 transition [&_strong]:text-inherit';
 
 /** Default references stand apart from ordinary reading text, including a sermon's opening verse. */
 export const SCRIPTURE_LINK_CLASSES =
@@ -145,53 +144,7 @@ export function ScriptureText({ text, searchQuery = '', wrapSearchMatches = fals
   return <>{parts}</>;
 }
 
-/** The element a found reference becomes in rendered Markdown, before React draws it. */
-export const SCRIPTURE_LINK_TAG = 'scripture-link';
-
-/** Where references are not looked for: links, code, and anything already pressable. */
-const LEFT_AS_WRITTEN = new Set(['a', 'code', 'pre', 'button', SCRIPTURE_LINK_TAG]);
-
-function linkedText(value: string, locale: AppLocale, written: AppLocale | null): Array<Text | Element> {
-  const found = referencesInText(value, locale, written);
-  if (found.length === 0) return [{ type: 'text', value }];
-  const parts: Array<Text | Element> = [];
-  let at = 0;
-  for (const { start, end, raw, reference, writtenIn } of found) {
-    if (start > at) parts.push({ type: 'text', value: value.slice(at, start) });
-    parts.push({
-      type: 'element',
-      tagName: SCRIPTURE_LINK_TAG,
-      properties: { dataReference: JSON.stringify({ raw, reference, writtenIn }) },
-      children: [{ type: 'text', value: raw }],
-    });
-    at = end;
-  }
-  if (at < value.length) parts.push({ type: 'text', value: value.slice(at) });
-  return parts;
-}
-
-function linkChildren(parent: Root | Element, locale: AppLocale, written: AppLocale | null): void {
-  const next: Array<RootContent | ElementContent> = [];
-  for (const child of parent.children) {
-    if (child.type === 'text') {
-      next.push(...linkedText(child.value, locale, written));
-      continue;
-    }
-    if (child.type === 'element' && !LEFT_AS_WRITTEN.has(child.tagName)) linkChildren(child, locale, written);
-    next.push(child);
-  }
-  parent.children = next as typeof parent.children;
-}
-
-/**
- * The Markdown side: a rehype plugin that turns the references in rendered text into
- * `SCRIPTURE_LINK_TAG` elements, drawn by `MarkdownScriptureLink`. Runs after sanitizing, so only
- * the app makes these elements, never the text. `written` — the language of the document, else of the
- * whole Markdown: a piece of text between two marks rarely says it.
- */
-export function rehypeScriptureLinks(locale: AppLocale, written: AppLocale | null = null) {
-  return (tree: Root) => linkChildren(tree, locale, written);
-}
+export { rehypeScriptureLinks, SCRIPTURE_LINK_TAG } from '@/utils/rehypeScriptureLinks';
 
 /** Draws a `SCRIPTURE_LINK_TAG` element of rendered Markdown. */
 export function MarkdownScriptureLink({ children, ...props }: { children?: ReactNode; 'data-reference'?: string }) {
