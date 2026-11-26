@@ -61,6 +61,7 @@ const evidence = {
   groupTitleDraft: fieldDraft, groupDescriptionDraft: optionalDraft, groupStatusDraft, councilTitleDraft: fieldDraft,
   councilDateDraft: optionalDraft, councilLifecycleDraft: optionalDraft,
   studyNoteContentDraft: { generation: 'g', action: noteContentAction },
+  studyNoteContentReturn: { generation: 'g', editGeneration: 3, action: noteContentAction },
   planCellDrafts: { point: { generation: 'g', observedRevision: 1, opening: 'Original', text: 'Later' } },
   commentKindDraft: { generation: 'g', action: commentKindAction }, commentPlaceDraft: { generation: 'g', action: commentPlaceAction },
   studyNoteTitleDraft: { generation: 'g', action: noteContentAction }, studyNoteTypeDraft: { generation: 'g', action: noteTypeAction },
@@ -142,6 +143,61 @@ async function throughDeviceStorage(record: EditorRecord, withRequest = false) {
   return { read: read!.checkpoint, found: found.record.checkpoint, fork: fork.checkpoint };
 }
 
+it('moves the single quiet note return to the reopened editor without exposing it as another draft', async () => {
+  installStorageHarness();
+  const store = createIndexedDbCheckpoints();
+  const resource = { collection: 'studyNotes', id: 'note' };
+  const opening = { userId: 'owner', type: 'note', content: 'A' };
+  const snapshot = { resource, value: opening, metadata: { protocol: 1 as const, generation: 'g', revision: 1, deleted: false } };
+  const session = new DataSession(snapshot);
+  session.edit({ ...opening, content: 'ABC' }, session.checkpoint(), { field: 'content', time });
+  session.edit({ ...opening, content: 'AB' }, session.checkpoint(), { field: 'content', time });
+  session.observe({ ...snapshot, value: { ...opening, content: 'Unrelated cache candidate' },
+    metadata: { ...snapshot.metadata, revision: 3 } }, { source: 'cache' });
+  session.edit(opening, session.checkpoint(), { field: 'content', time });
+  const stored: EditorRecord = { owner: 'owner', editorId: 'closed', checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+  await store.put(stored);
+  const [quiet] = await store.listResumableStudyNoteReturns!('owner', resource);
+  expect(quiet.editorId).toEqual('closed');
+  expect(await store.listRecoverable('owner', resource)).toEqual([]);
+  const occupied = new DataSession(snapshot);
+  occupied.edit({ ...opening, content: 'Independent private draft' }, occupied.checkpoint(), { field: 'content', time });
+  await store.put({ ...stored, editorId: 'occupied', checkpoint: occupied.checkpoint() });
+  await store.resumeStudyNoteReturn!(quiet, 'occupied');
+  expect((await store.read('owner', 'occupied'))?.checkpoint.draft?.content).toEqual('Independent private draft');
+  expect(await store.read('owner', 'closed')).toEqual(quiet);
+  await store.resumeStudyNoteReturn!(quiet, 'reopened');
+  expect(await store.read('owner', 'closed')).toBeUndefined();
+  expect((await store.listResumableStudyNoteReturns!('owner', resource)).map(record => record.editorId)).toEqual(['reopened']);
+  const restarted = DataSession.restore((await store.read('owner', 'reopened'))!.checkpoint);
+  const matching = { ...snapshot, value: { ...opening, content: 'AB' }, metadata: { ...snapshot.metadata, revision: 2 } };
+  restarted.observe(matching, { source: 'server' });
+  const active = restarted.checkpoint();
+  expect(active).toMatchObject({ dirty: true, draft: opening,
+    studyNoteContentDraft: { action: { before: { exists: true, value: 'AB' }, observedRevision: 1 } } });
+  await store.put({ ...stored, editorId: 'reopened', checkpoint: { ...active, confirmed: matching, remoteCandidate: null } });
+  const [confirmed] = await store.listResumableStudyNoteReturns!('owner', resource);
+  await store.resumeStudyNoteReturn!(confirmed, 'second-reopen');
+  expect((await store.read('owner', 'second-reopen'))?.checkpoint).toMatchObject({
+    confirmed: matching, draft: opening, dirty: true, remoteCandidate: null,
+    studyNoteContentDraft: { noteReturn: true },
+  });
+});
+
+it('drops an invalid deletion trace without losing the note draft', () => {
+  const source = titleRecord();
+  const resource = { collection: 'studyNotes', id: 'note' };
+  source.checkpoint.confirmed.resource = resource;
+  source.checkpoint.confirmed.value = { userId: 'owner', type: 'note', content: 'Original' };
+  source.checkpoint.draft = { ...source.checkpoint.confirmed.value, content: 'Later' };
+  source.checkpoint.studyNoteContentDraft = { generation: 'g', editGeneration: 1, action: noteContentAction,
+    noteDeletion: { opening: 'Unrelated text that was never displayed', spans: [] } };
+  const { checkpoint } = validateRecoveryRecord(source, 'owner', source.editorId);
+  expect(checkpoint.draft).toEqual(source.checkpoint.draft);
+  expect(checkpoint.studyNoteContentDraft).toMatchObject({ action: noteContentAction });
+  expect(checkpoint.studyNoteContentDraft?.noteDeletion).toBeUndefined();
+});
+
 it.each(Object.entries(evidence))('keeps valid %s through native write, read, discovery and fork', async (key, value) => {
   const source = titleRecord();
   if (key === 'guardedScratchText') {
@@ -174,6 +230,10 @@ it.each(Object.entries(evidence))('keeps valid %s through native write, read, di
     source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };
     source.checkpoint.confirmed.value = { userId: 'owner', type: 'note', content: 'Original', title: 'Original' };
     source.checkpoint.draft = { userId: 'owner', type: 'question', content: 'Later', title: 'Later' };
+    if (key === 'studyNoteContentReturn') {
+      source.checkpoint.editGeneration = 3;
+      source.checkpoint.confirmed.value.content = 'Later';
+    }
   }
   if (key === 'commentKindDraft' || key === 'commentPlaceDraft') {
     source.checkpoint.confirmed.resource = { collection: 'studyNotes', id: 'note' };

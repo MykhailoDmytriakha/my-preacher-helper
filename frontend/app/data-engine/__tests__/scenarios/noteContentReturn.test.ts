@@ -80,6 +80,67 @@ describe('Delayed first delivery of note text after a deliberate return', () => 
     }));
   });
 
+  it.each(['earlier', 'later', 'unproven'] as const)('orders an unsubmitted local removal against a matching %s phone edit', async order => {
+    world = new DeviceWorld();
+    const initial = noteValue();
+    const original = String(initial.content);
+    const withWord = original + ' witness';
+    await world.seed(noteRef, initial);
+    const phone = await world.device('phone', 300_000);
+    const computer = await world.device('computer', -300_000);
+    const phoneEditor = await phone.open(noteRef);
+    const computerEditor = await computer.open(noteRef);
+    const basis = phoneEditor.getState().checkpoint.confirmed.metadata!;
+    const editOnComputer = (content: string, clock = true) => computer.run(async () => {
+      const shown = computerEditor.getState().checkpoint;
+      const observed = computer.clock.capture('owner');
+      if (clock) expect(observed).toBeDefined();
+      await computerEditor.edit({ ...shown.draft, content }, shown, { field: 'content', time: clock ? observed! : null });
+    });
+    const submitOnPhone = async () => {
+      const time = phone.clock.capture('owner');
+      expect(time).toBeDefined();
+      await phone.run(async () => {
+        const receipt = await phoneEditor.commitWithReceipt(value => ({ ...value, content: withWord, title: 'Title from phone' }), {
+          noteContent: { generation: basis.generation, observedRevision: basis.revision, opening: original, time: time! },
+        });
+        expect(receipt.kind).toBe('submitted');
+      });
+      await world.settle();
+    };
+
+    computer.goOffline();
+    await editOnComputer(withWord);
+    if (order !== 'later') await submitOnPhone();
+    await world.advance(5_000);
+    await editOnComputer(original, order !== 'unproven');
+    expect(computerEditor.getState().checkpoint).toMatchObject({ dirty: false, draft: { content: original } });
+    if (order === 'later') {
+      await world.advance(5_000);
+      await submitOnPhone();
+    }
+
+    await computer.goOnline();
+    await computer.refresh(noteRef);
+    expect(computerEditor.getState().checkpoint).toMatchObject({ draft: { content: original },
+      studyNoteContentDraft: { action: { observedRevision: basis.revision, before: { exists: true, value: withWord } } } });
+    await computer.save(noteRef);
+    await computer.refresh(noteRef);
+
+    const saved = (await world.snapshot(noteRef)).value;
+    expect(saved).toMatchObject({ content: order === 'earlier' ? original : withWord, title: 'Title from phone' });
+    if (order === 'unproven') {
+      expect(computer.shown(noteRef).draft?.content).toBe(original);
+      expect(await world.questions()).toContainEqual(expect.objectContaining({ device: 'computer', kind: 'conflict', fields: ['content'] }));
+      await computer.run(() => computerEditor.keepLocal());
+      await world.settle();
+      expect((await world.snapshot(noteRef)).value).toMatchObject({ content: original, title: 'Title from phone' });
+    } else {
+      expect(computer.shown(noteRef).draft?.content).toBe(saved?.content);
+      expect(await world.questions()).toEqual([]);
+    }
+  });
+
   it('preserves the raw recording link without confirming a transcript that lost by action time', async () => {
     world = new DeviceWorld();
     const opening = noteValue();

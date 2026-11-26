@@ -17,7 +17,7 @@ import { isSermonChoiceRecoveryIdentity, readManualScopeIdentity } from './edito
 import { recoverExegeticalPointProofs } from './exegeticalPointCapture';
 import { readField } from './fieldValues';
 import { outlinePlacementField } from './outlinePlacementResource';
-import { equalValues, getResourcePolicy, isValidIdentifier, matchesOutlinePointPlacement, validServiceOrderPlacementGap, validServiceOrderStepGap, validateCommand } from './protocol';
+import { diffFields, equalValues, getResourcePolicy, isValidIdentifier, matchesOutlinePointPlacement, validServiceOrderPlacementGap, validServiceOrderStepGap, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { hasRowProofTarget, unreadableRowProofs, validRecoveredRowProofs } from './rowFieldAutosave';
@@ -29,6 +29,7 @@ import { changedSermonTextFields, sermonTextRetryMatches } from './sermonTextRec
 import { serviceOrderInputSchema } from './serviceOrderInputCodec';
 import { placementSteps, retainedStepOrderChanged } from './serviceOrderStepPlacement';
 import { DataSession, hasUnreadableDraftProof } from './session';
+import { validateNoteContentTracking } from './studyNoteContentCapture';
 import { json, serviceOrderPlacementComparison, snapshotSchema } from './transport.client';
 
 import type { CommitRequest } from './commits';
@@ -80,6 +81,9 @@ const preachDateCityAction = nullableTitleAction.extend({ scope: z.object({ id: 
 const preachDateChurchAction = rowValues(z.object({ id: z.string(), name: z.string(), city: z.string().optional() }));
 const fieldValueAction = fieldAction.extend({ before: fieldSchema, after: fieldSchema });
 const fieldValueDraft = autosaveDraft.extend({ action: fieldValueAction });
+const noteDeletionSpans = z.array(z.object({ start: z.number().int().nonnegative(), count: z.number().int().positive() }));
+const noteContentDraft = fieldValueDraft.extend({ noteDeletion: z.object({ opening: z.string(), spans: noteDeletionSpans }).optional().catch(undefined), noteReturn: z.literal(true).optional() });
+const noteContentReturn = fieldValueDraft.extend({ deletions: noteDeletionSpans.optional() });
 const commentKindObservation = fieldValueAction.extend({ reference: fieldSchema });
 const exegeticalPointDraft = fieldAction.extend({
   nodeId: z.string().min(1).max(128), kind: z.enum(['title', 'remove']), generation: id,
@@ -218,7 +222,8 @@ const recordSchema = z.object({
     groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
     councilTopicPlacementRetry: councilPlacementCapture.optional(),
     groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(), groupDescriptionDraft: fieldValueDraft.optional(),
-    studyNoteContentDraft: fieldValueDraft.optional(), studyNoteTitleDraft: fieldValueDraft.optional(), studyNoteTypeDraft: fieldValueDraft.optional(),
+    studyNoteContentDraft: noteContentDraft.optional(), studyNoteTitleDraft: fieldValueDraft.optional(), studyNoteTypeDraft: fieldValueDraft.optional(),
+    studyNoteContentReturn: noteContentReturn.optional(),
     commentKindDraft: autosaveDraft.extend({ action: commentKindObservation }).optional(),
     commentPlaceDraft: autosaveDraft.extend({ action: commentPlaceObservation }).optional(),
     councilTitleDraft: groupFieldDraft.optional(), councilDateDraft: fieldValueDraft.optional(),
@@ -325,7 +330,8 @@ const clockFallbacks: Readonly<Record<string, (value: unknown) => unknown>> = {
   groupTitleDraft: draftWithoutUnreadableClock,
   groupStatusDraft: draftWithoutUnreadableClock,
   groupDescriptionDraft: draftWithoutUnreadableClock,
-  studyNoteContentDraft: draftWithoutUnreadableClock, studyNoteTitleDraft: draftWithoutUnreadableClock, studyNoteTypeDraft: draftWithoutUnreadableClock,
+  studyNoteContentDraft: draftWithoutUnreadableClock, studyNoteContentReturn: draftWithoutUnreadableClock,
+  studyNoteTitleDraft: draftWithoutUnreadableClock, studyNoteTypeDraft: draftWithoutUnreadableClock,
   commentKindDraft: draftWithoutUnreadableClock, commentPlaceDraft: draftWithoutUnreadableClock,
   councilTitleDraft: draftWithoutUnreadableClock,
   councilDateDraft: draftWithoutUnreadableClock,
@@ -654,6 +660,7 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
     && !checkpoint.groupMeetingReview && !conflicts.some(({ path }) => path[0] === 'meetingDates')) {
     delete checkpoint.draft.meetingDates;
   }
+  validateNoteContentTracking(checkpoint);
   holdIncompatibleAutosaveProofs(checkpoint);
   const church = checkpoint.sermonChurchRecovery;
   if (church && !validSermonChurchRecovery(checkpoint, church)) {
@@ -687,6 +694,21 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {
   return record.checkpoint.dirty || Object.values(record.checkpoint.serviceOrderInputs ?? {}).some(input => input.retainedOnly)
     || record.prepared !== null || Object.keys(record.checkpoint.pending).length > 0 || record.unfinalized.length > 0;
+}
+
+export function isResumableStudyNoteReturn(record: EditorRecord): boolean {
+  const { checkpoint, prepared, unfinalized } = record;
+  if (prepared || unfinalized.length || Object.keys(checkpoint.pending).length || checkpoint.conflicts.length) return false;
+  if (checkpoint.studyNoteContentReturn) return !checkpoint.dirty && !checkpoint.remoteCandidate;
+  const active = checkpoint.studyNoteContentDraft;
+  return Boolean(active?.noteReturn && checkpoint.dirty && checkpoint.confirmed.value && checkpoint.draft
+    && (checkpoint.remoteCandidate || equalValues(readField(checkpoint.confirmed.value, ['content']), active.action.before))
+    && diffFields(checkpoint.confirmed.value, checkpoint.draft).every(({ path }) => path[0] === 'content'));
+}
+
+/** An unsubmitted return sleeps in this editor's record until a matching server copy makes it pending work. */
+export function shouldRetainCheckpoint(record: EditorRecord): boolean {
+  return isRecoverableCheckpoint(record) || record.checkpoint.studyNoteContentReturn !== undefined;
 }
 
 /** A submitted projection is distinct from a checkpoint that also contains private work. */

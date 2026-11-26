@@ -166,6 +166,41 @@ it.each(['Undo', 'return to the same words'])('keeps the phone version after %s 
   expect(md()).toBe(arrival);
 });
 
+it('keeps a removed word out of the open editor while comparing an unseen matching save', async () => {
+  const opening = 'Intro.\n\nOn the desk.\n\nTail.';
+  const phoneWords = opening.replace('On the desk.', 'On the desk today.');
+  await start(opening);
+  selectWords('On the desk.', 11);
+  act(() => { stand.editor.view.dispatch(stand.editor.state.tr.insertText(' today')); });
+  await act(async () => {});
+  expect(md()).toBe(phoneWords);
+  const previous = await stand.world.snapshot(noteRef);
+  expect(await stand.laptop.transport.send({
+    protocol: 1, kind: 'update', owner: 'owner', operationId: stand.world.id('phone'),
+    resource: noteRef, generation: previous.metadata!.generation, dependsOn: [],
+    changes: [{ path: ['content'], before: { exists: true, value: opening }, after: { exists: true, value: phoneWords } }],
+  })).toMatchObject({ kind: 'acknowledged' });
+  expect(stand.confirmed?.content).toBe(opening);
+  act(() => {
+    const editor = stand.editor;
+    const end = editor.state.selection.head;
+    editor.view.dispatch(editor.state.tr.delete(end - ' today'.length, end));
+  });
+  await act(async () => {});
+  expect(md()).toBe(opening);
+  await act(async () => {
+    await stand.laptop.run(() => stand.laptop.engine.refreshCollection('studyNotes'));
+    await stand.world.settle();
+  });
+  await finish();
+  selectWords('Tail.', 2);
+  await act(async () => {});
+
+  expect(md()).toBe(opening);
+  expect(hasNoteQuestion()).toBe(true);
+  expect(await stored()).toBe(phoneWords);
+});
+
 it('does not author the first phone copy when canceling a draft after a second one arrives', async () => {
   const opening = 'Intro.\n\nOn the desk.\n\nTail.';
   const first = opening.replace('On the desk.', 'First replacement from the phone.');

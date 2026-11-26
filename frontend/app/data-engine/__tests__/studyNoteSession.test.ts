@@ -1,5 +1,5 @@
 import { uncapturedAutosaveFields } from '../documentFieldAction';
-import { validateRecoveryRecord } from '../recovery.client';
+import { isRecoverableCheckpoint, shouldRetainCheckpoint, validateRecoveryRecord } from '../recovery.client';
 import { DataSession } from '../session';
 import { keepUncontestedLegacyComment, type LegacyStudyCommentEdit } from '../studyNoteLegacyDraft';
 
@@ -7,12 +7,153 @@ import type { ResourceSnapshot } from '../types';
 
 const note = (content: string, revision: number, title = 'Opening title'): ResourceSnapshot => ({
   resource: { collection: 'studyNotes', id: 'one' },
-  value: { type: 'note', content, title },
+  value: { userId: 'owner', type: 'note', content, title },
   metadata: { protocol: 1, generation: 'note-generation', revision, deleted: false },
 });
 
 const field = <Value extends string | boolean>(value: Value) => ({ exists: true, value });
 const stamp = { field: 'content', time: null } as const;
+
+it.each(['before', 'after'] as const)('keeps an intentional removal when matching words arrive %s the removal', delivery => {
+  const opening = 'Original paragraph.';
+  const wordsWithAddition = opening + ' Word to remove';
+  const original = note(opening, 1);
+  const matching = note(wordsWithAddition, 2, 'Title from phone');
+  const editor = new DataSession(original);
+
+  editor.edit({ ...original.value, content: wordsWithAddition }, editor.checkpoint(), stamp);
+  if (delivery === 'before') editor.observe(matching, { source: 'server' });
+  const shown = editor.checkpoint();
+  editor.edit({ ...shown.draft, content: opening }, shown, stamp);
+  if (delivery === 'after') editor.observe(matching, { source: 'server' });
+
+  expect(editor.checkpoint().draft?.content).toBe(opening);
+  expect(editor.checkpoint().studyNoteContentDraft?.action).toMatchObject({
+    before: field(wordsWithAddition), after: field(opening),
+  });
+});
+
+it.each([' word', ' wor', ' w'])('keeps the removal when the server delivers the exact intermediate body %j', delivered => {
+  const opening = 'Original paragraph.';
+  const initial = note(opening, 1);
+  const editor = new DataSession(initial);
+  for (const suffix of [' word', ' wor', ' wo', ' w', ' ', '']) {
+    const shown = editor.checkpoint();
+    editor.edit({ ...shown.draft, content: opening + suffix }, shown, stamp);
+  }
+  const matching = note(opening + delivered, 2);
+  editor.observe(matching, { source: 'server' });
+  expect(editor.checkpoint()).toMatchObject({ dirty: true, draft: { content: opening }, remoteCandidate: matching });
+  expect(editor.checkpoint().studyNoteContentDraft?.action).toMatchObject({ before: field(opening + delivered), after: field(opening) });
+});
+
+it('keeps a return through reopening without offering a draft or starting a save for cached words', () => {
+  const opening = 'Original paragraph.';
+  const abandoned = opening + ' Word to remove';
+  const initial = note(opening, 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, content: abandoned }, editor.checkpoint(), stamp);
+  const afterTyping = editor.checkpoint();
+  editor.edit({ ...afterTyping.draft, content: opening }, afterTyping, stamp);
+  const record = validateRecoveryRecord(JSON.parse(JSON.stringify({
+    owner: 'owner', editorId: 'editor', checkpoint: editor.checkpoint(), prepared: null, unfinalized: [],
+  })), 'owner', 'editor');
+  expect(isRecoverableCheckpoint(record)).toBe(false);
+  expect(shouldRetainCheckpoint(record)).toBe(true);
+  expect(uncapturedAutosaveFields(record.checkpoint, initial, undefined, [])).toEqual({});
+
+  const reopened = DataSession.restore(record.checkpoint);
+  const matching = note(abandoned, 2);
+  reopened.observe(matching, { source: 'cache' });
+  expect(reopened.checkpoint()).toMatchObject({ dirty: false, draft: { content: opening } });
+  reopened.observe(matching, { source: 'server' });
+  expect(reopened.checkpoint()).toMatchObject({ dirty: true, draft: { content: opening }, remoteCandidate: matching });
+  expect(uncapturedAutosaveFields(reopened.checkpoint(), initial, undefined, [])).toHaveProperty('studyNoteContentAction.observedRevision', 1);
+});
+
+it.each(['receipt', 'listener then receipt'] as const)('keeps the removed words when a sibling Save carries the matching body in a %s', delivery => {
+  const initial = note('Opening words', 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, title: 'New title' }, editor.checkpoint(), { field: 'title', time: null });
+  const submitted = editor.checkpoint();
+  editor.registerCommit('title-only', submitted.editGeneration, submitted.draft, undefined, {
+    studyNoteTitleAction: { before: field('Opening title'), after: field('New title'), observedRevision: 1, time: null },
+  });
+  editor.edit({ ...submitted.draft, content: 'Opening words and a new word' }, editor.checkpoint(), stamp);
+  editor.edit({ ...submitted.draft }, editor.checkpoint(), stamp);
+  const saved = note('Opening words and a new word', 3, 'New title');
+  saved.metadata!.operationId = 'title-only';
+  if (delivery === 'listener then receipt') editor.observe(saved, { source: 'server' });
+  editor.accept({ kind: 'acknowledged', operationId: 'title-only', snapshot: saved });
+
+  expect(editor.checkpoint()).toMatchObject({ confirmed: saved, draft: { content: 'Opening words', title: 'New title' }, dirty: true, pending: {}, conflicts: [] });
+  expect(editor.checkpoint().studyNoteContentDraft?.action).toMatchObject({ observedRevision: 1, before: field('Opening words and a new word'), after: field('Opening words') });
+});
+
+it('keeps the active removal across a later observation followed by an older title receipt', () => {
+  const initial = note('Opening words', 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, title: 'New title' }, editor.checkpoint(), { field: 'title', time: null });
+  const submitted = editor.checkpoint();
+  editor.registerCommit('title-only', submitted.editGeneration, submitted.draft, undefined, {
+    studyNoteTitleAction: { before: field('Opening title'), after: field('New title'), observedRevision: 1, time: null },
+  });
+  editor.edit({ ...submitted.draft, content: 'Word seen and removed' }, editor.checkpoint(), stamp);
+  editor.edit(submitted.draft, editor.checkpoint(), stamp);
+  editor.observe(note('Word seen and removed', 3, 'New title'), { source: 'server' });
+  const latest = note('Other later phone words', 4, 'New title');
+  editor.observe(latest, { source: 'server' });
+  editor.accept({ kind: 'acknowledged', operationId: 'title-only', snapshot: note('Opening words', 2, 'New title') });
+  expect(editor.checkpoint()).toMatchObject({ confirmed: latest, draft: { content: 'Opening words', title: 'New title' }, dirty: true });
+  expect(editor.checkpoint().studyNoteContentDraft?.action).toMatchObject({
+    observedRevision: 1, before: field('Word seen and removed'), after: field('Opening words'),
+  });
+});
+
+it('keeps a removal through an unrelated cache candidate until the exact body is confirmed', () => {
+  const initial = note('Opening words', 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, content: 'Word seen and removed' }, editor.checkpoint(), stamp);
+  editor.observe(note('Unrelated cached words', 4), { source: 'cache' });
+  editor.edit(initial.value, editor.checkpoint(), stamp);
+  expect(editor.checkpoint()).toMatchObject({ draft: initial.value, dirty: false });
+  const matching = note('Word seen and removed', 3);
+  editor.observe(matching, { source: 'server' });
+  expect(editor.checkpoint()).toMatchObject({ draft: initial.value, dirty: true, remoteCandidate: matching });
+});
+
+it('does not turn a cached matching body into a deletion when a title receipt proves only the opening words', () => {
+  const initial = note('Opening words', 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, title: 'New title' }, editor.checkpoint(), { field: 'title', time: null });
+  const submitted = editor.checkpoint();
+  editor.registerCommit('title-only', submitted.editGeneration, submitted.draft, undefined, {
+    studyNoteTitleAction: { before: field('Opening title'), after: field('New title'), observedRevision: 1, time: null },
+  });
+  const matchingWords = 'Opening words and a new word';
+  const matching = note(matchingWords, 3, 'New title');
+  editor.edit({ ...submitted.draft, content: matchingWords }, editor.checkpoint(), stamp);
+  editor.observe(matching, { source: 'cache' });
+  editor.edit(submitted.draft, editor.checkpoint(), stamp);
+  const receipt = note('Opening words', 2, 'New title');
+  editor.accept({ kind: 'acknowledged', operationId: 'title-only', snapshot: receipt });
+  expect(editor.checkpoint()).toMatchObject({ confirmed: receipt, draft: receipt.value, dirty: false });
+  expect(editor.checkpoint().studyNoteContentDraft).toBeUndefined();
+  editor.observe(matching, { source: 'server' });
+  expect(editor.checkpoint().studyNoteContentDraft?.action.before).toEqual(field('Opening words and a new word'));
+});
+
+it.each(['before', 'after'] as const)('takes an unrelated saved body delivered %s the local draft is canceled', delivery => {
+  const initial = note('Opening words', 1);
+  const editor = new DataSession(initial);
+  editor.edit({ ...initial.value, content: 'Private abandoned words' }, editor.checkpoint(), stamp);
+  const other = note('Unrelated phone words', 2);
+  if (delivery === 'before') editor.observe(other, { source: 'server' });
+  editor.edit(initial.value, editor.checkpoint(), stamp);
+  if (delivery === 'after') editor.observe(other, { source: 'server' });
+  expect(editor.checkpoint()).toMatchObject({ confirmed: other, draft: other.value, dirty: false, conflicts: [] });
+  expect(editor.checkpoint().studyNoteContentReturn).toBeUndefined();
+});
 
 it('keeps both texts when a keystroke reaches the screen before an accepted copy is displayed', () => {
   const editor = new DataSession(note('Opening', 1));

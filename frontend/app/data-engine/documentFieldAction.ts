@@ -828,6 +828,8 @@ export type AutosaveFieldDraft = {
   action: AutosaveFieldAction;
   /** Identifies the local edit even when two observations have no distinct clock time. */
   editGeneration?: number;
+  noteDeletion?: import('./studyNoteContentCapture').NoteDeletionTrace;
+  noteReturn?: true;
 };
 type GroupFieldActions = { groupTitleAction?: DocumentFieldObservation; groupStatusAction?: DocumentFieldObservation; groupDescriptionAction?: DocumentFieldObservation<FieldValue> };
 type StudyNoteFieldActions = {

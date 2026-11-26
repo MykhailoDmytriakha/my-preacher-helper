@@ -55,10 +55,10 @@ import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrde
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
-import { canceledStudyNoteBody, unseenStudyNoteField } from './studyNoteContentCapture';
+import { canceledStudyNoteBody, captureUnsubmittedNoteReturn, matchesUnsubmittedNoteReturn, traceUnsubmittedNoteDeletion, unseenStudyNoteField, type StudyNoteContentReturn } from './studyNoteContentCapture';
 import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegacyStudyNote, reviseLegacyCommentConflicts, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
-import { studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
+import { readStudyNoteReturnComparison, studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
@@ -83,6 +83,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
   guardedScratchText?: SermonNoteOpening;
+  studyNoteContentReturn?: StudyNoteContentReturn;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   planCellDrafts?: Record<string, PlanCellDraft>;
   serviceOrderInputs?: Record<string, import('./serviceOrderInput').ServiceOrderInput>;
@@ -170,6 +171,7 @@ export class DataSession {
   private state: SessionCheckpoint;
   private reservedEditGeneration = 0;
   private observedWhileAwaitingHeldFields?: ResourceSnapshot;
+  private latestStudyNoteServer?: ResourceSnapshot;
 
   constructor(snapshot: ResourceSnapshot) {
     this.state = { confirmed: copy(snapshot), draft: copy(snapshot.value), dirty: false, editGeneration: 0, remoteCandidate: null, conflicts: [], pending: {} };
@@ -308,6 +310,13 @@ export class DataSession {
     if (autosaveStamp?.field === 'service-order-input') stageServiceOrderInput(this.state, value, autosaveStamp.input);
     const field = autosaveStamp?.field;
     const canceledBody = field === 'content' ? canceledStudyNoteBody(this.state, value) : undefined;
+    const noteDeletion = field === 'content' && canceledBody === undefined ? traceUnsubmittedNoteDeletion(this.state, value) : undefined;
+    if (!equalValues(this.state.draft?.content, value?.content)) {
+      const returned = autosaveStamp?.field === 'content' && canceledBody === undefined
+        ? captureUnsubmittedNoteReturn(this.state, value, shown, generation, autosaveStamp.time, noteDeletion, this.latestStudyNoteServer) : undefined;
+      if (returned) this.state.studyNoteContentReturn = returned;
+      else delete this.state.studyNoteContentReturn;
+    }
     if (value && canceledBody !== undefined) {
       value = { ...value, content: canceledBody };
       delete this.state.studyNoteContentDraft;
@@ -330,7 +339,8 @@ export class DataSession {
       if (canceledBody !== undefined && target.field === 'content') continue;
       const previous = this.state[target.draft];
       const draft = stageAutosaveField(this.state, value, shown, target, autosaveStamp);
-      if (draft) this.state[target.draft] = draft === previous ? draft : { ...draft, editGeneration: generation };
+      if (draft) this.state[target.draft] = draft === previous ? draft : { ...draft, editGeneration: generation,
+        ...(target.action === 'studyNoteContentAction' && noteDeletion && { noteDeletion }) };
       else delete this.state[target.draft];
     }
     stageRowFields(this.state, value, shown, autosaveStamp && ('rowId' in autosaveStamp || 'rowIds' in autosaveStamp) ? autosaveStamp : undefined);
@@ -370,7 +380,9 @@ export class DataSession {
       && (canceledBody !== undefined || (isOrdinaryStudyNote(value) && !this.state.dirty && !this.state.conflicts.length))
       && waiting.metadata?.generation === this.state.confirmed.metadata?.generation && !Object.keys(this.state.pending).length) {
       // Undo removed all unsent edits. The saved copy already waiting in this session can now be shown.
-      this.observe(waiting, { source: 'cache' });
+      const source = equalValues(waiting, this.latestStudyNoteServer) ? 'server' : 'cache';
+      if (source === 'cache' && this.state.studyNoteContentReturn) this.state.remoteCandidate = null;
+      this.observe(waiting, { source });
     }
     this.refreshUnreadableComparisons();
   }
@@ -757,9 +769,12 @@ export class DataSession {
     acknowledgeRowFields(this.state, submitted);
     let accepted = this.isOlder(result.snapshot) ? this.state.confirmed : result.snapshot;
     const candidate = this.state.remoteCandidate;
+    const hasPrivateReturn = this.state.studyNoteContentReturn || this.state.studyNoteContentDraft?.noteReturn;
+    const candidateIsAuthoritative = equalValues(candidate, result.snapshot) || equalValues(candidate, this.latestStudyNoteServer);
     if (candidate?.metadata && accepted.metadata
       && candidate.metadata.generation === accepted.metadata.generation
-      && candidate.metadata.revision >= accepted.metadata.revision) accepted = candidate;
+      && candidate.metadata.revision >= accepted.metadata.revision
+      && (!hasPrivateReturn || candidateIsAuthoritative || candidate.value?.content === this.state.confirmed.value?.content)) accepted = candidate;
     // Only edits made AFTER this operation was prepared belong on its accepted result.
     // In particular, server-owned metadata and independently merged fields come from ACK.
     const acceptedOperation = accepted.metadata?.operationId;
@@ -769,7 +784,12 @@ export class DataSession {
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
     adoptAcknowledgedStudyNoteFields(this.state, submitted, accepted, result.operationId);
-    const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
+    if (equalValues(accepted, result.snapshot) || equalValues(accepted, this.latestStudyNoteServer)) this.activateStudyNoteReturn(accepted);
+    // The merge may transport a sibling's receipt without asserting that the person observed its body.
+    // The actual opening and action time remain on the removal proof for the server to order.
+    const bodyAncestor = ancestor && this.state.studyNoteContentDraft?.noteReturn && typeof accepted.value?.content === 'string'
+      ? { ...ancestor, content: accepted.value.content } : ancestor;
+    const fieldAncestor = autosaveAcknowledgementAncestor(bodyAncestor, accepted, this.state);
     const rowAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
     const acceptedAncestor = !newerSubmitted && this.state.editGeneration === submitted.generation
       && request?.predecessor && rowAncestor && this.state.draft
@@ -863,10 +883,40 @@ export class DataSession {
     return true;
   }
 
+  /** Activate the exact removal through the ordinary note autosave only after an authoritative match. */
+  private activateStudyNoteReturn(snapshot: ResourceSnapshot): boolean {
+    const returned = this.state.studyNoteContentReturn;
+    if (!returned) return false;
+    const sameNote = snapshot.metadata?.generation === returned.generation && !snapshot.metadata.deleted && isOrdinaryStudyNote(snapshot.value);
+    const content = snapshot.value?.content;
+    const incoming = readField(snapshot.value ?? {}, ['content']);
+    if (sameNote && equalValues(incoming, returned.action.after)) return false;
+    const matching = sameNote && matchesUnsubmittedNoteReturn(returned, content)
+      && equalValues(readField(this.state.draft ?? {}, ['content']), returned.action.after);
+    delete this.state.studyNoteContentReturn;
+    if (!matching) return false;
+    this.state.studyNoteContentDraft = { generation: returned.generation, editGeneration: returned.editGeneration,
+      action: { ...returned.action, before: incoming }, noteReturn: true };
+    this.state.dirty = true;
+    return true;
+  }
+
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
     if (source === 'cache' && snapshot.value === null && !snapshot.metadata?.deleted) return;
+    const hasPrivateReturn = this.state.studyNoteContentReturn || this.state.studyNoteContentDraft?.noteReturn;
+    if (hasPrivateReturn && source === 'cache' && snapshot.value?.content !== this.state.confirmed.value?.content) return;
+    if (source === 'server' && snapshot.resource.collection === 'studyNotes') {
+      const previousServer = this.latestStudyNoteServer;
+      if (!canReplaceSnapshot(previousServer, snapshot)) {
+        if (hasPrivateReturn) return;
+      } else {
+        this.latestStudyNoteServer = copy(snapshot);
+        // A higher cached revision is not a reason to discard an authoritative match or its removal.
+        if (this.activateStudyNoteReturn(snapshot) && !equalValues(this.state.remoteCandidate, previousServer)) this.state.remoteCandidate = null;
+      }
+    }
     if (source === 'server' && hasHeldAutosaveFields(this.state) && Object.keys(this.state.pending).length
       && canReplaceSnapshot(this.observedWhileAwaitingHeldFields, snapshot)) {
       this.observedWhileAwaitingHeldFields = copy(snapshot);
@@ -1411,13 +1461,16 @@ export class DataSession {
         ? replaceCommentReference(withRows.scriptureRefs, { exists: true, value: commentPlace.mine }) : undefined;
       const explicit = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine)
         : withRows && chosenRefs !== undefined ? { ...withRows, scriptureRefs: chosenRefs } : withRows;
-      const reviewedScalars = reviewingUnreadableProof && explicit && this.state.draft
+      // A compared removal can equal the old document baseline and still be the explicit choice.
+      const noteWords = readStudyNoteReturnComparison(this.state);
+      const withNoteWords = explicit && noteWords ? { ...explicit, content: noteWords.mine } : explicit;
+      const reviewedScalars = reviewingUnreadableProof && withNoteWords && this.state.draft
         ? this.state.unreadableScalarProof?.reduce((value, field) => {
           const path = unreadableScalarPath(candidate.resource.collection, field);
           const local = readField(this.state.draft!, path);
           return field === 'heldAt' ? withCouncilLifecycle(value, local) : writeField(value, path, local);
-        }, explicit) : undefined;
-      const withScalars = reviewedScalars ?? explicit;
+        }, withNoteWords) : undefined;
+      const withScalars = reviewedScalars ?? withNoteWords;
       const withReviewedRows = reviewingRows && withScalars ? this.state.unreadableRowProofs?.reduce((value, address) => {
         const row = unreadableRowChoice(this.state, address);
         if (row && !row.available) throw Object.assign(new Error('The edited row is gone'), { code: 'decision-changed' });

@@ -4,7 +4,7 @@ import { isPreparationTextField } from '@/utils/preparationFieldValues';
 
 import { protectedSermonRecoveryKind, SERMON_NOTE_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './protocol';
-import { isRecoverableCheckpoint, recoveryCheckpointEditorId, validateRecoveryRecord } from './recovery.client';
+import { isResumableStudyNoteReturn, recoveryCheckpointEditorId, shouldRetainCheckpoint, validateRecoveryRecord } from './recovery.client';
 import { recoveryOrigins } from './recoverySource';
 import { retireRecoveryVersions, versionRecoveryRecord } from './recoverySource.client';
 import { checkpointCommitReferences, collectCommitRows, commitProjectionKey, commitSnapshotKey } from './retention.client';
@@ -53,6 +53,9 @@ export function deleteCheckpointRecord(store: IDBObjectStore, owner: string, edi
   if (hasSketchReference(editorId)) store.delete(placedSketchCheckpointReference(owner, editorId));
 }
 
+export const STUDY_NOTE_RETURN_ROW = 'study-note-content-return';
+export const studyNoteReturnKey = (owner: string, noteId: string, editorId: string) => [STUDY_NOTE_RETURN_ROW, owner, noteId, editorId];
+
 function deviceCheckpointRecord(record: EditorRecord) {
   const { sermonTextRetry, ...checkpoint } = record.checkpoint;
   // Preserve the field name already understood by older readers of preparation drafts.
@@ -84,7 +87,7 @@ export function writeChoiceCheckpoints(store: IDBObjectStore, read: StorageRead,
  * A copy with a Save still on its way stays as it is.
  */
 export function closedCopySettlement(stored: EditorRecord, settled: EditorRecord): 'remove' | 'clear-answered' | null {
-  if (!isRecoverableCheckpoint(settled)) return 'remove';
+  if (!shouldRetainCheckpoint(settled)) return 'remove';
   const answered = Object.keys(stored.checkpoint.pending).length > 0 && !Object.keys(settled.checkpoint.pending).length;
   return answered && settled.prepared === null && !settled.unfinalized.length && Boolean(stored.recoveryVersion)
     && settled.recoveryVersion === stored.recoveryVersion ? 'clear-answered' : null;
@@ -151,7 +154,15 @@ function placeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record:
     if (creating && current !== undefined) throw new Error('Recovery target already exists');
     const references = checkpointCommitReferences(frozen);
     validateCommitReferences(store, read, record.owner, references, () => {
-      const keeps = isRecoverableCheckpoint(frozen);
+      if (frozen.checkpoint.confirmed.resource.collection === 'studyNotes') {
+        const wasTracked = Boolean(current?.checkpoint?.studyNoteContentReturn || current?.checkpoint?.studyNoteContentDraft?.noteReturn);
+        if (wasTracked || frozen.checkpoint.studyNoteContentReturn || frozen.checkpoint.studyNoteContentDraft?.noteReturn) {
+          const witness = studyNoteReturnKey(frozen.owner, frozen.checkpoint.confirmed.resource.id, frozen.editorId);
+          if (isResumableStudyNoteReturn(frozen)) store.put(true, witness);
+          else if (wasTracked) store.delete(witness);
+        }
+      }
+      const keeps = shouldRetainCheckpoint(frozen);
       if (keeps) {
         store.put(deviceCheckpointRecord(version(frozen)), checkpointKey(record.owner, record.editorId));
         // An older tab can deliver a request without being able to read the protected checkpoint.

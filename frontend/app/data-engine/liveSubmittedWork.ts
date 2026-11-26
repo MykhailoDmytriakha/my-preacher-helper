@@ -54,6 +54,7 @@ function matchesShownPrefix(current: SessionCheckpoint, chain: readonly CommitRe
 /** A mounted participant can follow the next whole action if its visible copy is still exactly
  * the previous saved action. A competing chain or newer private words stay in their own editor. */
 function canFollowChain(current: SessionCheckpoint, chain: readonly CommitRequest[]): boolean {
+  if (current.studyNoteContentReturn) return false;
   const pending = Object.entries(current.pending);
   if (!pending.length) return !current.dirty && equalValues(current.draft, current.confirmed.value);
   const known = chain.filter(request => current.pending[request.id]);

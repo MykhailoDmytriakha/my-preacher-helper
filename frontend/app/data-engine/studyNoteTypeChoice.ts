@@ -58,6 +58,11 @@ export function readStudyNoteFieldsComparison(checkpoint: SessionCheckpoint) {
   return comparedStudyNoteFields(checkpoint.confirmed, checkpoint.draft, checkpoint.remoteCandidate, checkpoint.conflicts);
 }
 
+export function readStudyNoteReturnComparison(checkpoint: SessionCheckpoint) {
+  return readStudyNoteFieldsComparison(checkpoint)?.find(({ field, mine }) => field === 'content'
+    && (checkpoint.studyNoteContentDraft?.noteReturn || mine === checkpoint.confirmed.value?.content));
+}
+
 export function keepUncontestedStudyNoteFields(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]): DocumentData | undefined {
   const compared = comparedStudyNoteFields(basis, draft, stored, conflicts);

@@ -1,9 +1,9 @@
 'use client';
 
-import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, SERMON_AMENDED_SKETCH_CHOICE_ROW, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_SCRATCH_REMOVAL_CHOICE_ROW, SERMON_SCRATCH_TEXT_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
+import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, studyNoteReturnKey, STUDY_NOTE_RETURN_ROW, SERMON_AMENDED_SKETCH_CHOICE_ROW, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_SCRATCH_REMOVAL_CHOICE_ROW, SERMON_SCRATCH_TEXT_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
 import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './fieldValues';
-import { examineRecoveryCheckpoints, recoveryCheckpointId, recoveryCheckpointEditorId, unreadableCheckpointDraft, validateRecoveryRecord } from './recovery.client';
+import { examineRecoveryCheckpoints, isResumableStudyNoteReturn, recoveryCheckpointId, recoveryCheckpointEditorId, unreadableCheckpointDraft, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
 import { checkpointCommitReferences, collectCommitRows, commitProjectionKey, deferCollection } from './retention.client';
@@ -63,6 +63,42 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
     examineRecoveryCheckpoints(records, owner, resource).selected;
   return {
     listRecoverable: async (owner, resource) => select(await all(owner), owner, resource),
+    listResumableStudyNoteReturns: (owner, resource) => transaction<EditorRecord[]>('readonly', (store, read, done) => {
+      if (resource.collection !== 'studyNotes') { done([]); return; }
+      read(store.getAllKeys(engineOwnerRange(STUDY_NOTE_RETURN_ROW, owner, resource.id)), keys => {
+        const editorIds = keys.flatMap(key => Array.isArray(key) && typeof key[3] === 'string' ? [key[3]] : []);
+        if (!editorIds.length) { done([]); return; }
+        const records: EditorRecord[] = [];
+        let remaining = editorIds.length;
+        for (const editorId of editorIds) read(store.get(checkpointKey(owner, editorId)), (stored: unknown) => {
+          if (stored !== undefined) try {
+            const record = validateRecoveryRecord(stored, owner, editorId, resource);
+            if (isResumableStudyNoteReturn(record)) records.push(record);
+          } catch { /* An invalid optional witness cannot authorize a save. */ }
+          if (--remaining === 0) done(records);
+        });
+      });
+    }),
+    resumeStudyNoteReturn: (expected, editorId) => transaction<void>('readwrite', (store, read, done) => {
+      const { owner, checkpoint } = expected;
+      const resource = checkpoint.confirmed.resource;
+      if (!isResumableStudyNoteReturn(expected) || resource.collection !== 'studyNotes' || expected.editorId === editorId) { done(undefined); return; }
+      read(store.get(checkpointKey(owner, editorId)), existing => {
+        if (existing !== undefined) { done(undefined); return; }
+        read(store.get(checkpointKey(owner, expected.editorId)), (stored: unknown) => {
+          let source: EditorRecord;
+          try { source = validateRecoveryRecord(stored, owner, expected.editorId, resource); }
+          catch { done(undefined); return; }
+          if (!isResumableStudyNoteReturn(source) || !equalValues(source, expected)) { done(undefined); return; }
+          const resumed: EditorRecord = { owner, editorId, checkpoint: source.checkpoint, prepared: null, unfinalized: [] };
+          writeCheckpointRecord(store, read, resumed, true, () => {
+            store.delete(studyNoteReturnKey(owner, resource.id, expected.editorId));
+            deleteCheckpointRecord(store, owner, expected.editorId);
+            done(undefined);
+          }, deferCollection);
+        });
+      });
+    }),
     listManualChoiceCopies: async (owner, resource) => select(await list(owner, IDBKeyRange.bound(
       ['checkpoint', owner, MANUAL_CHOICE_RECOVERY_PREFIX], ['checkpoint', owner, MANUAL_CHOICE_RECOVERY_PREFIX + '\uffff'])), owner, resource),
     listUnreadable: async owner => {

@@ -45,7 +45,7 @@ import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { oversizedNoteOpening } from './oversizedNoteCorrection';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames, unresolvedPreachDateField } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { isRecoverableCheckpoint } from './recovery.client';
+import { shouldRetainCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { separateRefusedSermonTail } from './refusedSermonSave';
 import { readServiceOrderTitleConflict, readTagColorConflict } from './rowConflictDetails';
@@ -70,7 +70,7 @@ import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoice
 import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 import { keepUncontestedLegacyComment, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
-import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
+import { keepUncontestedStudyNoteFields, readStudyNoteReturnComparison } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
 import { hasUnreadablePreparationCheck, hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
@@ -151,6 +151,9 @@ export interface RecoveryCheckpoint {
 
 export interface CheckpointRecoveryStore extends CheckpointStore {
   listRecoverable(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
+  listResumableStudyNoteReturns?(owner: string, resource: ResourceRef): Promise<EditorRecord[]>;
+  /** Move an unchanged note return to a fresh editor without creating another copy. */
+  resumeStudyNoteReturn?(expected: EditorRecord, editorId: string): Promise<void>;
   listManualChoiceCopies?(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   listUnreadable?(owner: string): Promise<UnreadableCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
@@ -988,7 +991,7 @@ export class EditorController {
   private async persist(afterWrite?: () => Promise<void>): Promise<void> {
     if (this.pendingCaptures.capturing) return;
     const record = this.record();
-    const keeps = isRecoverableCheckpoint(record);
+    const keeps = shouldRetainCheckpoint(record);
     // Reading a document writes nothing to the device: with nothing to keep, nothing held and no
     // commits to clear there is no transaction at all. Each write is one Safari can freeze mid-flight
     // when the page is left, holding the store for every other page (owner, 2026-10-20).
@@ -1074,7 +1077,7 @@ export class EditorController {
         this.result = continuation.answer ?? continuation.acknowledged.at(-1)?.result ?? this.result;
         const followed = current.filter(request => continuation.checkpoint.pending[request.id]);
         this.atomicPending = new Map(followed.flatMap(request => request.atomic ? [[request.id, request.atomic] as const] : []));
-        this.held = isRecoverableCheckpoint(candidate);
+        this.held = shouldRetainCheckpoint(candidate);
         this.clearedCommits = completedCommits.length;
         this.durable = true; this.error = null; this.errorCode = null;
         this.emit();
@@ -1173,7 +1176,7 @@ export class EditorController {
         return review && { fields: review.fields, settled: review.settled };
       }
       if (state.confirmed.resource.collection === 'tags') return readTagColorConflict(state);
-      if (state.confirmed.resource.collection === 'studyNotes') return readReturnedCommentText(state);
+      if (state.confirmed.resource.collection === 'studyNotes') return readReturnedCommentText(state) ?? readStudyNoteReturnComparison(state);
       const review = readDocumentTextChoice(state);
       return review?.complete ? review.checkpoint.conflicts : undefined;
     };
@@ -1208,7 +1211,7 @@ export class EditorController {
       || (shownCollection === 'series' && expected.checkpoint.conflicts.some(isReturnedSeriesField))
       || (shownCollection === 'councils' && expected.checkpoint.conflicts.some(isCouncilHeaderComparison))
       || (shownCollection === 'groups' && expected.checkpoint.conflicts.some(isGroupStatusComparison))
-      || (shownCollection === 'studyNotes' && readReturnedCommentText(expected.checkpoint)))) {
+      || (shownCollection === 'studyNotes' && (readReturnedCommentText(expected.checkpoint) || readStudyNoteReturnComparison(expected.checkpoint))))) {
       expected = await this.refreshDocumentTextChoice(expected);
     }
     const cancelled = Object.keys(this.session.checkpoint().pending);
@@ -1735,6 +1738,20 @@ export class EditorController {
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), { action });
           if (replacement) { session.applyCommit(replacement); replacements.push(replacement); }
         }
+        const noteWords = !selection && !correction ? readStudyNoteReturnComparison(decided) : undefined;
+        if (noteWords && choice === 'local') {
+          const next = session.checkpoint();
+          const { value, metadata } = next.confirmed;
+          if (!metadata || metadata.deleted || value?.content !== noteWords.stored || next.draft?.content !== noteWords.mine) {
+            throw Object.assign(new Error('The compared note text changed'), { code: 'decision-changed' });
+          }
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, next, {
+            noteContent: { generation: metadata.generation, observedRevision: metadata.revision, opening: noteWords.stored, time: choiceTime ?? null },
+          });
+          if (!replacement) throw Object.assign(new Error('The chosen note text could not be captured'), { code: 'decision-changed' });
+          session.applyCommit(replacement);
+          replacements.push(replacement);
+        }
         if (commentWords && (session.checkpoint().dirty || commentCompanions.commentKindAction || commentCompanions.commentPlaceAction)) {
           const next = session.checkpoint();
           const { value, metadata } = next.confirmed;
@@ -1899,7 +1916,7 @@ export class EditorController {
     this.completedCommits = projected.completedCommits ?? [];
     this.pendingCaptures.retire(captures);
     if (!preserveAnswer) this.result = null;
-    this.held = isRecoverableCheckpoint(projected);
+    this.held = shouldRetainCheckpoint(projected);
     this.clearedCommits = this.completedCommits.length;
     this.durable = !laterTyping;
     this.error = null;

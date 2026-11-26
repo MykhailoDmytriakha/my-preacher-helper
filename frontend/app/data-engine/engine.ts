@@ -2641,6 +2641,22 @@ export class DataEngine {
         ? retainedCreation ?? { resource: frozen, value: null, metadata: null }
         : await this.openingSnapshot(owner, generation, frozen, editorId));
       assertOpening();
+      const recovery = this.options.checkpoints as Partial<CheckpointRecoveryStore>;
+      if (!creating && !recovering && frozen.collection === 'studyNotes' && editorSlot(editorId) === 'study-note'
+        && recovery.listResumableStudyNoteReturns && recovery.resumeStudyNoteReturn) {
+        const candidates = await recovery.listResumableStudyNoteReturns(owner, frozen);
+        assertOpening();
+        const earlier = candidates.filter(record => record.editorId !== editorId);
+        if (earlier.length === 1) {
+          const source = earlier[0];
+          const held = await this.recoveryPresence.held(owner, 'checkpoint', recoveryCheckpointId(owner, source.editorId));
+          assertOpening();
+          if (held === false) {
+            await recovery.resumeStudyNoteReturn(source, editorId);
+            assertOpening();
+          }
+        }
+      }
       const controller = await EditorController.open({
         owner, editorId, snapshot, store: this.options.checkpoints, runtime: this.options.runtime,
         operationId: this.options.operationId,

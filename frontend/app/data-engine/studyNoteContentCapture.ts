@@ -4,8 +4,9 @@ import { boundedActionTime } from './actionClock';
 import { equalValues, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 
+import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
-import type { DocumentFieldObservation, StudyNoteTimedField } from './documentFieldAction';
+import type { AutosaveFieldDraft, DocumentFieldObservation, StudyNoteTimedField } from './documentFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DocumentData, FieldValue, ResourceSnapshot, StudyNoteContentCapture } from './types';
 
@@ -66,6 +67,88 @@ export function canceledStudyNoteBody(checkpoint: SessionCheckpoint, proposed: D
     || proposed.content === saved || checkpoint.draft?.content === saved
     || Object.values(checkpoint.pending).some(request => request.studyNoteContentAction || request.value?.content !== saved)) return undefined;
   return saved;
+}
+
+type DeletionSpan = { start: number; count: number };
+export type NoteDeletionTrace = { opening: string; spans: readonly DeletionSpan[] };
+export type StudyNoteContentReturn = AutosaveFieldDraft & { deletions?: readonly DeletionSpan[] };
+
+/** Keep the states actually displayed by consecutive deletions without copying the body at each key. */
+export function traceUnsubmittedNoteDeletion(checkpoint: SessionCheckpoint, proposed: DocumentData | null): NoteDeletionTrace | undefined {
+  const { confirmed, draft, studyNoteContentDraft: staged } = checkpoint;
+  const previous = draft?.content, next = proposed?.content;
+  if (!staged || !isOrdinaryStudyNote(confirmed.value) || !isOrdinaryStudyNote(proposed)
+    || !equalValues(staged.action.after, readField(draft ?? {}, ['content']))
+    || typeof previous !== 'string' || typeof next !== 'string' || next.length >= previous.length) return;
+  let start = 0;
+  while (start < next.length && previous[start] === next[start]) start += 1;
+  if (!previous.endsWith(next.slice(start))) return;
+  const trace = staged.noteDeletion;
+  return { opening: trace?.opening ?? previous, spans: [...trace?.spans ?? [], { start, count: previous.length - next.length }] };
+}
+
+function replayDeletions(opening: string, spans: readonly DeletionSpan[], length?: number): string | undefined {
+  let content = opening;
+  for (const { start, count } of spans) {
+    if (length !== undefined && content.length <= length) break;
+    const end = start + count;
+    if (start < 0 || count < 1 || end > content.length || (length !== undefined && content.length - count < length)) return;
+    content = content.slice(0, start) + content.slice(end);
+  }
+  return content;
+}
+
+function fieldText(value: AutosaveFieldDraft['action']['before']): string | undefined {
+  return typeof value !== 'string' && value.exists && typeof value.value === 'string' ? value.value : undefined;
+}
+
+/** A shorter version only matches if an actual step reached that length and those exact words. */
+export function matchesUnsubmittedNoteReturn(returned: StudyNoteContentReturn, candidate: unknown): candidate is string {
+  const opening = fieldText(returned.action.before);
+  return typeof candidate === 'string' && opening !== undefined
+    && replayDeletions(opening, returned.deletions ?? [], candidate.length) === candidate;
+}
+
+/** Disk data is a witness only if it reconstructs the actual draft and belongs to this edit. */
+export function validateNoteContentTracking(checkpoint: SessionCheckpoint): void {
+  const { confirmed, draft, studyNoteContentDraft: staged, studyNoteContentReturn: returned } = checkpoint;
+  const metadata = confirmed.metadata;
+  const belongsToNote = confirmed.resource.collection === 'studyNotes' && isOrdinaryStudyNote(confirmed.value)
+    && isOrdinaryStudyNote(draft) && metadata && !metadata.deleted;
+  const valid = (proof: AutosaveFieldDraft) => belongsToNote && proof.generation === metadata?.generation
+    && proof.editGeneration !== undefined && proof.editGeneration <= checkpoint.editGeneration
+    && proof.action.observedRevision <= (metadata?.revision ?? -1) && fieldText(proof.action.after) === draft?.content;
+  if (staged?.noteDeletion && (!valid(staged)
+    || replayDeletions(staged.noteDeletion.opening, staged.noteDeletion.spans) !== fieldText(staged.action.after))) delete staged.noteDeletion;
+  if (staged?.noteReturn && !valid(staged)) delete staged.noteReturn;
+  if (!returned) return;
+  const opening = fieldText(returned.action.before), after = fieldText(returned.action.after);
+  if (!valid(returned) || opening === undefined || after === undefined || opening === after || after !== confirmed.value?.content
+    || (returned.deletions && replayDeletions(opening, returned.deletions) !== after)) delete checkpoint.studyNoteContentReturn;
+}
+
+/** Returning to saved words cancels typing unless an exact abandoned version also exists on the server. */
+export function captureUnsubmittedNoteReturn(checkpoint: SessionCheckpoint, proposed: DocumentData | null, shown: ShownCopy | undefined,
+  editGeneration: number, time: ActionTime | null, deletion: NoteDeletionTrace | undefined, server: ResourceSnapshot | undefined): StudyNoteContentReturn | undefined {
+  const { confirmed, draft, studyNoteContentDraft: staged } = checkpoint;
+  if (confirmed.resource.collection !== 'studyNotes' || !isOrdinaryStudyNote(confirmed.value)
+    || !isOrdinaryStudyNote(proposed) || !staged || !confirmed.metadata || confirmed.metadata.deleted
+    || staged.generation !== confirmed.metadata.generation || typeof proposed?.content !== 'string'
+    || typeof draft?.content !== 'string' || draft.content === proposed.content || proposed.content !== confirmed.value?.content
+    || (shown?.draft && shown.draft.content !== draft.content)
+    || !equalValues(staged.action.before, readField(proposed, ['content']))
+    || !equalValues(staged.action.after, readField(draft, ['content']))
+    || Object.values(checkpoint.pending).some(request => request.studyNoteContentAction || request.value?.content !== proposed.content)) return;
+  const returned: StudyNoteContentReturn = {
+    generation: staged.generation, editGeneration,
+    action: { before: { exists: true, value: deletion?.opening ?? draft.content }, after: staged.action.before,
+      observedRevision: staged.action.observedRevision, time: boundedActionTime(time) ?? null },
+    ...(deletion && { deletions: deletion.spans }),
+  };
+  const waiting = server?.metadata?.generation === staged.generation && server.metadata.revision > confirmed.metadata.revision
+    ? server.value?.content : undefined;
+  if (waiting !== undefined && waiting !== proposed.content && !matchesUnsubmittedNoteReturn(returned, waiting)) return;
+  return returned;
 }
 
 /** A confirmed copy may arrive before the editor displays it. Keep the actual opening of the edit. */
