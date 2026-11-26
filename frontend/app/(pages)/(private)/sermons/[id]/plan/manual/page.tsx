@@ -510,6 +510,7 @@ function ManualConspectusContent({ source, recovery, readOnly: copyReadOnly = fa
           sermonId={sermonId}
           mode={noteMode ? "note" : "manual"}
           combinedPlan={combinedPlan}
+          shownPlanText={shownText}
           t={t}
           onLeave={guardUnsavedNavigation}
           beforeSwitch={saveBeforeLeaving}

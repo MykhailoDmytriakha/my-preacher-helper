@@ -1,4 +1,4 @@
-import { Table, TableCell, TableRow, TextRun } from 'docx'
+import { Paragraph, Table, TableCell, TableRow, TextRun } from 'docx'
 
 import { parseMarkdownToParagraphs } from '../wordExport'
 
@@ -58,4 +58,100 @@ it('keeps the blank line two breaks make, and a nested table\'s rows in drawing 
   const flat = runs.map((run) => run.break ? '\n' : run.text ?? '').join('')
   expect(flat).toContain('A\n\nB')
   expect(flat.indexOf('Body')).toBeLessThan(flat.indexOf('Foot'))
+})
+
+describe('Word exports for HTML table fragments', () => {
+  const emittedText = () => {
+    const runs = jest.mocked(TextRun).mock
+    const text = new Map<unknown, string>(runs.instances.map((run, index) => {
+      const [options] = runs.calls[index]
+      return [run, typeof options === 'string' ? options : options.text ?? '']
+    }))
+    return jest.mocked(Paragraph).mock.calls.flatMap(([options]) =>
+      typeof options === 'string' ? [options] : options.children?.map(child => text.get(child) ?? '') ?? [])
+      .join(' ').replace(/\s+/g, ' ').trim()
+  }
+
+  it('writes a cell only once when the last table has no closing tag', () => {
+    parseMarkdownToParagraphs('<table><tr><td>Unclosed cell')
+    expect(Table).toHaveBeenCalledTimes(1)
+    expect(emittedText()).toBe('Unclosed cell')
+  })
+
+  it('keeps the visible words moved around a table by the reader, in reading order', () => {
+    parseMarkdownToParagraphs('<div>Outside before <table>Moved before <tr><td>Cell words</td></tr> Moved after</table> Outside after</div>')
+    expect(Table).toHaveBeenCalledTimes(1)
+    expect(emittedText()).toBe('Outside before Moved before Moved after Cell words Outside after')
+  })
+
+  it('preserves an empty row crossed by a vertical merge', () => {
+    parseMarkdownToParagraphs('<table><tbody><tr><td rowspan="0">Tall</td><td>First</td></tr><tr></tr><tr><td>Third</td></tr></tbody></table>')
+    expect(TableRow).toHaveBeenCalledTimes(3)
+    expect(TableCell).toHaveBeenCalledWith(expect.objectContaining({ rowSpan: 3 }))
+    expect(emittedText()).toBe('Tall First Third')
+  })
+
+  it('exports two tables and their repaired prose in the order the reader shows', () => {
+    parseMarkdownToParagraphs('<table>Before A <tr><td>Cell A</td></tr> After A</table> Between <table>Before B <tr><td>Cell B</td></tr> After B</table> Last')
+    expect(Table).toHaveBeenCalledTimes(2)
+    expect(emittedText()).toBe('Before A After A Cell A Between Before B After B Cell B Last')
+  })
+
+  it('preserves repaired text inside a numbered step and resumes its continuation', () => {
+    parseMarkdownToParagraphs('1. **Step**\n\n   <table>Before\n   <tr><td>Cell</td></tr> After</table>---\n\n   > Continued quote')
+    expect(Table).toHaveBeenCalledTimes(1)
+    expect(emittedText()).toBe('1. Step Before After Cell --- Continued quote')
+  })
+
+  it('keeps a fenced block in the cell that contains it and preserves the following fence', () => {
+    parseMarkdownToParagraphs('<table><tr><td>First line\n\n```text\nCell code\n```\n\n</td></tr></table>\n\n```text\nOutside code\n```')
+    expect(Table).toHaveBeenCalledTimes(1)
+    expect(emittedText()).toBe('First line Cell code Outside code')
+    expect(TextRun).toHaveBeenCalledWith(expect.objectContaining({ text: 'Outside code', font: 'Courier New' }))
+  })
+
+  it('gives an uncovered empty row one empty cell', () => {
+    parseMarkdownToParagraphs('<table><tr><td>First</td></tr><tr></tr><tr><td>Third</td></tr></table>')
+    expect(TableRow).toHaveBeenCalledTimes(3)
+    expect(TableCell).toHaveBeenCalledTimes(3)
+    expect(emittedText()).toBe('First Third')
+  })
+
+  it('prints the literal tail of the raw HTML line and resumes Markdown on a later line', () => {
+    parseMarkdownToParagraphs('<table><tr><td>Cell words</td></tr></table>---\n\n**Next paragraph**')
+    expect(Table).toHaveBeenCalledTimes(1)
+    expect(emittedText()).toBe('Cell words --- Next paragraph')
+    expect(TextRun).toHaveBeenCalledWith(expect.objectContaining({ text: 'Next paragraph', bold: true }))
+  })
+})
+
+it('keeps an inline HTML table suffix as literal text', () => {
+  parseMarkdownToParagraphs('Start <table><tr><td>Inline cell</td></tr></table>---')
+  expect(Table).toHaveBeenCalledTimes(1)
+  expect(TextRun).toHaveBeenCalledWith(expect.objectContaining({ text: '---' }))
+})
+
+it('follows the reader when an unclosed table moves the next paragraph before it', () => {
+  parseMarkdownToParagraphs('<table><tr><td>Cell words</td></tr>After row\n\nFurther text')
+  const texts = jest.mocked(TextRun).mock.calls.map(([options]) =>
+    typeof options === 'string' ? options : options.text ?? '')
+  expect(texts.map(value => value.trim()).filter(Boolean)).toEqual(['After row', 'Further text', 'Cell words'])
+})
+
+it('exports a heading moved outside an HTML table without cutting off the table', () => {
+  parseMarkdownToParagraphs('<table><h2>Fostered heading</h2><tr><td>Table remains</td></tr></table>\n\n## Ordinary heading')
+  expect(Table).toHaveBeenCalledTimes(1)
+  const texts = jest.mocked(TextRun).mock.calls.map(([options]) =>
+    typeof options === 'string' ? options : options.text ?? '').map(value => value.trim()).filter(Boolean)
+  expect(texts).toEqual(['Fostered heading', 'Table remains', 'Ordinary heading'])
+})
+
+it.each([
+  ['<div>Early\n\n<table>Before<tr><td>Cell words</td></tr>After</table> Late</div>', ['Early BeforeAfter', 'Cell words', 'Late']],
+  ['<div>Early\n\n<table><tr><td>Cell words</td></tr>Foster\n\nLate', ['Early Foster', 'Late', 'Cell words']],
+])('keeps text merged by the browser across separate HTML blocks', (source, expected) => {
+  parseMarkdownToParagraphs(source)
+  const texts = jest.mocked(TextRun).mock.calls.map(([options]) =>
+    typeof options === 'string' ? options : options.text ?? '')
+  expect(texts.map(value => value.replace(/\s+/g, ' ').trim()).filter(Boolean)).toEqual(expected)
 })

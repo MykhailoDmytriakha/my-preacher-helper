@@ -1,5 +1,7 @@
 import { Sermon, PlanData } from '@/models/models';
-import { hasWrittenPlan, renderPlanFromSermon, writtenSections } from '@/utils/planText';
+import { hasWrittenPlan, planExportCells, readPlanText, renderPlanWithFallback, writtenSections, type PlanTextMap } from '@/utils/planText';
+
+import type { CombinedPlan } from '@/(pages)/(private)/sermons/[id]/plan/types';
 
 const hasStructure = (sermon: Sermon | null | undefined): boolean => {
   if (!sermon) return false;
@@ -124,7 +126,9 @@ export function preachingRoute(sermonId: string): string {
  * Extracts PlanData from a sermon for export purposes.
  * Returns undefined if no plan or draft is found or if it's empty.
  */
-export function getSermonPlanData(sermon: Sermon | null | undefined): PlanData | undefined {
+export function getSermonPlanData(
+  sermon: Sermon | null | undefined, working?: { plan: CombinedPlan; text?: PlanTextMap },
+): PlanData | undefined {
   if (!sermon) return undefined;
   if (!hasPlan(sermon)) return undefined;
 
@@ -137,13 +141,16 @@ export function getSermonPlanData(sermon: Sermon | null | undefined): PlanData |
    * and PDF went grey while the plan page, which builds its own content, offered them —
    * one plan, two answers, and the grey one was on the screen the person starts from.
    */
-  const plan = renderPlanFromSermon(sermon);
+  const text = working?.text ?? readPlanText(sermon);
+  const plan = working?.plan ?? renderPlanWithFallback(sermon, text);
+  const exportCells = planExportCells(sermon, text, plan);
 
   return {
     sermonTitle: sermon.title,
     sermonVerse: sermon.verse,
     introduction: plan.introduction,
     main: plan.main,
-    conclusion: plan.conclusion
+    conclusion: plan.conclusion,
+    ...(exportCells ? { exportCells } : {}),
   };
 }

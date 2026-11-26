@@ -1,5 +1,5 @@
 import { uniqueHeadingLookup } from '@/utils/headingLookup';
-import { markdownBeforeHeading, markdownHeadingRanges } from '@/utils/markdownHeadings';
+import { markdownBeforeHeading, markdownHeadingRanges, type MarkdownHeadingRange } from '@/utils/markdownHeadings';
 
 /**
  * Splits a markdown document into the section tree its headings already describe.
@@ -74,7 +74,7 @@ const finalize = (draft: Draft, preserveWhitespace: boolean): MarkdownSection =>
  */
 export const splitMarkdownSections = (
     content: string,
-    options: { preserveBodyWhitespace?: boolean } = {}
+    options: { preserveBodyWhitespace?: boolean; isSectionBoundary?: (heading: MarkdownHeadingRange) => boolean } = {}
 ): MarkdownOutline => {
     if (!content || typeof content !== 'string') {
         return { intro: '', sections: [] };
@@ -90,6 +90,7 @@ export const splitMarkdownSections = (
     };
 
     for (const heading of markdownHeadingRanges(content)) {
+        if (options.isSectionBoundary && !options.isSectionBoundary(heading)) continue;
         append(markdownBeforeHeading(content, cursor, heading.start));
         while (stack.length && stack[stack.length - 1].level >= heading.level) stack.pop();
         const parent = stack[stack.length - 1];

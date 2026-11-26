@@ -5,7 +5,7 @@ import { PlanData } from '@/models/models';
 import { markdownCodeRanges, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
 import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
-import { markdownTableRanges, type CellSpan, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
+import { emptyHtmlTableRows, markdownTableBlocks, markdownTableRanges, type CellSpan, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
 import { decodeBasicHtmlEntities } from '@/utils/markdownUtils';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
@@ -238,26 +238,13 @@ const blockListPrefix = (
   return marker ? (/^\d/.test(marker) ? marker + ' ' : '• ') : '';
 };
 
-const parseMarkdownProse = (content: string, bodyIndent?: number, items: ListItemStack = []): (Paragraph | Table)[] => {
-  const tables = markdownTableRanges(content);
-  if (!tables.length) return parseMarkdownText(content, bodyIndent, items);
+const wordTableElements = (table: MarkdownTableRange, bodyIndent?: number): (Paragraph | Table)[] => {
   const elements: (Paragraph | Table)[] = [];
-  let cursor = 0;
-  for (const table of tables) {
-    const prose = content.slice(cursor, table.blockStart);
-    if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent, items));
-    const prefix = table.html ? '' : blockListPrefix(content, table);
-    if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));
-    const indent = (bodyIndent ?? 0) + table.listDepth * 360 + table.quoteDepth * 720;
-    if (table.caption) elements.push(new Paragraph({ children: [new TextRun({ text: table.caption, bold: true })], indent: { left: indent } }));
-    // A table with no cells is nothing to draw — and Word refuses a table without rows.
-    if (table.rows.some(row => row.length)) elements.push(parsedWordTable({ ...table, rows: table.rows.filter(row => row.length) }, indent));
-    // Whatever follows stands in no deeper list than the table did: a table outside the list ends its items.
-    items.length = Math.min(items.length, table.listDepth);
-    cursor = table.end;
-  }
-  const tail = content.slice(cursor);
-  if (tail.trim()) elements.push(...parseMarkdownText(tail, bodyIndent, items));
+  const indent = (bodyIndent ?? 0) + table.listDepth * 360 + table.quoteDepth * 720;
+  if (table.caption) elements.push(new Paragraph({
+    children: [new TextRun({ text: table.caption, bold: true })], indent: { left: indent },
+  }));
+  if (table.rows.some(row => row.length)) elements.push(parsedWordTable(table, indent));
   return elements;
 };
 
@@ -277,34 +264,76 @@ const literalCodeParagraphs = (code: MarkdownCodeRange, source: string, bodyInde
   }));
 };
 
-const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
-  const code = markdownCodeRanges(content).filter(range => range.kind === 'block');
+function htmlProseParagraphs(lines: CellSpan[][], indent: number): Paragraph[] {
+  return lines.map(line => new Paragraph({
+    children: line.map(spanRun), spacing: { after: 0 }, alignment: AlignmentType.JUSTIFIED,
+    indent: { left: indent },
+  }));
+}
+
+const parseMarkdownBody = (
+  content: string, bodyIndent?: number, tables = markdownTableBlocks(content),
+): (Paragraph | Table)[] => {
+  const code = markdownCodeRanges(content).filter(range => range.kind === 'block'
+    && !tables.some(block => block.kind === 'html' && block.start <= range.start && range.start < block.end));
+  const blocks = [
+    ...tables.map(block => ({ start: block.kind === 'html' ? block.start : block.table.blockStart, block })),
+    ...code.map(block => ({ start: block.blockStart, block: { kind: 'code' as const, code: block } })),
+  ].sort((left, right) => left.start - right.start);
+  if (!blocks.length) return parseMarkdownText(content, bodyIndent);
+
   const items: ListItemStack = [];
-  if (!code.length) return parseMarkdownProse(content, bodyIndent, items);
   const elements: (Paragraph | Table)[] = [];
   let cursor = 0;
-  for (const block of code) {
-    const prose = content.slice(cursor, block.blockStart);
-    if (prose.trim()) elements.push(...parseMarkdownProse(prose, bodyIndent, items));
-    elements.push(...literalCodeParagraphs(block, content, bodyIndent));
-    items.length = Math.min(items.length, block.listDepth);
-    cursor = block.end;
+  const drawTable = (table: MarkdownTableRange) => {
+    elements.push(...wordTableElements(table, bodyIndent));
+    items.length = Math.min(items.length, table.listDepth);
+  };
+  for (const { start, block } of blocks) {
+    const prose = content.slice(cursor, start);
+    if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent, items));
+    if (block.kind === 'code') {
+      elements.push(...literalCodeParagraphs(block.code, content, bodyIndent));
+      items.length = Math.min(items.length, block.code.listDepth);
+      cursor = block.code.end;
+    } else if (block.kind === 'table') {
+      const prefix = blockListPrefix(content, block.table);
+      if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));
+      drawTable(block.table);
+      cursor = block.table.end;
+    } else {
+      for (const piece of block.pieces) {
+        if (piece.kind === 'table') drawTable(piece.table);
+        else {
+          const indent = (bodyIndent ?? 0) + piece.listDepth * 360 + piece.quoteDepth * 720;
+          elements.push(...htmlProseParagraphs(piece.lines, indent));
+        }
+      }
+      cursor = block.end;
+    }
   }
   const tail = content.slice(cursor);
-  if (tail.trim()) elements.push(...parseMarkdownProse(tail, bodyIndent, items));
+  if (tail.trim()) elements.push(...parseMarkdownText(tail, bodyIndent, items));
   return elements;
 };
 
-export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
-  const outline = splitMarkdownSections(preparePlanMarkdown(content), { preserveBodyWhitespace: true });
-  if (!outline.sections.length) return parseMarkdownBody(outline.intro);
+export const parseMarkdownToParagraphs = (content: string, sectionColor?: string, bodyIndent?: number): (Paragraph | Table)[] => {
+  const prepared = preparePlanMarkdown(content);
+  const tables = /<table\b/i.test(prepared) ? markdownTableBlocks(prepared) : undefined;
+  const outline = splitMarkdownSections(prepared, {
+    preserveBodyWhitespace: true,
+    // A heading inside the raw source may draw before a repaired table. Keep the whole fragment intact.
+    isSectionBoundary: heading => !tables?.some(block => block.kind === 'html'
+      && block.headingCuts.some(cut => cut.start < heading.start && heading.start < cut.end)),
+  });
+  if (!outline.sections.length) return parseMarkdownBody(outline.intro, bodyIndent, tables);
   const renderSection = (section: MarkdownSection): (Paragraph | Table)[] => [
     createHeadingParagraph(section.headingMarkdown, section.level, sectionColor),
     ...(section.body ? parseMarkdownBody(section.body, planBodyIndent(section.level) * 360) : []),
     ...section.children.flatMap(renderSection),
   ];
   return [
-    ...(outline.intro ? parseMarkdownBody(outline.intro) : []),
+    ...(outline.intro ? parseMarkdownBody(outline.intro, bodyIndent) : []),
     ...outline.sections.flatMap(renderSection),
   ];
 };
@@ -313,7 +342,7 @@ export const parseTable = (tableLines: string[], indent = 0): Table | null => {
   if (tableLines.length < 2) return null;
 
   const canonical = markdownTableRanges(tableLines.join('\n'))[0];
-  if (canonical) return parsedWordTable(canonical, indent);
+  if (canonical) return canonical.rows.some(row => row.length) ? parsedWordTable(canonical, indent) : null;
 
   // Explicit non-GFM callers retain the existing malformed-input best-effort contract.
   // Parse table rows
@@ -345,14 +374,22 @@ const cellRuns = (cell: MarkdownTableCell): TextRun[] => cell.lines
   ? cell.lines.flatMap((line, index) => [...(index ? [new TextRun({ break: 1 })] : []), ...line.map(spanRun)])
   : parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 });
 
-const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => createWordTable(
-  table.rows.map(row => row.map(cell => ({ runs: cellRuns(cell), columnSpan: cell.colSpan, rowSpan: cell.rowSpan }))),
-  indent,
-);
+const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => {
+  const emptyRows = table.html && table.rows.some(row => !row.length) ? emptyHtmlTableRows(table.rows) : undefined;
+  const rows = table.rows.map((row, index) => {
+    const emptySpans = emptyRows?.get(index);
+    return emptySpans
+      ? emptySpans.map(span => ({ runs: [], columnSpan: span > 1 ? span : undefined }))
+      : row.map(cell => ({ runs: cellRuns(cell), columnSpan: cell.colSpan, rowSpan: cell.rowSpan }));
+  });
+  return createWordTable(rows, indent, emptyRows && new Set(emptyRows.keys()));
+};
 
 type WordTableCell = { runs: TextRun[]; columnSpan?: number; rowSpan?: number };
 
-const createWordTable = (rows: ReadonlyArray<ReadonlyArray<TextRun[] | WordTableCell>>, indent: number): Table => {
+const createWordTable = (
+  rows: ReadonlyArray<ReadonlyArray<TextRun[] | WordTableCell>>, indent: number, emptyRows?: ReadonlySet<number>,
+): Table => {
   const tableRows = rows.map((row, rowIndex) => {
     const cells = row.map(item => {
       const { runs, columnSpan, rowSpan } = Array.isArray(item) ? { runs: item } as WordTableCell : item;
@@ -378,7 +415,10 @@ const createWordTable = (rows: ReadonlyArray<ReadonlyArray<TextRun[] | WordTable
       });
     });
 
-    return new TableRow({ children: cells });
+    return new TableRow({
+      children: cells,
+      ...(emptyRows?.has(rowIndex) ? { height: { value: 240, rule: 'atLeast' } } : {}),
+    });
   });
 
   return new Table({
@@ -486,6 +526,21 @@ export const parseInlineMarkdown = (text: string): TextRun[] => {
   }
   const runs = parseInlineInherited(text, {});
   return runs.length > 0 ? runs : [new TextRun('')];
+};
+
+const wordSection = (
+  data: PlanData, section: 'introduction' | 'main' | 'conclusion', color: string,
+): (Paragraph | Table)[] => {
+  const cells = data.exportCells?.[section];
+  if (!cells?.some(({ content }) => /<table\b/i.test(content)
+    && markdownTableBlocks(content).some(block => block.kind === 'html'))) {
+    return parseMarkdownToParagraphs(data[section], color);
+  }
+  // Each card is read independently on the plan screen. An open table in one cannot own the next card.
+  return cells.flatMap(({ heading, content, level }) => [
+    ...(heading ? parseMarkdownToParagraphs(heading, color) : []),
+    ...(content ? parseMarkdownToParagraphs(content, color, planBodyIndent(level) * 360) : []),
+  ]);
 };
 
 export const exportToWord = async (options: WordExportOptions): Promise<void> => {
@@ -640,7 +695,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   style: 'sectionHeading',
                   spacing: { before: 200, after: 200 },
                 }),
-                ...parseMarkdownToParagraphs(data.introduction, introHex),
+                ...wordSection(data, 'introduction', introHex),
               ] : []),
 
               ...((focusedSection === 'main' || focusedSection === 'mainPart') ? [
@@ -658,7 +713,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   style: 'sectionHeading',
                   spacing: { before: 200, after: 200 },
                 }),
-                ...parseMarkdownToParagraphs(data.main, mainHex),
+                ...wordSection(data, 'main', mainHex),
               ] : []),
 
               ...(focusedSection === 'conclusion' ? [
@@ -676,7 +731,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   style: 'sectionHeading',
                   spacing: { before: 200, after: 200 },
                 }),
-                ...parseMarkdownToParagraphs(data.conclusion, conclHex),
+                ...wordSection(data, 'conclusion', conclHex),
               ] : []),
 
             ] : [
@@ -697,7 +752,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                 style: 'sectionHeading',
                 spacing: { before: 200, after: 200 },
               }),
-              ...parseMarkdownToParagraphs(data.conclusion, conclHex),
+              ...wordSection(data, 'conclusion', conclHex),
 
               // Break to Right Column (Front Cover)
               new Paragraph({
@@ -755,7 +810,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                 style: 'sectionHeading',
                 spacing: { before: 200, after: 200 },
               }),
-              ...parseMarkdownToParagraphs(data.introduction, introHex),
+              ...wordSection(data, 'introduction', introHex),
 
               // Break to Next Page (Inner Spread)
               new Paragraph({
@@ -777,7 +832,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                 style: 'sectionHeading',
                 spacing: { before: 200, after: 200 },
               }),
-              ...parseMarkdownToParagraphs(data.main, mainHex),
+              ...wordSection(data, 'main', mainHex),
             ]),
           ],
         },

@@ -1,10 +1,10 @@
-import { buildSectionOutlineMarkdown } from "@/(pages)/(private)/sermons/[id]/plan/buildSectionOutlineMarkdown";
+import { buildSectionOutlineCells, buildSectionOutlineMarkdown } from "@/(pages)/(private)/sermons/[id]/plan/buildSectionOutlineMarkdown";
 
 import { liveNodeIds, PLAN_TEXT_SECTIONS as SECTIONS, readPlanText } from "./planTextStorage";
 
 import type { PlanTextMap } from "./planTextStorage";
 import type { CombinedPlan } from "@/(pages)/(private)/sermons/[id]/plan/types";
-import type { Sermon, SermonOutline } from "@/models/models";
+import type { PlanData, Sermon, SermonOutline } from "@/models/models";
 
 /**
  * THE TEXT OF A PLAN, KEYED BY THE NODE IT BELONGS TO.
@@ -116,6 +116,19 @@ export function renderPlanWithFallback(
     if (fallback) withFallback[section] = fallback;
   });
   return withFallback;
+}
+
+/** Give Word the cell boundaries used by the reader for a section that contains raw tables. */
+export function planExportCells(sermon: Sermon, liveText: PlanTextMap, plan: CombinedPlan): PlanData['exportCells'] {
+  const cells: NonNullable<PlanData['exportCells']> = {};
+  for (const section of SECTIONS) {
+    if (!/<table\b/i.test(plan[section]) || legacySectionText(sermon, section, liveText)) continue;
+    cells[section] = buildSectionOutlineCells({
+      orderedOutlinePoints: sermon.outline?.[section] ?? [],
+      outlinePointsContentById: liveText,
+    });
+  }
+  return Object.keys(cells).length ? cells : undefined;
 }
 
 /**

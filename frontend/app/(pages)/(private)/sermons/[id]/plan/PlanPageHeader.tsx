@@ -13,12 +13,13 @@ import { sermonLanguage } from "@/utils/documentLanguage";
 import { getExportContent as exportSermonContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
-import { hasPlan } from "@/utils/sermonPlanAccess";
+import { getSermonPlanData } from "@/utils/sermonPlanAccess";
 
 import { PlanModeSwitch } from "./PlanModeSwitch";
 
 import type { CombinedPlan } from "./types";
 import type { Sermon } from "@/models/models";
+import type { PlanTextMap } from "@/utils/planText";
 
 /**
  * THE TOOLS ABOVE THE PLAN — one header, whichever editor is open.
@@ -79,6 +80,7 @@ export interface PlanPageHeaderProps {
   /** Which editor is rendering this — decides the subtitle and the pressed switch. */
   mode: PlanEditorMode;
   combinedPlan: CombinedPlan;
+  shownPlanText?: PlanTextMap;
   t: (key: string, options?: Record<string, unknown>) => string;
   /** Guard for leaving with unsaved cells — the hand-written editor has some, the paired one does not. */
   onLeave?: React.MouseEventHandler<HTMLAnchorElement>;
@@ -104,6 +106,7 @@ export default function PlanPageHeader({
   sermonId,
   mode,
   combinedPlan,
+  shownPlanText,
   t,
   onLeave,
   onSwitched,
@@ -229,11 +232,7 @@ export default function PlanPageHeader({
           title={sermon.title || t('dashboardHome.sections.sermons.untitled')}
           className="w-full sm:ml-auto sm:w-auto"
           disabledFormats={["pdf"]}
-          planData={
-            hasPlan(sermon)
-              ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse }
-              : undefined
-          }
+          planData={getSermonPlanData(sermon, { plan: combinedPlan, text: shownPlanText })}
           sermonTitle={sermon.title}
         />
       </div>

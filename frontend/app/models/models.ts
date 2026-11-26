@@ -710,12 +710,16 @@ export type Item = ThoughtInStructure;
 export type ThoughtsPlan = SectionHints;
 export type Plan = SermonContent;
 
+export type PlanExportCell = { heading?: string; level: 2 | 3; content: string };
+
 export interface PlanData {
   sermonTitle: string;
   sermonVerse: string;
   introduction: string;
   main: string;
   conclusion: string;
+  /** The editable source cells when independent HTML parsing matters to Word. */
+  exportCells?: Partial<Record<'introduction' | 'main' | 'conclusion', PlanExportCell[]>>;
   exportDate?: string;
 }
 

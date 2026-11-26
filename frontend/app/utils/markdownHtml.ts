@@ -6,6 +6,7 @@ import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 
 import type { Element, Root, RootContent } from 'hast';
+import type { Root as MarkdownRoot, RootContent as MarkdownContent } from 'mdast';
 import type { PluggableList } from 'unified';
 
 /** The editor's inline HTML extends the existing safe Markdown allow-list. */
@@ -84,4 +85,18 @@ const reader = unified()
 
 export function readMarkdownHtml(content: string): Root {
   return reader.runSync(reader.parse(content)) as Root;
+}
+
+/** Raw HTML comes from Markdown nodes, even when the HTML parser repairs their source locations. */
+export function readMarkdownHtmlWithRanges(content: string) {
+  const parsed = reader.parse(content);
+  const rawHtml: { start: number; end: number }[] = [];
+  const visit = (node: MarkdownRoot | MarkdownContent): void => {
+    if (node.type === 'html') {
+      const start = node.position?.start.offset, end = node.position?.end.offset;
+      if (start !== undefined && end !== undefined) rawHtml.push({ start, end });
+    } else if ('children' in node) node.children.forEach(visit);
+  };
+  visit(parsed);
+  return { tree: reader.runSync(parsed) as Root, rawHtml };
 }

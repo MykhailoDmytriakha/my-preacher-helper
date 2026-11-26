@@ -1,7 +1,13 @@
 import { Document, Packer, Table } from 'docx';
+import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
-import { parseMarkdownToParagraphs, parseTable } from '../../utils/wordExport';
+import { exportToWord, parseMarkdownToParagraphs, parseTable } from '../../utils/wordExport';
 import { readMarkdownHtml } from '../../app/utils/markdownHtml';
+import { getSermonPlanData } from '../../app/utils/sermonPlanAccess';
+
+import type { Sermon } from '../../app/models/models';
+
+jest.mock('file-saver', () => ({ saveAs: jest.fn() }));
 
 async function wordXml(markdown: string): Promise<string> {
   const document = new Document({ sections: [{ children: parseMarkdownToParagraphs(markdown) as never[] }] });
@@ -195,4 +201,60 @@ describe('an HTML table, the second look (Codex re-check)', () => {
     const tables = await actualTables('<table><tbody><tr><td rowspan="2">A</td><td>B</td></tr></tbody><tbody><tr><td>C</td><td>D</td></tr></tbody></table>');
     expect(tables[0][1]).toEqual(['C', 'D']);
   });
+});
+
+it('downloads a plan without letting the open table in one card consume its neighbor', async () => {
+  const sermon: Sermon = {
+    id: 'table-boundary',
+    userId: 'word-fixture-owner',
+    date: '2026-11-26',
+    title: 'Plan card boundary',
+    verse: 'John 3:16',
+    planText: { first: '<table><tr><td>Unclosed cell', next: '<table>Before <tr><td>Next cell</td></tr> After</table>' },
+    outline: {
+      introduction: [{ id: 'first', text: 'First card', subPoints: [] }, { id: 'next', text: 'Second card', subPoints: [] }],
+      main: [], conclusion: [],
+    },
+    thoughts: [],
+  };
+  const data = getSermonPlanData(sermon);
+  expect(data).toBeDefined();
+  await exportToWord({ data: data!, focusedSection: 'introduction' });
+  const [download] = jest.mocked(saveAs).mock.calls.at(-1) ?? [];
+  expect(download).toBeInstanceOf(Blob);
+  const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(download as Blob);
+  });
+  const packed = await JSZip.loadAsync(bytes);
+  const xml = await packed.file('word/document.xml')!.async('string');
+  expect(wordTables(xml)).toEqual([[['Unclosed cell']], [['Next cell']]]);
+  const rendered = new DOMParser().parseFromString(xml, 'application/xml');
+  const words = Array.from(rendered.getElementsByTagName('w:t')).map(run => run.textContent).join(' ');
+  expect(words.replace(/\s+/g, ' ')).toContain('First card Unclosed cell Second card Before After Next cell');
+  expect(words.match(/Unclosed cell/g)).toHaveLength(1);
+});
+
+it.each([
+  '<h2>Separate heading</h2>\n<table><tr><td>Table remains</td></tr></table>',
+  '<table><tr><td>Table remains</td></tr></table><h2>Separate heading</h2>',
+])('preserves the Word heading style for a heading outside the table', async markdown => {
+  const xml = await wordXml(markdown);
+  expect(wordTables(xml)).toEqual([[['Table remains']]]);
+  const rendered = new DOMParser().parseFromString(xml, 'application/xml');
+  const heading = Array.from(rendered.getElementsByTagName('w:p')).find(p => p.textContent === 'Separate heading');
+  expect(heading?.getElementsByTagName('w:pStyle')[0]?.getAttribute('w:val')).toBe('Heading2');
+});
+
+it('gives the blank row a visible cell alongside a continuing vertical merge', async () => {
+  const xml = await wordXml('<table><tr><td rowspan="0">Tall</td><td>First</td></tr><tr></tr><tr><td>Third</td></tr></table>');
+  expect(wordTables(xml)).toEqual([[['Tall', 'First'], ['', ''], ['', 'Third']]]);
+});
+
+it('gives a fully covered empty row height without adding a column', async () => {
+  const xml = await wordXml('<table><tr><td rowspan="0">Tall</td></tr><tr></tr></table>');
+  expect(wordTables(xml)).toEqual([[['Tall'], ['']]]);
+  expect(xml).toMatch(/<w:trHeight\b[^>]*w:hRule="atLeast"/);
 });

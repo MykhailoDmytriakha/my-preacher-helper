@@ -1076,6 +1076,7 @@ function PlanPageContent({ source, recovery, readOnly = false, wayIn }: {
         sermonId={sermonId as string}
         mode="ai"
         combinedPlan={combinedPlan}
+        shownPlanText={shownContent}
         t={t}
         onRequestPlanOverlay={handleOpenPlanOverlay}
         onRequestPreachingMode={handleOpenTimePicker}

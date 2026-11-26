@@ -128,11 +128,16 @@ Regression: `__tests__/utils/wordExportCode.test.ts` serializes real DOCX/Packer
 
 ## Preserve GFM table boundaries in Word
 
-`markdownTables.markdownTableRanges` uses the existing whole-document safe reader for actual GFM table shape. Cell positions contain structural pipes; select the original positioned inline-child span instead. Preserve parser-created empty cells as empty sources, and carry parser-confirmed inline-code values/ranges separately. Use one exact prepared body string for parsing, source slicing and offsets. The adapter excludes positioned raw schema-HTML table sources; that is not a rich-HTML Word table implementation.
+`markdownTables.markdownTableRanges` uses the existing whole-document safe reader for actual GFM table shape. Cell positions contain structural pipes; select the original positioned inline-child span instead. Preserve parser-created empty cells as empty sources, and carry parser-confirmed inline-code values/ranges separately. Use one exact prepared body string for parsing, source slicing and offsets. The same adapter recognizes raw HTML tables and keeps their decoded text and formatting runs from the safe reader tree.
 
 Word partitions canonical tables before prose blank-line filtering. Preserve sibling table boundaries and list/quote indentation; the shared block-list prefix owner also handles code-first list items. Public `parseTable` prefers canonical rows and keeps its historical malformed-input fallback for explicit callers. Ordinary prose never enters that fallback because it contains pipes. The existing table layout owns borders, header shading and margins.
 
 Cell formatting reads original source, retaining Word custom superscript/subscript and inline HTML. Carry cell code masks with a cumulative original offset through every recursive formatting capture. Unescape table-local backslash-pipe only at final plain-text emission, and emit canonical code values without entity decoding. `markdownCode.maskMarkdownCodeRanges` is the common same-length mask owner. Never parse decoded HAST text as Markdown again. Regression: `wordExportTables.test.ts` uses real DOCX/Packer/namespace-aware XML, including separate/no-edge/ragged/empty tables, nested code, scripts, one-pass entities, containers and line endings. Native acceptance must download both plan routes and an already-loaded offline Word file; screenshots prove app state, while actual ZIP XML proves cells.
+
+
+For raw tables, Markdown source offsets fence the fragment, while the safe HTML tree decides its reading order. Keep relocated prose and literal same-line text in that fragment, and protect headings and fenced code inside the same source extent from splitting it. Project preserved row spans across empty rows. Supply empty cells for the free columns and a minimum row height. The Word packer creates the continuation cells through the merged columns.
+
+For a plan assembled from cards, pass the original cell boundaries from the shared outline builder. Word parses the card content independently when the section contains raw tables, so an open tag in one card cannot consume the next heading or card. Legacy sections without cards retain their original Markdown as the input. Regression tests check the normal Word export with real DOCX packing and examine the positions of cells and paragraphs.
 
 
 ## Clicked caret before the next key
