@@ -2,7 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
-import { markdownCodeRanges, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
+import { markdownCodeRanges, markdownColumn, markdownExportBlocks, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange, type MarkdownExportBlock } from '@/utils/markdownCode';
 import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { emptyHtmlTableRows, markdownTableBlocks, markdownTableRanges, type CellSpan, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
@@ -111,7 +111,7 @@ const parseBlockquote = (trimmedLine: string, indent: number): Paragraph => {
 };
 
 // Helper function to parse horizontal rules
-const parseHorizontalRule = (): Paragraph => {
+const parseHorizontalRule = (indent?: number, quoted = false): Paragraph => {
   return new Paragraph({
     children: [
       new TextRun({
@@ -121,6 +121,8 @@ const parseHorizontalRule = (): Paragraph => {
     ],
     alignment: AlignmentType.CENTER,
     spacing: { before: 0, after: 0 },
+    ...(indent === undefined ? {} : { indent: { left: indent } }),
+    ...(quoted ? { border: quoteBorder } : {}),
   });
 };
 
@@ -192,16 +194,16 @@ const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItem
   while (i < lines.length) {
     const trimmedLine = lines[i].trim();
 
-    const leading = lines[i].length - lines[i].trimStart().length;
+    const leading = markdownColumn(lines[i].match(/^[ \t]*/)?.[0] ?? '');
     while (items.length && leading < items[items.length - 1].content) items.pop();
     const parent = items[items.length - 1];
-    // «- - -» and «* * *» are rules, not list items.
+    // Dashes still present here are inside literal content, such as a raw HTML block.
     const marker = /^([-*_])(\s*\1){2,}\s*$/.test(trimmedLine) ? null : /^([-*]|\d+\.)\s+/.exec(trimmedLine);
     // One level under the item it belongs to, the same for step 9 and step 10; at the top, as before.
     const listIndent = parent
       ? parent.indent + 360 + Math.floor((leading - parent.content) / 2) * 360
       : (bodyIndent ?? 360) + 360 + Math.floor(leading / 2) * 360;
-    if (marker) items.push({ indent: listIndent, content: leading + marker[0].length });
+    if (marker) items.push({ indent: listIndent, content: markdownColumn(marker[0], leading) });
     // A paragraph or quote inside a list item — a plan step's verse, its quote — sits where the item's own bullets
     // sit, under its number (owner, 2026-11-21: the structure must show); outside any item it keeps the body indent.
     const nested = !marker && !!parent;
@@ -214,8 +216,6 @@ const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItem
         elements.push(parseNumberedList(trimmedLine, listIndent));
       } else if (trimmedLine.startsWith('> ')) {
         elements.push(parseBlockquote(trimmedLine, nested ? listIndent : bodyIndent ?? 720));
-      } else if (trimmedLine === '---' || trimmedLine === '***') {
-        elements.push(parseHorizontalRule());
       } else {
         elements.push(parseRegularParagraph(trimmedLine, nested ? listIndent : bodyIndent));
       }
@@ -248,21 +248,36 @@ const wordTableElements = (table: MarkdownTableRange, bodyIndent?: number): (Par
   return elements;
 };
 
-const literalCodeParagraphs = (code: MarkdownCodeRange, source: string, bodyIndent?: number): Paragraph[] => {
-  let left = bodyIndent ?? 0;
-  if (code.listDepth) left = (bodyIndent ?? 360) + code.listDepth * 360;
-  if (code.quoteDepth) left = Math.max(left, bodyIndent ?? 720) + (code.quoteDepth - 1) * 360;
-  // A block beginning on the marker line still owns that visible list marker.
-  const prefix = blockListPrefix(source, code);
-  return code.value.split(/\r\n|\r|\n/).map((line, index) => new Paragraph({
+function indentedBlockLeft(bodyIndent: number | undefined, listDepth: number, quoteDepth: number): number {
+  const left = listDepth ? (bodyIndent ?? 360) + listDepth * 360 : bodyIndent ?? 0;
+  return quoteDepth ? Math.max(left, bodyIndent ?? 720) + (quoteDepth - 1) * 360 : left;
+}
+
+function exportMarkdownBlock(block: MarkdownExportBlock, bodyIndent: number | undefined, items: ListItemStack): Paragraph[] {
+  const establishedDepth = block.listDepth - block.openings.length;
+  items.length = Math.min(items.length, establishedDepth);
+  block.openings.forEach(({ content }, index) => {
+    const indent = indentedBlockLeft(bodyIndent, establishedDepth + index + 1, block.quoteDepth);
+    items.push({ content, indent });
+  });
+
+  const left = indentedBlockLeft(bodyIndent, block.listDepth, block.quoteDepth);
+  const prefix = block.openings.map(({ marker }) => /^\d/.test(marker) ? marker : '•').join(' ');
+  if (block.kind === 'thematicBreak') {
+    const indent = items.at(-1)?.indent;
+    const rule = parseHorizontalRule(indent === undefined ? left || undefined : indent + 360, block.quoteDepth > 0);
+    return prefix ? [new Paragraph({ children: [new TextRun({ text: prefix })], indent: { left } }), rule] : [rule];
+  }
+
+  return block.value.split(/\r\n|\r|\n/).map((line, index) => new Paragraph({
     children: [
-      ...(index === 0 && prefix ? [new TextRun({ text: prefix })] : []),
+      ...(index === 0 && prefix ? [new TextRun({ text: prefix + ' ' })] : []),
       new TextRun({ text: line, font: WORD_CODE_FONT }),
     ],
     spacing: { after: 0 }, alignment: AlignmentType.LEFT, indent: { left },
-    ...(code.quoteDepth ? { border: quoteBorder } : {}),
+    ...(block.quoteDepth ? { border: quoteBorder } : {}),
   }));
-};
+}
 
 function htmlProseParagraphs(lines: CellSpan[][], indent: number): Paragraph[] {
   return lines.map(line => new Paragraph({
@@ -274,11 +289,11 @@ function htmlProseParagraphs(lines: CellSpan[][], indent: number): Paragraph[] {
 const parseMarkdownBody = (
   content: string, bodyIndent?: number, tables = markdownTableBlocks(content),
 ): (Paragraph | Table)[] => {
-  const code = markdownCodeRanges(content).filter(range => range.kind === 'block'
-    && !tables.some(block => block.kind === 'html' && block.start <= range.start && range.start < block.end));
+  const markdown = markdownExportBlocks(content).filter(range =>
+    !tables.some(block => block.kind === 'html' && block.start <= range.start && range.start < block.end));
   const blocks = [
     ...tables.map(block => ({ start: block.kind === 'html' ? block.start : block.table.blockStart, block })),
-    ...code.map(block => ({ start: block.blockStart, block: { kind: 'code' as const, code: block } })),
+    ...markdown.map(range => ({ start: range.blockStart, block: { kind: 'markdown' as const, range } })),
   ].sort((left, right) => left.start - right.start);
   if (!blocks.length) return parseMarkdownText(content, bodyIndent);
 
@@ -292,10 +307,9 @@ const parseMarkdownBody = (
   for (const { start, block } of blocks) {
     const prose = content.slice(cursor, start);
     if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent, items));
-    if (block.kind === 'code') {
-      elements.push(...literalCodeParagraphs(block.code, content, bodyIndent));
-      items.length = Math.min(items.length, block.code.listDepth);
-      cursor = block.code.end;
+    if (block.kind === 'markdown') {
+      elements.push(...exportMarkdownBlock(block.range, bodyIndent, items));
+      cursor = block.range.end;
     } else if (block.kind === 'table') {
       const prefix = blockListPrefix(content, block.table);
       if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));

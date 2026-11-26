@@ -203,3 +203,61 @@ describe('Word literal Markdown code boundaries', () => {
   });
 
 });
+
+function paragraphIndent(xml: string, words: string): number | null {
+  const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const document = new DOMParser().parseFromString(xml, 'application/xml');
+  const paragraph = Array.from(document.getElementsByTagNameNS(ns, 'p')).find(node => node.textContent === words);
+  const left = paragraph?.getElementsByTagNameNS(ns, 'ind')[0]?.getAttributeNS(ns, 'left');
+  return left ? Number(left) : null;
+}
+
+describe('Word thematic breaks and code-first list items', () => {
+  it.each(['- - -', '* * * *', '_ _ _', '_\t_  _'])('draws the thematic break %s as a rule', async marker => {
+    const xml = await markdownXml(['1. Step', '', marker, '', 'After the break'].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['1. Step', expect.stringMatching(/^━+$/), 'After the break']);
+  });
+
+  it('keeps a quote under the numbered step that opened with code', async () => {
+    const xml = await markdownXml([
+      '1. ```text', '   step sample', '   ```', '', '   > Quote in step', '', '> Independent quote',
+    ].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['1. step sample', 'Quote in step', 'Independent quote']);
+    expect(paragraphIndent(xml, '1. step sample')).toBe(720);
+    expect(paragraphIndent(xml, 'Quote in step')).toBe(1080);
+    expect(paragraphIndent(xml, 'Independent quote')).toBe(720);
+  });
+
+  it.each([[9, 10], [100, 9]])('keeps the code-first step %i → %i at the same depth', async (before, step) => {
+    const marker = `${step}.`;
+    const padding = ' '.repeat(marker.length + 1);
+    const xml = await markdownXml([
+      `${before}. Previous step`, marker + ' ```text', padding + 'second sample',
+      padding + '```', '', padding + '> Quote in the current step',
+    ].join('\n'));
+    expect(wordParagraphs(xml)).toEqual([`${before}. Previous step`, marker + ' second sample', 'Quote in the current step']);
+    expect(paragraphIndent(xml, 'Quote in the current step')).toBe(1080);
+  });
+
+  it('keeps the paragraph after literal HTML dashes outside a list', async () => {
+    const xml = await markdownXml(['<div>', '- - -', '   ordinary', '</div>', '', 'Outside'].join('\n'));
+    expect(wordParagraphs(xml)).not.toContainEqual(expect.stringMatching(/^━+$/));
+    expect(paragraphIndent(xml, 'ordinary')).toBeNull();
+  });
+
+  it('preserves a legacy footnote label on the same line as a rule', async () => {
+    const xml = await markdownXml(['Intro[^note]', '', '[^note]: * * *', '    Appendix', '', 'Outside'].join('\n'));
+    const paragraphs = wordParagraphs(xml);
+    expect(paragraphs).toContainEqual(expect.stringMatching(/^\[\^note\]:/));
+    expect(paragraphs).not.toContainEqual(expect.stringMatching(/^━+$/));
+  });
+
+  it('keeps the first code block and its quote under a nested step', async () => {
+    const xml = await markdownXml([
+      '1. Parent', '   - ```text', '     nested sample', '     ```', '', '     > Quote in substep',
+    ].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['1. Parent', '• nested sample', 'Quote in substep']);
+    expect(paragraphIndent(xml, '• nested sample')).toBe(1080);
+    expect(paragraphIndent(xml, 'Quote in substep')).toBe(1440);
+  });
+});
