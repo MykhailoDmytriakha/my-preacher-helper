@@ -3,8 +3,7 @@
 import { createContext, useContext, type ContextType, type PropsWithChildren } from 'react';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, useRecoveryDiscovery } from '@/data-engine/react.client';
-import { readSermonPointMoveRecovery } from '@/data-engine/sermonPointMoveRecovery';
+import { readOutlineNoteConflict, readOutlineTitleComparison, readSermonOutlineReview, readSermonPointMoveRecovery, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { SECTION_KEYS } from '@/utils/outlineDnd';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';

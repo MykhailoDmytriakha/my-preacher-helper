@@ -10782,3 +10782,11 @@ The pixel regression failed on the original Chrome frames and passed on the corr
 The initial whole-branch Jest run had 17,911 passes, 31 skips and two failures. The book-list test expected a height transition and passed in the final targeted run after updating the assertion. The architecture failure matched the archived parent across all 22 reported accesses and is tracked as `BUG-20261126-engine-recovery-import-boundary`.
 
 After authorized rollout, open Bible and hold a book without releasing it for half a second. Watch the label as the edge crosses it. Repeat on a colored book, on a chapter after a short press, and on a book in the reader's picker. Check light and dark themes, then release to confirm the destination opens. Move away before release to confirm cancellation.
+
+## BUG-20261126-engine-recovery-import-boundary · Restore the public recovery boundary
+
+The unchanged architecture test reported 22 internal accesses from eight application files. Sermon recovery, service-order movement and account-preference screens now call supported operations on the React facade. The existing engine policies still own the saved comparison, action order and recovery. The architecture rule and the debt ledger passed with their original bytes.
+
+The architecture suite went from one failure to seven passes. The full branch passed 1,297 suites and 17,913 tests, with 31 tests skipped. TypeScript, scoped ESLint and the local production build passed. An independent reviewer checked the five source files. Hidden Chrome at 1280 and 390 px on local Auth and Firestore checked the sermon comparison and separate sketch through reload, selective and zero-write account settings choices, and both readable and unreadable service-order moves. The production-mode local server peaked at 0.31 GiB. Both stands released their ports. Evidence is in `artifacts/engine-import-boundary-20261126/verification.md`.
+
+After authorized rollout, verify the deployed revision and open an expendable sermon in Preparation, Manual Plan and Structure. Open its existing recovery offer if one is available. Confirm the settings comparison remains selectable without sending changes before approval. Open an existing service-order recovery notice and confirm the appropriate saved-move option. Keep synthetic damaged checkpoint cases on the emulator.

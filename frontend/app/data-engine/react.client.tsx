@@ -11,13 +11,13 @@ import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client
 import { matchesSermonNoteOpening, readSermonNoteText, sermonNoteChanged, withSermonNoteText, type OutlineTitleOpening, type SermonNoteOpening, type SermonNoteTarget } from '@/utils/sermonNoteText';
 import { useTranslation } from '@locales/useTranslation';
 
-import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference, type AccountPreferenceResolution } from './accountPreference';
+import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, needsAccountPreferenceReview as needsPreferenceReview, readAccountPreferenceReview as readPreferenceReview, readingPreferenceFields as readingFields, writeAccountPreference as writePreference, type AccountPreferenceResolution } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
-import { isChurchValue as churchValue } from './churchFieldValue';
+import { churchFieldWords as churchWords, isChurchValue as churchValue } from './churchFieldValue';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
 import { COMMENT_EDITOR_SLOT as existingCommentEditorSlot, newCommentEditorSlot as creationCommentSlot } from './commentEditorScope';
@@ -64,11 +64,19 @@ import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
 import { readServiceOrderTitleConflict as serviceOrderTitleConflict, readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readOutlineNoteConflict as outlineNoteConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
-import { readRecoveredSermonChurch } from './sermonChurchRecovery';
+import { readRecoveredSermonChurch, sermonChurchDraft as churchDraft } from './sermonChurchRecovery';
 import { readSermonPlanModeComparison as sermonPlanModeComparison, readSermonSettingComparison } from './sermonFieldChoice';
+import { guardedScratchTextReview as scratchTextReview } from './sermonGuardedScratchText';
 import { readSermonOutlineReview as sermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
+import { readPlacedSketchComparison as placedSketchComparison, sermonSketchRecovery as sketchRecovery } from './sermonPlacedSketchRecovery';
 import { planCellOpening, type PlanCellOpening } from './sermonPlanCellSession';
-import { readSermonTextDraftComparison } from './sermonTextRecovery';
+import { hasPrivateSermonPointMove as hasPrivatePointMove, readSermonPointMoveRecovery as pointMoveRecovery } from './sermonPointMoveRecovery';
+import { sermonPreparationCheckDraft as preparationCheckDraft } from './sermonPreparationCheckRecovery';
+import { pendingScratchRemoval as pendingSketchRemoval, recoveredScratchRemoval as recoveredSketchRemoval } from './sermonScratchRemovalRecovery';
+import { readSermonTextDraftComparison, sermonTextDraft as textDraft } from './sermonTextRecovery';
+import { recoveredThoughtLock as thoughtLockRecovery, sermonThoughtLockDraft as thoughtLockDraft } from './sermonThoughtLockRecovery';
+import { sermonThoughtPlacementDraft as thoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
+import { pendingThoughtRemoval as pendingThoughtRemovalReview, recoveredThoughtRemoval as thoughtRemovalRecovery, sermonThoughtRemovalDraft as thoughtRemovalDraft } from './sermonThoughtRemovalRecovery';
 import { isReturnedServiceOrderInput as returnedServiceInput, readServiceOrderInputComparison as compareSavedServiceInput, readServiceOrderInputValue as readSavedServiceOrderInput, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
@@ -79,7 +87,7 @@ import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './
 import { readStudyNoteFieldsComparison as studyNoteFieldsComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
-import { hasPrivateServiceOrderPosition } from './unreadableDraftProof';
+import { hasPrivateServiceOrderPosition as hasServicePosition, hasTwoPrivateServiceOrderMoves as hasTwoServiceMoves, privateServiceOrderPosition as readServicePosition, waitsForServiceOrderPosition as waitsForServicePosition } from './unreadableDraftProof';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 
@@ -174,7 +182,8 @@ export function previewReviewedListChoice(checkpoint: SessionCheckpoint) {
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }
-export { needsAccountPreferenceReview, readAccountPreferenceReview } from './accountPreference';
+export function needsAccountPreferenceReview(checkpoint: SessionCheckpoint): boolean { return needsPreferenceReview(checkpoint); }
+export function readAccountPreferenceReview(checkpoint: SessionCheckpoint) { return readPreferenceReview(checkpoint); }
 export const accountPreferenceValues = preferenceValues;
 export const readingPreferenceFields = readingFields;
 export const writeAccountPreference = writePreference;
@@ -192,7 +201,7 @@ export function validTagIntents(...args: Parameters<typeof validDocumentTagInten
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
-export { churchFieldWords } from './churchFieldValue';
+export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
 export function seriesTextChoiceFields(...args: Parameters<typeof seriesChoice>) { return seriesChoice(...args); }
 export function prayerTextEditAction(...args: Parameters<typeof capturePrayerTextEdit>) { return capturePrayerTextEdit(...args); }
 export function readServiceOrderTitleConflict(...args: Parameters<typeof serviceOrderTitleConflict>) { return serviceOrderTitleConflict(...args); }
@@ -401,14 +410,29 @@ export function isWorkspaceRecoveryCopy(record: EditorRecord, slots: readonly st
     && slots.some(slot => isDocumentEditorSlot(record.editorId, checkpoint.confirmed.resource, slot));
 }
 
-export { sermonChurchDraft } from './sermonChurchRecovery';
-export { readPlacedSketchComparison, sermonSketchRecovery } from './sermonPlacedSketchRecovery';
-export { sermonPreparationCheckDraft } from './sermonPreparationCheckRecovery';
-export { recoveredThoughtLock, sermonThoughtLockDraft } from './sermonThoughtLockRecovery';
-export { sermonThoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
-export { pendingThoughtRemoval, recoveredThoughtRemoval, sermonThoughtRemovalDraft } from './sermonThoughtRemovalRecovery';
-export { pendingScratchRemoval, recoveredScratchRemoval } from './sermonScratchRemovalRecovery';
-export { sermonTextDraft } from './sermonTextRecovery';
+/** Recovery previews for the sermon screens. The engine owns the saved versions and action proof. */
+export function sermonChurchDraft(checkpoint: SessionCheckpoint) { return churchDraft(checkpoint); }
+export function readPlacedSketchComparison(checkpoint: SessionCheckpoint) { return placedSketchComparison(checkpoint); }
+export function sermonSketchRecovery(record: EditorRecord) { return sketchRecovery(record); }
+export function sermonPreparationCheckDraft(checkpoint: SessionCheckpoint) { return preparationCheckDraft(checkpoint); }
+export function recoveredThoughtLock(checkpoint: SessionCheckpoint, saved: ResourceSnapshot) { return thoughtLockRecovery(checkpoint, saved); }
+export function sermonThoughtLockDraft(checkpoint: SessionCheckpoint) { return thoughtLockDraft(checkpoint); }
+export function sermonThoughtPlacementDraft(checkpoint: SessionCheckpoint) { return thoughtPlacementDraft(checkpoint); }
+export function pendingThoughtRemoval(checkpoint: SessionCheckpoint) { return pendingThoughtRemovalReview(checkpoint); }
+export function recoveredThoughtRemoval(checkpoint: SessionCheckpoint, saved: ResourceSnapshot) { return thoughtRemovalRecovery(checkpoint, saved); }
+export function sermonThoughtRemovalDraft(checkpoint: SessionCheckpoint) { return thoughtRemovalDraft(checkpoint); }
+export function pendingScratchRemoval(checkpoint: SessionCheckpoint) { return pendingSketchRemoval(checkpoint); }
+export function recoveredScratchRemoval(checkpoint: SessionCheckpoint, saved: ResourceSnapshot) { return recoveredSketchRemoval(checkpoint, saved); }
+export function sermonTextDraft(checkpoint: SessionCheckpoint) { return textDraft(checkpoint); }
+export function readGuardedScratchTextReview(checkpoint: SessionCheckpoint) { return scratchTextReview(checkpoint); }
+export function hasPrivateSermonPointMove(checkpoint: SessionCheckpoint): boolean { return hasPrivatePointMove(checkpoint); }
+export function readSermonPointMoveRecovery(checkpoint: SessionCheckpoint) { return pointMoveRecovery(checkpoint); }
+
+/** The global recovery notice shows the saved move that still needs the owner's choice. */
+export function hasPrivateServiceOrderPosition(checkpoint: SessionCheckpoint): boolean { return hasServicePosition(checkpoint); }
+export function hasTwoPrivateServiceOrderMoves(checkpoint: SessionCheckpoint): boolean { return hasTwoServiceMoves(checkpoint); }
+export function privateServiceOrderPosition(checkpoint: SessionCheckpoint) { return readServicePosition(checkpoint); }
+export function waitsForServiceOrderPosition(checkpoint: SessionCheckpoint): boolean { return waitsForServicePosition(checkpoint); }
 
 export function exegeticalRecoveryOpeningTitle(record: EditorRecord): string | undefined {
   if (!isManualChoiceRecoveryIdentity(record.editorId)) return;
