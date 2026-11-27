@@ -102,7 +102,14 @@ function OwnedMarkdownEditor({
         editorProps: {
             ...scrollProps,
             handleDOMEvents: {
-                input: () => { ownedBy.nativeInput?.(); return false; },
+                beforeinput: (_view, event) => { ownedDocument.current?.beforeInput(event as InputEvent); return false; },
+                input: (_view, event) => {
+                    ownedDocument.current?.nativeInput(event as InputEvent);
+                    ownedBy.nativeInput?.();
+                    return false;
+                },
+                compositionstart: () => { ownedDocument.current?.compositionActivity(); return false; },
+                compositionupdate: () => { ownedDocument.current?.compositionActivity(); return false; },
                 compositionend: () => { ownedDocument.current?.compositionEnd(); return false; },
             },
             attributes: { class: EDITOR_CONTENT_CLASS },

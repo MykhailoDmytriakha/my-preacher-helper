@@ -1,6 +1,7 @@
 import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
 import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 
+import { androidIdleComposition } from './androidIdleComposition';
 import { applyForeignContent, canonicalForeignTarget } from './foreignContent';
 
 import type { OwnedTextDocument } from './useEditorOwnedText';
@@ -23,12 +24,13 @@ interface PendingArrival {
 /** Composition and displayed edit openings are witnessed by the editor. */
 export function ownedTextDocument(editor: Editor) {
   // The installed Android view ends an idle composition after five seconds without
-  // a DOM compositionend. This timer only rechecks its public state; it never ends
-  // a composition or treats elapsed time as proof that native input was admitted.
+  // a DOM compositionend. A witnessed native Backspace inside that deadline
+  // lets the editor retry the library's own completion after admitting the deletion.
   const compositionCheckMs = 5000;
   const { markdown } = editor.storage as unknown as {
     markdown: { getMarkdown(): string; serializer: { serialize(doc: DocumentNode): string } };
   };
+  const android = androidIdleComposition(() => editor.view);
   let deferred: PendingArrival | undefined;
   const install = (value: string, protectPlace = true) => {
     const pending = deferred?.value === value ? deferred : { value };
@@ -51,6 +53,7 @@ export function ownedTextDocument(editor: Editor) {
   let ended: ReturnType<typeof setTimeout> | undefined;
   const waiting = new Set<{ resolve: () => void; reject: (error: Error) => void }>();
   const recheck = () => {
+    if (!editor.isDestroyed && waiting.size) android?.finishIfAdmitted();
     if (editor.isDestroyed || !editor.view.composing) {
       for (const waiter of waiting) {
         if (editor.isDestroyed) waiter.reject(new Error('The note editor closed before text could be appended'));
@@ -68,18 +71,26 @@ export function ownedTextDocument(editor: Editor) {
     // Let all synchronous update listeners publish the admitted document first.
     if (waiting.size) void Promise.resolve().then(recheck);
   };
-  editor.on('transaction', afterUpdate);
+  editor.on('transaction', ({ transaction }) => {
+    android?.observe(transaction);
+    afterUpdate();
+  });
   editor.on('update', afterUpdate);
   editor.on('destroy', () => {
     clearTimeout(retry);
     clearTimeout(ended);
     deferred = undefined;
+    android?.end();
     // Tiptap emits destroy before destroying its view.
     for (const waiter of waiting) waiter.reject(new Error('The note editor closed before text could be appended'));
     waiting.clear();
   });
   return {
+    compositionActivity: () => android?.activity(),
+    beforeInput: (event: InputEvent) => android?.beforeInput(event),
+    nativeInput: (event: InputEvent) => android?.input(event),
     compositionEnd: () => {
+      android?.end();
       // ProseMirror handles this same event after handleDOMEvents. Resume after its
       // composition-end microtasks and normal MutationObserver delivery, not inside it.
       clearTimeout(ended);
@@ -87,7 +98,7 @@ export function ownedTextDocument(editor: Editor) {
     },
     waitForComposition: () => new Promise<void>((resolve, reject) => {
       waiting.add({ resolve, reject });
-      recheck();
+      afterUpdate();
     }),
     install,
     retryArrival,
@@ -151,6 +162,9 @@ export function ownedTextDocument(editor: Editor) {
       replaceOwnContent(editor, value);
     },
   } satisfies OwnedTextDocument & {
+    compositionActivity(): void;
+    beforeInput(event: InputEvent): void;
+    nativeInput(event: InputEvent): void;
     compositionEnd(): void;
     retryArrival(): void;
     captureEdit(value: string, transaction: Transaction): { value: string; opening?: string };

@@ -74,3 +74,72 @@ it('characterizes OPEN paragraph splitting during the same deferred Android obse
     expect(result.current.live()).toBe('First\n\nSecond\n\nVoice');
   } finally { mounted.unmount(); jest.useRealTimers(); }
 });
+
+it.each([
+  { label: 'a deletion that delayed its idle composition ending', renew: false, dictationArrivesLater: false },
+  { label: 'the real end of a renewed composition', renew: true, dictationArrivesLater: false },
+  { label: 'a stalled deletion that happened before dictation arrived', renew: false, dictationArrivesLater: true },
+])('appends dictated words after Android admits $label', async ({ renew, dictationArrivesLater }) => {
+  jest.useFakeTimers();
+  const { result } = renderHook(() => useEditorOwnedText('Original'));
+  const mounted = render(<RichMarkdownEditor ownedBy={result.current.ownedBy} />);
+  try {
+    const { view } = mockEditor;
+    view.setProps({ handleScrollToSelection: () => true });
+    const nativeWords = view.dom.querySelector('p')!.firstChild!;
+    await act(async () => {
+      view.dom.focus();
+      window.getSelection()!.collapse(nativeWords, nativeWords.textContent!.length);
+      view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+      view.dom.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: ' native' }));
+      nativeWords.nodeValue = 'Original native';
+      window.getSelection()!.collapse(nativeWords, nativeWords.textContent!.length);
+      view.dom.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', isComposing: true }));
+    });
+    expect(view.composing).toBe(true);
+    let appended = false;
+    const appendDictatedWords = () => {
+      void Promise.resolve(result.current.append('Voice')).then(() => { appended = true; }, () => undefined);
+    };
+    if (!dictationArrivesLater) act(appendDictatedWords);
+    await act(async () => { await jest.advanceTimersByTimeAsync(4990); });
+    expect(appended).toBe(false);
+
+    await act(async () => {
+      view.dom.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'deleteContentBackward' }));
+      nativeWords.nodeValue = 'Original nativ';
+      window.getSelection()!.collapse(nativeWords, nativeWords.textContent!.length);
+      view.dom.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      await jest.advanceTimersByTimeAsync(11);
+    });
+    expect(view.composing).toBe(true);
+    expect(appended).toBe(false);
+
+    const finalWords = renew ? 'Original native renewed' : 'Original nativ';
+    if (renew) {
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: ' native renewed' }));
+        nativeWords.nodeValue = finalWords;
+        window.getSelection()!.collapse(nativeWords, nativeWords.textContent!.length);
+        view.dom.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', isComposing: true }));
+      });
+    }
+    await act(async () => { await jest.advanceTimersByTimeAsync(30); });
+    expect(view.state.doc.textContent).toContain(finalWords);
+    if (dictationArrivesLater) {
+      expect(view.composing).toBe(true);
+      await act(async () => { appendDictatedWords(); });
+    }
+    if (renew) {
+      expect(view.composing).toBe(true);
+      expect(appended).toBe(false);
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: ' native renewed' }));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+    }
+    expect(view.composing).toBe(false);
+    expect(appended).toBe(true);
+    expect(result.current.live()).toBe(finalWords + '\n\nVoice');
+  } finally { mounted.unmount(); jest.useRealTimers(); }
+});
