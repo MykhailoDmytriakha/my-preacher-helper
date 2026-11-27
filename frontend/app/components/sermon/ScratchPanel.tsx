@@ -20,7 +20,6 @@ import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioForma
 import { outlineNoteSketches } from '@/utils/scratchPlacement';
 import { useTranslation } from "@locales/useTranslation";
 
-import { useScratchNoteLabels } from './scratch/ScratchNoteCard';
 import ScratchSortingBoard from './scratch/ScratchSortingBoard';
 
 import type { ScratchNote, SermonOutline } from "@/models/models";
@@ -87,7 +86,13 @@ export default function ScratchPanel({
   isReadOnly = false,
 }: ScratchPanelProps) {
   const { t } = useTranslation();
-  const noteLabels = useScratchNoteLabels();
+  const noteLabels = useMemo(() => ({
+    label: t('scratch.card.label'),
+    placeholder: t('scratch.card.placeholder'),
+    clear: t('scratch.card.delete'),
+    add: t('scratch.card.add'),
+    deleteConfirm: { key: 'scratch.card.deleteConfirmTitle' },
+  }), [t]);
   const { blocked, blockedLabelKey } = useAiUsage();
   const transcriptionBlocked = blocked('dictation');
   const dictationBlockedKey = blockedLabelKey('dictation');
