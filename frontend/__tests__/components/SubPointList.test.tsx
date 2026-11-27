@@ -127,7 +127,8 @@ describe('SubPointList', () => {
     expect(list).toHaveClass('max-w-[calc(100%-2.75rem)]');
     expect(row).toHaveClass('min-w-0');
     expect(actionSlot).toHaveClass('w-10');
-    expect(actionSlot).toHaveClass('justify-end');
+    expect(actionSlot).toHaveClass('justify-end', 'actions');
+    expect(row).toHaveClass('row');
   });
 
   it.each(['Enter', 'Save'])('keeps a refreshed sub-point title when closing without a change via %s', action => {

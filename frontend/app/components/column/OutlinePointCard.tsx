@@ -12,6 +12,7 @@ import { useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDraft
 import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getOutlinePointAiSortState } from '@/utils/aiSorting';
 import { debugLog } from '@/utils/debugMode';
@@ -286,7 +287,7 @@ export const OutlinePointCard: React.FC<{
         </button>
       </div>
     ) : (
-      <div className="flex items-center gap-1.5 grow min-w-0">
+      <div className={`flex items-center gap-1.5 grow min-w-0 ${hoverActions.row}`}>
         {point.subPoints && point.subPoints.length > 0 && (
           <button
             onClick={(e) => {
@@ -354,7 +355,7 @@ export const OutlinePointCard: React.FC<{
           <button
             aria-label={t(TRANSLATION_COMMON_DELETE)}
             onClick={() => onDeletePoint(point.id)}
-            className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0"
+            className={`p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0 ${hoverActions.actions}`}
             title={t(TRANSLATION_COMMON_DELETE)}
           >
             <TrashIcon className="h-4 w-4" />

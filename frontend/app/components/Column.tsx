@@ -12,6 +12,7 @@ import "@locales/i18n";
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
+import hoverActions from "@/components/ui/HoverActions.module.css";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { usePanelPosition } from '@/hooks/usePanelPosition';
@@ -507,10 +508,10 @@ export default function Column({
                     <li
                       ref={providedDraggable.innerRef}
                       {...providedDraggable.draggableProps}
-                      className={`relative group rounded p-2 mb-2 ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
+                      className={`relative rounded p-2 mb-2 ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
                       style={providedDraggable.draggableProps.style}
                     >
-                      <div className="relative flex min-h-[28px] items-start">
+                      <div className={`relative flex min-h-[28px] items-start ${hoverActions.row}`}>
                         {/* Drag handle */}
                         <div
                           {...(pointLocked ? {} : (providedDraggable.dragHandleProps ?? {}))}
@@ -562,7 +563,7 @@ export default function Column({
                             </div>
                             {!pointLocked && (
                               <div
-                                className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center space-x-1 rounded bg-black/10 opacity-0 backdrop-blur-[1px] transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
+                                className={`absolute top-1/2 flex -translate-y-1/2 items-center space-x-1 rounded bg-black/10 backdrop-blur-[1px] transition-opacity duration-100 ${hoverActions.actions} ${
                                   hasThoughtCount ? 'right-7' : 'right-0'
                                 }`}
                               >

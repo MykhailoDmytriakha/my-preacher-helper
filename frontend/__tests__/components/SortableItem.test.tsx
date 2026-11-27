@@ -310,6 +310,9 @@ Second paragraph with indentation.
     expect(actions).not.toHaveClass('absolute');
     expect(actions).toHaveClass('justify-self-end');
     expect(actions).toHaveClass('self-start');
+    expect(card).toHaveClass('row');
+    expect(screen.getByTitle('structure.editThought').parentElement).toHaveClass('actions');
+    expect(screen.getByTitle('structure.removeFromStructure').parentElement).toHaveClass('actions');
 
     const grid = container.querySelector('.grid');
     expect(grid).toBeInTheDocument();

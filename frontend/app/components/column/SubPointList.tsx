@@ -15,6 +15,7 @@ import React from "react";
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { NodeSketches } from "@/components/sermon/scratch/PlacedSketches";
+import hoverActions from "@/components/ui/HoverActions.module.css";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition } from "@/utils/subPoints";
 
@@ -113,7 +114,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         <ScriptureText text={sp.text} tone={isSidebar ? 'inherit' : 'default'} />
       </span>
       {!isPointLocked && (
-        <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/sp:opacity-100">
+        <div className={`flex w-10 flex-shrink-0 items-center justify-end gap-0.5 transition-opacity ${hoverActions.actions}`}>
           <button type="button"
             onClick={() => startEditingSubPoint(sp)}
             className={styles.editButtonClass}
@@ -137,7 +138,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     const ItemTag = isSidebar ? "li" : "div";
     const isEditingThisSubPoint = editingId === sp.id;
     return (
-      <ItemTag className={styles.itemClass}>
+      <ItemTag className={`${styles.itemClass} ${hoverActions.row}`}>
         <div className={rowClass}>
           {isEditingThisSubPoint ? (
             <>

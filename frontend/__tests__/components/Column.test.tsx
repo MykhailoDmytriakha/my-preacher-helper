@@ -745,6 +745,9 @@ describe('Column Component', () => {
                 .map(el => el.closest('li'))
                 .find(Boolean) as HTMLElement;
               expect(sidebarPoint).toHaveClass('hover:bg-white/15');
+              const row = within(sidebarPoint).getByRole('button', { name: 'Edit' }).closest('.row');
+              expect(row).toContainElement(within(sidebarPoint).getByText('Existing outline point'));
+              expect(within(sidebarPoint).getByRole('button', { name: 'Delete' }).parentElement).toHaveClass('actions');
             }
           },
           {
@@ -791,10 +794,7 @@ describe('Column Component', () => {
               expect(actionsRail).toHaveClass('top-1/2');
               expect(actionsRail).toHaveClass('-translate-y-1/2');
               expect(actionsRail).toHaveClass('bg-black/10');
-              expect(actionsRail).toHaveClass('opacity-0');
-              expect(actionsRail).toHaveClass('group-hover:opacity-100');
-              expect(actionsRail).toHaveClass('pointer-events-none');
-              expect(actionsRail).toHaveClass('group-hover:pointer-events-auto');
+              expect(actionsRail).toHaveClass('actions');
               expect(badge).toHaveClass('absolute');
               expect(badge).toHaveClass('right-0');
               expect(badge).toHaveClass('top-1/2');

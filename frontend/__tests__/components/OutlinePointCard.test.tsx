@@ -77,6 +77,9 @@ it('opens a scripture reference in the point title without entering point edit m
 it('keeps normalized inline save, blank rejection, cancel, delete and collapse local to the card', () => {
   const onSaveEdit = jest.fn(); const onDeletePoint = jest.fn();
   render(<OutlinePointCard {...base} onSaveEdit={onSaveEdit} onDeletePoint={onDeletePoint} />);
+  const deletePoint = screen.getByRole('button', { name: 'common.delete' });
+  expect(deletePoint).toHaveClass('actions');
+  expect(deletePoint.closest('.row')).toContainElement(screen.getByRole('heading', { name: 'Point' }));
   fireEvent.click(screen.getByRole('heading', { name: 'Point' }));
   const editor = screen.getByRole('textbox');
   expect(editor).toHaveFocus();

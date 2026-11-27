@@ -7,6 +7,7 @@ import { CheckIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import React from "react";
 
 import { Chip } from '@/components/ui/Chip';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { Item } from "@/models/models";
 import { structureThoughtPaddingClass } from "@/utils/structureBoardLayout";
 import { STRUCTURE_SUGGESTION_COLORS } from "@/utils/themeColors";
@@ -110,7 +111,7 @@ export const getCardClassName = ({
   const dragOpacityClass = isDragDisabled && !isLocked ? `opacity-75 ${cursorClass}` : cursorClass;
   const marginClass = isOverlay ? "" : "mb-6";
 
-  return `relative group/card min-h-[144px] rounded-lg ${structureThoughtPaddingClass} ${appearanceClass} ${marginClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
+  return `relative ${hoverActions.row} min-h-[144px] rounded-lg ${structureThoughtPaddingClass} ${appearanceClass} ${marginClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
 };
 
 export const HighlightBadge = ({
@@ -176,9 +177,7 @@ export const SortableItemActions = ({
   isOverlay: boolean;
   className?: string;
 }) => {
-  const hoverActionsClass = isHighlighted || isOverlay
-    ? "opacity-100 pointer-events-auto"
-    : "opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover/card:opacity-100 sm:group-hover/card:pointer-events-auto";
+  const hoverActionsClass = isHighlighted || isOverlay ? "opacity-100 pointer-events-auto" : hoverActions.actions;
   const lockLabel = isLocked
     ? t("structure.unlockThought", { defaultValue: "Unlock thought" })
     : t("structure.lockThought", { defaultValue: "Lock thought" });

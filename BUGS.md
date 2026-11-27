@@ -89,8 +89,7 @@
 **A — видны всегда (поражено):**
 | место | экран и предмет | что видно |
 |---|---|---|
-| `frontend/app/components/column/OutlinePointCard.tsx:355` | Структура, боковая панель, каждый пункт | 🗑 |
-| `frontend/app/components/column/SubPointList.tsx:116` · `frontend/app/components/plan-editor/OutlineBoard.tsx:645` | Подпункты в структуре и в редакторе плана | ✎ и 🗑 притушены до 40 %, а не спрятаны; фокус их не показывает |
+| `frontend/app/components/plan-editor/OutlineBoard.tsx:653` | Подпункты в редакторе плана | Перепроверить общий CSS и отдельное поведение при узкой ширине |
 | `frontend/app/components/plan/KeyFragmentsModal.tsx:336` | Ключевые фрагменты, каждый фрагмент | 🗑 |
 | `frontend/app/components/sermon/prep/PreparationPlanList.tsx:44` | Подготовка, каждый пункт гомилетического плана | 🗑 |
 | `frontend/app/components/PointNote.tsx:263` | Заметка под пунктом | × «удалить заметку» (пограничный: одна заметка на пункт) |
@@ -98,8 +97,6 @@
 | `frontend/app/components/sermon/scratch/ScratchNoteCard.tsx:228` | — | 🗑; компонент, похоже, нигде не подключён: проверить и удалить как мёртвый код |
 
 **B — спрятаны и на касании (обратный дефект):**
-- `frontend/app/components/SortableItem.tsx:179`, структура → ✎ и 🗑 у каждой мысли. Прячет по ширине (`sm:opacity-0 sm:pointer-events-none`), а не по наличию мыши, поэтому на iPad они спрятаны и не нажимаются.
-- `frontend/app/components/Column.tsx:564`, структура, боковая панель → кнопки пункта. Стоит `opacity-0 group-hover:opacity-100` без условия на мышь.
 - Пограничные, решить с владельцем:
   - `frontend/app/components/settings/TagList.tsx:61` — карандаш на цвете метки (сам цвет нажимается);
   - `frontend/app/components/common/EditableVerse.tsx:204` — одно поле, а не список;
