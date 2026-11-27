@@ -13,14 +13,15 @@ import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { isOrderedPreachDateField, preachDateChoiceFrames, withoutPreachDateRow } from './preachDateChoice';
 import { preachDateNoteConflictId, samePreachDateRow } from './preachDateFieldAction';
 import { mergeDocumentFields } from './protocol';
+import { existingRowField, rowConflictValue } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { privatePreparationCheck } from './sermonPreparationCheckRecovery';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
-import { readThoughtTextConflict, thoughtTextConflictId } from './thoughtTextAction';
-import { hasUnreadablePreparationCheck } from './unreadableDraftProof';
+import { readThoughtTextConflict, THOUGHT_TEXT_POLICY, thoughtTextConflictId } from './thoughtTextAction';
+import { hasUnreadableDraftProof, hasUnreadablePreparationCheck } from './unreadableDraftProof';
 
 import type { CommitRequest } from './commits';
 import type { DocumentFieldObservation } from './documentFieldAction';
@@ -110,6 +111,41 @@ export function comparableSermonFields(conflicts: readonly ConflictDetail[]): bo
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
     || (conflicts.length === 1 && (comparableSermonField(conflicts[0].path)
       || isReturnedSermonTitle(conflicts[0]) || isSermonChurchReview(conflicts[0]) || reviewedSermonPreparationField(conflicts[0]) !== undefined)));
+}
+
+export function readSermonThoughtTextReview(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate: saved, conflicts, pending, editGeneration } = checkpoint;
+  if (confirmed.resource.collection !== 'sermons' || !confirmed.metadata || !draft || !saved?.value
+    || confirmed.metadata.generation !== saved.metadata?.generation || conflicts.length !== 1
+    || Object.keys(pending).length || hasUnreadableDraftProof(checkpoint)) return;
+  const [{ path, mine, theirs }] = conflicts;
+  const thoughtId = thoughtTextConflictId(path);
+  const words = thoughtId && readThoughtTextConflict(thoughtId, draft, saved.value);
+  if (!words || !equalValues(rowConflictValue(words.mine), mine) || !equalValues(rowConflictValue(words.stored), theirs)) return;
+  return { path, ...words, identity: JSON.stringify([path, words, saved.metadata, editGeneration]) };
+}
+
+export function refreshSermonThoughtTextReview(checkpoint: SessionCheckpoint, saved: ResourceSnapshot,
+  review: NonNullable<ReturnType<typeof readSermonThoughtTextReview>>) {
+  const { confirmed, draft } = checkpoint;
+  if (!draft || !saved.value || confirmed.metadata?.generation !== saved.metadata?.generation) return;
+  const id = review.path[1].slice(3);
+  const original = existingRowField(draft.thoughts, id, THOUGHT_TEXT_POLICY.birth);
+  const words = existingRowField(saved.value.thoughts, id, THOUGHT_TEXT_POLICY.target('text'));
+  if (words === undefined || original === undefined || existingRowField(saved.value.thoughts, id, THOUGHT_TEXT_POLICY.birth) !== original) return;
+  const merged = mergeDocumentFields(confirmed.value, draft, saved.value);
+  const other = merged.conflicts.filter(({ path }) => !equalValues(path, review.path));
+  if (words === review.mine) {
+    return { conflicts: other, agreedDraft: !other.length && object(merged.value.value) ? merged.value.value : undefined };
+  }
+  return { conflicts: [...other, { ...checkpoint.conflicts[0], theirs: rowConflictValue(words) }] };
+}
+
+export function chooseSermonThoughtText(checkpoint: SessionCheckpoint,
+  review: NonNullable<ReturnType<typeof readSermonThoughtTextReview>>, side: 'local' | 'remote') {
+  const merged = mergeDocumentFields(checkpoint.confirmed.value, checkpoint.draft, checkpoint.remoteCandidate?.value ?? null);
+  if (!object(merged.value.value) || merged.conflicts.some(({ path }) => !equalValues(path, review.path))) return;
+  return withSelectedField(merged.value.value, review.path, rowConflictValue(side === 'local' ? review.mine : review.stored));
 }
 
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {

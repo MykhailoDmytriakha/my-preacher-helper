@@ -61,6 +61,10 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     return { identity, valueKind: 'field', title, ...openingCopy,
       mine: comparison.mine ?? t('dataSync.emptyField'), stored: comparison.stored ?? t('dataSync.emptyField'), scopedChoice: true };
   }
+  if (kind === 'thought-text') {
+    return { identity, title: t('thought.editorLabel'), valueKind: 'field', scopedChoice: true,
+      mine: comparison.mine || t('dataSync.emptyField'), stored: comparison.stored || t('dataSync.emptyField') };
+  }
   if (kind === 'verse') {
     return { identity, title: t('addSermon.verseLabel'), mine: comparison.mine, stored: comparison.stored, scopedChoice: true };
   }

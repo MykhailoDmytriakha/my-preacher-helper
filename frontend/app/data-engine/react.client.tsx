@@ -1804,7 +1804,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared) || readRecoveredSermonChurch(compared) || thoughtPlacementComparison(compared)
-        || readGroupTextReview(compared)
+        || readGroupTextReview(compared) || sermonConflict(compared)?.kind === 'thought-text'
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
         ? actionClock.capture(owner) ?? null : undefined;

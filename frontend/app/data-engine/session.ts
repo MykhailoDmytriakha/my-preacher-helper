@@ -40,7 +40,7 @@ import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { chooseRecoveredSermonChurch, readRecoveredSermonChurch, validSermonChurchRecovery, type SermonChurchRecovery } from './sermonChurchRecovery';
-import { readSermonPlanModeComparison, readSermonPreparationConfirmation } from './sermonFieldChoice';
+import { chooseSermonThoughtText, readSermonPlanModeComparison, readSermonPreparationConfirmation, readSermonThoughtTextReview, refreshSermonThoughtTextReview } from './sermonFieldChoice';
 import { capturedGuardedScratchTextPath, guardedScratchTextReview, preparedRecoveredScratchText, projectGuardedScratchText, reviewedPlacedSketchOpening } from './sermonGuardedScratchText';
 import { hasSermonOutlineReview, prepareSermonOutlineReview, projectSermonOutlineDecision, refreshSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { isPlacedSketchConflict, observePlacedSketchConflicts, resolvePlacedSketchComparison } from './sermonPlacedSketchRecovery';
@@ -966,6 +966,16 @@ export class DataSession {
     return true;
   }
 
+  private adoptUnsentObservation(snapshot: ResourceSnapshot, draft: DocumentData): void {
+    this.state.confirmed = copy(snapshot);
+    this.replaceDraft(draft);
+    retireObservedAutosaveFields(this.state);
+    retireObservedAutosaveRowFields(this.state);
+    this.state.remoteCandidate = null;
+    this.state.dirty = !equalValues(this.state.draft, snapshot.value)
+      || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+  }
+
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
     // An unverified candidate can acquire an ordinary conflict during ACK rebasing.
@@ -1007,6 +1017,17 @@ export class DataSession {
       const candidate = this.state.remoteCandidate;
       if (candidate?.metadata && snapshot.metadata && candidate.metadata.generation === snapshot.metadata.generation
         && candidate.metadata.revision > snapshot.metadata.revision) return;
+      const thoughtWords = readSermonThoughtTextReview(this.state);
+      if (thoughtWords) {
+        if (source === 'cache') return;
+        const refreshed = refreshSermonThoughtTextReview(this.state, snapshot, thoughtWords);
+        if (refreshed) {
+          this.state.conflicts = copy(refreshed.conflicts);
+          if (refreshed.agreedDraft) this.adoptUnsentObservation(snapshot, refreshed.agreedDraft);
+          else this.state.remoteCandidate = copy(snapshot);
+          return;
+        }
+      }
       if (!awaiting && this.refreshGuardedScratchText(snapshot)) return;
       const outlineReview = refreshSermonOutlineReview(this.state, snapshot);
       if (outlineReview) {
@@ -1027,13 +1048,7 @@ export class DataSession {
       if (!awaiting && !preserveDraft) {
         const merged = mergeUnsentObservation(this.state, snapshot);
         if (merged) {
-          this.state.confirmed = copy(snapshot);
-          this.replaceDraft(merged);
-          retireObservedAutosaveFields(this.state);
-          retireObservedAutosaveRowFields(this.state);
-          this.state.remoteCandidate = null;
-          this.state.dirty = !equalValues(this.state.draft, snapshot.value)
-            || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+          this.adoptUnsentObservation(snapshot, merged);
           return;
         }
       }
@@ -1250,6 +1265,16 @@ export class DataSession {
       const remaining = this.state.unreadableScalarProof?.filter(field => field !== 'church');
       this.state.unreadableScalarProof = remaining?.length ? remaining : undefined;
       this.state.sermonChurchRecovery = selected.recovery;
+      return true;
+    }
+    const thoughtText = readSermonThoughtTextReview(this.state);
+    if (thoughtText) {
+      const source = this.checkpoint();
+      const draft = chooseSermonThoughtText(source, thoughtText, side);
+      if (!draft) throw Object.assign(new Error('The compared thought text has changed'), { code: 'decision-changed' });
+      this.finishChoiceAgainstRemote(draft);
+      this.retainUnreviewedAutosaveActions(source, [thoughtText]);
+      if (side === 'local') stageReviewedRowFields(this.state, [thoughtText.path], time, ['thought-text']);
       return true;
     }
     const review = readPrivateDocumentReview(this.state);

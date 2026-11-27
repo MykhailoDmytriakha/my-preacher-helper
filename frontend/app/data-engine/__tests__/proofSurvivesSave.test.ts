@@ -16,7 +16,7 @@ import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from '../groupFlowT
 import { GROUP_STEP_DURATION_POLICY } from '../groupStepDurationAction';
 import { readGroupFlowFieldConflict } from '../groupTextReview';
 import { retainedAnchoredPlacementDraft } from '../manualChoice';
-import { diffFields } from '../protocol';
+import { diffFields, mergeDocumentFields } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { readSermonConflict, readThoughtPlacementComparison } from '../rowConflictDetails';
 import { DataEngineRuntime } from '../runtime';
@@ -655,9 +655,16 @@ it.each([
     const time = { earliestMs: T + 650, latestMs: T + 700 };
     expect(reopened.choosePrivateFields(mine ? 'local' : 'remote', time)).toBe(true);
     if (competing) {
-      expect(reopened.checkpoint().conflicts).toEqual([expect.objectContaining({ path: ['thoughts', 'id:b', 'text'] })]);
-      expect(await save(reopened.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
-      if (takeStoredWords) reopened.acceptRemote(reopened.checkpoint().draft);
+      const words = reopened.checkpoint();
+      expect(words.conflicts).toEqual([expect.objectContaining({ path: ['thoughts', 'id:b', 'text'] })]);
+      expect(readSermonConflict(words)).toMatchObject({
+        kind: 'thought-text', mine: ownNeighbor.text, stored: savedNeighbor.text,
+      });
+      expect(readSermonConflict({ ...words, conflicts: [{
+        ...words.conflicts[0], mine: { exists: true, value: 'A stale local report' },
+      }] })).toBeUndefined();
+      expect(await save(words)).toEqual({ code: 'resolve-version-first', commands: [] });
+      if (takeStoredWords) reopened.acceptRemote(words.draft);
       else reopened.keepLocal(undefined, { earliestMs: T + 850, latestMs: T + 900 });
     }
     const outcome = await save(reopened.checkpoint());
@@ -678,6 +685,63 @@ it.each([
     if (resolution === 'later neighboring text') expect(outcome.commands[0]).toMatchObject({ thoughtTextActions: [
       { rowId: neighbor.id, observedRevision: 1, time: { earliestMs: T + 200, latestMs: T + 250 } },
     ] });
+  });
+
+it.each([['remote', 'original'], ['local', 'original'], ['remote', 'newer'], ['local', 'newer'], ['remote', 'agreement']] as const)(
+  'keeps an independent thought draft and its time when choosing %s words (%s)', async (side, refreshed) => {
+    const world = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'sermons', id: 'thought-text-with-neighbor' };
+    const point = { id: 'other', date: 'birth-b', text: 'Unchanged neighboring words', tags: [] };
+    const local = { id: 'compared', date: 'birth-a', text: 'Original words', tags: [] };
+    const opening = { userId: 'owner', title: 'Sermon', thoughts: [local, point] };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const session = new DataSession({ resource, value: opening, metadata });
+    const own = { ...local, text: 'Words to choose' };
+    const neighbor = { ...point, text: 'Separately written words' };
+    const savedWords = { ...local, text: 'Words from the server' };
+    const time = { earliestMs: T + 100, latestMs: T + 125 };
+    const answer = { earliestMs: T + 850, latestMs: T + 900 };
+    session.edit({ ...opening, thoughts: [own, point] });
+    session.edit({ ...opening, thoughts: [own, neighbor] }, undefined, { field: 'thought-text', rowId: neighbor.id, time });
+    const stored = { ...opening, thoughts: [savedWords, point] };
+    const current = { ...metadata, revision: 2, operationId: 'saved-words' };
+    world.documents.set('sermons/' + resource.id, { ...stored, _dataEngine: current });
+    const shown = session.checkpoint();
+    const conflicts = mergeDocumentFields(opening, shown.draft, stored).conflicts;
+    const editor = DataSession.restore({ ...shown, conflicts, remoteCandidate: { resource, value: stored, metadata: current } });
+    expect(readSermonConflict(editor.checkpoint())).toMatchObject({ kind: 'thought-text', mine: own.text, stored: savedWords.text });
+    const agreement = refreshed === 'agreement';
+    const expectedWords = agreement ? own : refreshed === 'newer' ? { ...savedWords, text: 'Newer words from the server' } : savedWords;
+    if (refreshed !== 'original') {
+      const latest = { ...stored, thoughts: [expectedWords, point] };
+      const revision = { ...current, revision: 3, operationId: 'newest-words' };
+      world.documents.set('sermons/' + resource.id, { ...latest, _dataEngine: revision });
+      editor.observe({ resource, value: latest, metadata: revision }, { source: 'cache' });
+      expect(readSermonConflict(editor.checkpoint())).toMatchObject({ stored: savedWords.text });
+      editor.observe({ resource, value: latest, metadata: revision }, { source: 'server' });
+      if (agreement) {
+        expect(editor.checkpoint()).toMatchObject({ conflicts: [], remoteCandidate: null, confirmed: { metadata: { revision: 3 } } });
+        expect(readSermonConflict(editor.checkpoint())).toBeUndefined();
+      } else {
+        expect(readSermonConflict(editor.checkpoint())).toMatchObject({
+          kind: 'thought-text', mine: own.text, stored: expectedWords.text,
+        });
+        expect(await save(editor.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
+      }
+    }
+    if (!agreement) expect(editor.choosePrivateFields(side, answer)).toBe(true);
+    const decided = editor.checkpoint();
+    expect(decided.draft?.thoughts).toEqual([side === 'local' ? own : expectedWords, neighbor]);
+    const outcome = await save(decided);
+    expect(outcome.kind).toBe('acknowledged');
+    expect(outcome.commands).toHaveLength(1);
+    const calls = outcome.commands[0].thoughtTextActions as Loose[];
+    expect(calls).toEqual(expect.arrayContaining([expect.objectContaining({ rowId: neighbor.id, observedRevision: 1, time })]));
+    if (side === 'local') expect(calls).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rowId: local.id, observedRevision: refreshed === 'newer' ? 3 : 2, time: answer }),
+    ]));
+    else expect(calls).toHaveLength(1);
+    expect((await readDocument('owner', resource)).value?.thoughts).toEqual(decided.draft?.thoughts);
   });
 
 it.each(['opening words', 'missing summary'] as const)('holds a delayed council summary after an intentional return to %s', async mode => {

@@ -13,7 +13,7 @@ import { preachDateReviewConflicts } from './preachDateChoice';
 import { readPreachDateFieldVersions } from './preachDateFieldAction';
 import { existingRowField, replaceExistingRowField, rowConflictValue } from './rowFieldAction';
 import { readRecoveredSermonChurch } from './sermonChurchRecovery';
-import { readSermonConflictField, readSermonPreparationConfirmation } from './sermonFieldChoice';
+import { readSermonConflictField, readSermonPreparationConfirmation, readSermonThoughtTextReview } from './sermonFieldChoice';
 import { readPlanCellText } from './sermonPlanCellSession';
 import { isPlanCellPath } from './sermonTextOpenings';
 import { readSermonTextDraftComparison } from './sermonTextRecovery';
@@ -191,6 +191,8 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
   }
   if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];
+  const thought = readSermonThoughtTextReview(checkpoint);
+  if (thought) return { kind: 'thought-text' as const, ...thought };
   const note = sermonNoteConflictText(path, draft, remoteCandidate.value);
   if (note && checkpoint.confirmed.metadata?.generation === remoteCandidate.metadata?.generation
     && note.mine === conflicts[0].mine.value && note.stored === conflicts[0].theirs.value) {

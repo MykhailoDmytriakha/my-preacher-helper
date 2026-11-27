@@ -67,7 +67,7 @@ import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type Reco
 import { canSaveSeparateFromRefusedPoint } from './refusedPointManualForm';
 import { reviewedSeriesReorder, type SeriesReorderComparison } from './seriesReorder';
 import { readRecoveredSermonChurch } from './sermonChurchRecovery';
-import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison } from './sermonFieldChoice';
+import { comparableSermonFields, earlierSermonDateProof, earlierSermonMetadataProof, readSermonSettingComparison, readSermonThoughtTextReview } from './sermonFieldChoice';
 import { blocksIndependentActionDuringScratchRecovery, guardedScratchTextReview } from './sermonGuardedScratchText';
 import { hasSermonOutlineReview, type SermonOutlineReviewInput } from './sermonOutlineReview';
 import { readPlacedSketchComparison, rebaseRecoveredPlacedSketches } from './sermonPlacedSketchRecovery';
@@ -3256,6 +3256,10 @@ export class DataEngine {
         if (thoughtLock && (!compared || !current.remoteCandidate || recoveredThoughtLock(current, current.remoteCandidate)?.settled !== false)) {
           throw Object.assign(new Error('Read both versions of the thought lock before choosing'), { code: 'decision-changed' });
         }
+        const thoughtText = readSermonThoughtTextReview(current);
+        if (thoughtText && !compared) {
+          throw Object.assign(new Error('Read both versions of the thought before choosing'), { code: 'decision-changed' });
+        }
         const sketchReview = guardedScratchTextReview(current) ?? readPlacedSketchComparison(current);
         if (sketchReview && (!compared || (choice === 'local' && sketchReview.keepMineDisabled))) {
           throw Object.assign(new Error('Read the current scratch note before choosing'), { code: 'decision-changed' });
@@ -3272,7 +3276,7 @@ export class DataEngine {
           throw Object.assign(new Error('Read both versions of the field before choosing'), { code: 'decision-changed' });
         }
         if (((current.unreadableExegeticalProofs?.length || sermonTextReview || churchReview || checkReview || thoughtPlacement || heldRemoval || thoughtLock) && !Object.keys(current.pending).length) || removal
-          || (compared && (heldAutosaveField || sketchReview || frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
+          || (compared && (heldAutosaveField || sketchReview || thoughtText || frozen.collection === 'serviceOrders' || readSermonSettingComparison(current)))) {
           const saved = await this.readWriteTarget(frozen).catch(() => null);
           active();
           const shown = current.remoteCandidate ?? current.confirmed;
@@ -3827,6 +3831,7 @@ export class DataEngine {
     const pending = checkpoint.pending;
     const preference = readAccountPreferenceComparison(checkpoint);
     const groupText = readGroupFlowTextChoice(checkpoint) || readCouncilSummaryChoice(checkpoint);
+    const thoughtText = readSermonThoughtTextReview(checkpoint);
     const finalPrivateFieldChoice = readPrivateDocumentReview(checkpoint)?.remaining.length === 1;
     const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
     const affected = this.manualFormsAffectedByChoice(parent, pending);
@@ -3855,7 +3860,7 @@ export class DataEngine {
           this.assertCurrent(owner, generation);
         } else if ((resolved.guardedScratchText && resolved.dirty && !guardedScratchTextReview(resolved)
           && (checkpoint.guardedScratchText || readPlacedSketchComparison(checkpoint)))
-          || affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || canSaveReviewedThoughtRows(resolved) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+          || affected.length || meeting || (thoughtText && resolved.dirty) || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || canSaveReviewedThoughtRows(resolved) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

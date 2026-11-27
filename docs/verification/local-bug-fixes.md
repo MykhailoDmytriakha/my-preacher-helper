@@ -11159,3 +11159,17 @@ Hidden Chrome ran six cases at 390 and 1280 px using the local Auth and Firestor
 After an authorized release, use a disposable sermon and a dedicated profile. On the same thought, submit a move and make a return before it finishes. Reopen the local replay with the second action revision unreadable. Verify that the saved position is displayed before any write. Check both selections and reload. Repeat with a changed neighboring thought if the browser can control delivery.
 
 Local case evidence: `artifacts/sermon-thought-placement-return-20261127/`.
+
+## BUG-20261127-preparation-thought-text-review-omits-saved-version · Show both versions of a thought before choosing
+
+On Sermons → a sermon → Preparation → Saved draft, the second decision after restoring a lock or placement showed only a generic warning and the private words on the thought card. The browser at `ebfce0d45` could not find a comparison with the saved words.
+
+The screen now presents the two texts side by side or stacked, depending on width. They belong to the same thought birth and saved revision. The choice changes only those words and carries the original observation of an independently edited thought. A new local choice records the click time. If a fresh server read returns different words, the first click cannot decide on the old text. The comparison refreshes and waits for an answer about the new words. If both versions now match, the question closes and the independent actions remain staged with their original evidence.
+
+Regression tests covered missing presentation, both individual choices and a newer server answer after a cache snapshot. Independent review found the sibling and refresh cases reflected in the final tests. The five focused suites passed 612 tests. TypeScript and the isolated production build passed, and scoped ESLint reported zero errors.
+
+Six headless Chrome scenarios tested both choices after a placement and after an unlock, including a separate third edit and a saved text that changed with the confirmation open, and a new server version matching the private words. It checked the 390 and 1280 px layouts, the exact saved content, the separate times, and reload. The first choice produced no write until the words were decided. A stale confirmation produced no write. Peak sampled Next.js memory was 397 MiB. All seven test ports were released.
+
+After an authorized release, use a disposable sermon and a dedicated profile. Recover a lock or placement with an independent thought-text disagreement. Read both versions. Save different words from a second test device while the saved-choice dialog is open, confirm once, and check that the new words appear before any write. Choose a version and reload. Verify that the previously selected lock or position, and the independent words, still match.
+
+Local case evidence: `artifacts/sermon-thought-text-comparison-20261127/`.
