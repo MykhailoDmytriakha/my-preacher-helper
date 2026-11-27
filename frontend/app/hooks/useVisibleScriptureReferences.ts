@@ -7,60 +7,90 @@ import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
 
 import type { SheetReference } from '@/components/bible/verseSheetGeometry';
 
+type ObservedReference = {
+    mark: string;
+    reference: SheetReference;
+    visible: boolean;
+};
+
 /**
- * THE SCRIPTURE PLACES THE READER SEES NOW, in one scrolling column (the reading mode's text).
- *
- * Read from the drawn links themselves (`SCRIPTURE_REFERENCE_MARK`), not from the source text: a place counts when its
- * link is on screen, and it is the same reference the link opens — whatever Markdown made of the text around it.
- * In the order the text names them, each once. A link in a folded section has no size and does not count.
- *
- * Measured on scroll (once a frame), on a resize, when the column's content changes size, and when `resetKey` (the
- * text) changes; a list that did not change draws nothing again.
+ * Read the references from the drawn links. Observe them relative to the reading scroller,
+ * so a nested table (or another clipping container) also limits what reaches the margin.
  */
-export function useVisibleScriptureReferences(scrollRoot: HTMLElement | null, enabled: boolean, resetKey?: string): SheetReference[] {
+export function useVisibleScriptureReferences(
+    scrollRoot: HTMLElement | null, textRoot: HTMLElement | null, enabled: boolean,
+): SheetReference[] {
     const [visible, setVisible] = useState<SheetReference[]>([]);
 
     useEffect(() => {
-        if (!scrollRoot || !enabled) {
-            setVisible([]);
-            return undefined;
+        if (!scrollRoot || !textRoot || !enabled || typeof IntersectionObserver === 'undefined') {
+            setVisible(previous => previous.length ? [] : previous);
+            return;
         }
-        let frame = 0;
+
+        let links = new Map<Element, ObservedReference>();
         let last = '';
-        const measure = () => {
-            frame = 0;
-            const box = scrollRoot.getBoundingClientRect();
+        const publish = () => {
             const found: SheetReference[] = [];
-            scrollRoot.querySelectorAll(`[${SCRIPTURE_REFERENCE_MARK}]`).forEach((link) => {
-                const rect = link.getBoundingClientRect();
-                if (rect.height === 0 || rect.bottom <= box.top || rect.top >= box.bottom) return;
-                const reference = referenceOfLink(link);
-                if (reference && !found.some((known) => sameScriptureReference(known, reference))) found.push(reference);
-            });
+            for (const entry of links.values()) {
+                if (entry.visible && !found.some(known => sameScriptureReference(known, entry.reference))) {
+                    found.push(entry.reference);
+                }
+            }
             const key = JSON.stringify(found);
             if (key === last) return;
             last = key;
             setVisible(found);
         };
-        const schedule = () => {
-            if (!frame) frame = window.requestAnimationFrame(measure);
+
+        const intersections = new IntersectionObserver(entries => {
+            let changed = false;
+            for (const entry of entries) {
+                const link = links.get(entry.target);
+                if (!link) continue;
+                const drawn = entry.isIntersecting && entry.intersectionRect.width > 0 && entry.intersectionRect.height > 0;
+                if (link.visible === drawn) continue;
+                link.visible = drawn;
+                changed = true;
+            }
+            if (changed) publish();
+        // At threshold zero an edge-touching link can already be intersecting. A positive
+        // threshold also notifies us when its visible area changes between zero and nonzero.
+        }, { root: scrollRoot, threshold: Number.EPSILON });
+
+        const reconcile = () => {
+            // Rebuild the order after DOM changes, retaining parsed references and observations
+            // for the same nodes. Mutation tracking is confined to the text, outside the margin.
+            const next = new Map<Element, ObservedReference>();
+            for (const target of textRoot.querySelectorAll(`[${SCRIPTURE_REFERENCE_MARK}]`)) {
+                const previous = links.get(target);
+                const mark = target.getAttribute(SCRIPTURE_REFERENCE_MARK) ?? '';
+                if (previous?.mark === mark) {
+                    next.set(target, previous);
+                    continue;
+                }
+                const reference = referenceOfLink(target);
+                if (!reference) continue;
+                next.set(target, { mark, reference, visible: previous?.visible ?? false });
+                if (!previous) intersections.observe(target);
+            }
+            for (const target of links.keys()) {
+                if (!next.has(target)) intersections.unobserve(target);
+            }
+            links = next;
+            publish();
         };
 
-        measure();
-        scrollRoot.addEventListener('scroll', schedule, { passive: true });
-        window.addEventListener('resize', schedule);
-        const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-        // The content and each of its columns: a text folding a section may not change the row's height when a margin
-        // column is the taller one.
-        const content = scrollRoot.firstElementChild;
-        if (resize && content) [content, ...Array.from(content.children)].forEach((element) => resize.observe(element));
+        const mutations = new MutationObserver(reconcile);
+        mutations.observe(textRoot, { childList: true, subtree: true, attributes: true, attributeFilter: [SCRIPTURE_REFERENCE_MARK] });
+        reconcile();
+
         return () => {
-            if (frame) window.cancelAnimationFrame(frame);
-            scrollRoot.removeEventListener('scroll', schedule);
-            window.removeEventListener('resize', schedule);
-            resize?.disconnect();
+            mutations.disconnect();
+            intersections.disconnect();
+            links.clear();
         };
-    }, [scrollRoot, enabled, resetKey]);
+    }, [scrollRoot, textRoot, enabled]);
 
     return visible;
 }

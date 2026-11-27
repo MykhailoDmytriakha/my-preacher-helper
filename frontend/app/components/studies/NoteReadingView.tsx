@@ -103,6 +103,7 @@ export function NoteReadingView({
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
     const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+    const [textRoot, setTextRoot] = useState<HTMLDivElement | null>(null);
     const versesRef = useRef<HTMLDivElement | null>(null);
     const [sheetOpen, setSheetOpen] = useState(false);
     const [picked, setPicked] = useState<string | null>(null);
@@ -172,7 +173,7 @@ export function NoteReadingView({
     // drawn: a phone has no column to fill.
     const bible = useMemo(() => readTranslation(locale), [locale]);
     const wide = useMediaQuery(MARGINS_QUERY, false);
-    const references = useVisibleScriptureReferences(scrollRoot, wide, content);
+    const references = useVisibleScriptureReferences(scrollRoot, textRoot, wide);
     const books = useMemo(() => (wide ? [...new Set(references.map((reference) => reference.book))] : []), [wide, references]);
     const texts = useBookTexts(books, bible);
     const verses: MarginVerse[] = useMemo(() => references.map((reference) => {
@@ -294,7 +295,7 @@ export function NoteReadingView({
                         <p className="mb-2 mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                             {[typeLabel, sections.length ? t('notePanel.sectionsCount', { count: sections.length }) : null, t('notePanel.readingMinutes', { count: minutes })].filter(Boolean).join(' · ')}
                         </p>
-                        <div className="prose prose-emerald max-w-none text-lg prose-headings:text-gray-900 prose-p:leading-relaxed prose-p:text-gray-800 md:text-xl dark:prose-invert dark:prose-headings:text-gray-50 dark:prose-p:text-gray-200 prose-scaled">
+                        <div ref={setTextRoot} className="prose prose-emerald max-w-none text-lg prose-headings:text-gray-900 prose-p:leading-relaxed prose-p:text-gray-800 md:text-xl dark:prose-invert dark:prose-headings:text-gray-50 dark:prose-p:text-gray-200 prose-scaled">
                             {text}
                         </div>
                         {pager && pager.total > 1 && (

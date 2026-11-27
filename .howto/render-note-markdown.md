@@ -68,6 +68,12 @@ See also: `.howto/extend-tiptap-editor.md`
 - Test references in headings and bodies, forward/backward/repeated use, one footer, independent same-label documents, ordinary folding/shared controls, literal code/callouts and source extras. Browser acceptance includes an actual jump/back, reload, warmed-offline reading and the source-card consumer; jsdom alone does not prove layout or a native scroll.
 
 
+## Follow visible Scripture links in reading mode
+
+Read the actual reference markers rendered by `ScriptureLinks`. `useVisibleScriptureReferences` observes them in the note-reading scroller. Native intersection includes clipping by a nested Markdown table. Require positive visible area and a small positive threshold so the transition from touching an edge to showing text produces another observation. Observe marker and child changes only within the text and reuse the parsed references for unchanged nodes. Keep document order and deduplicate equivalent references. [W3C intersection calculation](https://www.w3.org/TR/intersection-observer/#calculate-intersection-rect-algo).
+
+Check an actual wide table with a link at each end, a duplicated visible link and an independent link outside the table. Scroll left and right, collapse and expand the section, and scroll the main column away. The touch layout and browsers without a visibility observer still open the regular verse window when a link is pressed.
+
 ## Readable one-line previews
 
 - `markdownPlainText.markdownPreviewText` projects the same safe whole-document HTML tree used by reading. `markdownUtils` keeps the existing public re-export. Preview rows omit HTML attributes and link targets while preserving literal inline/fenced code and ordered numbers; the punctuation-aware separator remains one shared rule.

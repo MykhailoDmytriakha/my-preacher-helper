@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
@@ -56,16 +56,46 @@ function setWide(wide: boolean) {
     }));
 }
 
-/**
- * Lays the Scripture links of the text at the given distance from the column's top (the column is 800 px tall);
- * everything else spans the column. jsdom lays nothing out by itself.
- */
-function placeLinks(tops: Record<string, number>) {
+const originalObserver = Object.getOwnPropertyDescriptor(globalThis, 'IntersectionObserver');
+
+function placeLinks(tops: Record<string, number>, initiallyVisible = Object.keys(tops).filter(name => tops[name] < 800)) {
+    // Supply the bounding boxes as well as the browser's clipped intersections. The former cannot
+    // distinguish the two links at the same height when one is outside an inner scroll container.
     jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
         const top = this.hasAttribute('data-scripture-reference') ? tops[this.textContent ?? ''] : undefined;
         if (top === undefined) return { top: 0, bottom: 800, left: 0, right: 800, width: 800, height: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
         return { top, bottom: top + 24, left: 0, right: 100, width: 100, height: 24, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
     });
+    let visible = initiallyVisible;
+    let edge: string[] = [];
+    const observers: MockIntersectionObserver[] = [];
+    class MockIntersectionObserver {
+        private targets = new Set<Element>();
+        constructor(private callback: IntersectionObserverCallback) { observers.push(this); }
+        observe(target: Element) {
+            this.targets.add(target);
+            queueMicrotask(() => { if (this.targets.has(target)) this.report([target]); });
+        }
+        unobserve(target: Element) { this.targets.delete(target); }
+        disconnect() { this.targets.clear(); }
+        report(targets = [...this.targets]) {
+            const entries = targets.map(target => {
+                const label = target.textContent ?? '';
+                const width = visible.includes(label) ? 100 : 0;
+                return { target, isIntersecting: width > 0 || edge.includes(label),
+                    intersectionRect: { width, height: 24 }, intersectionRatio: width / 100 };
+            }) as IntersectionObserverEntry[];
+            this.callback(entries, this as unknown as IntersectionObserver);
+        }
+    }
+    Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: MockIntersectionObserver });
+    return {
+        show(names: string[], touching: string[] = []) {
+            visible = names;
+            edge = touching;
+            act(() => observers.forEach(observer => observer.report()));
+        },
+    };
 }
 
 function renderView(overrides: Partial<React.ComponentProps<typeof NoteReadingView>> = {}) {
@@ -89,7 +119,11 @@ function renderView(overrides: Partial<React.ComponentProps<typeof NoteReadingVi
 
 describe('NoteReadingView', () => {
     beforeEach(() => setWide(false));
-    afterEach(() => jest.restoreAllMocks());
+    afterEach(() => {
+        jest.restoreAllMocks();
+        if (originalObserver) Object.defineProperty(globalThis, 'IntersectionObserver', originalObserver);
+        else Reflect.deleteProperty(globalThis, 'IntersectionObserver');
+    });
 
     it('shows the note alone over the page, with its title, kind, sections and reading time', () => {
         renderView();
@@ -123,6 +157,48 @@ describe('NoteReadingView', () => {
         expect(cards[0].getAttribute('data-verse-key')).toContain('1 Chronicles');
         // The place's words are still on their way: the card says so, the name stands already.
         expect(margin).toHaveTextContent('notePanel.verseLoading');
+    });
+
+    it('tracks links at the same height when an inner scroller clips one horizontally', async () => {
+        setWide(true);
+        const intersections = placeLinks({ '1 Пар 4:10': 120, 'Езд 7:6': 120 }, ['1 Пар 4:10']);
+        renderView();
+
+        const margin = within(screen.getByRole('complementary', { name: 'notePanel.versesOnScreen' }));
+        const books = () => margin.getAllByRole('button').map(card => JSON.parse(card.dataset.verseKey!).book);
+        await margin.findAllByRole('button');
+        expect(books()).toEqual(['1 Chronicles']);
+
+        intersections.show(['Езд 7:6'], ['1 Пар 4:10']);
+        expect(books()).toEqual(['Ezra']);
+    });
+
+    it('updates the margin when a visible node changes its reference or stops being a link', async () => {
+        setWide(true);
+        placeLinks({ '1 Пар 4:10': 120, 'Езд 7:6': 300 });
+        renderView();
+
+        const margin = within(screen.getByRole('complementary', { name: 'notePanel.versesOnScreen' }));
+        const books = () => margin.getAllByRole('button').map(card => JSON.parse(card.dataset.verseKey!).book);
+        const link = within(screen.getByRole('article')).getByRole('button', { name: /1 Пар 4:10/ });
+        const reference = JSON.parse(link.getAttribute('data-scripture-reference')!);
+        await waitFor(() => expect(books()).toEqual(['1 Chronicles', 'Ezra']));
+
+        link.setAttribute('data-scripture-reference', JSON.stringify({ ...reference, book: 'Luke', chapter: 2, fromVerse: 1 }));
+        await waitFor(() => expect(books()).toEqual(['Luke', 'Ezra']));
+
+        link.removeAttribute('data-scripture-reference');
+        await waitFor(() => expect(books()).toEqual(['Ezra']));
+    });
+
+    it('can open the verse window when the browser has no visibility observer', () => {
+        setWide(true);
+        Reflect.deleteProperty(globalThis, 'IntersectionObserver');
+        const props = renderView();
+
+        fireEvent.click(within(screen.getByRole('article')).getByRole('button', { name: /1 Пар 4:10/ }));
+
+        expect(props.onOpenReference).toHaveBeenCalledWith(expect.objectContaining({ book: '1 Chronicles' }));
     });
 
     it('opens the verse window for a reference pressed in the text on a phone or an iPad', () => {
