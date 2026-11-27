@@ -5,6 +5,7 @@ import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { useGroupMeetingEditor } from '@/hooks/useGroupMeetingEditor';
 import { hydrateGroup, isGroupStatus } from '@/utils/groupDocument';
+import { observeRejection } from '@/utils/observeRejection';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from './groupPageEditor';
@@ -103,9 +104,9 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     presence: data.document.presence,
     readNotice: { subject: data.document.recoveryIdentity, relatedSubjects: [meeting.form.recoveryIdentity], words: data.document.errorWords },
     refresh: data.refresh,
-    group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: next => { void editTitle(next).catch(() => undefined); }, titleHistory,
-    description: group?.description ?? '', setDescription: next => { void data.update(current => ({ ...current, description: nextValue(next, current.description ?? '') }),
-      { action: 'group-description' }).catch(() => undefined); },
+    group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: next => observeRejection(editTitle(next)), titleHistory,
+    description: group?.description ?? '', setDescription: next => observeRejection(data.update(current => ({ ...current, description: nextValue(next, current.description ?? '') }),
+      { action: 'group-description' })),
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
     renameBlock, renameStep, setBlockStatus, setStepDuration, setStepNotes, flowTitleScope: historyScope,
     setBlockContent: data.setBlockContent, holdBlockContent: data.holdBlockContent,
@@ -119,6 +120,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
     meetingFieldsEnabled: meeting.enabled, meetingHistory,
+    meetingOpeningKey: meeting.openingMeeting && JSON.stringify([meeting.openingMeeting.id, meeting.openingMeeting.createdAt]),
     meetingFieldHistory: meetingHistory && first ? {
       ...meetingHistory, rowCreatedAt: first.createdAt, current: { location: first.location ?? null, audience: first.audience ?? null },
       restore: meeting.restoreField,

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 
 describe.each([LiveTextInput, LiveTextArea])('Live text synchronization', Field => {
   it('shows a remote change while focused once the displayed text is owned by the document', () => {
@@ -51,6 +52,65 @@ describe.each([LiveTextInput, LiveTextArea])('Live text synchronization', Field 
     // They no longer hold the document back.
     rerender(<Field aria-label="Text" value="other device" onChange={onChange} />);
     expect(input).toHaveValue('other device');
+  });
+
+  it('keeps the alternate words within the editing scope when its stored copy changes', async () => {
+    const firstScope = {};
+    const nextScope = {};
+    const onChange = jest.fn().mockRejectedValueOnce(new Error('refused')).mockResolvedValue(undefined);
+    const view = (scope: object, value: string) => <BufferedTextScope.Provider value={scope}>
+      <Field aria-label="Text" value={value} onChange={onChange} />
+    </BufferedTextScope.Provider>;
+    const { rerender } = render(view(firstScope, 'Opening'));
+    const field = screen.getByRole('textbox');
+    await act(async () => { fireEvent.change(field, { target: { value: 'Only in this field' } }); });
+    expect(field).toHaveValue('Only in this field');
+    expect(screen.queryByText('dataSync.refusedInputText')).not.toBeInTheDocument();
+
+    rerender(view(firstScope, 'Stored on phone'));
+    expect(field).toHaveValue('Stored on phone');
+    expect(screen.getByText('Only in this field')).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'Words on top of the phone version' } });
+    rerender(view(firstScope, 'Words on top of the phone version'));
+    expect(screen.getByText('Only in this field')).toBeInTheDocument();
+
+    rerender(view(nextScope, 'Another opening'));
+    expect(field).toHaveValue('Another opening');
+    expect(screen.queryByText('Only in this field')).not.toBeInTheDocument();
+  });
+
+  it('retains an earlier distinct refusal when the stored value returns to the same opening', async () => {
+    const editingScope = {};
+    const onChange = jest.fn().mockRejectedValue(new Error('refused'));
+    const view = (value: string) => <BufferedTextScope.Provider value={editingScope}>
+      <Field aria-label="Text" value={value} onChange={onChange} />
+    </BufferedTextScope.Provider>;
+    const { rerender } = render(view('Opening'));
+    const field = screen.getByRole('textbox');
+    await act(async () => { fireEvent.change(field, { target: { value: 'First local text' } }); });
+    rerender(view('Another stored value'));
+    rerender(view('Opening'));
+    await act(async () => { fireEvent.change(field, { target: { value: 'Second local text' } }); });
+    rerender(view('Latest stored value'));
+    expect(field).toHaveValue('Latest stored value');
+    expect(screen.getByText('First local text')).toBeInTheDocument();
+    expect(screen.getByText('Second local text')).toBeInTheDocument();
+  });
+
+  it.each(['Opening draft and another word', 'Opening'])('retires the refused text when continuing or undoing it to %s', async next => {
+    const editingScope = {};
+    const onChange = jest.fn().mockRejectedValueOnce(new Error('refused')).mockResolvedValue(undefined);
+    const view = (value: string) => <BufferedTextScope.Provider value={editingScope}>
+      <Field aria-label="Text" value={value} onChange={onChange} />
+    </BufferedTextScope.Provider>;
+    const { rerender } = render(view('Opening'));
+    const field = screen.getByRole('textbox');
+    await act(async () => { fireEvent.change(field, { target: { value: 'Opening draft' } }); });
+    fireEvent.change(field, { target: { value: next } });
+    rerender(view(next));
+    rerender(view('A subsequent stored version'));
+    expect(field).toHaveValue('A subsequent stored version');
+    expect(screen.queryByText('Opening draft')).not.toBeInTheDocument();
   });
 
   it('lets an older refusal pass without releasing newer typing that happens to read the same', async () => {

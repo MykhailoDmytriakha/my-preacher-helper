@@ -1,8 +1,9 @@
 import { TextSelection } from '@tiptap/pm/state';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { markdown, mountedEditor } from '@test-utils/richMarkdownHistory';
 
 import type { Editor } from '@tiptap/core';
@@ -132,6 +133,33 @@ it('holds typing into the drawn document while React installs a foreign value', 
   expect(onChange).not.toHaveBeenCalled();
   expect(onHoldText).toHaveBeenCalledWith(original.replace(paragraphs[2],
     paragraphs[2].slice(0, 25) + 'OWN' + paragraphs[2].slice(25)));
+});
+
+it('installs a received version when a pending rich-text update is refused', async () => {
+  const editScope = {};
+  let reject!: (failure: Error) => void;
+  const onChange = jest.fn().mockImplementationOnce(() => new Promise<void>((_, fail) => { reject = fail; }));
+  const view = (value: string) => <BufferedTextScope.Provider value={editScope}>
+    <RichMarkdownEditor value={value} onChange={onChange} />
+  </BufferedTextScope.Provider>;
+  const rendered = render(view(original));
+  const editor = mountedEditor(rendered.container);
+  selectText(editor, paragraphs[2], 25);
+  act(() => { editor.commands.insertContent('LOCAL'); });
+  const local = markdown(editor);
+  rendered.rerender(view(withArrival));
+  expect(markdown(editor)).toBe(local);
+
+  await act(async () => {
+    editor.view.dom.blur();
+    reject(new Error('Not admitted'));
+  });
+  expect(markdown(editor)).toBe(withArrival);
+  expect(screen.getByText('dataSync.refusedInputText')).toBeInTheDocument();
+  selectText(editor, paragraphs[2], 25);
+  act(() => { editor.commands.insertContent('NEXT'); });
+  expect(onChange).toHaveBeenLastCalledWith(markdown(editor));
+  expect(markdown(editor)).toContain(later);
 });
 
 it('shows a disjoint arriving edit while protecting the changed active paragraph from autosave', () => {

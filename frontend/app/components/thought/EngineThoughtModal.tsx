@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { restoreThoughtTag, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -11,6 +12,7 @@ import { useTextDictation } from '@/hooks/useTextDictation';
 import { sayFailure } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { observeRejection } from '@/utils/observeRejection';
 import { addSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
 import { customTagNameKey, isStructureTag, normalizeStructureTag } from '@/utils/tagUtils';
 import { findThoughtSectionInStructure } from '@/utils/thoughtOrdering';
@@ -80,16 +82,17 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
     : boardSection;
   const addThought = (current: Sermon, patch: ThoughtFieldPatch) => addSermonThought(current, { ...newThought, ...patch }, creationSection);
   const missingOpening = !thoughtId && form.active && !initial;
-  const readOnly = missingOpening || loading || !form.active || form.busy || form.status?.phase === 'deleted' || Boolean(thoughtId && !thought);
+  const hasEditor = !missingOpening && !loading && form.active && form.status?.phase !== 'deleted' && (!thoughtId || Boolean(thought));
+  const readOnly = !hasEditor || form.busy;
   const change = (patch: ThoughtFieldPatch) => {
     if (readOnly) return;
-    void form.update(current => {
+    return observeRejection(form.update(current => {
       const value = current as unknown as Sermon;
       const existing = value.thoughts.find(item => item.id === shown.id);
       if (thoughtId && !existing) throw new Error('The thought was deleted');
       return json(existing ? patchSermonThought(value, existing.id, patch)
         : addThought(value, patch));
-    }).catch(() => undefined);
+    }));
   };
   const recordedAppend = useRef<{ scope: object; append: ObservedTextAppend } | null>(null);
   const dictation = useTextDictation({
@@ -196,8 +199,10 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
         disabled={readOnly || isBusy || !form.durable || form.dirty || form.status?.phase === 'conflict'} onRestore={restoreTag} />}
       <div className="space-y-3">
         <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
-        {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
-          : <RichMarkdownEditor valueIsUserAction={form.active} value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
+        {!hasEditor ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
+          : <BufferedTextScope.Provider value={form.recoveryIdentity}>
+            <RichMarkdownEditor editable={!readOnly} valueIsUserAction={form.active} value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />
+          </BufferedTextScope.Provider>}
       </div>
     </div>
   </FormDialog>{discardDialog}</>;

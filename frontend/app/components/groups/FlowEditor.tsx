@@ -8,6 +8,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import { isGroupBlockStatus } from '@/utils/groupDocument';
+import { observeRejection } from '@/utils/observeRejection';
 import { useTranslation } from '@locales/useTranslation';
 
 import { LiveTextInput, LiveTextArea } from '../ui/LiveTextInput';
@@ -33,7 +34,7 @@ interface FlowEditorProps {
     onSetStatus: (status: GroupBlockStatus) => Promise<void>;
     onSetDuration: (duration: number | null) => Promise<void>;
     onRenameStep: (title: string | null) => Promise<void>;
-    onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void;
+    onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void | Promise<unknown>;
     onClose: () => void;
     feedbackSubject?: object;
 }
@@ -130,7 +131,7 @@ export default function FlowEditor({
                         <LiveTextInput
                             id="block-title"
                             value={template.title}
-                            onChange={(value) => { void onRenameBlock(value).catch(() => undefined); }}
+                            onChange={value => observeRejection(onRenameBlock(value))}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 xl:rounded-lg xl:px-3 xl:py-2"
                         />
                         {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
@@ -163,7 +164,7 @@ export default function FlowEditor({
                         <LiveTextInput
                             id="step-title"
                             value={flowItem.instanceTitle || ''}
-                            onChange={(value) => { void onRenameStep(value || null).catch(() => undefined); }}
+                            onChange={value => observeRejection(onRenameStep(value || null))}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"
                             placeholder={template.title}
                         />

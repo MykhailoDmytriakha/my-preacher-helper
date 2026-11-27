@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
 import { fillRequiredField, fillRequiredFieldError, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { observeRejection } from '@/utils/observeRejection';
 import { useTranslation } from '@locales/useTranslation';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
@@ -39,8 +41,8 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
   const values = seriesFormValues((document.data ?? initial) as unknown as Series);
   const change = (patch: Partial<SeriesFormValues>) => {
     setMissing(null);
-    void document.update(current => ({ ...(current ?? initial), ...patch,
-      ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData).catch(() => undefined);
+    return observeRejection(document.update(current => ({ ...(current ?? initial), ...patch,
+      ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData));
   };
   const create = async () => {
     if (saving || document.loading || !restored) return;
@@ -68,7 +70,9 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
     }>
     <div className="space-y-5">
       <fieldset disabled={busy}>
-        <SeriesFormFields valueIsUserAction={Boolean(document.state?.checkpoint.dirty)} values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
+        <BufferedTextScope.Provider value={document.recoveryIdentity}>
+          <SeriesFormFields valueIsUserAction={Boolean(document.state?.checkpoint.dirty)} values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
+        </BufferedTextScope.Provider>
       </fieldset>
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{sayFailure(missing, t)}</p>}
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {

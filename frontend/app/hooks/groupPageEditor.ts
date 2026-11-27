@@ -15,10 +15,10 @@ export interface GroupPageEditor {
   readNotice?: RecordReadNotice;
   refresh?: () => unknown | Promise<unknown>;
   title: string;
-  setTitle: Dispatch<SetStateAction<string>>;
+  setTitle: (next: SetStateAction<string>) => void | Promise<unknown>;
   titleHistory?: { owner: string; generation: string; groupId: string; disabled: boolean; restore: (title: string) => Promise<void> };
   description: string;
-  setDescription: Dispatch<SetStateAction<string>>;
+  setDescription: (next: SetStateAction<string>) => void | Promise<unknown>;
   status: Group['status'];
   setStatus: Dispatch<SetStateAction<Group['status']>>;
   statusHistory?: NonNullable<GroupPageEditor['titleHistory']> & { field: 'status' };
@@ -40,10 +40,11 @@ export interface GroupPageEditor {
   meetingDate: string;
   setMeetingDate: Dispatch<SetStateAction<string>>;
   meetingLocation: string;
-  setMeetingLocation: Dispatch<SetStateAction<string>>;
+  setMeetingLocation: (next: SetStateAction<string>) => void | Promise<unknown>;
   meetingAudience: string;
-  setMeetingAudience: Dispatch<SetStateAction<string>>;
+  setMeetingAudience: (next: SetStateAction<string>) => void | Promise<unknown>;
   meetingFieldsEnabled: boolean;
+  meetingOpeningKey?: string;
   meetingHistory?: { owner: string; generation: string; rowId: string; date: string; disabled: boolean;
     restore: (rowId: string, date: string) => Promise<void> };
   meetingFieldHistory?: { owner: string; generation: string; rowId: string; rowCreatedAt: string; disabled: boolean;

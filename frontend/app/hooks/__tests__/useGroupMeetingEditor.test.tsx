@@ -10,7 +10,7 @@ jest.mock('@/data-engine/react.client', () => ({
 
 const meeting = { id: 'meeting', date: '2026-11-21', location: 'Hall', audience: 'Youth', createdAt: 'created' };
 
-it('hands clear-date and location input to the engine with the original action evidence', () => {
+it('hands clear-date and location input to the engine with the original action evidence', async () => {
   let stage = { meetingDates: [{ ...meeting }] };
   const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
   const captureMeetingDateInput = jest.fn(() => ({ meetingDate: { time } }));
@@ -27,10 +27,10 @@ it('hands clear-date and location input to the engine with the original action e
     choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()),
   });
   const hook = renderHook(() => useGroupMeetingEditor('group', [meeting], false));
-  act(() => hook.result.current.field('date')(''));
+  await act(async () => { await hook.result.current.field('date')(''); });
   expect(captureMeetingDateInput).toHaveBeenCalledTimes(1);
   expect(update).toHaveBeenLastCalledWith(expect.any(Function), { meetingDate: { time } }, true);
-  act(() => hook.result.current.field('location')('Side room'));
+  await act(async () => { await hook.result.current.field('location')('Side room'); });
   expect(captureMeetingField).toHaveBeenCalledWith('location', meeting.id);
   expect(update).toHaveBeenLastCalledWith(expect.any(Function), { field: 'location', rowId: meeting.id, time: locationTime }, true);
   expect(save).not.toHaveBeenCalled();

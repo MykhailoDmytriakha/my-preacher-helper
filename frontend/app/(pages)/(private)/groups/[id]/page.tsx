@@ -47,6 +47,7 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
 import Select from '@/components/ui/Select';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
@@ -66,6 +67,7 @@ import {
   normalizeFlow,
   removeFlowItem,
 } from '@/utils/groupFlow';
+import { observeRejection } from '@/utils/observeRejection';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -87,7 +89,9 @@ function EngineGroupPage({ groupId }: { groupId: string }) {
     <ScriptureLinksInWindow writtenIn={groupLanguage(editor.group)}>
       {editor.readOnly && editor.group
         ? <GroupReadOnlyContent group={editor.group} />
-        : <GroupDetailView editor={editor} />}
+        : <BufferedTextScope.Provider value={editor.readNotice?.subject ?? null}>
+          <GroupDetailView editor={editor} />
+        </BufferedTextScope.Provider>}
     </ScriptureLinksInWindow>
   );
 }
@@ -315,7 +319,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
           <div className="flex flex-col gap-3">
             <LiveTextInput
               value={title}
-              onChange={(value) => { setTitle(value); }}
+              onChange={setTitle}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-2xl font-bold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
             />
             {titleHistory && <DocumentFieldHistory
@@ -323,7 +327,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               session={titleHistory} current={title} disabled={titleHistory.disabled} />}
             <LiveTextArea
               value={description}
-              onChange={(value) => { setDescription(value); }}
+              onChange={setDescription}
               rows={2}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
@@ -404,25 +408,29 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <MapPinIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <LiveTextInput
-                disabled={!meetingFieldsEnabled}
-                value={meetingLocation}
-                onChange={(value) => { setMeetingLocation(value); }}
-                placeholder={t('workspaces.groups.meetings.location', { defaultValue: 'Location' })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              />
+            <div key={JSON.stringify([editor.meetingOpeningKey, "location"])} className="flex items-start gap-2">
+              <MapPinIcon className="mt-3 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <div className="min-w-0 flex-1">
+                <LiveTextInput
+                  disabled={!meetingFieldsEnabled}
+                  value={meetingLocation}
+                  onChange={setMeetingLocation}
+                  placeholder={t('workspaces.groups.meetings.location', { defaultValue: 'Location' })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <UsersIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <LiveTextInput
-                disabled={!meetingFieldsEnabled}
-                value={meetingAudience}
-                onChange={(value) => { setMeetingAudience(value); }}
-                placeholder={t('workspaces.groups.meetings.audience', { defaultValue: 'Audience' })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              />
+            <div key={JSON.stringify([editor.meetingOpeningKey, "audience"])} className="flex items-start gap-2">
+              <UsersIcon className="mt-3 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <div className="min-w-0 flex-1">
+                <LiveTextInput
+                  disabled={!meetingFieldsEnabled}
+                  value={meetingAudience}
+                  onChange={setMeetingAudience}
+                  placeholder={t('workspaces.groups.meetings.audience', { defaultValue: 'Audience' })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
             </div>
             {meetingHistory && <DatedRowHistory
               key={JSON.stringify([meetingHistory.owner, group.id, meetingHistory.generation])}
@@ -537,6 +545,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
           {selectedFlowItem && selectedTemplate ? (
             <div ref={fitEditorToWindow} className="xl:sticky" style={{ top: editorTop }}>
               <FlowEditor
+                key={JSON.stringify([selectedFlowItem.id, selectedTemplate.id, selectedTemplate.createdAt])}
                 flowItem={selectedFlowItem}
                 template={selectedTemplate}
                 feedbackSubject={editor.feedbackSubject}
@@ -547,7 +556,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 onSetStatus={status => editor.setBlockStatus(selectedTemplate, status)}
                 onRenameStep={title => editor.renameStep(selectedFlowItem, title)}
                 onSetDuration={duration => editor.setStepDuration(selectedFlowItem, duration)}
-                onUpdateFlowItem={({ instanceNotes }) => { void editor.setStepNotes(selectedFlowItem, instanceNotes).catch(() => undefined); }}
+                onUpdateFlowItem={({ instanceNotes }) => observeRejection(editor.setStepNotes(selectedFlowItem, instanceNotes))}
                 onClose={() => setSelectedFlowItemId(null)}
               />
             </div>

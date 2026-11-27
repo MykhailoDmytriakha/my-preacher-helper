@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react';
 import { GROUP_MEETING_SLOT, groupMeetingRows as meetings, normalizeGroupMeetingDraft, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { editFirstGroupMeeting, firstGroupMeetingIdentity, groupMeetingDay, isOrderedMeetingFieldValue } from '@/utils/groupMeeting';
+import { observeRejection } from '@/utils/observeRejection';
 
 import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupMeetingDate } from '@/models/models';
-import type { Dispatch, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
 
 /** The meeting's fields share one durable stage; only a finished date (or no date) may submit it. */
 export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[], pending: boolean, available = true) {
@@ -24,6 +25,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
     if (needsRefresh) void cancel().then(begin).catch(() => undefined);
   }, [needsRefresh, cancel, begin]);
   const first = meetings(form.data)[0];
+  const openingMeeting = meetings(form.initialData)[0] ?? firstGroupMeetingIdentity(form.initialData);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.recoveryReady,
     version: JSON.stringify([form.recoveryVersion, form.status?.phase]),
     list: async () => (await form.listRecoverable()).map(source => {
@@ -33,15 +35,15 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
         preview: [first?.date, first?.location, first?.audience].filter(Boolean).join(' / '),
         discard: () => form.discardRecovery(source) };
     }), recover: form.recover });
-  const field = (key: 'date' | 'location' | 'audience'): Dispatch<SetStateAction<string>> => next => {
+  const field = (key: 'date' | 'location' | 'audience') => (next: SetStateAction<string>) => {
     if (!form.active || needsRefresh) return;
     const identity = firstGroupMeetingIdentity(form.initialData) ?? { id: newClientId(), createdAt: new Date().toISOString() };
     const input = key === 'date' ? form.captureMeetingDateInput() : form.captureMeetingField(key, first?.id ?? identity.id);
-    void form.update(current => {
+    return observeRejection(form.update(current => {
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
       const edited = editFirstGroupMeeting(previous, { [key]: typeof next === 'function' ? next(value) : next }, identity);
       return { ...current, meetingDates: edited } as unknown as DocumentData;
-    }, input, true).catch(() => undefined);
+    }, input, true));
   };
   const restoreDate = async (rowId: string, date: string) => {
     const chosen = date === '' ? date : groupMeetingDay(date);
@@ -67,5 +69,5 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
       return { ...normalized, meetingDates: [restored, ...rows.slice(1)] } as unknown as DocumentData;
     }, action);
   };
-  return { form, recovery, first, field, restoreDate, restoreField, loading: !opened || loading, enabled: active && !needsRefresh };
+  return { form, recovery, first, openingMeeting, field, restoreDate, restoreField, loading: !opened || loading, enabled: active && !needsRefresh };
 }

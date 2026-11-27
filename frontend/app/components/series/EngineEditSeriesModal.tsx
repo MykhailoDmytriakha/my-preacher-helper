@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { fillRequiredField, fillRequiredFieldError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { observeRejection } from '@/utils/observeRejection';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -44,7 +46,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
   const [missing, setMissing] = useState<FailureWords | null>(null);
   const change = (patch: Partial<SeriesFormValues>) => {
     setMissing(null);
-    void form.update(current => ({ ...current, ...patch, ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData).catch(() => undefined);
+    return observeRejection(form.update(current => ({ ...current, ...patch, ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData));
   };
   const save = async () => {
     const empty = missingSeriesField(values);
@@ -75,7 +77,9 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     }>
     <div className="space-y-5">
       <fieldset disabled={loading || !form.active || form.busy}>
-        <SeriesFormFields valueIsUserAction={form.requestedRecovery} values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
+        <BufferedTextScope.Provider value={form.recoveryIdentity}>
+          <SeriesFormFields valueIsUserAction={form.requestedRecovery} values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
+        </BufferedTextScope.Provider>
       </fieldset>
       {owner && generation && <DocumentMetadataHistory<SeriesTimedField> key={JSON.stringify([owner, seriesId, generation])}
         owner={owner} generation={generation} collection="series" id={seriesId} current={form.data}

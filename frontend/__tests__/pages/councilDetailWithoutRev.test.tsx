@@ -99,6 +99,39 @@ it('delivers a new title for a council written before it had a version counter',
   view.unmount();
 });
 
+it('shows later stored council words after the document refuses an edit before echoing it', async () => {
+  const harness = documentEngineHarness(revless);
+  const browser = harness.createBrowser();
+  const openEditor = browser.engine.openEditor.bind(browser.engine);
+  const refusal = new Error('Cannot stage the local title yet');
+  const opening = jest.spyOn(browser.engine, 'openEditor').mockImplementation(async (...args) => {
+    const editor = await openEditor(...args);
+    if (args[0].collection === resource.collection && args[0].id === resource.id) {
+      jest.spyOn(editor, 'edit').mockRejectedValueOnce(refusal);
+    }
+    return editor;
+  });
+  jest.mocked(createBrowserDataEngine).mockReturnValue(browser);
+  const view = render(<DataEngineProvider><CouncilDetailPage /></DataEngineProvider>);
+  try {
+    const field = await screen.findByTestId('council-title');
+    await settle();
+    fireEvent.change(field, { target: { value: 'Words just entered on the council page' } });
+    await settle();
+    expect(field).toHaveValue('Words just entered on the council page');
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    await act(async () => { await harness.remote({ title: 'Council title from the phone' }); });
+    await waitFor(() => expect(field).toHaveValue('Council title from the phone'));
+    const recovery = screen.getByText('dataSync.refusedInputText');
+    fireEvent.click(recovery);
+    expect(within(recovery.closest('details')!).getByText('Words just entered on the council page')).toBeInTheDocument();
+    expect(harness.server.value?.title).toBe('Council title from the phone');
+  } finally {
+    view.unmount();
+    opening.mockRestore();
+  }
+});
+
 it.each([
   { direction: 'up', row: 'Second section', id: 'topic-2', opening: { previous: 'topic-1', next: 'topic-3' },
     destination: { previous: null, next: 'topic-1' }, order: ['topic-2', 'topic-1', 'topic-3'] },

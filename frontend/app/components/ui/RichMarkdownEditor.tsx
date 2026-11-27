@@ -7,6 +7,7 @@ import { applyForeignContent, canonicalForeignTarget } from './foreignContent';
 import { retireHistory } from './foreignHistory';
 import { mapForeignMarkdownSelection } from './foreignMarkdownSelection';
 import { ownedTextDocument } from './ownedTextDocument';
+import { RefusedText } from './RefusedText';
 import { appendToComposition, decideComposition, rebaseParagraphAppend, type CompositionOpening, type ObservedTextAppend } from './richMarkdownComposition';
 import { RichMarkdownCompositionChoice } from './RichMarkdownCompositionChoice';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
@@ -130,7 +131,7 @@ function OwnedMarkdownEditor({
         },
     });
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user
         // edit — over a value just given (a draft restored as the editor is released was wiped live, 2026-10-28).
         if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
@@ -240,7 +241,7 @@ function BufferedMarkdownEditor({
     toolbarEnd,
 }: EditorAppearance & ValueProps) {
     const observedAppend = confirmedTextTransfer ?? appendedText;
-    const { draft, change, getPending, takeObserved } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
+    const { draft, change, getPending, takeObserved, refusedText } = useBufferedText(value, onChange, observedAppend?.after === value ? observedAppend.before : undefined);
     const foreignEditMark = useRef<string | null>(valueIsUserAction ? null : value);
     const lastEmittedText = useRef<string | null>(null);
     const ownInstallation = useRef(onOwnValueApplied);
@@ -336,9 +337,10 @@ function BufferedMarkdownEditor({
             if (valueIsUserAction && valueBeforeUserAction && valueBeforeUserAction !== appliedForeignValue.current) {
                 active.pendingForeign = valueBeforeUserAction;
             }
-        } else if (editor && !editor.isDestroyed && value !== current.current.value && !valueIsUserAction
+        } else if (editor && !editor.isDestroyed && !valueIsUserAction
+            && (value !== current.current.value || (draft === value && draft !== current.current.draft))
             && observedAppend?.after !== value && heldText.current === null && getPending() === null) {
-            // React can publish the value before the effect installs it in ProseMirror.
+            // A foreign value can arrive while a write is pending, then become installable only after a refusal.
             const shown = readMarkdown(editor);
             deferredArrival.current = value !== lastEmittedText.current && value !== shown
                 && !canonicalForeignTarget(editor, value).eq(editor.state.doc)
@@ -435,7 +437,7 @@ function BufferedMarkdownEditor({
         };
     }, [editor]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user
         // edit — over a value just given (a draft restored as the editor is released was wiped live, 2026-10-28).
         if (editor && editor.isEditable !== canEdit) editor.setEditable(canEdit, false);
@@ -563,6 +565,7 @@ function BufferedMarkdownEditor({
             {choice !== null && (
                 <RichMarkdownCompositionChoice typed={choice} updated={value} onChoose={choose} />
             )}
+            {refusedText.length > 0 && <RefusedText versions={refusedText} />}
         </div>
     );
 }

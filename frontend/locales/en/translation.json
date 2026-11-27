@@ -345,6 +345,7 @@
     },
     "acceptRemote": "Use server version",
     "retry": "Retry",
+    "refusedInputText": "Text that could not be saved",
     "recoveryLabel": "Saved draft",
     "unfinishedWork": "This version is saved. Unfinished drafts from earlier editing sessions are available below.",
     "chooseRecovery": "Choose a draft",

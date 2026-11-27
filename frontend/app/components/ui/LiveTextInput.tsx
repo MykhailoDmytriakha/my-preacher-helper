@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
+import { RefusedText } from './RefusedText';
 import { useBufferedText } from './useBufferedText';
 
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
@@ -25,24 +26,27 @@ import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
  */
 type LiveTextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string;
-  onChange: (next: string) => void;
+  onChange: (next: string) => void | Promise<unknown>;
 };
 
 export function LiveTextInput({ value, onChange, ...rest }: LiveTextInputProps) {
-  const { draft, change } = useBufferedText(value, onChange);
+  const { draft, change, refusedText } = useBufferedText(value, onChange);
 
   return (
-    <input
-      {...rest}
-      value={draft}
-      onChange={(event) => change(event.target.value)}
-    />
+    <>
+      <input
+        {...rest}
+        value={draft}
+        onChange={(event) => change(event.target.value)}
+      />
+      {refusedText.length > 0 && <RefusedText versions={refusedText} />}
+    </>
   );
 }
 
 type LiveTextAreaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> & {
   value: string;
-  onChange: (next: string) => void;
+  onChange: (next: string) => void | Promise<unknown>;
 };
 
 /**
@@ -52,7 +56,7 @@ type LiveTextAreaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'valu
  * words long, no truncation of a long one — and shrinks again when the text is cut.
  */
 export function LiveTextArea({ value, onChange, ...rest }: LiveTextAreaProps) {
-  const { draft, change } = useBufferedText(value, onChange);
+  const { draft, change, refusedText } = useBufferedText(value, onChange);
   const field = useRef<HTMLTextAreaElement | null>(null);
 
   const fit = (element: HTMLTextAreaElement | null) => {
@@ -78,16 +82,19 @@ export function LiveTextArea({ value, onChange, ...rest }: LiveTextAreaProps) {
   }, []);
 
   return (
-    <textarea
-      {...rest}
-      ref={field}
-      rows={1}
-      value={draft}
-      onChange={(event) => {
-        change(event.target.value);
-        fit(event.target);
-      }}
-      className={`resize-none overflow-hidden ${rest.className ?? ''}`}
-    />
+    <>
+      <textarea
+        {...rest}
+        ref={field}
+        rows={1}
+        value={draft}
+        onChange={(event) => {
+          change(event.target.value);
+          fit(event.target);
+        }}
+        className={`resize-none overflow-hidden ${rest.className ?? ''}`}
+      />
+      {refusedText.length > 0 && <RefusedText versions={refusedText} />}
+    </>
   );
 }

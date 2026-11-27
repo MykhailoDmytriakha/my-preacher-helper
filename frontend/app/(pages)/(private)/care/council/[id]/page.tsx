@@ -48,6 +48,7 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
@@ -61,6 +62,7 @@ import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, new
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 import { formatDate, formatDateForLocale, formatDateOnly } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
+import { observeRejection } from '@/utils/observeRejection';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -160,19 +162,17 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     // A copy shown while device storage is silent is for reading only (BUG-20260927-engine-open-hangs-on-silent-device-storage).
     readOnly: document.readOnly,
     refresh: document.refresh,
-    updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
-      void document.updateCouncil(id, updater, field).catch(report);
-    },
+    updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) =>
+      observeRejection(document.updateCouncil(id, updater, field), report),
     setTopicSummary: document.setTopicSummary,
-    setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => {
-      void document.setTopicText(topicId, itemId, field, value).catch(report);
-    },
+    setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) =>
+      observeRejection(document.setTopicText(topicId, itemId, field, value), report),
     holdTopicSummary: document.holdTopicSummary,
     moveTopic: (topicId: string, toIndex: number) => { void document.moveTopic(topicId, toIndex).catch(report); },
     recordTopicOutcome: (topicId: string, outcome: TopicOutcome, trackChanges: boolean) => {
       void document.recordTopicOutcome(topicId, outcome, trackChanges).catch(report);
     },
-    renameTopic: (topicId: string, title: string) => document.renameTopic(topicId, title),
+    renameTopic: (topicId: string, title: string) => observeRejection(document.renameTopic(topicId, title), report),
     restoreTopicOutcome: document.restoreTopicOutcome,
     setAssembly: document.setAssembly,
     changeTopicKind: document.changeTopicKind,
@@ -198,7 +198,9 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     </RecordReadSummary>
     {document.actions?.map(action => <DataMembershipStatus key={action.id} action={{ durable: true, phase: 'submitted',
       error: null, delivery: action.delivery, retry: document.refresh, discard: () => document.discardAction(action.id) }} />)}
-    <CouncilDetailContent source={source} engineCouncilId={councilId} />
+    <BufferedTextScope.Provider value={document.recoveryIdentity}>
+      <CouncilDetailContent source={source} engineCouncilId={councilId} />
+    </BufferedTextScope.Provider>
   </>;
 }
 
@@ -208,9 +210,9 @@ interface CouncilDetailSource {
   loading: boolean;
   readFailed: boolean;
   refresh: () => unknown;
-  updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => Promise<void>;
   setTopicSummary: (topicId: string, summary: string) => Promise<void>;
-  setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => void;
+  setTopicText: (topicId: string, itemId: string, field: CouncilTopicTextField, value: string) => Promise<void>;
   holdTopicSummary: (topicId: string, summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   moveTopic: (topicId: string, toIndex: number) => void;
   recordTopicOutcome: (id: string, outcome: TopicOutcome, trackChanges: boolean) => void;
@@ -557,9 +559,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onChangeText={(itemId, field, value) => source.setTopicText(topic.id, itemId, field, value)}
                 onHoldSummary={summary => source.holdTopicSummary(topic.id, summary)}
                 onOutcome={(outcome, trackChanges) => source.recordTopicOutcome(topic.id, outcome, trackChanges)}
-                onRename={(title) => {
-                  void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
-                }}
+                onRename={title => source.renameTopic(topic.id, title)}
                 onSetAssembly={(selected) => {
                   void source.setAssembly(topic, selected).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
                 }}
@@ -664,10 +664,10 @@ function TopicCard({
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
   onChangeSummary: (summary: string) => Promise<void>;
-  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => void;
+  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => Promise<void>;
   onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   onOutcome: (outcome: TopicOutcome, trackChanges: boolean) => void;
-  onRename: (title: string) => void;
+  onRename: (title: string) => Promise<void>;
   onSetAssembly: (selected: boolean) => void;
   onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
   onRemove: () => void;
@@ -1033,9 +1033,9 @@ function TopicEditor({
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
   onChangeSummary: (summary: string) => Promise<void>;
-  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => void;
+  onChangeText: (itemId: string, field: CouncilTopicTextField, value: string) => Promise<void>;
   onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
-  onRename: (title: string) => void;
+  onRename: (title: string) => Promise<void>;
   onSetAssembly: (selected: boolean) => void;
   onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
   onRemove: () => void;
@@ -1219,12 +1219,14 @@ function TopicEditor({
         <ul className="mt-1.5 space-y-2">
           {topic.options.map((option) => (
             <li key={option.id} className="flex gap-2">
-              <LiveTextInput
-                value={option.text}
-                onChange={value => onChangeText(option.id, 'option', value)}
-                placeholder={t('council.topic.optionPlaceholder')}
-                className={inputClass}
-              />
+              <div className="min-w-0 flex-1">
+                <LiveTextInput
+                  value={option.text}
+                  onChange={value => onChangeText(option.id, 'option', value)}
+                  placeholder={t('council.topic.optionPlaceholder')}
+                  className={inputClass}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => void removeOption(option.id)}

@@ -44,7 +44,7 @@ export function seriesFormPatch(values: SeriesFormValues) {
 
 interface SeriesFormFieldsProps {
   values: SeriesFormValues;
-  onChange: (patch: Partial<SeriesFormValues>) => void;
+  onChange: (patch: Partial<SeriesFormValues>) => void | Promise<unknown>;
   colorPickerTitle: string;
   valueIsUserAction?: boolean;
 }
