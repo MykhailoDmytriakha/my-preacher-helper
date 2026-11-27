@@ -102,6 +102,14 @@ export function carriedHardQuestionListItems(change: DocumentFieldObservation<Fi
   return [...moved].filter(([item, present]) => prior.get(item) === present).map(([item]) => item);
 }
 
+/** A whole-document choice would drop compatible entries that belong in both versions. */
+export function hasHardQuestionListReview(collection: string, conflicts: readonly ConflictDetail[]): boolean {
+  return conflicts.some(({ path, hardQuestionListVersions }) => {
+    const target = fieldTarget(collection, path);
+    return Boolean(hardQuestionListVersions?.undecided.length && target && 'list' in target);
+  });
+}
+
 export function readHardQuestionListVersions(conflicts: readonly ConflictDetail[], authored: DocumentData | null, saved: DocumentData) {
   if (!authored) return [];
   return conflicts.flatMap(({ path, mine, theirs, hardQuestionListVersions: versions }) => {

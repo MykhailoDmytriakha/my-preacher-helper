@@ -30,6 +30,7 @@ import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
+import { hasHardQuestionListReview } from './hardQuestionFieldAction';
 import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
@@ -1745,6 +1746,9 @@ export class DataEngine {
     }
     if (answered.some(request => request.result?.kind === 'conflict' && hasOutlineParentChoice(resource.collection, request.result.conflicts))) {
       throw Object.assign(new Error('Review the subpoint placement in its editor before deciding'), { code: 'decision-changed' });
+    }
+    if (answered.some(request => request.result?.kind === 'conflict' && hasHardQuestionListReview(resource.collection, request.result.conflicts))) {
+      throw Object.assign(new Error('Review the question list in its editor before deciding'), { code: 'decision-changed' });
     }
     if (answered.length) {
       const sources = await this.manualChoices(owner, resource, requests);

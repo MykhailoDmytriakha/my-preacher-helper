@@ -1312,6 +1312,78 @@ describe('a failed participant in a council carry', () => {
   });
 });
 
+describe('an exact list comparison saved for a hard question', () => {
+  beforeEach(() => { process.env[ON_ENGINE] = 'hardQuestions'; actions = null; mockPathname = '/dashboard'; });
+  afterEach(() => { delete process.env[ON_ENGINE]; mockPathname = '/dashboard'; });
+
+  const question = { collection: 'hardQuestions', id: 'question-1' };
+  const contested = 'Contested alternative', saved = 'Independent computer wording', written = 'Independent phone wording';
+  const value = { userId: 'owner', title: 'Question', alternates: [contested], themeId: 'theme-1' };
+  const field = (items: string[]) => ({ exists: true as const, value: items });
+
+  async function waitingListReview() {
+    const h = documentEngineHarness({ resource: question, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } }, {
+      apply: (command, snapshot) => ({ kind: 'conflict', operationId: command.operationId, snapshot, conflicts: [{
+        code: 'hard-question-field-review-changed', path: ['alternates'], base: field([contested]), mine: field([written]), theirs: field([contested, saved]),
+        hardQuestionListVersions: { local: field([saved, written]), remote: field([contested, saved, written]), undecided: [contested] },
+      }] }),
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+    const tree = () => <DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>;
+    const view = render(tree());
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    const editor = await h.engine.openEditor(question, editorIdentity('test-tab', question, 'default', 'list-choice'));
+    h.silentRemote({ alternates: [contested, saved] });
+    await act(async () => {
+      await editor.edit({ ...value, alternates: [written] });
+      await editor.save();
+      await settleEngine();
+      editor.close({ flush: false });
+    });
+    await screen.findByText(new RegExp(written));
+    return { h, tree, view };
+  }
+
+  it('points to the question and keeps the words copyable without offering a generic server choice', async () => {
+    await waitingListReview();
+    expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toHaveAttribute('href', '/care/questions/theme-1/question-1');
+    expect(screen.getByRole('button', { name: 'freshness.copyTextAction' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'dataSync.acceptRemote' })).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.screenReviewBody')).toBeInTheDocument();
+  });
+
+  it('keeps later unsent words visible even when the question can compare the saved list', async () => {
+    const { h, tree, view } = await waitingListReview();
+    const source = (await h.engine.listRecoverable(question))[0];
+    if (!source) throw new Error('Expected the saved list checkpoint');
+    const editor = await h.engine.openEditor(question, source.record.editorId);
+    const later = 'Unsent detail after the comparison request';
+    await act(async () => {
+      await editor.edit({ ...editor.getState().checkpoint.draft!, detail: later });
+      editor.close({ flush: false });
+      await settleEngine();
+    });
+    await screen.findByText(new RegExp(later));
+    mockPathname = '/care/questions/theme-1/question-1';
+    view.rerender(tree());
+    expect(screen.getByText(new RegExp(later))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'freshness.copyTextAction' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'dataSync.acceptRemote' })).not.toBeInTheDocument();
+  });
+
+  it('leaves the exact choice to the question screen and restores discovery on leaving', async () => {
+    const { h, tree, view } = await waitingListReview();
+    mockPathname = '/care/questions/old-theme/question-1';
+    view.rerender(tree());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await h.commits.list('owner')).toContainEqual(expect.objectContaining({ state: 'conflict' }));
+    mockPathname = '/dashboard';
+    view.rerender(tree());
+    expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toBeInTheDocument();
+  });
+});
+
+
 describe('a request refused locally before transport preparation', () => {
   beforeEach(() => { process.env[ON_ENGINE] = 'studyNotes'; actions = null; mockPathname = '/settings/user'; });
   afterEach(() => { delete process.env[ON_ENGINE]; });

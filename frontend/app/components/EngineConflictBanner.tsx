@@ -12,7 +12,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { studyNoteReferenceComparison } from '@/components/studyNoteReferenceComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { readServiceOrderTitleConflict, captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, hasPrivateServiceOrderPosition, hasTwoPrivateServiceOrderMoves, isRecoveryHeldOpen, previewReviewedListChoice, privateServiceOrderPosition, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readDocumentTextComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForOutlineParentReview, waitsForServiceOrderPosition, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { readServiceOrderTitleConflict, captureRecoveryChoice, commentPlaceChoiceRecord, councilRefusalHeldOpen, equalValues, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, hasPrivateServiceOrderPosition, hasTwoPrivateServiceOrderMoves, isRecoveryHeldOpen, previewReviewedListChoice, privateServiceOrderPosition, readAccountPreferenceComparison, readCommentKindComparison, readCommentPlaceComparison, readCommentTextComparison, readDocumentTagComparison, readDocumentTextComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readServiceStepConflict, readSourceNoteLinkComparison, readStudyNoteFieldsComparison, readStudyNoteReferenceComparison, readTagColorConflict, sourceNoteChoiceRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, waitsForHardQuestionListReview, waitsForOutlineParentReview, waitsForServiceOrderPosition, waitsForStudyNoteReferenceReview, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -53,7 +53,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; questionListReview?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
   refused?: boolean; refusalCodes?: readonly string[]; retainedCommentText?: RecoveryCheckpoint; privateServiceMove?: RecoveryCheckpoint }
 
@@ -252,6 +252,7 @@ const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting)
   && sameResource(current.resource, target.resource)
   && current.kind === target.kind
   && current.screen === target.screen
+  && current.questionListReview === target.questionListReview
   && current.fingerprint === target.fingerprint
   && current.operationIds.length === target.operationIds.length
   && current.operationIds.every((id, index) => id === target.operationIds[index]));
@@ -262,6 +263,13 @@ function visibleWaiting(candidates: readonly Waiting[] | null | undefined, pathn
   for (const candidate of candidates ?? []) {
     if (!isOnDocumentScreen(pathname, candidate.resource, candidate.screenValue, search)) return candidate;
     if (isRecoveryHeldOpen(candidate.records, answers)) continue;
+    // A renewed form comparison may project different words from its closed document copy.
+    // Leave separate or unsaved work visible even when one request belongs to the question.
+    const [listRequest] = Object.keys(candidate.records[0]?.checkpoint.pending ?? {});
+    if (candidate.questionListReview && listRequest && candidate.records.every(({ checkpoint, prepared, unfinalized }) =>
+      !prepared && !unfinalized.length && waitsForHardQuestionListReview(checkpoint)
+      && Object.keys(checkpoint.pending).length === 1 && checkpoint.pending[listRequest]
+      && equalValues(checkpoint.draft, checkpoint.pending[listRequest].value))) continue;
     return candidate.screen && !candidate.actionResolutionRequired && councilRefusalHeldOpen(candidate.records, answers)
       ? { ...candidate, retainedDraftsOnly: true } : candidate;
   }
@@ -343,6 +351,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
         refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
         refusalCodes: scope.operationIds.flatMap(id => refusalCodes.get(id) ?? []),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
+        questionListReview: drafts.some(({ record }) => waitsForHardQuestionListReview(record.checkpoint)),
         ...(privateServiceMove && exactAnswer === privateServiceMove && { privateServiceMove }),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(previewReviewedListChoice(draft.checkpoint), draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
@@ -598,7 +607,7 @@ function EngineConflicts({ pollMs, search, withSettingsNotice }: { pollMs: numbe
         <button type="button" className={`mt-3 ${SECONDARY_BUTTON}`} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
       </div>);
   }
-  if (entry.actionResolutionRequired || entry.records.some(({ checkpoint }) => checkpoint.groupTextReview
+  if (entry.questionListReview || entry.actionResolutionRequired || entry.records.some(({ checkpoint }) => checkpoint.groupTextReview
     || waitsForOutlineParentReview(checkpoint))) {
     return notice(<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} />);
   }
@@ -777,10 +786,12 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
   const href = documentScreenHref(entry.resource, entry.screenValue);
   const title = entry.kind === 'refused' || entry.kind === 'refusedCreate' || entry.kind === 'refusedDelete'
     ? t(REFUSED_TITLE) : t(CONFLICT_TITLE);
+  const bodyKey = entry.questionListReview ? 'dataSync.screenReviewBody'
+    : entry.actionResolutionRequired ? 'dataSync.wholeActionDraftBody' : 'dataSync.screenDraftBody';
   return (
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
-      <p className={NOTICE_BODY}>{t(entry.actionResolutionRequired ? 'dataSync.wholeActionDraftBody' : 'dataSync.screenDraftBody')}</p>
+      <p className={NOTICE_BODY}>{t(bodyKey)}</p>
       <SizeRefusalLine entry={entry} />
       {mine && (
         <pre className={NOTICE_TEXT}>{mine}</pre>

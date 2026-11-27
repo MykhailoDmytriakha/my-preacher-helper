@@ -466,6 +466,12 @@ it.each(['same membership', 'another item'] as const)('keeps the independently a
       { id: request.retentionScope, version: null });
     expect(exactManualRequest({ ...stage, record: reopened }, editor.getState().checkpoint,
       new Map(storedRequests.map(commit => [commit.id, commit])))?.id).toBe(request.id);
+    const blocked = await browser.engine.takeStoredVersion(resource, [request.id]).then(
+      taken => ({ taken, state: 'resolved' }),
+      (error: { code?: string }) => ({ code: error.code, state: 'protected' }),
+    );
+    expect(blocked).toEqual({ code: 'decision-changed', state: 'protected' });
+    expect(await h.commits.list(owner)).toContainEqual(expect.objectContaining({ id: request.id, state: 'conflict' }));
     await form.resolve('remote', { expectedComparison: nextChoice, metadataTime: clock(150) });
     await browser.engine.retry();
     await settleEngine();

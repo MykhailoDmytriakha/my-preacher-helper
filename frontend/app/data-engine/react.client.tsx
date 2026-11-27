@@ -44,7 +44,7 @@ import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as meetingRows, normalizeGroupMeetingDraft as normalizeMeetingDraft } from './groupMeetingAutosave';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
-import { hardQuestionField } from './hardQuestionFieldAction';
+import { hardQuestionField, hasHardQuestionListReview } from './hardQuestionFieldAction';
 import { basisScriptureConflictId } from './hardQuestionThemeLists';
 import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
@@ -215,6 +215,9 @@ export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, res
   const requestId = result?.kind === 'conflict' && checkpoint.pending[result.operationId]
     && result.conflicts.some(conflict => basisScriptureConflictId(conflict) === id) ? result.operationId : undefined;
   return { id, requestId };
+}
+export function waitsForHardQuestionListReview(checkpoint: SessionCheckpoint) {
+  return hasHardQuestionListReview(checkpoint.confirmed.resource.collection, checkpoint.conflicts);
 }
 export function hasHardQuestionFieldConflict(checkpoint: SessionCheckpoint) {
   return checkpoint.conflicts.some(({ path }) => hardQuestionField(checkpoint.confirmed.resource.collection, path));
@@ -888,6 +891,9 @@ export function useDocumentActions() {
         let taken = 0;
         if (!exactField && (scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForStudyNoteReferenceReview(checkpoint))) {
           throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
+        }
+        if ((scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForHardQuestionListReview(checkpoint))) {
+          throw Object.assign(new Error('Review the question list in its editor before deciding'), { code: 'decision-changed' });
         }
         if (scope && choice === 'theirs' && !exactField) {
           // Modern copies settle through the same request-scoped projection as screen drafts.
