@@ -528,7 +528,7 @@ function EditorHeader({
                     menus (More, AI) hang below it — clipped, More opened invisibly and Delete
                     could not be reached on a phone (BUG-20261119-note-phone-more-menu-clipped). */}
                 <div
-                    className={`flex items-center justify-between gap-2 transition-all duration-200 ${controlsOpen ? '' : 'overflow-hidden'} ${collapsed ? 'h-0 opacity-0' : 'h-11 opacity-100'}`}
+                    className={`relative flex items-center justify-between gap-2 transition-all duration-200 ${controlsOpen ? '' : 'overflow-hidden'} ${collapsed ? 'h-0 opacity-0' : 'h-11 opacity-100'}`}
                     inert={collapsed}
                 >
                     <div className="flex items-center gap-1">

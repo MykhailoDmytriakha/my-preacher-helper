@@ -53,8 +53,9 @@ export function NoteAiMenu({ onAnalyze, isRunning, disabled, isTargetDisabled, b
         onAnalyze(target);
     };
 
+    // On phones the controls row anchors the menu, so the popover has the row’s full width.
     return (
-        <div className="relative shrink-0" ref={rootRef}>
+        <div className="shrink-0 sm:relative" ref={rootRef}>
             <button
                 type="button"
                 onClick={() => setIsOpen((open) => !open)}
@@ -74,7 +75,7 @@ export function NoteAiMenu({ onAnalyze, isRunning, disabled, isTargetDisabled, b
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-xl border border-gray-100 bg-white py-2 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <div className="absolute right-0 top-full z-30 mt-2 w-56 max-w-full origin-top-right sm:max-w-none rounded-xl border border-gray-100 bg-white py-2 shadow-xl dark:border-gray-700 dark:bg-gray-800">
                     <div className="mb-1 border-b border-gray-50 px-4 py-2 dark:border-gray-700/50">
                         <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}

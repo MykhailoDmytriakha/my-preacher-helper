@@ -11027,3 +11027,11 @@ After an authorized release, open a disposable sermon at 320–390 px with a lon
 At `0db0e5a7c`, the entire frontend matches the verified `33390045c` production-mode build. The later header layout from `4299e34ae` still keeps the right-aligned menu inside the viewport. Hidden Chrome at 320, 390, 660, 900 and 1280 px found all five entries and hit their centers in all 25 measurements. At each width Delete opened the confirmation, and Cancel kept the fixture. Sixty-three related Jest tests, TypeScript and the build passed. Visual evidence and geometry are in `artifacts/sermon-options-layout-20261127`. This closes the existing fix after local recheck.
 
 After an authorized release, open a disposable sermon at 320–390 px, tap the three dots next to the export row, and scan all entries through Delete. Open the confirmation and cancel. Repeat on a wide screen to confirm the menu does not grow the page sideways.
+
+## BUG-20261119-note-phone-more-menu-clipped · Keep both note header menus within the phone viewport
+
+The existing More menu fix already made Delete visible below the settled controls row. The adjacent AI menu still used its own button as the right edge and lost its first 21 px at 320 px. On phones the controls row now anchors that menu. At tablet and desktop widths it keeps the position under its own button. Neither menu changes how the note saves or deletes.
+
+The same hidden Chrome measurement went from a left edge of −21 px to +85 px. On five widths from 320 to 1280 px, both menus were reachable. Cancelled deletion left the note untouched, downward scrolling closed the open More menu, and scrolling up restored its control. Visual checks included 320, 660 and 1280 px. All 102 focused tests passed, along with TypeScript and production-mode build. ESLint reported zero errors and three existing warnings. The isolated emulator stand released every port. Reports and screenshots are in `artifacts/note-header-menu-20261127`.
+
+After authorized rollout, open a disposable note on a narrow phone and tap More → Delete → Cancel. Scroll far enough to fold the row, then reveal it and confirm the menu is closed. Open Edit → sparkle and check all four action labels, especially at 320 px. Check the same menu on a wide screen. The local run used viewport and touch emulation.
