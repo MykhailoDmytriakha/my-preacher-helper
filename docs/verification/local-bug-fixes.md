@@ -11219,3 +11219,17 @@ The remaining owner decision concerns where and how the dialog asks when already
 After an authorized release, use a disposable sermon and series in the test account. Open each edit dialog on one device without typing, save a different version on the second, and verify that it appears in the original dialog. Add a new line, undo and redo it, save once and reopen. Repeat with words already typed and verify they remain visible before any version choice.
 
 Local case evidence: `artifacts/manual-modal-observation-20261127/`.
+
+## BUG-20261127-series-description-click-toggles-bold · Keep editor clicks off the Bold button
+
+On Series → a series → Edit Series → Description, a click on an existing paragraph also generated a browser click on the Bold toolbar button. Chrome observed both targets and the next text was saved as bold in Markdown. The enclosing native label treated the first toolbar button as the field's control.
+
+The shared description field uses a labelled group for its editor and toolbar. A native input still uses the ordinary FormField label. Both creation and edit dialogs use the same description field and layout.
+
+Two targeted Jest regressions were red before the change. The five focused suites passed 134 tests, including native labels, intentional toolbar activation, series creation, series editing, and comments. Scoped ESLint, TypeScript, and the isolated production build passed.
+
+Headless Chrome on the local emulators compared the edit dialog at 1280 px and checked creation at 390 px. The real paragraph click came through once and typed words were saved plain. The final instrumented reload preserved the text at revision 2 with one operation and one HTTP delivery. An earlier immediate reload saw two HTTP deliveries, with operation identity unrecorded. On creation, clicking Bold deliberately made just the selected new words bold in storage and after reopening. Peak sampled Next.js memory was 388 MiB. All seven test ports were released.
+
+After an authorized release, open or create a disposable series. Click in Description and type an ordinary word, then deliberately select Bold and type a second word. Save, reopen, and confirm that only the second word is bold.
+
+Local case evidence: `artifacts/series-description-bold-20261127/`.

@@ -69,6 +69,14 @@ it('shows the latest saved title in a clean dialog and saves the next edit from 
   view.unmount();
 });
 
+it('uses a labelled group for the description editor', async () => {
+  const { view } = setup();
+  const description = await screen.findByDisplayValue('Opening description');
+  expect(screen.getByRole('group', { name: 'workspaces.series.form.description' })).toContainElement(description);
+  expect(description.closest('label')).toBeNull();
+  view.unmount();
+});
+
 it('preserves an unrelated remote field and sends only the explicit metadata edit', async () => {
   const { harness, onClose, view } = setup();
   const title = await screen.findByDisplayValue('Opening title'); await waitFor(() => expect(title).toBeEnabled());

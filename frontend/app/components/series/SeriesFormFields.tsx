@@ -64,7 +64,7 @@ export default function SeriesFormFields({ values, onChange, colorPickerTitle, v
             placeholder={t('workspaces.series.form.bookOrTopicPlaceholder')} className={FORM_INPUT_CLASS} required />
         </FormField>
       </div>
-      <FormField label={t('workspaces.series.form.description')}>
+      <FormField label={t('workspaces.series.form.description')} group>
         <RichMarkdownEditor valueIsUserAction={valueIsUserAction} value={values.description} onChange={description => onChange({ description })}
           placeholder={t('workspaces.series.form.descriptionPlaceholder')} minHeight="120px" />
       </FormField>
