@@ -2,17 +2,17 @@ import { waitFor } from '@testing-library/react';
 import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
 
 import { DataEngine } from '../engine';
-import { editorIdentity, leasedAnalysisReshapeActionId, readAnalysisReshapeLease } from '../editorIdentity';
+import { editorIdentity, leasedAtomicEditorId, readLeasedAtomicAction } from '../editorIdentity';
 import { liveSubmittedWork } from '../liveSubmittedWork';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { collectReleasedAnalysisReshapeGenerations } from '../analysisReshapeRetention.client';
+import { collectReleasedAtomicGenerations } from '../leasedAtomicRetention.client';
 import { commitGenerationKey, createCommitCollectionWindow } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { planDataCommand } from '../serverRelations';
 import { createEngineStorageTransaction, engineOwnerRange } from '../storage.client';
-import { installStorageHarness } from './storageHarness';
+import { createTestEditorLeases, installStorageHarness } from './storageHarness';
 
 import type { OrdinaryEditorLeases } from '../ordinaryEditorLeases.client';
 import type { CommandResult, DocumentData, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
@@ -95,21 +95,6 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean; leas
     releaseRead: () => { holdReads = false; held?.(); held = undefined; } };
 }
 
-function testLeases(): OrdinaryEditorLeases {
-  const held = new Set<string>();
-  let next = 0;
-  return {
-    async acquire() {
-      const id = 'reshape-lock-' + ++next;
-      held.add(id);
-      return { id, release: async () => { held.delete(id); } };
-    },
-    async runIfFree(id, work) {
-      if (!held.has(id)) await work();
-    },
-  };
-}
-
 async function reshapeGenerations(owner = 'owner') {
   const transaction = createEngineStorageTransaction();
   return transaction<IDBValidKey[]>('readonly', (store, read, done) =>
@@ -118,12 +103,12 @@ async function reshapeGenerations(owner = 'owner') {
 
 describe('DataEngine analysis reshape capture and recovery', () => {
   it.each(['existing', 'new'] as const)('retires the generation guards after one %s recipient reshape ends', async target => {
-    const s = setup({ target, leases: testLeases() }), engine = s.createEngine();
+    const s = setup({ target, leases: createTestEditorLeases() }), engine = s.createEngine();
     try {
       await engine.reshapeStudyAnalysis(s.edits());
       const frozen = await s.commits.list('owner');
       expect(frozen).toHaveLength(2);
-      const [lease, recipientLease] = frozen.map(row => readAnalysisReshapeLease(row.editorId));
+      const [lease, recipientLease] = frozen.map(row => readLeasedAtomicAction(row.editorId)?.leaseId);
       expect(lease).toBeTruthy();
       expect(lease).toBe(recipientLease);
 
@@ -150,37 +135,36 @@ describe('DataEngine analysis reshape capture and recovery', () => {
   });
 
   it('keeps guards during a held reshape lease and collects them when that capture aborts', async () => {
-    const leases = testLeases(), s = setup({ leases });
+    const leases = createTestEditorLeases(), s = setup({ leases });
     const transaction = createEngineStorageTransaction();
-    await expect(s.commits.withAnalysisReshapeAdmission!('owner', async lease => {
-      const id = leasedAnalysisReshapeActionId(lease!);
+    await expect(s.commits.withAtomicActionAdmission!('owner', 'analysis-reshape', async lease => {
       await transaction<void>('readwrite', (store, _read, done) => {
         for (const note of ['source', 'target']) {
-          store.put({ through: 1 }, ['generation', 'owner', JSON.stringify([id, 'analysis-reshape', note])]);
+          store.put({ through: 1 }, ['generation', 'owner', leasedAtomicEditorId('analysis-reshape', lease!, note)]);
         }
         done(undefined);
       });
-      await collectReleasedAnalysisReshapeGenerations(transaction, 'owner', leases);
+      await collectReleasedAtomicGenerations(transaction, 'owner', leases);
       expect(await reshapeGenerations()).toHaveLength(2);
       throw new Error('capture aborted');
     })).rejects.toThrow('capture aborted');
 
     expect(await s.commits.list('owner')).toEqual([]);
-    await collectReleasedAnalysisReshapeGenerations(transaction, 'owner', leases);
+    await collectReleasedAtomicGenerations(transaction, 'owner', leases);
     expect(await reshapeGenerations()).toEqual([]);
   });
 
   it('rolls back a rejected native capture and never uses its admission again', async () => {
-    const s = setup({ leases: testLeases() }), engine = s.createEngine();
+    const s = setup({ leases: createTestEditorLeases() }), engine = s.createEngine();
     try {
       await engine.reshapeStudyAnalysis(s.edits());
       const originals = await s.commits.list('owner');
       const participants = ['failed-reshape', 'failed-reshape-participant-1'];
-      await s.commits.withAnalysisReshapeAdmission!('owner', async lease => {
+      await s.commits.withAtomicActionAdmission!('owner', 'analysis-reshape', async lease => {
         const batch = originals.map((row, index) => ({
           ...row,
           id: participants[index],
-          editorId: JSON.stringify([leasedAnalysisReshapeActionId(lease!), 'analysis-reshape', row.baseline.resource.id]),
+          editorId: leasedAtomicEditorId('analysis-reshape', lease!, row.baseline.resource.id),
           atomic: { id: participants[0], participants, kind: 'analysis-reshape' as const },
           predecessor: index === 0 ? null : 'missing-predecessor',
         }));

@@ -1,5 +1,7 @@
 import { createStore } from 'idb-keyval';
 
+import type { OrdinaryEditorLeases } from '../ordinaryEditorLeases.client';
+
 const clone = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 
 /** Transactional fake: native commit and the application's completion callback are separate boundaries. */
@@ -120,4 +122,19 @@ export function installStorageHarness(indexes: Record<string, (value: unknown) =
   };
   jest.mocked(createStore).mockReturnValue(useStore);
   return harness;
+}
+
+export function createTestEditorLeases(): OrdinaryEditorLeases {
+  const held = new Set<string>();
+  let next = 0;
+  return {
+    async acquire() {
+      const id = 'test-writer-lock-' + ++next;
+      held.add(id);
+      return { id, release: async () => { held.delete(id); } };
+    },
+    async runIfFree(id, work) {
+      if (!held.has(id)) await work();
+    },
+  };
 }

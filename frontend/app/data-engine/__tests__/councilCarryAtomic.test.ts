@@ -1,19 +1,20 @@
 import { waitFor } from '@testing-library/react';
 
 import { DataEngine } from '../engine';
-import { editorIdentity } from '../editorIdentity';
+import { editorIdentity, readLeasedAtomicAction } from '../editorIdentity';
 import { liveSubmittedWork } from '../liveSubmittedWork';
 import { councilRefusalHeldOpen, recoveryHeldOpen } from '../openDocumentAnswers';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
-import { commitProjectionKey } from '../retention.client';
+import { commitProjectionKey, createCommitCollectionWindow } from '../retention.client';
 import { CommitQueue } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { installStorageHarness } from './storageHarness';
+import { createTestEditorLeases, installStorageHarness } from './storageHarness';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
 
+import type { OrdinaryEditorLeases } from '../ordinaryEditorLeases.client';
 import type { CommandResult, DocumentData, EngineTransport, JournalEntry, ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -21,7 +22,7 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const resourceKey = (resource: { collection: string; id: string }) => `${resource.collection}/${resource.id}`;
 
-function setup() {
+function setup(leases?: OrdinaryEditorLeases) {
   const topic = { id: 'topic', title: 'Unfinished matter', summary: 'Keep the prepared words', questions: [], options: [] };
   const source: ResourceSnapshot = { resource: { collection: 'councils', id: 'source' },
     value: { userId: 'owner', title: 'Held council', status: 'held', heldAt: 'then',
@@ -33,7 +34,9 @@ function setup() {
   const rows = new Map<string, ResourceSnapshot>([[resourceKey(source.resource), clone(source)]]);
   const entries = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
   const storage = installStorageHarness();
-  const store = createIndexedDbCommitStore(); let sequence = 0, refuse = false;
+  const collection = leases && createCommitCollectionWindow(leases);
+  const store = createIndexedDbCommitStore(collection?.collect, leases);
+  let sequence = 0, refuse = false;
   const read = async (resource: { collection: string; id: string }) =>
     clone(rows.get(resourceKey(resource)) ?? { resource, value: null, metadata: null });
   const transport: EngineTransport = {
@@ -68,7 +71,7 @@ function setup() {
     { editorId: 'carry-source-action', captured: from.checkpoint(), predecessorId: null },
     { editorId: 'carry-target-action', captured: to.checkpoint(), predecessorId: null },
   ];
-  const checkpoints = createIndexedDbCheckpoints();
+  const checkpoints = createIndexedDbCheckpoints(collection?.collect);
   const cached = new Map<string, ResourceSnapshot>([[resourceKey(source.resource), clone(source)]]);
   let pausedCacheRead: Promise<void> | undefined;
   const pauseCacheReads = () => {
@@ -83,7 +86,7 @@ function setup() {
       remove: async (_owner, id) => { entries.delete(id); },
     } });
     const onError = jest.fn();
-    const engine = new DataEngine({ runtime, transport, commits: store, checkpoints,
+    const engine = new DataEngine({ runtime, transport, commits: store, checkpoints, deferCommitCollection: collection?.begin,
       observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
       snapshots: { read: async (_owner, resource) => {
         await pausedCacheRead;
@@ -282,6 +285,32 @@ describe('durable atomic carry into an existing council', () => {
     to.edit({ ...target.value, topics: [...target.value!.topics as DocumentData[], ...s.created.topics as DocumentData[]] });
     return { target, captures: [s.captures[0], { editorId: 'existing-target-action', captured: to.checkpoint(), predecessorId: null }] };
   }
+
+  it.each(['new', 'existing'] as const)('removes both guards once the %s council receives the topic', async target => {
+    const s = setup(createTestEditorLeases());
+    if (target === 'existing') existingTarget(s);
+    const { engine } = s.makeEngine();
+    try {
+      const source = await engine.openEditor(s.source.resource, 'parent');
+      const carrying = target === 'new'
+        ? source.carryCouncilTopicToNew('topic', 'Next council')
+        : source.carryCouncilTopicToExisting('topic', 'next');
+      source.close();
+      const result = await carrying;
+      const queued = await s.store.list('owner');
+      expect(queued).toHaveLength(2);
+      const capture = readLeasedAtomicAction(queued[0].editorId);
+      expect(capture?.kind).toBe('council-carry');
+      expect(readLeasedAtomicAction(queued[1].editorId)).toEqual(capture);
+      engine.setOnline(true);
+      await engine.retry();
+      expect(await s.store.list('owner')).toEqual([]);
+      expect(s.rows.get(resourceKey(result.resource))?.value?.topics).toEqual(result.value?.topics);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      const guards = queued.map(row => JSON.stringify(['generation', 'owner', row.editorId]));
+      expect(guards.filter(guard => s.storage.rows.has(guard))).toEqual([]);
+    } finally { engine.dispose(); }
+  });
 
   it('durably owns both existing councils offline and resumes one command without replacing destination words', async () => {
     const s = setup(), { captures } = existingTarget(s), first = s.make();

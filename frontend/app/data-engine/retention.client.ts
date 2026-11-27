@@ -1,7 +1,7 @@
 'use client';
 
-import { collectReleasedAnalysisReshapeGenerations } from './analysisReshapeRetention.client';
 import { isRetirableOrdinaryEditor, protectedSermonRecoveryKind, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
+import { collectReleasedAtomicGenerations } from './leasedAtomicRetention.client';
 import { awaitingManualReceipt, type ManualScopeRecord } from './manualScope';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
@@ -196,7 +196,7 @@ export function createCommitCollectionWindow(leases?: Pick<OrdinaryEditorLeases,
           });
         });
       });
-      if (leases) await collectReleasedAnalysisReshapeGenerations(transaction, owner, leases).catch(() => undefined);
+      if (leases) await collectReleasedAtomicGenerations(transaction, owner, leases).catch(() => undefined);
     };
   };
   return { collect, begin };

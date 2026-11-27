@@ -7,7 +7,7 @@ import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './
 import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
-import { isRetirableOrdinaryEditor, readAnalysisReshapeLease } from './editorIdentity';
+import { isRetirableOrdinaryEditor, readLeasedAtomicAction, type LeasedAtomicAction } from './editorIdentity';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { reconcileManualCaptures } from './manualScope';
@@ -58,16 +58,16 @@ function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request:
   });
 }
 
-type CaptureAdmission = 'ordinary' | 'transfer' | 'resume' | 'analysis-reshape';
+type CaptureAdmission = 'ordinary' | 'transfer' | 'resume' | 'leased-atomic';
 
-const closedAnalysisReshape = () => Object.assign(new Error('The analysis reshape capture has closed'), { code: 'commit-editor-closed' });
+const closedAtomicCapture = () => Object.assign(new Error('The atomic action capture has closed'), { code: 'commit-editor-closed' });
 
 function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest,
   done: (record: CommitRequest) => void, admission: CaptureAdmission): void {
   if (frozen.transferredFrom && admission !== 'transfer') throw new Error('A replacement proof requires atomic source transfer');
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
-    if (readAnalysisReshapeLease(frozen.editorId) && admission !== 'analysis-reshape') throw closedAnalysisReshape();
+    if (readLeasedAtomicAction(frozen.editorId) && admission !== 'leased-atomic') throw closedAtomicCapture();
     const capture = () => checkOwnershipFormat(store, read, frozen, () => {
       read(store.get(commitGenerationKey(frozen)), (completed: { through: number } | undefined) => {
         if (completed && completed.through >= frozen.editGeneration) throw Object.assign(new Error('This saved generation is already complete'), { code: 'commit-generation-complete' });
@@ -108,28 +108,30 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
 /** Each request has its own row; a participant batch shares one IndexedDB transaction. */
 export function createIndexedDbCommitStore(collect = collectCommitRows, leases?: Pick<OrdinaryEditorLeases, 'acquire'>): CommitStore {
   const heldLeases = new Map<string, OrdinaryEditorLease>();
-  const reshapeAdmissions = new Map<string, string>();
+  const atomicAdmissions = new Map<string, { owner: string; kind: LeasedAtomicAction }>();
   const leaseKey = (owner: string, editorId: string) => JSON.stringify([owner, editorId]);
   const transaction = createEngineStorageTransaction();
   const collections = createCollectionCommitReads(transaction);
   const createBatch = async (requests: readonly CommitRequest[]): Promise<CommitRequest[]> => {
     const frozen = clone(requests); assertCommitBatch(frozen);
     if (!frozen.length) return [];
-    const leaseIds = frozen.map(request => readAnalysisReshapeLease(request.editorId));
-    const lease = leaseIds.find(id => id !== null);
+    const participantLeases = frozen.map(request => readLeasedAtomicAction(request.editorId));
+    const lease = participantLeases.find(identity => identity !== null);
     if (lease) {
-      if (reshapeAdmissions.get(lease) !== frozen[0].owner || frozen.length < 2 || frozen.length > 3
-        || leaseIds.some(id => id !== lease)
-        || frozen.some(request => request.atomic?.kind !== 'analysis-reshape')) throw closedAnalysisReshape();
+      const allowed = atomicAdmissions.get(lease.leaseId);
+      const limit = lease.kind === 'analysis-reshape' ? 3 : 2;
+      if (allowed?.owner !== frozen[0].owner || allowed.kind !== lease.kind || frozen.length < 2 || frozen.length > limit
+        || participantLeases.some(identity => identity?.leaseId !== lease.leaseId || identity.kind !== lease.kind)
+        || frozen.some(request => request.atomic?.kind !== lease.kind)) throw closedAtomicCapture();
       // A conflicting or rolled-back transaction cannot issue another batch under this lease.
-      reshapeAdmissions.delete(lease);
+      atomicAdmissions.delete(lease.leaseId);
     }
     return transaction('readwrite', (store, read, done) => {
       const result: CommitRequest[] = []; let remaining = frozen.length;
       frozen.forEach((request, index) => createRecord(store, read, request, saved => {
         result[index] = saved;
         if (!--remaining) done(result);
-      }, lease ? 'analysis-reshape' : 'ordinary'));
+      }, lease ? 'leased-atomic' : 'ordinary'));
     });
   };
   const compareAndSetBatchInternal = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
@@ -254,13 +256,13 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
       if (heldLeases.get(key) === lease) heldLeases.delete(key);
       await lease?.release();
     },
-    withAnalysisReshapeAdmission: async (owner, capture) => {
+    withAtomicActionAdmission: async (owner, kind, capture) => {
       const lease = await leases?.acquire();
       if (!lease) return capture(null);
-      reshapeAdmissions.set(lease.id, owner);
+      atomicAdmissions.set(lease.id, { owner, kind });
       try { return await capture(lease.id); }
       finally {
-        reshapeAdmissions.delete(lease.id);
+        atomicAdmissions.delete(lease.id);
         await lease.release();
       }
     },

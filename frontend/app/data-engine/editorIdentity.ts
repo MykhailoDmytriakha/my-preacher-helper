@@ -31,23 +31,27 @@ export function isRetirableOrdinaryEditor(editorId: string): boolean {
   }
 }
 
-const LEASED_ANALYSIS_RESHAPE = 'reshape-lease-v1:';
-export const LEASED_ANALYSIS_RESHAPE_PREFIX = JSON.stringify([LEASED_ANALYSIS_RESHAPE]).slice(0, -2);
+const leasedAtomicPrefixes = { 'analysis-reshape': 'reshape-lease-v1:', 'council-carry': 'carry-lease-v1:' } as const;
+export type LeasedAtomicAction = keyof typeof leasedAtomicPrefixes;
+export const LEASED_ATOMIC_EDITOR_PREFIXES = Object.values(leasedAtomicPrefixes).map(prefix => JSON.stringify([prefix]).slice(0, -2));
 
-export function leasedAnalysisReshapeActionId(leaseId: string): string {
-  return LEASED_ANALYSIS_RESHAPE + leaseId;
+export function leasedAtomicEditorId(kind: LeasedAtomicAction, leaseId: string, participantId: string): string {
+  return JSON.stringify([leasedAtomicPrefixes[kind] + leaseId, kind, participantId]);
 }
 
-/** Only the new capture path can allocate this three-part identity. */
-export function readAnalysisReshapeLease(editorId: string): string | null {
-  if (!editorId.startsWith(LEASED_ANALYSIS_RESHAPE_PREFIX)) return null;
+/** These three-part identities belong to one native batch in a new client. */
+export function readLeasedAtomicAction(editorId: string): { kind: LeasedAtomicAction; leaseId: string } | null {
+  if (!LEASED_ATOMIC_EDITOR_PREFIXES.some(prefix => editorId.startsWith(prefix))) return null;
   try {
     const parts: unknown = JSON.parse(editorId);
-    if (!Array.isArray(parts) || parts.length !== 3 || parts[1] !== 'analysis-reshape'
+    if (!Array.isArray(parts) || parts.length !== 3 || (parts[1] !== 'analysis-reshape' && parts[1] !== 'council-carry')
       || typeof parts[2] !== 'string' || !parts[2] || typeof parts[0] !== 'string'
-      || !parts[0].startsWith(LEASED_ANALYSIS_RESHAPE) || JSON.stringify(parts) !== editorId) return null;
-    const lease = parts[0].slice(LEASED_ANALYSIS_RESHAPE.length);
-    return /^[a-z0-9-]{1,80}$/i.test(lease) ? lease : null;
+      || JSON.stringify(parts) !== editorId) return null;
+    const kind: LeasedAtomicAction = parts[1];
+    const prefix = leasedAtomicPrefixes[kind];
+    if (!parts[0].startsWith(prefix)) return null;
+    const leaseId = parts[0].slice(prefix.length);
+    return /^[a-z0-9-]{1,80}$/i.test(leaseId) ? { kind, leaseId } : null;
   } catch {
     return null;
   }

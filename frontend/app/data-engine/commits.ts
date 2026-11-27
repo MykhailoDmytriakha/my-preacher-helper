@@ -27,7 +27,7 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
 import { prepareAtomicSeriesCommand, prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
-import { areDifferentTabManualParents, protectedSermonRecoveryKind, readManualScopeIdentity, sharesEditorOpening } from './editorIdentity';
+import { areDifferentTabManualParents, protectedSermonRecoveryKind, readManualScopeIdentity, sharesEditorOpening, type LeasedAtomicAction } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { readField, writeField } from './fieldValues';
@@ -258,8 +258,8 @@ export interface CommitStore {
     sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
-  /** Let one atomic reshape capture hold a browser lease until its native write settles. */
-  withAnalysisReshapeAdmission?<T>(owner: string, capture: (leaseId: string | null) => Promise<T>): Promise<T>;
+  /** Hold the lease until this atomic action's native capture settles. */
+  withAtomicActionAdmission?<T>(owner: string, kind: LeasedAtomicAction, capture: (leaseId: string | null) => Promise<T>): Promise<T>;
   /** Atomic participant capture; custom document-only ports may omit this capability. */
   createBatch?(requests: readonly CommitRequest[]): Promise<CommitRequest[]>;
   /** Release a completed participant projection after its confirmed copy is durable elsewhere. */

@@ -16,7 +16,7 @@ import { collectionDocumentViews } from './collectionView';
 import { isCommentCreationCopy, isNewCommentEditor } from './commentEditorScope';
 import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
 import { captureCommentPlace, matchesCommentPlaceRequest } from './commentPlaceAction';
-import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
+import { CommitQueue, type AtomicCapture, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { readCouncilSummaryChoice } from './councilPrivateFields';
@@ -24,7 +24,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, hasHeldAutosaveFields, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, leasedAnalysisReshapeActionId, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, leasedAtomicEditorId, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity, type LeasedAtomicAction } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -1229,14 +1229,8 @@ export class DataEngine {
           throw Object.assign(new Error('Resolve the current analysis first'), { code: 'resolve-version-first' });
         }
       }
-      const capture = (leaseId: string | null) => {
-        this.assertCurrent(owner, generation);
-        return this.commits.saveAtomic(captureAnalysisReshape(owner,
-          leaseId ? leasedAnalysisReshapeActionId(leaseId) : actionId, frozen, snapshots, requests));
-      };
-      const saved = this.options.commits.withAnalysisReshapeAdmission
-        ? await this.options.commits.withAnalysisReshapeAdmission(owner, capture)
-        : await capture(null);
+      const captures = captureAnalysisReshape(owner, actionId, frozen, snapshots, requests);
+      const saved = await this.saveLeasedAtomicAction(owner, generation, 'analysis-reshape', captures);
       this.assertCurrent(owner, generation);
       for (const entry of this.editors.values()) if (!entry.closed && entry.controller) {
         const checkpoint = entry.controller.getState().checkpoint;
@@ -1248,6 +1242,19 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       this.prepareCommitsInBackground(); this.backgroundDrain();
     } finally { this.analysisReshapes.delete(lock); }
+  }
+
+  private saveLeasedAtomicAction(owner: string, generation: number, kind: LeasedAtomicAction, captures: readonly AtomicCapture[]) {
+    const save = (leaseId: string | null) => {
+      this.assertCurrent(owner, generation);
+      return this.commits.saveAtomic(leaseId ? captures.map(participant => ({
+        ...participant,
+        editorId: leasedAtomicEditorId(kind, leaseId, participant.captured.confirmed.resource.id),
+      })) : captures);
+    };
+    return this.options.commits.withAtomicActionAdmission
+      ? this.options.commits.withAtomicActionAdmission(owner, kind, save)
+      : save(null);
   }
 
   /** An action remains discoverable after every participating editor has closed. */
@@ -2793,7 +2800,8 @@ export class DataEngine {
           this.assertCurrent(owner, generation);
           const captured = captureCouncilCarry(owner, editorId, pinned, requests, topicId, targetId, title, now,
             targetSnapshot ? pinCouncilDestination(owner, targetSnapshot, requests) : undefined, copyId);
-          const saved = await this.commits.saveAtomic(captured.captures); this.assertCurrent(owner, generation);
+          const saved = await this.saveLeasedAtomicAction(owner, generation, 'council-carry', captured.captures);
+          this.assertCurrent(owner, generation);
           // Durable ownership survives navigation; adoption only updates a parent still on screen.
           if (!entry.closed) {
             try { await controller.adoptManualCommit(saved[0], [['topics', { id: topicId }, 'carriedToCouncilId']]); }
