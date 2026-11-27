@@ -11101,3 +11101,11 @@ The three question lists now merge compatible changes to individual members even
 All 704 related Jest tests, the local production build with TypeScript, changed-file ESLint without errors, and independent source review passed. The four headless Chrome scenarios used the real question form at 390 and 1280 px on isolated Auth and Firestore. They confirmed the first saves of all three lists, both membership choices, and a second comparison after a new saved item and a reload. The saved snapshots were revisions 3, 4, 4 and 5. Evidence and the replay are in `artifacts/hard-question-optional-lists-20261127`. The wider entry remains open for nested basis fields. A duplicate global recovery notice was observed during visual acceptance and is tracked separately.
 
 After an authorized release, use a disposable question, save compatible entries from two copies and verify the first additions after reload. For an unresolved shared item, reopen its exact comparison after reload and verify that either choice keeps the independent entries.
+
+## BUG-20261121-word-html-table-flattened · Recheck the note-plan download
+
+The original change `f4672351a` and the HTML-tree parser `fc80888b6` are in both histories. The original regression starts with the editor's saved HTML and inspects the packed Word document. Both focused suites passed again on `89e2b50ce` (50 tests).
+
+Headless Chrome opened a synthetic sermon in Plan → From note on the isolated Auth and Firestore emulators, checked the table and surrounding text in the page, and downloaded the DOCX from the Word button without issuing a write. The Word XML contained three rows, four columns with an empty first cell, both recipient headings, a break inside the final cell of the second row, the two-column `Вместе` cell, and prose on each side. The literal entity was absent. The rendered document was visually inspected on both pages. The Next.js samples were 306–355 MiB and all seven test ports were released. The owner's check on the original sermon remains in BUGS.md.
+
+Local case evidence: `artifacts/word-exact-20261127/`.
