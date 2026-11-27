@@ -96,9 +96,11 @@ describe('waiting for the store in a route the app calls by itself', () => {
     expect(outcome.error).toBeInstanceOf(StoreUnavailableError);
   });
 
-  it('does not pause the store when the time ran out before the store was asked', async () => {
+  it('does not advertise a store pause if the request expires before the store is called', async () => {
     const late = jest.fn(never);
-    expect((await settleWithin(withStore(late, { startedAt: performance.now() - 10_000 }), 20_000)).error).toBeInstanceOf(StoreUnavailableError);
+    const outcome = await settleWithin(withStore(late, { startedAt: performance.now() - 10_000 }), 20_000);
+    expect(outcome.error).toBeInstanceOf(StoreUnavailableError);
+    expect(storeRetryHeaders(outcome.error)).toEqual({});
     expect(late).not.toHaveBeenCalled();
     const next = jest.fn(async () => 'value');
     expect((await settleWithin(withStore(next), 20_000)).value).toBe('value');

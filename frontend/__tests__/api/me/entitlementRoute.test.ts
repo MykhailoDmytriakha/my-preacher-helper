@@ -186,6 +186,26 @@ describe('GET /api/me/entitlement', () => {
     expect(adminDb.runTransaction).not.toHaveBeenCalled();
   });
 
+  it('does not report a store outage when authentication used the entire request budget', async () => {
+    jest.useFakeTimers();
+    try {
+      adminAuth.verifyIdToken.mockImplementationOnce(() => new Promise(resolve => {
+        setTimeout(() => resolve({ uid: 'caller-uid' }), 3_100);
+      }));
+      const response = GET(request('Bearer token'));
+      await jest.advanceTimersByTimeAsync(3_100);
+      const expired = await response;
+
+      expect(expired.status).toBe(503);
+      await expect(expired.json()).resolves.toEqual({ code: 'unavailable' });
+      expect(expired.headers.has('Retry-After')).toBe(false);
+      expect(adminDb.runTransaction).not.toHaveBeenCalled();
+
+      expect((await GET(request('Bearer token'))).status).toBe(200);
+      expect(adminDb.runTransaction).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
   // BUG-20261019-quota-outage-burns-vercel-functions: the screen asks for this on every reconnect with a
   // 5 s browser timeout; a store that never answered held the function until Vercel killed it at 10 s.
   it('answers within three seconds of the request even when verifying the caller took most of them', async () => {

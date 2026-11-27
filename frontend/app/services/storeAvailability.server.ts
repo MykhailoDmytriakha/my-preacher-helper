@@ -37,7 +37,7 @@ export class StoreUnavailableError extends Error {
   readonly code = 'unavailable';
   readonly status = 503;
 
-  constructor(readonly retryAfterSeconds: number) {
+  constructor(readonly retryAfterSeconds?: number) {
     super('Store unavailable');
     this.name = 'StoreUnavailableError';
   }
@@ -66,8 +66,9 @@ export async function withStore<T>(
   } catch (error) {
     // A manual scan's own wall says nothing about the health of unrelated reads.
     if (error === silent && administrative) throw error;
-    // Out of time before the store was even asked: nothing was learned about the store.
-    if (error === silent && !asked) throw unavailable();
+    // The request ran out of time before reaching the store. A Retry-After would
+    // tell the browser there is a store outage, so return only the route refusal.
+    if (error === silent && !asked) throw new StoreUnavailableError();
     if (error !== silent && (error as { code?: unknown } | null)?.code !== RESOURCE_EXHAUSTED) throw error;
     pausedUntil = Date.now() + PAUSE_MS;
     throw unavailable();
@@ -76,7 +77,8 @@ export async function withStore<T>(
 
 /** `Retry-After` for a refusal this module made; nothing for any other failure. */
 export function storeRetryHeaders(error: unknown): Record<string, string> {
-  return error instanceof StoreUnavailableError ? { 'Retry-After': String(error.retryAfterSeconds) } : {};
+  const delay = error instanceof StoreUnavailableError ? error.retryAfterSeconds : undefined;
+  return delay === undefined ? {} : { 'Retry-After': String(delay) };
 }
 
 /**
