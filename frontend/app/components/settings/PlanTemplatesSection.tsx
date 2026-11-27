@@ -11,6 +11,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useOutlineTitleDraftDocuments } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -445,7 +446,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
               revision: tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0, seen } : null;
             return (
               <OutlineTitleDraftScope key={tpl.id} owner={owner} resource={resource} discover={isExpanded} onPresenceChange={onPresenceChange}>
-              <li className="rounded-lg border border-gray-200 dark:border-gray-700">
+              <li className={`rounded-lg border border-gray-200 dark:border-gray-700 ${hoverActions.row}`}>
                 <div className="flex items-center gap-2 p-3">
                   <button
                     onClick={() => { void selectTemplate(isExpanded ? null : tpl.id); }}
@@ -483,25 +484,27 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                       <span className={`text-xs ${NEUTRAL_CAPTION} tabular-nums`}>
                         {countPoints(tpl.structure)} {t('planTemplates.pointsLabel', { count: countPoints(tpl.structure) })}
                       </span>
-                      <button
-                        aria-label={t('common.edit')}
-                        disabled={renamingPending || transitioning || deleting}
-                        onClick={() => {
-                          setRenaming(opening);
-                          setRenameText(tpl.name);
-                        }}
-                        className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                      >
-                        <PencilIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        aria-label={t('common.delete')}
-                        disabled={renamingPending || transitioning || deleting}
-                        onClick={() => setPendingDeleteTpl(tpl)}
-                        className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
+                      <span className={`flex shrink-0 items-center gap-2 ${hoverActions.actions}`}>
+                        <button
+                          aria-label={t('common.edit')}
+                          disabled={renamingPending || transitioning || deleting}
+                          onClick={() => {
+                            setRenaming(opening);
+                            setRenameText(tpl.name);
+                          }}
+                          className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          aria-label={t('common.delete')}
+                          disabled={renamingPending || transitioning || deleting}
+                          onClick={() => setPendingDeleteTpl(tpl)}
+                          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </span>
                     </>
                   )}
                 </div>

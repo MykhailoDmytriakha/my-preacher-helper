@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { Tag } from '@/models/models';
 import TagList from '@components/settings/TagList';
 
@@ -116,6 +117,17 @@ describe('TagList', () => {
     // Color preview should be clickable
     const colorPreviews = screen.getAllByTestId('tag-color-preview');
     expect(colorPreviews[0]).toHaveClass('cursor-pointer');
+  });
+
+  it('reveals the delete action from its own tag instead of the whole grid', () => {
+    renderList({ editable: true });
+    const name = screen.getByRole('heading', { name: 'Custom Tag' });
+    const row = name.closest('.' + hoverActions.row);
+    const adjacent = screen.getByRole('heading', { name: 'Main Point' });
+    const deletion = screen.getByRole('button', { name: 'settings.deleteTag Custom Tag' });
+    expect(row).toContainElement(deletion);
+    expect(row).not.toContainElement(adjacent);
+    expect(deletion.closest('.' + hoverActions.actions)).not.toBeNull();
   });
 
   it('calls onEditColor with correct tag when color preview is clicked (editable)', async () => {

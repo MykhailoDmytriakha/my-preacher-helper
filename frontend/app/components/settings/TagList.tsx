@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { Tag } from '@/models/models';
 import { TrashIcon, PencilIcon } from '@components/Icons';
 import { useTranslation } from '@locales/useTranslation';
@@ -48,9 +49,8 @@ const TagList: React.FC<TagListProps> = ({
       {tags.map((tag) => (
         <div
           key={tag.id}
-          className="flex items-center p-4 border border-gray-200 dark:border-gray-700 rounded-lg 
-                   bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 
-                   transition-colors shadow-sm"
+          className={`flex items-center rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors
+                   hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-750 ${hoverActions.row}`}
         >
           <div 
             data-testid="tag-color-preview"
@@ -82,8 +82,8 @@ const TagList: React.FC<TagListProps> = ({
           {editable && onRemoveTag && (
             <button
               onClick={() => onRemoveTag(tag.id)}
-              className="ml-auto shrink-0 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300
-                       p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              className={`ml-auto shrink-0 rounded-full p-2 text-red-600 transition-colors hover:bg-gray-200
+                       hover:text-red-700 dark:text-red-400 dark:hover:bg-gray-600 dark:hover:text-red-300 ${hoverActions.actions}`}
               title={deleteTitle}
               aria-label={`${t('settings.deleteTag')} ${tag.name}`}
             >

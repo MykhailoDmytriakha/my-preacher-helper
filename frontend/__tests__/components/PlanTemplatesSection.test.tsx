@@ -60,6 +60,7 @@ jest.mock('@/components/ui/ConfirmModal', () => {
 });
 
 import PlanTemplatesSection from '@/components/settings/PlanTemplatesSection';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 
 const user = { uid: 'u1' } as unknown as User;
@@ -237,6 +238,22 @@ describe('PlanTemplatesSection', () => {
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
     expect(screen.getByText(/^3 /)).toBeInTheDocument();
+  });
+
+  it('reveals a template’s own actions while keeping the open rename controls available', () => {
+    mockTemplates = [tpl('t1', 'Alpha'), tpl('t2', 'Beta')];
+    render(<PlanTemplatesSection user={user} />);
+    const row = screen.getByText('Alpha').closest('li')!;
+    expect(row).toHaveClass(hoverActions.row);
+    expect(row).not.toContainElement(screen.getByText('Beta'));
+    const edit = within(row).getByRole('button', { name: 'common.edit' });
+    const remove = within(row).getByRole('button', { name: 'common.delete' });
+    expect(edit.closest('.' + hoverActions.actions)).not.toBeNull();
+    expect(remove.closest('.' + hoverActions.actions)).not.toBeNull();
+
+    fireEvent.click(edit);
+    expect(within(row).getByRole('button', { name: 'common.save' }).closest('.' + hoverActions.actions)).toBeNull();
+    expect(within(row).getByRole('button', { name: 'common.cancel' }).closest('.' + hoverActions.actions)).toBeNull();
   });
 
   it('deletes a template after confirming in the dialog', async () => {
