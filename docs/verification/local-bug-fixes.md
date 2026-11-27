@@ -10765,6 +10765,8 @@ A Markdown paragraph split the opening reference from the list at an emphasis no
 
 The original Markdown render failed the list regressions, including the Russian example. The final 44 related suites passed 905 tests. Changed-file ESLint, TypeScript, the production build and independent review passed. Hidden Chrome on local Auth and Firestore confirmed the defect on the old note page, then opened Proverbs 3:11–12 and 9:8–9 from the fixed note and returned to it. The visual check covered list links, emphasis, and both verse ranges. Screenshots and stand shutdown are recorded in `artifacts/scripture-list-emphasis-20261125/`.
 
+The recheck on `a58495a1a` passed 68 focused tests and the local production-mode build. Chrome showed 13 expected reference controls with emphasis, plain links, code and line boundaries in the note. It opened Proverbs 3:11–12 and 9:8–9, verified both exact ranges and returned to the same note after each. The visual captures, report and released ports are in case folder `artifacts/scripture-list-emphasis-20261125/recheck-a58495a1a`.
+
 After an authorized rollout, open a disposable Study note containing `**Притч. 1:23**; 3:11–12; 9:8–9`. Open the latter two places and check the displayed ranges. Under an ordinary hyperlink or across a physical line break, check that bare numbers remain text. In a disposable sermon plan, copy a reference with partial emphasis and verify the copied formatting in a rich text editor.
 
 ## BUG-20261117-note-baseline-return-restores-deletion · Preserve the return to the opening body
