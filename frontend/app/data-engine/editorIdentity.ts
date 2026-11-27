@@ -31,6 +31,28 @@ export function isRetirableOrdinaryEditor(editorId: string): boolean {
   }
 }
 
+const LEASED_ANALYSIS_RESHAPE = 'reshape-lease-v1:';
+export const LEASED_ANALYSIS_RESHAPE_PREFIX = JSON.stringify([LEASED_ANALYSIS_RESHAPE]).slice(0, -2);
+
+export function leasedAnalysisReshapeActionId(leaseId: string): string {
+  return LEASED_ANALYSIS_RESHAPE + leaseId;
+}
+
+/** Only the new capture path can allocate this three-part identity. */
+export function readAnalysisReshapeLease(editorId: string): string | null {
+  if (!editorId.startsWith(LEASED_ANALYSIS_RESHAPE_PREFIX)) return null;
+  try {
+    const parts: unknown = JSON.parse(editorId);
+    if (!Array.isArray(parts) || parts.length !== 3 || parts[1] !== 'analysis-reshape'
+      || typeof parts[2] !== 'string' || !parts[2] || typeof parts[0] !== 'string'
+      || !parts[0].startsWith(LEASED_ANALYSIS_RESHAPE) || JSON.stringify(parts) !== editorId) return null;
+    const lease = parts[0].slice(LEASED_ANALYSIS_RESHAPE.length);
+    return /^[a-z0-9-]{1,80}$/i.test(lease) ? lease : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The screen slot is the same for a fresh opening and its recovery forks. */
 export function editorSlot(editorId: string): string | null {
   try {

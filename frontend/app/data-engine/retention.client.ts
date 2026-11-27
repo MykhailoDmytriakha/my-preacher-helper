@@ -1,11 +1,13 @@
 'use client';
 
+import { collectReleasedAnalysisReshapeGenerations } from './analysisReshapeRetention.client';
 import { isRetirableOrdinaryEditor, protectedSermonRecoveryKind, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
 import { awaitingManualReceipt, type ManualScopeRecord } from './manualScope';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
+import type { OrdinaryEditorLeases } from './ordinaryEditorLeases.client';
 
 export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request',
   'analysis-reshape-request', 'ordered-delete-request', 'sermon-note-text-request', 'sermon-scratch-removal-request', 'sermon-scratch-text-recovery-request', 'sermon-amended-sketch-request'] as const;
@@ -158,7 +160,7 @@ const COLLECTION_BATCH_SIZE = 32;
 /** Release exact references immediately. Batch their collection during delivery and sweep at its end.
  * A stopped page leaves the original durable rows behind. The next delivery pass collects those too.
  */
-export function createCommitCollectionWindow() {
+export function createCommitCollectionWindow(leases?: Pick<OrdinaryEditorLeases, 'runIfFree'>) {
   const transaction = createEngineStorageTransaction();
   const passes = new Map<string, { count: number; writes: number }>();
   const collect: typeof collectCommitRows = (store, read, owner, done) => {
@@ -194,6 +196,7 @@ export function createCommitCollectionWindow() {
           });
         });
       });
+      if (leases) await collectReleasedAnalysisReshapeGenerations(transaction, owner, leases).catch(() => undefined);
     };
   };
   return { collect, begin };

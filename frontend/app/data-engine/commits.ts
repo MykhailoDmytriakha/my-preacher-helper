@@ -258,6 +258,8 @@ export interface CommitStore {
     sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
+  /** Let one atomic reshape capture hold a browser lease until its native write settles. */
+  withAnalysisReshapeAdmission?<T>(owner: string, capture: (leaseId: string | null) => Promise<T>): Promise<T>;
   /** Atomic participant capture; custom document-only ports may omit this capability. */
   createBatch?(requests: readonly CommitRequest[]): Promise<CommitRequest[]>;
   /** Release a completed participant projection after its confirmed copy is durable elsewhere. */

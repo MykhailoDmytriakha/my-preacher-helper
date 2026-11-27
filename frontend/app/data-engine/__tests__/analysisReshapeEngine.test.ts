@@ -2,15 +2,19 @@ import { waitFor } from '@testing-library/react';
 import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
 
 import { DataEngine } from '../engine';
-import { editorIdentity } from '../editorIdentity';
+import { editorIdentity, leasedAnalysisReshapeActionId, readAnalysisReshapeLease } from '../editorIdentity';
 import { liveSubmittedWork } from '../liveSubmittedWork';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { collectReleasedAnalysisReshapeGenerations } from '../analysisReshapeRetention.client';
+import { commitGenerationKey, createCommitCollectionWindow } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { planDataCommand } from '../serverRelations';
+import { createEngineStorageTransaction, engineOwnerRange } from '../storage.client';
 import { installStorageHarness } from './storageHarness';
 
+import type { OrdinaryEditorLeases } from '../ordinaryEditorLeases.client';
 import type { CommandResult, DocumentData, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -27,8 +31,10 @@ const note = (id: string, verse: number, owner = 'owner'): ResourceSnapshot => (
 const reshaped = (snapshot: ResourceSnapshot, content: string, verse: number): DocumentData => ({ ...snapshot.value!, content,
   scriptureRefs: [reference(`${snapshot.resource.id}-ref`, verse)], analysis: { ...(snapshot.value!.analysis as DocumentData), words: 1 } });
 
-function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {}) {
-  const storage = installStorageHarness(), commits = createIndexedDbCommitStore();
+function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean; leases?: OrdinaryEditorLeases } = {}) {
+  const storage = installStorageHarness();
+  const retention = options.leases && createCommitCollectionWindow(options.leases);
+  const commits = createIndexedDbCommitStore(retention?.collect, options.leases);
   const source = note('source', 1), target = options.target === 'new'
     ? { resource: { collection: 'studyNotes', id: 'target' }, metadata: null, value: null }
     : note('target', 3);
@@ -63,7 +69,8 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {
       put: async entry => { entries.set(entry.command.operationId, clone(entry)); },
       remove: async (_owner, id) => { entries.delete(id); },
     } });
-    const engine = new DataEngine({ runtime, transport, commits, checkpoints: createIndexedDbCheckpoints(),
+    const engine = new DataEngine({ runtime, transport, commits, checkpoints: createIndexedDbCheckpoints(retention?.collect),
+      deferCommitCollection: retention?.begin,
       observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
       snapshots: { read: async (_owner, resource) => {
         if (holdReads && resource.id === 'source') await new Promise<void>(resolve => { held = resolve; readStarted?.(); });
@@ -88,7 +95,104 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {
     releaseRead: () => { holdReads = false; held?.(); held = undefined; } };
 }
 
+function testLeases(): OrdinaryEditorLeases {
+  const held = new Set<string>();
+  let next = 0;
+  return {
+    async acquire() {
+      const id = 'reshape-lock-' + ++next;
+      held.add(id);
+      return { id, release: async () => { held.delete(id); } };
+    },
+    async runIfFree(id, work) {
+      if (!held.has(id)) await work();
+    },
+  };
+}
+
+async function reshapeGenerations(owner = 'owner') {
+  const transaction = createEngineStorageTransaction();
+  return transaction<IDBValidKey[]>('readonly', (store, read, done) =>
+    read(store.getAllKeys(engineOwnerRange('generation', owner)), done));
+}
+
 describe('DataEngine analysis reshape capture and recovery', () => {
+  it.each(['existing', 'new'] as const)('retires the generation guards after one %s recipient reshape ends', async target => {
+    const s = setup({ target, leases: testLeases() }), engine = s.createEngine();
+    try {
+      await engine.reshapeStudyAnalysis(s.edits());
+      const frozen = await s.commits.list('owner');
+      expect(frozen).toHaveLength(2);
+      const [lease, recipientLease] = frozen.map(row => readAnalysisReshapeLease(row.editorId));
+      expect(lease).toBeTruthy();
+      expect(lease).toBe(recipientLease);
+
+      engine.setOnline(true);
+      await engine.retry();
+      expect(await s.commits.list('owner')).toEqual([]);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: frozen[0].id }));
+      expect(await reshapeGenerations()).toEqual([]);
+      await expect(s.commits.createBatch!(frozen)).rejects.toMatchObject({ code: 'commit-editor-closed' });
+
+      // An older page may still collect the original rows without recognizing the new identity.
+      const ordinaryOld = ['generation', 'owner', 'old-ordinary-editor'];
+      const otherOwner = commitGenerationKey({ ...frozen[0], owner: 'other-owner' });
+      const transaction = createEngineStorageTransaction();
+      await transaction<void>('readwrite', (store, _read, done) => {
+        for (const key of [...frozen.map(commitGenerationKey), ordinaryOld, otherOwner]) store.put({ through: 1 }, key);
+        done(undefined);
+      });
+      await engine.retry();
+      expect(await reshapeGenerations()).toEqual([ordinaryOld]);
+      expect(await reshapeGenerations('other-owner')).toEqual([otherOwner]);
+    } finally { engine.dispose(); }
+  });
+
+  it('keeps guards during a held reshape lease and collects them when that capture aborts', async () => {
+    const leases = testLeases(), s = setup({ leases });
+    const transaction = createEngineStorageTransaction();
+    await expect(s.commits.withAnalysisReshapeAdmission!('owner', async lease => {
+      const id = leasedAnalysisReshapeActionId(lease!);
+      await transaction<void>('readwrite', (store, _read, done) => {
+        for (const note of ['source', 'target']) {
+          store.put({ through: 1 }, ['generation', 'owner', JSON.stringify([id, 'analysis-reshape', note])]);
+        }
+        done(undefined);
+      });
+      await collectReleasedAnalysisReshapeGenerations(transaction, 'owner', leases);
+      expect(await reshapeGenerations()).toHaveLength(2);
+      throw new Error('capture aborted');
+    })).rejects.toThrow('capture aborted');
+
+    expect(await s.commits.list('owner')).toEqual([]);
+    await collectReleasedAnalysisReshapeGenerations(transaction, 'owner', leases);
+    expect(await reshapeGenerations()).toEqual([]);
+  });
+
+  it('rolls back a rejected native capture and never uses its admission again', async () => {
+    const s = setup({ leases: testLeases() }), engine = s.createEngine();
+    try {
+      await engine.reshapeStudyAnalysis(s.edits());
+      const originals = await s.commits.list('owner');
+      const participants = ['failed-reshape', 'failed-reshape-participant-1'];
+      await s.commits.withAnalysisReshapeAdmission!('owner', async lease => {
+        const batch = originals.map((row, index) => ({
+          ...row,
+          id: participants[index],
+          editorId: JSON.stringify([leasedAnalysisReshapeActionId(lease!), 'analysis-reshape', row.baseline.resource.id]),
+          atomic: { id: participants[0], participants, kind: 'analysis-reshape' as const },
+          predecessor: index === 0 ? null : 'missing-predecessor',
+        }));
+        await expect(s.commits.createBatch!(batch)).rejects.toMatchObject({ code: 'commit-reference-changed' });
+        expect((await s.commits.list('owner')).map(row => row.id)).toEqual(originals.map(row => row.id));
+        await expect(s.commits.createBatch!(batch.map(row => ({ ...row, predecessor: null }))))
+          .rejects.toMatchObject({ code: 'commit-editor-closed' });
+      });
+      expect(await reshapeGenerations()).toEqual([]);
+    } finally { engine.dispose(); }
+  });
+
   it('does not read ordinary Saves when no analysis action is waiting', async () => {
     const s = setup(), engine = s.createEngine();
     try {

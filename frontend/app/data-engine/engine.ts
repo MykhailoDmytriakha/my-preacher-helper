@@ -24,7 +24,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, hasHeldAutosaveFields, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, leasedAnalysisReshapeActionId, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -1229,8 +1229,15 @@ export class DataEngine {
           throw Object.assign(new Error('Resolve the current analysis first'), { code: 'resolve-version-first' });
         }
       }
-      const captures = captureAnalysisReshape(owner, actionId, frozen, snapshots, requests);
-      const saved = await this.commits.saveAtomic(captures); this.assertCurrent(owner, generation);
+      const capture = (leaseId: string | null) => {
+        this.assertCurrent(owner, generation);
+        return this.commits.saveAtomic(captureAnalysisReshape(owner,
+          leaseId ? leasedAnalysisReshapeActionId(leaseId) : actionId, frozen, snapshots, requests));
+      };
+      const saved = this.options.commits.withAnalysisReshapeAdmission
+        ? await this.options.commits.withAnalysisReshapeAdmission(owner, capture)
+        : await capture(null);
+      this.assertCurrent(owner, generation);
       for (const entry of this.editors.values()) if (!entry.closed && entry.controller) {
         const checkpoint = entry.controller.getState().checkpoint;
         const index = frozen.findIndex(item => sameResource(item.resource, checkpoint.confirmed.resource));

@@ -61,8 +61,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const observer = new ResourceObserver({ source: createFirestoreObservationSource(), transport });
   const snapshots = createIndexedDbSnapshots();
   const collections = new CollectionReader({ transport, observer, snapshots, cursors: createIndexedDbCollectionCursors(), onError: report });
-  const commitCollection = createCommitCollectionWindow();
   const editorLeases = createOrdinaryEditorLeases(navigator.locks);
+  const commitCollection = createCommitCollectionWindow(editorLeases);
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(commitCollection.collect), collections,
     snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
