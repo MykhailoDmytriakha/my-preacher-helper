@@ -4,7 +4,7 @@ import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
-import { competingStringListEdits, singleStringListEdit } from './authoredStringList';
+import { competingStringListEdits, isAuthoredStringList, singleStringListEdit } from './authoredStringList';
 import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange } from './commentPlaceAction';
 import { commentPlaceReview, nextCommentPlaceFrames } from './commentPlaceOrder.server';
@@ -14,7 +14,8 @@ import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_PREPARATION_CHECK_REVIEW_CHANGED, SERMON_THESIS_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
-import { HARD_QUESTION_FIELD_QUEUED, HARD_QUESTION_FIELD_REVIEW, HARD_QUESTION_FIELD_SETTLED } from './hardQuestionFieldAction';
+import { HARD_QUESTION_FIELD_QUEUED, HARD_QUESTION_FIELD_REVIEW, HARD_QUESTION_FIELD_SETTLED, HARD_QUESTION_LIST_PROJECTION, hardQuestionBasisTheme } from './hardQuestionFieldAction';
+import { compatibleQuestionConfirmations, confirmQuestionItems, nextHardQuestionListMemberships, planHardQuestionList, readCarriedQuestionItems } from './hardQuestionListOrder.server';
 import { PRAYER_STATUS_FIELDS, PRAYER_STATUS_QUEUED, PRAYER_STATUS_REVIEW, PRAYER_STATUS_SETTLED } from './prayerStatusAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
@@ -25,6 +26,7 @@ import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 import type { ActionTime } from './actionClock';
 import type { orderDatedRow } from './datedRowOrder.server';
 import type { DocumentFieldObservation, DocumentFieldTarget } from './documentFieldAction';
+import type { MembershipConfirmation } from './hardQuestionListOrder.server';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
 
 export const COMMENT_KIND_HISTORY = '_commentKindHistory';
@@ -46,11 +48,14 @@ type DocumentFieldOrder = {
   listOpening?: { basis: ListOpening; intended: FieldValue };
   acknowledgedListChoice?: true;
   reaffirmedOpening?: true;
+  hardQuestionListProjection?: ConflictDetail;
+  reaffirmedQuestionItems?: MembershipConfirmation[];
+  carriedQuestionItems?: MembershipConfirmation[];
   displaced?: { value: FieldValue; winnerValue: FieldValue; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime };
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => isLongTextDocumentField(target) || 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => isLongTextDocumentField(target) || 'list' in target || 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'commentPlaceAction' || target.action === 'planTemplateNameAction';
 const presentWordList = (value: FieldValue): FieldValue => value.exists ? value : { exists: true, value: [] };
 const sameFieldOpening = (first: FieldValue, second: FieldValue, target: DocumentFieldTarget) =>
   target.action === 'sermonRepeatedWordsAction' ? equalValues(presentWordList(first), presentWordList(second)) : equalValues(first, second);
@@ -129,11 +134,13 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
     : target.action === 'sermonPreparationTextActions' ? command.sermonPreparationTextActions?.[target.field]
     : target.action === 'prayerTextActions' ? command.prayerTextActions?.[target.field] : command[target.action];
   const { before, after } = change;
+  const confirmsItems = 'list' in target && object(action) && action.reviewed === true
+    && isAuthoredStringList(action.confirmedItems) && action.confirmedItems.length > 0;
   if (!object(action) || ('path' in target && !after.exists
     && target.action !== 'accountPreferenceActions' && target.action !== 'sermonPreparationTextActions'
     && !((target.action === 'sermonPreparationCheckActions' || target.action === 'sermonThesisFieldActions') && action.reviewed === true))
     || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
-    || (target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
+    || (!confirmsItems && target.action !== 'sermonPlanModeAction' && target.action !== 'commentPlaceAction' && equalValues(before, after))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
   const time = target.causal && action.time === null ? null : boundedActionTime(action.time);
@@ -260,8 +267,15 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     : (target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') && command[target.action]?.reviewed ? PRAYER_STATUS_REVIEW
     : target.action === 'hardQuestionFieldActions' && command.hardQuestionFieldActions?.[target.field]?.reviewed ? HARD_QUESTION_FIELD_REVIEW
     : reviewedComment ? COMMENT_TEXT_REVIEW : undefined;
+  const hardQuestionListStamp = 'list' in target ? command.hardQuestionFieldActions?.[target.field] : undefined;
+  const questionListProof = 'list' in target && object(raw) ? raw[target.proof] : undefined;
+  const basisTheme = target.field === 'basisIds' ? hardQuestionListStamp?.basisTheme : undefined;
+  if (basisTheme !== undefined && basisTheme !== hardQuestionBasisTheme(current.value)) {
+    return { command, uncertain: [{ path: change.path, code: HARD_QUESTION_FIELD_REVIEW,
+      base: change.before, mine: change.after, theirs: stored }] };
+  }
   if (reviewCode) {
-    if (equalValues(stored, change.after)) return { command, previous };
+    if (equalValues(stored, change.after) && !hardQuestionListStamp?.confirmedItems?.length) return { command, previous };
     if (target.action === 'sermonPreparationCheckActions' && acceptsDocumentField(change.after, target)
       && (stored.value === true) === (change.after.value === true)) {
       // Both versions already present the same unchecked box. Keep its stored representation.
@@ -271,8 +285,50 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     // A reviewed choice refers to the saved opening, even when its click is newer.
     if (!action || action.observedRevision < (previous?.revision ?? current.metadata.revision)
       || !sameFieldOpening(stored, change.before, target)) {
-      return { command, uncertain: [{ path: change.path, code: reviewCode,
-        base: change.before, mine: change.after, theirs: stored }] };
+      const revision = current.metadata.revision;
+      const carried = 'list' in target ? readCarriedQuestionItems(hardQuestionListStamp?.carriedItems, change, revision, serverMs) : [];
+      const candidate = 'list' in target && action ? planHardQuestionList(change, stored, questionListProof, revision, action, {
+        carried, confirmed: hardQuestionListStamp?.confirmedItems ?? [],
+      }) : undefined;
+      if (action && candidate && 'value' in candidate) {
+        const { value } = candidate;
+        const reaffirmed = compatibleQuestionConfirmations(hardQuestionListStamp?.confirmedItems, action, questionListProof, revision);
+        const confirmed = [...new Map([...candidate.reaffirmed, ...reaffirmed].map(item => [item.item, item])).values()];
+        const changes = replaceOrderedDocumentField(command.changes, target, stored, value);
+        return { command: { ...command, changes },
+          ...(equalValues(value, stored) && !confirmed.length ? { previous } : { stamp: action.time }),
+          carriedQuestionItems: carried, reaffirmedQuestionItems: confirmed,
+          ...(!equalValues(change.after, value) && { hardQuestionListProjection: {
+            code: HARD_QUESTION_LIST_PROJECTION, path: change.path, base: change.after, mine: value, theirs: stored,
+          } }),
+        };
+      }
+      return { command, uncertain: [{ path: change.path, code: reviewCode, base: change.before, mine: change.after, theirs: stored,
+        ...(candidate && 'versions' in candidate && { hardQuestionListVersions: candidate.versions }) }] };
+    }
+  }
+  if ('list' in target && reviewCode && action) {
+    const carriedQuestionItems = readCarriedQuestionItems(hardQuestionListStamp?.carriedItems, change, current.metadata.revision, serverMs);
+    const reaffirmedQuestionItems = confirmQuestionItems(hardQuestionListStamp?.confirmedItems, action.time);
+    return { command, stamp: action.time, carriedQuestionItems, reaffirmedQuestionItems };
+  }
+  if ('list' in target && !reviewCode) {
+    const candidate = planHardQuestionList(change, stored, questionListProof, current.metadata.revision, action);
+    if (candidate && 'review' in candidate) {
+      return { command, uncertain: [{
+        path: change.path, base: change.before, mine: change.after, theirs: stored,
+        ...('versions' in candidate && { hardQuestionListVersions: candidate.versions }),
+      }] };
+    }
+    if (candidate && action) {
+      const { value, reaffirmed } = candidate;
+      const changes = replaceOrderedDocumentField(command.changes, target, stored, value);
+      return { command: { ...command, changes }, ...(equalValues(value, stored) && !reaffirmed.length ? { previous } : { stamp: action.time }),
+        ...(reaffirmed.length && { reaffirmedQuestionItems: reaffirmed }),
+        ...(!equalValues(change.after, value) && { hardQuestionListProjection: {
+          code: HARD_QUESTION_LIST_PROJECTION, path: change.path, base: change.after, mine: value, theirs: stored,
+        } }),
+      };
     }
   }
   if (target.action === 'commentPlaceAction') {
@@ -466,8 +522,9 @@ export function orderedSeriesMetadata(command: DataCommand, current: ResourceSna
 export function orderedHardQuestionMetadata(command: DataCommand, current: ResourceSnapshot,
   orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
   if (command.kind !== 'update') return [];
-  return orderedMetadataComparisons(command, current, orders, target => target.action === 'hardQuestionFieldActions',
-    { settled: HARD_QUESTION_FIELD_SETTLED, queued: HARD_QUESTION_FIELD_QUEUED });
+  return [...orderedMetadataComparisons(command, current, orders, target => target.action === 'hardQuestionFieldActions',
+    { settled: HARD_QUESTION_FIELD_SETTLED, queued: HARD_QUESTION_FIELD_QUEUED }),
+  ...orders.fields.flatMap(({ order }) => order.hardQuestionListProjection ? [order.hardQuestionListProjection] : [])];
 }
 
 export function orderedCouncilMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
@@ -559,7 +616,16 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
     const pastOpenings = tracksOpeningReturns(target) && rawValue && object(rawMetadata)
       && rawMetadata.generation === metadata.generation
       ? nextFieldOpenings(rawMetadata, target, rawValue, changed || order?.reaffirmedOpening === true) : undefined;
+    const haveMembershipOpening = object(rawMetadata) && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
+      && (target.field !== 'basisIds' || hardQuestionBasisTheme(raw as DocumentData) === hardQuestionBasisTheme(snapshot.value));
+    const memberships = 'list' in target
+      ? nextHardQuestionListMemberships(haveMembershipOpening ? rawMetadata[target.proof] : undefined,
+        haveMembershipOpening ? rawValue ?? { exists: false } : value, value, metadata.revision,
+        haveMembershipOpening ? rawMetadata.revision as number : metadata.revision, metadata.operationId,
+        { time: order?.stamp ?? null, reaffirmed: order?.reaffirmedQuestionItems, carried: order?.carriedQuestionItems })
+      : undefined;
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
+      ...(memberships && { memberships }),
       ...(target.causal && proof.operationId && { operationId: proof.operationId }),
       ...(proof.initialized && { initialized: true as const }),
       ...(proof.listOpening && { listOpening: proof.listOpening }),

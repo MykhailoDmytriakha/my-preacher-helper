@@ -138,6 +138,18 @@ describe('Explicit checkpoint recovery', () => {
     expect(restored.checkpoint.conflicts).toEqual(original.checkpoint.conflicts);
   });
 
+  it('keeps the exact list choices when restoring a hard question comparison', () => {
+    const original = record();
+    original.checkpoint.confirmed.resource = { collection: 'hardQuestions', id: 'question-one' };
+    const list = (value: string[]) => ({ exists: true, value });
+    original.checkpoint.conflicts = [
+      { path: ['alternates'], base: list(['Contested']), mine: list(['Phone']), theirs: list(['Contested', 'Computer']),
+        hardQuestionListVersions: { local: list(['Computer', 'Phone']), remote: list(['Contested', 'Computer', 'Phone']), undecided: ['Contested'] } },
+    ];
+    const restored = validateRecoveryRecord(clone(original), 'owner', 'source');
+    expect(restored.checkpoint.conflicts).toEqual(original.checkpoint.conflicts);
+  });
+
   it.each(['groups', 'councils', 'serviceOrders'])('retains placement comparison details for %s', collection => {
     const original = record();
     original.checkpoint.confirmed.resource.collection = collection;

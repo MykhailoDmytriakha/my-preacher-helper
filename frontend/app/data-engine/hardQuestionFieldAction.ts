@@ -1,3 +1,5 @@
+import { isAuthoredStringList } from './authoredStringList';
+import { equalValues, readField, writeField } from './fieldValues';
 import { orderedFieldChoiceFrames } from './orderedFieldChoiceFrames';
 
 import type { DocumentFieldObservation, DocumentFieldStamp } from './documentFieldAction';
@@ -6,12 +8,22 @@ import type { ConflictDetail, DocumentData, FieldValue, ResourceSnapshot } from 
 export const HARD_QUESTION_FIELD_SETTLED = 'hard-question-field-settled';
 export const HARD_QUESTION_FIELD_QUEUED = 'hard-question-field-queued';
 export const HARD_QUESTION_FIELD_REVIEW = 'hard-question-field-review-changed';
+export const HARD_QUESTION_LIST_PROJECTION = 'hard-question-list-projection';
 
 export type HardQuestionTextField = 'title' | 'intro' | 'short' | 'detail' | 'differ';
-export type HardQuestionFieldStamps = Partial<Record<HardQuestionTextField, DocumentFieldStamp & { reviewed?: true }>>;
-export type HardQuestionFieldObservations = Partial<Record<HardQuestionTextField, DocumentFieldObservation<FieldValue> & { reviewed?: true }>>;
-export type HardQuestionFieldReview = { fields: readonly HardQuestionTextField[]; original: HardQuestionFieldObservations };
-export type HardQuestionFieldTarget = {
+export type HardQuestionListField = 'alternates' | 'scriptureRefs' | 'basisIds';
+export type HardQuestionField = HardQuestionTextField | HardQuestionListField;
+export type HardQuestionReviewStamp = { reviewed?: true; carriedItems?: DocumentFieldStamp & { items: string[] }; basisTheme?: string | null; confirmedItems?: readonly string[] };
+export type HardQuestionFieldStamps = Partial<Record<HardQuestionField, DocumentFieldStamp & HardQuestionReviewStamp>>;
+export type HardQuestionFieldObservations = Partial<Record<HardQuestionField, DocumentFieldObservation<FieldValue> & HardQuestionReviewStamp>>;
+export type HardQuestionListQuestions = Partial<Record<HardQuestionListField, readonly string[]>>;
+export type HardQuestionFieldReview = {
+  fields: readonly HardQuestionField[];
+  original: HardQuestionFieldObservations;
+  undecidedLists?: HardQuestionListQuestions;
+  confirmedLists?: HardQuestionListQuestions;
+};
+export type HardQuestionTextTarget = {
   field: HardQuestionTextField;
   action: 'hardQuestionFieldActions';
   proof: `hardQuestion-${HardQuestionTextField}`;
@@ -20,7 +32,19 @@ export type HardQuestionFieldTarget = {
   optional?: true;
 };
 
-function textTarget(field: HardQuestionTextField): HardQuestionFieldTarget {
+export type HardQuestionListTarget = {
+  field: HardQuestionListField;
+  action: 'hardQuestionFieldActions';
+  proof: `hardQuestion-${HardQuestionListField}`;
+  accepts: typeof isAuthoredStringList;
+  causal: true;
+  optional: true;
+  list: true;
+};
+
+export type HardQuestionFieldTarget = HardQuestionTextTarget | HardQuestionListTarget;
+
+function textTarget(field: HardQuestionTextField): HardQuestionTextTarget {
   return {
     field, action: 'hardQuestionFieldActions', proof: `hardQuestion-${field}`, causal: true,
     accepts: (value): value is string => typeof value === 'string' && (field !== 'title' || value.trim().length > 0),
@@ -28,8 +52,14 @@ function textTarget(field: HardQuestionTextField): HardQuestionFieldTarget {
   };
 }
 
+function listTarget(field: HardQuestionListField): HardQuestionListTarget {
+  return { field, action: 'hardQuestionFieldActions', proof: `hardQuestion-${field}`, causal: true,
+    accepts: isAuthoredStringList, optional: true, list: true };
+}
+
 const title = textTarget('title');
-const questionTargets = [title, textTarget('short'), textTarget('detail'), textTarget('differ')];
+const questionTargets = [title, textTarget('short'), textTarget('detail'), textTarget('differ'),
+  listTarget('alternates'), listTarget('scriptureRefs'), listTarget('basisIds')];
 const themeTargets = [title, textTarget('intro')];
 
 export function hardQuestionFieldTargets(collection: string): readonly HardQuestionFieldTarget[] {
@@ -38,16 +68,69 @@ export function hardQuestionFieldTargets(collection: string): readonly HardQuest
   return [];
 }
 
-export function hardQuestionTextField(collection: string, path: readonly string[]): HardQuestionTextField | undefined {
+function fieldTarget(collection: string, path: readonly string[]) {
   if (path.length !== 1) return;
-  return hardQuestionFieldTargets(collection).find(target => target.field === path[0])?.field;
+  return hardQuestionFieldTargets(collection).find(target => target.field === path[0]);
+}
+
+export function hardQuestionField(collection: string, path: readonly string[]): HardQuestionField | undefined {
+  return fieldTarget(collection, path)?.field;
+}
+
+export function hardQuestionTextField(collection: string, path: readonly string[]): HardQuestionTextField | undefined {
+  const target = fieldTarget(collection, path);
+  if (target && !('list' in target)) return target.field;
+}
+
+export function hardQuestionBasisTheme(document: DocumentData | null | undefined): string | null {
+  return typeof document?.themeId === 'string' ? document.themeId : null;
+}
+
+export function hardQuestionListItemChanges(before: FieldValue, after: FieldValue) {
+  const opening = before.exists ? before.value : [], requested = after.exists ? after.value : [];
+  if (!isAuthoredStringList(opening) || !isAuthoredStringList(requested)) return new Map<string, boolean>();
+  const previous = new Set(opening), next = new Set(requested);
+  const result = new Map<string, boolean>();
+  for (const item of next) if (!previous.has(item)) result.set(item, true);
+  for (const item of previous) if (!next.has(item)) result.set(item, false);
+  return result;
+}
+
+export function carriedHardQuestionListItems(change: DocumentFieldObservation<FieldValue>, original: DocumentFieldObservation<FieldValue>) {
+  const moved = hardQuestionListItemChanges(change.before, change.after);
+  const prior = hardQuestionListItemChanges(original.before, original.after);
+  return [...moved].filter(([item, present]) => prior.get(item) === present).map(([item]) => item);
+}
+
+export function readHardQuestionListVersions(conflicts: readonly ConflictDetail[], authored: DocumentData | null, saved: DocumentData) {
+  if (!authored) return [];
+  return conflicts.flatMap(({ path, mine, theirs, hardQuestionListVersions: versions }) => {
+    const target = fieldTarget('hardQuestions', path);
+    return versions && target && 'list' in target && equalValues(readField(authored, path), mine) && equalValues(readField(saved, path), theirs)
+      ? [{ path, field: target.field, versions }] : [];
+  });
+}
+
+export function hardQuestionListVersion(matches: ReturnType<typeof readHardQuestionListVersions>,
+  side: 'local' | 'remote', document: DocumentData): DocumentData | undefined {
+  if (matches.length) return matches.reduce((version, { path, versions }) => writeField(version, path, versions[side]), document);
 }
 
 export function hardQuestionReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot,
   conflicts: readonly ConflictDetail[]) {
-  return orderedFieldChoiceFrames(basis, reviewed, stored, conflicts, ({ path, code }) => {
-    if (!hardQuestionTextField(basis.resource.collection, path)) return;
+  const framed = orderedFieldChoiceFrames(basis, reviewed, stored, conflicts, ({ path, code }) => {
+    if (!hardQuestionField(basis.resource.collection, path)) return;
     if (code === HARD_QUESTION_FIELD_SETTLED) return 'settled';
     if (code === HARD_QUESTION_FIELD_QUEUED) return 'queued';
   });
+  if (!framed.basis.value || !framed.reviewed || !stored.value || basis.metadata?.generation !== stored.metadata?.generation) return framed;
+  let opening = framed.basis.value, mine = framed.reviewed;
+  const pending = framed.conflicts.filter(({ path, code, base, mine: projected, theirs }) => {
+    if (code !== HARD_QUESTION_LIST_PROJECTION || !equalValues(readField(mine, path), base)
+      || !equalValues(readField(stored.value!, path), theirs)) return true;
+    mine = writeField(mine, path, projected);
+    opening = writeField(opening, path, theirs);
+    return false;
+  });
+  return { basis: { ...framed.basis, value: opening }, reviewed: mine, conflicts: pending };
 }

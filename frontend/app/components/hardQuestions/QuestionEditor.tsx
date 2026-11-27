@@ -70,14 +70,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
  * on, the places, the detail, where churches differ. Answers are Markdown: the page shows them with
  * their references as links. The theme and the group are changed by «Перенести», not here.
  */
-export function QuestionEditor({ questionId, bases, onDone, recoverId, gone = false }: {
-  questionId: string; bases: readonly HardQuestionBasis[]; onDone: () => void; recoverId?: string | null;
+export function QuestionEditor({ questionId, bases, onDone, recoverId, reviewRequestId, gone = false }: {
+  questionId: string; bases: readonly HardQuestionBasis[]; onDone: () => void; recoverId?: string | null; reviewRequestId?: string;
   /** The question was deleted (here or on another device) while it was being edited: the words stay in the fields to copy. */
   gone?: boolean;
 }) {
   const { t } = useTranslation();
   const resource = useMemo(() => ({ collection: 'hardQuestions', id: questionId }), [questionId]);
-  const engine = useEngineForm(resource, QUESTION_FORM_SLOT, QUESTION_FORM_FIELDS, t('hardQuestions.question.editTitle'), recoverId);
+  const engine = useEngineForm(resource, QUESTION_FORM_SLOT, QUESTION_FORM_FIELDS, t('hardQuestions.question.editTitle'), recoverId, reviewRequestId);
   const { form } = engine;
   const comparing = form.exactChoice && Boolean(form.comparison?.hardQuestionFields?.length);
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();

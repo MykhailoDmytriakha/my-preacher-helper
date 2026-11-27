@@ -862,7 +862,8 @@ export class CommitQueue {
     const commentCompanions = frozenOptions?.commentCompanions;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    const confirmQuestionList = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionFieldReview?.confirmedLists;
+    if (!confirmQuestionList && !step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !commentCompanions?.commentKindAction && !commentCompanions?.commentPlaceAction
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     const baseline = clone(intent.confirmed);
@@ -1669,6 +1670,11 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    for (const target of fields) {
+      if (target.action === 'hardQuestionFieldActions' && record.hardQuestionFieldActions?.[target.field]?.confirmedItems?.length) {
+        retainedRoots.push(target.field);
+      }
+    }
     const subpointMoves = record.sequence === 0 ? record.outlineSubpointMoves : undefined;
     if (subpointMoves?.length && outlineField) retainedRoots.push(outlineField);
     const noteOpening = record.sequence === 0 ? record.sermonNoteText : undefined;

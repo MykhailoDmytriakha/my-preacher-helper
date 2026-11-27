@@ -391,6 +391,8 @@ export interface ConflictDetail {
   orderedOutlineSubpoints?: { id: string; side: 'local' | 'remote' }[];
   /** Exact list submitted by the editor before the server remapped reference identities. */
   studyNoteReferenceOpening?: FieldValue;
+  /** Both versions retain the independently authored list items. */
+  hardQuestionListVersions?: { local: FieldValue; remote: FieldValue; undecided: string[] };
   base: FieldValue;
   mine: FieldValue;
   theirs: FieldValue;

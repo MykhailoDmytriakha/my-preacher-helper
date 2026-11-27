@@ -33,7 +33,7 @@ import { isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
-import { hardQuestionTextField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
+import { hardQuestionField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import { basisScriptureConflictId, hardQuestionThemeListPath } from './hardQuestionThemeLists';
 import { resolveHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
@@ -940,7 +940,7 @@ export class EditorController {
     const result = this.result;
     if (result?.kind === 'conflict' && checkpoint.pending[result.operationId] && this.manualRequests.has(result.operationId)
       && result.snapshot.metadata?.generation === checkpoint.confirmed.metadata?.generation
-      && result.conflicts.some(conflict => hardQuestionTextField(checkpoint.confirmed.resource.collection, conflict.path)
+      && result.conflicts.some(conflict => hardQuestionField(checkpoint.confirmed.resource.collection, conflict.path)
         || (checkpoint.confirmed.resource.collection === 'hardQuestionThemes' && basisScriptureConflictId(conflict)))) return false;
     return Object.values(checkpoint.pending).every(intent => !intent.borrowedManualScope);
   }
@@ -2043,7 +2043,7 @@ export class EditorController {
         const records = projectExactManualChoice(record, decision, retired);
         [projected] = records;
         const hardQuestionReview = decision.hardQuestionReview;
-        if (!hardQuestionReview || !projected.checkpoint.dirty) return records;
+        if (!hardQuestionReview || (!projected.checkpoint.dirty && !hardQuestionReview.text?.confirmedLists)) return records;
         const session = DataSession.restore(projected.checkpoint);
         const replacement = this.options.commits!.choiceReplacement(record.editorId, projected.checkpoint, {
           retentionScope: hardQuestionReview.scopeId,

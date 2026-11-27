@@ -90,7 +90,7 @@ const mockRecover = jest.fn((_id: string) => Promise.resolve());
 jest.mock('@/data-engine/react.client', () => ({
   readHardQuestionThemeOrderReview: () => mockThemeOrderReview,
   readHardQuestionBasisConflict: () => mockBasisConflictId ? { id: mockBasisConflictId, requestId: mockAnsweredOperation } : undefined,
-  hasHardQuestionTextConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro'].includes(path[0])),
+  hasHardQuestionFieldConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro', 'alternates', 'scriptureRefs', 'basisIds'].includes(path[0])),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataDocument: () => ({
     data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict', canKeepLocal: true, canAcceptRemote: true } : null,
@@ -645,6 +645,20 @@ describe('a question', () => {
     expect(within(comparison).queryByText('Старый краткий ответ')).not.toBeInTheDocument();
     expect(within(comparison).queryByText('Новый краткий ответ')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'common.save' })).toBeDisabled();
+  });
+
+  it.each([1, null])('reopens the exact question submission when comparing after navigation (%s)', async savedGeneration => {
+    open('ivf', 'none', { userId: 'u', title: 'Можно ли ЭКО?', rank: 1 });
+    mockConflictPaths = [['alternates']];
+    mockAnsweredOperation = 'earlier-save';
+    mockFormCopies = [
+      { scopeId: 'unrelated-form', record: { predecessor: { id: 'another-save' }, savedGeneration: 1 } },
+      { scopeId: 'previous-question-form', record: { predecessor: { id: 'earlier-save' }, savedGeneration } },
+    ];
+    render(<HardQuestionPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    await waitFor(() => expect(mockRecover).toHaveBeenCalledWith('previous-question-form'));
+    expect(mockRecover).toHaveBeenCalledTimes(1);
   });
 
   it('is laid out as the theme\'s page: its number and group under the title, «Изменить» in sight, the rest behind «⋯»', async () => {

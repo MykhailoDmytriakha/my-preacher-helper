@@ -67,6 +67,20 @@ describe('HTTP engine transport', () => {
     expect(await createHttpEngineTransport().send(update)).toEqual(result);
   });
 
+  it('keeps both projected versions of a question list from the HTTP reply', async () => {
+    const resource = { collection: 'hardQuestions', id: 'question-one' };
+    const list = (value: string[]) => ({ exists: true, value });
+    const update: DataCommand = { protocol: 1, owner: 'owner', operationId: 'question-words', resource,
+      kind: 'update', generation: 'g1', dependsOn: [],
+      changes: [{ path: ['alternates'], before: list(['Contested']), after: list(['Phone']) }] };
+    const result = { kind: 'conflict', operationId: update.operationId, snapshot: { ...snapshot, resource,
+      value: { userId: 'owner', title: 'Question', alternates: ['Contested', 'Computer'] } },
+    conflicts: [{ path: ['alternates'], base: list(['Contested']), mine: list(['Phone']), theirs: list(['Contested', 'Computer']),
+      hardQuestionListVersions: { local: list(['Computer', 'Phone']), remote: list(['Contested', 'Computer', 'Phone']), undecided: ['Contested'] } }] };
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: result });
+    expect(await createHttpEngineTransport().send(update)).toEqual(result);
+  });
+
   it('preserves the original committed metadata when a replay snapshot is newer', async () => {
     const committed = { ...snapshot.metadata!, operationId: 'op' };
     const current = { ...snapshot, metadata: { ...committed, revision: 2, operationId: 'later' } };

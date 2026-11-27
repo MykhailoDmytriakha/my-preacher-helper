@@ -9,7 +9,7 @@ import { isSermonChurch } from './churchFieldValue';
 import { commentPlaceValue, leadingReferenceValue, placeOfCommentChange, replaceCommentReference } from './commentPlaceAction';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
 import { equalValues, object, own, readField, writeField } from './fieldValues';
-import { hardQuestionFieldTargets, type HardQuestionFieldReview, type HardQuestionFieldTarget } from './hardQuestionFieldAction';
+import { carriedHardQuestionListItems, hardQuestionBasisTheme, hardQuestionFieldTargets, hardQuestionListItemChanges, type HardQuestionFieldReview, type HardQuestionFieldTarget, type HardQuestionReviewStamp, type HardQuestionTextTarget } from './hardQuestionFieldAction';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
 import { PRAYER_TEXT_TARGETS } from './prayerTextAction';
 import { rowConflictValue } from './rowFieldAction';
@@ -245,11 +245,11 @@ export function documentFieldTargets(collection: string): readonly DocumentField
 }
 
 type LongTextDocumentFieldTarget = typeof STUDY_NOTE_CONTENT | typeof GROUP_DESCRIPTION | PrayerTextTarget
-  | Extract<SeriesFieldTarget, { field: 'description' }> | PreparationTextTarget | HardQuestionFieldTarget;
+  | Extract<SeriesFieldTarget, { field: 'description' }> | PreparationTextTarget | HardQuestionTextTarget;
 
 export function isLongTextDocumentField(target: DocumentFieldTarget): target is LongTextDocumentFieldTarget {
   return target.action === 'studyNoteContentAction' || target.action === 'groupDescriptionAction' || target.action === 'prayerTextActions'
-    || target.action === 'sermonPreparationTextActions' || target.action === 'hardQuestionFieldActions'
+    || target.action === 'sermonPreparationTextActions' || (target.action === 'hardQuestionFieldActions' && !('list' in target))
     || (target.action === 'seriesFieldActions' && target.field === 'description');
 }
 
@@ -792,12 +792,38 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   if (hardQuestionTargets.length) {
     const actions = hardQuestionTargets.flatMap(target => {
       const reviewed = hardQuestionFieldReview?.fields.includes(target.field);
+      const confirmedItems = 'list' in target ? hardQuestionFieldReview?.confirmedLists?.[target.field] : undefined;
+      const field = draft && confirmedItems?.length ? readField(draft, [target.field]) : undefined;
+      const confirmation = field && acceptsDocumentField(field, target) && baseline.metadata
+        ? { before: field, after: field, observedRevision: baseline.metadata.revision, time } : undefined;
       const action = captureStoredMetadataField(baseline, predecessor, draft, target,
-        hardQuestionFieldReview && !reviewed ? null : time, records);
+        hardQuestionFieldReview && !reviewed ? null : time, records) ?? confirmation;
       if (!action) return [];
+      const scope = { ...(target.field === 'basisIds' && { basisTheme: hardQuestionBasisTheme(predecessor ? predecessor.value : baseline.value) }),
+        ...(confirmedItems?.length && { confirmedItems }) };
       const original = hardQuestionFieldReview?.original[target.field];
       if (!reviewed && original && equalValues(original.after, action.after)) return [[target.field, original]] as const;
-      return [[target.field, { ...action, ...(reviewed && { reviewed: true as const }) }]] as const;
+      if ('list' in target && original) {
+        const inherited = original.reviewed ? original.carriedItems : original;
+        const inheritedItems = original.reviewed ? new Set(original.carriedItems?.items) : undefined;
+        const originalItems = carriedHardQuestionListItems(action, original).filter(item => !inheritedItems || inheritedItems.has(item));
+        const undecided = hardQuestionFieldReview?.undecidedLists?.[target.field];
+        if (inherited) {
+          const { time: originalTime, observedRevision, predecessorOperationId } = inherited;
+          const clock = { time: originalTime, observedRevision, ...(predecessorOperationId && { predecessorOperationId }) };
+          if (reviewed && undecided) {
+            const choices = new Set(undecided);
+            const retained = originalItems.filter(item => !choices.has(item));
+            return [[target.field, { ...action, ...scope, reviewed: true as const,
+              ...(retained.length && { carriedItems: { ...clock, items: retained } }) }]] as const;
+          }
+          if (!reviewed && originalItems.length && originalItems.length === hardQuestionListItemChanges(action.before, action.after).size) {
+            return [[target.field, { before: action.before, after: action.after, ...clock,
+              ...(original.basisTheme !== undefined ? { basisTheme: original.basisTheme } : scope) }]] as const;
+          }
+        }
+      }
+      return [[target.field, { ...action, ...scope, ...(reviewed && { reviewed: true as const }) }]] as const;
     });
     return actions.length ? { hardQuestionFieldActions: Object.fromEntries(actions) } : {};
   }
@@ -1198,7 +1224,8 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   }, before);
 }
 
-type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue; paragraph?: FieldValue; compound?: true; reviewed?: true; initialize?: true };
+type StoredObservation = DocumentFieldObservation<string | FieldValue> & HardQuestionReviewStamp
+  & { openingTheme?: string; reference?: FieldValue; paragraph?: FieldValue; compound?: true; initialize?: true };
 
 function observedValue(value: string | FieldValue): FieldValue {
   return typeof value === 'string' ? { exists: true, value } : value;
@@ -1231,7 +1258,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.action === 'hardQuestionFieldActions') {
     return { ...command, hardQuestionFieldActions: { ...command.hardQuestionFieldActions,
-      [target.field]: { ...stamp, ...(action.reviewed && { reviewed: true }) } } };
+      [target.field]: { ...stamp, ...(action.reviewed && { reviewed: true }), ...(action.carriedItems && { carriedItems: action.carriedItems }),
+        ...(action.basisTheme !== undefined && { basisTheme: action.basisTheme }),
+        ...(action.confirmedItems?.length && { confirmedItems: action.confirmedItems }) } } };
   }
   if (target.action === 'prayerTextActions' || target.action === 'sermonPreparationTextActions') {
     return { ...command, [target.action]: { ...command[target.action], [target.field]: stamp } };

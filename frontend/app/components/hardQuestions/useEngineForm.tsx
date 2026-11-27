@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus, type TextComparison } from '@/data-engine/DataSyncStatus';
-import { hasHardQuestionTextConflict, readHardQuestionBasisConflict, readHardQuestionThemeOrderReview, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { hasHardQuestionFieldConflict, readHardQuestionBasisConflict, readHardQuestionThemeOrderReview, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -61,8 +61,10 @@ export function useEngineForm(resource: Resource | null, slot: string, selection
     reviewed.current = readyReview;
     // Reopen the actual saved submission, which can be a different form scope after navigation.
     void listRecoverable().then(sources => {
-      const original = sources.filter(source => source.record.predecessor?.id === readyReview && source.record.savedGeneration !== null);
-      if (original.length === 1 && currentReview.current === readyReview) return recover(original[0].scopeId);
+      const matching = sources.filter(source => source.record.predecessor?.id === readyReview);
+      const originals = matching.filter(source => source.record.savedGeneration !== null);
+      const choices = originals.length ? originals : matching;
+      if (choices.length === 1 && currentReview.current === readyReview) return recover(choices[0].scopeId);
     }).catch(() => undefined);
   }, [readyReview, listRecoverable, recover]);
   const recovery = useRecoveryDiscovery({
@@ -122,7 +124,7 @@ function hardQuestionComparison(comparison: ReturnType<typeof useDataForm>['comp
   return {
     identity: comparison.identity, valueKind: 'field', scopedChoice: true,
     ...(fields.length === 1 && { title: t(labels[fields[0]]) }),
-    mine: version(comparison.mine), stored: version(comparison.stored.value),
+    mine: version(comparison.mine), stored: version(comparison.remotePreview ?? comparison.stored.value),
   };
 }
 
@@ -179,7 +181,7 @@ function themeReviewField(field: ThemeReviewItem, t: ReturnType<typeof useTransl
 
 /** Open the form that owns a text comparison so its exact captured fields are used for the choice. */
 export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewing = false }: {
-  document: ReturnType<typeof useDataDocument>; onReview: () => void; onReviewBasis?: (basisId: string, requestId?: string) => void; reviewing?: boolean;
+  document: ReturnType<typeof useDataDocument>; onReview: (requestId?: string) => void; onReviewBasis?: (basisId: string, requestId?: string) => void; reviewing?: boolean;
 }) {
   const { t } = useTranslation();
   const checkpoint = !document.readOnly && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
@@ -191,8 +193,11 @@ export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewi
     apply: (choices: Record<string, 'local' | 'remote'>) => applyThemeOrder(checkpoint, listReview.identity, choices),
   };
   const basis = !fieldReview && checkpoint && readHardQuestionBasisConflict(checkpoint, document.state?.result);
+  const answer = document.state?.result;
+  const pending = Object.keys(checkpoint?.pending ?? {});
+  const requestId = answer?.kind === 'conflict' ? answer.operationId : pending.length === 1 ? pending[0] : undefined;
   const review = basis && onReviewBasis ? () => onReviewBasis(basis.id, basis.requestId)
-    : !fieldReview && checkpoint && hasHardQuestionTextConflict(checkpoint) ? onReview : undefined;
+    : !fieldReview && checkpoint && hasHardQuestionFieldConflict(checkpoint) ? () => onReview(requestId) : undefined;
   if (review && reviewing) return null;
   return (
     <>

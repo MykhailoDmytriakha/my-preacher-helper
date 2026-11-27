@@ -44,7 +44,7 @@ import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as meetingRows, normalizeGroupMeetingDraft as normalizeMeetingDraft } from './groupMeetingAutosave';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
-import { hardQuestionTextField } from './hardQuestionFieldAction';
+import { hardQuestionField } from './hardQuestionFieldAction';
 import { basisScriptureConflictId } from './hardQuestionThemeLists';
 import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
@@ -216,8 +216,8 @@ export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, res
     && result.conflicts.some(conflict => basisScriptureConflictId(conflict) === id) ? result.operationId : undefined;
   return { id, requestId };
 }
-export function hasHardQuestionTextConflict(checkpoint: SessionCheckpoint) {
-  return checkpoint.conflicts.some(({ path }) => hardQuestionTextField(checkpoint.confirmed.resource.collection, path));
+export function hasHardQuestionFieldConflict(checkpoint: SessionCheckpoint) {
+  return checkpoint.conflicts.some(({ path }) => hardQuestionField(checkpoint.confirmed.resource.collection, path));
 }
 export function seriesTextChoiceFields(...args: Parameters<typeof seriesChoice>) { return seriesChoice(...args); }
 export function prayerTextEditAction(...args: Parameters<typeof capturePrayerTextEdit>) { return capturePrayerTextEdit(...args); }
@@ -2056,8 +2056,16 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     keepLocal: (updater?: (current: DocumentData) => DocumentData, action?: ManualDocumentMetadataSave) =>
       run(form => form.resolve('local', { expectedComparison: target?.state?.comparison, updater,
         ...(action && { metadataTime: action.documentMetadata.time }) })),
-    acceptRemote: () => run(form => form.resolve('remote', { expectedComparison: target?.state?.comparison })),
-    discardStageAndAcceptRemote: () => run(form => form.resolve('remote', { discardStage: true, expectedComparison: target?.state?.comparison })),
+    acceptRemote: () => {
+      const comparison = target?.state?.comparison;
+      const time = comparison?.hardQuestionListItems && owner && current() ? actionClock.capture(owner) ?? null : undefined;
+      return run(form => form.resolve('remote', { expectedComparison: comparison, metadataTime: time }));
+    },
+    discardStageAndAcceptRemote: () => {
+      const comparison = target?.state?.comparison;
+      const time = comparison?.hardQuestionListItems && owner && current() ? actionClock.capture(owner) ?? null : undefined;
+      return run(form => form.resolve('remote', { discardStage: true, expectedComparison: comparison, metadataTime: time }));
+    },
     resolveOutlineReview: (placement: 'local' | 'remote', titles: readonly OutlineTitleDecision[]) =>
       run(form => form.resolve(placement, { expectedComparison: target?.state?.comparison, titles })),
     retry: () => run(form => form.retry()),

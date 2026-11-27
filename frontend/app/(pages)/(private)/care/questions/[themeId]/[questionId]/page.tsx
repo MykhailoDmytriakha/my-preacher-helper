@@ -64,6 +64,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
   const { confirm, confirmDialog } = useConfirm();
   const [editing, setEditing] = useState(searchParams?.get('edit') === '1');
   const [recoverId, setRecoverId] = useState<string | null>(null);
+  const [reviewRequestId, setReviewRequestId] = useState<string>();
   const resource = useMemo(() => ({ collection: 'hardQuestions', id: questionId }), [questionId]);
   const [moving, setMoving] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -110,7 +111,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
     return (
       <div className="mx-auto w-full max-w-4xl pb-10">
         <BackLink href={themeSegment && themeSegment !== NO_THEME_SEGMENT ? themePath(themeSegment) : sectionPath}>{t('hardQuestions.title')}</BackLink>
-        <QuestionEditor questionId={questionId} bases={[]} recoverId={recoverId} gone={absent} onDone={() => { setEditing(false); setRecoverId(null); }} />
+        <QuestionEditor questionId={questionId} bases={[]} recoverId={recoverId} gone={absent} onDone={() => { setEditing(false); setRecoverId(null); setReviewRequestId(undefined); }} />
       </div>
     );
   }
@@ -138,7 +139,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
       <BackLink href={backHref}>{theme ? theme.title : t('hardQuestions.title')}</BackLink>
       {!editing && (
         <>
-          <EngineReadingStatus document={document} onReview={() => setEditing(true)} />
+          <EngineReadingStatus document={document} onReview={(requestId) => { setReviewRequestId(requestId); setEditing(true); }} />
           {!document.readOnly && (
             <UnsavedDraftNotice resource={resource} slot={QUESTION_FORM_SLOT} selection={QUESTION_FORM_FIELDS}
               onResume={(draftId) => { setRecoverId(draftId); setEditing(true); }} />
@@ -174,9 +175,10 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
       )}
 
       {editing ? (
-        <QuestionEditor questionId={questionId} bases={theme?.bases ?? []} recoverId={recoverId} onDone={() => {
+        <QuestionEditor questionId={questionId} bases={theme?.bases ?? []} recoverId={recoverId} reviewRequestId={reviewRequestId} onDone={() => {
           setEditing(false);
           setRecoverId(null);
+          setReviewRequestId(undefined);
           if (searchParams?.get('edit')) router.replace(questionPath(question, Boolean(theme)));
         }} />
       ) : (

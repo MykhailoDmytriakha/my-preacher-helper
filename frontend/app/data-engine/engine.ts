@@ -3911,7 +3911,11 @@ export class DataEngine {
           basis: comparison.basisScripture && { id: comparison.basisScripture.id,
             fields: comparison.basisScripture.otherFields.map(item => item.field), removed: comparison.basisScripture.removed },
           text: comparison.hardQuestionFields && {
-            fields: choice === 'local' ? comparison.hardQuestionFields : [], original: request.hardQuestionFieldActions ?? {},
+            fields: choice === 'local' ? comparison.hardQuestionFields : comparison.hardQuestionFields.filter(field =>
+              Object.hasOwn(comparison.hardQuestionListItems ?? {}, field)),
+            original: request.hardQuestionFieldActions ?? {},
+            undecidedLists: comparison.hardQuestionListItems,
+            ...(choice === 'remote' && { confirmedLists: comparison.hardQuestionListItems }),
           },
         } : undefined;
         await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage,
@@ -4136,7 +4140,8 @@ export class DataEngine {
           return;
         }
         const time = options?.metadataTime;
-        const action = choice === 'local' && time !== undefined ? { kind: 'document-metadata', time } as const : undefined;
+        const action = time !== undefined && (choice === 'local' || options?.expectedComparison?.hardQuestionListItems)
+          ? { kind: 'document-metadata', time } as const : undefined;
         if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison, action, options?.titles);
         else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected), action, options?.titles);
       }),

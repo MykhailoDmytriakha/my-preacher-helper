@@ -99,6 +99,7 @@ const checkpointConflict = z.object({
   outlineSubpointIds: z.array(id).max(32).optional(),
   orderedOutlineSubpoints: z.array(z.object({ id, side: z.enum(['local', 'remote']) })).max(32).optional(),
   studyNoteReferenceOpening: fieldSchema.optional(),
+  hardQuestionListVersions: z.object({ local: fieldSchema, remote: fieldSchema, undecided: z.array(z.string()) }).optional(),
 });
 const pendingShape = {
   commentPlaceAction: commentPlaceObservation.optional(), outlinePointPlacement: outlinePlacement.optional(),
@@ -631,9 +632,12 @@ function decodeRecoveryRecord(value: unknown, owner: string, editorId: string, r
   const prepared = record.prepared === null ? null : validateCommand(record.prepared);
   if (prepared && (prepared.owner !== owner || !sameResource(prepared.resource, ref)
     || !Object.prototype.hasOwnProperty.call(record.checkpoint.pending, prepared.operationId))) throw new Error('Prepared checkpoint identity mismatch');
-  const conflicts: ConflictDetail[] = record.checkpoint.conflicts.map(({ studyNoteReferenceOpening, ...conflict }) => ({
+  const conflicts: ConflictDetail[] = record.checkpoint.conflicts.map(({ studyNoteReferenceOpening, hardQuestionListVersions, ...conflict }) => ({
     ...conflict, base: field(conflict.base), mine: field(conflict.mine), theirs: field(conflict.theirs),
     ...(studyNoteReferenceOpening && { studyNoteReferenceOpening: field(studyNoteReferenceOpening) }),
+    ...(hardQuestionListVersions && { hardQuestionListVersions: {
+      local: field(hardQuestionListVersions.local), remote: field(hardQuestionListVersions.remote), undecided: hardQuestionListVersions.undecided,
+    } }),
   }));
   const createIntent = record.checkpoint.confirmed.value === null && record.checkpoint.confirmed.metadata === null;
   const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => {

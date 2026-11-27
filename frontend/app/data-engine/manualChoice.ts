@@ -12,7 +12,7 @@ import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
-import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionTextField, type HardQuestionFieldReview } from './hardQuestionFieldAction';
+import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionField, hardQuestionListVersion, readHardQuestionListVersions, type HardQuestionFieldReview } from './hardQuestionFieldAction';
 import { basisScriptureConflictId, keepsBasisScripture } from './hardQuestionThemeLists';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -87,7 +87,7 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) =>
         isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict) || reviewedSermonPreparationField(conflict) !== undefined
         : record.resource.collection === 'series' ? isReturnedSeriesField
-          : ({ path }: ConflictDetail) => Boolean(hardQuestionTextField(record.resource.collection, path));
+          : ({ path }: ConflictDetail) => Boolean(hardQuestionField(record.resource.collection, path));
       const basisReview = record.resource.collection === 'hardQuestionThemes' && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => {
           const id = basisScriptureConflictId(conflict);
@@ -101,10 +101,12 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
         ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
       const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);
-      const sameTabFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
+      const recoveredQuestionForm = record.resource.collection === 'hardQuestions' && request.retentionScope === fieldScope
+        && record.recoverySources?.some(source => source.id === fieldScope);
+      const ownsFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
         && editorSlot(savedFieldForm.parentEditorId) === editorSlot(openFieldForm.parentEditorId)
-        && areSameTabManualParents(savedFieldForm.parentEditorId, openFieldForm.parentEditorId, record.resource);
-      if (recovered || sameMeetingForm || sameTabFieldForm || (record.scopeId === request.editorId
+        && (recoveredQuestionForm || areSameTabManualParents(savedFieldForm.parentEditorId, openFieldForm.parentEditorId, record.resource));
+      if (recovered || sameMeetingForm || ownsFieldForm || (record.scopeId === request.editorId
           && (markedList || meeting || thoughtText || dateNotes || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
@@ -225,6 +227,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, fieldsToDiscard)
       : keepUncontestedSermonFields(basis, reviewed, stored, conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
+  }
+  if (decision.hardQuestionReview?.text && draft && stored.value) {
+    const lists = hardQuestionListVersion(readHardQuestionListVersions(reviewedConflicts, reviewed, stored.value), decision.choice, draft);
+    if (lists) draft = projectManualSelection(stored.value, lists, decision.selection);
   }
   const resolved = afterChoice(decision.stored, draft, checkpoint.editGeneration + 1);
   if (meeting && request.result?.kind === 'conflict') {
