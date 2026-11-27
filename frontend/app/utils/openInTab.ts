@@ -24,6 +24,16 @@ export function holdUntilReleased(name: string): () => Promise<void> {
   return () => { release(); return gone; };
 }
 
+/** Resolves after the exclusive holder leaves, without leaving a lock held by the observer. */
+export async function waitForTabLockRelease(name: string, signal: AbortSignal): Promise<boolean> {
+  if (!supported() || signal.aborted) return false;
+  try {
+    return await navigator.locks.request(name, { mode: 'shared', signal }, () => true);
+  } catch {
+    return false;
+  }
+}
+
 /** The names held in some tab of this browser right now; null when this browser cannot tell. */
 async function heldNames(): Promise<string[] | null> {
   if (!supported()) return null;

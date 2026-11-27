@@ -2,7 +2,7 @@ import { entries, get } from 'idb-keyval';
 
 import { newClientId } from '@/utils/clientId';
 import { reconnectingStore } from '@/utils/deviceStorage';
-import { heldLockNames, holdUntilReleased } from '@/utils/openInTab';
+import { heldLockNames, holdUntilReleased, waitForTabLockRelease } from '@/utils/openInTab';
 import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
@@ -34,6 +34,7 @@ type StoredRecording = RecordingDraft | DiscardedRecording;
 
 
 const listeners = new Set<() => void>();
+const workWaiters = new Map<string, AbortController>();
 let channel: BroadcastChannel | null = null;
 const notify = () => { listeners.forEach(listener => listener()); };
 const openChannel = (): BroadcastChannel | null => {
@@ -59,7 +60,12 @@ export function subscribeRecordingDrafts(listener: () => void): () => void {
   if (!channel) channel = openChannel();
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0) { channel?.close(); channel = null; }
+    if (listeners.size === 0) {
+      channel?.close();
+      channel = null;
+      for (const waiter of workWaiters.values()) waiter.abort();
+      workWaiters.clear();
+    }
   };
 }
 
@@ -239,8 +245,25 @@ async function inWorkElsewhere(): Promise<Set<string>> {
   return new Set(held.filter(name => name.startsWith(WORK_LOCK_PREFIX)).map(name => name.slice(WORK_LOCK_PREFIX.length)));
 }
 
+/** A tab can close without publishing. Wait for its lock to become available and refresh locally. */
+function observeOtherTabWork(id: string) {
+  if (!listeners.size || workWaiters.has(id)) return;
+  const waiter = new AbortController();
+  workWaiters.set(id, waiter);
+  void waitForTabLockRelease(WORK_LOCK_PREFIX + id, waiter.signal).then(released => {
+    if (workWaiters.get(id) !== waiter) return;
+    workWaiters.delete(id);
+    if (released) notify();
+  });
+}
+
 /** The parked takes no tab is working on: the ones the «unfinished recording» card offers. */
 export async function listUnfinishedRecordingDrafts(filter?: Parameters<typeof listRecordingDrafts>[0]): Promise<RecordingDraft[]> {
   const [drafts, elsewhere] = await Promise.all([listRecordingDrafts(filter), inWorkElsewhere()]);
-  return drafts.filter(draft => !inWork.has(draft.id) && !elsewhere.has(draft.id));
+  return drafts.filter(draft => {
+    if (inWork.has(draft.id)) return false;
+    if (!elsewhere.has(draft.id)) return true;
+    observeOtherTabWork(draft.id);
+    return false;
+  });
 }

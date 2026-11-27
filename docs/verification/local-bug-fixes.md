@@ -10972,3 +10972,13 @@ The whole-point telemetry regression failed before the fix, while the explicit-t
 The first QA setup selected the Gemini HTTP address and got HTTP 400 with a synthetic input and test key. Its Firestore was local. Both accepted browser runs used the corrected loopback-only stand. The emulator guide now records the independent model configuration and outbound guard.
 
 After an authorized rollout, use a disposable synthetic study to request one whole-point proposal. Check the completed diagnostic event for `sermon.conspect.note_point` and the outline point it names. Existing selected sub-points continue to carry their explicit ID.
+
+## BUG-20261117-recording-card-during-transcription · Reveal the parked take after the recording tab closes
+
+The original fix keeps an active take out of the recovery list in both Chrome tabs. Ending work normally notifies the other tab. Closing the recording tab during the upload released its browser lock automatically, but sent no notification. A second tab already focused on the same sermon kept hiding the take until reload. The exact audio remained in IndexedDB.
+
+The active recovery list now waits for an already observed work lock to release. It shares the observer across the readers in that tab and cancels it when the last reader leaves. The browser resumes the waiter without polling the server or waiting for window focus. The second tab then refreshes its own recording list.
+
+Two focused regressions failed on the previous code and the final related run passed 78 tests. The production-mode build, TypeScript, lint and an independent review passed. Hidden Chrome used a real MediaRecorder with a synthetic microphone. The upload received a controlled local acknowledgement or failure, or was interrupted by closing the tab. In all three cases it sent one request. During upload both tabs hid the recovery card. Success removed the take and failure revealed it. After closing, the already visible second tab displayed the exact same parked audio without a focus event or reload. Browser captures and IndexedDB and Web Lock observations are in `artifacts/recording-draft-banner-20261126`.
+
+After an authorized rollout, use a test sermon and a real microphone on the iPad. While a recording is processing, open the same sermon in another tab and check that it has no retry card. On local emulators, hold the response, close the recording tab and check that the other open tab offers the saved audio. Physical iPad microphone acceptance remains open.

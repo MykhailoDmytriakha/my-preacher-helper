@@ -1,4 +1,4 @@
-import { claimRecordingDraftWork, isRecordingDraftInWork, listUnfinishedRecordingDrafts, saveRecordingDraft } from '@/utils/recordingDraftStore';
+import { claimRecordingDraftWork, isRecordingDraftInWork, listUnfinishedRecordingDrafts, saveRecordingDraft, subscribeRecordingDrafts } from '@/utils/recordingDraftStore';
 
 /*
  * BUG-20261117-recording-card-during-transcription: every microphone parks its take before the
@@ -76,6 +76,52 @@ it('does not offer a take another tab of this browser is working on, so it is no
   await park('take-2');
   await park('take-3');
   expect(await unfinished()).toEqual(['take-3']);
+});
+
+function waitOnForeignTake(id: string) {
+  const name = 'recording-draft-in-work:' + id;
+  let free!: () => void;
+  const available = new Promise<void>(resolve => { free = resolve; });
+  const query = jest.fn(async () => ({ held: [{ name }] }));
+  const request = jest.fn(async (_name: string, _options: LockOptions, onAvailable: () => boolean) => {
+    await available;
+    return onAvailable();
+  });
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { query, request } });
+  return { query, request, free, name };
+}
+
+it('asks an already-open reader to refresh when another tab closes with a parked take', async () => {
+  const lock = waitOnForeignTake('take-closed');
+  await park('take-closed');
+  let refresh!: () => void;
+  const notified = new Promise<void>(resolve => { refresh = resolve; });
+  const listener = jest.fn(refresh);
+  const unsubscribe = subscribeRecordingDrafts(listener);
+  try {
+    expect(await unfinished()).toEqual([]);
+    expect(await unfinished()).toEqual([]);
+    expect(lock.request).toHaveBeenCalledTimes(1);
+    expect(lock.request).toHaveBeenCalledWith(lock.name, expect.objectContaining({ mode: 'shared' }), expect.any(Function));
+    lock.query.mockResolvedValue({ held: [] });
+    lock.free();
+    await notified;
+    expect(await unfinished()).toEqual(['take-closed']);
+    expect(listener).toHaveBeenCalledTimes(1);
+  } finally { unsubscribe(); }
+});
+
+it('cancels its lock observation when the last recording reader leaves', async () => {
+  const lock = waitOnForeignTake('take-left');
+  await park('take-left');
+  const listener = jest.fn();
+  const unsubscribe = subscribeRecordingDrafts(listener);
+  try { expect(await unfinished()).toEqual([]); } finally { unsubscribe(); }
+  expect(lock.request).toHaveBeenCalledTimes(1);
+  expect(lock.request.mock.calls[0][1].signal?.aborted).toBe(true);
+  lock.free();
+  await lock.request.mock.results[0].value;
+  expect(listener).not.toHaveBeenCalled();
 });
 
 it('still tells this tab its own work without the Web Locks API', async () => {
