@@ -10,6 +10,9 @@ import { DataDocumentProvider, DataEngineProvider } from '@/data-engine/react.cl
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { DocumentData } from '@/data-engine/types';
+import type { ScratchNote } from '@/models/models';
+
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -53,9 +56,10 @@ describe('opening text of an inline scratch edit', () => {
   beforeEach(() => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
   afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-  async function open(legacy = false) {
+  async function open(legacy = false, fixture?: { outline: DocumentData['outline']; target: ScratchNote }) {
     const harness = documentEngineHarness({ resource, value: { userId: 'owner', title: 'Sermon', verse: 'John 3:16',
-      createdAt: '2026-09-01T00:00:00.000Z', thoughts: [], scratch: [note, sibling] },
+      createdAt: '2026-09-01T00:00:00.000Z', thoughts: [], scratch: [fixture?.target ?? note, sibling],
+      ...(fixture && { outline: fixture.outline }) },
       metadata: legacy ? null : { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     render(
@@ -172,5 +176,56 @@ describe('opening text of an inline scratch edit', () => {
     expect(sketch(note.id).queryByRole('textbox')).not.toBeInTheDocument();
     expect(harness.server.value?.scratch).toEqual([moved, sibling]);
     expect(harness.transport.send).not.toHaveBeenCalled();
+  });
+
+  it.each(['point', 'sub-point'] as const)('keeps open scratch text when its original %s disappears', async kind => {
+    const removingPoint = kind === 'point';
+    const child = { id: 'child', text: 'Opening sub-point', position: 1000 };
+    const parent = { id: 'parent', text: 'Opening point', subPoints: [child] };
+    const remaining = { id: 'remaining', text: 'Surviving point' };
+    const outline = { introduction: [], main: [parent, remaining], conclusion: [] };
+    const target: ScratchNote = {
+      ...note, section: 'main', outlinePointId: parent.id,
+      ...(!removingPoint && { subPointId: child.id }),
+    };
+    const nextOutline = { ...outline, main: removingPoint ? [remaining] : [{ ...parent, subPoints: [] }, remaining] };
+    const nextTarget: ScratchNote = { ...note, section: 'main', ...(!removingPoint && { outlinePointId: parent.id }) };
+    const nextSibling = { ...sibling, text: 'Independent update after the outline changed' };
+    const harness = await open(false, { outline, target });
+    const editor = scratchEditor(note.id) as HTMLTextAreaElement;
+    const originalLabel = removingPoint ? parent.text : child.text;
+    const original = screen.getByLabelText(originalLabel, { selector: 'div' });
+    expect(original).toContainElement(editor);
+    editor.setSelectionRange(11, 11);
+
+    await act(async () => { await harness.remote({ outline: nextOutline, scratch: [nextTarget, nextSibling] }); });
+    await waitFor(() => expect(screen.getByTestId('confirmed-copy')).toHaveTextContent(nextSibling.text));
+    expect(screen.queryByLabelText(originalLabel, { selector: 'div' })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(`scratch-sketch-${note.id}`)).toHaveLength(1);
+    expect(scratchEditor(note.id)).toBe(editor);
+    expect(editor).toHaveFocus();
+    expect(editor.selectionStart).toBe(11);
+    expect(editor).toHaveValue(mine);
+    const previous = screen.getByLabelText('scratch.sort.previousPlace', { selector: 'div' });
+    expect(previous).toContainElement(editor);
+    expect(within(previous).queryByRole('button', { name: /^scratch\.sort\.(?:remove|rename|addSubPoint)/ })).not.toBeInTheDocument();
+    const otherPencil = sketch(sibling.id).getByRole('button', { name: 'scratch.card.edit' });
+    expect(otherPencil).toBeDisabled();
+    fireEvent.click(otherPencil);
+    expect(scratchEditor(note.id)).toBe(editor);
+
+    if (removingPoint) {
+      fireEvent.keyDown(editor, { key: 'Enter' });
+      await waitFor(() => expect(harness.server.value?.scratch).toEqual([{ ...nextTarget, text: mine }, nextSibling]));
+    } else {
+      fireEvent.keyDown(editor, { key: 'Escape' });
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    }
+
+    const newPlace = screen.getByLabelText(removingPoint ? 'structure.mainPart' : parent.text, { selector: 'div' });
+    await waitFor(() => expect(screen.queryByLabelText('scratch.sort.previousPlace')).not.toBeInTheDocument());
+    expect(await within(newPlace).findByText(removingPoint ? mine : note.text)).toBeVisible();
+    expect(harness.server.value?.outline).toEqual(nextOutline);
+    expect(sketch(sibling.id).getByRole('button', { name: 'scratch.card.edit' })).toBeEnabled();
   });
 });

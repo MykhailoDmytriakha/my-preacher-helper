@@ -3458,6 +3458,7 @@
       "removePoint": "Удалить пункт",
       "removePointTitle": "Удалить пункт «{{title}}»?",
       "removePointDescription": "Наброски из него останутся в этой части, без пункта.",
+      "previousPlace": "Прежнее место. Закончите редактирование наброска.",
       "partWithoutPoint": "{{part}} — без пункта",
       "hereNow": "сейчас здесь",
       "loose": "В части, без пункта",

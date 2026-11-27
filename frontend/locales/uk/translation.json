@@ -3458,6 +3458,7 @@
       "removePoint": "Видалити пункт",
       "removePointTitle": "Видалити пункт «{{title}}»?",
       "removePointDescription": "Начерки з нього залишаться в цій частині, без пункту.",
+      "previousPlace": "Попереднє місце. Завершіть редагування начерку.",
       "partWithoutPoint": "{{part}} — без пункту",
       "hereNow": "зараз тут",
       "loose": "У частині, без пункту",

@@ -49,6 +49,7 @@ interface ScratchSketchCardProps {
   editing: boolean;
   /** Editing and deleting wait for the last write to be kept; the buttons stay in place, switched off. */
   noteLocked?: boolean;
+  editLocked?: boolean;
   /** This card is in the hand together with the one being dragged. */
   carried: boolean;
   /** The note in the hand would land right above this card or right under it. */
@@ -84,7 +85,7 @@ const ICON_BUTTON = 'inline-flex shrink-0 items-center justify-center rounded-lg
  */
 export default function ScratchSketchCard({
   note, variant, isReadOnly, selected = false, onToggleSelect, expanded = false, onToggleExpanded,
-  text, targets, currentKey, onMove, onOpenMoveSheet, onDelete, onEdit, editing, noteLocked = false, carried, landing, justPlaced, swallowClick,
+  text, targets, currentKey, onMove, onOpenMoveSheet, onDelete, onEdit, editing, noteLocked = false, editLocked = false, carried, landing, justPlaced, swallowClick,
 }: ScratchSketchCardProps) {
   const { t } = useTranslation();
   const drag = useDraggable({ id: note.id, disabled: isReadOnly || editing });
@@ -161,7 +162,7 @@ export default function ScratchSketchCard({
                 <button type="button" onClick={onOpenMoveSheet} aria-label={moveTo} className={`${ICON_BUTTON} h-11 w-11 md:hidden`}>
                   <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
                 </button>
-                <button type="button" onClick={onEdit} disabled={noteLocked} aria-label={t('scratch.card.edit')} title={t('scratch.card.edit')}
+                <button type="button" onClick={onEdit} disabled={noteLocked || editLocked} aria-label={t('scratch.card.edit')} title={t('scratch.card.edit')}
                   className={`${ICON_BUTTON} h-11 w-11 cursor-pointer hover:text-violet-700 md:h-8 md:w-8 dark:hover:text-violet-300`}>
                   <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
                 </button>

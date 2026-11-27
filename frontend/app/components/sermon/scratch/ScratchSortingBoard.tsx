@@ -13,7 +13,7 @@ import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveNoteSlot, type Point } from '@/utils/boardDnd';
 import { deviceChoice } from '@/utils/deviceChoice';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
-import { materializedNoteId, outlineNoteSketches, outlineNoteTargetOf, placeScratchNotes, POOL_PLACE, sameScratchPlace, scratchPlaceOf, sortScratch, type ScratchPlace } from '@/utils/scratchPlacement';
+import { materializedNoteId, outlineNoteSketches, outlineNoteTargetOf, placeScratchNotes, POOL_PLACE, sameScratchPlace, scratchPlaceOf, sortScratch, type ScratchEditLocation, type ScratchPlace } from '@/utils/scratchPlacement';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';
@@ -134,12 +134,13 @@ function TitleEditor({ initial, label, onSave, onCancel, saveLabel, cancelLabel 
 }
 
 /** A spot to land: shown softly while a note is in the hand, clearly while the hand is over it. */
-function DropZone({ id, className, activeClass, readyClass = '', children, ariaLabel, style, dragActive }: {
-  id: string; className: string; activeClass: string; readyClass?: string; children: React.ReactNode; ariaLabel?: string; style?: React.CSSProperties; dragActive: boolean;
+function DropZone({ id, className, activeClass, readyClass = '', children, ariaLabel, style, dragActive, disabled = false }: {
+  id: string; className: string; activeClass: string; readyClass?: string; children: React.ReactNode; ariaLabel?: string; style?: React.CSSProperties; dragActive: boolean; disabled?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+  const { setNodeRef, isOver } = useDroppable({ id, disabled });
+  const dragClass = disabled ? '' : isOver ? activeClass : dragActive ? readyClass : '';
   return <div ref={setNodeRef} aria-label={ariaLabel} style={style}
-    className={`${className} transition-[box-shadow,background-color] duration-150 ${isOver ? activeClass : dragActive ? readyClass : ''}`}>{children}</div>;
+    className={`${className} transition-[box-shadow,background-color] duration-150 ${dragClass}`}>{children}</div>;
 }
 
 /**
@@ -159,6 +160,7 @@ export default function ScratchSortingBoard({
 }: ScratchSortingBoardProps) {
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
+  const previousPlace = t('scratch.sort.previousPlace');
   const [tab, setTab] = useState<'pool' | 'plan'>('pool');
   const [selected, setSelected] = useState<string[]>([]);
   const [drag, setDrag] = useState<{ id: string; folded: boolean } | null>(null);
@@ -207,8 +209,8 @@ export default function ScratchSortingBoard({
   const [subDraft, setSubDraft] = useState('');
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [justPlaced, setJustPlaced] = useState<string[]>([]);
-  const [editRequest, setEditRequest] = useState<{ id: string; n: number; place: ScratchPlace } | null>(null);
-  const [openEdit, setOpenEdit] = useState<{ id: string; place: ScratchPlace } | null>(null);
+  const [editRequest, setEditRequest] = useState<(ScratchEditLocation & { n: number }) | null>(null);
+  const [openEdit, setOpenEdit] = useState<ScratchEditLocation | null>(null);
   const [renaming, setRenaming] = useState<OutlineNoteTarget | null>(null);
   const isRenaming = (kind: OutlineNoteTarget['kind'], id: string) => renaming?.kind === kind && renaming.id === id;
   const titleEditor = (target: OutlineNoteTarget, initial: string) => (
@@ -217,10 +219,11 @@ export default function ScratchSortingBoard({
       onCancel={() => setRenaming(null)} onSave={(text) => { if (!isReadOnly) onRenameTitle(target, text); setRenaming(null); }} />
   );
   const requestEdit = (id: string) => {
-    const place = placeById.get(id);
-    if (!place) return;
+    if (retainingEdit && editingNoteId !== id) return;
+    const location = currentEditLocation(id);
+    if (!location) return;
     setExpanded((current) => ({ ...current, [id]: true }));
-    setEditRequest((current) => ({ id, place, n: (current?.n ?? 0) + 1 }));
+    setEditRequest((current) => ({ ...location, n: (current?.n ?? 0) + 1 }));
   };
   // The sermon page slides its modes with a transform, and anything "fixed" inside a transformed box
   // is placed against that box, not the screen. The card in the hand and the phone's bottom bar are
@@ -250,9 +253,9 @@ export default function ScratchSortingBoard({
     SECTION_KEYS.forEach((section) => {
       const part = sorted.sections[section];
       order.set(placeKey({ section, pointId: null, subPointId: null }), part.loose.map((note) => note.id));
-      part.points.forEach(({ point, notes: onPoint, subPoints }) => {
-        order.set(placeKey({ section, pointId: point.id, subPointId: null }), onPoint.map((note) => note.id));
-        subPoints.forEach(({ subPoint, notes: onSub }) => order.set(placeKey({ section, pointId: point.id, subPointId: subPoint.id }), onSub.map((note) => note.id)));
+      part.points.forEach(({ id: pointId, notes: onPoint, subPoints }) => {
+        order.set(placeKey({ section, pointId, subPointId: null }), onPoint.map((note) => note.id));
+        subPoints.forEach(({ id: subPointId, notes: onSub }) => order.set(placeKey({ section, pointId, subPointId }), onSub.map((note) => note.id)));
       });
     });
     return order;
@@ -263,15 +266,23 @@ export default function ScratchSortingBoard({
     SECTION_KEYS.forEach((section) => {
       const part = sorted.sections[section];
       part.loose.forEach((note) => places.set(note.id, { section, pointId: null, subPointId: null }));
-      part.points.forEach(({ point, notes: onPoint, subPoints }) => {
-        onPoint.forEach((note) => places.set(note.id, { section, pointId: point.id, subPointId: null }));
-        subPoints.forEach(({ subPoint, notes: onSub }) => onSub.forEach((note) => places.set(note.id, { section, pointId: point.id, subPointId: subPoint.id })));
+      part.points.forEach(({ id: pointId, notes: onPoint, subPoints }) => {
+        onPoint.forEach((note) => places.set(note.id, { section, pointId, subPointId: null }));
+        subPoints.forEach(({ id: subPointId, notes: onSub }) => onSub.forEach((note) => places.set(note.id, { section, pointId, subPointId })));
       });
     });
     return places;
   }, [sorted]);
-  // Keep the open editor mounted in its original list until Save or Cancel.
-  // Commands and drop destinations use the latest stored outline and placement.
+  const currentEditLocation = (id: string): ScratchEditLocation | undefined => {
+    const place = placeById.get(id);
+    if (!place) return;
+    const points = place.section ? sorted.sections[place.section].points : [];
+    const pointIndex = points.findIndex(point => point.id === place.pointId);
+    const subPointIndex = points[pointIndex]?.subPoints.findIndex(subPoint => subPoint.id === place.subPointId) ?? -1;
+    return { id, place, pointIndex, subPointIndex };
+  };
+  // Keep the editor and its DOM parents mounted, even when the old point is no longer in the outline.
+  // Commands and drop destinations continue to use the current document and outline.
   const editPlace = openEdit ?? editRequest;
   const editingNoteId = editPlace?.id;
   const displayed = useMemo(() => {
@@ -280,6 +291,7 @@ export default function ScratchSortingBoard({
       ? sortScratch(notes, outline, true, editPlace)
       : sorted;
   }, [editPlace, notes, outline, placeById, sorted]);
+  const retainingEdit = displayed !== sorted;
   // The board shows the nodes' old one-line reminders as notes too, so they count like notes.
   const total = placeById.size;
   const placed = total - displayed.pool.length;
@@ -315,9 +327,11 @@ export default function ScratchSortingBoard({
       const partPlace: ScratchPlace = { section, pointId: null, subPointId: null };
       list.push({ key: placeKey(partPlace), label: part.points.length ? t('scratch.sort.partWithoutPoint', { part: label }) : label, depth: 0, place: partPlace, tone: 'part', textClass: SECTION_LOOK[section].title });
       part.points.forEach(({ point, subPoints }) => {
+        if (!point) return;
         const pointPlace: ScratchPlace = { section, pointId: point.id, subPointId: null };
         list.push({ key: placeKey(pointPlace), label: point.text, depth: 1, place: pointPlace, tone: 'point' });
         subPoints.forEach(({ subPoint }) => {
+          if (!subPoint) return;
           const subPlace: ScratchPlace = { section, pointId: point.id, subPointId: subPoint.id };
           list.push({ key: placeKey(subPlace), label: subPoint.text, depth: 2, place: subPlace, tone: 'point' });
         });
@@ -492,14 +506,15 @@ export default function ScratchSortingBoard({
       text={renderText(note, editRequest?.id === note.id ? editRequest.n : 0,
         (editing) => {
           if (editing) {
-            const place = editRequest?.id === note.id ? editRequest.place : placeById.get(note.id);
-            if (place) setOpenEdit({ id: note.id, place });
+            const location = editRequest?.id === note.id ? editRequest : currentEditLocation(note.id);
+            if (location) setOpenEdit(location);
             setEditRequest((current) => (current?.id === note.id ? null : current));
           } else {
             setOpenEdit((current) => current?.id === note.id ? null : current);
           }
         })}
-      editing={openEdit?.id === note.id} noteLocked={isNoteLocked} onEdit={() => requestEdit(note.id)} targets={targets} currentKey={placeKey(placeById.get(note.id) ?? POOL_PLACE)}
+      editing={openEdit?.id === note.id} noteLocked={isNoteLocked} editLocked={retainingEdit && editingNoteId !== note.id}
+      onEdit={() => requestEdit(note.id)} targets={targets} currentKey={placeKey(placeById.get(note.id) ?? POOL_PLACE)}
       onMove={(place) => move([note.id], place)} onOpenMoveSheet={() => setSheet({ kind: 'move', ids: [note.id] })}
       onDelete={() => onDelete(note.id)}
       carried={Boolean(dragging) && carriedIds.includes(note.id) && note.id !== dragging} landing={landingOf(note.id)}
@@ -676,30 +691,35 @@ export default function ScratchSortingBoard({
                     )}
                     {part.points.length > 0 && (
                       <div className="mt-3 flex flex-col gap-2.5">
-                        {part.points.map(({ point, notes: onPoint, subPoints }) => {
+                        {part.points.map(({ id: pointId, point, notes: onPoint, subPoints }) => {
+                          const pointPlace = placeKey({ section, pointId, subPointId: null });
+                          const pointLabel = point?.text ?? (subPoints.length === 0 ? previousPlace : undefined);
+                          const showingAddSubPoint = point && addingSub === pointId;
                           const total = onPoint.length + subPoints.reduce((sum, sub) => sum + sub.notes.length, 0);
                           return (
-                            <DropZone key={point.id} id={placeKey({ section, pointId: point.id, subPointId: null })} ariaLabel={point.text}
+                            <DropZone key={pointId} id={point ? pointPlace : `scratch-editor:${pointPlace}`} ariaLabel={pointLabel} disabled={!point}
                               className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900" activeClass="ring-2 ring-violet-500 bg-violet-50/60 dark:bg-violet-950/30" readyClass="ring-1 ring-violet-200 dark:ring-violet-800" dragActive={Boolean(dragging)}>
                               <div className={`flex items-center gap-1 ${hoverActions.row}`}>
-                                <span aria-hidden="true" className={`ml-1 mr-1.5 h-2 w-2 shrink-0 rounded-full ${look.dot}`} />
-                                {isRenaming('point', point.id) ? titleEditor({ kind: 'point', id: point.id }, point.text) : (
+                                {point && <span aria-hidden="true" className={`ml-1 mr-1.5 h-2 w-2 shrink-0 rounded-full ${look.dot}`} />}
+                                {!point ? (
+                                  pointLabel && <span className="text-sm text-gray-600 dark:text-gray-300">{pointLabel}</span>
+                                ) : isRenaming('point', pointId) ? titleEditor({ kind: 'point', id: pointId }, point.text) : (
                                   <>
                                     <span className="min-w-0 flex-1 text-[15px] font-semibold text-gray-900 dark:text-gray-100">{point.text}</span>
                                     {total > 0 && <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{t(NOTE_COUNT_KEY, { count: total })}</span>}
                                     {!isReadOnly && (
-                                      <div className={`flex shrink-0 items-center gap-1 transition-opacity duration-150 ${addingSub === point.id ? '' : hoverActions.actions}`}>
-                                        <button type="button" onClick={() => setRenaming({ kind: 'point', id: point.id })}
+                                      <div className={`flex shrink-0 items-center gap-1 transition-opacity duration-150 ${addingSub === pointId ? '' : hoverActions.actions}`}>
+                                        <button type="button" onClick={() => setRenaming({ kind: 'point', id: pointId })}
                                           aria-label={t('scratch.sort.renamePoint')} title={t('scratch.sort.renamePoint')}
                                           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-violet-700 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-violet-300">
                                           <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
                                         </button>
-                                        <button type="button" onClick={() => { setAddingSub(addingSub === point.id ? null : point.id); setSubDraft(''); }}
+                                        <button type="button" onClick={() => { setAddingSub(addingSub === pointId ? null : pointId); setSubDraft(''); }}
                                           aria-label={t('scratch.sort.addSubPoint')} title={t('scratch.sort.addSubPoint')}
                                           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 md:h-8 md:w-8 dark:hover:bg-gray-800">
                                           <PlusIcon className="h-4 w-4" aria-hidden="true" />
                                         </button>
-                                        <button type="button" onClick={() => { void removePoint(point.id, point.text); }}
+                                        <button type="button" onClick={() => { void removePoint(pointId, point.text); }}
                                           aria-label={t('scratch.sort.removePoint')} title={t('scratch.sort.removePoint')}
                                           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-red-400">
                                           <TrashIcon className="h-4 w-4" aria-hidden="true" />
@@ -709,25 +729,27 @@ export default function ScratchSortingBoard({
                                   </>
                                 )}
                               </div>
-                              {(onPoint.length > 0 || subPoints.length > 0 || addingSub === point.id) && (
+                              {(onPoint.length > 0 || subPoints.length > 0 || showingAddSubPoint) && (
                                 <div className="mt-1.5 flex flex-col gap-1.5 pl-3">
                                   {onPoint.map((note) => card(note, 'plan', false))}
-                                  {subPoints.map(({ subPoint, notes: onSub }) => (
-                                    <DropZone key={subPoint.id} id={placeKey({ section, pointId: point.id, subPointId: subPoint.id })} ariaLabel={subPoint.text}
+                                  {subPoints.map(({ id: subPointId, subPoint, notes: onSub }) => {
+                                    const subPlace = placeKey({ section, pointId, subPointId });
+                                    return <DropZone key={subPointId} id={subPoint ? subPlace : `scratch-editor:${subPlace}`}
+                                      ariaLabel={subPoint?.text ?? previousPlace} disabled={!subPoint}
                                       className="flex flex-col gap-1.5 rounded-r-lg border-l-2 border-gray-200 py-1 pl-2.5 dark:border-gray-700" activeClass="border-violet-500 bg-violet-50 dark:bg-violet-950/30" dragActive={Boolean(dragging)}>
-                                      {isRenaming('subpoint', subPoint.id) ? titleEditor({ kind: 'subpoint', id: subPoint.id }, subPoint.text) : (
+                                      {subPoint && isRenaming('subpoint', subPointId) ? titleEditor({ kind: 'subpoint', id: subPointId }, subPoint.text) : (
                                         <div className={`flex items-center gap-1 ${hoverActions.row}`}>
                                           <span className="min-w-0 flex-1 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                                            {subPoint.text}{onSub.length > 0 && <span className="ml-1.5 font-normal text-gray-400">{t(NOTE_COUNT_KEY, { count: onSub.length })}</span>}
+                                            {subPoint?.text ?? previousPlace}{subPoint && onSub.length > 0 && <span className="ml-1.5 font-normal text-gray-400">{t(NOTE_COUNT_KEY, { count: onSub.length })}</span>}
                                           </span>
-                                          {!isReadOnly && (
+                                          {subPoint && !isReadOnly && (
                                             <div className={`flex shrink-0 items-center gap-1 transition-opacity duration-150 ${hoverActions.actions}`}>
-                                              <button type="button" onClick={() => setRenaming({ kind: 'subpoint', id: subPoint.id })}
+                                              <button type="button" onClick={() => setRenaming({ kind: 'subpoint', id: subPointId })}
                                                 aria-label={t('scratch.sort.renameSubPoint')} title={t('scratch.sort.renameSubPoint')}
                                                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-violet-700 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-violet-300">
                                                 <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
                                               </button>
-                                              <button type="button" onClick={() => { void removeSubPoint(subPoint.id, subPoint.text); }}
+                                              <button type="button" onClick={() => { void removeSubPoint(subPointId, subPoint.text); }}
                                                 aria-label={t('scratch.sort.removeSubPoint')} title={t('scratch.sort.removeSubPoint')}
                                                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-red-400">
                                                 <TrashIcon className="h-4 w-4" aria-hidden="true" />
@@ -737,15 +759,15 @@ export default function ScratchSortingBoard({
                                         </div>
                                       )}
                                       {onSub.map((note) => card(note, 'plan', false))}
-                                    </DropZone>
-                                  ))}
-                                  {addingSub === point.id && (
+                                    </DropZone>;
+                                  })}
+                                  {showingAddSubPoint && (
                                     <div className="flex gap-2">
-                                      <label className="sr-only" htmlFor={`scratch-new-sub-${point.id}`}>{t('scratch.sort.subPointTitle')}</label>
-                                      <input id={`scratch-new-sub-${point.id}`} type="text" value={subDraft} autoFocus onChange={(event) => setSubDraft(event.target.value)}
-                                        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSubPoint(point.id); } if (event.key === 'Escape') setAddingSub(null); }}
+                                      <label className="sr-only" htmlFor={`scratch-new-sub-${pointId}`}>{t('scratch.sort.subPointTitle')}</label>
+                                      <input id={`scratch-new-sub-${pointId}`} type="text" value={subDraft} autoFocus onChange={(event) => setSubDraft(event.target.value)}
+                                        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSubPoint(pointId); } if (event.key === 'Escape') setAddingSub(null); }}
                                         placeholder={t('scratch.sort.subPointTitle')} className={`${INPUT} h-11 md:h-9`} />
-                                      <button type="button" onClick={() => addSubPoint(point.id)} disabled={!subDraft.trim()} className={`${PRIMARY} h-11 md:h-9`}>{t('scratch.sort.add')}</button>
+                                      <button type="button" onClick={() => addSubPoint(pointId)} disabled={!subDraft.trim()} className={`${PRIMARY} h-11 md:h-9`}>{t('scratch.sort.add')}</button>
                                     </div>
                                   )}
                                 </div>

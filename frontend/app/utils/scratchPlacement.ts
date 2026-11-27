@@ -24,10 +24,18 @@ export interface ScratchPlace {
 
 export const POOL_PLACE: ScratchPlace = { section: null, pointId: null, subPointId: null };
 
+export interface ScratchEditLocation {
+  id: string;
+  place: ScratchPlace;
+  pointIndex: number;
+  subPointIndex: number;
+}
+
 export interface PointScratch {
-  point: OutlinePoint;
+  id: string;
+  point: OutlinePoint | null;
   notes: ScratchNote[];
-  subPoints: { subPoint: SubPoint; notes: ScratchNote[] }[];
+  subPoints: { id: string; subPoint: SubPoint | null; notes: ScratchNote[] }[];
 }
 
 export interface SectionScratch {
@@ -215,38 +223,52 @@ export function scratchAfterOutlineChange(notes: readonly ScratchNote[], before:
   return [...kept, ...moved].filter((note) => back.get(note.id) !== note.text.trim());
 }
 
+/** Retain only a previous editor location; a missing outline node has no live data. */
+function withPreviousNode<T extends { id: string }>(nodes: readonly T[], id?: string | null, index = 0) {
+  const result = nodes.map<{ id: string; node: T | null }>(node => ({ id: node.id, node }));
+  if (id && !result.some(entry => entry.id === id)) {
+    result.splice(Math.max(index, 0), 0, { id, node: null });
+  }
+  return result;
+}
+
 /**
  * Every note in its place, in the sermon's note order; points and sub-points in outline order. The old
  * one-line reminders come first in their node (`outlineNoteSketches`) unless `withOutlineNotes` is false.
+ * The scratch screen can retain the open editor's previous location until its text is saved or cancelled.
  */
 export function sortScratch(
   notes: readonly ScratchNote[],
   outline: SermonOutline | undefined,
   withOutlineNotes = true,
-  editPlace?: { id: string; place: ScratchPlace },
+  editPlace?: ScratchEditLocation,
 ): SortedScratch {
   const index = indexOutline(outline);
   const all = withOutlineNotes ? [...outlineNoteSketches(outline), ...notes] : notes;
-  const pinned = editPlace?.place;
-  const originalListExists = pinned && (!pinned.pointId || (
-    index.pointSection.get(pinned.pointId) === pinned.section
-    && (!pinned.subPointId || index.subPointParent.get(pinned.subPointId) === pinned.pointId)
-  ));
-  const placed = all.map((note) => ({
+  const previous = editPlace && all.some(note => note.id === editPlace.id) ? editPlace : undefined;
+  const placed = all.map(note => ({
     note,
-    place: originalListExists && pinned && note.id === editPlace?.id ? pinned : resolve(note, index),
+    place: previous && note.id === previous.id ? previous.place : resolve(note, index),
   }));
   const pool = placed.filter(({ place }) => !place.section).map(({ note }) => note);
   const sections = Object.fromEntries(SECTION_KEYS.map((section) => {
     const inSection = placed.filter(({ place }) => place.section === section);
-    const points = (outline?.[section] ?? []).map((point) => ({
-      point,
-      notes: inSection.filter(({ place }) => place.pointId === point.id && !place.subPointId).map(({ note }) => note),
-      subPoints: sortSubPointsByPosition(point.subPoints ?? []).map((subPoint) => ({
-        subPoint,
-        notes: inSection.filter(({ place }) => place.subPointId === subPoint.id).map(({ note }) => note),
-      })),
-    }));
+    const editedHere = previous?.place.section === section ? previous : undefined;
+    const points = withPreviousNode(outline?.[section] ?? [], editedHere?.place.pointId, editedHere?.pointIndex)
+      .map(({ id, node: point }) => {
+        const editedPoint = editedHere?.place.pointId === id ? editedHere : undefined;
+        const subPoints = withPreviousNode(sortSubPointsByPosition(point?.subPoints ?? []), editedPoint?.place.subPointId, editedPoint?.subPointIndex);
+        return {
+          id,
+          point,
+          notes: inSection.filter(({ place }) => place.pointId === id && !place.subPointId).map(({ note }) => note),
+          subPoints: subPoints.map(({ id: subId, node: subPoint }) => ({
+            id: subId,
+            subPoint,
+            notes: inSection.filter(({ place }) => place.pointId === id && place.subPointId === subId).map(({ note }) => note),
+          })),
+        };
+      });
     return [section, { loose: inSection.filter(({ place }) => !place.pointId).map(({ note }) => note), points }];
   })) as Record<SectionKey, SectionScratch>;
   return { pool, sections };
@@ -285,9 +307,9 @@ export function scratchByOutlineNode(notes: readonly ScratchNote[], outline: Ser
   const byNode = new Map<string, ScratchNote[]>();
   // The old one-line reminders are drawn by each node from its own live value, not from this map.
   const sorted = sortScratch(notes, outline, false);
-  SECTION_KEYS.forEach((section) => sorted.sections[section].points.forEach(({ point, notes: onPoint, subPoints }) => {
-    if (onPoint.length) byNode.set(point.id, onPoint);
-    subPoints.forEach(({ subPoint, notes: onSub }) => { if (onSub.length) byNode.set(subPoint.id, onSub); });
+  SECTION_KEYS.forEach((section) => sorted.sections[section].points.forEach(({ id, notes: onPoint, subPoints }) => {
+    if (onPoint.length) byNode.set(id, onPoint);
+    subPoints.forEach(({ id: subId, notes: onSub }) => { if (onSub.length) byNode.set(subId, onSub); });
   }));
   return byNode;
 }

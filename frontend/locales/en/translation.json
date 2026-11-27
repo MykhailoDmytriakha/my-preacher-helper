@@ -3411,6 +3411,7 @@
       "removePoint": "Remove point",
       "removePointTitle": "Remove the point “{{title}}”?",
       "removePointDescription": "Its scratch notes stay in this part, without a point.",
+      "previousPlace": "Previous place. Finish editing this scratch note.",
       "partWithoutPoint": "{{part}} — without a point",
       "hereNow": "here now",
       "loose": "In the part, without a point",

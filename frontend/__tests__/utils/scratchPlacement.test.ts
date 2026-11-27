@@ -54,7 +54,7 @@ describe('sortScratch', () => {
     expect(sorted.pool.map((n) => n.id)).toEqual(['pool-1', 'pool-2']);
     expect(sorted.sections.main.loose.map((n) => n.id)).toEqual(['loose']);
     expect(sorted.sections.main.points[0].notes.map((n) => n.id)).toEqual(['on-point']);
-    expect(sorted.sections.main.points[0].subPoints.map((s) => [s.subPoint.id, s.notes.map((n) => n.id)]))
+    expect(sorted.sections.main.points[0].subPoints.map((s) => [s.id, s.notes.map((n) => n.id)]))
       .toEqual([['s-early', []], ['s-late', ['on-late']]]);
     expect(sorted.sections.introduction.points[0].notes.map((n) => n.id)).toEqual(['intro']);
     expect(sorted.sections.conclusion).toEqual({ loose: [], points: [] });
