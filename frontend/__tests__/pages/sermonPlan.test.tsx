@@ -392,6 +392,16 @@ const renderWithQueryClient = (ui: React.ReactElement) => {
   return render(<QueryClientProvider client={queryClient}><DataEngineProvider>{ui}</DataEngineProvider></QueryClientProvider>);
 };
 
+async function findIntroRegenerate(openingText = 'Generated Intro Content') {
+  // The section can be visible while its saved text is still arriving.
+  const editor = within(await screen.findByTestId('plan-introduction-right-section'));
+  await editor.findByText(openingText);
+  const card = within(screen.getByTestId('plan-introduction-left-section'));
+  const generate = await card.findByTitle('Regenerate');
+  await waitFor(() => expect(generate).toBeEnabled());
+  return generate;
+}
+
 const storedPlanText = () => (harness.server.value?.planText ?? {}) as Record<string, string>;
 const storedThoughts = () => (harness.server.value?.thoughts ?? []) as Array<{ id: string; text: string; keyFragments?: string[] }>;
 
@@ -763,11 +773,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
   it('updates local plan state when generate request succeeds', async () => {
     renderWithQueryClient(<SermonPlanPage />);
-    await screen.findByTestId('plan-introduction-left-section');
-
-    const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
-    await waitFor(() => expect(generateButtons[0]).toBeEnabled());
-    fireEvent.click(generateButtons[0]);
+    fireEvent.click(await findIntroRegenerate());
 
     await waitFor(() => {
       expect(mockToast.success).toHaveBeenCalledWith('Content generated');
@@ -797,10 +803,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
     const view = renderWithQueryClient(<SermonPlanPage />);
     try {
-      await screen.findByTestId('plan-introduction-left-section');
-      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
-      await waitFor(() => expect(generate).toBeEnabled());
-      fireEvent.click(generate);
+      fireEvent.click(await findIntroRegenerate());
       await act(async () => { await started.promise; });
 
       expect(readDraft(key)?.value).toMatchObject({ kind: 'ready', content });
@@ -831,10 +834,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
     const view = renderWithQueryClient(<SermonPlanPage />);
     try {
-      await screen.findByTestId('plan-introduction-left-section');
-      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
-      await waitFor(() => expect(generate).toBeEnabled());
-      fireEvent.click(generate);
+      fireEvent.click(await findIntroRegenerate());
       await waitFor(() => expect(mockToast.info).toHaveBeenCalledWith('draftStorage.title'));
 
       expect(readDraft(resultKey)?.value).toMatchObject({ kind: 'ready', content });
@@ -859,10 +859,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
     const view = renderWithQueryClient(<SermonPlanPage />);
     try {
-      await screen.findByTestId('plan-introduction-left-section');
-      const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
-      await waitFor(() => expect(generate).toBeEnabled());
-      fireEvent.click(generate);
+      fireEvent.click(await findIntroRegenerate(earlier));
       await waitFor(() => expect(mockToast.info).toHaveBeenCalledWith('draftStorage.title'));
       expect(readDraft(resultKey)?.value).toMatchObject({ kind: 'ready', content });
 
@@ -902,12 +899,11 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       const view = renderWithQueryClient(<SermonPlanPage />);
       try {
         const inSibling = scenario === 'in a sibling while writing';
-        const target = await screen.findByTestId(inSibling ? 'plan-main-right-section' : 'plan-introduction-right-section');
+        const generate = await findIntroRegenerate(earlier);
+        const target = screen.getByTestId(inSibling ? 'plan-main-right-section' : 'plan-introduction-right-section');
         const nodeId = inSibling ? 'main-p1' : 'intro-p1';
         fireEvent.click(within(target).getByTitle('Edit Mode'));
         const editor = mountedEditor(target);
-        const generate = screen.getAllByTitle(/Generate|Regenerate/)[0];
-        await waitFor(() => expect(generate).toBeEnabled());
         fireEvent.click(generate);
         await act(async () => { await held.promise; });
         if (inSibling) {
@@ -1616,11 +1612,11 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockRealEditor = true;
     try {
       const view = renderWithQueryClient(<SermonPlanPage />);
-      await screen.findByTestId('plan-introduction-left-section');
+      const generate = await findIntroRegenerate();
       fireEvent.click(screen.getAllByTitle('Edit Mode')[0]);
       const editor = mountedEditor(view.container);
       const before = markdown(editor);
-      fireEvent.click(screen.getAllByTitle(/Generate|Regenerate/)[0]);
+      fireEvent.click(generate);
       await waitFor(() => expect(markdown(editor)).toBe('Mock Generated Content'));
       expect(mountedEditor(view.container)).toBe(editor);
       expect(undo(editor)).toBe(true);
