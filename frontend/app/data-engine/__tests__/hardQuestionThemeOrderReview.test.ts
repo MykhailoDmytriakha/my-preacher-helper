@@ -25,7 +25,7 @@ it('lets the person keep their placement and the saved words independently', () 
   expect(review.fields.map(({ path }) => path)).toEqual([['bases'], ['bases', 'id:a', 'text']]);
   expect(resolveHardQuestionThemeOrderReview(pending, review.identity, {
     [review.fields[0].id]: 'local', [review.fields[1].id]: 'remote',
-  })).toEqual({ ...initial, bases: [c, saved.bases[1], saved.bases[0]] });
+  }).value).toEqual({ ...initial, bases: [c, saved.bases[1], saved.bases[0]] });
 });
 
 it('lets the person keep their words and independently use the saved placement', () => {
@@ -33,7 +33,7 @@ it('lets the person keep their words and independently use the saved placement',
   const review = readHardQuestionThemeOrderReview(pending)!;
   expect(resolveHardQuestionThemeOrderReview(pending, review.identity, {
     [review.fields[0].id]: 'remote', [review.fields[1].id]: 'local',
-  })).toEqual({ ...initial, bases: [saved.bases[0], mine.bases[1], c] });
+  }).value).toEqual({ ...initial, bases: [saved.bases[0], mine.bases[1], c] });
 });
 
 it('requires all choices and a current review identity', () => {
@@ -58,12 +58,12 @@ it('chooses whether a disputed row stays independently of the surviving list ord
     remoteCandidate: snapshot(2, remote), conflicts: mergeDocumentFields(before, local, remote).conflicts };
   const review = readHardQuestionThemeOrderReview(pending)!;
   expect(review.fields.map(({ path }) => path)).toEqual([['bases'], ['bases', 'id:b']]);
-  const kept = resolveHardQuestionThemeOrderReview(pending, review.identity, {
+  const { value: kept } = resolveHardQuestionThemeOrderReview(pending, review.identity, {
     [review.fields[0].id]: 'local', [review.fields[1].id]: 'remote',
   });
   expect((kept.bases as typeof before.bases).filter(row => row.id !== 'b')).toEqual(local.bases);
   expect(kept.bases).toContainEqual(updated);
   expect(resolveHardQuestionThemeOrderReview(pending, review.identity, {
     [review.fields[0].id]: 'remote', [review.fields[1].id]: 'local',
-  }).bases).toEqual([c, a, d]);
+  }).value.bases).toEqual([c, a, d]);
 });

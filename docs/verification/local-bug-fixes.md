@@ -11083,3 +11083,13 @@ In Hard questions, open a theme and edit its title or opening words. Deleting th
 Both new regressions failed on `f349fa7ab`. The final 88 related tests, production-mode build with TypeScript, scoped ESLint without errors, and independent review passed. Hidden Chrome at 390 and 1280 px copied the exact words, kept them available after reload, and made no writes after the other client deleted the theme. Firestore recorded a deletion at revision 2. Screenshots and local emulator logs are in `artifacts/hard-question-gone-theme-20261127`.
 
 After an authorized rollout, repeat using a disposable theme in the same test account on two browsers. Keep editing open in one, delete in the other, and confirm that Copy and reload preserve the exact draft and the theme stays deleted.
+
+## BUG-20261127-hard-questions-fields-carry-no-action-order · Resolve theme order together with an independently edited opening
+
+On the Hard questions theme page, a disagreement about order used to hide the list comparison when a single waiting save also changed the theme title or opening words. The review now carries each proven text action with its original timing. An unresolved text difference gets its own choice, alongside the relevant order and row choices.
+
+If the chosen text becomes stale after confirmation, the app asks again about the changed text and keeps the prior list selections for the same replacement. A later saved edit in the same queue is preserved. The ordinary title and intro form continues to resolve its own saves.
+
+The final 615 related tests, TypeScript, changed-file ESLint without errors, local production build and independent review passed. Hidden Chrome showed five scenarios at 390 and 1280 px on isolated Auth and Firestore. The final saved snapshots survived reload. The test-only fixture submitted the compound operation and the actual theme screen handled it. Evidence is in `artifacts/hard-question-order-with-text-20261127`. The wider tracker entry remains open for element-level question lists and nested basis fields.
+
+After an authorized release, verify a disposable theme shows only unresolved fields and keeps the selected order through reconfirmation. Use the local replay to control when the different changes arrive.

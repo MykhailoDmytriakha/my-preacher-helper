@@ -1750,10 +1750,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
     ...(collection === 'hardQuestionThemes' && {
-      applyHardQuestionThemeOrderReview: (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices) => run(editor => {
-        if (!editor.applyHardQuestionThemeOrderReview) throw new Error('Theme comparison is unavailable');
-        return editor.applyHardQuestionThemeOrderReview(compared, identity, choices);
-      }),
+      applyHardQuestionThemeOrderReview: (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices) => {
+        const time = owner ? actionClock.capture(owner) ?? null : null;
+        return run(editor => {
+          if (!editor.applyHardQuestionThemeOrderReview) throw new Error('Theme comparison is unavailable');
+          return editor.applyHardQuestionThemeOrderReview(compared, identity, choices, time);
+        });
+      },
     }),
     applyAccountPreferenceReview: (compared: SessionCheckpoint, choices: AccountPreferenceResolution) => {
       cancelScheduledSave();

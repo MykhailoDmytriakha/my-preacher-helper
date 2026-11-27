@@ -163,13 +163,15 @@ function themeReviewWords(field: ThemeReviewItem['mine'], t: ReturnType<typeof u
 
 function themeReviewField(field: ThemeReviewItem, t: ReturnType<typeof useTranslation>['t']) {
   const [list, row, property] = field.path;
-  const label = !row ? t(list === 'bases' ? 'hardQuestions.theme.basisOrder' : 'hardQuestions.theme.groupOrder')
+  const textLabel = !row && themeFieldLabels[list];
+  const label = textLabel ? t(textLabel)
+    : !row ? t(list === 'bases' ? 'hardQuestions.theme.basisOrder' : 'hardQuestions.theme.groupOrder')
     : [field.rowTitle, t(!property ? 'hardQuestions.theme.rowContents'
       : property === 'scriptureRefs' ? 'hardQuestions.basis.places'
       : property === 'text' ? 'hardQuestions.basis.fieldText'
       : property === 'title' ? list === 'bases' ? 'hardQuestions.basis.fieldTitle' : 'hardQuestions.dialogs.groupTitle'
       : property === 'label' ? 'hardQuestions.theme.shortLabel' : 'hardQuestions.theme.extraField')].filter(Boolean).join(' · ');
-  const orderLabel = row ? undefined : themeOrderLabels(field);
+  const orderLabel = row || textLabel ? undefined : themeOrderLabels(field);
   const rowRemoved = Boolean(row && !property);
   return { id: field.id, label, mine: themeReviewWords(field.mine, t, orderLabel, rowRemoved),
     stored: themeReviewWords(field.theirs, t, orderLabel, rowRemoved) };

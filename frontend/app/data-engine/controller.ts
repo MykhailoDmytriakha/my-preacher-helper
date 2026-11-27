@@ -526,7 +526,8 @@ export class EditorController {
     });
   }
 
-  applyHardQuestionThemeOrderReview(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices): Promise<void> {
+  applyHardQuestionThemeOrderReview(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
+    choiceTime: ActionTime | null): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     const expected = this.captureRecoveryChoice();
     return this.enqueueChoice(async () => {
@@ -562,13 +563,13 @@ export class EditorController {
           || !equalValues(source, compared) || [...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
           throw Object.assign(new Error('The compared theme save changed'), { code: 'decision-changed' });
         }
-        const chosen = resolveHardQuestionThemeOrderReview(source, identity, choices);
+        const { value, reviewedText } = resolveHardQuestionThemeOrderReview(source, identity, choices);
         const session = DataSession.restore({ ...source, pending: {} });
         session.acceptRemote();
-        session.edit(chosen);
+        session.edit(value);
         const next = session.checkpoint();
-        const replacement = next.dirty ? commits.choiceReplacement(record.editorId, next, Object.keys(original).length ? {
-          action: { kind: 'document-metadata', time: null, hardQuestionFieldReview: { fields: [], original } },
+        const replacement = next.dirty ? commits.choiceReplacement(record.editorId, next, Object.keys(original).length || reviewedText.length ? {
+          action: { kind: 'document-metadata', time: choiceTime, hardQuestionFieldReview: { fields: reviewedText, original } },
         } : {}) : null;
         if (next.dirty && !replacement) throw Object.assign(new Error('The chosen theme could not be captured'), { code: 'decision-changed' });
         if (replacement) session.applyCommit(replacement);

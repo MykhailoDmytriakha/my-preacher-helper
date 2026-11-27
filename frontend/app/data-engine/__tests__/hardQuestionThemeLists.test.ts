@@ -261,6 +261,109 @@ it('keeps the later local edit queued behind an order comparison when applying t
   }
 });
 
+it.each([
+  ['older', -80, undefined, 'Computer opening words', false, false, false],
+  ['later', -10, undefined, 'Phone opening words', false, false, false],
+  ['ambiguous, choose local', null, 'local', 'Phone opening words', false, false, false],
+  ['ambiguous, choose stored', null, 'remote', 'Computer opening words', false, false, false],
+  ['later without a row dispute', -10, undefined, 'Phone opening words', true, false, false],
+  ['ambiguous without a row dispute', null, 'local', 'Phone opening words', true, false, false],
+  ['ambiguous after an undo', null, 'local', 'Phone opening words', false, true, false],
+  ['ambiguous after a stale choice', null, 'local', 'Phone opening words', false, false, 'retry'],
+  ['ambiguous after a stale choice and another Save', null, 'local', 'Phone opening words', false, false, 'with-later-save'],
+] as const)('applies the disputed list choices with %s opening words', async (scenario, offset, textChoice, finalIntro, onlyOrder, undo, retry) => {
+  const serverMs = 1_800_000_000_000;
+  const time = (ms: number) => ({ earliestMs: serverMs + ms, latestMs: serverMs + ms + 5 });
+  const originals = [...opening.bases, basisThree];
+  const initial = { ...opening, intro: 'Opening words', bases: originals };
+  const db = installWorldFirestore(() => serverMs);
+  db.documents.set(`${resource.collection}/${resource.id}`, { ...initial, _dataEngine: metadata });
+  const overwriteIntro = (operationId: string, before: string, after: string, revision: number, offsetMs: number) =>
+    processCommand(owner, { protocol: 1, owner, resource, operationId, dependsOn: [], generation: metadata.generation,
+      kind: 'update', changes: [{ path: ['intro'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      hardQuestionFieldActions: { intro: { observedRevision: revision, time: time(offsetMs) } } });
+  let intervened = false;
+  let saveLaterEdit: (() => Promise<void>) | undefined;
+  const h = documentEngineHarness({ ...snapshot, value: initial }, { apply: async command => {
+    if (retry && !intervened && command.kind === 'update' && command.hardQuestionFieldActions?.intro?.reviewed) {
+      intervened = true;
+      await saveLaterEdit?.();
+      await overwriteIntro('after-choice-new-intro', 'Computer opening words', 'Temporary words at the computer', 2, -18);
+      await overwriteIntro('after-choice-undo-intro', 'Temporary words at the computer', 'Computer opening words', 3, -9);
+    }
+    return processCommand(owner, command);
+  } });
+  const browser = h.createBrowser();
+  browser.engine.setOwner(owner);
+  browser.engine.setOnline(false);
+  try {
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    const title = 'A separate title saved while the earlier choice was sending';
+    if (retry === 'with-later-save') saveLaterEdit = async () => {
+      await editor.commit(current => ({ ...current!, title }), { kind: 'document-metadata', time: time(-2) });
+    };
+    await editor.commit(current => ({ ...current!, intro: 'Phone opening words',
+      bases: [basisThree, onlyOrder ? initialBasis : { ...initialBasis, text: 'Phone basis text' }, basisTwo] }),
+    { kind: 'document-metadata', time: offset === null ? null : time(offset) });
+    const computer = [basisTwo, { ...initialBasis, text: 'Computer basis text' }, basisThree];
+    expect(await processCommand(owner, { protocol: 1, owner, resource, operationId: 'computer-list-and-intro',
+      dependsOn: [], generation: metadata.generation, kind: 'update', changes: [
+        { path: ['bases'], before: { exists: true, value: originals }, after: { exists: true, value: computer } },
+        { path: ['intro'], before: { exists: true, value: initial.intro }, after: { exists: true, value: 'Computer opening words' } },
+      ], hardQuestionFieldActions: { intro: { observedRevision: 1, time: time(-40) } },
+    })).toMatchObject({ kind: 'acknowledged' });
+    if (undo) {
+      expect(await overwriteIntro('computer-undo-intro', 'Computer opening words', initial.intro, 2, -20))
+        .toMatchObject({ kind: 'acknowledged' });
+    }
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await settleEngine();
+    const compared = editor.getState().checkpoint;
+    expect(compared.conflicts.find(({ path }) => path[0] === 'intro')).toMatchObject({
+      path: ['intro'],
+      ...(offset !== null && { code: scenario === 'older' ? 'hard-question-field-settled' : 'hard-question-field-queued' }),
+    });
+    const review = readHardQuestionThemeOrderReview(compared);
+    expect(review?.fields.map(field => field.path)).toEqual(expect.arrayContaining([
+      ['bases'], ...(onlyOrder ? [] : [['bases', 'id:b1', 'text']]), ...(textChoice ? [['intro']] : []),
+    ]));
+    expect(review?.fields).toHaveLength(1 + Number(!onlyOrder) + Number(Boolean(textChoice)));
+    if (!review) throw new Error('Expected combined theme comparison');
+    jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+    await editor.applyHardQuestionThemeOrderReview!(compared, review.identity, {
+      '["bases"]': 'local', ...(!onlyOrder && { '["bases","id:b1","text"]': 'remote' }),
+      ...(textChoice && { '["intro"]': textChoice }),
+    }, time(-1));
+    await browser.engine.retry();
+    await settleEngine();
+    if (retry) {
+      expect((await readDocument(owner, resource)).value).toMatchObject({ intro: 'Computer opening words', bases: computer });
+      const updated = editor.getState().checkpoint;
+      expect(Object.keys(updated.pending)).toHaveLength(retry === 'with-later-save' ? 2 : 1);
+      expect(updated.conflicts).toMatchObject([{ path: ['intro'], code: 'hard-question-field-review-changed' }]);
+      const updatedReview = readHardQuestionThemeOrderReview(updated);
+      expect(updatedReview?.fields.map(field => field.path)).toEqual([['intro']]);
+      if (!updatedReview) throw new Error('Expected the new intro-only comparison');
+      await editor.applyHardQuestionThemeOrderReview!(updated, updatedReview.identity, { '["intro"]': 'local' }, time(-1));
+      await browser.engine.retry();
+      await settleEngine();
+    }
+    const result = await readDocument(owner, resource);
+    expect(result.metadata?.revision).toBe(retry ? 5 : undo ? 4 : 3);
+    expect(result.value).toMatchObject({ intro: finalIntro, bases: [basisThree, computer[1], basisTwo],
+      title: retry === 'with-later-save' ? title : initial.title });
+    const replacement = jest.mocked(h.transport.send).mock.calls.at(-1)?.[0];
+    if (replacement?.kind !== 'update') throw new Error('Expected a replacement update');
+    if (offset === -10) expect(replacement.hardQuestionFieldActions?.intro).toMatchObject({ time: time(-10), observedRevision: 1 });
+    if (textChoice === 'local') expect(replacement.hardQuestionFieldActions?.intro).toMatchObject({ reviewed: true, time: time(-1), observedRevision: retry ? 4 : undo ? 3 : 2 });
+    if (finalIntro === 'Computer opening words') expect(replacement.hardQuestionFieldActions?.intro).toBeUndefined();
+  } finally {
+    browser.dispose();
+    await settleEngine();
+  }
+});
+
 it('includes a later captured form save and keeps its newer unsent words separate', async () => {
   const originals = [...opening.bases, basisThree];
   const initial = { ...opening, bases: originals };

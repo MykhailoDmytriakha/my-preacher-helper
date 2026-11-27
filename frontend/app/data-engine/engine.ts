@@ -208,7 +208,8 @@ export interface ManagedEditor {
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
   applyAccountPreferenceReview(compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null): Promise<void>;
-  applyHardQuestionThemeOrderReview?(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices): Promise<void>;
+  applyHardQuestionThemeOrderReview?(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
+    choiceTime?: ActionTime | null): Promise<void>;
   acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   dispose(): void;
@@ -3156,7 +3157,8 @@ export class DataEngine {
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
       };
-      const applyHardQuestionThemeOrderReview = async (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices) => {
+      const applyHardQuestionThemeOrderReview = async (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
+        choiceTime: ActionTime | null = null) => {
         active();
         const comparison = readHardQuestionThemeOrderReview(compared);
         const stored = compared.remoteCandidate;
@@ -3173,7 +3175,7 @@ export class DataEngine {
           throw Object.assign(new Error('The shown theme comparison changed'), { code: 'decision-changed' });
         }
         const forms = this.manualFormsAffectedByChoice(entry, compared.pending);
-        await controller.applyHardQuestionThemeOrderReview(compared, identity, choices);
+        await controller.applyHardQuestionThemeOrderReview(compared, identity, choices, choiceTime);
         active();
         try {
           await this.continueManualFormsAfterChoice(entry, owner, generation, forms);
