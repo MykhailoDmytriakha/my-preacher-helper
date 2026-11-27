@@ -92,7 +92,14 @@ export function hasRowProofTarget(collection: string, key: string): boolean {
   return targetsFor(collection).some(target => target.draft === key);
 }
 
-export type UnreadableRowProof = { field: DraftKey | 'thoughtRemoval' | 'scratchRemoval'; rowId: string; birth: string; generation: string };
+export type UnreadableRowProof = {
+  field: DraftKey | 'thoughtRemoval' | 'scratchRemoval';
+  rowId: string;
+  birth: string;
+  generation: string;
+  returnedToOpening?: true;
+  verifiedRevision?: number;
+};
 
 /** A readable proof must still name this generation and match the exact words on the device. */
 export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'>, key: string,
@@ -127,25 +134,36 @@ export function validRecoveredRowProofs(checkpoint: Pick<SessionCheckpoint, 'con
 
 /**
  * The corrupt observation cannot establish identity or order. Use the exact rows whose values
- * the two readable copies show changing, in this collection's declared field only.
+ * the readable copies show changing. A later undo may match confirmed while differing from the
+ * last submitted value of the original row.
  */
 export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirmed' | 'draft'>, key: string,
-  readable: Record<string, unknown>): UnreadableRowProof[] {
+  readable: Record<string, unknown>, submitted?: DocumentData, damaged?: Record<string, unknown>): UnreadableRowProof[] {
   const { confirmed, draft } = checkpoint;
   const metadata = confirmed.metadata;
-  const target = targetsFor(confirmed.resource.collection).find(item => item.draft === key);
+  const collection = confirmed.resource.collection;
+  const target = targetsFor(collection).find(item => item.draft === key);
   if (!target || !draft || !confirmed.value || !metadata || metadata.deleted) return [];
+  // Group and council forms already review individual rows against a freshly read saved version.
+  const earlier = collection === 'groups' || collection === 'councils' ? submitted : undefined;
   const rowField = target.policy.target(target.field);
   const opening = existingRowFields(confirmed.value[rowField.field], rowField);
   const proposed = existingRowFields(draft[rowField.field], rowField);
   const oldBirths = existingRowFields(confirmed.value[rowField.field], target.policy.birth);
   const newBirths = existingRowFields(draft[rowField.field], target.policy.birth);
+  const queuedFields = existingRowFields(earlier?.[rowField.field], rowField);
+  const queuedBirths = existingRowFields(earlier?.[rowField.field], target.policy.birth);
   return [...proposed].flatMap(([rowId, after]) => {
     const before = opening.get(rowId), birth = newBirths.get(rowId);
     if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId) || Object.hasOwn(readable, rowId)
-      || before === undefined || after === undefined || equalValues(before, after)
-      || birth === undefined || oldBirths.get(rowId) !== birth) return [];
-    return [{ field: target.draft, rowId, birth, generation: metadata.generation }];
+      || before === undefined || after === undefined || birth === undefined || oldBirths.get(rowId) !== birth) return [];
+    const address = { field: target.draft, rowId, birth, generation: metadata.generation };
+    if (!equalValues(before, after)) return [address];
+    const queued = queuedFields.get(rowId);
+    const returnedToOpening = (!damaged || Object.hasOwn(damaged, rowId))
+      && queuedBirths.get(rowId) === birth && queued !== undefined && !equalValues(queued, after)
+      && equalValues(scopeAt(earlier?.[rowField.field], rowId, target), scopeAt(draft[rowField.field], rowId, target));
+    return returnedToOpening ? [{ ...address, returnedToOpening: true }] : [];
   });
 }
 

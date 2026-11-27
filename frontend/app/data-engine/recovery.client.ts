@@ -181,7 +181,7 @@ const recordSchema = z.object({
     unreadableRowProofs: z.array(z.object({ field: z.enum(['councilOutcomeDrafts', 'councilTopicTitleDrafts', 'councilTopicSummaryDrafts', 'councilTopicTextDrafts', 'groupBlockTitleDrafts',
       'groupStepTitleDrafts', 'groupBlockContentDrafts', 'groupStepNotesDrafts', 'groupBlockStatusDrafts', 'groupStepDurationDrafts', 'thoughtLockDrafts', 'thoughtPlacementDrafts', 'thoughtTextDrafts', 'outlineTitleDrafts', 'preachDateNotesDrafts',
       'preachDateAudienceDrafts', 'preachDateCityDrafts', 'preachDateChurchDrafts', 'thoughtRemoval', 'scratchRemoval']),
-      rowId: z.string().min(1), birth: z.string(), generation: id })).optional(),
+      rowId: z.string().min(1), birth: z.string(), generation: id, returnedToOpening: z.literal(true).optional(), verifiedRevision: observedRevision.optional() })).optional(),
     exegeticalPointDrafts: z.array(exegeticalPointDraft).max(32).optional(),
     guardedScratchText: sermonNoteOpening.optional(),
     planCellDrafts: z.record(id, z.object({ opening: z.string(), text: z.string(), unverified: z.literal(true).optional() }).and(z.union([
@@ -538,10 +538,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
       const parsed = checkOpening ? snapshotSchema.safeParse(confirmed) : undefined;
       const editGeneration = checkpoint.editGeneration;
       const pending = checkOpening && isFields(checkpoint.pending) ? Object.values(checkpoint.pending).filter(isFields) : [];
-      const latestPending = checkPointProofs ? pending.reduce<Fields | undefined>((latest, intent) =>
-        typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined)
-        : undefined;
+      const latestPending = pending.reduce<Fields | undefined>((latest, intent) =>
+        typeof intent.generation === 'number' && (!latest || Number(latest.generation) < intent.generation) ? intent : latest, undefined);
       const pendingOpening = isFields(latestPending?.value) ? latestPending.value as DocumentData : undefined;
+      const submittedBeforeDraft = typeof editGeneration === 'number' && typeof latestPending?.generation === 'number'
+        && latestPending.generation < editGeneration ? pendingOpening : undefined;
       const pendingRowOpenings = rowKeys.length ? pending.flatMap(intent => typeof editGeneration === 'number'
         && typeof intent.generation === 'number' && intent.generation < editGeneration && isFields(intent.value)
         ? [intent.value as DocumentData] : []) : [];
@@ -553,7 +554,8 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         if (!lost && !dropped.includes(key)) return [];
         dropped.push(key);
         checkpoint = { ...checkpoint, [key]: Object.keys(readable).length ? readable : undefined };
-        return unreadableRowProofs(source, key, readable);
+        const damaged = isFields(original[key]) ? original[key] : undefined;
+        return unreadableRowProofs(source, key, readable, submittedBeforeDraft, damaged);
       }) : [];
       if (rows.length) {
         const existing = Array.isArray(checkpoint.unreadableRowProofs) ? checkpoint.unreadableRowProofs : [];
@@ -561,9 +563,7 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
         checkpoint = { ...checkpoint, unreadableRowProofs: [...distinct.values()] };
       }
       if (checkPointProofs && parsed?.success) {
-        const authoredAfterSave = typeof checkpoint.editGeneration === 'number' && typeof latestPending?.generation === 'number'
-          && latestPending.generation < checkpoint.editGeneration;
-        checkpoint = recoverPointEvidence(checkpoint, rawExegeticalProofs, parsed.data, authoredAfterSave ? pendingOpening : undefined, dropped);
+        checkpoint = recoverPointEvidence(checkpoint, rawExegeticalProofs, parsed.data, submittedBeforeDraft, dropped);
       }
     }
     if (checkpoint !== value.checkpoint) checked = { ...value, checkpoint };

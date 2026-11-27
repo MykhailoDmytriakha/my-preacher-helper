@@ -11117,3 +11117,17 @@ The full Jest run on `89e2b50ce` reported 45 failing tests across two suites. Th
 The same two suites and three focused rank suites passed with 100 tests. Strict TypeScript passed. Scoped ESLint had zero errors and 13 existing warnings in the React engine module. A clean build powered three headless Chrome runs on loopback emulators. Reordering questions on desktop and at 390 px, and reordering themes on desktop, each produced one acknowledged command and retained the order after reload. Visual checks confirmed both lists. Next.js used 370–383 MiB during the runs, and all seven ports were released.
 
 Local case evidence: `artifacts/hard-questions-gates-20261127/`.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover a row title returned before a previous Save finished
+
+In Groups → a group → Group Flow, a person submitted a block rename and then restored the old title before the request finished. With an unreadable revision on the later edit, the old build sent an ordinary replacement before asking. The real browser received a server conflict only after that send. The regression also exercised the normal queue and demonstrated a missing guard after the first acknowledgement.
+
+For groups and councils, the checkpoint codec now uses the latest earlier submitted value as a second opening for the same row, field and birth. A recovered undo that matches the cached opening stays private until its value has been checked against the same revision from the server. Resolving one field waits for any other recovered field that still needs the saved version. A matching server answer retires just that row and releases any other question. Removing the original row locally retires the title review so removal can proceed through its existing command. Sermon-specific thought and date paths keep their existing specialized review.
+
+Seven proof cases are green. They cover acknowledgement, cancellation and reopen, a matching server answer, local row removal, another damaged row, an unchanged server answer with a separate damaged neighbor, and a newer cache preceding an older acknowledgement. The six focused suites passed 589 tests, TypeScript and the isolated production build passed, and scoped lint had zero errors. Independent review found the mixed and cache intake paths reflected in the final tests.
+
+Headless Chrome used local Auth and Firestore at 390 and 1280 px. Selecting private words sent one exact block-field update. Selecting saved words sent zero requests. A matching first block left the independent damaged neighboring title visible as the only question. All three outcomes were checked after reload, including leader notes and flow order. Observed Next.js memory reached 391 MiB. All seven ports were released.
+
+After an authorized release, use a disposable group and a dedicated profile. Save a block rename, then restore the prior name before that request finishes. Reopen a fixture with the second revision unreadable and a different saved name. Confirm both versions are offered before any save, choose them in separate test copies, and verify the neighboring block and meeting flow after reload.
+
+Local case evidence: `artifacts/group-row-return-20261127/`.

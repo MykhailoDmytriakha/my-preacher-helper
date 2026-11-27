@@ -660,6 +660,119 @@ describe.each(ROWS)('a row draft keeps its proof across device storage: %s', (ke
   });
 });
 
+it.each([
+  'acknowledged',
+  'cancelled',
+  'already saved',
+  'row removed locally',
+  'another damaged title',
+  'matching server with a damaged neighbor',
+  'new cache before acknowledgement',
+] as const)(
+  'recovers a damaged block title undo (%s)', async (earlier) => {
+    const world = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'groups', id: 'block-title-undo' };
+    const row = { id: 'block', title: 'Opening title', type: 'custom', content: 'Keep content', status: 'filled', createdAt: 'born', updatedAt: 'born' };
+    const neighbor = { ...row, id: 'neighbor', title: 'Saved neighbor', createdAt: 'neighbor-born' };
+    const value = { userId: 'owner', title: 'Group', status: 'draft', templates: [row, neighbor], flow: [], meetingDates: [] };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const snapshot: ResourceSnapshot = { resource, value, metadata };
+    world.documents.set('groups/' + resource.id, { ...value, _dataEngine: metadata });
+    const session = new DataSession(snapshot);
+    const submitted = { ...value, templates: [{ ...row, title: 'Submitted title' }, neighbor] };
+    const stamp = { field: 'group-block-title' as const, rowId: row.id, time: null };
+    session.edit(submitted, undefined, stamp);
+    const captured = session.checkpoint();
+    session.registerCommit('earlier', captured.editGeneration, submitted, undefined,
+      { groupBlockTitleActions: [captured.groupBlockTitleDrafts!.block.action] });
+    session.edit(value, undefined, stamp);
+    const damagedNeighbor = earlier === 'another damaged title' || earlier === 'matching server with a damaged neighbor';
+    const draft = damagedNeighbor
+      ? { ...value, templates: [row, { ...neighbor, title: 'Private neighbor' }] } : value;
+    if (draft !== value) session.edit(draft, undefined, { ...stamp, rowId: neighbor.id });
+    const checkpoint = session.checkpoint();
+    expect(checkpoint.groupBlockTitleDrafts?.block.action).toMatchObject({ before: 'Submitted title', after: 'Opening title' });
+    for (const proof of Object.values(checkpoint.groupBlockTitleDrafts!)) loose(proof.action).observedRevision = 'unreadable';
+    const request: CommitRequest = { id: 'earlier', owner: 'owner', editorId: 'old-editor', editGeneration: captured.editGeneration,
+      baseline: snapshot, working: snapshot, value: submitted, intended: submitted, predecessor: null, revision: 0, initialized: false,
+      command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+    const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+    const recovered = DataSession.restore((await throughDeviceStorage(record, request)).checkpoint);
+    takeDroppedProof('groupBlockTitleDrafts');
+    expect(recovered.checkpoint().conflicts).toEqual([]);
+
+    const setTitle = async (operationId: string, from: typeof value, to: typeof value, revision: number) => {
+      const result = await processCommand('owner', {
+        protocol: 1, operationId, owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+        changes: diffFields(from, to), groupBlockTitleActions: [{ rowId: row.id, rowCreatedAt: row.createdAt,
+          before: from.templates[0].title, after: to.templates[0].title, time: null, observedRevision: revision }],
+      });
+      if (result.kind !== 'acknowledged') throw new Error('The group was not saved');
+      return result;
+    };
+    let restored = recovered;
+    let actual = submitted;
+    if (earlier === 'acknowledged' || earlier === 'new cache before acknowledgement') {
+      const acknowledged = await setTitle('earlier', value, submitted, 1);
+      if (earlier === 'new cache before acknowledgement') {
+        actual = { ...value, templates: [{ ...row, title: 'Newer server title' }, neighbor] };
+        const newer = await setTitle('other-device', submitted, actual, 2);
+        restored.observe(newer.snapshot, { source: 'cache' });
+        restored.accept(acknowledged);
+        expect(readGroupFlowFieldConflict(restored.checkpoint())?.stored).toBe(submitted.templates[0].title);
+        restored.observe(newer.snapshot, { source: 'server' });
+      } else restored.accept(acknowledged);
+    } else {
+      restored.applyCommit({ ...request, state: 'cancelled' });
+      restored.observe(snapshot, { source: 'cache' });
+      expect(restored.checkpoint().conflicts).toEqual([]);
+      const afterCancel = await throughDeviceStorage({ ...record, checkpoint: restored.checkpoint() });
+      restored = DataSession.restore(afterCancel.checkpoint);
+      if (earlier === 'row removed locally') {
+        restored.edit({ ...value, templates: [neighbor] });
+        restored.observe(snapshot, { source: 'server' });
+        expect(restored.checkpoint().unreadableRowProofs).toBeUndefined();
+        const outcome = await save(restored.checkpoint());
+        expect(outcome.kind).toBe('acknowledged');
+        expect((await readDocument('owner', resource)).value?.templates).toEqual([neighbor]);
+        return;
+      }
+      if (earlier === 'matching server with a damaged neighbor') {
+        restored.observe(snapshot, { source: 'server' });
+        expect(restored.checkpoint().unreadableRowProofs?.map(proof => proof.rowId)).toEqual([neighbor.id]);
+        expect(readGroupFlowFieldConflict(restored.checkpoint())).toMatchObject({
+          rowId: neighbor.id, mine: 'Private neighbor', stored: 'Saved neighbor',
+        });
+        expect(await save(restored.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
+        return;
+      }
+      if (earlier === 'already saved') {
+        restored.observe(snapshot, { source: 'server' });
+        expect(restored.checkpoint()).toMatchObject({ dirty: false, conflicts: [] });
+        expect(restored.checkpoint().unreadableRowProofs).toBeUndefined();
+        expect((await save(restored.checkpoint())).commands).toEqual([]);
+        return;
+      }
+      actual = { ...value, templates: [{ ...row, title: 'Newer server title' }, neighbor] };
+      const newer = await setTitle('other-device', value, actual, 1);
+      restored.observe(newer.snapshot, { source: 'cache' });
+      expect(readGroupFlowFieldConflict(restored.checkpoint())).toBeUndefined();
+      const cached = await throughDeviceStorage({ ...record, checkpoint: restored.checkpoint() });
+      restored = DataSession.restore(cached.checkpoint);
+      expect(readGroupFlowFieldConflict(restored.checkpoint())).toBeUndefined();
+      restored.observe(newer.snapshot, { source: 'server' });
+    }
+
+    expect(readGroupFlowFieldConflict(restored.checkpoint())).toMatchObject({
+      rowId: row.id, mine: value.templates[0].title, stored: actual.templates[0].title,
+    });
+    expect(restored.checkpoint().draft?.templates).toEqual(draft.templates);
+    if (earlier === 'another damaged title') expect(restored.checkpoint().conflicts).toHaveLength(2);
+    expect(await save(restored.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
+    expect((await readDocument('owner', resource)).value?.templates).toEqual(actual.templates);
+  });
+
+
 it('keeps the valid opening of a group block when a different block proof is unreadable', async () => {
   const resource = { collection: 'groups', id: 'group-partially-readable-blocks' };
   const first = { id: 'a', title: 'First opening name', createdAt: 'first-row' };

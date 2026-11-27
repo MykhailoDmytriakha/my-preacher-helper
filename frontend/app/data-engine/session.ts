@@ -181,9 +181,19 @@ export class DataSession {
   static restore(checkpoint: SessionCheckpoint): DataSession {
     const session = new DataSession(checkpoint.confirmed);
     session.state = { ...copy(checkpoint), conflicts: copy(checkpoint.conflicts ?? []) };
+    if (session.state.remoteCandidate && session.waitsForReturnedRowVersion(session.state.remoteCandidate)) {
+      session.state.remoteCandidate = null;
+      session.state.conflicts = [];
+    }
     session.replaceDraft(checkpoint.draft);
     session.refreshUnreadableComparisons();
     return session;
+  }
+
+  private waitsForReturnedRowVersion(snapshot: ResourceSnapshot): boolean {
+    return Boolean(this.state.unreadableRowProofs?.some(address => address.returnedToOpening
+      && (address.verifiedRevision === undefined || address.verifiedRevision !== snapshot.metadata?.revision
+        || address.generation !== snapshot.metadata.generation)));
   }
 
   private refreshUnreadableComparisons(): void {
@@ -218,6 +228,17 @@ export class DataSession {
     const isPrivateProof = (conflict: ConflictDetail) => conflict.code === UNREADABLE_SCALAR_PROOF || conflict.code === UNREADABLE_ROW_PROOF || conflict.code === UNREADABLE_EXEGETICAL_PROOF || conflict.code === UNREADABLE_STEP_POSITION
       || conflict.code === UNREADABLE_OUTLINE_POINT_POSITION;
     const hadQuestion = this.state.conflicts.some(isPrivateProof);
+    const rowChoices = (unreadableRowProofs ?? []).map(address => ({ address, choice: unreadableRowChoice(this.state, address) }));
+    const currentRows = rowChoices.filter(({ address, choice }) => !address.returnedToOpening || choice);
+    if (currentRows.length !== rowChoices.length) {
+      this.state.unreadableRowProofs = currentRows.length ? currentRows.map(({ address }) => address) : undefined;
+    }
+    if (this.waitsForReturnedRowVersion(target)) {
+      // Choosing any private field can finish the review. Wait until every answer has a saved version.
+      this.state.conflicts = this.state.conflicts.filter(conflict => !isPrivateProof(conflict));
+      this.state.dirty = true;
+      return;
+    }
     const autosaveScalars = new Set<string>(autosaveFieldTargets(confirmed.resource.collection).map(target => target.field));
     const agreeing = new Set(target.value ? matchingHeldAutosaveFields(this.state, target.value) : []);
     const scalars = (unreadableScalarProof ?? []).flatMap(field => {
@@ -226,8 +247,7 @@ export class DataSession {
       const base = readField(confirmed.value ?? {}, path), mine = readField(draft ?? {}, path), theirs = readField(target.value ?? {}, path);
       return equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_SCALAR_PROOF }];
     });
-    const rows = (unreadableRowProofs ?? []).flatMap(address => {
-      const choice = unreadableRowChoice(this.state, address);
+    const rows = currentRows.flatMap(({ choice }) => {
       if (!choice) return [];
       const { path, base, mine, theirs, available } = choice;
       return available && equalValues(mine, base) && equalValues(mine, theirs) ? [] : [{ path, base, mine, theirs, code: UNREADABLE_ROW_PROOF }];
@@ -270,7 +290,11 @@ export class DataSession {
       // Agreement with a checkpoint on disk cannot retire a recovered action.
       const stillHeld = this.state.dirty ? unreadableScalarProof?.filter(field => autosaveScalars.has(field)) : undefined;
       this.state.unreadableScalarProof = stillHeld?.length ? stillHeld : undefined;
-      if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state) && !unresolvedScratchRemoval(this.state)) delete this.state.unreadableRowProofs;
+      if (!unresolvedThoughtRemoval(this.state) && !unresolvedThoughtLock(this.state) && !unresolvedScratchRemoval(this.state)) {
+        const waitingForServer = this.state.unreadableRowProofs?.filter(address => address.returnedToOpening);
+        this.state.unreadableRowProofs = waitingForServer?.length ? waitingForServer : undefined;
+        if (waitingForServer?.length) this.state.dirty = true;
+      }
       delete this.state.unreadableExegeticalProofs;
     }
   }
@@ -576,7 +600,7 @@ export class DataSession {
         else this.state.conflicts = [];
       }
       if (held) {
-        this.settleHeldScalarsAfterDelivery(this.state.remoteCandidate ?? this.state.confirmed);
+        this.settleHeldFieldsAfterDelivery(this.state.remoteCandidate ?? this.state.confirmed);
         this.state.dirty ||= hasHeldAutosaveFields(this.state);
       }
       this.refreshUnreadableComparisons();
@@ -783,7 +807,9 @@ export class DataSession {
     const candidate = this.state.remoteCandidate;
     const hasPrivateReturn = this.state.studyNoteContentReturn || this.state.studyNoteContentDraft?.noteReturn;
     const candidateIsAuthoritative = equalValues(candidate, result.snapshot) || equalValues(candidate, this.latestStudyNoteServer);
+    const awaitsRowReturn = candidate && this.waitsForReturnedRowVersion(candidate);
     if (candidate?.metadata && accepted.metadata
+      && (!awaitsRowReturn || candidateIsAuthoritative || equalValues(candidate, this.observedWhileAwaitingHeldFields))
       && candidate.metadata.generation === accepted.metadata.generation
       && candidate.metadata.revision >= accepted.metadata.revision
       && (!hasPrivateReturn || candidateIsAuthoritative || candidate.value?.content === this.state.confirmed.value?.content)) accepted = candidate;
@@ -846,7 +872,7 @@ export class DataSession {
     const placementConflicts = preserveHardQuestionPlacementComparison(this.state, rebased.conflicts, accepted);
     this.state.conflicts = copy(preservePlanCellComparisons(this.state, placementConflicts));
     this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
-    this.settleHeldScalarsAfterDelivery(accepted, result.snapshot);
+    this.settleHeldFieldsAfterDelivery(accepted, result.snapshot);
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasHeldAutosaveFields(this.state)
       || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
     this.refreshUnreadableComparisons();
@@ -874,25 +900,47 @@ export class DataSession {
     return true;
   }
 
-  private settleHeldScalarsAfterDelivery(projected: ResourceSnapshot, receipt?: ResourceSnapshot): void {
+  private settleHeldFieldsAfterDelivery(projected: ResourceSnapshot, receipt?: ResourceSnapshot): void {
     if (Object.keys(this.state.pending).length) return;
     const observed = this.observedWhileAwaitingHeldFields;
     this.observedWhileAwaitingHeldFields = undefined;
     // A projected copy can settle the field only if this device heard that exact version from the server.
-    if (equalValues(projected, receipt) || equalValues(projected, observed)) this.retireMatchingHeldScalars(projected);
+    if (equalValues(projected, receipt) || equalValues(projected, observed)) this.reconcileHeldFieldsWithServer(projected);
   }
 
-  private retireMatchingHeldScalars(snapshot: ResourceSnapshot): boolean {
-    const { confirmed, remoteCandidate, pending, unreadableScalarProof } = this.state;
+  private reconcileHeldFieldsWithServer(snapshot: ResourceSnapshot): boolean {
+    const { confirmed, remoteCandidate, pending, unreadableScalarProof, unreadableRowProofs } = this.state;
     const latest = remoteCandidate?.metadata ?? confirmed.metadata;
-    if (!unreadableScalarProof?.length || Object.keys(pending).length || !snapshot.value
-      || !latest || snapshot.metadata?.generation !== latest.generation || snapshot.metadata.revision < latest.revision) return false;
-    const agreed = matchingHeldAutosaveFields(this.state, snapshot.value);
-    if (!agreed.length) return false;
-    const remaining = unreadableScalarProof.filter(field => !agreed.includes(field));
-    this.state.unreadableScalarProof = remaining.length ? remaining : undefined;
-    this.state.conflicts = this.state.conflicts.filter(conflict => conflict.code !== UNREADABLE_SCALAR_PROOF
-      || !agreed.some(field => equalValues(conflict.path, unreadableScalarPath(confirmed.resource.collection, field))));
+    const verified = snapshot.metadata;
+    const reviewReturns = unreadableRowProofs?.some(address => address.returnedToOpening);
+    if ((!unreadableScalarProof?.length && !reviewReturns) || Object.keys(pending).length || !snapshot.value
+      || !latest || verified?.generation !== latest.generation || verified.revision < latest.revision || verified.deleted) return false;
+    const scalars = unreadableScalarProof?.length ? matchingHeldAutosaveFields(this.state, snapshot.value) : [];
+    const settled = scalars.map(field => unreadableScalarPath(confirmed.resource.collection, field));
+    let updatedRows = false;
+    if (reviewReturns) {
+      const stored = { ...this.state, remoteCandidate: snapshot };
+      const remaining = unreadableRowProofs!.flatMap(address => {
+        if (!address.returnedToOpening || address.generation !== verified.generation) return [address];
+        const choice = unreadableRowChoice(stored, address);
+        if (choice?.available && equalValues(choice.mine, choice.theirs)) {
+          settled.push(choice.path);
+          updatedRows = true;
+          return [];
+        }
+        if (!choice || address.verifiedRevision === verified.revision) return [address];
+        updatedRows = true;
+        return [{ ...address, verifiedRevision: verified.revision }];
+      });
+      this.state.unreadableRowProofs = remaining.length ? remaining : undefined;
+    }
+    if (!scalars.length && !updatedRows) return false;
+    if (scalars.length) {
+      const remaining = unreadableScalarProof?.filter(field => !scalars.includes(field));
+      this.state.unreadableScalarProof = remaining?.length ? remaining : undefined;
+    }
+    this.state.conflicts = this.state.conflicts.filter(conflict => (conflict.code !== UNREADABLE_SCALAR_PROOF && conflict.code !== UNREADABLE_ROW_PROOF)
+      || !settled.some(path => equalValues(conflict.path, path)));
     return true;
   }
 
@@ -916,6 +964,8 @@ export class DataSession {
 
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
+    // An unverified candidate can acquire an ordinary conflict during ACK rebasing.
+    if (source === 'cache' && this.waitsForReturnedRowVersion(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
     if (source === 'cache' && snapshot.value === null && !snapshot.metadata?.deleted) return;
     const hasPrivateReturn = this.state.studyNoteContentReturn || this.state.studyNoteContentDraft?.noteReturn;
@@ -930,13 +980,17 @@ export class DataSession {
         if (this.activateStudyNoteReturn(snapshot) && !equalValues(this.state.remoteCandidate, previousServer)) this.state.remoteCandidate = null;
       }
     }
-    if (source === 'server' && hasHeldAutosaveFields(this.state) && Object.keys(this.state.pending).length
+    const waitingForServer = hasHeldAutosaveFields(this.state) || this.state.unreadableRowProofs?.some(address => address.returnedToOpening);
+    if (source === 'server' && waitingForServer && Object.keys(this.state.pending).length
       && canReplaceSnapshot(this.observedWhileAwaitingHeldFields, snapshot)) {
       this.observedWhileAwaitingHeldFields = copy(snapshot);
     }
-    const retiredScalars = source === 'server' && this.retireMatchingHeldScalars(snapshot);
+    const reconciledFields = source === 'server' && this.reconcileHeldFieldsWithServer(snapshot);
     if (equalValues(snapshot, this.state.confirmed)) {
-      if (retiredScalars && !this.state.conflicts.length && !hasUnreadableDraftProof(this.state)
+      if (reconciledFields && hasUnreadableDraftProof(this.state)) {
+        this.refreshUnreadableComparisons();
+      }
+      if (reconciledFields && !this.state.conflicts.length && !hasUnreadableDraftProof(this.state)
         && equalValues(this.state.draft, snapshot.value) && !hasUncapturedAutosaveField(this.state) && !hasUncapturedAutosaveRowField(this.state)
         && !this.state.groupFlowStepPlacementRetry && !this.state.councilTopicPlacementRetry) {
         this.state.dirty = false;
