@@ -13,6 +13,7 @@ import { ServiceOrderStepHistory } from '@/components/care/ServiceOrderStepHisto
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
+import { ReorderArrows } from '@/components/ui/ReorderArrows';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -34,7 +35,7 @@ import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
+import { ServiceOrderFailure } from '../ReorderArrows';
 
 
 import type { ServiceOrderInput } from '@/data-engine/react.client';

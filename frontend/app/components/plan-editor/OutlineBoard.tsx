@@ -17,6 +17,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
+import planActions from '@/components/ui/HoverActions.module.css';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import {
@@ -37,7 +38,6 @@ import { DraggableCard, DropZone } from './BoardDragPrimitives';
 import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';
 import { indexScratchNotes } from './outlineBoardNotes';
 import { useNewOutlineTitleDraft, useOutlineTitleDraft, type OutlineCreation } from './OutlineTitleDrafts';
-import planActions from './PlanRowActions.module.css';
 import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
 import { useOutlineBoardDrag } from './useOutlineBoardDrag';
 
@@ -648,7 +648,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           <ScriptureText text={sp.text} />
         </span>
         {!isReadOnly && (
-          <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/subpoint:opacity-100">
+          // Hidden until the row is pointed at with a mouse (the owner's rule, `HoverActions.module.css`), not dimmed to
+          // 40 %; a narrow screen keeps them in sight, as the points' own controls do.
+          <div className={`flex w-10 flex-shrink-0 items-center justify-end gap-0.5 max-lg:opacity-100 max-lg:pointer-events-auto ${planActions.actions}`}>
             <button type="button"
               onClick={() => startEditingSubPoint(sp)}
               className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
@@ -709,7 +711,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                           * For a note in the air the WHOLE row is the target.
                           */}
                         <div
-                          className={`group/subpoint rounded-lg border px-2 py-1.5 transition-colors ${
+                          className={`group/subpoint ${planActions.row} rounded-lg border px-2 py-1.5 transition-colors ${
                             isDragging
                               ? 'border-blue-400/50 bg-white shadow-lg ring-1 ring-blue-400/50 opacity-60 dark:bg-slate-800'
                               : isNoteTarget(noteSubContainerId(sp.id))

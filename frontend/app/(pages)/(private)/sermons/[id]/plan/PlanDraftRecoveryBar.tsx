@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import Select from '@/components/ui/Select';
 import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { readPlanText } from "@/utils/planText";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
@@ -122,10 +123,10 @@ export function PlanDraftRecoveryBar({
       </div>
       {selectSource && <label className="mt-3 block">
         <span>{t("dataSync.recoveryLabel")}</span>
-        <select className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-2 py-1 dark:bg-gray-900"
+        <Select size="sm" accent="amber" wrapperClassName="mt-1"
           value={selectSource.id} disabled={restoring} onChange={event => selectSource.choose(event.target.value)}>
           {selectSource.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-        </select>
+        </Select>
       </label>}
       <ul className="mt-3 space-y-3 border-t border-amber-200 pt-3 dark:border-amber-500/30">
         {cells.map((cell) => (
@@ -133,14 +134,16 @@ export function PlanDraftRecoveryBar({
             <p className="font-medium text-gray-900 dark:text-gray-100">{cell.name}</p>
             {cell.choices && onChoose && <label className="block">
               <span>{t("unsavedDraft.chooseCopy")}</span>
-              <select
-                className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-2 py-1 dark:bg-gray-900"
+              <Select
+                size="sm"
+                accent="amber"
+                wrapperClassName="mt-1"
                 value={cell.selectedKey ?? ""}
                 disabled={restoring}
                 onChange={event => onChoose(cell.id, event.target.value)}
               >
                 {cell.choices.map((copy, index) => <option key={copy.key} value={copy.key}>{index + 1}. {copy.text.slice(0, 100) || emptyText}</option>)}
-              </select>
+              </Select>
             </label>}
 
             <p className="text-xs text-amber-900/80 dark:text-amber-200/70">{t("plan.draftRecoveryFromDraft")}</p>

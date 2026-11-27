@@ -19,6 +19,7 @@ import { useMemo } from 'react';
 
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
+import { useHardQuestions } from '@/hooks/useHardQuestions';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useAuth } from '@/providers/AuthProvider';
 import { listReadState } from '@/utils/listReadState';
@@ -113,7 +114,7 @@ const CARDS: CareCard[] = [
     sections: [
       { key: 'prayers', icon: FireIcon, href: '/prayers', countLabelKey: 'care.activePrayers' },
       { key: 'promises', icon: FlagIcon },
-      { key: 'questions', icon: QuestionMarkCircleIcon },
+      { key: 'questions', icon: QuestionMarkCircleIcon, href: '/care/questions', countLabelKey: 'hardQuestions.cardCount' },
       { key: 'beforeGod', icon: HeartIcon },
     ],
   },
@@ -143,13 +144,16 @@ export default function CarePage() {
   const councilSource = useCouncilsRead();
   const { councils } = councilSource;
   const councilsRead = listReadState(councilSource);
+  // What waits for an answer: the one number of the hard questions worth seeing before opening them.
+  const hardQuestions = useHardQuestions();
 
   const counts = useMemo<Partial<Record<SectionKey, number>>>(
     () => ({
       prayers: prayersRead === 'ready' ? (prayerRequests ?? []).filter((prayer) => prayer.status === 'active').length : undefined,
       council: councilsRead === 'ready' ? councils.filter((council) => council.status === 'preparing').length : undefined,
+      questions: hardQuestions.complete && hardQuestions.library.waiting.length ? hardQuestions.library.waiting.length : undefined,
     }),
-    [councils, prayerRequests, prayersRead, councilsRead]
+    [councils, prayerRequests, prayersRead, councilsRead, hardQuestions.complete, hardQuestions.library.waiting.length]
   );
 
   return (

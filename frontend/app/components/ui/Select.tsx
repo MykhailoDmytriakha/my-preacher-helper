@@ -22,6 +22,8 @@ export interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectE
   accent?: SelectAccent;
   /** Classes for the wrapper, not the control — width lives here (`sm:w-52`, `flex-1`). */
   wrapperClassName?: string;
+  /** The control itself (a function component takes `ref` as a prop): to give it focus back. */
+  ref?: React.Ref<HTMLSelectElement>;
 }
 
 /**

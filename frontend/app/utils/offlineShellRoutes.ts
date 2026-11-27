@@ -21,6 +21,11 @@ const ROUTES = {
   order: /^\/care\/orders\/[^\/]+$/,
   words: /^\/care\/word$/,
   word: /^\/care\/word\/[^\/]+$/,
+  // The hard questions: the section, a theme, a basis of a theme, a question under its theme (or `none`).
+  hardQuestions: /^\/care\/questions$/,
+  hardQuestionTheme: /^\/care\/questions\/[^\/]+$/,
+  hardQuestionBasis: /^\/care\/questions\/[^\/]+\/basis\/[^\/]+$/,
+  hardQuestion: /^\/care\/questions\/[^\/]+\/[^\/]+$/,
   groupConduct: /^\/groups\/[^\/]+\/conduct$/,
   prayer: /^\/prayers\/[^\/]+$/,
   sermon: /^\/sermons\/[^\/]+$/,

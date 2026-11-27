@@ -46,6 +46,15 @@ const mockDetail = (label: string, segmentIndex = 2) => () => {
 jest.mock('@/(pages)/(private)/care/council/[id]/page', () => mockDetail('Council detail probe'));
 jest.mock('@/(pages)/(private)/care/council/[id]/conduct/page', () => mockDetail('Council conduct probe'));
 jest.mock('@/(pages)/(private)/care/orders/[id]/page', () => mockDetail('Order detail probe'));
+// The hard questions read their address segments the way the real pages do (`useRouteSegment`).
+const mockSegments = (label: string, segments: [string, number][]) => () => {
+  const { useRouteSegment } = jest.requireActual('@/components/hardQuestions/useEngineForm');
+  return <p>{label}:{segments.map(([name, index]) => useRouteSegment(name, index)).join('/')}</p>;
+};
+jest.mock('@/(pages)/(private)/care/questions/page', () => () => <p>Hard questions probe</p>);
+jest.mock('@/(pages)/(private)/care/questions/[themeId]/page', () => mockSegments('Theme probe', [['themeId', 2]]));
+jest.mock('@/(pages)/(private)/care/questions/[themeId]/[questionId]/page', () => mockSegments('Question probe', [['themeId', 2], ['questionId', 3]]));
+jest.mock('@/(pages)/(private)/care/questions/[themeId]/basis/[basisId]/page', () => mockSegments('Basis probe', [['themeId', 2], ['basisId', 4]]));
 
 jest.mock('@/(pages)/(private)/settings/layout', () => ({ children }: { children: import('react').ReactNode }) => <section aria-label="Settings frame probe">{children}</section>);
 jest.mock('@/(pages)/(private)/settings/page', () => () => <p>Settings redirect probe</p>);
@@ -72,6 +81,11 @@ describe('offline shell', () => {
     ['/care/council/local-council', 'Council detail probe:local-council'],
     ['/care/council/local-council/conduct', 'Council conduct probe:local-council'],
     ['/care/orders/local-order', 'Order detail probe:local-order'],
+    ['/care/questions', 'Hard questions probe'],
+    ['/care/questions/local-theme', 'Theme probe:local-theme'],
+    ['/care/questions/local-theme/local-question', 'Question probe:local-theme/local-question'],
+    ['/care/questions/none/local-question', 'Question probe:none/local-question'],
+    ['/care/questions/local-theme/basis/local-basis', 'Basis probe:local-theme/local-basis'],
   ])('opens the cached care screen at %s when the router has no params', async (path, expected) => {
     window.history.replaceState(null, '', path);
     jest.mocked(createBrowserDataEngine).mockImplementation(membershipEngineHarness([]).createBrowser);

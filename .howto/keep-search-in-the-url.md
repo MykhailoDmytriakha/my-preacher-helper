@@ -1,4 +1,4 @@
-when: search query URL · nuqs · delayed router.replace · search resets tab · search cancels navigation · поиск сбрасывает вкладку · поиск отменяет переход
+when: search query URL · nuqs · delayed router.replace · search resets tab · search cancels navigation · clear search then router.push lands on the list · поиск сбрасывает вкладку · поиск отменяет переход · после очистки поиска переход вернулся на список
 
 # Keep search in the URL without starting a page navigation
 
@@ -9,3 +9,5 @@ Keep the input immediate and defer expensive list work through the existing page
 Explicit browser Back/Forward is a new user choice even while the search field is focused. The shared hook adopts the string query from that popstate without writing it back. Ordinary late query snapshots still respect the focused local mirror so typing and Escape cannot revive old letters; Nuqs remains the owner of URL writes and navigation queues. `BUG-20261020-offline-sermon-scroll-landing` tracks the observed offline viewport offset. A visible DOM heading is not proof that the heading intersects the viewport; measure the rectangle and inspect the original frame. Keep fixes in the shared owner of each mechanism.
 
 On the sermon list, the collapsible search is open while the toolbar holds focus or a nonblank query filters results. Derive expansion from both values on every render so an in-place Back/Forward restores the field as well as the filter. Clearing with the button returns focus to the input before the button disappears.
+
+Do not clear the search right before leaving the page. `search.setValue('')` asks Nuqs to write the list's own address, and that queued write lands after `router.push` and takes the person back to the list: on 2026-11-25 «Записать и ответить» on `/care/questions` created the question and returned to the list instead of opening it. Clear the search only when the person stays on the list (`care/questions/page.tsx`, «отвечу потом»); a page left behind needs no clearing.

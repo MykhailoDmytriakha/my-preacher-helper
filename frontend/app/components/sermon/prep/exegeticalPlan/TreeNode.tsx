@@ -4,7 +4,7 @@ import { X, CornerDownRight, ArrowDown, ChevronLeft, ChevronRight } from 'lucide
 import React, { useEffect, useRef } from 'react';
 
 import '@locales/i18n';
-import planActions from '@/components/plan-editor/PlanRowActions.module.css';
+import planActions from '@/components/ui/HoverActions.module.css';
 import { useBufferedText } from '@/components/ui/useBufferedText';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';

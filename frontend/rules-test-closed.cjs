@@ -19,7 +19,7 @@ async function check(name, promise) {
 (async () => {
   // Collections served and closed through the engine (activation.ts, Vercel
   // DATA_ENGINE_CLOSED_COLLECTIONS). The shipped rules are tested as they ship: the list must be exactly these.
-  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users', 'occasionPlaces'];
+  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users', 'occasionPlaces', 'hardQuestionThemes', 'hardQuestions'];
   const closedRules = fs.readFileSync('firestore.rules', 'utf8');
   const lists = [...closedRules.matchAll(/return name in \[([^\]]*)\];/g)];
   if (lists.length !== 1) throw new Error('closedToBrowserWrites list not found exactly once in firestore.rules');
@@ -63,6 +63,9 @@ async function check(name, promise) {
   await check('another user cannot read bibleMarks', assertFails(getDoc(doc(b, 'bibleMarks', 'legacy'))));
   // The pastor's own places in a topic of the word for the occasion are his alone too.
   await check('another user cannot read occasionPlaces', assertFails(getDoc(doc(b, 'occasionPlaces', 'legacy'))));
+  // Hard questions are the pastor's own as well.
+  await check('another user cannot read hardQuestionThemes', assertFails(getDoc(doc(b, 'hardQuestionThemes', 'legacy'))));
+  await check('another user cannot read hardQuestions', assertFails(getDoc(doc(b, 'hardQuestions', 'legacy'))));
   await testEnv.cleanup();
   console.log(`\nRESULT (closed): ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);

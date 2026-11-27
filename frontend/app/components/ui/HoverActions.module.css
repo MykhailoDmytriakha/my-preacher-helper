@@ -1,0 +1,17 @@
+/* AN ITEM'S OWN EDIT AND DELETE SHOW WHILE THE POINTER IS OVER IT. The same pencil and trash on every
+ * row, card or group header crowd the screen (the owner, 2026-11-26: «только при наведении … а то тут так
+ * сильно засоряется UI»), so with a mouse they wait, invisible, until the item is pointed at or keyboard
+ * focus enters them. A touch screen has nothing to point with, so there they stay in sight.
+ *
+ * Use: `row` on the item whose hover reveals, `actions` on the wrapper of its buttons. For a section of
+ * a page the item is the whole section — its heading and all below it: a theme's group shows its edit,
+ * delete and «+» while the pointer is anywhere over the group (the owner, 2026-11-26: «эти кнопки
+ * появляются при наведении на секцию»). A hidden destructive action must not receive pointer input. Zero specificity (`:where`), so a
+ * screen may keep a narrow width's controls in sight with an ordinary utility (`max-lg:opacity-100`).
+ * Page-level actions of the open page (its own «Изменить», «Удалить») are not an item's and stay. */
+@media (hover: hover) and (pointer: fine) {
+  :where(.row:not(:hover) .actions:not(:focus-within)) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

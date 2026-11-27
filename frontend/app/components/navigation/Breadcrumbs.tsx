@@ -381,6 +381,21 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   }, [pathname]);
   const councilTitle = useShellTitle('councils', councilId);
 
+  // The hard questions (`/care/questions/<theme>[/<question> | /basis/<basis>]`): each screen publishes
+  // the title of what it shows; the trail reads them and keeps generic words until they arrive.
+  const hardQuestionIds = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] !== 'care' || segments[1] !== 'questions') return { theme: null, question: null, basis: null };
+    const decode = (segment: string) => { try { return decodeURIComponent(segment); } catch { return segment; } };
+    const theme = segments[2] && segments[2] !== 'none' ? decode(segments[2]) : null;
+    const basis = segments[3] === 'basis' && segments[4] ? decode(segments[4]) : null;
+    const question = segments[3] && segments[3] !== 'basis' ? decode(segments[3]) : null;
+    return { theme, question, basis };
+  }, [pathname]);
+  const hardQuestionThemeTitle = useShellTitle('hardQuestionThemes', hardQuestionIds.theme);
+  const hardQuestionTitle = useShellTitle('hardQuestions', hardQuestionIds.question);
+  const hardQuestionBasisTitle = useShellTitle('hardQuestionBases', hardQuestionIds.basis);
+
   const occasionTitle = useMemo(() => {
     const segments = pathname.split('/').filter(Boolean);
     const id = segments[0] === 'care' && segments[1] === 'word' ? segments[2] : undefined;
@@ -445,6 +460,23 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
         label: t('navigation.sermons', { defaultValue: 'Sermons' }),
         href: ROUTES.DASHBOARD
       });
+    }
+
+    if (firstSegment === 'care' && segments[1] === 'questions') {
+      const last = segments.length - 1;
+      const sectionHref = '/care/questions';
+      crumbs.push(buildCrumb(t('care.sections.questions.title', { defaultValue: 'Hard questions' }), last === 1, sectionHref, sectionHref));
+      if (segments[2]) {
+        const noTheme = segments[2] === 'none';
+        const themeHref = noTheme ? sectionHref : `${sectionHref}/${segments[2]}`;
+        const themeLabel = noTheme
+          ? t('hardQuestions.withoutTheme', { defaultValue: 'Without a theme' })
+          : hardQuestionThemeTitle ?? t('hardQuestions.crumbs.theme', { defaultValue: 'Theme' });
+        crumbs.push(buildCrumb(themeLabel, last === 2, themeHref, themeHref));
+      }
+      if (hardQuestionIds.basis) crumbs.push(buildCrumb(hardQuestionBasisTitle ?? t('hardQuestions.crumbs.basis', { defaultValue: 'Basis' }), true, pathname));
+      else if (hardQuestionIds.question) crumbs.push(buildCrumb(hardQuestionTitle ?? t('hardQuestions.crumbs.question', { defaultValue: 'Question' }), true, pathname));
+      return crumbs;
     }
 
     let currentPath = '';
@@ -523,7 +555,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, groupTitle, groupId, prayer, serviceOrder, councilTitle, occasionTitle, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, groupTitle, groupId, prayer, serviceOrder, councilTitle, occasionTitle, hardQuestionIds, hardQuestionThemeTitle, hardQuestionTitle, hardQuestionBasisTitle, shouldHide, t]);
 
   if (shouldHide) {
     return null;

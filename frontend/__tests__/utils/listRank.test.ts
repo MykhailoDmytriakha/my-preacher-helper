@@ -6,7 +6,7 @@ import {
   rankForMove,
   renumber,
   sortByRank,
-} from '@/utils/serviceOrderRank';
+} from '@/utils/listRank';
 
 /**
  * The ordering of the pastor's rites is his decision, and it has to survive two phones that

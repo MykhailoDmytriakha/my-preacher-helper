@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react';
 
+import Select from '@/components/ui/Select';
 import { useTranslation } from '@locales/useTranslation';
 
 import { RetainedNoteDraft } from './RetainedNoteDraft';
@@ -34,9 +35,9 @@ export function NoteDraftRecovery({ draft, copies, selectedKey, onSelect, onRest
     </div>
     {copies.length > 1 && <label htmlFor={selectId} className="block space-y-1 text-amber-900 dark:text-amber-200">
       <span>{t('unsavedDraft.chooseCopy')}</span>
-      <select id={selectId} value={selectedKey} onChange={event => onSelect(event.target.value)} className="block w-full min-w-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-gray-900 dark:border-amber-500/40 dark:bg-gray-900 dark:text-gray-100">
+      <Select id={selectId} value={selectedKey} onChange={event => onSelect(event.target.value)} accent="amber" wrapperClassName="w-full min-w-0">
         {copies.map(copy => <option key={copy.key} value={copy.key}>{copy.value.title.trim() || copy.value.content.replace(/\s+/g, ' ').trim().slice(0, 100) || t('studiesWorkspace.untitled')}</option>)}
-      </select>
+      </Select>
     </label>}
     {readOnly ? <RetainedNoteDraft draft={draft} /> : <DraftPreview key={selectedKey} draft={draft} />}
   </section>;

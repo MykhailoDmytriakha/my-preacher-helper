@@ -1,5 +1,5 @@
 import { newClientId } from '@/utils/clientId';
-import { RANK_STEP } from '@/utils/serviceOrderRank';
+import { RANK_STEP } from '@/utils/listRank';
 
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 

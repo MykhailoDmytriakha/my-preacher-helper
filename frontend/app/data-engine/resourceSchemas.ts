@@ -86,6 +86,9 @@ const councilTopic = object({
   resolution: z.enum(['postponed', 'dropped']).optional(), acceptedOptionId: id.optional(), decision: text.optional(),
   changes: z.array(object({ at: text, from: text, to: text })).optional(), carriedToCouncilId: id.optional(),
 });
+// A hard-question theme's groups and bases (`HardQuestionTheme` in models.ts): children merged by id.
+const hardQuestionGroup = object({ id, title: text });
+const hardQuestionBasis = object({ id, title: text, label: text.optional(), text: text.optional(), scriptureRefs: strings.optional() });
 const orderStep = object({ id, title: text, body: text.optional(), scriptureRefs: strings.optional(), flagged: boolean.optional() });
 const preference = object({ providerId: z.enum(providerIds), modelId: id });
 // The reader's settings in the account (`ReadingSettings`): each part whole, every field optional.
@@ -133,6 +136,8 @@ const shapes: Record<string, z.ZodRawShape> = {
   bibleMarks: { ...owner, ...timestamps, bible: id, book: id, verses: z.record(text, object({ m: markRuns.optional(), p: markRuns.optional() })) },
   tags: { ...owner, name: id, color: text, required: boolean, createdAt: text.optional(), updatedAt: text.optional() },
   occasionPlaces: { ...owner, ...timestamps, occasionId: id, ref: placeRef },
+  hardQuestionThemes: { ...owner, ...timestamps, title: id, intro: text.optional(), rank: number, groups: children(hardQuestionGroup).optional(), bases: children(hardQuestionBasis).optional() },
+  hardQuestions: { ...owner, ...timestamps, title: id, themeId: text.optional(), groupId: text.optional(), rank: number, alternates: strings.optional(), short: text.optional(), detail: text.optional(), differ: text.optional(), scriptureRefs: strings.optional(), basisIds: strings.optional() },
   users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), reading: reading.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
 };
 
