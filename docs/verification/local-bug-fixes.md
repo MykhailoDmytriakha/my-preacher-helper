@@ -11187,3 +11187,17 @@ The five focused suites passed 109 tests. TypeScript and the isolated production
 After an authorized release, use a disposable theme in the test account. Edit two bases with distinct actions and reorder the theme. Reload and verify the same selected order and both edited contents. The isolated queue replay reproduces delivery rejection, a return made from the other device during the choice, and the exact clocks on the replacement. It uses the real theme screen and a fixture-only way of staging the initial sequence.
 
 Local case evidence: `artifacts/hard-question-compound-basis-20261127/`.
+
+## BUG-20261125-bulk-create-contends-on-collection-head · Keep lists readable while one command times out
+
+The report came from Hard questions during a burst of creates. In the baseline `be375bed3`, a queued command held past its five-second deadline returned HTTP 503 with a 30-second retry window. The unrelated collection head answered 503 in 7 ms, and the list displayed the read failure while the store could still serve the existing entries.
+
+A queued Data Engine command still answers within five seconds and remains eligible for its existing idempotent delivery retry. Its timeout alone leaves independent reads available. An active pause is reported with its remaining time. An explicit resource-exhausted error starts the established pause, including when the SDK delivers it after the command's response. Ordinary read and legacy route handling kept their existing checks.
+
+Four focused suites passed 102 tests. The unit regressions covered a successful late write, a genuine quota refusal, its delayed arrival and an existing pause. TypeScript and the isolated production build passed. Scoped ESLint reported zero errors, and independent source review covered the late response.
+
+Headless Chrome used the real list and HTTP routes against isolated Auth and Firestore. A fixture-only delay held one command. The list stayed readable, showed the late row, and repeating the same operation returned the original single revision. A separate synthetic quota response left the warm list visible with its real read failure. A bounded burst of 47 genuine local writes returned 47 command timeouts while the reads still returned 200 and the list showed no warning. The later collection changes read returned 503 with a 30-second retry window and the list reported the true read failure. A fixture log identified a read deadline. Completion of the whole burst was unverified and is recorded in the separate local read issue. Peak sampled Next.js memory was 398 MiB. All seven loopback ports were released.
+
+After an authorized release, use one test tab and a disposable test record. Confirm the list remains usable during an ordinary save and still shows the completed record after reload. The isolated replay exercises deterministic slow and quota paths without spending the shared production quota.
+
+Local case evidence: `artifacts/collection-write-timeouts-20261127/`.

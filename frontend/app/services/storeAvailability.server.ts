@@ -13,10 +13,10 @@ import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
  * screen held six functions every 7.6 s and spent most of the month's free function time in a day.
  *
  * So the routes the screen calls by itself (the engine's reads and commands, entitlement, settings, the
- * owner list, referral stats) wait for the store only a few seconds counted from the request's arrival,
- * and once the store failed that way — silent past the deadline, or "Quota exceeded" — this server
- * instance answers reads "unavailable" at once for PAUSE_MS without asking it again. A write is always
- * tried: refused untried, a language chosen on a screen with no journal would be lost (Codex review).
+ * owner list, referral stats) wait for the store only a few seconds counted from the request's arrival.
+ * A store timeout or an explicit quota error normally pauses reads for PAUSE_MS. A queued Data Engine
+ * command can hit its own deadline while transactions contend on one document and reads can still succeed.
+ * A write is always tried: otherwise a language choice with no journal would be lost (Codex review).
  * A 503 is an answer: the browser stays online and its own backoff spaces the next attempts.
  *
  * The work is not cancelled (`withinDeadline`): a late write may still land. A command is idempotent by
@@ -46,6 +46,11 @@ export class StoreUnavailableError extends Error {
 let pausedUntil = 0;
 
 const unavailable = () => new StoreUnavailableError(Math.max(1, Math.ceil((pausedUntil - Date.now()) / 1000)));
+const quotaExceeded = (error: unknown) => (error as { code?: unknown } | null)?.code === RESOURCE_EXHAUSTED;
+
+function pauseReads(): void {
+  pausedUntil = Date.now() + PAUSE_MS;
+}
 
 /**
  * `startedAt` is the `performance.now()` the route read when the request arrived: verifying the caller
@@ -53,15 +58,28 @@ const unavailable = () => new StoreUnavailableError(Math.max(1, Math.ceil((pause
  */
 export async function withStore<T>(
   work: () => Promise<T>,
-  { write = false, startedAt = performance.now(), workload = 'interactive' }: { write?: boolean; startedAt?: number; workload?: 'interactive' | 'administrative' } = {}
+  { write = false, startedAt = performance.now(), workload = 'interactive' }: {
+    write?: boolean; startedAt?: number; workload?: 'interactive' | 'administrative' | 'queued-command';
+  } = {}
 ): Promise<T> {
   const administrative = workload === 'administrative';
-  if (!write && Date.now() < pausedUntil) throw unavailable();
+  const queuedCommand = workload === 'queued-command';
+  const writing = write || queuedCommand;
+  if (!writing && Date.now() < pausedUntil) throw unavailable();
   let asked = false;
   let silent: Error | undefined;
-  const ask = () => { asked = true; return work(); };
+  const ask = () => {
+    asked = true;
+    const pending = work();
+    if (!queuedCommand) return pending;
+    return pending.catch(error => {
+      // The route may have answered before Firestore reports the actual quota failure.
+      if (silent && quotaExceeded(error)) pauseReads();
+      throw error;
+    });
+  };
   try {
-    return await withinDeadline(ask, startedAt + (administrative ? ADMINISTRATIVE_DEADLINE_MS : write ? WRITE_DEADLINE_MS : READ_DEADLINE_MS),
+    return await withinDeadline(ask, startedAt + (administrative ? ADMINISTRATIVE_DEADLINE_MS : writing ? WRITE_DEADLINE_MS : READ_DEADLINE_MS),
       () => (silent = administrative ? new RouteDeadlineError('waiting for administrative store work') : new Error('Store silent')));
   } catch (error) {
     // A manual scan's own wall says nothing about the health of unrelated reads.
@@ -69,8 +87,10 @@ export async function withStore<T>(
     // The request ran out of time before reaching the store. A Retry-After would
     // tell the browser there is a store outage, so return only the route refusal.
     if (error === silent && !asked) throw new StoreUnavailableError();
-    if (error !== silent && (error as { code?: unknown } | null)?.code !== RESOURCE_EXHAUSTED) throw error;
-    pausedUntil = Date.now() + PAUSE_MS;
+    // A queued command can still commit after its deadline. This refusal belongs to that command.
+    if (error === silent && queuedCommand) throw Date.now() < pausedUntil ? unavailable() : new StoreUnavailableError();
+    if (error !== silent && !quotaExceeded(error)) throw error;
+    pauseReads();
     throw unavailable();
   }
 }

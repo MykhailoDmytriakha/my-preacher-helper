@@ -45,6 +45,53 @@ describe('waiting for the store in a route the app calls by itself', () => {
     expect(stalled.error).toBeInstanceOf(StoreUnavailableError);
   });
 
+  it('keeps unrelated reads available while a timed-out write finishes', async () => {
+    const committed = jest.fn();
+    const slow = withStore(async () => { await after(5_600, undefined)(); committed(); return 'saved'; }, { workload: 'queued-command' });
+    const outcome = await settleWithin(slow, 20_000);
+    expect(outcome).toMatchObject({ at: 5_000, error: expect.any(StoreUnavailableError) });
+    expect(storeRetryHeaders(outcome.error)).toEqual({});
+    expect(committed).not.toHaveBeenCalled();
+
+    const list = jest.fn(async () => ['Question already available']);
+    expect((await settleWithin(withStore(list), 500)).value).toEqual(['Question already available']);
+    expect(list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(600);
+    expect(committed).toHaveBeenCalledTimes(1);
+  });
+
+  it('still pauses reads when a write receives the explicit quota error', async () => {
+    const exhausted = await settleWithin(withStore(quotaExceeded, { workload: 'queued-command' }), 20_000);
+    expect(storeRetryHeaders(exhausted.error)).toEqual({ 'Retry-After': '30' });
+    const read = jest.fn(async () => 'read');
+    expect((await settleWithin(withStore(read), 500)).error).toBeInstanceOf(StoreUnavailableError);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('pauses reads when the SDK reports quota after the queued command has timed out', async () => {
+    const queued = withStore(async () => { await after(5_600, undefined)(); return quotaExceeded(); }, { workload: 'queued-command' });
+    const timedOut = await settleWithin(queued, 20_000);
+    expect(timedOut).toMatchObject({ at: 5_000, error: expect.any(StoreUnavailableError) });
+    expect(storeRetryHeaders(timedOut.error)).toEqual({});
+    expect((await settleWithin(withStore(async () => 'still available'), 500)).value).toBe('still available');
+
+    await jest.advanceTimersByTimeAsync(600);
+    const read = jest.fn(async () => 'read');
+    const paused = await settleWithin(withStore(read), 500);
+    expect(paused.at).toBe(0);
+    expect(storeRetryHeaders(paused.error)).toEqual({ 'Retry-After': '30' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('does not extend a proven read pause when a separate write times out', async () => {
+    await settleWithin(withStore(quotaExceeded), 20_000);
+    await jest.advanceTimersByTimeAsync(23_000);
+    const write = await settleWithin(withStore(never, { workload: 'queued-command' }), 20_000);
+    expect(storeRetryHeaders(write.error)).toEqual({ 'Retry-After': '2' });
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect((await settleWithin(withStore(async () => 'read again'), 500)).value).toBe('read again');
+  });
+
   it('lets an ordinary answer through untouched, even a slow one under the deadline', async () => {
     expect((await settleWithin(withStore(after(2_000, { id: 'sermon-1' })), 20_000)).value).toEqual({ id: 'sermon-1' });
   });

@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
     assertDataEngineEnabled();
     const body = await readCommandBody(request);
     assertDataEngineEnabled(commandCollection(body));
-    const result = await withStore(() => processCommand(owner, body), { write: true, startedAt });
+    const result = await withStore(() => processCommand(owner, body), { workload: 'queued-command', startedAt });
     // Old clients only project the link. The note effect still commits, enters the feed and
     // stays in the canonical receipt for clients that support caching both documents.
     const legacyRevoke = (body as { relation?: unknown } | null)?.relation === 'share-link-revoke'
