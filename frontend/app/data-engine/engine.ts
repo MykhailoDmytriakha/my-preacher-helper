@@ -77,7 +77,7 @@ import { changedPreparationChecks } from './sermonPreparationCheckRecovery';
 import { exactAmendedScratchAppend } from './sermonScratchFrame';
 import { pendingScratchRemoval, recoveredScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { changedSermonTextFields, readSermonTextDraftComparison } from './sermonTextRecovery';
-import { canSaveReviewedThoughtLocks, recoveredThoughtLock, reviewUnavailableThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
+import { recoveredThoughtLock, reviewUnavailableThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { recoveredThoughtPlacement, reviewUnavailableThoughtPlacements, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { pendingThoughtRemoval, recoveredThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { ServiceOrderAutosave, type ServiceOrderInputFilter } from './serviceOrderAutosave';
@@ -89,7 +89,7 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { redeliveryDelay } from './unanswered';
-import { hasUnreadablePreparationCheck, hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
+import { canSaveReviewedThoughtRows, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
 
 
 import type { ActionTime } from './actionClock';
@@ -3839,7 +3839,7 @@ export class DataEngine {
         const resolved = controller.getState().checkpoint;
         const pointMove = hasPrivateSermonPointMove(checkpoint);
         const pointWordsCanSave = pointMove && !resolved.conflicts.length && !hasUnreadableDraftProof(resolved);
-        if ((!pointMove || pointWordsCanSave) && (pointWordsCanSave || canSaveReviewedThoughtLocks(resolved) || preference || meeting || finalPrivateFieldChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((!pointMove || pointWordsCanSave) && (pointWordsCanSave || canSaveReviewedThoughtRows(resolved) || preference || meeting || finalPrivateFieldChoice || (groupText && !checkpoint.groupTextReview) || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || readOutlineParentComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty && !resolved.groupTextReview) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
@@ -3855,7 +3855,7 @@ export class DataEngine {
           this.assertCurrent(owner, generation);
         } else if ((resolved.guardedScratchText && resolved.dirty && !guardedScratchTextReview(resolved)
           && (checkpoint.guardedScratchText || readPlacedSketchComparison(checkpoint)))
-          || affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtPlacement(checkpoint) && resolved.thoughtPlacementDrafts) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || canSaveReviewedThoughtLocks(resolved) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+          || affected.length || meeting || (finalPrivateFieldChoice && resolved.dirty) || (readOutlineParentComparison(checkpoint) && resolved.dirty) || (groupText && resolved.dirty && !resolved.groupTextReview && !checkpoint.groupTextReview) || (preference && resolved.accountPreferenceRetry) || (hasUnreadableSermonText(checkpoint) && resolved.sermonTextRetry) || (hasUnreadableSermonChurch(checkpoint) && resolved.sermonChurchRecovery) || (hasUnreadablePreparationCheck(checkpoint) && resolved.preparationCheckRetry) || (unresolvedThoughtRemoval(checkpoint) && resolved.dirty) || canSaveReviewedThoughtRows(resolved) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }

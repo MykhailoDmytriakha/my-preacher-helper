@@ -14,6 +14,7 @@ import { hasUnseenRowText, matchesRowDetailBirth, sameRowText } from './rowDetai
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
 import { matchesThoughtLockDraft } from './sermonThoughtLockRecovery';
+import { matchesThoughtPlacementDraft } from './sermonThoughtPlacementRecovery';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 import { THOUGHT_TEXT_POLICY } from './thoughtTextAction';
@@ -146,7 +147,9 @@ export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirm
   const target = targetsFor(collection).find(item => item.draft === key);
   if (!target || !draft || !confirmed.value || !metadata || metadata.deleted) return [];
   // These fields already review the exact recovered row against a freshly read saved version.
-  const earlier = collection === 'groups' || collection === 'councils' || target.stamp === 'thought-lock' ? submitted : undefined;
+  const moveProof = target.stamp === 'thought-placement';
+  const lockProof = target.stamp === 'thought-lock';
+  const earlier = collection === 'groups' || collection === 'councils' || lockProof || moveProof ? submitted : undefined;
   const rowField = target.policy.target(target.field);
   const opening = existingRowFields(confirmed.value[rowField.field], rowField);
   const proposed = existingRowFields(draft[rowField.field], rowField);
@@ -166,9 +169,10 @@ export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirm
       && equalValues(scopeAt(earlier?.[rowField.field], rowId, target), scopeAt(draft[rowField.field], rowId, target));
     return returnedToOpening ? [{ ...address, returnedToOpening: true }] : [];
   });
-  if (target.stamp !== 'thought-lock' || !unresolved.some(address => address.returnedToOpening)
-    || matchesThoughtLockDraft(confirmed.value, draft, unresolved.map(address => address.rowId))) return unresolved;
-  return unresolved.filter(address => !address.returnedToOpening);
+  if (!unresolved.some(address => address.returnedToOpening)) return unresolved;
+  const projectionMatches = lockProof ? matchesThoughtLockDraft(confirmed.value, draft, unresolved.map(address => address.rowId))
+    : !moveProof || matchesThoughtPlacementDraft(confirmed.value, draft, unresolved);
+  return projectionMatches ? unresolved : unresolved.filter(address => !address.returnedToOpening);
 }
 
 /** A row choice reads and replaces one field only while the original row still exists. */

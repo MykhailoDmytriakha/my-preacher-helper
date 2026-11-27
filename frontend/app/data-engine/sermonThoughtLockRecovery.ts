@@ -4,7 +4,7 @@ import { mergeDocumentFields } from './protocol';
 import { existingRowField, existingRowFields, replaceExistingRowField } from './rowFieldAction';
 import { sermonThoughtFrame } from './sermonThoughtRecoveryFrame';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
-import { awaitsRowReturnVersion, hasUnreadableDraftProof } from './unreadableDraftProof';
+import { awaitsRowReturnVersion } from './unreadableDraftProof';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -86,14 +86,6 @@ function copyThoughtLockFields(value: DocumentData, source: DocumentData, rowIds
 /** Replaying the declared locks from the draft must account for every local change. */
 export function matchesThoughtLockDraft(opening: DocumentData, draft: DocumentData, rowIds: readonly string[]): boolean {
   return equalValues(copyThoughtLockFields(opening, draft, rowIds), draft);
-}
-
-export function hasReviewedThoughtLocks(checkpoint: SessionCheckpoint): boolean {
-  return Object.values(checkpoint.thoughtLockDrafts ?? {}).some(proof => proof.reviewed);
-}
-
-export function canSaveReviewedThoughtLocks(checkpoint: SessionCheckpoint): boolean {
-  return !checkpoint.conflicts.length && !hasUnreadableDraftProof(checkpoint) && hasReviewedThoughtLocks(checkpoint);
 }
 
 /** The next choice drops only its own conflicting words, without taking a prior lock decision with them. */

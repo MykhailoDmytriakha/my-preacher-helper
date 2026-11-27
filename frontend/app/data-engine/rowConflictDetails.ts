@@ -258,7 +258,9 @@ export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) {
     const placement = recoveredThoughtPlacement(checkpoint, remoteCandidate);
     if (!placement || placement.samePlace) return;
     const addresses = new Set(placement.locations.map(location => location.id));
-    if (conflicts.length !== addresses.size || conflicts.some(conflict => !addresses.has(thoughtPlacementConflictId(conflict.path) ?? ''))) return;
+    const compared = conflicts.filter(conflict => addresses.has(thoughtPlacementConflictId(conflict.path) ?? ''));
+    const returned = checkpoint.unreadableRowProofs?.some(address => address.returnedToOpening);
+    if (compared.length !== addresses.size || (!returned && compared.length !== conflicts.length)) return;
     const locations = placement.locations.flatMap(location => {
       const row = Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === location.id);
       if (!object(row) || typeof row.text !== 'string') return [];

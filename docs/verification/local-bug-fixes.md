@@ -11145,3 +11145,17 @@ The second decision in Preparation used the standard text-conflict notice, which
 After an authorized release, use a disposable sermon and dedicated profile. Prepare a locked thought, restore an unreadable return to unlocked, and confirm the saved lock and current words are shown before any write. Repeat with a multi-selection and a member already unlocked by the server. Verify that the final command applies only the chosen unresolved locks, with the neighboring text and order intact after reload.
 
 Local case evidence: `artifacts/sermon-thought-lock-return-20261127/`.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover a thought returned to its earlier position
+
+On Sermons → a sermon → Preparation → Saved draft, Chrome on `8b62c790b` reopened a move back to the earlier point with an unreadable revision. It sent one ordinary update before showing a choice. The server had already accepted the earlier move.
+
+The recovered return is held for the exact thought and an authoritative revision. The person can keep their previous point or the saved one. If the earlier point or thought has disappeared, only the saved version is available. A new thought with the same ID keeps its own placement. If a newer server move arrives before the earlier acknowledgement, the comparison uses the newer destination. Saving a position updates both board representations. Independent edits stay in the draft, and a separate text disagreement found during acknowledgement stays available for its own choice. The first choice survives the second. Preparation exposes the scoped position question once and captures the time of the click when the browser has a current clock sample.
+
+Twelve regressions exercise the native IndexedDB adapter, editor session and command processor. Eight suites passed 654 tests. TypeScript and the isolated production build passed, and scoped ESLint reported zero errors. Independent review covered the third destination, removed point, deleted and replaced rows, and competing words arriving with acknowledgement.
+
+Hidden Chrome ran six cases at 390 and 1280 px using the local Auth and Firestore emulators. Selecting the saved position sent zero commands. Selecting the earlier position produced one scoped movement, after the text choice in both compound cases. The current words and both order representations survived reload. The three position writes carried a sampled click time. The deleted and replaced thought scenarios each offered only the saved version, sent zero writes, and preserved the authoritative result after reload. Peak sampled Next.js memory was 391 MiB. All seven test ports were released.
+
+After an authorized release, use a disposable sermon and a dedicated profile. On the same thought, submit a move and make a return before it finishes. Reopen the local replay with the second action revision unreadable. Verify that the saved position is displayed before any write. Check both selections and reload. Repeat with a changed neighboring thought if the browser can control delivery.
+
+Local case evidence: `artifacts/sermon-thought-placement-return-20261127/`.

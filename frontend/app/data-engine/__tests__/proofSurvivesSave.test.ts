@@ -18,9 +18,10 @@ import { readGroupFlowFieldConflict } from '../groupTextReview';
 import { retainedAnchoredPlacementDraft } from '../manualChoice';
 import { diffFields } from '../protocol';
 import { commitRowKey } from '../retention.client';
-import { readSermonConflict } from '../rowConflictDetails';
+import { readSermonConflict, readThoughtPlacementComparison } from '../rowConflictDetails';
 import { DataEngineRuntime } from '../runtime';
 import { recoveredThoughtLock } from '../sermonThoughtLockRecovery';
+import { projectRecoveredThoughtPlacement, recoveredThoughtPlacement } from '../sermonThoughtPlacementRecovery';
 import { processCommand, readDocument } from '../server';
 import { DataSession } from '../session';
 import { THOUGHT_LOCK_POLICY } from '../thoughtLockAction';
@@ -492,6 +493,189 @@ it.each([
     expect(thoughts[0].date).toBe(currentFirst.date);
     expect(thoughts[1]).toEqual(useStored ? { ...storedNeighbor, isLocked: locksDuringWait } : editedNeighbor);
     if (writesDuringWait && !competing) expect(outcome.commands[0]).toMatchObject({ thoughtTextActions: [
+      { rowId: neighbor.id, observedRevision: 1, time: { earliestMs: T + 200, latestMs: T + 250 } },
+    ] });
+  });
+
+it.each([
+  'my position', 'saved position', 'already returned', 'removed destination', 'later neighboring text',
+  'keep my competing words', 'take the competing saved words', 'take saved competing words returned with acknowledgement',
+  'third saved destination before the acknowledgement', 'removed destination before the acknowledgement',
+  'deleted thought before the acknowledgement', 'replacement thought before the acknowledgement',
+] as const)(
+  'compares a recovered undo of a thought move (%s)', async resolution => {
+    const world = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'sermons', id: 'thought-move-undo' };
+    const thought = { id: 'a', date: 'born', text: 'Thought to move', tags: [], outlinePointId: 'main', subPointId: null };
+    const neighbor = { ...thought, id: 'b', text: 'Independent thought', outlinePointId: 'intro' };
+    const structure = { introduction: ['b'], main: ['a'], conclusion: [], ambiguous: [] };
+    const original = { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-27', thoughts: [thought, neighbor],
+      structure, thoughtsBySection: structure, outline: { introduction: [{ id: 'intro', text: 'Opening', subPoints: [] }],
+        main: [{ id: 'main', text: 'Main', subPoints: [] }], conclusion: [{ id: 'end', text: 'Conclusion', subPoints: [] }] } };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const opening: ResourceSnapshot = { resource, value: original, metadata };
+    world.documents.set('sermons/' + resource.id, { ...original, _dataEngine: metadata });
+    const editor = new DataSession(opening);
+    const main = { outlinePointId: 'main', subPointId: null }, end = { outlinePointId: 'end', subPointId: null };
+    const moved = projectRecoveredThoughtPlacement(original, thought.id, thought.date, end)!;
+    const undo = projectRecoveredThoughtPlacement(moved, thought.id, thought.date, main)!;
+    expect(undo).toEqual(original);
+    const stamp = { field: 'thought-placement' as const, rowId: thought.id, time: null };
+    editor.edit(moved, undefined, stamp);
+    const first = editor.checkpoint();
+    const action = first.thoughtPlacementDrafts!.a.action;
+    editor.registerCommit('move-first', first.editGeneration, moved, undefined, { thoughtPlacementActions: [action] });
+    editor.edit(undo, undefined, stamp);
+    const checkpoint = editor.checkpoint();
+    expect(checkpoint.thoughtPlacementDrafts?.a.action).toMatchObject({ before: end, after: main });
+    loose(checkpoint.thoughtPlacementDrafts?.a.action).observedRevision = 'unreadable';
+    const request: CommitRequest = { id: 'move-first', owner: 'owner', editorId: 'old-editor', editGeneration: first.editGeneration,
+      baseline: opening, working: opening, value: moved, intended: moved, predecessor: null, revision: 0, initialized: false,
+      command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [], thoughtPlacementActions: [action] };
+    const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+    const recovered = await throughDeviceStorage(record, request);
+    takeDroppedProof('thoughtPlacementDrafts');
+    let reopened = DataSession.restore(recovered.checkpoint);
+    const competing = resolution.includes('competing');
+    const withAcknowledgement = resolution === 'take saved competing words returned with acknowledgement';
+    const thirdDestination = resolution.startsWith('third saved');
+    const removedBeforeAcknowledgement = resolution.startsWith('removed destination before');
+    const deletedThought = resolution.startsWith('deleted thought');
+    const replacementThought = resolution.startsWith('replacement thought');
+    const differentBirth = deletedThought || replacementThought;
+    const unavailable = resolution.startsWith('removed destination') || differentBirth;
+    const replacement = { ...thought, date: 'replacement', text: 'Independent replacement thought', ...end };
+    const intro = { outlinePointId: 'intro', subPointId: null };
+    const savedLocation = thirdDestination ? intro : end;
+    let beforeChoice = moved;
+    const localWords = resolution === 'later neighboring text' || competing;
+    const takeStoredWords = resolution.startsWith('take');
+    const ownNeighbor = { ...neighbor, text: 'Words added while waiting' };
+    const savedNeighbor = { ...neighbor, text: 'Newer words on the server' };
+    if (resolution === 'already returned' || localWords) {
+      if (!withAcknowledgement) reopened.applyCommit({ ...request, state: 'cancelled' });
+      reopened.observe(opening, { source: 'cache' });
+      expect(reopened.checkpoint().unreadableRowProofs).toHaveLength(1);
+      expect(reopened.checkpoint().conflicts).toEqual([]);
+      if (localWords) {
+        reopened.edit({ ...original, thoughts: [thought, ownNeighbor] }, undefined,
+          withAcknowledgement ? undefined : { field: 'thought-text', rowId: neighbor.id, time: { earliestMs: T + 200, latestMs: T + 250 } });
+      }
+      reopened = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: reopened.checkpoint() },
+        withAcknowledgement ? request : undefined)).checkpoint);
+      if (resolution === 'already returned') {
+        reopened.observe(opening, { source: 'server' });
+        expect(reopened.checkpoint().unreadableRowProofs).toBeUndefined();
+        expect((await save(reopened.checkpoint())).commands).toEqual([]);
+        return;
+      }
+    }
+    if (withAcknowledgement) {
+      const other = await processCommand('owner', {
+        protocol: 1, operationId: 'words-before-move-ack', owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+        changes: diffFields(original, { ...original, thoughts: [thought, savedNeighbor] }),
+      });
+      expect(other.kind).toBe('acknowledged');
+    }
+    const receipt = await processCommand('owner', {
+      protocol: 1, operationId: 'move-first', owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+      changes: diffFields(original, moved), thoughtPlacementActions: [action],
+    });
+    if (receipt.kind !== 'acknowledged') throw new Error('The move was not saved');
+    if (thirdDestination || removedBeforeAcknowledgement || differentBirth) {
+      const current = receipt.snapshot.value!;
+      if (thirdDestination) {
+        beforeChoice = projectRecoveredThoughtPlacement(current, thought.id, thought.date, intro)!;
+        const later = await processCommand('owner', {
+          protocol: 1, operationId: 'move-on-other-device', owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+          changes: diffFields(current, beforeChoice),
+          thoughtPlacementActions: [{ ...action, before: end, after: intro, observedRevision: 2 }],
+        });
+        if (later.kind !== 'acknowledged') throw new Error('The later server move was not saved');
+        reopened.observe(later.snapshot, { source: 'server' });
+      } else {
+        const removedOrder = { ...structure, main: [] };
+        const value = deletedThought ? { ...current, thoughts: [neighbor], structure: removedOrder, thoughtsBySection: removedOrder }
+          : replacementThought ? { ...current, thoughts: [replacement, neighbor] }
+          : { ...current, outline: { ...original.outline, main: [] } };
+        beforeChoice = { ...beforeChoice, ...value } as typeof beforeChoice;
+        const latest = { resource, value, metadata: { ...metadata, revision: 3, operationId: 'remove-before-ack' } };
+        world.documents.set('sermons/' + resource.id, { ...value, _dataEngine: latest.metadata });
+        reopened.observe(latest, { source: 'server' });
+      }
+    }
+    if (localWords && !withAcknowledgement) reopened.observe(receipt.snapshot, { source: 'server' });
+    else reopened.accept(receipt);
+    if (resolution === 'removed destination') {
+      const value = { ...receipt.snapshot.value, outline: { ...original.outline, main: [] } };
+      const latest = { resource, value, metadata: { ...metadata, revision: 3, operationId: 'remove-point' } };
+      world.documents.set('sermons/' + resource.id, { ...value, _dataEngine: latest.metadata });
+      reopened.observe(latest, { source: 'server' });
+    }
+    if (competing && !withAcknowledgement && receipt.snapshot.value) {
+      const current = receipt.snapshot.value;
+      const value = { ...current, thoughts: [(current.thoughts as DocumentData[])[0], savedNeighbor] };
+      const latest = { resource, value, metadata: { ...metadata, revision: 3, operationId: 'other-device-words' } };
+      world.documents.set('sermons/' + resource.id, { ...value, _dataEngine: latest.metadata });
+      reopened.observe(latest, { source: 'server' });
+    }
+    const restored = reopened.checkpoint();
+    if (differentBirth) {
+      const shown = restored.draft?.thoughts as DocumentData[];
+      expect(shown.find(row => row.id === thought.id)).toEqual(thought);
+      expect(await save(restored)).toEqual({ code: 'resolve-version-first', commands: [] });
+      expect(readThoughtPlacementComparison(restored)).toMatchObject({
+        recovered: true, keepMineDisabled: true,
+        locations: [{ id: thought.id, mine: main, stored: undefined, text: thought.text }],
+      });
+      expect(reopened.choosePrivateFields('remote', null)).toBe(true);
+      expect((await save(reopened.checkpoint())).commands).toEqual([]);
+      expect(reopened.checkpoint().draft).toEqual((await readDocument('owner', resource)).value);
+      const stored = (await readDocument('owner', resource)).value!;
+      expect(stored.thoughts).toEqual(deletedThought ? [neighbor] : [replacement, neighbor]);
+      expect(stored.structure).toEqual(beforeChoice.structure);
+      expect(stored.thoughtsBySection).toEqual(beforeChoice.thoughtsBySection);
+      return;
+    }
+    if (withAcknowledgement) expect({
+      draft: (restored.draft?.thoughts as DocumentData[])[1].text,
+      confirmed: (restored.confirmed.value?.thoughts as DocumentData[])[1].text,
+      conflicts: restored.conflicts.map(({ path }) => path),
+    }).toEqual({ draft: ownNeighbor.text, confirmed: savedNeighbor.text,
+      conflicts: [['thoughts', 'id:b', 'text'], ['thoughts', 'id:a', 'outlineLocation']] });
+    expect(restored.remoteCandidate).not.toBeNull();
+    expect(recoveredThoughtPlacement(restored, restored.remoteCandidate!)).toMatchObject({
+      locations: [{ id: thought.id, mine: main, stored: savedLocation }], rowIds: [thought.id], samePlace: false,
+    });
+    expect(readThoughtPlacementComparison(restored)).toMatchObject({ recovered: true, locations: [{ id: thought.id, mine: main, stored: savedLocation }] });
+    expect(await save(restored)).toEqual({ code: 'resolve-version-first', commands: [] });
+    expect((await readDocument('owner', resource)).value?.structure).toEqual(beforeChoice.structure);
+    const mine = resolution === 'my position' || localWords || thirdDestination;
+    if (unavailable) expect(recoveredThoughtPlacement(restored, restored.remoteCandidate!)?.proposed).toBeUndefined();
+    const time = { earliestMs: T + 650, latestMs: T + 700 };
+    expect(reopened.choosePrivateFields(mine ? 'local' : 'remote', time)).toBe(true);
+    if (competing) {
+      expect(reopened.checkpoint().conflicts).toEqual([expect.objectContaining({ path: ['thoughts', 'id:b', 'text'] })]);
+      expect(await save(reopened.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
+      if (takeStoredWords) reopened.acceptRemote(reopened.checkpoint().draft);
+      else reopened.keepLocal(undefined, { earliestMs: T + 850, latestMs: T + 900 });
+    }
+    const outcome = await save(reopened.checkpoint());
+    if (mine) {
+      expect(outcome.kind).toBe('acknowledged');
+      expect(outcome.commands).toHaveLength(1);
+      expect(outcome.commands[0]).toMatchObject({ thoughtPlacementActions: [
+        { rowId: thought.id, before: savedLocation, after: main, observedRevision: competing || thirdDestination ? 3 : 2, time },
+      ] });
+    } else expect(outcome.commands).toEqual([]);
+    const stored = (await readDocument('owner', resource)).value!;
+    expect(stored.structure).toEqual(mine ? original.structure : beforeChoice.structure);
+    expect(stored.thoughtsBySection).toEqual(mine ? original.thoughtsBySection : beforeChoice.thoughtsBySection);
+    expect(stored.thoughts).toEqual([
+      { ...thought, ...(mine ? main : savedLocation) },
+      takeStoredWords ? savedNeighbor : localWords ? ownNeighbor : neighbor,
+    ]);
+    if (resolution === 'later neighboring text') expect(outcome.commands[0]).toMatchObject({ thoughtTextActions: [
       { rowId: neighbor.id, observedRevision: 1, time: { earliestMs: T + 200, latestMs: T + 250 } },
     ] });
   });

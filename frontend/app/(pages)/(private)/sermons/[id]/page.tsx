@@ -226,6 +226,7 @@ function SermonPageContent({ id }: { id: string }) {
   const thoughtPlacementComparison = useThoughtPlacementComparison(thoughtCheckpoint, user?.uid ?? null, sermon);
   const thoughtTagComparison = useThoughtTagComparison(thoughtCheckpoint, user?.uid ?? null, id);
   const thoughtComparison = thoughtPlacementComparison ?? thoughtTagComparison;
+  const thoughtOwnsDocumentStatus = Boolean(thoughtPlacementComparison && !core.syncSubject);
   const { series } = useSeries(user?.uid || null);
   /**
    * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
@@ -709,7 +710,9 @@ function SermonPageContent({ id }: { id: string }) {
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
-        subject: core.syncSubject ?? core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, comparison: core.syncComparison, error: core.error, errorWords: core.errorWords,
+        subject: core.syncSubject ?? core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly,
+        status: thoughtOwnsDocumentStatus ? null : core.status, comparison: thoughtOwnsDocumentStatus ? undefined : core.syncComparison,
+        error: thoughtOwnsDocumentStatus ? null : core.error, errorWords: thoughtOwnsDocumentStatus ? undefined : core.errorWords,
         titleForm: core.titleBinding, verseForm: core.verseBinding, recovery: core.headerRecovery,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} dates={<EnginePreachDateChips sermonId={sermon.id} />} />

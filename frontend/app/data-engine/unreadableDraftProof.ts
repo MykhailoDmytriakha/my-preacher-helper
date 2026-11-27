@@ -18,6 +18,15 @@ export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean 
     || checkpoint.unreadableServiceOrderStepPlacement || checkpoint.unreadableOutlinePointPlacement || checkpoint.privateFieldReview?.groupCopySources?.length);
 }
 
+export function hasReviewedThoughtRows(checkpoint: SessionCheckpoint): boolean {
+  return Object.values(checkpoint.thoughtLockDrafts ?? {}).some(proof => proof.reviewed)
+    || Object.values(checkpoint.thoughtPlacementDrafts ?? {}).some(proof => proof.reviewed);
+}
+
+export function canSaveReviewedThoughtRows(checkpoint: SessionCheckpoint): boolean {
+  return !checkpoint.conflicts.length && !hasUnreadableDraftProof(checkpoint) && hasReviewedThoughtRows(checkpoint);
+}
+
 /** A recovered return to the opening needs the saved version admitted by the server. */
 export function awaitsRowReturnVersion(address: UnreadableRowProof, snapshot: ResourceSnapshot): boolean {
   return address.returnedToOpening === true && (address.verifiedRevision === undefined

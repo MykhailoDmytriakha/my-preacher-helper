@@ -1803,7 +1803,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     acceptRemote: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => run(editor => editor.acceptRemote(undefined, compared, titles)),
     keepLocal: (compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]) => {
       const time = owner && (collection === 'series' || compared && (collection === 'serviceOrders' || compared.conflicts.some(unresolvedPreachDateField) || firstGroupMeetingReview(compared.conflicts) || accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
-        || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared) || readRecoveredSermonChurch(compared)
+        || readSermonSettingComparison(compared) || readSermonTextDraftComparison(compared) || readRecoveredSermonChurch(compared) || thoughtPlacementComparison(compared)
         || readGroupTextReview(compared)
         || (compared.confirmed.resource.collection === 'councils' && compared.conflicts.some(({ path }) => councilTopicTextConflict(path) || councilTopicTitleRow(path)))
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison)))
