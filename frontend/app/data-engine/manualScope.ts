@@ -25,6 +25,8 @@ import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, OutlineSubpointMove, ResourceRef, ResourceSnapshot } from './types';
 
 export type ManualPath = readonly (string | { id: string })[];
+export type ManualObservedFollow = true | ((opening: DocumentData, saved: DocumentData) => boolean);
+export type ManualObservedOpening = { snapshot: ResourceSnapshot; follow: ManualObservedFollow };
 export interface ManualSavedIntent {
   id: string;
   owner: string;
@@ -125,6 +127,29 @@ export function retainedManualScopeRecord(source: ManualScopeRecord, scopeId: st
     stage, savedSelection, openingSelection: savedSelection, openingGeneration: 0, generation: 0, savedGeneration: null, active: false };
 }
 
+/** Only an untouched opening can adopt a newer confirmed copy of the same subject. */
+export function manualOpeningObservation(record: ManualScopeRecord, checkpoint: SessionCheckpoint,
+  follow: ManualObservedFollow): ManualObservedOpening | undefined {
+  if (checkpoint.remoteCandidate || checkpoint.dirty || Object.keys(checkpoint.pending).length) return;
+  const observation = { snapshot: checkpoint.confirmed, follow };
+  if (canUseManualOpening(record, observation)
+    && record.selection.some(path => !sameManualSelection(record.baseline.value, observation.snapshot.value, path))) return observation;
+}
+
+function canUseManualOpening(record: ManualScopeRecord, { snapshot, follow }: ManualObservedOpening): boolean {
+  const { baseline } = record;
+  if (!record.active || record.generation !== record.openingGeneration || record.savedGeneration !== null
+    || record.predecessor || record.recoverySources?.length || !baseline.value || !snapshot.value
+    || !snapshot.metadata || snapshot.metadata.deleted || !canReplaceSnapshot(baseline, snapshot)) return false;
+  if (follow !== true && !follow(baseline.value, snapshot.value)) return false;
+  if (baseline.metadata) return snapshot.metadata.revision > baseline.metadata.revision;
+  // A legacy record's first engine write assigns its generation. Require the
+  // existing parent creation or, for older sermons without it, the same thought birth.
+  const createdAt = baseline.value.createdAt;
+  return typeof createdAt === 'string' && createdAt !== ''
+    ? snapshot.value.createdAt === createdAt : follow !== true;
+}
+
 /** A stage-only selection over a pinned ancestor. Delivery and merge stay in CommitQueue. */
 export class ManualScope {
   private record: ManualScopeRecord;
@@ -197,16 +222,21 @@ export class ManualScope {
     return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: this.hasChanges(), durable: this.durable };
   }
 
-  update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true): Promise<void> {
+  update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true,
+    opening?: ManualObservedOpening): Promise<void> {
     this.assertActive();
     if (autosaveGroupMeeting && !groupMeetingForm(this.record.resource, this.record.selection)) throw new Error('Meeting autosave requires a meeting form');
-    const current = this.value();
+    // The user edits the observation rendered with this action. Merely showing it never writes to disk.
+    const record = opening && !this.captures.pending && !this.hasChanges() && canUseManualOpening(this.record, opening)
+      ? openRecord(this.options, this.record.generation + 1, copy(opening.snapshot), null) : this.record;
+    const initial = record.predecessor?.value ?? record.baseline.value;
+    const current = project(initial!, record.selection, record.stage);
     const edited = copy(updater(copy(current)));
-    const initial = this.record.predecessor?.value ?? this.record.baseline.value;
     const next = autosaveGroupMeeting ? normalizeGroupMeetingDraft(edited, initial) : edited;
-    const stage = this.record.selection.map(path => readSelection(next, path));
-    const selectedOnly = project(current, this.record.selection, stage);
+    const stage = record.selection.map(path => readSelection(next, path));
+    const selectedOnly = project(current, record.selection, stage);
     if (!equalValues(next, selectedOnly)) throw new Error('Manual update changed an unselected field');
+    this.record = record;
     if (this.record.resource.collection === 'groups') {
       this.record.meetingDateCapture = stageMeetingDate(this.record.meetingDateCapture, current, selectedOnly,
         fieldInput && 'meetingDate' in fieldInput ? fieldInput : undefined);
@@ -612,22 +642,28 @@ function validateAncestry(request: ManualSavedIntent, records: Map<string, Manua
   return found;
 }
 
+function openRecord(options: ScopeOptions, generation: number, baseline: ResourceSnapshot,
+  predecessor: ManualSavedIntent | null): ManualScopeRecord {
+  const ancestor = validateAncestor(baseline, predecessor, options);
+  const stage = options.selection.map(path => readSelection(ancestor, path));
+  return { kind: 'manual', version: 1, owner: options.owner, resource: copy(options.resource), scopeId: options.scopeId,
+    selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), openingSelection: copy(stage),
+    openingGeneration: generation, generation, savedGeneration: null, active: true };
+}
+
 function captureRecord(options: ScopeOptions, generation: number): ManualScopeRecord {
     const captured = copy(options.port.capture());
     const baseline = captured.checkpoint.confirmed;
     const predecessor = selectPredecessor(options, captured);
-    const ancestor = validateAncestor(baseline, predecessor, options);
-    const stage = options.selection.map(path => readSelection(ancestor, path));
+    const record = openRecord(options, generation, baseline, predecessor);
     const shown = options.selection.map(path => readSelection(captured.checkpoint.draft, path));
     const emptyMeetingDefault = groupMeetingForm(options.resource, options.selection)
-      && isEmptyGroupMeetingDefault(stage[0].value, shown[0].value)
+      && isEmptyGroupMeetingDefault(record.stage[0].value, shown[0].value)
       && !Object.values(captured.checkpoint.pending).some(({ value }) => Array.isArray(value?.meetingDates) && value.meetingDates.length > 0);
-    if (!emptyMeetingDefault && !equalValues(shown, stage)) {
+    if (!emptyMeetingDefault && !equalValues(shown, record.stage)) {
       throw new Error('An unsaved editor already owns a selected field');
     }
-    return { kind: 'manual', version: 1, owner: options.owner, resource: copy(options.resource), scopeId: options.scopeId,
-      selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), openingSelection: copy(stage), openingGeneration: generation, generation, savedGeneration: null, active: true };
-
+    return record;
 }
 
 /** Recover a request already captured by this exact opening before its form receipt was written. */

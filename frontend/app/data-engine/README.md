@@ -292,6 +292,15 @@ stage without sending it; `save()` submits that stage; `cancel()` retires only
 unsaved typing. `initialData` is the pinned ancestor (possibly an earlier queued
 Save, not a server confirmation). The form's own `status`, `error` and `durable`
 describe that stage, including remote changes while it is open.
+
+A dialog for an existing record can opt into `followUntouched`. It displays a
+newer confirmed copy while the opening is untouched and has no saved intent or
+recovered draft. For a nested row, the dialog supplies a check for the same birth.
+The first version of a legacy record also needs proof of its original creation.
+Showing the copy does not rewrite the manual stage. The first authored update
+takes the exact copy shown in that render as its ancestor, even if another copy
+has already arrived. Later updates keep that ancestor until the form closes.
+
 `data` is the form's stage only while it has one — open, or holding unsaved
 words; closed and clean, it is the document, which carries a Save still on its way.
 A closed form showing its last Save kept a version the person had just discarded

@@ -1,5 +1,5 @@
 import { prepareDomainCommand } from '../domainPolicy';
-import { ManualScope, type ManualCapture, type ManualPath, type ManualSavedIntent, type ManualScopePort, type ManualScopeRecord } from '../manualScope';
+import { ManualScope, manualOpeningObservation, type ManualCapture, type ManualPath, type ManualSavedIntent, type ManualScopePort, type ManualScopeRecord } from '../manualScope';
 import { applyCommand, mergeFields } from '../protocol';
 import { DataSession } from '../session';
 
@@ -525,6 +525,72 @@ it('does not call a producer until the source is durably owned', async () => {
   await expect(scope.propose(producer)).rejects.toThrow('Storage full'); expect(producer).not.toHaveBeenCalled();
 });
 
+
+describe('editing from a saved observation in an untouched manual dialog', () => {
+  it('does not repin a deliberate return to the opening words when an observation is available', async () => {
+    const test = fixture(), scope = ManualScope.begin(test.options); await scope.settled();
+    const observed = snapshot('Phone', 'remote sibling', 2);
+    await Promise.all([scope.update(value => ({ ...value, title: 'Typed' })),
+      scope.update(value => ({ ...value, title: 'A' }), undefined, undefined, { snapshot: observed, follow: true })]);
+    expect(scope.getState()).toMatchObject({ dirty: false, durable: true, value: { title: 'A' },
+      record: { baseline: { metadata: { revision: 1 } } } });
+    expect(test.save).not.toHaveBeenCalled();
+  });
+
+  it('does not repin to a different child that happens to have the same ID', async () => {
+    const thought = { id: 'row', date: '2026-11-25', text: 'Old thought', tags: [] };
+    const current = snapshot();
+    const original = { ...current, value: { ...current.value!, thoughts: [thought] } };
+    const test = fixture([['thoughts', { id: 'row' }]], original);
+    const scope = ManualScope.begin(test.options); await scope.settled();
+    const replaced = { ...original, metadata: { ...original.metadata!, revision: 2 },
+      value: { ...original.value, thoughts: [{ ...thought, date: '2026-11-26', text: 'New thought' }] } };
+    const sameBirth = (opening: DocumentData, observed: DocumentData) =>
+      (opening.thoughts as DocumentData[])[0]?.date === (observed.thoughts as DocumentData[])[0]?.date;
+    await scope.update(value => value, undefined, undefined, { snapshot: replaced, follow: sameBirth });
+    expect(scope.getState()).toMatchObject({ dirty: false, durable: true, value: { thoughts: [thought] },
+      record: { baseline: { metadata: { revision: 1 } } } });
+  });
+
+  it.each([false, true])('follows the first version of a legacy record only with matching birth evidence, nested=%s', async nested => {
+    const before = snapshot();
+    const birth = '2026-11-25T09:00:00.000Z';
+    const thought = { id: 'row', date: birth, text: 'Old thought', tags: [] };
+    const original = { ...before, metadata: null, value: { ...before.value!, thoughts: [thought],
+      ...(nested ? {} : { createdAt: birth }) } };
+    const test = fixture(nested ? [['thoughts', { id: 'row' }]] : [['title']], original);
+    const scope = ManualScope.begin(test.options); await scope.settled();
+    const opening = scope.getState().record;
+    const observed = { ...original, metadata: before.metadata, value: { ...original.value, title: 'Saved title',
+      thoughts: [{ ...thought, text: 'Saved thought' }] } };
+    const include = nested ? (a: DocumentData, b: DocumentData) =>
+      (a.thoughts as DocumentData[])[0]?.date === (b.thoughts as DocumentData[])[0]?.date : true;
+    const observation = manualOpeningObservation(opening, new DataSession(observed).checkpoint(), include);
+    expect(observation?.snapshot).toEqual(observed);
+    const replaced = { ...observed, value: { ...observed.value, createdAt: '2026-11-26T09:00:00.000Z',
+      thoughts: [{ ...thought, date: '2026-11-26T09:00:00.000Z', text: 'Unrelated thought' }] } };
+    expect(manualOpeningObservation(opening, new DataSession(replaced).checkpoint(), include)).toBeUndefined();
+    expect(scope.getState().record.baseline).toEqual(original);
+    expect(test.persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('stages the next edit from the exact shown revision even if the parent receives a newer one', async () => {
+    const test = fixture(), scope = ManualScope.begin(test.options); await scope.settled();
+    const shown = snapshot('Phone', 'remote sibling', 2);
+    test.captured.checkpoint = new DataSession(snapshot('An even newer copy', 'remote sibling', 3)).checkpoint();
+    const held = deferred<void>();
+    test.persist.mockImplementationOnce(async () => held.promise);
+    const updating = scope.update(value => ({ ...value, title: value.title + ' then laptop' }),
+      undefined, undefined, { snapshot: shown, follow: true });
+    expect(scope.getState()).toMatchObject({ dirty: true, durable: false, value: { title: 'Phone then laptop' },
+      record: { baseline: { metadata: { revision: 2 } } } });
+    expect(test.save).not.toHaveBeenCalled();
+    held.resolve(); await updating;
+    await scope.save();
+    expect(test.save.mock.calls[0][1]).toMatchObject({ confirmed: { metadata: { revision: 2 }, value: { title: 'Phone' } },
+      draft: { title: 'Phone then laptop' } });
+  });
+});
 
 describe('pristine preparation field follow', () => {
   it('follows a genuine current copy without submitting anything', async () => {

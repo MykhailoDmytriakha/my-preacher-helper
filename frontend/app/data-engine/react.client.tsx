@@ -53,6 +53,7 @@ import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQues
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
+import { manualOpeningObservation } from './manualScope';
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { hasOutlineParentChoice, readOutlineParentComparison as outlineParentComparison, type OutlineTitleDecision } from './outlineParentChoice';
 import { captureOutlinePointPlacement as captureOutlinePlacement, projectResourceOutlinePoint as projectOutlinePlacement, readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
@@ -92,6 +93,7 @@ import { readStudyNoteReferenceComparison as studyNoteReferenceComparison } from
 import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { readStudyNoteFieldsComparison as studyNoteFieldsComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
+import { readThoughtBirth as thoughtBirth } from './thoughtTextAction';
 import { shownDeliveryState } from './unanswered';
 import { hasPrivateServiceOrderPosition as hasServicePosition, hasTwoPrivateServiceOrderMoves as hasTwoServiceMoves, privateServiceOrderPosition as readServicePosition, waitsForServiceOrderPosition as waitsForServicePosition } from './unreadableDraftProof';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -107,7 +109,7 @@ import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
 import type { HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import type { HardQuestionRankChange, HardQuestionRankCollection, HardQuestionRankScope, HardQuestionRankWitness } from './hardQuestionRankOrder';
-import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
+import type { ManualFieldInput, ManualObservedFollow, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction, MembershipRef } from './membershipIntent';
@@ -150,6 +152,7 @@ export function rebaseAcceptedStudyNoteReferences(...args: Parameters<typeof reb
 export function councilTopicTextId(...args: Parameters<typeof topicTextId>) { return topicTextId(...args); }
 export function replaceCouncilTopicText(...args: Parameters<typeof replaceTopicText>) { return replaceTopicText(...args); }
 export function readCouncilTopicTextComparison(checkpoint: SessionCheckpoint) { return councilTopicTextComparison(checkpoint); }
+export function readThoughtBirth(...args: Parameters<typeof thoughtBirth>) { return thoughtBirth(...args); }
 export function readChangedPreachDateFieldVersions(...args: Parameters<typeof changedDateFieldVersions>) { return changedDateFieldVersions(...args); }
 
 export function readCouncilSummaryChoice(checkpoint: SessionCheckpoint) { return councilSummaryChoice(checkpoint); }
@@ -1964,7 +1967,8 @@ export function useDataCollection(collection: string | null) {
 
 
 /** Explicit forms share the document observer and delivery while keeping typing stage-only. */
-export function useDataForm(resource: ResourceRef | null, slot: string, selection: readonly ManualPath[], recovery: ManualRecoveryPolicy = 'same-slot') {
+export function useDataForm(resource: ResourceRef | null, slot: string, selection: readonly ManualPath[],
+  recovery: ManualRecoveryPolicy = 'same-slot', { followUntouched }: { followUntouched?: ManualObservedFollow } = {}) {
   const { owner, browser } = useDataEngine();
   const document = useDataDocument(resource, { autoSave: false });
   const fieldsKey = JSON.stringify(selection);
@@ -2023,6 +2027,11 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
    * on its way as well (BUG-20261003-take-theirs-title-keeps-discarded-text).
    */
   const stage = target?.state;
+  const busy = working.identity === identity && working.count > 0;
+  const observedOpening = followUntouched && document.state && stage?.durable && !stage.dirty && !stage.capturing && !stage.captureFailed
+    ? manualOpeningObservation(stage.record, document.state.checkpoint, followUntouched) : undefined;
+  const shownObservation = observedOpening?.snapshot.value;
+  const shownStage = observedOpening && stage ? { ...stage, record: { ...stage.record, baseline: observedOpening.snapshot } } : stage;
   const ownStage = stage && (stage.record.active || stage.dirty) ? stage.value : null;
   // Screens with a separate document notice can omit a form's copy while it has no failure of its own.
   const mirrorsDocumentConflict = Boolean(stage?.documentChoiceRequired && stage.durable
@@ -2031,20 +2040,21 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     readOnly,
     active: stage?.record.active ?? false,
     ...(stage?.documentChoiceRequired ? { documentChoiceRequired: true as const, mirrorsDocumentConflict } : {}),
-    data: ownStage ?? document.data,
+    data: shownObservation ?? ownStage ?? document.data,
     ...(ownStage && stage?.requestedRecovery && { requestedRecovery: true as const }),
+    ...(shownObservation && { showsObservedOpening: true as const }),
     /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
     recoveryReady: Boolean(targetForm),
     recoveryVersion: JSON.stringify([Boolean(stage?.record.active), Boolean(stage?.documentChoiceRequired), document.status?.phase]),
     borrowedRecoveryIds: [...new Set((document.state?.borrowedManualAnswers ?? []).filter(id => readManualScopeIdentity(id)?.slot === slot))],
     exactChoice: target?.state?.exactChoice ?? false,
-    // The opening may include submitted predecessors; it is never a confirmed snapshot.
-    openingData: target?.state?.openingValue ?? null,
-    openingGeneration: stage?.record.baseline.metadata?.generation,
+    // An opening can include submitted predecessors and must not be used as server proof.
+    openingData: shownObservation ?? target?.state?.openingValue ?? null,
+    openingGeneration: shownStage?.record.baseline.metadata?.generation,
     // This may be a previously saved intent, so it is deliberately not called confirmed.
-    initialData: target?.state ? target.state.record.predecessor?.value ?? target.state.record.baseline.value : document.data,
+    initialData: shownObservation ?? (stage ? stage.record.predecessor?.value ?? stage.record.baseline.value : document.data),
     recoveryIdentity: identity as object,
-    busy: working.identity === identity && working.count > 0,
+    busy,
     loading: document.loading || Boolean(hasResource && owner && !target && !error),
     durable: target?.state?.durable ?? true,
     capturing: target?.state?.capturing ?? false,
@@ -2053,7 +2063,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       && document.status?.phase === 'conflict' && document.status.canAcceptRemote),
     ...(target?.state?.choiceRequired ? { choiceRequired: true as const } : {}),
     dirty: target?.state?.dirty ?? false,
-    status: describeManualSync(target?.state ?? null, document.state, document.status, error, document.presence),
+    status: describeManualSync(shownStage ?? null, document.state, document.status, error, document.presence),
     ...(failure?.identity === identity ? { localError: say(failure.words) } : {}),
     error,
     ...(errorWords ? { errorWords } : {}),
@@ -2064,7 +2074,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
     },
     update: (updater: (draft: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true) =>
-      run(form => autosaveGroupMeeting ? form.update(updater, fieldInput, autosaveGroupMeeting) : form.update(updater, fieldInput), false),
+      run(form => observedOpening ? form.update(updater, fieldInput, autosaveGroupMeeting, observedOpening)
+        : autosaveGroupMeeting ? form.update(updater, fieldInput, autosaveGroupMeeting) : form.update(updater, fieldInput), false),
     captureOutlineSubpoint: (subPointId: string) => ({ outlineSubpoint: { subPointId,
       time: owner && current() ? actionClock.capture(owner) ?? null : null } }),
     captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined =>
@@ -2083,7 +2094,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
         ...(date && time && { dateAction: { ...date, time } }) } };
     },
     save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualDocumentMetadataSave) => {
-      if (!action || 'time' in action || 'documentMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));
+      if (!action || 'time' in action || 'documentMetadata' in action) return run(form => observedOpening
+        ? form.save(updater, action, undefined, observedOpening) : action ? form.save(updater, action) : form.save(updater));
       const time = owner && current() && actionClock.capture(owner);
       if ('preachStatus' in action) return run(form => form.save(updater, { preachStatus: { ...action.preachStatus, time: time || null } }));
       return run(form => time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));

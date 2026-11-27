@@ -11201,3 +11201,21 @@ Headless Chrome used the real list and HTTP routes against isolated Auth and Fir
 After an authorized release, use one test tab and a disposable test record. Confirm the list remains usable during an ordinary save and still shows the completed record after reload. The isolated replay exercises deterministic slow and quota paths without spending the shared production quota.
 
 Local case evidence: `artifacts/collection-write-timeouts-20261127/`.
+
+## BUG-20261118-modal-forms-hide-remote-change-and-ask-after-save · Show saved words in an untouched dialog
+
+On a sermon, Thought options → Edit and on a series, Edit Series left the dialog showing its opening words after a saved edit from another device. Hidden Chrome on `18c2efb97` showed the old text in both dialogs after the backend acknowledged the new revision. The surrounding page could already display the saved text.
+
+The untouched edit dialog displays the latest confirmed copy of the same live record. The first authored change uses the exact copy shown with that input, even if a newer arrival is now available. Reading the copy does not rewrite the durable form or send a command. A field already edited, including a deliberate return to its opening words, keeps its original ancestry. A reused thought ID, deleted record, unsaved recovery, and pending authored writes never become another observed opening.
+
+A versionless legacy series needs its unchanged creation time for the first server revision to become its opening. A legacy sermon without a creation time needs the unique thought with the same ID and birth. If the available evidence cannot establish continuity, the form retains its opening for review.
+
+The focused Jest gates covered the moment of the first edit, a held device write, a later arrival, the two legacy cases, a different thought birth, manual recovery, and the public Data Engine boundary. Nine focused suites passed 396 tests. Full Jest passed 18,334 tests in 1,312 suites, with 31 tests skipped. Scoped ESLint reported zero errors with warnings. Independent Codex review checked the transition and the legacy identity guard.
+
+Eight headless Chrome checks at 390 and 1280 px against the local Auth and Firestore emulators covered both forms with ordinary records, both first revisions of legacy records, both already-edited forms, and both caret positions. Untouched fields outside the focused editor displayed the new text in 137–172 ms in these runs. An arrival next to the cursor waited for the cursor to move one character and then kept that new position. The six clean and caret checks added private text, used Undo and Redo, sent exactly one Save, and read the result after reload. The two already-edited fields stayed at their private words without sending anything. TypeScript and the production build passed on the local stand. Peak sampled Next.js memory was 381 MiB. All seven test ports were released.
+
+The remaining owner decision concerns where and how the dialog asks when already typed words disagree with saved words. The existing editor also retains its caret and composition protection when a saved edit touches the active selection. Those presentation decisions are recorded in BUGS.md.
+
+After an authorized release, use a disposable sermon and series in the test account. Open each edit dialog on one device without typing, save a different version on the second, and verify that it appears in the original dialog. Add a new line, undo and redo it, save once and reopen. Repeat with words already typed and verify they remain visible before any version choice.
+
+Local case evidence: `artifacts/manual-modal-observation-20261127/`.

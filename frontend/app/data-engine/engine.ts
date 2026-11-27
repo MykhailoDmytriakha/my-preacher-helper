@@ -46,7 +46,7 @@ import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
 import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerScope, shouldFollowReopenedManualStage } from './manualReturnSources';
-import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualFieldInput, type ManualPath, type ManualSavedIntent, type ManualSaveOptions, type ManualDocumentMetadataSave } from './manualScope';
+import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualFieldInput, type ManualObservedOpening, type ManualPath, type ManualSavedIntent, type ManualSaveOptions, type ManualDocumentMetadataSave } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { membershipItems, showsSeriesMembershipComparison } from './membershipIntent';
@@ -153,9 +153,11 @@ export interface ManagedManualForm {
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
-  update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true): Promise<void>;
+  update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput, autosaveGroupMeeting?: true,
+    opening?: ManualObservedOpening): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave, onCaptured?: () => void): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave,
+    onCaptured?: () => void, opening?: ManualObservedOpening): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison;
@@ -4197,10 +4199,10 @@ export class DataEngine {
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
       follow: () => execute(() => requireScope().follow(capture())),
-      update: (updater, fieldInput, autosaveGroupMeeting) => execute(() => {
+      update: (updater, fieldInput, autosaveGroupMeeting, opening) => execute(() => {
         if (autosaveGroupMeeting && !state.meetingSave) throw new Error('Meeting autosave requires its own form');
         const scope = requireScope();
-        const staged = scope.update(updater, fieldInput, autosaveGroupMeeting);
+        const staged = scope.update(updater, fieldInput, autosaveGroupMeeting, opening);
         if (autosaveGroupMeeting) {
           if (scope.meetingAutosaveReady()) state.meetingSave?.();
           else state.meetingSave?.cancel();
@@ -4210,7 +4212,7 @@ export class DataEngine {
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
-      save: (updater, action, onCaptured) => execute(async () => {
+      save: (updater, action, onCaptured, opening) => execute(async () => {
         if (hasFailedDelivery()) {
           throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
@@ -4221,7 +4223,7 @@ export class DataEngine {
         const dateInput = metadata?.dateAction ?? (status?.rowId && status.time ? { rowId: status.rowId, time: status.time }
           : action && 'rowId' in action && !('field' in action) ? action : undefined);
         if (updater) {
-          const staged = scope.update(updater, fieldInput);
+          const staged = scope.update(updater, fieldInput, undefined, opening);
           const saving = scope.save(dateInput, status, metadata?.time, metadata, onCaptured);
           await Promise.all([staged, saving]);
         } else await scope.save(dateInput, status, metadata?.time, metadata, onCaptured);

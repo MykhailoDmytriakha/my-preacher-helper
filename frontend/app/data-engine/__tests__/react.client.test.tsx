@@ -17,7 +17,7 @@ import type { CollectionState } from '../collections';
 import type { EditorState, RecoveryCheckpoint } from '../controller';
 import type { ManagedEditor, ManagedManualForm } from '../engine';
 import type { Observation } from '../observer';
-import type { JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
+import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('../browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
@@ -133,7 +133,7 @@ function makeManualForm() {
     subscribe: jest.fn(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }),
     begin: jest.fn(async () => {
       state = { capturing: false, value: { content: 'base' }, openingValue: { content: 'base' }, durable: true, dirty: false, record: { kind: 'manual', version: 1, owner: 'owner', scopeId: 'scope', resource,
-        selection: [['content']], baseline: snapshot(), predecessor: null, stage: [{ exists: true, value: 'base' }], savedSelection: [{ exists: true, value: 'base' }], generation: 0, savedGeneration: null, active: true } }; emit();
+        selection: [['content']], baseline: snapshot(), predecessor: null, stage: [{ exists: true, value: 'base' }], savedSelection: [{ exists: true, value: 'base' }], openingGeneration: 0, generation: 0, savedGeneration: null, active: true } }; emit();
     }),
     update: jest.fn(async updater => { state = { ...state!, value: updater(state!.value), dirty: true }; emit(); }),
     save: jest.fn(async updater => { if (updater) state!.value = updater(state!.value); state!.record.active = false; state!.dirty = false; emit(); }),
@@ -428,6 +428,25 @@ describe('React DataEngine contract', () => {
     await act(async () => { await hook.result.current.save(value => ({ ...value, content: 'trimmed' })); });
     expect(manual.form.save).toHaveBeenCalledTimes(1); expect(hook.result.current.active).toBe(false);
     hook.unmount(); expect(manual.listeners.size).toBe(0);
+  });
+
+  it('shows an untouched opted-in form with its newer confirmed version without a storage write', async () => {
+    const parent = makeEditor(), manual = makeManualForm(), browser = makeBrowser(parent.editor);
+    jest.mocked(parent.editor.form).mockReturnValue(manual.form); jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const hook = renderHook(() => useDataForm(resource, 'content', [['content']], 'same-slot', { followUntouched: true }), { wrapper: Wrapper });
+    await waitFor(() => expect(manual.form.subscribe).toHaveBeenCalled());
+    await act(async () => { await hook.result.current.begin(); });
+    expect(manual.form.follow).not.toHaveBeenCalled();
+    act(() => parent.setState({ ...parent.state, checkpoint: { ...parent.state.checkpoint,
+      confirmed: snapshot('remote', 2), draft: { content: 'remote' } } }));
+    expect(hook.result.current.data?.content).toBe('remote');
+    expect(hook.result.current.initialData?.content).toBe('remote');
+    expect(manual.form.follow).not.toHaveBeenCalled();
+    expect(manual.form.save).not.toHaveBeenCalled();
+    expect(manual.form.update).not.toHaveBeenCalled();
+    const edit = (value: DocumentData) => ({ ...value, content: 'typed from remote' });
+    await act(async () => { await hook.result.current.update(edit); });
+    expect(manual.form.update).toHaveBeenCalledWith(edit, undefined, undefined, { snapshot: snapshot('remote', 2), follow: true });
   });
 
   it('exposes manual recovery explicitly and fences old-owner failures and actions', async () => {

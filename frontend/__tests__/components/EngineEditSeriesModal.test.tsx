@@ -38,19 +38,37 @@ function setup(theme = 'Opening title', description = 'Opening description', boo
   return { harness, Workspace, view: render(<Workspace />), onClose };
 }
 beforeEach(() => jest.clearAllMocks());
-it('pins metadata before typing, stages locally, then refuses a conflicting remote title', async () => {
+it('keeps a typed title staged when a competing remote title arrives', async () => {
   const { harness, onClose, view } = setup();
   const title = await screen.findByDisplayValue('Opening title'); await waitFor(() => expect(title).toBeEnabled());
-  await act(async () => { await harness.remote({ title: 'Other device title', theme: 'Other device title' }); });
-  expect(title).toHaveValue('Opening title');
   fireEvent.change(title, { target: { value: 'My title' } });
-  await act(async () => { await settleEngine(); }); expect(harness.transport.send).not.toHaveBeenCalled();
+  await act(async () => { await settleEngine(); });
+  await act(async () => { await harness.remote({ title: 'Other device title', theme: 'Other device title' }); });
+  expect(title).toHaveValue('My title');
+  expect(harness.transport.send).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
   expect(harness.server.value?.title).toBe('Other device title');
   expect(screen.getByTestId('parent-state')).toHaveTextContent('conflict'); view.unmount();
 });
+it('shows the latest saved title in a clean dialog and saves the next edit from that version', async () => {
+  const { harness, onClose, view } = setup();
+  const title = await screen.findByDisplayValue('Opening title');
+  await waitFor(() => expect(title).toBeEnabled());
+  await act(async () => { await harness.remote({ title: 'Other device title', theme: 'Other device title' }); });
+  await waitFor(() => expect(title).toHaveValue('Other device title'));
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  fireEvent.change(title, { target: { value: 'Other device title plus my words' } });
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.server.value?.title).toBe('Other device title plus my words');
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
 it('preserves an unrelated remote field and sends only the explicit metadata edit', async () => {
   const { harness, onClose, view } = setup();
   const title = await screen.findByDisplayValue('Opening title'); await waitFor(() => expect(title).toBeEnabled());

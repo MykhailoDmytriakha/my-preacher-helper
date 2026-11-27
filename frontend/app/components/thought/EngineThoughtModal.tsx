@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { BufferedTextScope } from '@/components/ui/useBufferedText';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { restoreThoughtTag, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { readThoughtBirth, restoreThoughtTag, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
@@ -64,9 +64,14 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
   // Creation selects the array and explicitly shares recovery across unique creation slots,
   // so discovery can restore the original embedded ID. Existing thought selection differs.
   // Existing thoughts select their stable child identity, never a display index.
+  const sameThought = useCallback((opening: DocumentData, saved: DocumentData) => {
+    if (!thoughtId) return false;
+    const birth = readThoughtBirth(thoughtId, opening);
+    return Boolean(birth && readThoughtBirth(thoughtId, saved) === birth);
+  }, [thoughtId]);
   const form = useDataForm({ collection: 'sermons', id: sermonId }, thoughtId ? `thought:${thoughtId}` : `thought-create:${newThought.id}`,
     thoughtId ? [['thoughts', { id: thoughtId }], ...placement] : [['thoughts'], ...placement],
-    thoughtId ? 'same-slot' : 'same-selection');
+    thoughtId ? 'same-slot' : 'same-selection', { followUntouched: thoughtId ? sameThought : undefined });
   const { loading, begin } = form;
   useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
   useScrollLock(true);
@@ -201,7 +206,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
         <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
         {!hasEditor ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
           : <BufferedTextScope.Provider value={form.recoveryIdentity}>
-            <RichMarkdownEditor editable={!readOnly} valueIsUserAction={form.active} value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />
+            <RichMarkdownEditor editable={!readOnly} valueIsUserAction={form.active && !form.showsObservedOpening} value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />
           </BufferedTextScope.Provider>}
       </div>
     </div>

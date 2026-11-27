@@ -22,11 +22,11 @@ import type { Series } from '@/models/models';
 
 export const SERIES_METADATA_SELECTION = ['title', 'theme', 'description', 'bookOrTopic', 'status', 'color', 'startDate', 'duration'].map(field => [field]);
 
-/** Opening pins metadata once; later observations cannot replace the form's ancestor. */
+/** Untouched fields follow saved metadata; typing pins the version the person saw. */
 export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string; onClose: () => void }) {
   const { t } = useTranslation();
   const { owner } = useDataEngine();
-  const form = useDataForm({ collection: 'series', id: seriesId }, 'series-metadata', SERIES_METADATA_SELECTION);
+  const form = useDataForm({ collection: 'series', id: seriesId }, 'series-metadata', SERIES_METADATA_SELECTION, 'same-slot', { followUntouched: true });
   const { loading, begin } = form;
   useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,

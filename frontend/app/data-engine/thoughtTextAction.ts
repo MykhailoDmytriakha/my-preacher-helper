@@ -22,10 +22,13 @@ export function thoughtTextConflictId(path: readonly string[]): string | undefin
   if (boundedRowId(id)) return id;
 }
 
+export function readThoughtBirth(id: string, sermon: DocumentData): string | undefined {
+  return existingRowField(sermon.thoughts, id, THOUGHT_TEXT_POLICY.birth);
+}
+
 export function readThoughtTextConflict(id: string, mine: DocumentData, stored: DocumentData) {
-  const birth = THOUGHT_TEXT_POLICY.birth;
-  const date = existingRowField(mine.thoughts, id, birth);
-  if (date === undefined || existingRowField(stored.thoughts, id, birth) !== date) return;
+  const date = readThoughtBirth(id, mine);
+  if (date === undefined || readThoughtBirth(id, stored) !== date) return;
   const local = existingRowField(mine.thoughts, id, THOUGHT_TEXT);
   const saved = existingRowField(stored.thoughts, id, THOUGHT_TEXT);
   if (local !== undefined && saved !== undefined && local !== saved) return { mine: local, stored: saved };
