@@ -261,3 +261,41 @@ describe('Word thematic breaks and code-first list items', () => {
     expect(paragraphIndent(xml, 'Quote in substep')).toBe(1440);
   });
 });
+
+describe('Word lists inside blockquotes', () => {
+  it('keeps a code-first step and its nested quote inside the outer quote', async () => {
+    const xml = await markdownXml([
+      '> 1. ```txt', '>    code sample', '>    ```', '>', '>    > **Nested quote**',
+      '>', '> Outside the step', '', 'Outside the quote',
+    ].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['1. code sample', 'Nested quote', 'Outside the step', 'Outside the quote']);
+    expect(paragraphIndent(xml, '1. code sample')).toBe(720);
+    expect(paragraphIndent(xml, 'Nested quote')).toBe(1080);
+    expect(paragraphIndent(xml, 'Outside the step')).toBe(720);
+    expect(paragraphIndent(xml, 'Outside the quote')).toBeNull();
+  });
+
+  it('keeps the next quoted step and its continuation at their proper levels', async () => {
+    const xml = await markdownXml([
+      '> 9. ```txt', '>    >literal', '>    ```', '>',
+      '> 10. Next step', '>', '>     continuation',
+    ].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['9. >literal', '10. Next step', 'continuation']);
+    expect(paragraphIndent(xml, '10. Next step')).toBe(720);
+    expect(paragraphIndent(xml, 'continuation')).toBe(1080);
+  });
+
+  it('keeps the parser value of multiline inline code inside a quote', async () => {
+    const xml = await markdownXml('> **`alpha\n>   beta`**');
+    expect(wordParagraphs(xml)).toEqual(['alpha   beta']);
+    expect(xml).toContain('Courier New');
+    expect(xml).toMatch(/<w:b(?:\s|\/?>)/);
+  });
+
+  it('keeps an escaped chevron literal in a nested quote', async () => {
+    const xml = await markdownXml(['> Simple', '> > \\> Literal', '', 'Outside'].join('\n'));
+    expect(wordParagraphs(xml)).toEqual(['Simple', '> Literal', 'Outside']);
+    expect(paragraphIndent(xml, 'Simple')).toBe(720);
+    expect(paragraphIndent(xml, '> Literal')).toBe(1080);
+  });
+});

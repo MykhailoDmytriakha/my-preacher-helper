@@ -11,7 +11,9 @@ const parser = unified().use(remarkParse).use(remarkGfm).freeze();
 interface CodeContext { listDepth: number; quoteDepth: number }
 type CodeNode = Extract<Nodes, { type: 'code' | 'inlineCode' }>;
 type ListItem = Extract<Nodes, { type: 'listItem' }>;
-type WalkContext = { items: readonly ListItem[]; quoteDepth: number; footnoteLabelLine?: number };
+type QuoteContainer = Extract<Nodes, { type: 'blockquote' | 'list' | 'listItem' }>;
+type WalkListItem = { node: ListItem; quoteDepth: number };
+type WalkContext = { items: readonly WalkListItem[]; quoteDepth: number; footnoteLabelLine?: number };
 
 function visitMarkdown(content: string, visit: (node: Nodes, context: WalkContext) => void): void {
   const pending: { node: Nodes; context: WalkContext }[] = [
@@ -21,7 +23,7 @@ function visitMarkdown(content: string, visit: (node: Nodes, context: WalkContex
     const { node, context } = pending.pop()!;
     visit(node, context);
     if (!('children' in node)) continue;
-    const next = node.type === 'listItem' ? { ...context, items: [...context.items, node] }
+    const next = node.type === 'listItem' ? { ...context, items: [...context.items, { node, quoteDepth: context.quoteDepth }] }
       : node.type === 'blockquote' ? { ...context, quoteDepth: context.quoteDepth + 1 }
       : node.type === 'footnoteDefinition' ? { ...context, footnoteLabelLine: node.position?.start.line } : context;
     for (let index = node.children.length - 1; index >= 0; index--) {
@@ -89,12 +91,18 @@ interface ListOpening {
   content: number;
 }
 
-export type MarkdownExportBlock = MarkdownLocated & { openings: ListOpening[] } &
-  ({ kind: 'block'; value: string } | { kind: 'thematicBreak' });
+export type MarkdownInlineCode = Pick<MarkdownCodeRange, 'start' | 'end' | 'value'>;
+
+export type MarkdownExportBlock = MarkdownLocated & { openings: ListOpening[] } & (
+  | { kind: 'block'; value: string }
+  | { kind: 'thematicBreak' }
+  | { kind: 'quote'; value: string; code: MarkdownInlineCode[]; itemQuoteDepth: number }
+  | { kind: 'quoteSeparator' }
+);
 
 /** List markers whose first block begins on the same source line. */
 function listOpenings(content: string, node: Nodes, context: WalkContext, blockStart: number): ListOpening[] {
-  return context.items.flatMap(item => {
+  return context.items.flatMap(({ node: item }) => {
     const start = item.position?.start;
     const child = item.children[0]?.position?.start;
     if (start?.offset === undefined || child?.offset === undefined || start.line !== node.position?.start.line) return [];
@@ -106,20 +114,80 @@ function listOpenings(content: string, node: Nodes, context: WalkContext, blockS
   });
 }
 
+function quoteBody(content: string, node: Extract<Nodes, { type: 'paragraph' }>, position: MarkdownLocated) {
+  // Mask continuation prefixes without shifting the original inline spans.
+  const value = content.slice(position.start, position.end).replace(/(\r\n|\r|\n)([^\r\n]*)/g, (_match, newline: string, line: string) => {
+    let remainder = line;
+    for (let depth = 0; depth < position.quoteDepth; depth++) {
+      const prefix = /^[ \t]*>[ \t]?/.exec(remainder);
+      if (!prefix) break; // A lazy line may omit some or all quote markers.
+      remainder = remainder.slice(prefix[0].length);
+    }
+    return newline + ' '.repeat(line.length - remainder.length) + remainder;
+  });
+  const code: MarkdownInlineCode[] = [];
+  const pending: Nodes[] = [...node.children].reverse();
+  while (pending.length) {
+    const child = pending.pop()!;
+    if (child.type === 'inlineCode') {
+      const start = child.position?.start.offset;
+      const end = child.position?.end.offset;
+      if (start !== undefined && end !== undefined) code.push({
+        start: start - position.start, end: end - position.start, value: child.value.replace(/\r\n|\r|\n/g, ' '),
+      });
+    }
+    if ('children' in child) {
+      for (let index = child.children.length - 1; index >= 0; index--) pending.push(child.children[index]);
+    }
+  }
+  return { value, code };
+}
+
+function quoteSeparators(content: string, node: QuoteContainer, offsets: number[]): MarkdownExportBlock[] {
+  if (!node.position) return [];
+  const separators: MarkdownExportBlock[] = [];
+  let line = node.position.start.line - 1;
+  const appendGap = (until: number) => {
+    for (; line < until; line++) {
+      const start = offsets[line];
+      const end = offsets[line + 1] ?? content.length;
+      const marker = content.slice(start, end).trim();
+      if (/^(?:>[ \t]*)+$/.test(marker)) {
+        separators.push({ kind: 'quoteSeparator', start, end, blockStart: start, openings: [], listDepth: 0, quoteDepth: 0 });
+      }
+    }
+  };
+  // Marker-only lines in the gaps separate quote blocks. Text inside a child (such as code) is literal.
+  for (const child of node.children) {
+    if (!child.position) continue;
+    appendGap(child.position.start.line - 1);
+    line = child.position.end.line;
+  }
+  appendGap(node.position.end.line);
+  return separators;
+}
+
 /** Blocks Word renders with their own formatting, as classified by the Markdown parser. */
 export function markdownExportBlocks(content: string): MarkdownExportBlock[] {
   const offsets = lineOffsets(content);
   const blocks: MarkdownExportBlock[] = [];
   visitMarkdown(content, (node, context) => {
-    if (node.type !== 'code' && node.type !== 'thematicBreak') return;
+    if (node.type === 'blockquote' || (context.quoteDepth > 0 && (node.type === 'list' || node.type === 'listItem'))) {
+      for (const separator of quoteSeparators(content, node, offsets)) blocks.push(separator);
+    }
+    const quote = node.type === 'paragraph' && context.quoteDepth > 0;
+    if (node.type !== 'code' && node.type !== 'thematicBreak' && !quote) return;
     // Word retains the footnote label as prose. A whole-line cut would discard it.
-    if (node.type === 'thematicBreak' && node.position?.start.line === context.footnoteLabelLine) return;
+    if (node.type !== 'code' && node.position?.start.line === context.footnoteLabelLine) return;
     const position = locate(node, context, offsets);
     if (!position) return;
-    const openings = listOpenings(content, node, context, position.blockStart);
-    blocks.push(node.type === 'code'
-      ? { ...position, openings, kind: 'block', value: node.value }
-      : { ...position, openings, kind: 'thematicBreak' });
+    const shared = { ...position, openings: listOpenings(content, node, context, position.blockStart) };
+    if (node.type === 'code') blocks.push({ ...shared, kind: 'block', value: node.value });
+    else if (node.type === 'thematicBreak') blocks.push({ ...shared, kind: 'thematicBreak' });
+    else blocks.push({
+      ...shared, kind: 'quote', ...quoteBody(content, node, position),
+      itemQuoteDepth: context.items.at(-1)?.quoteDepth ?? 0,
+    });
   });
   return blocks;
 }

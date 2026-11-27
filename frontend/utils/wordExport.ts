@@ -2,7 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
-import { markdownCodeRanges, markdownColumn, markdownExportBlocks, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange, type MarkdownExportBlock } from '@/utils/markdownCode';
+import { markdownCodeRanges, markdownColumn, markdownExportBlocks, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange, type MarkdownExportBlock, type MarkdownInlineCode } from '@/utils/markdownCode';
 import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { emptyHtmlTableRows, markdownTableBlocks, markdownTableRanges, type CellSpan, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
@@ -99,11 +99,10 @@ const quoteBorder = {
 } as const;
 
 // Helper function to parse blockquotes
-const parseBlockquote = (trimmedLine: string, indent: number): Paragraph => {
-  const quoteContent = trimmedLine.replace('> ', '');
-  const quoteChildren = parseInlineMarkdown(quoteContent);
+const quoteParagraph = (content: string, indent: number, marker = '', source?: InlineSourceContext): Paragraph => {
+  const quoteChildren = source ? parseInlineInherited(content, {}, source) : parseInlineMarkdown(content);
   return new Paragraph({
-    children: quoteChildren,
+    children: marker ? [new TextRun({ text: marker + ' ' }), ...quoteChildren] : quoteChildren,
     spacing: { after: 0 },
     indent: { left: indent },
     border: quoteBorder,
@@ -147,20 +146,21 @@ const parseRegularParagraph = (trimmedLine: string, indent?: number): Paragraph 
 };
 
 /** Split prose lines without splitting a real multiline code span or its literal <br>. */
-const wordProseLines = (content: string): string[] => {
-  const code = markdownCodeRanges(content).filter(range => range.kind === 'inline');
-  const lines: string[] = [];
+const wordProseLines = (
+  content: string, code: readonly MarkdownInlineCode[] = markdownCodeRanges(content).filter(range => range.kind === 'inline'),
+): { text: string; start: number }[] => {
+  const lines: { text: string; start: number }[] = [];
   let cursor = 0;
   let codeIndex = 0;
   for (const match of content.matchAll(/<br\s*\/?>|\r\n|\r|\n/gi)) {
     const at = match.index!;
     while (codeIndex < code.length && code[codeIndex].end <= at) codeIndex++;
     if (code[codeIndex] && code[codeIndex].start <= at && at < code[codeIndex].end) continue;
-    lines.push(content.slice(cursor, at));
+    lines.push({ text: content.slice(cursor, at), start: cursor });
     cursor = at + match[0].length;
   }
-  lines.push(content.slice(cursor));
-  return lines.filter(line => line.trim() !== '');
+  lines.push({ text: content.slice(cursor), start: cursor });
+  return lines.filter(line => line.text.trim() !== '');
 };
 
 /**
@@ -189,12 +189,11 @@ const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItem
 
   const lines = wordProseLines(content);
   const elements: (Paragraph | Table)[] = [];
-  let i = 0;
 
-  while (i < lines.length) {
-    const trimmedLine = lines[i].trim();
+  for (const { text: line } of lines) {
+    const trimmedLine = line.trim();
 
-    const leading = markdownColumn(lines[i].match(/^[ \t]*/)?.[0] ?? '');
+    const leading = markdownColumn(line.match(/^[ \t]*/)?.[0] ?? '');
     while (items.length && leading < items[items.length - 1].content) items.pop();
     const parent = items[items.length - 1];
     // Dashes still present here are inside literal content, such as a raw HTML block.
@@ -215,7 +214,7 @@ const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItem
       } else if (trimmedLine.match(/^\d+\. /)) {
         elements.push(parseNumberedList(trimmedLine, listIndent));
       } else if (trimmedLine.startsWith('> ')) {
-        elements.push(parseBlockquote(trimmedLine, nested ? listIndent : bodyIndent ?? 720));
+        elements.push(quoteParagraph(trimmedLine.slice(2), nested ? listIndent : bodyIndent ?? 720));
       } else {
         elements.push(parseRegularParagraph(trimmedLine, nested ? listIndent : bodyIndent));
       }
@@ -223,8 +222,6 @@ const parseMarkdownText = (content: string, bodyIndent?: number, items: ListItem
       // Fallback to regular paragraph if parsing fails
       elements.push(parseRegularParagraph(trimmedLine, bodyIndent));
     }
-
-    i++;
   }
 
   return elements;
@@ -254,6 +251,7 @@ function indentedBlockLeft(bodyIndent: number | undefined, listDepth: number, qu
 }
 
 function exportMarkdownBlock(block: MarkdownExportBlock, bodyIndent: number | undefined, items: ListItemStack): Paragraph[] {
+  if (block.kind === 'quoteSeparator') return [];
   const establishedDepth = block.listDepth - block.openings.length;
   items.length = Math.min(items.length, establishedDepth);
   block.openings.forEach(({ content }, index) => {
@@ -263,6 +261,17 @@ function exportMarkdownBlock(block: MarkdownExportBlock, bodyIndent: number | un
 
   const left = indentedBlockLeft(bodyIndent, block.listDepth, block.quoteDepth);
   const prefix = block.openings.map(({ marker }) => /^\d/.test(marker) ? marker : '•').join(' ');
+  if (block.kind === 'quote') {
+    const itemLeft = indentedBlockLeft(bodyIndent, block.listDepth, block.itemQuoteDepth);
+    const indent = block.listDepth ? itemLeft + Math.max(1, block.quoteDepth - block.itemQuoteDepth) * 360 : left;
+    return wordProseLines(block.value, block.code).map(({ text, start }, index) => {
+      const marker = index === 0 ? prefix : '';
+      const trimmed = text.trimStart();
+      const escape = trimmed.startsWith('\\>') ? 1 : 0;
+      const offset = start + text.length - trimmed.length + escape;
+      return quoteParagraph(trimmed.slice(escape).trimEnd(), marker ? left : indent, marker, { offset, code: block.code });
+    });
+  }
   if (block.kind === 'thematicBreak') {
     const indent = items.at(-1)?.indent;
     const rule = parseHorizontalRule(indent === undefined ? left || undefined : indent + 360, block.quoteDepth > 0);
@@ -386,7 +395,7 @@ const spanRun = ({ text, code, superScript, subScript, highlight, underline, ...
 /** A cell's runs: an HTML cell's lines each start a new line, as on screen. */
 const cellRuns = (cell: MarkdownTableCell): TextRun[] => cell.lines
   ? cell.lines.flatMap((line, index) => [...(index ? [new TextRun({ break: 1 })] : []), ...line.map(spanRun)])
-  : parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 });
+  : parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0, unescapePipes: true });
 
 const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => {
   const emptyRows = table.html && table.rows.some(row => !row.length) ? emptyHtmlTableRows(table.rows) : undefined;
@@ -480,11 +489,12 @@ const stripStrayTags = (s: string): string => s.replace(/<\/?[a-zA-Z][^>]*>/g, '
 // span inherits the outer format and re-parses its inner content; plain text gets the
 // inherited format with stray tags removed.
 interface InlineSourceContext {
-  code: MarkdownTableCell['code'];
+  code: readonly MarkdownInlineCode[];
   offset: number;
+  unescapePipes?: boolean;
 }
 
-const inlineCodeInSource = (text: string, source?: InlineSourceContext): MarkdownTableCell['code'] => source
+const inlineCodeInSource = (text: string, source?: InlineSourceContext): MarkdownInlineCode[] => source
   ? source.code.filter(range => range.start >= source.offset && range.end <= source.offset + text.length)
     .map(range => ({ ...range, start: range.start - source.offset, end: range.end - source.offset }))
   : markdownCodeRanges(text).filter(range => range.kind === 'inline');
@@ -515,7 +525,7 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat, source?: I
   const pushPlain = (raw: string) => {
     // Decode after stripping actual tags: escaped tags are authored text, not markup.
     // Table escapes change only emitted text; all captures above use original offsets.
-    const original = source ? raw.replace(/\\\|/g, '|') : raw;
+    const original = source?.unescapePipes ? raw.replace(/\\\|/g, '|') : raw;
     const clean = inherited.font === WORD_CODE_FONT ? stripStrayTags(original) : decodeBasicHtmlEntities(stripStrayTags(original));
     if (clean) runs.push(new TextRun({ text: clean, ...inherited }));
   };
