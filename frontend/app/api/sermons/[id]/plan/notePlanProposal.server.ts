@@ -2,8 +2,6 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 
-import { z } from 'zod';
-
 import { generateNotePlanPoint } from '@/api/clients/openAI.client';
 import { AiResultPendingError } from '@/api/errors/aiResultRecovery.server';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
@@ -12,7 +10,8 @@ import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/
 import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest } from '@/services/recoverableAiResult.server';
 import { withStore } from '@/services/storeAvailability.server';
 import { AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
-import { NotePlanRequestSchema, NotePlanResultSchema, notePlanContextKey, notePlanFiledNotes, notePlanSourceMaterial, notePlanSourceText, notePlanTargetNodes, type NotePlanRequest } from '@/utils/notePlan';
+import { NotePlanReceiptSchema, NotePlanRequestSchema, notePlanContextKey, notePlanFiledNotes, notePlanSourceMaterial, notePlanSourceText, notePlanTargetNodes, type NotePlanReceipt, type NotePlanRequest } from '@/utils/notePlan';
+import { PLAN_RESULT_OPENING_HEADER, planResultOrigin } from '@/utils/planResultOrigin';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { withinDeadline } from '@/utils/withinDeadline';
 
@@ -21,8 +20,6 @@ import type { AppLocale } from '@/utils/appLocale';
 
 const sections = ['introduction', 'main', 'conclusion'] as const;
 const MODEL_BUDGET_MS = 45_000;
-const proposalReceipt = z.object({ proposal: NotePlanResultSchema, sourceKey: z.string() });
-type ProposalReceipt = z.infer<typeof proposalReceipt>;
 
 export class NotePlanRefusal extends Error {
   constructor(message: string, readonly status: number) {
@@ -48,8 +45,8 @@ async function readSources({ sermon, owner, language }: SourceScope): Promise<St
 
 async function createProposal(scope: SourceScope, request: NotePlanRequest, capture?: {
   deadline: number;
-  publish: (result: ProposalReceipt) => Promise<void>;
-}): Promise<ProposalReceipt> {
+  publish: (result: NotePlanReceipt) => Promise<void>;
+}): Promise<NotePlanReceipt> {
   const { sermon, owner } = scope;
   const { outlinePointId, targetNodeId, style, expectedContext, revision } = request;
   const section = sections.find(key => sermon.outline?.[key]?.some(point => point.id === outlinePointId));
@@ -109,8 +106,15 @@ export async function handleNotePlanProposal(
   const parsed = NotePlanRequestSchema.safeParse(await wait(() => request.json()));
   if (!parsed.success) throw new NotePlanRefusal('Invalid request', 400);
   const recoverOnly = request.headers?.get(AI_RESULT_RECOVERY_ONLY_HEADER) === '1';
+  const openingKey = request.headers?.get(PLAN_RESULT_OPENING_HEADER);
+  const { outlinePointId, targetNodeId, style, expectedContext } = parsed.data;
+  const origin = openingKey && planResultOrigin.safeParse({
+    sermonId: id, mode: 'note', pointId: outlinePointId, ...(targetNodeId && { targetNodeId }), style, openingKey,
+    contextKey: createHash('sha256').update(expectedContext).digest('hex'),
+  });
   const operation = hasOperation ? aiResultRecoveryForRequest(request, {
     ownerId: owner, source: ['sermon-note-plan-v1', id, parsed.data], deadline,
+    ...(origin && origin.success && { plan: origin.data }),
   }) : undefined;
   if (recoverOnly && !operation) throw new NotePlanRefusal('An operation ID is required to recover a plan proposal', 400);
 
@@ -120,7 +124,7 @@ export async function handleNotePlanProposal(
   const scope = { sermon, owner, language };
 
   const record = operation
-    ? (await operation.recovery.run(value => proposalReceipt.parse(value), async publish => {
+    ? (await operation.recovery.run(value => NotePlanReceiptSchema.parse(value), async publish => {
       const data = await wait(() => createProposal(scope, parsed.data, { deadline: startedAt + MODEL_BUDGET_MS, publish }));
       return { success: true, data, error: null, refusal: null };
     })).data

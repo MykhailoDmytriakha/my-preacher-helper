@@ -14,3 +14,6 @@ export function aiResultFailureKey(error: unknown) {
   if (code === AI_RESULT_PENDING) return 'errors.aiResultPending';
   if (code === AI_RESULT_UNAVAILABLE || code === AI_RESULT_CONFLICT) return 'errors.aiResultUnavailable';
 }
+
+/** Expire a claimed text operation after its server response window. */
+export const AI_RESULT_RUNNING_WINDOW_MS = 60_000;

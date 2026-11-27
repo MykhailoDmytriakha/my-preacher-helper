@@ -178,7 +178,10 @@ describe('DataEngine SDK boundary', () => {
     const publicNames = facadeSource.statements.filter(ts.isFunctionDeclaration)
       .filter(node => node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword))
       .map(node => node.name?.text).sort();
-    expect(publicNames).toEqual(['aiResultReceipt', 'createAiPromptTelemetry', 'reconcileReadyAiResultReceipts', 'settleAiPromptTelemetry']);
+    expect(publicNames).toEqual([
+      'aiResultReceipt', 'closePlanAiResult', 'createAiPromptTelemetry', 'listPlanAiResults',
+      'readClosedPlanAiResults', 'reconcileReadyAiResultReceipts', 'settleAiPromptTelemetry', 'settlePlanAiResult',
+    ]);
   }, 30_000);
 
   it('limits the semantic server operation facade to route entry points and blocks API client wrappers', () => {

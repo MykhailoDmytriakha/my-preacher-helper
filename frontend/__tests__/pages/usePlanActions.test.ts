@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import React from "react";
 import { act, renderHook as rtlRenderHook, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
@@ -5,6 +7,9 @@ import { toast } from "sonner";
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
 import { generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import { withStatus } from "@/utils/aiTimeFailure";
+import { dismissPlanPointResult, planPointResultKey, readPlanPointResult, retainPlanPointResult } from '@/(pages)/(private)/sermons/[id]/plan/planPointResult.client';
+import { serializeContent } from '@/utils/contentFingerprint';
+import { notePlanContextKey } from '@/utils/notePlan';
 import { PlanWriterContext } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
 import type { PlanOutlineLookup } from "@/(pages)/(private)/sermons/[id]/plan/planOutlineLookup";
 import type { PlanWriter } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
@@ -181,6 +186,52 @@ describe("usePlanActions", () => {
     expect(onGenerated).not.toHaveBeenCalled();
     expect(mockGeneratePlanPointContent).toHaveBeenCalledTimes(1);
     reopened.unmount();
+  });
+
+  it('retires the original local result when the recovered card carries server information', () => {
+    const key = planPointResultKey(sermon.userId, sermon.id, 'p1');
+    const ready = { id: 'matched-operation', kind: 'ready', style: 'memory', content: 'Stored model words' } as const;
+    retainPlanPointResult(key, ready);
+
+    dismissPlanPointResult(key, { ...ready, content: 'Different words' });
+    expect(readPlanPointResult(key)).toEqual(ready);
+    dismissPlanPointResult(key, { ...ready, inboxOrigin: {
+      sermonId: sermon.id, mode: 'thoughts', pointId: 'p1', style: 'memory',
+      openingKey: 'a'.repeat(64), contextKey: 'b'.repeat(64),
+    } });
+    expect(readPlanPointResult(key)).toBeUndefined();
+  });
+
+  it('keeps the newer words when an originating browser reopens its local ready result', async () => {
+    const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+    const previousSubtle = Object.getOwnPropertyDescriptor(globalThis.crypto, 'subtle');
+    Object.defineProperty(globalThis.crypto, 'subtle', {
+      configurable: true,
+      value: { digest: async (_algorithm: unknown, value: Uint8Array) => createHash('sha256').update(value).digest() },
+    });
+    try {
+      const ready = {
+        id: 'same-browser-attempt', kind: 'ready', style: 'memory', content: 'Stored model words',
+        openingKey: digest(serializeContent({ p1: 'The words sent to the model' })),
+        contextKey: digest(notePlanContextKey(sermon, 'p1')),
+      } as const;
+      retainPlanPointResult(planPointResultKey(sermon.userId, sermon.id, 'p1'), ready);
+      const onGenerated = jest.fn();
+      const { setGeneratingIds } = createGeneratingIdsHarness();
+      const view = renderHook(() => usePlanActions({
+        sermon, planStyle: 'memory', outlineLookup, generatedContent: { p1: 'My newer words' },
+        t, setGeneratingIds, onGenerated, onSaved: jest.fn(),
+      }));
+      await waitFor(() => expect(view.result.current.recoveredResults?.p1).toMatchObject({ basisCheck: 'changed' }));
+      await act(async () => {
+        await view.result.current.applyPointResult('p1', view.result.current.recoveredResults.p1);
+      });
+      expect(mockPlanWriter.stagePlanText).not.toHaveBeenCalled();
+      expect(onGenerated).not.toHaveBeenCalled();
+    } finally {
+      if (previousSubtle) Object.defineProperty(globalThis.crypto, 'subtle', previousSubtle);
+      else Reflect.deleteProperty(globalThis.crypto, 'subtle');
+    }
   });
 
   it("checks the original attempt after a lost response even if the style preference changed", async () => {

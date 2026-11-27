@@ -1,22 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { AiResultPendingError, AiResultReceiptConflict, AiResultUnavailableError, isAiResultRecoveryError } from '@/api/errors/aiResultRecovery.server';
-import { AI_RESULT_CONFLICT, AI_RESULT_OPERATION_HEADER, AI_RESULT_PENDING, AI_RESULT_RECOVERY_ONLY_HEADER, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
+import { AI_RESULT_CONFLICT, AI_RESULT_OPERATION_HEADER, AI_RESULT_PENDING, AI_RESULT_RECOVERY_ONLY_HEADER, AI_RESULT_RUNNING_WINDOW_MS, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { withinDeadline } from '@/utils/withinDeadline';
 
 import type { StructuredOutputResult } from '@/api/clients/structuredOutput';
-import type { aiResultReceipt } from '@/data-engine/aiOperations.server';
+import type { ReceiptInput } from '@/services/aiResultReceipt.server';
 
-const RUNNING_ATTEMPT_WINDOW_MS = 60_000;
 /** Both text routes have a 60s platform wall and need time to assemble the reply. */
 export const AI_RESULT_RESPONSE_BUDGET_MS = 56_000;
 
-type StoreInput = Parameters<typeof aiResultReceipt>[0];
 export type RecoverableAiResult<T> = StructuredOutputResult<T> & { completedAtMs?: number };
 export type SettleParsedAiResult = (parsed: unknown) => Promise<void>;
 
-export function recoverableAiResult(input: StoreInput & { deadline: number; recoverOnly?: boolean }) {
+export function recoverableAiResult(input: ReceiptInput & { deadline: number; recoverOnly?: boolean }) {
   const now = input.now ?? (() => new Date());
 
   const wait = <T>(work: () => Promise<T>) =>
@@ -44,7 +42,7 @@ export function recoverableAiResult(input: StoreInput & { deadline: number; reco
         ? await preserveUncertainOutcome(() => receipt.read())
         : await preserveUncertainOutcome(() => receipt.claim());
       if (!claim) throw new AiResultUnavailableError('missing');
-      const expiredBefore = now().getTime() - RUNNING_ATTEMPT_WINDOW_MS;
+      const expiredBefore = now().getTime() - AI_RESULT_RUNNING_WINDOW_MS;
       if (claim.state === 'running' && claim.startedAtMs <= expiredBefore) {
         claim = await preserveUncertainOutcome(() => receipt.expireRunning(expiredBefore));
       }
@@ -88,14 +86,14 @@ export type AiResultRecovery = ReturnType<typeof recoverableAiResult>;
 
 export function aiResultRecoveryForRequest(
   request: Request,
-  { ownerId, source, deadline }: { ownerId: string; source: unknown; deadline: number },
+  { ownerId, source, deadline, plan }: Pick<ReceiptInput, 'ownerId' | 'plan'> & { source: unknown; deadline: number },
 ) {
   const operationId = request.headers.get(AI_RESULT_OPERATION_HEADER) ?? randomUUID();
   const fingerprint = createHash('sha256').update(serializeContent(source)).digest('hex');
   return {
     operationId,
     recovery: recoverableAiResult({
-      ownerId, operationId, fingerprint, deadline,
+      ownerId, operationId, fingerprint, deadline, plan,
       recoverOnly: request.headers.get(AI_RESULT_RECOVERY_ONLY_HEADER) === '1',
     }),
   };

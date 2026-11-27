@@ -631,6 +631,7 @@ function PlanPageContent({ source, recovery, readOnly = false, wayIn }: {
     planStyle,
     outlineLookup,
     generatedContent,
+    confirmedPlanText: (source.document.confirmed?.value as unknown as Sermon | undefined)?.planText,
     t,
     setGeneratingIds,
     cellAuthoringVersion: planDraft.cellAuthoringVersion,

@@ -13,6 +13,7 @@ const captured = z.object({
   request: NotePlanRequestSchema,
   before: z.record(z.string()),
   labels: z.record(z.string()),
+  openingKey: z.string().optional(),
   language: z.enum(['en', 'ru', 'uk']).optional(),
   /** Every target cell was empty when the request started: the answer goes straight in, unreviewed. */
   autoApply: z.boolean().optional(),
@@ -89,8 +90,8 @@ export function resolveProposal(scope: ProposalScope, value: ProposalDraft): boo
   return true;
 }
 
-export function discardProposal(scope: ProposalScope, value: ProposalDraft) {
-  if (value.state === 'pending') return;
+export function discardProposal(scope: ProposalScope, value: ProposalDraft, serverClosed = false) {
+  if (value.state === 'pending' && !serverClosed) return;
   const key = keyFor(scope, value.id);
   const current = readDraft(key);
   if (!current || decode(current.value, value.id)?.state !== value.state) return;

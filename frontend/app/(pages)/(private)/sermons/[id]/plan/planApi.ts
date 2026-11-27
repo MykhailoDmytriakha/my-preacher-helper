@@ -6,6 +6,7 @@ import { apiClient } from '@/utils/apiClient';
 import { APP_LANGUAGE_HEADER, type AppLocale } from '@/utils/appLocale';
 import { accountChangedError, getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { NotePlanResultSchema, type NotePlanRequest, type NotePlanResult } from '@/utils/notePlan';
+import { PLAN_RESULT_OPENING_HEADER } from '@/utils/planResultOrigin';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
 
@@ -19,7 +20,7 @@ interface GeneratePlanPointContentResponse {
   content: string;
 }
 
-type PlanOperation = { ownerId: string; operationId: string; recoverOnly?: boolean };
+type PlanOperation = { ownerId: string; operationId: string; recoverOnly?: boolean; openingKey?: string };
 
 function assertPlanOwner(ownerId?: string) {
   if (ownerId && resolveOwnerUid() !== ownerId) throw accountChangedError();
@@ -35,6 +36,7 @@ export async function generateNotePlanContent(
   assertPlanOwner(operation?.ownerId);
   const usedOperationHeaders = operation ? {
     [AI_RESULT_OPERATION_HEADER]: operation.operationId,
+    ...(operation.openingKey && { [PLAN_RESULT_OPENING_HEADER]: operation.openingKey }),
     ...(operation.language && { [APP_LANGUAGE_HEADER]: operation.language }),
     ...(operation.recoverOnly && { [AI_RESULT_RECOVERY_ONLY_HEADER]: '1' }),
   } : {};
@@ -61,9 +63,10 @@ export async function generatePlanPointContent({
   sermonId,
   outlinePointId,
   style,
-}: GeneratePlanPointContentParams, { ownerId, operationId, recoverOnly = false }: {
+}: GeneratePlanPointContentParams, { ownerId, operationId, openingKey, recoverOnly = false }: {
   ownerId: string;
   operationId: string;
+  openingKey?: string;
   recoverOnly?: boolean;
 }): Promise<GeneratePlanPointContentResponse> {
   const path = `/api/sermons/${encodeURIComponent(sermonId)}/plan?${new URLSearchParams({ outlinePointId, style })}`;
@@ -75,6 +78,7 @@ export async function generatePlanPointContent({
     headers: {
       ...authHeaders,
       [AI_RESULT_OPERATION_HEADER]: operationId,
+      ...(openingKey && { [PLAN_RESULT_OPENING_HEADER]: openingKey }),
       ...(recoverOnly && { [AI_RESULT_RECOVERY_ONLY_HEADER]: '1' }),
     },
     category: 'ai',

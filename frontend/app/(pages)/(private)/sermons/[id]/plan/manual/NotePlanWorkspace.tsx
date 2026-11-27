@@ -54,7 +54,9 @@ function isAttached(sermon: Sermon, proposal: WorkspaceProposal) {
   return Boolean(point && targetExists(sermon, proposal) && proposalCells(proposal, point));
 }
 
-function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; conspectus: ManualConspectus; children: ReactNode }) {
+function ActiveWorkspace({ sermon, conspectus, confirmedPlanText, children }: {
+  sermon: Sermon; conspectus: ManualConspectus; confirmedPlanText?: Record<string, string>; children: ReactNode;
+}) {
   const { t } = useTranslation();
   const { aiBlocked, refresh } = useAiUsage();
   const sources = useSourceNotes(sermon);
@@ -70,7 +72,7 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
     });
     return ordered.length > 0 && ordered.length === ids.length ? notePlanSourceText(ordered) : undefined;
   }, [sermon.sourceNoteIds, sources.notes]);
-  const generation = useNotePlanGeneration({ sermon, conspectus, blocked, sourceText, sourceMissing: sourceUnavailable, onSuccess: refresh });
+  const generation = useNotePlanGeneration({ sermon, conspectus, blocked, sourceText, confirmedPlanText, sourceMissing: sourceUnavailable, onSuccess: refresh });
   const detached = generation.ready.filter(draft => !isAttached(sermon, draft));
   const detachedPending = generation.pending.filter(draft => !targetExists(sermon, draft));
   return (
@@ -97,7 +99,7 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
 }
 
 export function NotePlanWorkspace({ enabled, ...props }: {
-  enabled: boolean; sermon: Sermon; conspectus: ManualConspectus; children: ReactNode;
+  enabled: boolean; sermon: Sermon; confirmedPlanText?: Record<string, string>; conspectus: ManualConspectus; children: ReactNode;
 }) {
   return enabled ? <ActiveWorkspace {...props} /> : <>{props.children}</>;
 }

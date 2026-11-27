@@ -8,26 +8,35 @@ import { planTextConflictValues } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { AI_RESULT_CONFLICT, AI_RESULT_NOT_STARTED, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
+import { serializeContent } from '@/utils/contentFingerprint';
 import { debugLog } from "@/utils/debugMode";
 import { failureCode } from "@/utils/failureCode";
+import { notePlanContextKey } from '@/utils/notePlan';
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { generatePlanPointContent } from "./planApi";
 import { getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
-import { beginPlanPointResult, dismissPlanPointResult, isPlanPointResultStored, listPlanPointResults, planPointResultKey, readPlanPointResult, retainPlanPointResult, watchPlanPointResults, type PlanPointResult } from './planPointResult.client';
-import { usePlanWriter } from "./planWriter";
+import { beginPlanPointResult, bindPlanPointOpening, dismissPlanPointResult, isPlanPointResultStored, listPlanPointResults, planPointResultKey, readPlanPointResult, retainPlanPointResult, watchPlanPointResults, type PlanPointResult } from './planPointResult.client';
+import { planResultDigest } from './planResultInbox.client';
+import { usePlanWriter } from './planWriter';
+import { useConfirmedPlanResultClosure } from './useConfirmedPlanResultClosure';
+import { usePlanResultInbox } from './usePlanResultInbox';
+import { useRecoveredPlanPointResults } from './useRecoveredPlanPointResults';
 
 import type { PlanOutlineLookup } from "./planOutlineLookup";
 import type { PlanTextBaseline } from "./planTextBaseline";
 import type { PlanWriter } from "./planWriter";
 import type { SermonSectionKey } from "./types";
 
+const DRAFT_STORAGE_ERROR = 'draftStorage.title';
+const POINT_CHANGED = 'plan.generationTextChanged';
+
 function stagePointResult(writer: PlanWriter, key: string, id: string, result: Extract<PlanPointResult, { kind: 'ready' }>,
-  opening: string): Promise<void> {
+  opening: string, stillOffered = () => isPlanPointResultStored(key, result)): Promise<void> {
   if (!writer.stagePlanText) return Promise.reject(new Error('Plan draft storage is unavailable'));
   return writer.stagePlanText({ [id]: result.content }, { [id]: opening },
-    (nodeId, text) => nodeId === id && text === result.content && isPlanPointResultStored(key, result));
+    (nodeId, text) => nodeId === id && text === result.content && stillOffered());
 }
 
 interface UsePlanActionsParams {
@@ -35,6 +44,7 @@ interface UsePlanActionsParams {
   planStyle: PlanStyle;
   outlineLookup: PlanOutlineLookup;
   generatedContent: Record<string, string>;
+  confirmedPlanText?: Record<string, string>;
   cellAuthoringVersion?: (nodeId: string) => number;
   t: (key: string, options?: Record<string, unknown>) => string;
   setGeneratingIds: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -66,6 +76,7 @@ export default function usePlanActions({
   planStyle,
   outlineLookup,
   generatedContent,
+  confirmedPlanText,
   cellAuthoringVersion,
   t,
   setGeneratingIds,
@@ -82,8 +93,8 @@ export default function usePlanActions({
   const generatedContentRef = useRef(generatedContent);
   generatedContentRef.current = generatedContent;
   const scope = useMemo(() => Symbol(JSON.stringify([sermon?.userId, sermon?.id])), [sermon?.userId, sermon?.id]);
-  const currentGeneration = useRef({ scope, outlineLookup, cellAuthoringVersion, onGenerated });
-  currentGeneration.current = { scope, outlineLookup, cellAuthoringVersion, onGenerated };
+  const currentGeneration = useRef({ scope, sermon, outlineLookup, cellAuthoringVersion, onGenerated });
+  currentGeneration.current = { scope, sermon, outlineLookup, cellAuthoringVersion, onGenerated };
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -94,6 +105,22 @@ export default function usePlanActions({
   const [results, setResults] = useState<{ scope: symbol; points: Record<string, PlanPointResult> }>();
   const ownerId = sermon?.userId;
   const sermonId = sermon?.id;
+  const inbox = usePlanResultInbox(ownerId, sermonId, 'thoughts', () => ownerId && sermonId
+    ? Object.values(listPlanPointResults(ownerId, sermonId)).filter(result => result.openingKey).map(result => result.id)
+    : []);
+  const { close: closeInbox, closed: closedInbox, waitForLookup } = inbox;
+  const closedItems = useRef(closedInbox);
+  closedItems.current = closedInbox;
+  useEffect(() => {
+    if (!ownerId || !sermonId || !closedInbox?.size) return;
+    for (const [pointId, result] of Object.entries(listPlanPointResults(ownerId, sermonId))) {
+      if (closedInbox.has(result.id)) dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+    }
+  }, [ownerId, sermonId, closedInbox]);
+  const inboxItems = useRef(inbox.items);
+  inboxItems.current = inbox.items;
+  const stagedOffers = useRef(new Map<string, { id: string; content: string; scope: symbol }>());
+  const closeAfterConfirmation = useConfirmedPlanResultClosure(ownerId, sermonId, 'thoughts', confirmedPlanText, closeInbox);
   useEffect(() => {
     if (!ownerId || !sermonId) return;
     const refresh = () => setResults({ scope, points: listPlanPointResults(ownerId, sermonId) });
@@ -105,6 +132,7 @@ export default function usePlanActions({
     previousScope.current = scope;
     // Requests from the old sermon cannot hold a button on the new one.
     requests.current.clear();
+    stagedOffers.current.clear();
     setGeneratingIds({});
   }, [scope, setGeneratingIds]);
   /** Re-entry for the "keep mine" button, without a circular hook dependency. */
@@ -116,7 +144,9 @@ export default function usePlanActions({
     if (aiBlocked || !sermon || requests.current.get(outlinePointId) === scope) return;
 
     const key = planPointResultKey(sermon.userId, sermon.id, outlinePointId);
-    if (readPlanPointResult(key)) return;
+    const priorOffer = (items = inboxItems.current) => items?.some(item => item.value.pointId === outlinePointId
+      && (item.state === 'pending' || item.value.mode === 'thoughts' && item.value.content !== generatedContentRef.current[outlinePointId]));
+    if (readPlanPointResult(key) || priorOffer()) return;
     requests.current.set(outlinePointId, scope);
     setGeneratingIds((prev) => ({
       ...prev,
@@ -125,6 +155,8 @@ export default function usePlanActions({
 
     let attempt: PlanPointResult | undefined;
     try {
+      const lookup = waitForLookup();
+      if (lookup && (priorOffer(await lookup) || !mounted.current || currentGeneration.current.scope !== scope)) return;
       const outlinePoint = getPointFromLookup(outlineLookup, outlinePointId);
       const section = getPointSectionFromLookup(outlineLookup, outlinePointId);
 
@@ -150,14 +182,26 @@ export default function usePlanActions({
       const openingAuthoring = cellAuthoringVersion?.(outlinePointId);
       attempt = beginPlanPointResult(key, planStyle);
       if (!attempt) {
-        toast.error(t('draftStorage.title'));
+        toast.error(t(DRAFT_STORAGE_ERROR));
         return;
       }
+      // Persist the identity before hashing so navigation cannot lose a click.
+      if (globalThis.crypto?.subtle) {
+        const [openingKey, contextKey] = await Promise.all([
+          planResultDigest(serializeContent({ [outlinePointId]: openingText })),
+          planResultDigest(notePlanContextKey(sermon, outlinePointId)),
+        ]);
+        if (openingKey) {
+          const bound = bindPlanPointOpening(key, attempt, { openingKey, contextKey });
+          if (bound) attempt = bound;
+        }
+      }
+      const openingKey = attempt.openingKey;
       const { content } = await generatePlanPointContent({
         sermonId: sermon.id,
         outlinePointId,
         style: planStyle,
-      }, { ownerId: sermon.userId, operationId: attempt.id });
+      }, { ownerId: sermon.userId, operationId: attempt.id, ...(openingKey && { openingKey }) });
       const result = { ...attempt, kind: 'ready' as const, content };
       const retainedAttempt = readPlanPointResult(key);
       if (retainedAttempt?.id !== attempt.id || retainedAttempt.kind === 'ready') return;
@@ -170,7 +214,7 @@ export default function usePlanActions({
       if (!mounted.current || current.scope !== scope || !currentSection || (generatedContentRef.current[outlinePointId] ?? "") !== openingText
         || current.cellAuthoringVersion?.(outlinePointId) !== openingAuthoring) {
         if (!mounted.current || current.scope !== scope) return;
-        toast.info(t("plan.generationTextChanged"));
+        toast.info(t(POINT_CHANGED));
         await onAiSuccess?.();
         return;
       }
@@ -178,12 +222,15 @@ export default function usePlanActions({
         await stagePointResult(planWriter, key, outlinePointId, result, openingText);
       } catch (error) {
         if (mounted.current && currentGeneration.current.scope === scope) toast.info(t(
-          failureCode(error) === 'decision-changed' ? 'plan.generationTextChanged' : 'draftStorage.title'));
+          failureCode(error) === 'decision-changed' ? POINT_CHANGED : DRAFT_STORAGE_ERROR));
         return;
       }
       if (mounted.current && currentGeneration.current.scope === scope
         && currentGeneration.current.cellAuthoringVersion?.(outlinePointId) === openingAuthoring) {
         currentGeneration.current.onGenerated({ outlinePointId, content, section: currentSection });
+      }
+      if (openingKey && currentGeneration.current.scope === scope) {
+        stagedOffers.current.set(outlinePointId, { id: result.id, content, scope });
       }
       dismissPlanPointResult(key, result);
       await onAiSuccess?.();
@@ -206,20 +253,44 @@ export default function usePlanActions({
         });
       }
     }
-  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, planWriter, scope, sermon, setGeneratingIds, t]);
+  }, [aiBlocked, cellAuthoringVersion, onAiSuccess, outlineLookup, planStyle, planWriter, scope, sermon, setGeneratingIds, t, waitForLookup]);
 
-  const recoveredResults = results?.scope === scope ? results.points : {};
+  const localResults = results?.scope === scope ? Object.fromEntries(
+    Object.entries(results.points).filter(([, item]) => !closedInbox?.has(item.id))) : {};
+  const { inboxResults, recoveredResults } = useRecoveredPlanPointResults(inbox.items, localResults, sermon, generatedContent);
   const recoverPointResult = async (pointId: string, resume = false) => {
     if (!ownerId || !sermonId || requests.current.get(pointId) === scope) return;
     const key = planPointResultKey(ownerId, sermonId, pointId);
-    const attempt = readPlanPointResult(key);
+    const local = readPlanPointResult(key);
+    if (!local && inboxResults[pointId]?.kind === 'pending' && !resume) {
+      requests.current.set(pointId, scope);
+      setGeneratingIds(previous => ({ ...previous, [pointId]: true }));
+      try {
+        await inbox.check(inboxResults[pointId].id);
+      } catch {
+        // Until settlement or expiry, the original operation remains available to check.
+      } finally {
+        if (mounted.current && currentGeneration.current.scope === scope) {
+          requests.current.delete(pointId);
+          setGeneratingIds(previous => {
+            const { [pointId]: _finished, ...remaining } = previous;
+            return remaining;
+          });
+        }
+      }
+      return;
+    }
+    const attempt = local;
     if (attempt?.kind !== 'pending' || resume && !attempt.receiptMissing) return;
     requests.current.set(pointId, scope);
     setGeneratingIds(previous => ({ ...previous, [pointId]: true }));
     try {
       const { content } = await generatePlanPointContent({
         sermonId, outlinePointId: pointId, style: attempt.style,
-      }, { ownerId, operationId: attempt.id, recoverOnly: !resume });
+      }, {
+        ownerId, operationId: attempt.id, recoverOnly: !resume,
+        ...(resume && attempt.openingKey && { openingKey: attempt.openingKey }),
+      });
       retainPlanPointResult(key, { ...attempt, kind: 'ready', content }, attempt);
       if (mounted.current && currentGeneration.current.scope === scope) await onAiSuccess?.();
     } catch (error) {
@@ -239,28 +310,64 @@ export default function usePlanActions({
     }
   };
   const applyPointResult = async (pointId: string, result: PlanPointResult) => {
-    if (!ownerId || !sermonId || result.kind !== 'ready' || requests.current.get(pointId) === scope) return;
+    if (!ownerId || !sermonId || result.kind !== 'ready' || result.basisCheck || requests.current.get(pointId) === scope) return;
     const section = getPointSectionFromLookup(currentGeneration.current.outlineLookup, pointId);
     if (!section) return;
     const key = planPointResultKey(ownerId, sermonId, pointId);
-    if (readPlanPointResult(key)?.id !== result.id) return;
+    const origin = result.inboxOrigin;
+    if (closedItems.current?.has(result.id)) return;
+    const local = readPlanPointResult(key);
+    if (!origin && local?.id !== result.id) return;
+    const opening = generatedContentRef.current[pointId] ?? '';
+    const current = currentGeneration.current;
+    const context = current.sermon && notePlanContextKey(current.sermon, pointId);
+    const stillOffered = () => mounted.current && currentGeneration.current.scope === scope && !closedItems.current?.has(result.id)
+      && (origin ? inboxItems.current?.some(item => item.id === result.id && item.state === 'ready'
+        && item.value.mode === 'thoughts' && item.value.content === result.content) === true : isPlanPointResultStored(key, result));
+    const openingStillCurrent = () => {
+      const latest = currentGeneration.current;
+      return (generatedContentRef.current[pointId] ?? '') === opening
+        && latest.sermon && notePlanContextKey(latest.sermon, pointId) === context;
+    };
+    const boundOpening = origin?.openingKey ?? result.openingKey;
+    const boundContext = origin?.contextKey ?? result.contextKey;
+    if (boundOpening) {
+      const [openingKey, contextKey] = await Promise.all([
+        planResultDigest(serializeContent({ [pointId]: opening })),
+        context && planResultDigest(context),
+      ]);
+      if (openingKey !== boundOpening || boundContext && contextKey !== boundContext || !openingStillCurrent() || !stillOffered()) {
+        if (mounted.current && currentGeneration.current.scope === scope) toast.info(t(POINT_CHANGED));
+        return;
+      }
+    }
     const authoring = currentGeneration.current.cellAuthoringVersion?.(pointId);
     try {
-      await stagePointResult(planWriter, key, pointId, result, generatedContentRef.current[pointId] ?? '');
+      await stagePointResult(planWriter, key, pointId, result, opening, boundOpening ? () => Boolean(stillOffered()) : undefined);
     } catch (error) {
       if (mounted.current && currentGeneration.current.scope === scope) toast.info(t(
-        failureCode(error) === 'decision-changed' ? 'plan.generationTextChanged' : 'draftStorage.title'));
+        failureCode(error) === 'decision-changed' ? POINT_CHANGED : DRAFT_STORAGE_ERROR));
       return;
     }
     if (mounted.current && currentGeneration.current.scope === scope
       && currentGeneration.current.cellAuthoringVersion?.(pointId) === authoring) {
       currentGeneration.current.onGenerated({ outlinePointId: pointId, content: result.content, section });
     }
-    dismissPlanPointResult(key, result);
+    if ((origin || result.openingKey) && currentGeneration.current.scope === scope) {
+      stagedOffers.current.set(pointId, { id: result.id, content: result.content, scope });
+    }
+    if (local?.id === result.id) dismissPlanPointResult(key, result);
   };
   const discardPointResult = (pointId: string, result: PlanPointResult) => {
     if (ownerId && sermonId && result.kind !== 'pending' && requests.current.get(pointId) !== scope) {
-      dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+      if (result.inboxOrigin || result.openingKey && result.kind === 'ready') {
+        void inbox.close(result.id).then(() => {
+          dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+        }, error => {
+          if (error.status === 404 && !result.inboxOrigin) dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
+          else if (mounted.current && currentGeneration.current.scope === scope) toast.error(t(DRAFT_STORAGE_ERROR));
+        });
+      } else dismissPlanPointResult(planPointResultKey(ownerId, sermonId, pointId), result);
     }
   };
 
@@ -283,6 +390,11 @@ export default function usePlanActions({
     section: SermonSectionKey
   ) => {
     if (!sermon) return;
+    const text = contentByNodeId[outlinePointId];
+    const staged = stagedOffers.current.get(outlinePointId);
+    const found = inboxItems.current?.find(item => item.state === 'ready' && item.value.mode === 'thoughts'
+      && item.value.pointId === outlinePointId && item.value.content === text);
+    const proposalId = found?.id ?? (staged?.scope === scope && staged.content === text ? staged.id : undefined);
 
     try {
       /**
@@ -301,6 +413,7 @@ export default function usePlanActions({
           revisionsByNodeId: planTextBaseline?.revisionsForNodes(Object.keys(contentByNodeId)),
         });
         planTextBaseline?.confirm(contentByNodeId);
+        if (proposalId && text !== undefined) closeAfterConfirmation(proposalId, { [outlinePointId]: text });
       };
       const queued = writeChainRef.current.then(run, run);
       writeChainRef.current = queued.catch(() => undefined);
@@ -380,7 +493,7 @@ export default function usePlanActions({
       debugLog("Plan save failed", { sermonId: sermon.id, outlinePointId, section, error });
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
     }
-  }, [onSaved, planTextBaseline, planWriter, sermon, t]);
+  }, [closeAfterConfirmation, onSaved, planTextBaseline, planWriter, scope, sermon, t]);
 
   // Wired after definition so the refusal message can re-enter it.
   saveSermonPointRef.current = saveSermonPoint;

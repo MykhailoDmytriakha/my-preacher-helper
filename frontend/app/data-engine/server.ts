@@ -2021,6 +2021,13 @@ export function createAiResultReceiptStore(uid: string, database: Firestore = ad
       const { writeTime } = await receipt.create(record);
       return async patch => { await receipt.update(patch, { lastUpdateTime: writeTime }); };
     },
+    async listPlan(prefix, limit, after) {
+      let query = receipts.where('planInboxKey', '>=', prefix).where('planInboxKey', '<', prefix + '~')
+        .orderBy('planInboxKey', 'desc');
+      if (after) query = query.startAfter(after);
+      const result = await query.limit(limit).get();
+      return result.docs.map(doc => ({ id: doc.id, record: doc.data() as ReceiptRecord }));
+    },
     transaction: run => database.runTransaction(transaction => run({
       read: async id => data(await transaction.get(receipts.doc(id))),
       readReady: async limit => {

@@ -43,7 +43,7 @@ import { NoteNodeText, NotePlanWorkspace, NotePointActions, NotePointGenerateBut
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
 import type { PlanTimerState, SermonSectionKey } from "../types";
-import type { SermonPoint } from "@/models/models";
+import type { Sermon, SermonPoint } from "@/models/models";
 
 const NO_PLAN_CONTENT_KEY = "plan.noContent";
 
@@ -540,7 +540,8 @@ function ManualConspectusContent({ source, recovery, readOnly: copyReadOnly = fa
       />
 
       {/* Generating from the note writes the plan, so a copy for reading keeps only the note's reminders. */}
-      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !locked} sermon={sermon} conspectus={conspectus}>
+      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !locked} sermon={sermon} conspectus={conspectus}
+        confirmedPlanText={(source.document.confirmed?.value as unknown as Sermon | undefined)?.planText}>
       {SECTIONS.map((section) => {
         const points = sermon.outline?.[section] ?? [];
         const tone = SECTION_TONE_CLASSES[section];

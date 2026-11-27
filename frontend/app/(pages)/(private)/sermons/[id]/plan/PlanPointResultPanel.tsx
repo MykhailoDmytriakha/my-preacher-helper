@@ -28,6 +28,9 @@ export default function PlanPointResultPanel({ results, generating, outline, app
           <>
             <p className="text-sm">{t('plan.pointResultTitle')}</p>
             <MarkdownDisplay content={result.content} />
+            {result.basisCheck === 'changed' && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+              {t('plan.fromNote.contextChanged')}
+            </p>}
           </>
         ) : <p role="status" className="text-sm">{t(result.kind === 'failed' ? result.message
           : result.receiptMissing ? 'plan.pointResultNotStarted' : 'errors.aiResultPending')}</p>}
@@ -42,7 +45,7 @@ export default function PlanPointResultPanel({ results, generating, outline, app
             </>
           ) : (
             <>
-              {result.kind === 'ready' && point && <button type="button" className={button} disabled={applyDisabled || generating[pointId]}
+              {result.kind === 'ready' && point && <button type="button" className={button} disabled={applyDisabled || Boolean(result.basisCheck) || generating[pointId]}
                 onClick={() => apply(pointId, result)}>{t('plan.pointResultApply')}</button>}
               <button type="button" className={button} disabled={generating[pointId]} onClick={() => discard(pointId, result)}>{t('plan.pointResultDismiss')}</button>
             </>

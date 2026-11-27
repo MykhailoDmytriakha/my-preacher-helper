@@ -2,8 +2,8 @@
 
 jest.mock('server-only', () => ({}), { virtual: true });
 
-import { AiResultReceiptConflict, AiResultUnavailableError } from '@/api/errors/aiResultRecovery.server';
-import { aiResultReceipt } from '@/data-engine/aiOperations.server';
+import { AiResultPendingError, AiResultReceiptConflict, AiResultUnavailableError } from '@/api/errors/aiResultRecovery.server';
+import { aiResultReceipt, closePlanAiResult, readClosedPlanAiResults, settlePlanAiResult } from '@/data-engine/aiOperations.server';
 import { recoverableAiResult } from '@/services/recoverableAiResult.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 
@@ -104,6 +104,66 @@ describe('AI result receipt', () => {
     time = new Date('2026-11-07T23:00:00.000Z');
     store = storeFixture();
     store.write(accountPath, { usage: oldUsage });
+  });
+
+  it('binds a plan result to its original point, opening words and context at claim time', async () => {
+    const plan = {
+      sermonId: 'sermon-1', mode: 'note' as const, pointId: 'main-1', targetNodeId: 'child',
+      style: 'memory' as const, openingKey: 'a'.repeat(64), contextKey: 'b'.repeat(64),
+    };
+    const input = { ownerId, operationId, fingerprint, now: () => time, plan };
+    const original = aiResultReceipt(input);
+    const claim = await original.claim();
+    if (claim.state !== 'claimed') throw new Error('Expected the first caller to claim the generation');
+    expect(store.read(receiptPath).data()).toMatchObject({ state: 'running', plan });
+
+    const replay = aiResultReceipt({ ...input, plan: { ...plan, openingKey: 'c'.repeat(64) } });
+    await expect(replay.claim()).resolves.toMatchObject({ state: 'running' });
+    await claim.save({ proposal: 'one original response' });
+    await original.settle();
+
+    expect(store.read(receiptPath).data()).toMatchObject({ state: 'settled', plan });
+    expect(store.read(accountPath).data()).toMatchObject({ usage: { aiUsed: 6 } });
+  });
+
+  it('serves and retires a pending plan result only in its original account, sermon and mode', async () => {
+    const sermonId = 'sermon-1';
+    const mode = 'thoughts';
+    const input = { ownerId, operationId, fingerprint, now: () => time, plan: {
+      sermonId, mode, pointId: 'main-1', style: 'memory' as const, openingKey: 'a'.repeat(64), contextKey: 'b'.repeat(64),
+    } } as const;
+    const receipt = aiResultReceipt(input);
+    const claim = await receipt.claim();
+    if (claim.state !== 'claimed') throw new Error('Expected the first caller to claim the generation');
+    await expect(closePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toBe(false);
+    await expect(settlePlanAiResult(ownerId, sermonId, mode, operationId)).rejects.toBeInstanceOf(AiResultPendingError);
+    await expect(settlePlanAiResult('another-owner', sermonId, mode, operationId)).resolves.toBeUndefined();
+
+    await claim.save({ proposal: 'the original result' });
+    await expect(settlePlanAiResult(ownerId, 'another-sermon', mode, operationId)).resolves.toBeUndefined();
+    await expect(settlePlanAiResult(ownerId, sermonId, 'note', operationId)).resolves.toBeUndefined();
+    await expect(readClosedPlanAiResults(ownerId, sermonId, mode, [operationId])).resolves.toEqual([]);
+    expect(store.read(accountPath).data()).toMatchObject({ usage: { aiUsed: 5 } });
+    jest.useFakeTimers();
+    jest.setSystemTime(time);
+    try {
+      await expect(settlePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toMatchObject({
+        value: { proposal: 'the original result' },
+      });
+      await expect(settlePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toMatchObject({
+        value: { proposal: 'the original result' },
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+    await expect(closePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toBe(true);
+    await expect(closePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toBe(true);
+    await expect(settlePlanAiResult(ownerId, sermonId, mode, operationId)).resolves.toBeUndefined();
+    await expect(readClosedPlanAiResults(ownerId, sermonId, mode, [operationId, 'other-id'])).resolves.toEqual([operationId]);
+    await expect(readClosedPlanAiResults('other-owner', sermonId, mode, [operationId])).resolves.toEqual([]);
+    await expect(readClosedPlanAiResults(ownerId, 'another-sermon', mode, [operationId])).resolves.toEqual([]);
+    await expect(receipt.settle()).resolves.toMatchObject({ value: { proposal: 'the original result' } });
+    expect(store.read(accountPath).data()).toMatchObject({ usage: { aiUsed: 6 } });
   });
 
   it('recovers the same result while the first accounting request is stalled, and charges only once', async () => {

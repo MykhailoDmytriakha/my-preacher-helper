@@ -3,10 +3,13 @@ import { readDraftAddress } from '@/utils/draftAddress';
 import { clearDraftIfMatches, draftKey, findDraftCopies, readDraft, saveDraft } from '@/utils/durableDraft';
 
 import type { PlanStyle } from '@/api/clients/planTypes';
+import type { PlanResultOrigin } from '@/utils/planResultOrigin';
 
-type Attempt = { id: string; style: PlanStyle };
+type Attempt = { id: string; style: PlanStyle; openingKey?: string; contextKey?: string; inboxOrigin?: PlanResultOrigin };
 export type PlanPointResult = Attempt & (
-  { kind: 'pending'; receiptMissing?: boolean } | { kind: 'ready'; content: string } | { kind: 'failed'; message: string }
+  { kind: 'pending'; receiptMissing?: boolean }
+  | { kind: 'ready'; content: string; basisCheck?: 'checking' | 'changed' }
+  | { kind: 'failed'; message: string }
 );
 
 const aggregate = 'plan-point-generation';
@@ -85,11 +88,21 @@ export function beginPlanPointResult(key: string, style: PlanStyle): PlanPointRe
   return result;
 }
 
+export function bindPlanPointOpening(key: string, attempt: PlanPointResult, origin: { openingKey: string; contextKey?: string }): PlanPointResult | undefined {
+  const current = readPlanPointResult(key);
+  if (current?.id !== attempt.id || current.kind !== 'pending') return undefined;
+  const bound = { ...current, ...origin };
+  if (!saveDraft(key, bound)) return undefined;
+  publish(key);
+  return bound;
+}
+
 export function dismissPlanPointResult(key: string, result: PlanPointResult): void {
   const current = readPlanPointResult(key);
   if (current?.id !== result.id || current.kind !== result.kind) return;
+  if (current.kind === 'ready' && result.kind === 'ready' && current.content !== result.content) return;
   if (unsaved.get(key)?.id === result.id) unsaved.delete(key);
-  clearDraftIfMatches(key, result);
+  clearDraftIfMatches(key, current);
   const earlierCopy = readDraft<PlanPointResult>(key)?.value;
   if (earlierCopy?.id === result.id && earlierCopy.kind === 'pending') clearDraftIfMatches(key, earlierCopy);
   publish(key);

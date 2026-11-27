@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import 'openai/shims/node';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,6 +14,8 @@ import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/se
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { AI_RESULT_NOT_STARTED, AI_RESULT_OPERATION_HEADER, AI_RESULT_RECOVERY_ONLY_HEADER } from '@/utils/aiResultOperation';
 import { requestLanguage } from '@/utils/appLocale';
+import { notePlanContextKey } from '@/utils/notePlan';
+import { PLAN_RESULT_OPENING_HEADER, planResultOrigin } from '@/utils/planResultOrigin';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
 import { generatePlanPointContent, recoverPlanPointContent, PlanStyle } from '@clients/openAI.client';
@@ -83,11 +87,6 @@ async function generateSermonPointContent(
   startedAt: number,
 ) {
   try {
-    const operation = request.headers?.has(AI_RESULT_OPERATION_HEADER) ? aiResultRecoveryForRequest(request, {
-      ownerId: uid,
-      source: ['sermon-plan-point-v1', sermonId, outlinePointId, style],
-      deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
-    }) : undefined;
     // Fetch the sermon
     const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId));
     if (!sermon) {
@@ -96,6 +95,17 @@ async function generateSermonPointContent(
     if (sermon.userId !== uid) {
       return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
+    const openingKey = request.headers?.get(PLAN_RESULT_OPENING_HEADER);
+    const origin = openingKey && planResultOrigin.safeParse({
+      sermonId, mode: 'thoughts', pointId: outlinePointId, style, openingKey,
+      contextKey: createHash('sha256').update(notePlanContextKey(sermon, outlinePointId)).digest('hex'),
+    });
+    const operation = request.headers?.has(AI_RESULT_OPERATION_HEADER) ? aiResultRecoveryForRequest(request, {
+      ownerId: uid,
+      source: ['sermon-plan-point-v1', sermonId, outlinePointId, style],
+      ...(origin && origin.success && { plan: origin.data }),
+      deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
+    }) : undefined;
     if (request.headers?.get(AI_RESULT_RECOVERY_ONLY_HEADER) === '1') {
       if (!operation) return jsonNoStore({ error: 'An operation ID is required to recover a plan result' }, { status: 400 });
       return jsonNoStore({ content: await recoverPlanPointContent(operation.recovery) });

@@ -37,6 +37,14 @@ export const NotePlanResultSchema = z.object({
 
 export type NotePlanResult = z.infer<typeof NotePlanResultSchema>;
 
+export const NotePlanReceiptSchema = z.object({ proposal: NotePlanResultSchema, sourceKey: z.string() });
+export type NotePlanReceipt = z.infer<typeof NotePlanReceiptSchema>;
+
+export function storedNotePlanProposal(value: unknown): NotePlanResult {
+  const { proposal, sourceKey } = NotePlanReceiptSchema.parse(value);
+  return { ...proposal, sourceKey };
+}
+
 /** The ordered note material used by the generator, in one Scripture numbering. */
 export function notePlanSourceMaterial(notes: StudyNote[]) {
   return notes.map(note => ({

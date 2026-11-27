@@ -5,26 +5,31 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { AI_RESULT_CONFLICT, AI_RESULT_NOT_STARTED, AI_RESULT_PENDING, AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { browserInterfaceLanguage } from '@/utils/appLocale';
+import { serializeContent } from '@/utils/contentFingerprint';
 import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { notePlanContextKey, notePlanTargetNodes, type NotePlanResult, type NotePlanRevisionIntent } from '@/utils/notePlan';
 import { readPlanText } from '@/utils/planTextStorage';
 
 import { generateNotePlanContent } from '../planApi';
+import { planResultDigest } from '../planResultInbox.client';
+import { useConfirmedPlanResultClosure } from '../useConfirmedPlanResultClosure';
+import { usePlanResultInbox } from '../usePlanResultInbox';
 import { usePlanStylePreference } from '../usePlanStylePreference';
 
 import { beginProposal, discardProposal, listProposals, readProposal, resolveProposal, watchProposals,
   type PendingProposal, type ProposalDraft, type ProposalScope, type ReadyProposal } from './notePlanDrafts.client';
+import { useRecoveredNotePlanProposals, type PlanPending, type Proposal } from './useRecoveredNotePlanProposals';
 
 import type { ManualConspectus } from './useManualConspectus';
 import type { Sermon, SermonPoint } from '@/models/models';
 
-type Proposal = ReadyProposal & NotePlanResult;
 
 interface Options {
   sermon: Sermon;
   conspectus: ManualConspectus;
   blocked: boolean;
   sourceText?: string;
+  confirmedPlanText?: Record<string, string>;
   sourceMissing?: boolean;
   onSuccess?: () => Promise<unknown>;
 }
@@ -62,10 +67,7 @@ function useSourceKey(text?: string) {
   useEffect(() => {
     if (!text || !globalThis.crypto?.subtle) return;
     let active = true;
-    void crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(hash => {
-      const key = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-      if (active) setVersion({ text, key });
-    }).catch(() => undefined);
+    void planResultDigest(text).then(key => { if (active && key) setVersion({ text, key }); });
     return () => { active = false; };
   }, [text]);
   return text === version?.text ? version?.key : undefined;
@@ -75,6 +77,11 @@ export function useNotePlanGeneration(options: Options) {
   const [style, setStyle] = usePlanStylePreference();
   const { userId: owner, id: sermonId } = options.sermon;
   const scope = useMemo(() => ({ owner, sermonId }), [owner, sermonId]);
+  const inbox = usePlanResultInbox(owner, sermonId, 'note', () =>
+    listProposals(scope).filter(item => item.openingKey).map(item => item.id));
+  const inboxItems = useRef(inbox.items);
+  inboxItems.current = inbox.items;
+  const closeAfterConfirmation = useConfirmedPlanResultClosure(owner, sermonId, 'note', options.confirmedPlanText, inbox.close);
   const sourceKey = useSourceKey(options.sourceText);
   const sourceChecking = Boolean(options.sourceText && globalThis.crypto?.subtle && !sourceKey);
   const [records, setRecords] = useState<{ scope: ProposalScope; items: ProposalDraft[] }>();
@@ -97,10 +104,21 @@ export function useNotePlanGeneration(options: Options) {
     return () => { mounted.current = false; unwatch(); };
   }, [scope]);
 
-  const items = records?.scope === scope ? records.items : [];
-  const ready = items.flatMap(draft => draft.state === 'ready' ? [{ ...draft, ...draft.result }] : []);
+  const closedItems = inbox.closed;
+  useEffect(() => {
+    if (!closedItems?.size) return;
+    for (const draft of listProposals(scope)) {
+      if (closedItems.has(draft.id)) discardProposal(scope, draft, true);
+    }
+  }, [closedItems, scope]);
+  const items = records?.scope === scope ? records.items.filter(item => !closedItems?.has(item.id)) : [];
+  const { recovered, waiting: recoveredPending } = useRecoveredNotePlanProposals(inbox.items, items,
+    options.sermon, options.conspectus.contentByNodeId);
+  const ready: Proposal[] = [...items.flatMap(draft => draft.state === 'ready' ? [{ ...draft, ...draft.result }] : []), ...recovered];
   const proposals = Object.fromEntries([...ready].reverse().map(proposal => [requestId(proposal), proposal]));
-  const pending = items.filter(draft => draft.state === 'pending');
+  const pending: PlanPending[] = [
+    ...items.filter((draft): draft is PendingProposal => draft.state === 'pending'), ...recoveredPending,
+  ];
   const failed = Object.fromEntries(items.filter(draft => draft.state === 'failed').reverse().map(draft => [requestId(draft), draft.error]));
 
   const unchanged = (draft: ProposalDraft) => {
@@ -112,15 +130,37 @@ export function useNotePlanGeneration(options: Options) {
 
   const isCellUnavailable = (nodeId: string) => latest.current.conspectus.isTransferringText(nodeId)
     || latest.current.conspectus.busyNodeIds?.has(nodeId) || latest.current.conspectus.pendingNodeIds.has(nodeId);
-  const proposalBlocked = (proposal: Proposal) => Object.keys(proposal.before).some(isCellUnavailable)
+  const proposalBlocked = (proposal: Proposal) => proposal.checkingOrigin === true || Object.keys(proposal.before).some(isCellUnavailable)
     || Boolean(proposal.sourceKey && !latest.current.sourceKey && !latest.current.sourceMissing);
   const proposalChanged = (proposal: Proposal) => proposal.sourceChanged === true || !unchanged(proposal)
     || Boolean(proposal.sourceKey && (latest.current.sourceMissing
       || latest.current.sourceKey && latest.current.sourceKey !== proposal.sourceKey));
 
+  const storedProposal = (proposal: Proposal, nodeId?: string, text?: string) => {
+    if (closedItems?.has(proposal.id)) return false;
+    if (proposal.inbox) {
+      const item = inboxItems.current?.find(candidate => candidate.id === proposal.id);
+      return item?.state === 'ready' && item.value.mode === 'note'
+        && (nodeId === undefined || item.value.proposal.contentByNodeId[nodeId] === text);
+    }
+    const stored = readProposal(scope, proposal.id);
+    return stored?.state === 'ready' && (nodeId === undefined || stored.result.contentByNodeId[nodeId] === text);
+  };
+
+  const closeReady = (proposal: ReadyProposal & { inbox?: true }) => {
+    if (!proposal.inbox && !proposal.openingKey) {
+      discardProposal(scope, proposal);
+      return;
+    }
+    void inbox.close(proposal.id).then(() => discardProposal(scope, proposal), error => {
+      if (error.status === 404 && !proposal.inbox) discardProposal(scope, proposal);
+      else if (isHere()) setErrors(previous => ({ ...previous, [requestId(proposal)]: 'draftStorage' }));
+    });
+  };
+
   const accepting = useRef(new Set<string>());
   const accept = (id: string, proposal = proposals[id]) => {
-    if (!proposal || !isHere() || readProposal(scope, proposal.id)?.state !== 'ready' || proposalBlocked(proposal)) return false;
+    if (!proposal || !isHere() || !storedProposal(proposal) || proposalBlocked(proposal)) return false;
     if (accepting.current.has(proposal.id)) return false;
     if (proposalChanged(proposal)) {
       setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
@@ -129,24 +169,26 @@ export function useNotePlanGeneration(options: Options) {
     // An empty generated cell must not replace the preacher's existing words.
     const cells = Object.fromEntries(Object.entries(proposal.contentByNodeId).filter(([, text]) => text.trim()));
     const { conspectus } = latest.current;
+    const requiresConfirmation = Boolean((proposal.inbox || proposal.openingKey) && Object.keys(cells).length);
     const finish = () => {
       setMissing(previous => {
         const next = { ...previous };
         Object.keys(proposal.before).forEach(nodeId => { delete next[nodeId]; });
         return { ...next, ...proposal.missingMaterial };
       });
-      discardProposal(scope, proposal);
+      if (!requiresConfirmation) closeReady(proposal);
     };
-    const applying = conspectus.applyProposal?.(cells, proposal.before, (nodeId, text) => {
-      const stored = readProposal(scope, proposal.id);
-      return stored?.state === 'ready' && stored.result.contentByNodeId[nodeId] === text;
-    });
+    const applying = conspectus.applyProposal?.(cells, proposal.before, (nodeId, text) => storedProposal(proposal, nodeId, text));
     if (!applying) {
       setErrors(previous => ({ ...previous, [id]: applying === null ? 'contextChanged' : 'draftStorage' }));
       return false;
     }
     accepting.current.add(proposal.id);
-    void applying.then(saved => { if (saved && isHere()) finish(); }, () => {
+    void applying.then(saved => {
+      if (!saved) return;
+      if (requiresConfirmation) closeAfterConfirmation(proposal.id, cells);
+      if (isHere()) finish();
+    }, () => {
       if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
     }).finally(() => accepting.current.delete(proposal.id));
     return true;
@@ -173,7 +215,7 @@ export function useNotePlanGeneration(options: Options) {
     const cells = Object.keys(proposal.before);
     const now = authoringVersions(cells);
     const stored = readPlanText(latest.current.sermon);
-    const competing = listProposals(scope).some(other => other.id !== proposal.id && other.state === 'ready'
+    const competing = [...listProposals(scope), ...recovered].some(other => other.id !== proposal.id && other.state === 'ready'
       && cells.some(cell => Object.hasOwn(other.before, cell)));
     // Words being composed (an input method, dictation) reach the editor only when confirmed, so the
     // cell still reads empty; and a cell filled a moment ago reads empty until the screen shows it.
@@ -193,24 +235,32 @@ export function useNotePlanGeneration(options: Options) {
     if (isHere()) setGeneratingIds(previous => ({ ...previous, [id]: true }));
     const authoredAtStart = authoringVersions(Object.keys(draft.before));
     try {
+      const openingKey = draft.openingKey ?? (!recoverOnly && globalThis.crypto?.subtle
+        ? await planResultDigest(serializeContent(draft.before)) : undefined);
+      const offeredDraft = { ...draft, ...(openingKey && { openingKey }) };
+      if (!recoverOnly && openingKey && !draft.openingKey && !resolveProposal(scope, offeredDraft)) {
+        if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
+        return;
+      }
       const result = await generateNotePlanContent({ sermonId, ...draft.request }, undefined, {
         ownerId: owner, operationId: draft.id, recoverOnly, language: draft.language,
+        ...(!recoverOnly && openingKey && { openingKey }),
       });
       if (!matchesNodes(result, draft.before)) throw new Error('Invalid generated node map');
       // "Refine" asks for a better version of the one on screen: the answer takes its place rather
       // than standing under it. Only once it has arrived — a failed refinement keeps the old one.
       // A blank answer, or one written from a note that changed since, is no better version to swap in.
       const replacement = !result.sourceChanged && Object.values(result.contentByNodeId).some(text => text.trim());
-      if (resolveProposal(scope, { ...draft, state: 'ready', result }) && replacement) {
+      if (resolveProposal(scope, { ...offeredDraft, state: 'ready', result }) && replacement) {
         for (const replaced of draft.replaces ?? []) {
-          const old = readProposal(scope, replaced);
-          if (old?.state === 'ready') discardProposal(scope, old);
+          const old = readProposal(scope, replaced) ?? recovered.find(item => item.id === replaced);
+          if (old?.state === 'ready') closeReady(old);
         }
       }
       if (isHere()) {
         setRefining(id, false);
         if (!unchanged(draft)) setErrors(previous => ({ ...previous, [id]: 'contextChanged' }));
-        else if (draft.autoApply) applyIntoEmpty({ ...draft, state: 'ready', result, ...result }, authoredAtStart);
+        else if (draft.autoApply) applyIntoEmpty({ ...offeredDraft, state: 'ready', result, ...result }, authoredAtStart);
       }
       refreshUsage();
     } catch (error) {
@@ -238,7 +288,7 @@ export function useNotePlanGeneration(options: Options) {
     || draft.request.expectedSourceKey && latest.current.sourceKey && draft.request.expectedSourceKey !== latest.current.sourceKey));
   const blocksGeneration = (draft: PendingProposal, nodeIds: string[]) => !obsoletePending(draft)
     && nodeIds.some(id => Object.hasOwn(draft.before, id));
-  const hasPendingOverlap = (nodeIds: string[]) => listProposals(scope).some(draft =>
+  const hasPendingOverlap = (nodeIds: string[]) => [...listProposals(scope), ...pending].some(draft =>
     draft.state === 'pending' && blocksGeneration(draft, nodeIds));
 
   const generate = async (point: SermonPoint, targetNodeId?: string, intent?: NotePlanRevisionIntent) => {
@@ -250,7 +300,19 @@ export function useNotePlanGeneration(options: Options) {
     const nodeIds = nodes.map(node => node.nodeId);
     if (!nodeIds.length || nodeIds.some(isCellUnavailable) || hasPendingOverlap(nodeIds)) return;
     const id = targetNodeId ?? point.id;
-    const before = Object.fromEntries(nodeIds.map(nodeId => [nodeId, current.conspectus.contentByNodeId[nodeId] ?? '']));
+    const lookup = inbox.waitForLookup();
+    if (lookup) {
+      const offers = await lookup;
+      if (!isHere() || latest.current.blocked
+        || notePlanContextKey(latest.current.sermon, point.id) !== notePlanContextKey(current.sermon, point.id)
+        || latest.current.sourceKey !== current.sourceKey || hasPendingOverlap(nodeIds)) return;
+      if (offers?.some(item => item.value.pointId === point.id
+        && (item.value.targetNodeId === undefined || nodeIds.includes(item.value.targetNodeId)))) {
+        setRefining(id, false);
+        return;
+      }
+    }
+    const before = Object.fromEntries(nodeIds.map(nodeId => [nodeId, latest.current.conspectus.contentByNodeId[nodeId] ?? '']));
     const request = {
       outlinePointId: point.id, targetNodeId, style,
       expectedContext: notePlanContextKey(current.sermon, point.id),
@@ -261,7 +323,7 @@ export function useNotePlanGeneration(options: Options) {
       request, before, language: browserInterfaceLanguage(),
       autoApply: !intent && Object.values(before).every(text => !text.trim()),
       // Only "Refine" asks to replace; a plain Generate next to a waiting version leaves it a choice.
-      replaces: intent ? listProposals(scope).filter(item => item.state === 'ready'
+      replaces: intent ? ready.filter(item => item.state === 'ready'
         && item.request.outlinePointId === point.id && item.request.targetNodeId === targetNodeId).map(item => item.id) : undefined,
       labels: Object.fromEntries(nodes.map(node => [node.nodeId, node.title])),
     });
@@ -309,13 +371,31 @@ export function useNotePlanGeneration(options: Options) {
     }
   }, [scope]);
 
-  const canResume = (draft: PendingProposal) => Boolean(draft.unregistered && !latest.current.blocked
+  const canResume = (draft: PlanPending) => Boolean(!draft.inbox && draft.unregistered && !latest.current.blocked
     && !sourceChecking && unchanged(draft) && !Object.keys(draft.before).some(isCellUnavailable)
     && (!draft.request.expectedSourceKey || draft.request.expectedSourceKey === latest.current.sourceKey));
 
   const recover = async (id: string, resume = false) => {
     if (!isHere()) return;
     const draft = readProposal(scope, id);
+    const transferred = !draft && pending.find(item => item.id === id && item.inbox);
+    if (transferred) {
+      if (resume) return;
+      const target = requestId(transferred);
+      setGeneratingIds(previous => ({ ...previous, [target]: true }));
+      try {
+        await inbox.check(id);
+      } catch {
+        // The existing result remains available to check once it completes.
+      } finally {
+        if (isHere()) setGeneratingIds(previous => {
+          const next = { ...previous };
+          delete next[target];
+          return next;
+        });
+      }
+      return;
+    }
     if (draft?.state !== 'pending' || resume && !canResume(draft)) return;
     await send(draft, !resume);
   };
@@ -324,6 +404,6 @@ export function useNotePlanGeneration(options: Options) {
     style, setStyle, generatingIds, busy: Object.values(generatingIds).some(Boolean),
     ready, pending, proposals, errors: { ...failed, ...errors }, missing,
     generate, recover, canResume, obsoletePending, blocksGeneration, accept, sourceChecking, proposalBlocked, proposalChanged, refiningIds, setRefining,
-    discard: (id: string, proposal = proposals[id]) => { if (proposal) discardProposal(scope, proposal); },
+    discard: (id: string, proposal = proposals[id]) => { if (proposal) closeReady(proposal); },
   };
 }
