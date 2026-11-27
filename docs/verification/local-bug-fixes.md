@@ -9786,6 +9786,11 @@ After authorized deployment, use a disposable sermon and a dedicated profile. Sa
 
 Full Jest passed 15,782 tests with 17 skipped. TypeScript, scoped ESLint (warnings only), the production build and independent review passed.
 
+A later recheck isolated an additional leak after a Chromium renderer crash. With both notes saved and their request rows already collected at `7e993b840`, crashing the first renderer and reopening its note in a new tab left both original keys behind. The new ordinary-editor admission records the exact native Web Lock once it has been acquired. It holds that lock through any closing writeback and releases it after the retirement transaction commits. The next application opening acquires the exact abandoned writer's lock before deleting its admission and generation keys in one transaction. The transaction first verifies the same admission and the absence of both the recovery checkpoint and retained requests. Historical booleans, unknown browser support and other scopes retain their existing protection. [Web Locks API draft](https://www.w3.org/TR/web-locks/#termination-of-locks)
+
+Real headless Chrome on the final local production-mode build confirmed the crashed editor's exact two keys disappeared while the known live tab's remained. The live tab subsequently confirmed another save, and the final words of the crashed editor still reopened from storage. The integration regression also failed a live editor's IndexedDB capture during closing, let the neighboring collector run, and then restored storage and confirmed its last words before retirement. 326 targeted tests passed alongside TypeScript and changed-module ESLint. Proof is under `artifacts/ordinary-editor-crash-20261126`. Historical identities, manual forms and one-shot actions remain open in the tracker.
+
+
 ## BUG-20261114-manual-plan-rescue-overwrites-parent-typing · Keep a proposal separate from a pending transfer
 
 Sermons → a sermon built from a note → Plan → By hand → Refine text. A whole-point AI proposal can be ready when its child starts being removed. On the previous code the proposal's Apply action was still available while the text transfer was waiting. A separate mounted regression delayed and refused the outline write after the text transfer succeeded. The child still showed an old paragraph even though the stored child was empty.

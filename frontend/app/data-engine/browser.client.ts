@@ -8,6 +8,7 @@ import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connecti
 import { knockNow } from '@/utils/connectivityKnock';
 import { heldInSomeTab, holdWhileOpen } from '@/utils/openInTab';
 
+import { collectAbandonedOrdinaryEditors } from './abandonedOrdinaryEditors.client';
 import { createIndexedDbCheckpoints } from './checkpoint.client';
 import { createIndexedDbCollectionCursors } from './collectionCursors.client';
 import { CollectionReader } from './collections';
@@ -21,6 +22,7 @@ import { LocalWriteback } from './localWriteback';
 import { createIndexedDbManualScopes } from './manualScopes.client';
 import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
+import { createOrdinaryEditorLeases } from './ordinaryEditorLeases.client';
 import { createOutlineTitleDraftStore, type OutlineTitleDraftStore } from './outlineTitleDrafts.client';
 import { localPlanCellEmergencyStorage } from './planCellEmergency.client';
 import { recoveryPresenceKey } from './recoveryPresence';
@@ -60,6 +62,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const snapshots = createIndexedDbSnapshots();
   const collections = new CollectionReader({ transport, observer, snapshots, cursors: createIndexedDbCollectionCursors(), onError: report });
   const commitCollection = createCommitCollectionWindow();
+  const editorLeases = createOrdinaryEditorLeases(navigator.locks);
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(commitCollection.collect), collections,
     snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
@@ -68,7 +71,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
       hold: (owner, kind, id) => holdWhileOpen(recoveryPresenceKey(owner, kind, id)),
       held: (owner, kind, id) => heldInSomeTab(recoveryPresenceKey(owner, kind, id)),
     },
-    commits: createIndexedDbCommitStore(commitCollection.collect), manualScopes: createIndexedDbManualScopes(commitCollection.collect),
+    commits: createIndexedDbCommitStore(commitCollection.collect, editorLeases), manualScopes: createIndexedDbManualScopes(commitCollection.collect),
     membershipScopes: createIndexedDbMembershipScopes(), deferCommitCollection: commitCollection.begin,
   });
   let active = true;
@@ -152,10 +155,15 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     stopAuth = onAuthStateChanged(auth, user => {
       if (!active) return;
       const nextOwner = user?.uid ?? null;
-      if (owner !== nextOwner) generation += 1;
+      const changedAccount = owner !== nextOwner;
+      if (changedAccount) generation += 1;
       owner = nextOwner;
       // Engine owner/visibility/online setters already drain on eligible transitions.
       engine.setOwner(owner);
+      if (changedAccount && nextOwner && editorLeases) {
+        // Optional housekeeping; a blocked store keeps its rows for the next opening.
+        void collectAbandonedOrdinaryEditors(nextOwner, editorLeases).catch(() => undefined);
+      }
     }, error => { if (active) report(error); });
   } catch (error) {
     dispose();

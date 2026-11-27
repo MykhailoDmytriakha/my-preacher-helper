@@ -14,6 +14,7 @@ import { localServiceOrderReserveStorage } from '@/data-engine/serviceOrderInput
 import { installStorageHarness } from '@/data-engine/__tests__/storageHarness';
 
 import type { BrowserDataEngine } from '@/data-engine/browser.client';
+import type { OrdinaryEditorLeases } from '@/data-engine/ordinaryEditorLeases.client';
 import type { RecoveryPresencePort } from '@/data-engine/recoveryPresence';
 import type { CommandResult, DataCommand, DocumentData, EngineTransport, JournalEntry, ResourceSnapshot } from '@/data-engine/types';
 
@@ -24,8 +25,9 @@ export const settleEngine = async () => { for (let i = 0; i < 150; i++) await Pr
  * Actual editor/runtime/IndexedDB contracts, with only the server and browser transport replaced.
  * `cached: false` starts with no copy of the document on this device, as a link opened for the first time.
  */
-export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDevice = true, apply = applyCommand }: {
+export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDevice = true, apply = applyCommand, editorLeases }: {
   cached?: boolean;
+  editorLeases?: Pick<OrdinaryEditorLeases, 'acquire'>;
   apply?: (command: DataCommand, current: ResourceSnapshot) => CommandResult | Promise<CommandResult>;
 } = {}) {
   const storage = installStorageHarness();
@@ -43,7 +45,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
       return result;
     }),
   };
-  const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+  const commits = createIndexedDbCommitStore(undefined, editorLeases), checkpoints = createIndexedDbCheckpoints();
   const outlineTitleDrafts = createOutlineTitleDraftStore();
   let engine!: DataEngine;
   let activeRuntime!: DataEngineRuntime;

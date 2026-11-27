@@ -18,6 +18,8 @@ import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferColl
 import { projectServiceOrderInput, serviceOrderInputKey } from './serviceOrderInput';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
+import type { OrdinaryEditorLease, OrdinaryEditorLeases } from './ordinaryEditorLeases.client';
+
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
@@ -101,7 +103,9 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
 }
 
 /** Each request has its own row; a participant batch shares one IndexedDB transaction. */
-export function createIndexedDbCommitStore(collect = collectCommitRows): CommitStore {
+export function createIndexedDbCommitStore(collect = collectCommitRows, leases?: Pick<OrdinaryEditorLeases, 'acquire'>): CommitStore {
+  const heldLeases = new Map<string, OrdinaryEditorLease>();
+  const leaseKey = (owner: string, editorId: string) => JSON.stringify([owner, editorId]);
   const transaction = createEngineStorageTransaction();
   const collections = createCollectionCommitReads(transaction);
   const createBatch = async (requests: readonly CommitRequest[]): Promise<CommitRequest[]> => {
@@ -205,23 +209,38 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
         });
       });
     }),
-    activateOrdinaryEditor: (owner, editorId) => transaction('readwrite', (store, read, done) => {
+    activateOrdinaryEditor: async (owner, editorId) => {
       if (!isRetirableOrdinaryEditor(editorId)) throw new Error('Expected a fresh ordinary editor');
-      const key = activeOrdinaryEditorKey(owner, editorId);
-      read(store.get(key), active => {
-        if (active) throw new Error('This editor identity is already open');
-        store.put(true, key);
+      const lease = await leases?.acquire();
+      try {
+        await transaction<void>('readwrite', (store, read, done) => {
+          const key = activeOrdinaryEditorKey(owner, editorId);
+          read(store.get(key), active => {
+            if (active) throw new Error('This editor identity is already open');
+            store.put(lease ? { lease: lease.id } : true, key);
+            done(undefined);
+          });
+        });
+      } catch (error) {
+        await lease?.release();
+        throw error;
+      }
+      if (lease) heldLeases.set(leaseKey(owner, editorId), lease);
+    },
+    retireOrdinaryEditor: async (owner, editorId) => {
+      const key = leaseKey(owner, editorId);
+      const lease = heldLeases.get(key);
+      await transaction<void>('readwrite', (store, _read, done) => {
+        if (isRetirableOrdinaryEditor(editorId)) {
+          // The admission row and replay guard retire together. Existing requests own their identities.
+          store.delete(activeOrdinaryEditorKey(owner, editorId));
+          store.delete(commitGenerationKey({ owner, editorId }));
+        }
         done(undefined);
       });
-    }),
-    retireOrdinaryEditor: (owner, editorId) => transaction('readwrite', (store, _read, done) => {
-      if (isRetirableOrdinaryEditor(editorId)) {
-        // The admission row and replay guard retire together. Existing requests own their identities.
-        store.delete(activeOrdinaryEditorKey(owner, editorId));
-        store.delete(commitGenerationKey({ owner, editorId }));
-      }
-      done(undefined);
-    }),
+      if (heldLeases.get(key) === lease) heldLeases.delete(key);
+      await lease?.release();
+    },
     create: request => createBatch([request]).then(records => records[0]),
     createWithCheckpoint: (request, project, options) => {
       const frozen = clone(request);
