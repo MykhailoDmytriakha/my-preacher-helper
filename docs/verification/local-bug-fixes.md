@@ -10954,3 +10954,11 @@ The public page now shares only a pending request for the exact link. It starts 
 The duplicate and stalled-request tests were red on their respective baselines. The final local production-mode build, scoped lint and 75 related tests passed. Hidden Chrome on local Auth and Firestore captured one authorized GET and one stored view for the same guest opening. A later visit after owner revocation returned HTTP 404. In a separate run a held request timed out in 15.7 seconds, left the counter at zero and opened normally on reload with one stored view. Reports and screenshots are in `artifacts/share-guest-read-20261126`. The older private-route HTTP 503 investigation remains in BUGS.md.
 
 After an authorized release, create a disposable shared note, open the link in one guest profile and confirm the view count advances by one. Reload once and confirm the recent-view cookie suppresses another increment. Revoke the link and open it again in the same profile to verify the guest sees the unavailable notice.
+
+## BUG-20261115-sermon-picker-opens-keyboard · Open the list of Bible books before focusing search
+
+The existing fix `38ce9c1f6` is already in `origin/main`. The new-sermon form asks the shared navigator to leave its search inactive at opening. The trigger takes focus before the picker opens, including when a touch browser had left the previous text field focused. Closing returns focus to the trigger.
+
+The two original regression tests failed when rerun with the parent source. In the production-mode local build of `8245d5e65`, hidden Chrome at 390 and 1280 px and WebKit with touch at 820 px opened the actual New Sermon dialog after focusing its Title field. The list of books appeared with no focused text input. Tapping or clicking Search put focus in the field. Escape and selection both returned focus to the trigger. Choosing John → Chapter 3 → Verse 16 copied the text and retained the title. The current related suite passed 81 tests. Screenshots and reports are in `artifacts/sermon-picker-focus-20261126`.
+
+For physical acceptance on a test iPad, open the New Sermon dialog, tap its Title field and use Choose from the Bible. The initial books should be clear of the keyboard. Tap Search, select a verse and verify its reference and text in the form.
