@@ -14,6 +14,7 @@ import {
   BackLink, BASIS_DOT, basisPath, DANGER_BUTTON, HelpMark, ListLabel, PANEL, PRIMARY_BUTTON, questionPath, QuestionRow, QUIET_BUTTON, QUIET_PRESSED,
   sectionPath,
 } from '@/components/hardQuestions/parts';
+import { ReturnedGroupQuestion } from '@/components/hardQuestions/ReturnedGroupQuestion';
 import { EditBasisDialog, NewBasisDialog, THEME_FORM_FIELDS, THEME_FORM_SLOT, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
 import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -137,6 +138,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
             onBack={() => router.push(sectionPath)} onRetry={() => document.retry()} />
           {/* A theme removed elsewhere keeps the words its form left unsent here, to copy — as the question's and the
               basis's pages do (Codex review 2026-11-27). */}
+          <ReturnedGroupQuestion themeId={themeId} />
           {absent && dialog?.kind !== 'edit' && <OrphanDraftWords resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} />}
         </div>
       </div>
@@ -173,6 +175,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
         onReviewBasis={(basisId, requestId) => setDialog({ kind: 'edit-basis', basisId, requestId })}
         reviewing={dialog?.kind === 'edit' || dialog?.kind === 'edit-basis'} />
       <DataCollectionStatus state={section.questionsState} />
+      <ReturnedGroupQuestion themeId={themeId} />
       {!document.readOnly && dialog?.kind !== 'edit' && (
         <UnsavedDraftNotice resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} onResume={(draftId) => setDialog({ kind: 'edit', recoverId: draftId })} />
       )}
@@ -324,7 +327,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
               const id = await section.createQuestion(input);
               setDialog(null);
               if (then === 'answer') router.push(`${questionPath({ id, themeId: input.themeId }, Boolean(input.themeId))}?edit=1`);
-              else toast.success(t('hardQuestions.recorded'));
+              else if (!input.themeId || (!input.groupId && !input.newGroupTitle?.trim())) toast.success(t('hardQuestions.recorded'));
             } catch { failed(); }
           }} />
       )}

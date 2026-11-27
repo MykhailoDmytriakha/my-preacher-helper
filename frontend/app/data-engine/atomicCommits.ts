@@ -19,6 +19,7 @@ import { writeField } from './fieldValues';
 import { groupFlowCopySources, groupFlowRetirementSources } from './groupFlowTopology';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
+import { appendHardQuestionGroup, HARD_QUESTION_GROUP_CREATE } from './hardQuestionGroupCreation';
 import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
 import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -41,7 +42,7 @@ import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { SermonOutline } from '@/models/models';
 
-export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' }
+export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' | typeof HARD_QUESTION_GROUP_CREATE }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
 /** Actions whose existing document editors can follow the complete saved effect. */
@@ -189,6 +190,17 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       return { ...record, initialized: true, working: snapshot, intended: projectCapturedMembership(snapshot.value, record.value, record.seriesMembership, opening),
         seriesMembershipOpening: opening,
         ...(operationId && { seriesMembershipPredecessor: operationId }) };
+    }
+    if (record.atomic?.kind === HARD_QUESTION_GROUP_CREATE && record.hardQuestionGroupIntent) {
+      const { group, existing } = record.hardQuestionGroupIntent;
+      const generation = record.baseline.metadata?.generation;
+      const proof = predecessor.result.committed ?? snapshot.metadata;
+      if (snapshot.value && !snapshot.metadata?.deleted && snapshot.metadata?.generation === (generation ?? proof?.generation)) {
+        const intended = appendHardQuestionGroup(snapshot.value, group, existing);
+        if (intended) return { ...record, initialized: true, working: snapshot, intended };
+      }
+      return { ...record, initialized: true, state: 'refused',
+        result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
     }
     if (record.atomic?.kind === 'analysis-reshape' && !sameAnalysisFrame(predecessor.value, snapshot.value)) {
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
@@ -395,7 +407,8 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
   if (!primary.command) {
     let command;
     try {
-      command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(seriesCommandParticipant));
+      command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(seriesCommandParticipant),
+        participants[1]?.hardQuestionGroupIntent);
     } catch (error) {
       const code = (error as { code?: unknown }).code;
       if (typeof code !== 'string') throw error;

@@ -5821,6 +5821,13 @@
     "withoutTheme": "Without a theme",
     "withoutGroup": "Without a group",
     "recorded": "Written down under “Waiting for an answer”",
+    "returnedGroupQuestion": {
+      "title": "The question and group could not be saved",
+      "group": "Group: {{group}}",
+      "discardTitle": "Discard this question and group draft?",
+      "discardFailed": "This draft is still linked to another edit. It is kept on this device.",
+      "copyFailed": "Copy failed. You can select the words above and copy them."
+    },
     "saveFailed": "Could not save on this device. Please try again.",
     "cardCount_one": "Waiting for an answer: {{count}}",
     "cardCount_other": "Waiting for an answer: {{count}}",

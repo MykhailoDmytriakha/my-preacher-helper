@@ -37,6 +37,7 @@ import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeeting
 import { groupMeetingReviewForSave } from './groupMeetingReview';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { captureHardQuestionBasisFields, HARD_QUESTION_BASIS_POLICY } from './hardQuestionBasisFields';
+import { HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { captureHardQuestionPlacement, matchesHardQuestionPlacement, projectHardQuestionPlace, type HardQuestionPlacement } from './hardQuestionPlacement';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
@@ -96,6 +97,7 @@ import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, Document
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
   atomic?: AtomicCommitIdentity;
+  hardQuestionGroupIntent?: HardQuestionGroupIntent;
   seriesMembership?: SeriesMembershipCapture;
   /** Captured catalog copy when it came from a queued predecessor rather than the baseline. */
   seriesMembershipOpening?: DocumentData;
@@ -266,7 +268,7 @@ export interface CommitStore {
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
   /** Hold the lease until this atomic action's native capture settles. */
-  withAtomicActionAdmission?<T>(owner: string, kind: LeasedAtomicAction, capture: (leaseId: string | null) => Promise<T>): Promise<T>;
+  withAtomicActionAdmission?<T>(owner: string, kind: LeasedAtomicAction, capture: (leaseId: string | null) => Promise<T>, scope?: string): Promise<T>;
   /** Atomic participant capture; custom document-only ports may omit this capability. */
   createBatch?(requests: readonly CommitRequest[]): Promise<CommitRequest[]>;
   /** Release a completed participant projection after its confirmed copy is durable elsewhere. */
@@ -308,6 +310,7 @@ export interface AtomicCapture {
   predecessorId?: string | null;
   retentionScope?: string;
   seriesMembership?: SeriesMembershipCapture;
+  hardQuestionGroupIntent?: HardQuestionGroupIntent;
 }
 
 export interface CommitEvent { request: CommitRequest }
@@ -383,6 +386,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.groupFirstMeetingChange ?? null, incoming.groupFirstMeetingChange ?? null)
     || !equalValues(current.preachDateFieldActions ?? null, incoming.preachDateFieldActions ?? null)
     || !equalValues(current.preachStatusActions ?? null, incoming.preachStatusActions ?? null)
+    || !equalValues(current.hardQuestionGroupIntent ?? null, incoming.hardQuestionGroupIntent ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || !equalValues(current.removalLineage ?? null, incoming.removalLineage ?? null)
@@ -1146,9 +1150,13 @@ export class CommitQueue {
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     if (!this.options.store.createBatch || !this.options.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
     const frozen = clone(captures);
-    const creation = frozen.length === 2 && ['sermons', 'groups'].includes(frozen[0].captured.confirmed.resource.collection)
-      && frozen[0].captured.confirmed.value === null && frozen[0].captured.confirmed.metadata === null
-      && frozen[0].captured.draft !== null && frozen[0].predecessorId === null;
+    const absentCreation = frozen.length === 2 && frozen[0].captured.confirmed.value === null
+      && frozen[0].captured.confirmed.metadata === null && frozen[0].captured.draft !== null && frozen[0].predecessorId === null;
+    const creation = absentCreation && ['sermons', 'groups'].includes(frozen[0].captured.confirmed.resource.collection);
+    const questionGroupCreation = absentCreation && frozen[0].captured.confirmed.resource.collection === 'hardQuestions'
+      && frozen[1].captured.confirmed.resource.collection === 'hardQuestionThemes' && frozen[1].hardQuestionGroupIntent
+      && !frozen[1].captured.confirmed.metadata?.deleted && frozen[1].captured.draft !== null
+      && (frozen[1].captured.confirmed.value !== null || Boolean(frozen[1].predecessorId));
     const councilCarry = frozen.length === 2 && frozen.every(item => item.captured.confirmed.resource.collection === 'councils')
       && frozen[0].captured.confirmed.value !== null && frozen.every(item => item.captured.draft !== null)
       && (frozen[1].captured.confirmed.value !== null || frozen[1].captured.confirmed.metadata === null);
@@ -1159,7 +1167,7 @@ export class CommitQueue {
     if (frozen.length < 2 || frozen.length > MAX_RELATION_RESOURCES
       || new Set(frozen.map(item => JSON.stringify(item.captured.confirmed.resource))).size !== frozen.length
       || frozen.some((item, index) => item.captured.conflicts.length || (!(creation && index === 0)
-        && !councilCarry && !analysisReshape && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
+        && !questionGroupCreation && !councilCarry && !analysisReshape && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
     if (frozen.some(item => (item.captured.confirmed.value && item.captured.confirmed.value.userId !== owner)
       || (item.captured.draft && item.captured.draft.userId !== owner))) throw new Error('Atomic capture belongs to another owner');
     const records = await this.options.store.list(owner); this.assertCurrent(owner, generation);
@@ -1170,6 +1178,7 @@ export class CommitQueue {
         || !equalValues(existing[0]!.atomic.participants, existing.map(record => record!.id))
         || existing.some((record, index) => !equalValues(record!.baseline, frozen[index].captured.confirmed) || !equalValues(record!.value, frozen[index].captured.draft)
           || frozen[index].retentionScope !== record!.retentionScope
+          || !equalValues(frozen[index].hardQuestionGroupIntent ?? null, record!.hardQuestionGroupIntent ?? null)
           || !equalValues(frozen[index].seriesMembership ?? null, record!.seriesMembership ?? null)
           || (frozen[index].predecessorId !== undefined && frozen[index].predecessorId !== record!.predecessor))) throw new Error('Saved atomic capture cannot change');
       return clone(existing as CommitRequest[]);
@@ -1177,17 +1186,22 @@ export class CommitQueue {
     const existing = repeated(records); if (existing) return existing;
     const id = this.options.operationId();
     const atomic: AtomicCommitIdentity = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`),
-      ...(creation ? { kind: 'create-member' as const } : councilCarry ? { kind: 'council-carry' as const } : analysisReshape ? { kind: 'analysis-reshape' as const } : {}) };
+      ...(creation ? { kind: 'create-member' as const } : councilCarry ? { kind: 'council-carry' as const }
+        : analysisReshape ? { kind: 'analysis-reshape' as const } : questionGroupCreation ? { kind: HARD_QUESTION_GROUP_CREATE } : {}) };
     const requests = frozen.map((item, index): CommitRequest => {
       const predecessors = records.filter(record => record.editorId === item.editorId && record.state !== 'cancelled');
       const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)
         : predecessors.sort((a, b) => b.editGeneration - a.editGeneration)[0];
+      if (questionGroupCreation && item.predecessorId && (!predecessor || predecessor.state === 'cancelled')) {
+        throw Object.assign(new Error(INVALID_PREDECESSOR_REQUEST), { code: 'commit-reference-changed' });
+      }
       if ((item.predecessorId && !predecessor) || (predecessor && (predecessor.owner !== owner || predecessor.state === 'cancelled'
         || !resourceMatches(predecessor.baseline.resource, item.captured.confirmed.resource)))) throw new Error(INVALID_PREDECESSOR_REQUEST);
       const baseline = item.captured.confirmed;
       return { id: atomic.participants[index], atomic, owner, editorId: item.editorId, editGeneration: item.captured.editGeneration,
         ...(item.retentionScope ? { retentionScope: item.retentionScope } : {}),
         ...(item.seriesMembership && { seriesMembership: item.seriesMembership }),
+        ...(item.hardQuestionGroupIntent && { hardQuestionGroupIntent: item.hardQuestionGroupIntent }),
         baseline, value: item.captured.draft, predecessor: predecessor?.id ?? null, revision: 0, initialized: false,
         working: baseline, intended: item.captured.draft, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
     });

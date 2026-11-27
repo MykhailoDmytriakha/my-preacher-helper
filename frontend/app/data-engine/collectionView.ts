@@ -3,6 +3,7 @@ import { submittedCommentPlace, type CommentPlaceSeen } from './commentPlaceActi
 import { followsStandaloneCreation, isRemovalAfterStandaloneCreation, pendingRemovalGeneration } from './deletionOrdering';
 import { submittedDocumentTitle, submittedPrayerStatus, submittedPrayerText, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
+import { HARD_QUESTION_GROUP_CREATE } from './hardQuestionGroupCreation';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -23,6 +24,7 @@ export interface CollectionDocumentView {
   deleting: boolean;
   /** Proven submitted first creation, kept separate from server existence. */
   creating?: true;
+  pendingGroupCreation?: true;
   /** A confirmed ACK that the list has not caught up with yet; never a projected draft. */
   acknowledged?: ResourceSnapshot;
   /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
@@ -111,11 +113,14 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       && (request.initialized || related.some(prior => followsStandaloneCreation(request, prior)))));
     const saved = confirmed.get(id);
     const refusedComment = collection === 'studyNotes' ? refusedCommentView(unsettled, saved) : undefined;
-    const showSavedDocument = refusedComment || (pendingRemoval && (needsAttention || (saved?.value
+    const groupCreation = unsettled.find(request => request.atomic?.kind === HARD_QUESTION_GROUP_CREATE && request.state !== 'cancelled');
+    const rejectedGroupCreation = groupCreation?.state === 'refused' || groupCreation?.state === 'conflict';
+    const showSavedDocument = refusedComment || rejectedGroupCreation || (pendingRemoval && (needsAttention || (saved?.value
       && (saved.metadata?.generation ?? null) !== pendingRemovalGeneration(pendingRemoval))));
     // Keep a pending deletion addressable until its acknowledgement.
-    views.set(id, { resource, value: showSavedDocument ? (refusedComment ?? saved)?.value ?? null : checkpoint?.draft ?? saved?.value ?? checkpoint?.confirmed.value ?? null,
-      pending: true, needsAttention, deleting: Boolean(!showSavedDocument && checkpoint && checkpoint.draft === null),
+    const readable = refusedComment ?? saved ?? (rejectedGroupCreation ? groupCreation?.working : undefined);
+    views.set(id, { resource, value: showSavedDocument ? readable?.value ?? null : checkpoint?.draft ?? saved?.value ?? checkpoint?.confirmed.value ?? null,
+      pending: true, ...(groupCreation && !rejectedGroupCreation && collection === 'hardQuestions' && { pendingGroupCreation: true }), needsAttention, deleting: Boolean(!showSavedDocument && checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
       ...(submittedServiceOrderPlacement && { submittedServiceOrderPlacement }),
       ...(submittedServiceOrderStepPlacements.length > 0 && { submittedServiceOrderStepPlacements }),

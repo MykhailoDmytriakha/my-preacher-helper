@@ -13,6 +13,7 @@ import {
   BackLink, ListLabel, NO_THEME_SEGMENT, PRIMARY_BUTTON, questionPath, QUIET_BUTTON, sectionPath, themePath,
 } from '@/components/hardQuestions/parts';
 import { QUESTION_FORM_FIELDS, QUESTION_FORM_SLOT, QuestionEditor } from '@/components/hardQuestions/QuestionEditor';
+import { ReturnedGroupQuestion } from '@/components/hardQuestions/ReturnedGroupQuestion';
 import { ScripturePlaces } from '@/components/hardQuestions/ScripturePlaces';
 import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -112,6 +113,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
     return (
       <div className="mx-auto w-full max-w-4xl pb-10">
         <BackLink href={themeSegment && themeSegment !== NO_THEME_SEGMENT ? themePath(themeSegment) : sectionPath}>{t('hardQuestions.title')}</BackLink>
+        <ReturnedGroupQuestion questionId={questionId} />
         <QuestionEditor questionId={questionId} bases={[]} recoverId={recoverId} gone={absent} onDone={() => { setEditing(false); setRecoverId(null); setReviewRequestId(undefined); }} />
       </div>
     );
@@ -123,6 +125,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
         <div>
           <RecordUnavailable presence={document.presence} checking={!absent && document.loading} pageLoading={document.loading}
             onBack={() => router.push(themeSegment && themeSegment !== NO_THEME_SEGMENT ? themePath(themeSegment) : sectionPath)} onRetry={() => document.retry()} />
+          <ReturnedGroupQuestion questionId={questionId} />
           {absent && <OrphanDraftWords resource={resource} slot={QUESTION_FORM_SLOT} selection={QUESTION_FORM_FIELDS} />}
         </div>
       </div>
@@ -154,6 +157,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
   return (
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={backHref}>{theme ? theme.title : t('hardQuestions.title')}</BackLink>
+      <ReturnedGroupQuestion questionId={questionId} />
       {!editing && (
         <>
           <EngineReadingStatus document={document} describePlace={describePlace} onReview={(requestId) => { setReviewRequestId(requestId); setEditing(true); }} />

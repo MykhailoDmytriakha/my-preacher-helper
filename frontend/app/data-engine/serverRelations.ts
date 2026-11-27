@@ -12,6 +12,7 @@ import { COUNCIL_TOPIC_PLACEMENT_REVIEW, legacyCouncilTopicPlacementNeedsReview,
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { verifyGroupCopySource } from './groupFlowTopology.server';
 import { GROUP_STEP_PLACEMENT_REVIEW, legacyGroupPlacementNeedsReview, planGroupStepPlacement } from './groupStepPlacement.server';
+import { appendHardQuestionGroup } from './hardQuestionGroupCreation';
 import { childIdentityIssues } from './legacyChildIdentity';
 import { outlinePlacementField, replaceResourceOutline, TEMPLATE_POINT_PLACEMENT_REVIEW } from './outlinePlacementResource';
 import { legacyTemplatePlacementNeedsReview, planOutlinePointPlacement, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
@@ -207,6 +208,18 @@ class RelationPlanner {
       // A delete must contend on the target even though only the series is written.
       this.live(this.writes.get(key(resource)) ?? await this.get(resource));
     }
+  }
+
+  private async createHardQuestionWithGroup(command: Extract<DataCommand, { relation: 'hard-question-group-create' }>): Promise<CommandResult | undefined> {
+    const theme = await this.get(command.theme.resource);
+    const current = this.live(theme, command.theme.generation);
+    const proposed = appendHardQuestionGroup(current, command.group, command.existing);
+    if (!proposed) return fail('decision-changed');
+    const result = await this.ordinary({ ...command, kind: 'create' });
+    if (result) return result;
+    if (proposed !== current) this.stage(theme, { groups: proposed.groups! });
+    // Both participants need a proof even when the chosen group already exists.
+    else this.writes.set(key(theme.resource), advanceResourceSnapshot(theme, current, command.operationId, []));
   }
 
   private async createSeriesMember(command: Extract<DataCommand, { relation: 'series-member-create' }>): Promise<CommandResult | undefined> {
@@ -542,6 +555,7 @@ class RelationPlanner {
       case 'share-link-revoke': await this.shareCapability(command); return;
       case 'service-order-seed': return this.seedServiceOrder(command);
       case 'series-member-create': return this.createSeriesMember(command);
+      case 'hard-question-group-create': return this.createHardQuestionWithGroup(command);
       case 'material-notes': return this.materialRelation(command);
       case 'council-carry': return this.councilCarry(command);
       case 'analysis-reshape': return this.analysisReshape(command);
@@ -825,6 +839,8 @@ class RelationPlanner {
       result = await this.seedServiceOrder(this.command);
     } else if (this.command.kind === 'relation' && this.command.relation === 'series-member-create') {
       result = await this.createSeriesMember(this.command);
+    } else if (this.command.kind === 'relation' && this.command.relation === 'hard-question-group-create') {
+      result = await this.createHardQuestionWithGroup(this.command);
     } else if (this.command.kind === 'relation') {
       this.live(this.primary, this.command.generation);
       result = await this.planRelation(this.command);

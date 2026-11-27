@@ -7,6 +7,7 @@ import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds } from './documentReferences';
 import { captureGroupFlowCommandProofs } from './groupFlowTopology';
+import { appendHardQuestionGroup, HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
@@ -233,7 +234,22 @@ export function prepareAtomicSeriesCommand(owner: string, operationId: string, p
 
 /** A click-only council carry uses the same durable participants as a series move. */
 export function prepareAtomicDomainCommand(owner: string, operationId: string,
-  participants: readonly SeriesCommandParticipant[]): DataCommand {
+  participants: readonly SeriesCommandParticipant[], hardQuestionGroupIntent?: HardQuestionGroupIntent): DataCommand {
+  if (participants[0]?.confirmed.resource.collection === 'hardQuestions') {
+    const [question, theme] = participants;
+    if (participants.length !== 2 || !hardQuestionGroupIntent || question.confirmed.value || question.confirmed.metadata
+      || !question.draft || question.draft.userId !== owner || theme.confirmed.resource.collection !== 'hardQuestionThemes'
+      || !theme.confirmed.value || theme.confirmed.metadata?.deleted || theme.confirmed.value.userId !== owner) {
+      return failure('A new question requires its owned theme', REFERENCED_DOCUMENT_DELETED);
+    }
+    const { group, existing } = hardQuestionGroupIntent;
+    const proposed = appendHardQuestionGroup(theme.confirmed.value, group, existing);
+    if (!proposed || !equalValues(proposed, theme.draft)) return failure('The selected group changed', 'decision-changed');
+    return validateCommand({ protocol: 1, owner, operationId, resource: question.confirmed.resource,
+      generation: null, dependsOn: [], kind: 'relation', relation: HARD_QUESTION_GROUP_CREATE,
+      value: question.draft, group, ...(existing && { existing }),
+      theme: { resource: theme.confirmed.resource, generation: theme.confirmed.metadata?.generation ?? null } });
+  }
   if (participants[0]?.confirmed.resource.collection === 'studyNotes') {
     if (participants.length < 2 || participants.length > 3) return failure('An analysis reshape requires two or three participants');
     const [source] = participants;

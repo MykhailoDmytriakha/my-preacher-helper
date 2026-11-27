@@ -9,6 +9,7 @@ import { useHardQuestions } from '@/hooks/useHardQuestions';
  */
 type Row = { resource: { collection: string; id: string }; value: Record<string, unknown> | null; deleting?: boolean };
 let mockRows: Record<string, Row[]> = {};
+const mockCreateHardQuestionWithGroup = jest.fn((_resource: unknown, _value: unknown, _group: unknown) => Promise.resolve());
 const mockCreate = jest.fn((_resource: unknown, _value: unknown) => Promise.resolve());
 const mockRemove = jest.fn((_resource: unknown) => Promise.resolve());
 const mockCommit = jest.fn((_resource: unknown, _updater: (current: Record<string, unknown> | null) => unknown, _action?: unknown) => Promise.resolve());
@@ -23,7 +24,7 @@ jest.mock('@/data-engine/react.client', () => ({
     loading: false,
     state: collection ? { documents: mockRows[collection] ?? [], complete: collection === 'hardQuestionThemes' ? mockThemesComplete : true } : null,
   }),
-  useDocumentActions: () => ({ ready: true, create: mockCreate, remove: mockRemove, commit: mockCommit, captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }) }),
+  useDocumentActions: () => ({ ready: true, create: mockCreate, createHardQuestionWithGroup: mockCreateHardQuestionWithGroup, remove: mockRemove, commit: mockCommit, captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }) }),
 }));
 
 const theme = (id: string, rank: number, extra: Record<string, unknown> = {}): Row => ({
@@ -42,6 +43,7 @@ beforeEach(() => {
   mockIds = 0;
   mockThemesComplete = true;
   // Reset, not cleared: a one-time answer a test set and did not use must not leak into the next test.
+  mockCreateHardQuestionWithGroup.mockClear();
   mockCreate.mockClear(); mockRemove.mockClear(); mockCommit.mockReset().mockImplementation(() => Promise.resolve());
   mockRows = {
     hardQuestionThemes: [
@@ -68,9 +70,10 @@ describe('useHardQuestions', () => {
   it('creates a question at the end of its group, trimmed, with nothing about who asked', async () => {
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => { await result.current.createQuestion({ title: '  Можно ли шорты?  ', themeId: 'clothes', groupId: 'g1' }); });
-    expect(mockCreate).toHaveBeenCalledWith({ collection: 'hardQuestions', id: 'new-1' }, {
+    expect(mockCreateHardQuestionWithGroup).toHaveBeenCalledWith({ collection: 'hardQuestions', id: 'new-1' }, {
       userId: 'pastor', title: 'Можно ли шорты?', themeId: 'clothes', groupId: 'g1', rank: 3000, createdAt: expect.any(String), updatedAt: expect.any(String),
-    });
+    }, undefined);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('keeps the theme the screen chose even before the list holds it, and refuses empty words', async () => {
@@ -78,7 +81,8 @@ describe('useHardQuestions', () => {
     // a question added there must not land «без темы» (Codex review, round 2).
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => { await result.current.createQuestion({ title: 'Вопрос из новой темы', themeId: 'not-listed-yet', groupId: 'g9' }); });
-    expect(mockCreate.mock.calls[0][1]).toMatchObject({ themeId: 'not-listed-yet', groupId: 'g9' });
+    expect(mockCreateHardQuestionWithGroup).toHaveBeenCalledWith(expect.anything(),
+      expect.objectContaining({ themeId: 'not-listed-yet', groupId: 'g9' }), undefined);
     await expect(result.current.createQuestion({ title: '   ' })).rejects.toThrow();
   });
 
@@ -254,31 +258,35 @@ describe('useHardQuestions', () => {
     expect((applied(0, stored) as { groups: unknown }).groups).toEqual(stored.groups);
   });
 
-  it('a question with a new group makes the group first and is written into it', async () => {
+  it('captures the question and its new group as one action', async () => {
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => { await result.current.createQuestion({ title: 'Серьги?', themeId: 'clothes', newGroupTitle: ' Украшения ' }); });
-    // The question's id is taken first (new-1), the group's next (new-2).
-    expect(applied(0, { title: 'Одежда', groups: [{ id: 'g1', title: 'Длина' }] })).toMatchObject({ groups: [{ id: 'g1', title: 'Длина' }, { id: 'new-2', title: 'Украшения' }] });
-    expect(mockCreate.mock.calls[0][1]).toMatchObject({ themeId: 'clothes', groupId: 'new-2', title: 'Серьги?' });
-    expect(mockCommit.mock.invocationCallOrder[0]).toBeLessThan(mockCreate.mock.invocationCallOrder[0]);
+    expect(mockCreateHardQuestionWithGroup).toHaveBeenCalledWith({ collection: 'hardQuestions', id: 'new-1' },
+      expect.objectContaining({ themeId: 'clothes', groupId: 'new-2', title: 'Серьги?' }),
+      { group: { id: 'new-2', title: 'Украшения' } });
+    expect(mockCommit).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('a question «into a new group» named like an existing one goes into that group, no twin made', async () => {
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => { await result.current.createQuestion({ title: 'Макси?', themeId: 'clothes', newGroupTitle: 'длина' }); });
     expect(mockCommit).not.toHaveBeenCalled();
-    expect(mockCreate.mock.calls[0][1]).toMatchObject({ groupId: 'g1' });
+    expect(mockCreateHardQuestionWithGroup).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ groupId: 'g1' }),
+      undefined);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('writes no question when its new group cannot be made, and makes no group for a question without a theme', async () => {
-    mockCommit.mockImplementationOnce(() => Promise.reject(new Error('theme gone')));
+    mockCreateHardQuestionWithGroup.mockImplementationOnce(() => Promise.reject(new Error('theme gone')));
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => {
       await expect(result.current.createQuestion({ title: 'Серьги?', themeId: 'clothes', newGroupTitle: 'Украшения' })).rejects.toThrow('theme gone');
     });
     expect(mockCreate).not.toHaveBeenCalled();
     await act(async () => { await result.current.createQuestion({ title: 'Без темы', newGroupTitle: 'Украшения' }); });
-    expect(mockCommit).toHaveBeenCalledTimes(1);
+    expect(mockCreateHardQuestionWithGroup).toHaveBeenCalledTimes(1);
+    expect(mockCommit).not.toHaveBeenCalled();
     expect(mockCreate.mock.calls[0][1]).not.toHaveProperty('groupId');
   });
 

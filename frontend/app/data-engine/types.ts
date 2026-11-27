@@ -15,6 +15,7 @@ import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { HardQuestionBasisActions, HardQuestionBasisReview } from './hardQuestionBasisFields';
 import type { HardQuestionFieldReview, HardQuestionFieldStamps } from './hardQuestionFieldAction';
+import type { HardQuestionGroupProposal } from './hardQuestionGroupCreation';
 import type { HardQuestionPlacement, HardQuestionPlacementOpening } from './hardQuestionPlacement';
 import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -346,6 +347,8 @@ export type DataCommand = CommandBase & (
   | { kind: 'relation'; relation: 'series-member-create'; value: DocumentData; edit: {
       resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
     } }
+  | { kind: 'relation'; relation: 'hard-question-group-create'; value: DocumentData; group: HardQuestionGroupProposal; existing?: true;
+      theme: { resource: ResourceRef; generation: string | null } }
   /** Server-owned share-link capability creation, tied to the note version the person saw. */
   | { kind: 'relation'; relation: 'share-link-create'; note: { id: string; generation: string | null; shareRevocation?: string | null };
       authorLanguage: 'en' | 'ru' | 'uk' }

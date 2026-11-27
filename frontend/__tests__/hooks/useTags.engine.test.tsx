@@ -14,7 +14,7 @@ jest.mock('@/data-engine/react.client', () => ({
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 const row = (id: string, value: Record<string, unknown> | null) => ({ resource: { collection: 'tags', id }, value });
-const actions = { owner: 'u', ready: true, openSourceNoteLinks: jest.fn(), saveSourceNoteLinks: jest.fn(), knownStudyNoteCreation: jest.fn(), listServiceOrderDraftLinks: jest.fn(), listStudyNoteCreations: jest.fn(), captureActionTime: jest.fn(), findStudyAnalysisCreation: jest.fn(), releaseStudyAnalysisCreation: jest.fn(), transferStudyAnalysisCreation: jest.fn(), reshapeStudyAnalysis: jest.fn(), submit: jest.fn(), create: jest.fn().mockResolvedValue(undefined), remove: jest.fn().mockResolvedValue(undefined), commit: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(0) };
+const actions = { owner: 'u', ready: true, createHardQuestionWithGroup: jest.fn(), openSourceNoteLinks: jest.fn(), saveSourceNoteLinks: jest.fn(), knownStudyNoteCreation: jest.fn(), listServiceOrderDraftLinks: jest.fn(), listStudyNoteCreations: jest.fn(), captureActionTime: jest.fn(), findStudyAnalysisCreation: jest.fn(), releaseStudyAnalysisCreation: jest.fn(), transferStudyAnalysisCreation: jest.fn(), reshapeStudyAnalysis: jest.fn(), submit: jest.fn(), create: jest.fn().mockResolvedValue(undefined), remove: jest.fn().mockResolvedValue(undefined), commit: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(0) };
 
 function render(extra: (ReturnType<typeof row> & { creating?: boolean; needsAttention?: boolean })[] = []) {
   jest.mocked(useDocumentActions).mockReturnValue(actions);

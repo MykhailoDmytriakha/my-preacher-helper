@@ -106,9 +106,10 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
 }
 
 /** Each request has its own row; a participant batch shares one IndexedDB transaction. */
-export function createIndexedDbCommitStore(collect = collectCommitRows, leases?: Pick<OrdinaryEditorLeases, 'acquire'>): CommitStore {
+export function createIndexedDbCommitStore(collect = collectCommitRows, leases?: Pick<OrdinaryEditorLeases, 'acquire' | 'runExclusive'>): CommitStore {
   const heldLeases = new Map<string, OrdinaryEditorLease>();
   const atomicAdmissions = new Map<string, { owner: string; kind: LeasedAtomicAction }>();
+  const scopedAdmissions = new Map<string, Promise<unknown>>();
   const leaseKey = (owner: string, editorId: string) => JSON.stringify([owner, editorId]);
   const transaction = createEngineStorageTransaction();
   const collections = createCollectionCommitReads(transaction);
@@ -256,15 +257,24 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
       if (heldLeases.get(key) === lease) heldLeases.delete(key);
       await lease?.release();
     },
-    withAtomicActionAdmission: async (owner, kind, capture) => {
-      const lease = await leases?.acquire();
-      if (!lease) return capture(null);
-      atomicAdmissions.set(lease.id, { owner, kind });
-      try { return await capture(lease.id); }
-      finally {
-        atomicAdmissions.delete(lease.id);
-        await lease.release();
-      }
+    withAtomicActionAdmission: async (owner, kind, capture, scope) => {
+      const run = async () => {
+        const lease = await leases?.acquire();
+        if (!lease) return capture(null);
+        atomicAdmissions.set(lease.id, { owner, kind });
+        try { return await capture(lease.id); }
+        finally {
+          atomicAdmissions.delete(lease.id);
+          await lease.release();
+        }
+      };
+      if (!scope) return run();
+      const key = JSON.stringify([owner, kind, scope]);
+      if (leases?.runExclusive) return leases.runExclusive(key, run);
+      const pending = (scopedAdmissions.get(key) ?? Promise.resolve()).catch(() => undefined).then(run);
+      scopedAdmissions.set(key, pending);
+      try { return await pending; }
+      finally { if (scopedAdmissions.get(key) === pending) scopedAdmissions.delete(key); }
     },
     create: request => createBatch([request]).then(records => records[0]),
     createWithCheckpoint: (request, project, options) => {

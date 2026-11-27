@@ -26,7 +26,7 @@ export class HardQuestionGoneError extends Error {
   constructor() { super('HARD_QUESTION_GONE'); this.name = 'HardQuestionGoneError'; }
 }
 
-/** A question as the window writes it down; `newGroupTitle` — a group named there, made in its theme first. */
+/** A question as the window writes it down; `newGroupTitle` — a group saved together with the question. */
 export type NewQuestion = { title: string; themeId?: string; groupId?: string; newGroupTitle?: string };
 type QuestionPatch = Record<string, DocumentData[string] | undefined>;
 
@@ -61,10 +61,17 @@ export function useHardQuestions() {
   const actions = useDocumentActions();
   const queues = useRef(new Map<string, Promise<unknown>>());
 
-  const library = useMemo<HardQuestionLibrary>(() => buildLibrary(
-    (themesCollection.state?.documents ?? []).filter(isLiveCollectionDocument).map((row) => readTheme(row.value, row.resource.id)),
-    (questionsCollection.state?.documents ?? []).filter(isLiveCollectionDocument).map((row) => readQuestion(row.value, row.resource.id)),
-  ), [themesCollection.state?.documents, questionsCollection.state?.documents]);
+  const library = useMemo<HardQuestionLibrary>(() => {
+    const themes = (themesCollection.state?.documents ?? []).filter(isLiveCollectionDocument).map(row => readTheme(row.value, row.resource.id));
+    const byId = new Map(themes.map(theme => [theme.id, theme]));
+    const questions = (questionsCollection.state?.documents ?? []).filter(isLiveCollectionDocument)
+      .flatMap(row => {
+        const question = readQuestion(row.value, row.resource.id);
+        if (row.pendingGroupCreation && (!question.themeId || !byId.get(question.themeId)?.groups?.some(group => group.id === question.groupId))) return [];
+        return [question];
+      });
+    return buildLibrary(themes, questions);
+  }, [themesCollection.state?.documents, questionsCollection.state?.documents]);
   const libraryRef = useRef(library);
   libraryRef.current = library;
   /** Whether every theme is read: before that, a question whose theme is missing may stand in a theme not read yet. */
@@ -166,17 +173,20 @@ export function useHardQuestions() {
     // The theme and group as the screen chose them, even if the list has not read that theme yet: a
     // pointer to something gone reads as «без темы»/«без группы» anyway (Codex review, round 2).
     const themeId = input.themeId || undefined;
-    // A group named in the same window is made first, so the question is written into it; if the group cannot be
-    // made (its theme is gone), the question is not written either and the window keeps its words.
     const newGroup = themeId ? cleanText(input.newGroupTitle) : undefined;
-    let groupId = themeId && input.groupId ? input.groupId : undefined;
-    if (themeId && newGroup) groupId = await addGroup(themeId, newGroup);
-    await write(actions.create(questionRef(id), {
+    const words = (groupId: string | undefined): DocumentData => ({
       userId: uid, title, ...(themeId ? { themeId } : {}), ...(groupId ? { groupId } : {}),
       rank: rankForNewQuestion(libraryRef.current, themeId, groupId), createdAt: at, updatedAt: at,
-    }));
+    });
+    const visibleGroups = themeId ? libraryRef.current.themeById.get(themeId)?.theme.groups : undefined;
+    const existing = newGroup ? groupNamed(visibleGroups, newGroup)?.id : input.groupId;
+    const group = newGroup && !existing ? { id: newClientId(), title: newGroup } : undefined;
+    const groupId = existing || group?.id;
+    if (themeId && groupId) {
+      await queued('theme:' + themeId, () => write(actions.createHardQuestionWithGroup(questionRef(id), words(groupId), group && { group })));
+    } else await write(actions.create(questionRef(id), words(undefined)));
     return id;
-  }, [actions, addGroup, uid, write]);
+  }, [actions, queued, uid, write]);
 
   const removeQuestion = useCallback((questionId: string) => queued(`question:${questionId}`, () => write(actions.remove(questionRef(questionId)))), [actions, queued, write]);
 

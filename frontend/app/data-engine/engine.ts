@@ -32,6 +32,8 @@ import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } fr
 import { readGroupFlowTextChoice } from './groupTextReview';
 import { hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hasHardQuestionListReview } from './hardQuestionFieldAction';
+import { captureHardQuestionGroup } from './hardQuestionGroupCapture';
+import { HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { readHardQuestionPlacementConflict } from './hardQuestionPlacement';
 import { readHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
 import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
@@ -1213,6 +1215,63 @@ export class DataEngine {
     return pending;
   }
 
+  /** A question and the group named on its form share one durable capture and one server command. */
+  async createHardQuestionWithGroup(question: ResourceRef, value: DocumentData, intent?: HardQuestionGroupIntent): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const resource = copy(question), words = copy(value), selected = intent && copy(intent);
+    const theme = { collection: 'hardQuestionThemes', id: typeof words.themeId === 'string' ? words.themeId : '' };
+    this.validateResource(resource, owner);
+    this.validateResource(theme, owner);
+    const capture = () => this.saveLeasedAtomicAction(owner, generation, HARD_QUESTION_GROUP_CREATE, async () => {
+      const requests = await this.commits.list();
+      this.assertCurrent(owner, generation);
+      requests.forEach(request => this.rememberCommit(request));
+      // A predecessor can leave the queue only after its accepted version reaches the cache.
+      const snapshot = await this.cachedSnapshotWithAcknowledgements(owner, generation, theme)
+        ?? requests.find(request => sameResource(request.baseline.resource, theme))?.baseline
+        ?? await this.readSnapshot(owner, generation, theme);
+      this.assertCurrent(owner, generation);
+      return captureHardQuestionGroup(owner, this.options.operationId(), resource, words, snapshot, selected, requests);
+    }, theme.id);
+    try { await capture(); }
+    catch (error) {
+      if ((error as { code?: string })?.code !== 'commit-reference-changed') throw error;
+      // Storage rejected the complete batch. Reopen against the receipt instead of reviving an old predecessor.
+      await capture();
+    }
+    this.assertCurrent(owner, generation);
+    this.prepareCommitsInBackground(); this.backgroundDrain();
+  }
+
+  async listRefusedHardQuestionGroups(): Promise<Array<{ id: string; questionId: string; themeId: string; title: string; group: string }>> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    const byId = new Map(requests.map(request => [request.id, request]));
+    // The theme records hold the dependency order. Let the user settle dependent questions first.
+    return requests.slice().reverse().flatMap(peer => {
+      if (peer.atomic?.kind !== HARD_QUESTION_GROUP_CREATE || !peer.hardQuestionGroupIntent) return [];
+      const request = byId.get(peer.atomic.id);
+      if (request?.state !== 'refused' || typeof request.value?.title !== 'string') return [];
+      return [{ id: request.id, questionId: request.baseline.resource.id, themeId: peer.baseline.resource.id,
+        title: request.value.title, group: peer.hardQuestionGroupIntent.group.title }];
+    });
+  }
+
+  async discardRefusedHardQuestionGroup(id: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    const root = requests.find(request => request.id === id && request.atomic?.id === id
+      && request.atomic.kind === HARD_QUESTION_GROUP_CREATE && request.state === 'refused');
+    if (!root?.atomic) throw Object.assign(new Error('The returned question changed'), { code: 'decision-changed' });
+    await this.commits.cancelAction(root.atomic.participants, true);
+    this.assertCurrent(owner, generation);
+    await this.commits.finishCancellation('', root.atomic.participants);
+    this.assertCurrent(owner, generation);
+    await this.completeAcceptedProjections(owner, generation);
+  }
+
   /** The entire reshape is captured before returning; navigation never owns its delivery. */
   async reshapeStudyAnalysis(edits: readonly StudyAnalysisWrite[]): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
@@ -1253,16 +1312,20 @@ export class DataEngine {
     } finally { this.analysisReshapes.delete(lock); }
   }
 
-  private saveLeasedAtomicAction(owner: string, generation: number, kind: LeasedAtomicAction, captures: readonly AtomicCapture[]) {
-    const save = (leaseId: string | null) => {
+  private saveLeasedAtomicAction(owner: string, generation: number, kind: LeasedAtomicAction,
+    captures: readonly AtomicCapture[] | (() => Promise<AtomicCapture[]>), scope?: string) {
+    const save = async (leaseId: string | null) => {
       this.assertCurrent(owner, generation);
-      return this.commits.saveAtomic(leaseId ? captures.map(participant => ({
+      const participants = typeof captures === 'function' ? await captures() : captures;
+      this.assertCurrent(owner, generation);
+      return this.commits.saveAtomic(leaseId ? participants.map(participant => ({
         ...participant,
-        editorId: leasedAtomicEditorId(kind, leaseId, participant.captured.confirmed.resource.id),
-      })) : captures);
+        editorId: leasedAtomicEditorId(kind, leaseId, kind === HARD_QUESTION_GROUP_CREATE
+          ? JSON.stringify(participant.captured.confirmed.resource) : participant.captured.confirmed.resource.id),
+      })) : participants);
     };
     return this.options.commits.withAtomicActionAdmission
-      ? this.options.commits.withAtomicActionAdmission(owner, kind, save)
+      ? this.options.commits.withAtomicActionAdmission(owner, kind, save, scope)
       : save(null);
   }
 
@@ -2372,7 +2435,7 @@ export class DataEngine {
       const group = request.atomic?.id ?? request.id;
       const transferredSource = request.state === 'cancelled' && Boolean(request.transferredTo);
       if (completed.has(group) || (request.state !== 'acknowledged' && !transferredSource
-        && ![COUNCIL_CARRY, ANALYSIS_RESHAPE].includes(request.atomic?.kind ?? ''))) continue;
+        && ![COUNCIL_CARRY, ANALYSIS_RESHAPE, HARD_QUESTION_GROUP_CREATE].includes(request.atomic?.kind ?? ''))) continue;
       completed.add(group);
       await this.completeAcceptedProjection(owner, generation, request, requests);
     }

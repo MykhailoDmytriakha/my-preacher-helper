@@ -10,6 +10,7 @@ export interface OrdinaryEditorLease {
 export interface OrdinaryEditorLeases {
   acquire(): Promise<OrdinaryEditorLease | null>;
   runIfFree(id: string, work: () => Promise<void>): Promise<void>;
+  runExclusive?<T>(scope: string, work: () => Promise<T>): Promise<T>;
 }
 
 const lockName = (id: string) => 'data-engine-ordinary-writer:' + id;
@@ -38,6 +39,7 @@ export function createOrdinaryEditorLeases(locks: Pick<LockManager, 'request'> |
       } catch { receive(null); }
       return acquired;
     },
+    runExclusive: (scope, work) => locks.request('data-engine-atomic-capture:' + scope, () => work()),
     async runIfFree(id, work) {
       // Keep the same exclusive lock until the storage transaction has committed.
       let entered = false;

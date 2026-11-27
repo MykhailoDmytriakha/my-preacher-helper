@@ -17,6 +17,7 @@ import { deletionConflicts } from './deletionContent';
 import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
+import { readHardQuestionGroup } from './hardQuestionGroupCreation';
 import { HARD_QUESTION_BASIS_SCRIPTURE, hardQuestionThemeListPath, reviewMergedBasisScripture } from './hardQuestionThemeLists';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -391,6 +392,18 @@ function validatePayload(command: DataCommand, policy: ReturnType<typeof getReso
   }
 }
 
+function validateHardQuestionGroupCreation(command: Extract<DataCommand, { relation: 'hard-question-group-create' }>): void {
+  const group = readHardQuestionGroup(command.group);
+  if (command.resource.collection !== 'hardQuestions' || command.generation !== null
+    || !object(command.theme) || !object(command.theme.resource) || command.theme.resource.collection !== 'hardQuestionThemes'
+    || !isValidIdentifier(command.theme.resource.id) || (command.theme.generation !== null && !isValidIdentifier(command.theme.generation))
+    || !group || !isValidIdentifier(group.id) || (command.existing !== undefined && command.existing !== true)
+    || !object(command.value) || command.value.themeId !== command.theme.resource.id || command.value.groupId !== group.id) {
+    return fail('Invalid question group creation');
+  }
+  validateCreate({ ...command, kind: 'create' }, getResourcePolicy('hardQuestions'));
+}
+
 function validateSeriesMemberCreation(command: Extract<DataCommand, { relation: 'series-member-create' }>): void {
   if (!['sermons', 'groups'].includes(command.resource.collection) || command.generation !== null
     || !object(command.edit) || !object(command.edit.resource)) fail('Invalid series member creation');
@@ -508,6 +521,7 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
   switch (command.relation) {
     case 'service-order-seed': return validateServiceOrderSeed(command);
     case 'series-member-create': return validateSeriesMemberCreation(command);
+    case 'hard-question-group-create': return validateHardQuestionGroupCreation(command);
     case 'analysis-reshape': return validateAnalysisReshape(command);
     case 'share-link-create': return validateShareLinkCreate(command);
     case 'share-link-revoke': return validateShareLinkRevoke(command);

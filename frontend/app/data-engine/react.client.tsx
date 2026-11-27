@@ -104,6 +104,7 @@ import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
+import type { HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
@@ -807,6 +808,10 @@ export function useDocumentActions() {
       if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
       if ((await waitingFor({ collection: 'studyNotes', id: targetId })).length) throw decisionRequired();
       return browser.engine.transferStudyAnalysisCreation(sourceId, targetId, text);
+    },
+    createHardQuestionWithGroup: (resource: ResourceRef, value: DocumentData, intent?: HardQuestionGroupIntent) => {
+      if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
+      return browser.engine.createHardQuestionWithGroup(resource, value, intent);
     },
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),
