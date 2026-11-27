@@ -170,7 +170,7 @@ describe('SharedNotePage', () => {
     render(<SharedNotePage />);
 
     await waitFor(() => expect(screen.getByTestId('markdown')).toHaveTextContent('Body'));
-    const bar = screen.getByRole('button', { name: /Faith that carries/ }).closest('header')!;
+    const bar = screen.getAllByRole('heading', { level: 1 }).find((title) => title.closest('header'))!.closest('header')!;
     expect(within(bar).getByTestId('theme-toggle')).toBeInTheDocument();
     const wideTitle = screen.getAllByRole('heading', { level: 1 }).find((title) => !bar.contains(title))!;
     expect(within(wideTitle.parentElement!).getByTestId('theme-toggle')).toBeInTheDocument();
@@ -203,9 +203,10 @@ describe('SharedNotePage', () => {
 
     render(<SharedNotePage />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Two parts/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'notePanel.outline' }));
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByRole('button', { name: 'textOutline.collapseAll' })).toBeInTheDocument();
+    expect(within(sheet).queryByRole('button', { name: /studiesWorkspace\.scriptureRefs/ })).not.toBeInTheDocument();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Two' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
@@ -227,7 +228,7 @@ describe('SharedNotePage', () => {
       });
       render(<SharedNotePage />);
 
-      fireEvent.click(await screen.findByRole('button', { name: /Turned/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'notePanel.outline' }));
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       wide = true;
@@ -236,6 +237,52 @@ describe('SharedNotePage', () => {
     } finally {
       window.matchMedia = original;
     }
+  });
+
+  it('keeps the phone title as a heading when a named section becomes active', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ content: '## One\n\nFirst.', title: 'Persistent title', scriptureRefs: [] }),
+    });
+    render(<SharedNotePage />);
+    const title = (await screen.findAllByRole('heading', { level: 1, name: 'Persistent title' }))[0];
+    const bar = title.closest('header')!;
+    // The Markdown stand-in does not emit real section boxes. Give the scroll reader the section
+    // the production renderer would put at this position, then deliver a scroll.
+    const section = document.createElement('section');
+    section.dataset.sectionId = '0';
+    section.getBoundingClientRect = () => ({ top: 40 }) as DOMRect;
+    (await screen.findByTestId('markdown')).appendChild(section);
+    fireEvent.scroll(window);
+
+    await waitFor(() => expect(within(bar).getByText('One')).toBeVisible());
+    expect(within(bar).getByRole('heading', { level: 1, name: 'Persistent title' })).toBe(title);
+    expect(title.closest('button')).toBeNull();
+  });
+
+  it('shows no sheet trigger for a plain public note with no sections or passages', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ content: 'A single paragraph.', title: 'Plain note', scriptureRefs: [] }),
+    });
+    const { container } = render(<SharedNotePage />);
+    const title = (await screen.findAllByRole('heading', { level: 1, name: 'Plain note' }))[0];
+    expect(title.closest('header')!.querySelector('button[aria-haspopup="dialog"]')).toBeNull();
+    expect(container.querySelector('[data-note-sheet]')).toBeNull();
+  });
+
+  it('offers the passages sheet when references are the only navigation', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        content: 'A single paragraph.', title: 'Passages only',
+        scriptureRefs: [{ id: 'r1', book: 'John', chapter: 3, fromVerse: 16 }],
+      }),
+    });
+    render(<SharedNotePage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'studiesWorkspace.scriptureRefs' }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByRole('button', { name: /John|Jn/ })).toBeInTheDocument();
   });
 
   it('shows no heading when the note has no title', async () => {

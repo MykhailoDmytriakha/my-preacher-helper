@@ -11,6 +11,7 @@ import ScriptureRefBadge from '@/components/studies/ScriptureRefBadge';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
+import { useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { useWideViewport } from '@/hooks/useWideViewport';
 import { bibleForLocale } from '@/utils/bibles';
 import { findSectionById, sectionDisplayLabel } from '@/utils/markdownSections';
@@ -20,8 +21,7 @@ import { useTranslation } from '@locales/useTranslation';
 import type { ScriptureReference } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 
-/** The bar is about 49px tall: a section counts as being read once its heading has passed under it. */
-const READING_LINE = 60;
+const MIN_READING_LINE = 60;
 
 /** The note text as the app's note page draws it in reading mode, larger on a wide screen. */
 const TEXT_CLASSES =
@@ -62,10 +62,18 @@ export function SharedNoteReader({ token, content, heading, passages, hiddenPass
     useEffect(() => {
         if (wide) setSheetOpen(false);
     }, [wide]);
-    const activeSectionId = useActiveSection(READING_LINE, true, token);
+    const { setHeaderRef, headerHeight } = useStickyOffsets();
+    const readingLine = Math.max(MIN_READING_LINE, headerHeight + 8);
+    const foldLayout = outline.sectionIds.filter(outline.isCollapsed).join(',');
+    const activeSectionId = useActiveSection(readingLine, true, `${token}:${foldLayout}`);
     const activeSection = activeSectionId ? findSectionById(outline.outline.sections, activeSectionId) : null;
     const reading = activeSection ? sectionDisplayLabel(activeSection, t('textOutline.untitledSection')) : null;
     const caption = `${t('shareNotes.title')} · ${t('shareNotes.subtitle')}`;
+    const hasPassages = scriptureRefs.length > 0;
+    const hasNavigation = outline.hasSections || hasPassages;
+    const navigationTab = outline.hasSections ? 'outline' : 'properties';
+    const passageLabel = t('studiesWorkspace.scriptureRefs');
+    const navigationLabel = outline.hasSections ? t('notePanel.outline') : passageLabel;
 
     const openSheet = (tab: SheetTab) => {
         setSheetTab(tab);
@@ -87,27 +95,30 @@ export function SharedNoteReader({ token, content, heading, passages, hiddenPass
                 />
             </div>
             <div className="min-w-0 flex-1 lg:px-8">
-                <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 px-3 pb-1.5 pt-1.5 backdrop-blur-md lg:hidden dark:border-gray-800 dark:bg-gray-900/90">
+                <header ref={setHeaderRef} className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 px-3 py-1.5 backdrop-blur-md lg:hidden dark:border-gray-800 dark:bg-gray-900/90">
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => openSheet('outline')}
-                            aria-haspopup="dialog"
-                            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors active:bg-gray-100 dark:active:bg-gray-800"
-                        >
-                            {reading ? (
-                                <span className="min-w-0 truncate text-[15px] font-semibold leading-tight text-emerald-800 dark:text-emerald-300">
-                                    {reading}
-                                </span>
-                            ) : heading ? (
-                                <h1 className={`min-w-0 break-words font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${noteTitleSizeClass(heading)}`}>
+                        <div className="min-w-0 flex-1">
+                            {heading ? (
+                                <h1 className={`max-h-[25vh] overflow-y-auto break-words font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${noteTitleSizeClass(heading)}`}>
                                     {heading}
                                 </h1>
                             ) : (
-                                <span className="min-w-0 truncate text-[15px] font-semibold leading-tight text-gray-700 dark:text-gray-200">{caption}</span>
+                                <p className="truncate text-[15px] font-semibold leading-tight text-gray-700 dark:text-gray-200">{caption}</p>
                             )}
-                            <ChevronDownIcon className={`h-4 w-4 shrink-0 ${reading ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
-                        </button>
+                            {hasNavigation && (
+                                <button
+                                    type="button"
+                                    onClick={() => openSheet(navigationTab)}
+                                    aria-haspopup="dialog"
+                                    aria-expanded={sheetOpen}
+                                    aria-label={reading ? `${navigationLabel} · ${reading}` : undefined}
+                                    className="flex max-w-full items-center gap-1 rounded-lg py-0.5 text-left text-sm font-semibold text-emerald-800 transition-colors active:bg-gray-100 dark:text-emerald-300 dark:active:bg-gray-800"
+                                >
+                                    <span className="min-w-0 truncate">{reading ?? navigationLabel}</span>
+                                    <ChevronDownIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                </button>
+                            )}
+                        </div>
                         <ThemeModeToggle variant="compact" className="shrink-0" />
                     </div>
                 </header>
@@ -135,27 +146,30 @@ export function SharedNoteReader({ token, content, heading, passages, hiddenPass
                         </p>
                     )}
                     <div className={TEXT_CLASSES}>
-                        <FoldableMarkdown content={content} control={outline} showToggleAll={false} scrollMarginTop={READING_LINE} />
+                        <FoldableMarkdown content={content} control={outline} showToggleAll={false} scrollMarginTop={readingLine} />
                     </div>
                     <footer className="mt-10 border-t border-gray-200 pt-5 text-sm text-gray-500 lg:hidden dark:border-gray-800 dark:text-gray-400">{caption}</footer>
                 </div>
             </div>
-            <NoteMobileSheet
-                open={sheetOpen}
-                onClose={() => setSheetOpen(false)}
-                outline={outline}
-                foldable
-                activeSectionId={activeSectionId}
-                scriptureRefs={<SharedPassages refs={scriptureRefs} writtenIn={writtenIn} />}
-                tags={null}
-                openOn={sheetTab}
-                propertiesLabel={
-                    <>
-                        {t('studiesWorkspace.scriptureRefs')}{' '}
-                        <span className="font-normal text-gray-500 dark:text-gray-400">{scriptureRefs.length}</span>
-                    </>
-                }
-            />
+            {hasNavigation && (
+                <NoteMobileSheet
+                    open={sheetOpen}
+                    onClose={() => setSheetOpen(false)}
+                    outline={outline}
+                    foldable
+                    activeSectionId={activeSectionId}
+                    scriptureRefs={<SharedPassages refs={scriptureRefs} writtenIn={writtenIn} />}
+                    tags={null}
+                    openOn={sheetTab}
+                    propertiesShown={hasPassages}
+                    propertiesLabel={
+                        <>
+                            {passageLabel}{' '}
+                            <span className="font-normal text-gray-500 dark:text-gray-400">{scriptureRefs.length}</span>
+                        </>
+                    }
+                />
+            )}
         </div>
     );
 }

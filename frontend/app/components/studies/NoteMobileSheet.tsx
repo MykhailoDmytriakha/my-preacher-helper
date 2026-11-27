@@ -26,6 +26,8 @@ interface NoteMobileSheetProps {
     /** False where a text this short has no outline to offer (a comment): the sheet opens on its properties. */
     outlineShown?: boolean;
     sermons?: React.ReactNode;
+    /** A shared note can have an outline with no passages to show in the second tab. */
+    propertiesShown?: boolean;
     /**
      * The name of the second tab. A guest reading a shared note has nothing there but its
      * passages, so the tab says that instead of the owner's "Properties".
@@ -57,14 +59,20 @@ export function NoteMobileSheet({
     scriptureRefs,
     tags,
     sermons,
+    propertiesShown = true,
     propertiesLabel,
     openOn,
 }: NoteMobileSheetProps) {
     const { t } = useTranslation();
     const hasOutline = outlineShown && outline.hasSections;
-    const [tab, setTab] = useState<SheetTab>(hasOutline ? 'outline' : 'properties');
+    const [requestedTab, setTab] = useState<SheetTab>(hasOutline ? 'outline' : 'properties');
+    const tab = hasOutline && (requestedTab === 'outline' || !propertiesShown) ? 'outline' : 'properties';
     const layer = useModalLayer({ onClose, active: open });
     const panelRef = layer.ref;
+    const [nativeInert, setNativeInert] = useState(false);
+    useEffect(() => {
+        setNativeInert('inert' in HTMLElement.prototype);
+    }, []);
 
     // A note with no headings has no table of contents to open on.
     useEffect(() => {
@@ -72,21 +80,18 @@ export function NoteMobileSheet({
     }, [hasOutline]);
 
     useEffect(() => {
-        if (open && openOn) setTab(openOn === 'outline' && !hasOutline ? 'properties' : openOn);
-    }, [open, openOn, hasOutline]);
+        if (open && openOn) setTab(openOn);
+    }, [open, openOn]);
 
     // This reading sheet starts at its panel so its title precedes the outline controls.
     useEffect(() => {
         if (open) panelRef.current?.focus({ preventScroll: true });
     }, [open, panelRef]);
 
-    // `inert` on the whole thing while closed: the sheet stays mounted so it can slide, and
-    // every control inside it — outline rows, tabs, "collapse all" — would otherwise still
-    // be tabbable behind an `aria-hidden` that only lies to screen readers.
+    // Before hydration and on older Safari, hidden keeps every closed control out of the Tab order.
+    // With native inert, the closed sheet can still use its slide transition.
     return (
-        // `aria-hidden` beside `inert`: a Safari older than 15.5 has no `inert`, and a closed sheet
-        // must not be read out there as a second dialog on the page.
-        <div className="lg:hidden" inert={!open} aria-hidden={!open || undefined}>
+        <div className="lg:hidden" hidden={!open && !nativeInert} inert={!open} aria-hidden={!open || undefined}>
             <button
                 type="button"
                 aria-label={t('common.close')}
@@ -110,9 +115,11 @@ export function NoteMobileSheet({
                             {t('notePanel.outline')}
                         </SheetTabButton>
                     )}
-                    <SheetTabButton active={tab === 'properties'} onClick={() => setTab('properties')}>
-                        {propertiesLabel ?? t('notePanel.properties')}
-                    </SheetTabButton>
+                    {propertiesShown && (
+                        <SheetTabButton active={tab === 'properties'} onClick={() => setTab('properties')}>
+                            {propertiesLabel ?? t('notePanel.properties')}
+                        </SheetTabButton>
+                    )}
                     <div className="ml-auto flex items-center gap-1">
                         <button
                             type="button"

@@ -26,6 +26,16 @@ export function sectionAtLine(offset: number, scrollRoot?: HTMLElement | null): 
     return current;
 }
 
+function activeReadingLine(offset: number, scrollRoot?: HTMLElement | null): number {
+    const viewport = scrollRoot ?? document.scrollingElement;
+    if (!viewport || viewport.scrollTop <= 0 || viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop > 1) {
+        return offset;
+    }
+    // A short last section can be visible at the end without reaching the sticky header.
+    // Scroll offsets can be fractional; the viewport and scroll heights are rounded.
+    return Math.max(offset, viewport.clientHeight - 1);
+}
+
 export function useActiveSection(offset: number, enabled: boolean, resetKey?: string, scrollRoot?: HTMLElement | null): string | null {
     const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -38,7 +48,7 @@ export function useActiveSection(offset: number, enabled: boolean, resetKey?: st
         let frame = 0;
         const measure = () => {
             frame = 0;
-            setActiveId(sectionAtLine(offset, scrollRoot));
+            setActiveId(sectionAtLine(activeReadingLine(offset, scrollRoot), scrollRoot));
         };
 
         const onScroll = () => {
@@ -55,9 +65,8 @@ export function useActiveSection(offset: number, enabled: boolean, resetKey?: st
             scrollTarget.removeEventListener('scroll', onScroll);
             window.removeEventListener('resize', onScroll);
         };
-        // `resetKey` is the note being read: sections are found by scanning the DOM, and
-        // moving to another note at the same scroll position fires no scroll event — the
-        // old note's section id would stay highlighted.
+        // A different note or fold layout can change the section boxes at the same scroll position.
+        // The caller's reset key lets us remeasure without waiting for another scroll event.
     }, [offset, enabled, resetKey, scrollRoot]);
 
     return activeId;

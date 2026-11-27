@@ -77,6 +77,28 @@ describe('useActiveSection scroll ownership', () => {
         outside.remove();
     });
 
+    it('reaches the short final section only once the scrollable pane reaches the end', () => {
+        const last = document.createElement('div');
+        last.dataset.sectionId = 'last';
+        last.getBoundingClientRect = () => ({ top: 440 }) as DOMRect;
+        pane.append(last);
+        headingTop = 201;
+        Object.defineProperties(pane, {
+            clientHeight: { value: 300 },
+            scrollHeight: { value: 500 },
+            scrollTop: { value: 180, writable: true },
+        });
+
+        const { result } = renderHook(() => useActiveSection(16, true, 'note', pane));
+        expect(result.current).toBe('inside');
+        pane.scrollTop = 199.5;
+        scroll(pane);
+        expect(result.current).toBe('last');
+        pane.scrollTop = 195;
+        scroll(pane);
+        expect(result.current).toBe('inside');
+    });
+
     it('resets on disable and cancels queued measurements on unmount', () => {
         const { result, rerender, unmount } = renderHook(({ enabled }) => useActiveSection(16, enabled, 'note', pane), {
             initialProps: { enabled: true },

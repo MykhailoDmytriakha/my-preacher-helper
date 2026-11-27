@@ -125,5 +125,5 @@ export function useStickyOffsets() {
         return () => observer.disconnect();
     }, [headerEl]);
 
-    return { setHeaderRef, navHeight, belowHeader: navHeight + headerHeight };
+    return { setHeaderRef, navHeight, headerHeight, belowHeader: navHeight + headerHeight };
 }

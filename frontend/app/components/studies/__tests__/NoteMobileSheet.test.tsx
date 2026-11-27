@@ -169,6 +169,32 @@ describe('NoteMobileSheet', () => {
         expect(container.firstChild).toHaveAttribute('inert');
     });
 
+    it('keeps a closed sheet out of sequential focus without inert support', async () => {
+        const { container } = render(
+            <><button>Before sheet</button><NoteMobileSheet {...props} open={false} outline={makeControl()} /><button>After sheet</button></>
+        );
+        const panel = container.querySelector('[data-note-sheet]')!;
+        panel.parentElement!.removeAttribute('inert');
+
+        screen.getByRole('button', { name: 'Before sheet' }).focus();
+        await userEvent.setup().tab();
+        expect(screen.getByRole('button', { name: 'After sheet' })).toHaveFocus();
+    });
+
+    it('keeps the closed sheet mounted for its slide when inert is available', () => {
+        const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'inert');
+        Object.defineProperty(HTMLElement.prototype, 'inert', { configurable: true, writable: true });
+        try {
+            const { container } = render(<NoteMobileSheet {...props} open={false} outline={makeControl()} />);
+            expect(container.firstChild).toHaveAttribute('inert');
+            expect(container.firstChild).not.toHaveAttribute('hidden');
+            expect(container.querySelector('[data-note-sheet]')).toHaveClass('translate-y-full');
+        } finally {
+            if (original) Object.defineProperty(HTMLElement.prototype, 'inert', original);
+            else Reflect.deleteProperty(HTMLElement.prototype, 'inert');
+        }
+    });
+
     it('an open sheet is reachable again', () => {
         const { container } = render(<NoteMobileSheet {...props} outline={makeControl()} />);
 
